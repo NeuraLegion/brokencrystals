@@ -1,224 +1,660 @@
-import React, { FC, useEffect, useRef, useState } from "react";
-import logo from "../img/logo.png";
-import heroImg from "../img/hero-img.png";
+import React, { FC, useState } from 'react';
+
+const products = [
+  {
+    category: { name: 'Healing' },
+    photos: [{ url: 'assets/img/crystals/amethyst.jpg' }],
+    name: 'Amethyst',
+    short_description: 'a violet variety of quartz',
+  },
+  {
+    category: { name: 'Gemstones' },
+    photos: [{ url: 'assets/img/crystals/ruby.jpg' }],
+    name: 'Ruby',
+    short_description: 'an intense heart crystal',
+  },
+  {
+    category: { name: 'Healing' },
+    photos: [{ url: 'assets/img/crystals/opal.jpg' }],
+    name: 'Opal',
+    short_description: 'the precious stone',
+  },
+  {
+    category: { name: 'Jewellery' },
+    photos: [{ url: 'assets/img/crystals/sapphire.jpg' }],
+    name: 'Sapphire',
+    short_description: '',
+  },
+  {
+    category: { name: 'Gemstones' },
+    photos: [{ url: 'assets/img/crystals/pyrite.jpg' }],
+    name: 'Pyrite',
+    short_description: 'fools gold',
+  },
+  {
+    category: { name: 'Healing' },
+    photos: [{ url: 'assets/img/crystals/amber.jpg' }],
+    name: 'Amber',
+    short_description: 'fossilized tree resin',
+  },
+  {
+    category: { name: 'Jewellery' },
+    photos: [{ url: 'assets/img/crystals/emerald.jpg' }],
+    name: 'Emerald',
+    short_description: 'symbol of fertility and life',
+  },
+  {
+    category: { name: 'Jewellery' },
+    photos: [{ url: 'assets/img/crystals/shattuckite.jpg' }],
+    name: 'Shattuckite',
+    short_description: 'mistery',
+  },
+  {
+    category: { name: 'Gemstones' },
+    photos: [{ url: 'assets/img/crystals/bismuth.jpg' }],
+    name: 'Bismuth',
+    short_description: 'rainbow',
+  },
+];
 
 export const Main: FC = () => {
   const [user] = useState({ username: undefined });
-  const [search] = useState();
-
-  const headerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const { current } = headerRef;
-
-    const handleScroll = () => {
-      if (current) {
-        if (window.pageYOffset > 100) {
-          current.classList.add("header-scrolled");
-          current.classList.remove("navbar-margin");
-        } else {
-          current.classList.remove("header-scrolled");
-          current.classList.add("navbar-margin");
-        }
-      }
-    };
-
-    document.addEventListener("scroll", handleScroll);
-
-    return () => {
-      document.removeEventListener("scroll", handleScroll);
-    };
-  });
 
   return (
     <>
-      <header>
-        <nav
-          ref={headerRef}
-          className="navbar fixed-top navbar-expand-lg navbar-dark bg-faded navbar-margin"
-        >
-          <div className="navbar-header">
-            <a className="navbar-brand" href="/">
-              <img src={logo} width="50" height="50" alt="" loading="lazy" />
-              BROKEN CRYSTALS
-            </a>
-          </div>
-          <button
-            className="navbar-toggler"
-            type="button"
-            data-toggle="collapse"
-            data-target="#navbarSupportedContent"
-            aria-controls="navbarSupportedContent"
-            aria-expanded="false"
-            aria-label="Toggle navigation"
-          >
-            <span className="navbar-toggler-icon" />
-          </button>
+      <header id="header" className="fixed-top ">
+        <div className="container-fluid">
+          <div className="row justify-content-center">
+            <div className="col-xl-9 d-flex align-items-center">
+              <a href="/" className="logo mr-auto">
+                <img src="assets/img/logo.png" alt="" className="img-fluid" />{' '}
+                BROKEN CRYSTALS
+              </a>
 
-          <div className="collapse navbar-collapse" id="navbarSupportedContent">
-            <ul className="navbar-nav ml-auto mr-auto">
-              <li className="nav-item active">
-                <a className="nav-link" href="#">
-                  Home <span className="sr-only">(current)</span>
-                </a>
-              </li>
-              <li className="nav-item">
-                <a className="nav-link scrollto" href="#footer">
-                  Marketplace
-                </a>
-              </li>
-              <li className="nav-item dropdown">
-                <a
-                  className="nav-link dropdown-toggle"
-                  href="#"
-                  id="navbarDropdown"
-                  role="button"
-                  data-toggle="dropdown"
-                  aria-haspopup="true"
-                  aria-expanded="false"
-                >
-                  Gemstones
-                </a>
-                <div className="dropdown-menu" aria-labelledby="navbarDropdown">
-                  <a className="dropdown-item" href="#">
-                    Action
-                  </a>
-                  <a className="dropdown-item" href="#">
-                    Another action
-                  </a>
-                  <div className="dropdown-divider" />
-                  <a className="dropdown-item" href="#">
-                    Something else here
-                  </a>
-                </div>
-              </li>
-              <li className="nav-item dropdown">
-                <a
-                  className="nav-link dropdown-toggle"
-                  href="#"
-                  id="navbarDropdown"
-                  role="button"
-                  data-toggle="dropdown"
-                  aria-haspopup="true"
-                  aria-expanded="false"
-                >
-                  Healing
-                </a>
-                <div className="dropdown-menu" aria-labelledby="navbarDropdown">
-                  <a className="dropdown-item" href="#">
-                    Action
-                  </a>
-                  <a className="dropdown-item" href="#">
-                    Another action
-                  </a>
-                  <div className="dropdown-divider" />
-                  <a className="dropdown-item" href="#">
-                    Something else here
-                  </a>
-                </div>
-              </li>
-              <li className="nav-item dropdown">
-                <a
-                  className="nav-link dropdown-toggle"
-                  href="#"
-                  id="navbarDropdown"
-                  role="button"
-                  data-toggle="dropdown"
-                  aria-haspopup="true"
-                  aria-expanded="false"
-                >
-                  Jewellery
-                </a>
-                <div className="dropdown-menu" aria-labelledby="navbarDropdown">
-                  <a className="dropdown-item" href="#">
-                    Action
-                  </a>
-                  <a className="dropdown-item" href="#">
-                    Another action
-                  </a>
-                  <div className="dropdown-divider" />
-                  <a className="dropdown-item" href="#">
-                    Something else here
-                  </a>
-                </div>
-              </li>
-            </ul>
-            <form className="form-inline my-2 my-lg-0" method="get">
-              <input
-                className="form-control mr-sm-2"
-                type="search"
-                name="search"
-                placeholder="Search"
-                aria-label="Search"
-              />
-              <button
-                className="btn btn-outline-light my-2 my-sm-0"
-                type="submit"
-              >
-                Search
-              </button>
-            </form>
-            <ul className="navbar-nav ml-auto">
+              <nav className="nav-menu d-none d-lg-block">
+                <ul>
+                  <li className="active">
+                    <a href="/">Home</a>
+                  </li>
+                  <li>
+                    <a href="/marketplace">Marketplace</a>
+                  </li>
+                  <li className="drop-down">
+                    <a href="">Gemstones</a>
+                    <ul>
+                      <li>
+                        <a href="#">Gemstone 1</a>
+                      </li>
+                      <li>
+                        <a href="#">Gemstone 2</a>
+                      </li>
+                      <li>
+                        <a href="#">Gemstone 3</a>
+                      </li>
+                      <li>
+                        <a href="#">Gemstone 4</a>
+                      </li>
+                    </ul>
+                  </li>
+                  <li className="drop-down">
+                    <a href="">Healing</a>
+                    <ul>
+                      <li>
+                        <a href="#">Healing 1</a>
+                      </li>
+                      <li>
+                        <a href="#">Healing 2</a>
+                      </li>
+                      <li>
+                        <a href="#">Healing 3</a>
+                      </li>
+                      <li>
+                        <a href="#">Healing 4</a>
+                      </li>
+                    </ul>
+                  </li>
+                  <li className="drop-down">
+                    <a href="">Jewellery</a>
+                    <ul>
+                      <li>
+                        <a href="#">Jewellery 1</a>
+                      </li>
+                      <li>
+                        <a href="#">Jewellery 2</a>
+                      </li>
+                      <li>
+                        <a href="#">Jewellery 3</a>
+                      </li>
+                      <li>
+                        <a href="#">Jewellery 4</a>
+                      </li>
+                    </ul>
+                  </li>
+                  <li>
+                    <a href="#contact">Contact</a>
+                  </li>
+                  <li>
+                    <a href="/vulns">Vulnerabilities</a>
+                  </li>
+                </ul>
+              </nav>
               {user && user.username ? (
-                <button
-                  onClick={() => (window.location.href = "/logout")}
-                  className="btn btn-outline-light my-2 my-sm-0"
-                  type="button"
-                >
+                <a href="/logout" className="get-started-btn scrollto">
                   Log out {user.username}
-                </button>
+                </a>
               ) : (
-                <button
-                  onClick={() => (window.location.href = "/login")}
-                  className="btn btn-outline-light my-2 my-sm-0"
-                  type="button"
-                >
+                <a href="/login" className="get-started-btn scrollto">
                   Sign in
-                </button>
+                </a>
               )}
-            </ul>
+            </div>
           </div>
-        </nav>
+        </div>
       </header>
 
       <section id="hero" className="d-flex align-items-center">
         <div className="container-fluid" data-aos="fade-up">
           <div className="row justify-content-center">
             <div className="col-xl-5 col-lg-6 pt-3 pt-lg-0 order-2 order-lg-1 d-flex flex-column justify-content-center">
-              {search ? (
-                <>
-                  <h1>You searched for: {search}</h1>
-                  <h2>143 records found</h2>
-                  <div>
-                    <a href="#results" className="btn-get-started scrollto">
-                      See results
-                    </a>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h1>Your Vulnerable Crystal Marketplace</h1>
-                  <h2>All the beautiful stones in one place</h2>
-                  <div>
-                    <a href="#marketplace" className="btn-get-started scrollto">
-                      Get Started
-                    </a>
-                  </div>
-                </>
-              )}
+              <h1>Your Vulnerable Crystal Marketplace</h1>
+              <h2>Find the most beautiful stones in one place!</h2>
+              <div>
+                <a href="#marketplace" className="btn-get-started scrollto">
+                  Get Started
+                </a>
+              </div>
             </div>
             <div
               className="col-xl-4 col-lg-6 order-1 order-lg-2 hero-img"
               data-aos="zoom-in"
               data-aos-delay="150"
             >
-              <a href="/photo?image=logo.png">
-                <img src={heroImg} className="img-fluid animated" alt="" />
-              </a>
+              <img
+                src="assets/img/hero-img.png"
+                className="img-fluid animated"
+                alt=""
+              />
             </div>
           </div>
         </div>
       </section>
+
+      <main id="main">
+        <section id="marketplace" className="portfolio">
+          <div className="container" data-aos="fade-up">
+            <div className="section-title">
+              <h2>Marketplace</h2>
+            </div>
+
+            <div className="row">
+              <div className="col-lg-12 d-flex justify-content-center">
+                <ul id="portfolio-flters">
+                  <li data-filter="*" className="filter-active">
+                    All
+                  </li>
+                  <li data-filter=".filter-Healing">Healing</li>
+                  <li data-filter=".filter-Jewellery">Jewellery</li>
+                  <li data-filter=".filter-Gemstones">Gemstones</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="row portfolio-container">
+              {products.map((product) => (
+                <div
+                  className={`col-lg-4 col-md-6 portfolio-item filter-${product.category.name}`}
+                  key={product.name}
+                >
+                  <div className="portfolio-wrap">
+                    <img
+                      src={product.photos[0].url}
+                      className="img-fluid"
+                      alt=""
+                    />
+                    <div className="portfolio-info">
+                      <h4>{product.name}</h4>
+                      <p>{product.short_description}</p>
+                    </div>
+                    <div className="portfolio-links">
+                      <a
+                        href={product.photos[0].url}
+                        data-gall="portfolioGallery"
+                        className="venobox"
+                        title={product.name}
+                      >
+                        <i className="bx bx-plus" />
+                      </a>
+                      <a href="portfolio-details.html" title="More Details">
+                        <i className="bx bx-link" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="counts" className="counts">
+          <div className="container">
+            <div className="row counters">
+              <div className="col-lg-3 col-6 text-center">
+                <span data-toggle="counter-up">154</span>
+                <p>Crystals</p>
+              </div>
+
+              <div className="col-lg-3 col-6 text-center">
+                <span data-toggle="counter-up">78</span>
+                <p>Gemstones</p>
+              </div>
+
+              <div className="col-lg-3 col-6 text-center">
+                <span data-toggle="counter-up">23</span>
+                <p>Jewellery</p>
+              </div>
+
+              <div className="col-lg-3 col-6 text-center">
+                <span data-toggle="counter-up">9</span>
+                <p>Massage</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="testimonials" className="testimonials section-bg">
+          <div className="container" data-aos="fade-up">
+            <div className="section-title">
+              <h2>Testimonials</h2>
+              <p>
+                Magnam dolores commodi suscipit. Necessitatibus eius consequatur
+                ex aliquid fuga eum quidem. Sit sint consectetur velit. Quisquam
+                quos quisquam cupiditate. Et nemo qui impedit suscipit alias ea.
+                Quia fugiat sit in iste officiis commodi quidem hic quas.
+              </p>
+            </div>
+
+            <div className="owl-carousel testimonials-carousel">
+              <div className="testimonial-item">
+                <p>
+                  <i className="bx bxs-quote-alt-left quote-icon-left" />
+                  Proin iaculis purus consequat sem cure digni ssim donec
+                  porttitora entum suscipit rhoncus. Accusantium quam, ultricies
+                  eget id, aliquam eget nibh et. Maecen aliquam, risus at
+                  semper.
+                  <i className="bx bxs-quote-alt-right quote-icon-right" />
+                </p>
+                <img
+                  src="assets/img/testimonials/testimonials-1.jpg"
+                  className="testimonial-img"
+                  alt=""
+                />
+                <h3>Saul Goodman</h3>
+                <h4>Ceo &amp; Founder</h4>
+              </div>
+
+              <div className="testimonial-item">
+                <p>
+                  <i className="bx bxs-quote-alt-left quote-icon-left" />
+                  Export tempor illum tamen malis malis eram quae irure esse
+                  labore quem cillum quid cillum eram malis quorum velit fore
+                  eram velit sunt aliqua noster fugiat irure amet legam anim
+                  culpa.
+                  <i className="bx bxs-quote-alt-right quote-icon-right" />
+                </p>
+                <img
+                  src="assets/img/testimonials/testimonials-2.jpg"
+                  className="testimonial-img"
+                  alt=""
+                />
+                <h3>Sara Wilsson</h3>
+                <h4>Designer</h4>
+              </div>
+
+              <div className="testimonial-item">
+                <p>
+                  <i className="bx bxs-quote-alt-left quote-icon-left" />
+                  Enim nisi quem export duis labore cillum quae magna enim sint
+                  quorum nulla quem veniam duis minim tempor labore quem eram
+                  duis noster aute amet eram fore quis sint minim.
+                  <i className="bx bxs-quote-alt-right quote-icon-right" />
+                </p>
+                <img
+                  src="assets/img/testimonials/testimonials-3.jpg"
+                  className="testimonial-img"
+                  alt=""
+                />
+                <h3>Jena Karlis</h3>
+                <h4>Store Owner</h4>
+              </div>
+
+              <div className="testimonial-item">
+                <p>
+                  <i className="bx bxs-quote-alt-left quote-icon-left" />
+                  Fugiat enim eram quae cillum dolore dolor amet nulla culpa
+                  multos export minim fugiat minim velit minim dolor enim duis
+                  veniam ipsum anim magna sunt elit fore quem dolore labore.
+                  <i className="bx bxs-quote-alt-right quote-icon-right" />
+                </p>
+                <img
+                  src="assets/img/testimonials/testimonials-4.jpg"
+                  className="testimonial-img"
+                  alt=""
+                />
+                <h3>Matt Brandon</h3>
+                <h4>Freelancer</h4>
+              </div>
+
+              <div className="testimonial-item">
+                <p>
+                  <i className="bx bxs-quote-alt-left quote-icon-left" />
+                  Quis quorum aliqua sint quem legam fore sunt eram irure aliqua
+                  veniam tempor noster veniam enim culpa labore duis sunt culpa
+                  nulla illum cillum fugiat legam esse veniam culpa.
+                  <i className="bx bxs-quote-alt-right quote-icon-right" />
+                </p>
+                <img
+                  src="assets/img/testimonials/testimonials-5.jpg"
+                  className="testimonial-img"
+                  alt=""
+                />
+                <h3>John Larson</h3>
+                <h4>Entrepreneur</h4>
+              </div>
+            </div>
+          </div>
+
+          {/*<div className="container mt-5" data-aos="fade-up">*/}
+          {/*  <form method="post" role="form">*/}
+          {/*    <div className="form-row">*/}
+          {/*      <div className="col-md-6 form-group">*/}
+          {/*        <input type="text" name="name" className="form-control" id="name" placeholder="Your Name" data-rule="minlen:4" data-msg="Please enter at least 4 chars" />*/}
+          {/*        <div className="validate"/>*/}
+          {/*      </div>*/}
+          {/*      <div className="col-md-6 form-group">*/}
+          {/*        <input type="text" className="form-control" name="job-title" id="job-title" placeholder="Your Title" data-rule="minlen:4" data-msg="Please enter at least 4 chars" />*/}
+          {/*        <div className="validate"/>*/}
+          {/*      </div>*/}
+          {/*    </div>*/}
+          {/*    <div className="form-group">*/}
+          {/*      <textarea className="form-control" name="testimonial" rows={5} data-rule="required" data-msg="Please write something for us" placeholder="Testimonial"/>*/}
+          {/*      <div className="validate"/>*/}
+          {/*    </div>*/}
+          {/*    <div className="text-center"><button className="btn-primary" type="submit">Send Testimonial</button></div>*/}
+          {/*  </form>*/}
+          {/*</div>*/}
+        </section>
+
+        <section id="faq" className="faq">
+          <div className="container" data-aos="fade-up">
+            <div className="section-title">
+              <h2>Frequently Asked Questions</h2>
+              <p>
+                Magnam dolores commodi suscipit. Necessitatibus eius consequatur
+                ex aliquid fuga eum quidem. Sit sint consectetur velit. Quisquam
+                quos quisquam cupiditate. Et nemo qui impedit suscipit alias ea.
+                Quia fugiat sit in iste officiis commodi quidem hic quas.
+              </p>
+            </div>
+
+            <div className="faq-list">
+              <ul>
+                <li data-aos="fade-up" data-aos-delay="100">
+                  <i className="bx bx-help-circle icon-help" />{' '}
+                  <a
+                    data-toggle="collapse"
+                    className="collapse"
+                    href="#faq-list-1"
+                  >
+                    Non consectetur a erat nam at lectus urna duis?{' '}
+                    <i className="bx bx-chevron-down icon-show" />
+                    <i className="bx bx-chevron-up icon-close" />
+                  </a>
+                  <div
+                    id="faq-list-1"
+                    className="collapse show"
+                    data-parent=".faq-list"
+                  >
+                    <p>
+                      Feugiat pretium nibh ipsum consequat. Tempus iaculis urna
+                      id volutpat lacus laoreet non curabitur gravida. Venenatis
+                      lectus magna fringilla urna porttitor rhoncus dolor purus
+                      non.
+                    </p>
+                  </div>
+                </li>
+
+                <li data-aos="fade-up" data-aos-delay="200">
+                  <i className="bx bx-help-circle icon-help" />{' '}
+                  <a
+                    data-toggle="collapse"
+                    href="#faq-list-2"
+                    className="collapsed"
+                  >
+                    Feugiat scelerisque varius morbi enim nunc?{' '}
+                    <i className="bx bx-chevron-down icon-show" />
+                    <i className="bx bx-chevron-up icon-close" />
+                  </a>
+                  <div
+                    id="faq-list-2"
+                    className="collapse"
+                    data-parent=".faq-list"
+                  >
+                    <p>
+                      Dolor sit amet consectetur adipiscing elit pellentesque
+                      habitant morbi. Id interdum velit laoreet id donec
+                      ultrices. Fringilla phasellus faucibus scelerisque
+                      eleifend donec pretium. Est pellentesque elit ullamcorper
+                      dignissim. Mauris ultrices eros in cursus turpis massa
+                      tincidunt dui.
+                    </p>
+                  </div>
+                </li>
+
+                <li data-aos="fade-up" data-aos-delay="300">
+                  <i className="bx bx-help-circle icon-help" />{' '}
+                  <a
+                    data-toggle="collapse"
+                    href="#faq-list-3"
+                    className="collapsed"
+                  >
+                    Dolor sit amet consectetur adipiscing elit?{' '}
+                    <i className="bx bx-chevron-down icon-show" />
+                    <i className="bx bx-chevron-up icon-close" />
+                  </a>
+                  <div
+                    id="faq-list-3"
+                    className="collapse"
+                    data-parent=".faq-list"
+                  >
+                    <p>
+                      Eleifend mi in nulla posuere sollicitudin aliquam ultrices
+                      sagittis orci. Faucibus pulvinar elementum integer enim.
+                      Sem nulla pharetra diam sit amet nisl suscipit. Rutrum
+                      tellus pellentesque eu tincidunt. Lectus urna duis
+                      convallis convallis tellus. Urna molestie at elementum eu
+                      facilisis sed odio morbi quis
+                    </p>
+                  </div>
+                </li>
+
+                <li data-aos="fade-up" data-aos-delay="400">
+                  <i className="bx bx-help-circle icon-help" />{' '}
+                  <a
+                    data-toggle="collapse"
+                    href="#faq-list-4"
+                    className="collapsed"
+                  >
+                    Tempus quam pellentesque nec nam aliquam sem et tortor
+                    consequat? <i className="bx bx-chevron-down icon-show" />
+                    <i className="bx bx-chevron-up icon-close" />
+                  </a>
+                  <div
+                    id="faq-list-4"
+                    className="collapse"
+                    data-parent=".faq-list"
+                  >
+                    <p>
+                      Molestie a iaculis at erat pellentesque adipiscing
+                      commodo. Dignissim suspendisse in est ante in. Nunc vel
+                      risus commodo viverra maecenas accumsan. Sit amet nisl
+                      suscipit adipiscing bibendum est. Purus gravida quis
+                      blandit turpis cursus in.
+                    </p>
+                  </div>
+                </li>
+
+                <li data-aos="fade-up" data-aos-delay="500">
+                  <i className="bx bx-help-circle icon-help" />{' '}
+                  <a
+                    data-toggle="collapse"
+                    href="#faq-list-5"
+                    className="collapsed"
+                  >
+                    Tortor vitae purus faucibus ornare. Varius vel pharetra vel
+                    turpis nunc eget lorem dolor?{' '}
+                    <i className="bx bx-chevron-down icon-show" />
+                    <i className="bx bx-chevron-up icon-close" />
+                  </a>
+                  <div
+                    id="faq-list-5"
+                    className="collapse"
+                    data-parent=".faq-list"
+                  >
+                    <p>
+                      Laoreet sit amet cursus sit amet dictum sit amet justo.
+                      Mauris vitae ultricies leo integer malesuada nunc vel.
+                      Tincidunt eget nullam non nisi est sit amet. Turpis nunc
+                      eget lorem dolor sed. Ut venenatis tellus in metus
+                      vulputate eu scelerisque.
+                    </p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="contact" className="contact section-bg">
+          <div className="container" data-aos="fade-up">
+            <div className="section-title">
+              <h2>Contact</h2>
+              <p>
+                Magnam dolores commodi suscipit. Necessitatibus eius consequatur
+                ex aliquid fuga eum quidem. Sit sint consectetur velit. Quisquam
+                quos quisquam cupiditate. Et nemo qui impedit suscipit alias ea.
+                Quia fugiat sit in iste officiis commodi quidem hic quas.
+              </p>
+            </div>
+
+            <div className="row">
+              <div className="col-lg-6">
+                <div className="info-box mb-4">
+                  <i className="bx bx-map" />
+                  <h3>Our Address</h3>
+                  <p>A108 Adam Street, New York, NY 535022</p>
+                </div>
+              </div>
+
+              <div className="col-lg-3 col-md-6">
+                <div className="info-box  mb-4">
+                  <i className="bx bx-envelope" />
+                  <h3>Email Us</h3>
+                  <p>contact@example.com</p>
+                </div>
+              </div>
+
+              <div className="col-lg-3 col-md-6">
+                <div className="info-box  mb-4">
+                  <i className="bx bx-phone-call" />
+                  <h3>Call Us</h3>
+                  <p>+1 5589 55488 55</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="row">
+              <div className="col-lg-6 ">
+                <iframe
+                  className="mb-4 mb-lg-0"
+                  src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d12097.433213460943!2d-74.0062269!3d40.7101282!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0xb89d1fe6bc499443!2sDowntown+Conference+Center!5e0!3m2!1smk!2sbg!4v1539943755621"
+                  frameBorder="0"
+                  style={{ border: 0, width: '100%', height: 384 }}
+                  allowFullScreen
+                />
+              </div>
+
+              <div className="col-lg-6">
+                <form
+                  action="forms/contact.php"
+                  method="post"
+                  role="form"
+                  className="php-email-form"
+                >
+                  <div className="form-row">
+                    <div className="col-md-6 form-group">
+                      <input
+                        type="text"
+                        name="name"
+                        className="form-control"
+                        id="name"
+                        placeholder="Your Name"
+                        data-rule="minlen:4"
+                        data-msg="Please enter at least 4 chars"
+                      />
+                      <div className="validate" />
+                    </div>
+                    <div className="col-md-6 form-group">
+                      <input
+                        type="email"
+                        className="form-control"
+                        name="email"
+                        id="email"
+                        placeholder="Your Email"
+                        data-rule="email"
+                        data-msg="Please enter a valid email"
+                      />
+                      <div className="validate" />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <input
+                      type="text"
+                      className="form-control"
+                      name="subject"
+                      id="subject"
+                      placeholder="Subject"
+                      data-rule="minlen:4"
+                      data-msg="Please enter at least 8 chars of subject"
+                    />
+                    <div className="validate" />
+                  </div>
+                  <div className="form-group">
+                    <textarea
+                      className="form-control"
+                      name="message"
+                      rows={5}
+                      data-rule="required"
+                      data-msg="Please write something for us"
+                      placeholder="Message"
+                    />
+                    <div className="validate" />
+                  </div>
+                  <div className="mb-3">
+                    <div className="loading">Loading</div>
+                    <div className="error-message" />
+                    <div className="sent-message">
+                      Your message has been sent. Thank you!
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <button type="submit">Send Message</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
 
       <footer id="footer">
         <div className="footer-top">
@@ -229,21 +665,17 @@ export const Main: FC = () => {
                   <img
                     width={100}
                     height={100}
-                    src={logo}
+                    src="assets/img/logo.png"
                     alt=""
                     className="img-fluid"
                   />
                 </a>
-                <h3>
-                  BROKEN <br />
-                  CRYSTALS
-                </h3>
-              </div>
-              <div className="col-lg-3 col-md-6 footer-contact">
-                <h4>Contact</h4>
+                <h3>BROKEN CRYSTALS</h3>
+
                 <p>
-                  308 Negra Arroyo Lane <br />
-                  Albuquerque, New Mexico <br />
+                  A108 Adam Street <br />
+                  New York, NY 535022
+                  <br />
                   United States <br />
                   <br />
                   <strong>Phone:</strong> +1 5589 55488 55
@@ -253,28 +685,64 @@ export const Main: FC = () => {
                 </p>
               </div>
 
-              <div className="col-lg-3 col-md-6 footer-links">
-                <h4>Links</h4>
+              <div className="col-lg-2 col-md-6 footer-links">
+                <h4>Useful Links</h4>
                 <ul>
                   <li>
-                    <a href="#">Marketplace</a>
+                    <i className="bx bx-chevron-right" /> <a href="#">Home</a>
                   </li>
                   <li>
-                    <a href="#">Gemstones</a>
+                    <i className="bx bx-chevron-right" />{' '}
+                    <a href="#">About us</a>
                   </li>
                   <li>
-                    <a href="#">Healing</a>
+                    <i className="bx bx-chevron-right" />{' '}
+                    <a href="#">Services</a>
                   </li>
                   <li>
-                    <a href="#">Jewellery</a>
+                    <i className="bx bx-chevron-right" />{' '}
+                    <a href="#">Terms of service</a>
+                  </li>
+                  <li>
+                    <i className="bx bx-chevron-right" />{' '}
+                    <a href="#">Privacy policy</a>
                   </li>
                 </ul>
               </div>
 
-              <div className="col-lg-3 col-md-6 footer-newsletter">
+              <div className="col-lg-3 col-md-6 footer-links">
+                <h4>Our Services</h4>
+                <ul>
+                  <li>
+                    <i className="bx bx-chevron-right" />{' '}
+                    <a href="#">Web Design</a>
+                  </li>
+                  <li>
+                    <i className="bx bx-chevron-right" />{' '}
+                    <a href="#">Web Development</a>
+                  </li>
+                  <li>
+                    <i className="bx bx-chevron-right" />{' '}
+                    <a href="#">Product Management</a>
+                  </li>
+                  <li>
+                    <i className="bx bx-chevron-right" />{' '}
+                    <a href="#">Marketing</a>
+                  </li>
+                  <li>
+                    <i className="bx bx-chevron-right" />{' '}
+                    <a href="#">Graphic Design</a>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="col-lg-4 col-md-6 footer-newsletter">
                 <h4>Join Our Newsletter</h4>
-                <p>Receive updates from our shiny world</p>
-                <form method="post">
+                <p>
+                  Tamen quem nulla quae legam multos aute sint culpa legam
+                  noster magna
+                </p>
+                <form action="" method="post">
                   <input type="email" name="email" />
                   <input type="submit" value="Subscribe" />
                 </form>
@@ -287,7 +755,7 @@ export const Main: FC = () => {
           <div className="copyright-wrap d-md-flex py-4">
             <div className="mr-md-auto text-center text-md-left">
               <div className="copyright">
-                &copy; Copyright{" "}
+                &copy; Copyright{' '}
                 <strong>
                   <span>Broken Crystals</span>
                 </strong>
@@ -295,14 +763,30 @@ export const Main: FC = () => {
               </div>
             </div>
             <div className="social-links text-center text-md-right pt-3 pt-md-0">
-              <a href="#" className="twitter" />
-              <a href="#" className="facebook" />
-              <a href="#" className="instagram" />
-              <a href="#" className="linkedin" />
+              <a href="#" className="twitter">
+                <i className="bx bxl-twitter" />
+              </a>
+              <a href="#" className="facebook">
+                <i className="bx bxl-facebook" />
+              </a>
+              <a href="#" className="instagram">
+                <i className="bx bxl-instagram" />
+              </a>
+              <a href="#" className="google-plus">
+                <i className="bx bxl-skype" />
+              </a>
+              <a href="#" className="linkedin">
+                <i className="bx bxl-linkedin" />
+              </a>
             </div>
           </div>
         </div>
       </footer>
+
+      <a href="#" className="back-to-top">
+        <i className="icofont-simple-up" />
+      </a>
+      <div id="preloader" />
     </>
   );
 };
