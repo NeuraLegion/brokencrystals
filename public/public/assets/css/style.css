@@ -1512,6 +1512,7 @@ section {
   line-height: 1;
   font-weight: 500;
   text-transform: uppercase;
+  color: #ffffff;
 }
 
 #footer .footer-top .footer-contact p {
@@ -1526,6 +1527,7 @@ section {
   font-weight: bold;
   position: relative;
   padding-bottom: 12px;
+  color: #ffffff;
 }
 
 #footer .footer-top .footer-links {
