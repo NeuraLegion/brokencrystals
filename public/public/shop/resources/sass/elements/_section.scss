@@ -1,0 +1,475 @@
+.ps-section {
+    &__title {
+        position: relative;
+        z-index: 10;
+        min-width: 50%;
+        display: inline-block;
+        font-family: $font-2nd;
+        font-weight: 700;
+        color: #1d1d1d;
+        line-height: 100px;
+        text-transform: uppercase;
+        min-width: 1000px;
+        &:before {
+            content: attr(data-mask);
+            @include vertical-align();
+            left: -4px;
+            z-index: -1;
+            font-family: $font-1st;
+            font-weight: 700;
+            font-size: 100px;
+            line-height: 1em;
+            color: #f4f4f4;
+            letter-spacing: .08em;
+        }
+    }
+    &__action {
+        float: right;
+        line-height: 100px;
+        .ps-morelink {
+            i {
+                @include transform(translateY(2px));
+                font-size: 21px;
+            }
+        }
+    }
+    @include media("<lg") {
+        &__title {
+            min-width: 500px;
+            &:before {
+                font-size: 80px;
+            }
+        }
+    }
+    @include media("<md") {
+        &__title {
+            display: block;
+            font-size: 25px;
+            &:before {
+                font-size: 70px;
+            }
+        }
+    }
+    @include media("<sm") {
+        &__title {
+            min-width: 0;
+            width: 100%;
+            font-size: 20px;
+            line-height: 60px;
+            &:before {
+                font-size: 60px;
+            }
+        }
+        &__action {
+            float: left;
+            line-height: 60px;
+        }
+    }
+    @include media("<xs") {
+        &__title {
+            margin-bottom: 20px;
+            font-size: 18px;
+            &:before {
+                font-size: 40px;
+            }
+        }
+    }
+}
+
+.ps-home-testimonial {
+    position: relative;
+    z-index: 10;
+    &:before {
+        content: '';
+        @include max-area();
+        z-index: -1;
+        background-color: rgba(#000, .25);
+    }
+    .owl-slider {
+        position: relative;
+        margin-top: -60px;
+        .owl-dots {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            text-align: center;
+        }
+        .owl-dot {
+            display: inline-block;
+            margin-right: 20px;
+            border: 2px solid #fff;
+            @include circle(20px, transparent);
+            @include transition(all .4s ease);
+            &:hover, &.active {
+                background-color: $color-1st;
+                border-color: $color-1st;
+            }
+        }
+    }
+}
+
+.ps-home-partner {
+    background-color: #f5f3f0;
+}
+
+.ps-home-contact {
+    position: relative;
+    #contact-map {
+        height: 680px;
+    }
+    .ps-home-contact__form {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 460px;
+        padding: 50px 40px;
+        margin-left: calc((100% - 1440px) / 2);
+        z-index: 10;
+        background-color: rgba(#fff, .9);
+        > header {
+            text-align: center;
+            margin-bottom: 30px;
+            h3 {
+                margin-bottom: 15px;
+                font-family: $font-2nd;
+                font-size: 35px;
+                color: #000;
+                font-weight: 700;
+                text-transform: uppercase;
+            }
+            p {
+                font-family: $font-1st;
+                font-size: 14px;
+                line-height: 1.57em;
+                color: #000;
+            }
+        }
+        form {
+            label {
+                font-family: $font-1st;
+                font-size: 14px;
+                color: #000;
+                font-weight: 400;
+                text-transform: uppercase;
+                span {
+                    margin-left: 5px;
+                }
+            }
+            .form-group {
+                margin-bottom: 35px;
+            }
+            .form-control {
+                color: $color-text;
+                background-color: #e4e4e4;
+                border: 1px solid #e4e4e4;
+                @include border-radius(0);
+                &:focus {
+                    border-color: $color-1st;
+                }
+            }
+        }
+        @media (max-width: 1440px) {
+            margin-left: 15px;
+        }
+        @include media("<lg") {
+            margin-left: 0;
+        }
+        @include media("<sm") {
+            position: relative;
+            width: 100%;
+        }
+        @include media("<xs") {
+            padding: 45px 15px;
+            &__header {
+                h3 {
+                    font-size: 24px;
+                }
+                p {
+                    font-size: 12px;
+                }
+            }
+        }
+    }
+}
+
+.ps-section--sale-off {
+    border-bottom: 1px solid #e5e5e5;
+    .ps-hot-deal {
+        h3 {
+            margin-bottom: 30px;
+            font-family: $font-2nd;
+            font-size: 48px;
+            font-weight: 700;
+            line-height: 1em;
+            color: #000000;
+        }
+        .ps-hot-deal__price {
+            margin-bottom: 20px;
+            font-family: $font-2nd;
+            font-size: 30px;
+            line-height: 1em;
+            color: rgba(#000, 0.8);
+            text-transform: uppercase;
+            span {
+                font-size: 48px;
+                color: $color-1st;
+            }
+        }
+        .ps-countdown {
+            margin-bottom: 40px;
+            li {
+                display: inline-block;
+                margin-right: 30px;
+                text-align: center;
+                p {
+                    font-family: $font-1st;
+                    font-size: 18px;
+                    text-align: center;
+                    color: #8d8d8d;
+                    text-transform: uppercase;
+                }
+                &.divider, span {
+                    vertical-align: top;
+                    font-family: $font-2nd;
+                    font-size: 90px;
+                    text-align: left;
+                    text-transform: uppercase;
+                    color: rgba(#000, .8);
+                    line-height: 1em;
+                }
+            }
+        }
+    }
+    @include media("<lg") {
+        .ps-hot-deal {
+            .ps-hot-deal__price {
+                font-size: 20px;
+                span {
+                    font-size: 24px;
+                }
+            }
+            .ps-countdown {
+                li {
+                    font-size: 20px;
+                    margin-right: 10px;
+                    span {
+                        font-size: 40px;
+                    }
+                    &.divider {
+                        font-size: 40px;
+                    }
+                }
+            }
+        }
+    }
+    @include media("<md") {
+        .ps-hot-deal {
+            margin-bottom: 100px;
+            //text-align: center;
+        }
+        .ps-hotspot {
+            margin: 0 auto;
+            max-width: 600px;
+        }
+    }
+    @include media("<xs") {
+        .ps-hot-deal {
+            h3 {
+                font-size: 30px;
+            }
+            .ps-countdown {
+                li {
+                    font-size: 15px;
+                    span {
+                        font-size: 15px;
+                    }
+                    p {
+                        font-size: 15px;
+                    }
+                    &.divider {
+                        font-size: 15px;
+                    }
+                }
+            }
+        }
+    }
+}
+
+.ps-section--offer {
+    @include display(flex);
+    @include flex-direction(row);
+    @include flex-wrap(wrap);
+    .ps-column {
+        position: relative;
+        width: 50%;
+        overflow: hidden;
+    }
+    @include media("<md") {
+        .ps-column {
+            width: 100%;
+        }
+    }
+}
+
+.ps-section--features-product {
+    .ps-masonry__filter {
+        float: right;
+        li {
+            display: inline-block;
+            margin-right: 50px;
+            > a {
+                font-family: $font-2nd;
+                font-size: 16px;
+                font-weight: 700;
+                color: #8d8d8d;
+                text-transform: uppercase;
+                sup {
+                    font-family: $font-1st;
+                    font-size: 10px;
+                    font-weight: 500;
+                    color: #5b5b5b;
+                    @include hidden;
+                    @include transition(all .4s ease);
+                }
+                &:hover {
+                    color: $color-1st;
+                }
+            }
+            &:last-child {
+                margin-right: 0;
+            }
+            &.current {
+                > a {
+                    color: $color-1st;
+                    sup {
+                        @include show;
+                    }
+                }
+            }
+        }
+    }
+    @include media("<sm") {
+        .ps-masonry__filter {
+            float: none;
+            li {
+                margin-right: 15px;
+                a {
+                    font-size: 12px;
+                }
+            }
+        }
+    }
+}
+
+.ps-owl-root {
+    .ps-owl-actions {
+        margin-top: 40px;
+        text-align: right;
+        a {
+            display: inline-block;
+            font-family: $font-2nd;
+            font-size: 16px;
+            font-weight: 700;
+            color: #8d8d8d;
+            text-transform: uppercase;
+            i {
+                line-height: 1em;
+                vertical-align: middle;
+            }
+            &:hover {
+                color: $color-1st;
+            }
+        }
+        .ps-prev {
+            margin-right: 55px;
+            i {
+                margin-right: 20px;
+
+            }
+        }
+        .ps-next {
+            margin-right: 10px;
+            i {
+                margin-left: 20px;
+            }
+        }
+    }
+    @include media("<md") {
+        .ps-owl-actions {
+            margin-top: 0;
+            text-align: left;
+        }
+    }
+}
+
+.ps-mission {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    padding: 180px 0;
+    &:before {
+        content: '';
+        @include max-area();
+        z-index: -1;
+        background-color: rgba(#000, .75);
+    }
+    h3 {
+        margin-bottom: 30px;
+        font-family: $font-2nd;
+        font-size: 36px;
+        color: $color-1st;
+        text-transform: uppercase;
+    }
+    h2 {
+        font-family: $font-2nd;
+        font-size: 50px;
+        line-height: 1.1em;
+        text-transform: uppercase;
+        color: #fff;
+    }
+    @include media("<md") {
+        h3 {
+            font-size: 25px;
+        }
+        h2 {
+            font-size: 40px;
+        }
+    }
+    @include media("<sm") {
+        h3 {
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        h2 {
+            font-size: 25px;
+            line-height: 1.3em;
+        }
+    }
+    @include media("<xs") {
+        h3 {
+            font-size: 14px;
+        }
+        h2 {
+            font-size: 18px;
+            line-height: 1.5em;
+        }
+    }
+}
+
+.ps-features {
+    background-color: #f0f0f0;
+}
+
+.ps-section--top-sales {
+    @include media("<sm") {
+        .ps-section__header {
+
+        }
+    }
+}
+
+.ps-section--hotdeal-3 {
+    display: block !important;
+}

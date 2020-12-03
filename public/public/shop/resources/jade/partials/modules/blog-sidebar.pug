@@ -1,0 +1,63 @@
+aside.ps-widget--sidebar.ps-widget--search
+    form(action="do_action" method="post" class="ps-search--widget")
+        input.form-control(type="text" placeholder="Search posts...")
+        button: i.ps-icon-search
+
+aside.ps-widget--sidebar
+    .ps-widget__header: h3 Archive
+    .ps-widget__content: ul.ps-list--arrow
+        li.current: a(href='product-listing.html') Shoe(321)
+        li: a(href='product-listing.html') Amazin’ Glazin’
+        li: a(href='product-listing.html') The Crusty Croissant
+        li: a(href='product-listing.html') The Rolling Pin
+        li: a(href='product-listing.html') Skippity Scones
+        li: a(href='product-listing.html') Mad Batter
+        li: a(href='product-listing.html') Confection Connection
+
+aside.ps-widget--sidebar
+    .ps-widget__header: h3 Ads Banner
+    .ps-widget__content
+        a(href='product-listing'): img(src="images/offer/sidebar.jpg" alt="")
+
+aside.ps-widget--sidebar
+    .ps-widget__header: h3 Recent Posts
+    .ps-widget__content
+        - for (var i = 0; i < 3; i ++)
+            .ps-post--sidebar
+               .ps-post__thumbnail
+                   a(href='#')
+                   img(src="images/blog/sidebar/"+(i+1)+".jpg" alt="")
+               .ps-post__content
+                   a(href='#').ps-post__title Micenas Placerat Nibh Loreming Fentum
+                   span SEP 29, 2017
+
+aside.ps-widget--sidebar
+    .ps-widget__header: h3 Best Seller
+    .ps-widget__content
+        - for (var i = 0; i < 3; i ++)
+            .ps-shoe--sidebar
+                .ps-shoe__thumbnail
+                    a(href='#')
+                    img(src="images/shoe/sidebar/"+(i+1)+".jpg" alt="")
+                .ps-shoe__content
+                    if i == 1
+                        a(href='#').ps-shoe__title Nike Flight Bonafide
+                    else if i == 2
+                        a(href='#').ps-shoe__title Nike Sock Dart QS
+                    else
+                        a(href='#').ps-shoe__title Men's Shoe
+                    p <del> £253.00</del> £152.00
+                    a(href='#').ps-btn PURCHASE
+
+aside.ps-widget--sidebar
+    .ps-widget__header: h3 Tags
+    .ps-widget__content
+        ul.ps-tags
+            li: a(href='product-listing.html') Men
+            li: a(href='product-listing.html') Female
+            li: a(href='product-listing.html') B&G
+            li: a(href='product-listing.html') ugly fashion
+            li: a(href='product-listing.html') Nike
+            li: a(href='product-listing.html') Dior
+            li: a(href='product-listing.html') Adidas
+            li: a(href='product-listing.html') Diour

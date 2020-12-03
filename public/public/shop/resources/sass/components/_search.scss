@@ -1,0 +1,37 @@
+.ps-search--header {
+    position: relative;
+    width: 100%;
+    max-width: 260px;
+    > input {
+        padding: 0 20px;
+        border: none;
+        height: 40px;
+        background-color: #e8e8e8;
+        @include border-radius(40px);
+        font-size: 13px;
+        color: $color-text;
+        @include placeholder() {
+            font-family: $font-1st;
+            font-size: 13px;
+            color: #adadad;
+        }
+    }
+    > button {
+        @include vertical-align();
+        right: 15px;
+        color: #000;
+        font-size: 15px;
+        border: none;
+        background-color: transparent;
+        @include transition(all .4s ease);
+        &:hover {
+            color: $color-1st;
+        }
+    }
+    @media (max-width: 1440px) {
+        max-width: 200px;
+    }
+    @include media("<md") {
+        max-width: 200px;
+    }
+}

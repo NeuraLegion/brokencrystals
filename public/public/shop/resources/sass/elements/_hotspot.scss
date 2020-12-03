@@ -1,0 +1,83 @@
+.ps-hotspot {
+    position: relative;
+    .point {
+        position: absolute;
+        display: inline-block;
+        position: absolute;
+        width: 45px;
+        height: 45px;
+        background-color: #cf5151;
+        @include border-radius(50%);
+        @include transform(translateY(-100%));
+        @include transform-style(preserve-3d);
+        i {
+            @include center();
+            color: #fff;
+            font-size: 16px;
+            @include transition(all .4s ease);
+            @include transform(translate(-50%, -50%) rotate(0));
+            @include transform-origin(center center);
+        }
+        > .ps-hotspot__content {
+            display: inline-block;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            background-color: #cf5050;
+            min-width: 330px;
+            padding: 15px 15px;
+            @include border-radius(5px);
+            text-align: center;
+            @include transform(translate(-50%, -20px));
+            @include transition(all .8s ease);
+            @include hidden;
+            &:before {
+                content: '';
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                margin: 0 auto;
+                @include transform(translateY(-1px));
+                @include triangle(30px, #cf5050, down);
+            }
+            p {
+                margin-bottom: 0;
+                color: #fff;
+                font-size: 12px;
+                &.heading {
+                    margin-bottom: 5px;
+                    font-family: $font-2nd;
+                    font-size: 20px;
+                    text-transform: uppercase;
+                }
+            }
+        }
+        &:hover, &.active {
+            background-color: #585858;
+            i {
+                @include transform(translate(-50%, -50%) rotate(45deg));
+            }
+            > .ps-hotspot__content {
+                @include show;
+            }
+        }
+        &.first {
+            left: 0;
+            top: 50%;
+        }
+        &.second {
+            top: -20px;
+            left: -100px;
+            right: 0;
+            margin: 0 auto;
+            @include transform(translateY(0));
+        }
+        &.third {
+            top: 50%;
+            right: 100px;
+            margin: 0 auto;
+            @include transform(translateY(0));
+        }
+    }
+}

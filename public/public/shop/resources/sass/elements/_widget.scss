@@ -1,0 +1,139 @@
+.ps-widget--footer {
+    margin-bottom: 30px;
+    > header {
+        margin-bottom: 10px;
+        > h3 {
+            font-family: $font-2nd;
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1.8em;
+            color: #fff;
+            text-transform: uppercase;
+        }
+    }
+}
+
+.ps-widget--info {
+    > header {
+        .ps-logo {
+            margin-bottom: 15px;
+            max-width: 120px;
+            display: inline-block;
+        }
+    }
+    p {
+        font-family: $font-1st;
+        font-weight: 400;
+        color: #999;
+        strong {
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+    }
+    &.second {
+        padding-top: 55px;
+    }
+    @include media("<md") {
+        &.second {
+            padding-top: 0;
+        }
+    }
+}
+
+.ps-widget--link {
+    > header {
+        h3 {
+            font-size: 16px;
+        }
+    }
+    > footer {
+        ul.ps-list--link {
+            li {
+                margin-bottom: 15px;
+            }
+            a {
+                font-family: $font-2nd;
+                font-size: 16px;
+                font-weight: 700;
+                line-height: 1.8em;
+                color: #fff;
+                text-transform: uppercase;
+            }
+        }
+    }
+}
+
+.ps-widget--sidebar {
+    border-bottom: 1px solid #e5e5e5;
+    padding-bottom: 25px;
+    margin-bottom: 25px;
+    .ps-widget__header {
+        margin-bottom: 25px;
+        h3 {
+            font-family: $font-2nd;
+            font-size: 24px;
+            font-weight: 700;
+            color: #626262;
+            text-transform: uppercase;
+        }
+    }
+    .ps-table--size {
+        display: block;
+        tbody {
+            > tr {
+                > td {
+                    width: 45px;
+                    height: 45px;
+                    vertical-align: middle;
+                    text-align: center;
+                    cursor: pointer;
+                    font-size: 13px;
+                    border: 1px solid #e4e4e4;
+                    @include transition(all .4s ease);
+                    &.active, &:hover {
+                        background-color: $color-1st;
+                        color: #fff;
+                    }
+                }
+            }
+        }
+    }
+}
+
+.ps-sticky {
+    position: relative;
+}
+
+.ps-search--widget {
+    position: relative;
+    > input {
+        padding: 0 20px;
+        border: none;
+        height: 40px;
+        background-color: #e8e8e8;
+        @include border-radius(40px);
+        font-size: 13px;
+        color: $color-text;
+        @include placeholder() {
+            font-family: $font-1st;
+            font-size: 13px;
+            color: #adadad;
+        }
+    }
+    > button {
+        right: 15px;
+        color: #000;
+        font-size: 15px;
+        border: none;
+        background-color: transparent;
+        @include vertical-align();
+        @include transition(all .4s ease);
+        &:hover {
+            color: $color-1st;
+        }
+    }
+}
+
+.ps-widget--search {
+    border-bottom: none;
+}

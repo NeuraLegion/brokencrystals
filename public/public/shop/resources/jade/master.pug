@@ -1,0 +1,20 @@
+doctype html
+//[if IE 7]><html class="ie ie7"><![endif]
+//[if IE 8]><html class="ie ie8"><![endif]
+//[if IE 9]><html class="ie ie9"><![endif]
+html(lang="en")
+    include base/head
+
+    //[if IE 7]><body class="ie7 lt-ie8 lt-ie9 lt-ie10"><![endif]
+    //[if IE 8]><body class="ie8 lt-ie9 lt-ie10"><![endif]
+    //[if IE 9]><body class="ie9 lt-ie10"><![endif]
+    body.ps-loading
+        include utils/mixins
+
+        block page_header
+        main.ps-main
+            block page_content
+            block page_footer
+
+        // JS Library
+        include base/scripts

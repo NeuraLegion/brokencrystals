@@ -1,0 +1,70 @@
+block module
+    mixin form-input(label, required=true, extraClass, type='text', inputClass='form-control')
+        .form-group.form-group--inline(class=extraClass)
+            label #{label}
+                if (required == true)
+                    span *
+            input(type=type, class=inputClass)
+    .ps-checkout.pt-80.pb-80
+        .ps-container
+            form(action="do_action"  method="post" class="ps-checkout__form")
+                .row
+                    +column({cols: [8, 8, 12, 12]})
+                        .ps-checkout__billing
+                            h3 Billing Detail
+                            +form-input("First Name", required)
+                            +form-input("Last Name", required)
+                            +form-input("Company Name", required)
+                            +form-input("Email Address", required, '' ,type='email')
+                            +form-input("Company Name", required)
+                            +form-input("Phone", required)
+                            +form-input("Address", required)
+                            .form-group
+                                .ps-checkbox
+                                    input.form-control(type="checkbox"  id="cb01")
+                                    label(for="cb01") Create an account?
+                            h3.mt-40  Addition information
+                            .form-group.form-group--inline.textarea
+                                label Order Notes
+                                textarea.form-control(rows='5' placeholder='Notes about your order, e.g. special notes for delivery.')
+                    +column({cols: [4, 4, 12, 12]})
+                        .ps-checkout__order
+                            header
+                                h3 Your Order
+                            .content
+                                table.table.ps-checkout__products
+                                    thead
+                                        tr
+                                            th.text-uppercase Product
+                                            th.text-uppercase Total
+                                    tbody
+                                        tr
+                                            td HABITANT x1
+                                            td $300.00
+                                        tr
+                                            td Card Subtitle
+                                            td $300.00
+                                        tr
+                                            td Order Total
+                                            td $300.00
+                            footer
+                                h3 Payment Method
+                                .form-group.cheque
+                                    .ps-radio
+                                        input.form-control(type="radio"  id="rdo01" name="payment" checked)
+                                        label(for="rdo01") Cheque Payment
+                                        p Please send your cheque to Store Name, Store Street, Store Town, Store State / County, Store Postcode.
+                                .form-group.paypal
+                                    .ps-radio.ps-radio--inline
+                                        input.form-control(type="radio" name="payment" id="rdo02")
+                                        label(for="rdo02") Paypal
+                                    ul.ps-payment-method
+                                        li: a(href='#'): img(src="images/payment/1.png" alt="")
+                                        li: a(href='#'): img(src="images/payment/2.png" alt="")
+                                        li: a(href='#'): img(src="images/payment/3.png" alt="")
+                                    button.ps-btn.ps-btn--fullwidth Place Order
+                                        i.ps-icon-next
+
+                        .ps-shipping
+                            h3 FREE SHIPPING
+                            p YOUR ORDER QUALIFIES FOR FREE SHIPPING.<br> <a href="#"> Singup </a> for free shipping on every order, every time.

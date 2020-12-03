@@ -1,0 +1,75 @@
+.ps-subscribe {
+    padding: 35px 0;
+    background-color: #333;
+    h3 {
+        font-family: $font-2nd;
+        font-weight: 400;
+        font-size: 20px;
+        text-transform: uppercase;
+        color: #fff;
+        letter-spacing: .05em;
+        line-height: 50px;
+        i {
+            margin-right: 10px;
+        }
+    }
+    p {
+        text-align: right;
+        margin-top: 10px;
+        margin-bottom: 0;
+        font-size: 14px;
+        color: #fff;
+        span {
+            color: $color-1st;
+            font-size: 24px;
+            font-style: italic;
+        }
+    }
+    &__form {
+        position: relative;
+        input.form-control {
+            padding: 0 30px;
+            height: 50px;
+            @include border-radius(50px);
+            background-color: #686868;
+            border: none;
+            color: #fff;
+        }
+        button {
+            @include vertical-align();
+            right: 5px;
+            height: 40px;
+            @include border-radius(40px);
+            border: none;
+            padding: 0 40px;
+            font-family: $font-2nd;
+            font-weight: 400;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            background-color: $color-1st;
+            color: #fff;
+            @include transition(all .4s ease);
+            &:hover {
+                background-color: $color-2nd;
+            }
+        }
+    }
+    @media (max-width: 1600px) {
+        h3 {
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+    }
+    @include media("<lg") {
+        text-align: center;
+        p {
+            text-align: center;
+        }
+    }
+    @include media("<md") {
+        .ps-subscribe__form {
+            margin-bottom: 15px;
+        }
+    }
+}

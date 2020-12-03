@@ -1,0 +1,107 @@
+aside.ps-widget--sidebar.ps-widget--category
+    .ps-widget__header: h3 Category
+    .ps-widget__content: ul.ps-list--checked
+        li.current: a(href='product-listing.html') Life(521)
+        li: a(href='product-listing.html') Running(76)
+        li: a(href='product-listing.html') Baseball(21)
+        li: a(href='product-listing.html') Football(105)
+        li: a(href='product-listing.html') Soccer(108)
+        li: a(href='product-listing.html') Trainning & game(47)
+        li: a(href='product-listing.html') More
+
+aside.ps-widget--sidebar.ps-widget--filter
+    .ps-widget__header: h3 Category
+    .ps-widget__content
+        .ac-slider(data-default-min='300', data-default-max ='2000', data-max = '3450' data-step='50', data-unit ='$')
+        p.ac-slider__meta
+            | Price:
+            span.ac-slider__value.ac-slider__min
+            | -
+            span.ac-slider__value.ac-slider__max
+        a(href="#").ac-slider__filter.ps-btn Filter
+
+aside.ps-widget--sidebar.ps-widget--category
+    .ps-widget__header: h3 Shoe Brand
+    .ps-widget__content: ul.ps-list--checked
+        li.current: a(href='product-listing.html') Nike(521)
+        li: a(href='product-listing.html') Adidas(76)
+        li: a(href='product-listing.html') Baseball(69)
+        li: a(href='product-listing.html') Gucci(36)
+        li: a(href='product-listing.html') Dior(108)
+        li: a(href='product-listing.html') B&G(108)
+        li: a(href='product-listing.html') Louis Vuiton(47)
+
+aside.ps-widget--sidebar.ps-widget--category
+    .ps-widget__header: h3 Width
+    .ps-widget__content: ul.ps-list--checked
+        li.current: a(href='product-listing.html') Narrow
+        li: a(href='product-listing.html') Regular
+        li: a(href='product-listing.html') Wide
+        li: a(href='product-listing.html') Extra Wide
+.ps-sticky.desktop
+    aside.ps-widget--sidebar
+        .ps-widget__header: h3 Size
+        .ps-widget__content
+            table.table.ps-table--size
+                tbody
+                    tr
+                        td.active 3
+                        td 5.5
+                        td 8
+                        td 10.5
+                        td 13
+                    tr
+                        td 3.5
+                        td 6
+                        td 8.5
+                        td 11
+                        td 13.5
+                    tr
+                        td 4
+                        td 6.5
+                        td 9
+                        td 11.5
+                        td 14
+                    tr
+                        td 4.5
+                        td 7
+                        td 9.5
+                        td 12
+                        td 14.5
+                    tr
+                        td 5
+                        td 7.5
+                        td 10
+                        td 12.5
+                        td 15
+
+
+    aside.ps-widget--sidebar
+        .ps-widget__header: h3 Color
+        .ps-widget__content
+            ul.ps-list--color
+                - for (var i = 0; i < 13; i ++)
+                    li: a(href='#')
+
+//aside.ps-widget--sidebar
+//    .ps-widget__header: h3 Ads Banner
+//    .ps-widget__content
+//        a(href='product-listing'): img(src="images/offer/sidebar.jpg" alt="")
+//
+//aside.ps-widget--sidebar
+//    .ps-widget__header: h3 Best Seller
+//    .ps-widget__content
+//        - for (var i = 0; i < 3; i ++)
+//            .ps-shoe--sidebar
+//                .ps-shoe__thumbnail
+//                    a(href='#')
+//                    img(src="images/shoe/sidebar/"+(i+1)+".jpg" alt="")
+//                .ps-shoe__content
+//                    if i == 1
+//                        a(href='#').ps-shoe__title Nike Flight Bonafide
+//                    else if i == 2
+//                        a(href='#').ps-shoe__title Nike Sock Dart QS
+//                    else
+//                        a(href='#').ps-shoe__title Men's Shoe
+//                    p <del> £253.00</del> £152.00
+//                    a(href='#').ps-btn PURCHASE

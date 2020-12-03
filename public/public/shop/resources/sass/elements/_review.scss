@@ -1,0 +1,54 @@
+.ps-review {
+    margin-bottom: 40px;
+    @include clearfix;
+    .ps-review__thumbnail {
+        float: left;
+        width: 100px;
+        img {
+            width: 80px;
+            @include border-radius(50%);
+        }
+    }
+    .ps-review__content {
+        float: left;
+        width: calc(100% - 100px);
+        padding: 25px;
+        @include border-radius(4px);
+        background-color: #f1f1f1;
+        p {
+            font-family: Montserrat;
+            font-size: 14px;
+            line-height: 1.5em;
+            text-align: left;
+            color: #5b5b5b;
+        }
+    }
+    header {
+        margin-bottom: 10px;
+        .br-widget, .br-wrapper {
+            display: inline-block;
+            margin-right: 10px;
+        }
+        p {
+            display: inline-block;
+            font-size: 14px;
+            color: #5b5b5b;
+            a {
+                font-weight: 700;
+                color: $color-1st;
+            }
+        }
+    }
+    @include media("<sm") {
+        .ps-review__thumbnail {
+            margin-bottom: 20px;
+            float: none;
+            width: 100%;
+        }
+        .ps-review__content {
+            float: none;
+            width: 100%;
+            padding: 15px;
+        }
+    }
+}

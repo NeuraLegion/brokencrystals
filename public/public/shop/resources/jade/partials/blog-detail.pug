@@ -1,0 +1,56 @@
+block module
+    include ../data/post
+    .ps-blog-grid.pt-80.pb-80
+        .ps-container
+            .row
+                +column({cols: [9, 9, 12, 12]})
+                    .ps-post--detail
+                        .ps-post__thumbnail
+                            img(src="images/blog/11.png" alt="")
+                        .ps-post__header
+                            h3.ps-post__title Unpacking the Breaking 2 Race Strategy
+                            p.ps-post__meta Posted by <a href="blog-grid.html">Alena Studio</a> on August 17, 2016  in <a href="blog-grid.html">Men Shoes</a> , <a href="blog-grid.html">Stylish</a>
+                        .ps-post__content
+                            p No matter how far along you are in your sophistication as an amateur astronomer, there is always one fundamental moment that we all go back to. That is that very first moment that we went out where you could really see the cosmos well and you took in the night sky. For city dwellers, this is a revelation as profound as if we discovered aliens living among us. Most of us have no idea the vast panorama of lights that dot a clear night sky when there are no city lights to interfere with the view.
+                            blockquote
+                                p It seems from the moment you begin to take your love of astronomy seriously, the thing that is on your mind is what kind of telescope will you get. And there is no question, investing in a good telescope can really enhance your enjoyment of your new passion in astronomy.
+                                p.author Rodney <br> <span>Cannon</span>
+                            p In the history of modern astronomy, there is probably no one greater leap forward than the building and launch of the space   telescope known as the Hubble. While NASA has had many ups and downs, the launch and continued operation of the Hubble space telescope probably ranks next to the moon landings ace exploration accomplishments of the last hundred years.
+                        .ps-post__footer
+                            p.ps-post__tags
+                                i.fa.fa-tags
+                                a(href='blog-list.html') Man shoe
+                                | ,
+                                a(href='blog-list.html')  Woman
+                                | ,
+                                a(href='blog-list.html')  Nike
+                            .ps-post__actions
+                                span
+                                    i.fa.fa-comments
+                                    |  23 Comments
+                                span
+                                    i.fa.fa-heart
+                                    |   likes
+                                .ps-post__social
+                                    i.fa.fa-share-alt
+                                    a(href='#') Share
+                                    ul
+                                        li: a(href='#'): i.fa.fa-facebook
+                                        li: a(href='#'): i.fa.fa-twitter
+                                        li: a(href='#'): i.fa.fa-google-plus
+                    .ps-author
+                        .ps-author__thumbnail
+                            img(src="images/user/1.jpg" alt="")
+                        .ps-author__content
+                            header
+                                h4 MARK GREY
+                                p WEB DESIGNER
+                            p The development of the mass spectrometer allowed the mass of atoms to be measured with increased accuracy. The device uses the launch and continued operation of the Hubble space telescope probably.
+                    include modules/post-comment
+                    include modules/form-comment
+                                i.ps-icon-next
+                +column({cols: [3, 3, 12, 12]})
+                    include ../partials/modules/blog-sidebar
+
+
+

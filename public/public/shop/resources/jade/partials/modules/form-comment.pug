@@ -1,0 +1,14 @@
+form(action="do_action" method="post" class="ps-form--comment")
+    h3 LEAVE A COMMENT
+    .row
+        +column({cols: [6, 6, 6, 12]})
+            .form-group: input.form-control(type="text" placeholder="Your Name")
+        +column({cols: [6, 6, 6, 12]})
+            .form-group: input.form-control(type="email" placeholder="E-mail")
+        +column({cols: [6, 6, 6, 12]})
+            .form-group: input.form-control(type="text" placeholder="Subject")
+        +column({cols: [6, 6, 6, 12]})
+            .form-group: input.form-control(type="text" placeholder="Phone Number")
+        +column({cols: [12, 12, 12, 12]})
+            .form-group: textarea.form-control(rows="6" placeholder="Text your message here...")
+    .form-group: button.ps-btn.ps-btn--sm.ps-contact__submit Send Message

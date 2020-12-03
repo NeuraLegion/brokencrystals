@@ -1,0 +1,60 @@
+block moduleHeader
+    include ../data/menu
+    .header--sidebar
+    header.header
+        .header__top
+            .container-fluid
+                .row
+                    +column({cols: [6, 8, 6, 12]})
+                        p 460 West 34th Street, 15th floor, New York  -  Hotline: 804-377-3580 - 804-399-3580
+                    +column({cols: [6, 4, 6, 12]})
+                        .header__actions
+                            a(href='#') Login & Regiser
+                            .btn-group.ps-dropdown
+                                a(href="#" class="dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false") USD
+                                    i.fa.fa-angle-down
+                                ul.dropdown-menu
+                                    li: a(href='#') <img src="images/flag/usa.svg" alt=""> USD
+                                    li: a(href='#') <img src="images/flag/singapore.svg" alt=""> SGD
+                                    li: a(href='#') <img src="images/flag/japan.svg" alt=""> JPN
+                            .btn-group.ps-dropdown
+                                a(href="#" class="dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false") Language
+                                    i.fa.fa-angle-down
+                                ul.dropdown-menu
+                                    li: a(href='#') English
+                                    li: a(href='#') Japanese
+                                    li: a(href='#') Chinese
+        nav.navigation
+            .container-fluid
+                .navigation__column.left
+                        .header__logo: a(href='index.html').ps-logo: img(src="images/logo.png" alt="")
+                .navigation__column.center
+                    +makeMenu(data_navigation, 'main-menu menu')
+                .navigation__column.right
+                    form(action="do_action" method="post" class="ps-search--header")
+                        input.form-control(type="text" placeholder="Search Product…")
+                        button: i.ps-icon-search
+                    include ../common/cart
+                    .menu-toggle: span
+    .header-services
+        .ps-services.owl-slider(
+        data-owl-auto= 'true',
+        data-owl-loop= 'true',
+        data-owl-speed= '7000',
+        data-owl-gap= '0',
+        data-owl-nav= 'true',
+        data-owl-dots= 'false',
+        data-owl-item= '1',
+        data-owl-item-xs= '1',
+        data-owl-item-sm= '1',
+        data-owl-item-md= '1',
+        data-owl-item-lg= '1',
+        data-owl-duration= '1000',
+        data-owl-mousedrag= 'on'
+        )
+            - for (var i = 0; i < 3; i ++)
+                p.ps-service
+                    i.ps-icon-delivery
+                    strong Free delivery
+                    | : Get free standard delivery on every order with Shoe Store
+

@@ -1,0 +1,50 @@
+.ps-content.pt-80.pb-80
+    .ps-container
+        .ps-cart-listing
+            table.table.ps-cart__table
+                thead
+                    tr
+                        th All Products
+                        th Price
+                        th Quantity
+                        th Total
+                        th
+                tbody
+                    - for (var i = 1; i < 4; i ++)
+                        tr
+                            td
+                                a(href='product-detail.html').ps-product__preview
+                                    img(src="images/product/cart-preview/"+i+".jpg" alt="").mr-15
+                                    if i == 1
+                                        |  air jordan One mid
+                                    else if i == 2
+                                        |  The Crusty Croissant
+                                    else
+                                        | The Rolling Pin
+                            td $150
+                            td
+                                .form-group--number
+                                    button.minus: span -
+                                    input(type="text" class="form-control" value="2")
+                                    button.plus: span +
+                            td $300
+                            td: .ps-remove
+            .ps-cart__actions
+                .ps-cart__promotion
+                    .form-group
+                        .ps-form--icon
+                            i.fa.fa-angle-right
+                            input.form-control(type="text" placeholder="Promo Code")
+                    .form-group
+                        button.ps-btn.ps-btn--gray Continue Shopping
+                .ps-cart__total
+                    h3 Total Price: <span> 2599.00 $</span>
+                    a(href='checkout.html').ps-btn Process to checkout
+                        i.ps-icon-next
+
+
+
+
+
+
+

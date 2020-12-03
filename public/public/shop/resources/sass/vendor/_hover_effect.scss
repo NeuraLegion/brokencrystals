@@ -1,0 +1,443 @@
+//|
+//|
+//|
+//|
+//|     EASY EFFECT v1.3
+//|     Nguyen Long
+//|     hpvanlong@gmail.com
+//|
+//|
+//|     20 easing
+//|
+//|     easy setting: translateX, translateY, rotate, skewX, skewY, scale, opacity, duration, delay, easing
+//|
+//|     effectType & data-effect: classic, fade, flipX, ....
+//|
+//|     Custom effect for effectType and data-effect
+//|
+//|
+//|     @include effectSettings('.class', (
+//|         // Setting
+//|     ));
+//|
+/////////////////////////////////////////////////////////////////////////////////////|
+//|
+//|
+//|     EFFECT TYPE & DATA EFFECT
+//|
+//|     classic
+//|     fade
+//|     fadeUp
+//|     fadeRight
+//|     fadeDown
+//|     fadeLeft
+//|     flipX
+//|     flipY
+//|
+//|
+/////////////////////////////////////////////////////////////////////////////////////|
+//|
+//|
+//|     SETTINGS
+//|
+//|     effectName      : data-effect-name or effectType
+//|     dataDefault     : on/off effect data
+//|     effectType      : setting effect default classic, fade, flipX... or true (custom)
+//|
+//|
+//|     CUSTOM EFFECT
+//|
+//|     front or back
+//|         duration
+//|         delay
+//|         easing
+//|         opacity
+//|         translate
+//|         skew
+//|         scale
+//|         rotate
+//|         rotateX
+//|         rotateY
+//|         perspective
+//|         origin
+//|         backgroundColor
+//|
+//|
+/////////////////////////////////////////////////////////////////////////////////////|
+//|
+//|
+//|     EASING
+//|
+//|     linear
+//|     ease
+//|     ease-in
+//|     ease-out
+//|     ease-in-out
+//|     cubic-bezier(http://cubic-bezier.com/)
+//|
+//|     easeInCubic
+//|     easeOutCubic
+//|     easeInOutCubic
+//|
+//|     easeInCirc
+//|     easeOutCirc
+//|     easeInOutCirc
+//|
+//|     easeInExpo
+//|     easeOutExpo
+//|     easeInOutExpo
+//|
+//|     easeInQuad
+//|     easeOutQuad
+//|     easeInOutQuad
+//|
+//|     easeInQuart
+//|     easeOutQuart
+//|     easeInOutQuart
+//|
+//|     easeInQuint
+//|     easeOutQuint
+//|     easeInOutQuint
+//|
+//|     easeInSine
+//|     easeOutSine
+//|     easeInOutSine
+//|
+//|     easeInBack
+//|     easeOutBack
+//|     easeInOutBack
+//|
+//|
+/////////////////////////////////////////////////////////////////////////////////////|
+// Class
+$front: '.effect-front';
+$back: '.effect-back';
+// Data
+$dataEffect: 'data-effect-name';
+// Map deep get
+@function map-deep-get($map, $keys...) {
+    @each $key in $keys {
+        $map: map-get($map, $key);
+    }
+    @return $map;
+}
+
+// Map deep merge
+@function extend($map, $maps...
+/*, $deep */
+
+) {
+    $last: nth($maps, -1);
+    $deep: $last==true;
+    $max: if($deep, length($maps) - 1, length($maps));
+    @for $i from 1 through $max {
+        $current: nth($maps, $i);
+        @if not $deep {
+            $map: map-merge($map, $current);
+        }
+        @else {
+            @each $key,
+            $value in $current {
+                @if type-of($value)=="map" and type-of(map-get($map, $key))=="map" {
+                    $value: extend(map-get($map, $key), $value, true);
+                }
+                $map: map-merge($map, ($key: $value));
+            }
+        }
+    }
+    @return $map;
+}
+
+// Start effectSettings
+@mixin effectSettings($mainClass, $options) {
+    $default: extend(( 'effectName': '', 'front': ( 'duration': 400, 'delay': 0, 'easing': cubic-bezier(.5, .72, .24, .94), 'opacity': 1, 'translate': (0, 0), 'skew': 0, 'scale': 1, 'rotate': 0, 'rotateX': 0, 'rotateY': 0, 'perspective': 0, 'origin': center center, ), 'back': ( 'duration': 400, 'delay': 0, 'easing': cubic-bezier(.5, .72, .24, .94), 'backgroundColor': none, 'opacity': 1, 'translate': (0, 0), 'skew': 0, 'scale': 1, 'rotate': 0, 'rotateX': 0, 'rotateY': 0, 'perspective': 0, 'origin': center center, ), 'dataDefault': false, 'effectType': false, ), $options, true);
+    // Variable map get
+    $effectName: map-get($default, 'effectName');
+    $dataDefault: map-get($default, 'dataDefault');
+    $effectType: map-get($default, 'effectType');
+    // Variable map deep get
+    $frontduration: map-deep-get($default, 'front', 'duration');
+    $fronteasing: map-deep-get($default, 'front', 'easing');
+    $frontdelay: map-deep-get($default, 'front', 'delay');
+    $frontopacity: map-deep-get($default, 'front', 'opacity');
+    $fronttranslate: map-deep-get($default, 'front', 'translate');
+    $frontskew: map-deep-get($default, 'front', 'skew');
+    $frontscale: map-deep-get($default, 'front', 'scale');
+    $frontrotate: map-deep-get($default, 'front', 'rotate');
+    $frontrotateX: map-deep-get($default, 'front', 'rotateX');
+    $frontrotateY: map-deep-get($default, 'front', 'rotateY');
+    $frontperspective: map-deep-get($default, 'front', 'perspective');
+    $frontorigin: map-deep-get($default, 'front', 'origin');
+    $frontbackgroundColor: map-deep-get($default, 'front', 'backgroundColor');
+    $backduration: map-deep-get($default, 'back', 'duration');
+    $backeasing: map-deep-get($default, 'back', 'easing');
+    $backdelay: map-deep-get($default, 'back', 'delay');
+    $backopacity: map-deep-get($default, 'back', 'opacity');
+    $backtranslate: map-deep-get($default, 'back', 'translate');
+    $backskew: map-deep-get($default, 'back', 'skew');
+    $backscale: map-deep-get($default, 'back', 'scale');
+    $backrotate: map-deep-get($default, 'back', 'rotate');
+    $backrotateX: map-deep-get($default, 'back', 'rotateX');
+    $backrotateY: map-deep-get($default, 'back', 'rotateY');
+    $backperspective: map-deep-get($default, 'back', 'perspective');
+    $backorigin: map-deep-get($default, 'back', 'origin');
+    $backbackgroundColor: map-deep-get($default, 'back', 'backgroundColor');
+    // Style
+    #{$mainClass} {
+        @extend %styleBasic;
+        // Variable easing
+        $easeCubic: ( 'easeInCubic': cubic-bezier(0.550, 0.055, 0.675, 0.190), 'easeOutCubic': cubic-bezier(0.215, 0.610, 0.355, 1.000), 'easeInOutCubic': cubic-bezier(0.645, 0.045, 0.355, 1.000), 'easeInCirc': cubic-bezier(0.600, 0.040, 0.980, 0.335), 'easeOutCirc': cubic-bezier(0.075, 0.820, 0.165, 1.000), 'easeInOutCirc': cubic-bezier(0.785, 0.135, 0.150, 0.860), 'easeInExpo': cubic-bezier(0.950, 0.050, 0.795, 0.035), 'easeOutExpo': cubic-bezier(0.190, 1.000, 0.220, 1.000), 'easeInOutExpo': cubic-bezier(1.000, 0.000, 0.000, 1.000), 'easeInQuad': cubic-bezier(0.550, 0.085, 0.680, 0.530), 'easeOutQuad': cubic-bezier(0.165, 0.840, 0.440, 1.000), 'easeInOutQuad': cubic-bezier(0.770, 0.000, 0.175, 1.000), 'easeInQuart': cubic-bezier(0.755, 0.050, 0.855, 0.060), 'easeOutQuart': cubic-bezier(0.165, 0.840, 0.440, 1.000), 'easeInOutQuart': cubic-bezier(0.770, 0.000, 0.175, 1.000), 'easeInQuint': cubic-bezier(0.755, 0.050, 0.855, 0.060), 'easeOutQuint': cubic-bezier(0.230, 1.000, 0.320, 1.000), 'easeInOutQuint': cubic-bezier(0.860, 0.000, 0.070, 1.000), 'easeInSine': cubic-bezier(0.470, 0.000, 0.745, 0.715), 'easeOutSine': cubic-bezier(0.390, 0.575, 0.565, 1.000), 'easeInOutSine': cubic-bezier(0.445, 0.050, 0.550, 0.950), 'easeInBack': cubic-bezier(0.600, -0.280, 0.735, 0.045), 'easeOutBack': cubic-bezier(0.175, 0.885, 0.320, 1.275), 'easeInOutBack': cubic-bezier(0.680, -0.550, 0.265, 1.550), );
+        // Mixin Effect type
+        @mixin effectType {
+            #{$front},
+            #{$back} {
+                @extend %transitionDefault;
+            }
+            @each $eff in $effectsDefault {
+                @if ($effectType=="#{$eff}") {
+                    @extend %#{$eff};
+                }
+            }
+        }
+        // Mixin Options data
+        @mixin dataDefault {
+            #{$front},
+            #{$back} {
+                @extend %transitionDefault;
+            }
+            @each $eff in $effectsDefault {
+                &[#{$dataEffect}="#{$eff}"] {
+                    @extend %#{$eff};
+                }
+            }
+        }
+        // Mixin Effect custom
+        @mixin effectCustom {
+            #{$front} {
+                background-color: $backbackgroundColor;
+                transform: perspective($frontperspective) translate(0, 0) scale(1) rotate(0) skew(0);
+                transform-origin: $frontorigin;
+                transition: all $frontduration*1ms $fronteasing $frontdelay*1ms;
+            }
+            #{$back} {
+                visibility: hidden;
+                opacity: $backopacity;
+                background-color: $backbackgroundColor;
+                @if ($backrotateX==0) and ($backrotateY==0) {
+                    transform: perspective($backperspective) translate($backtranslate) scale($backscale) rotate($backrotate) skew($backskew);
+                }
+                @else {
+                    transform: perspective($backperspective) translate($backtranslate) scale($backscale) rotateX($backrotateX) rotateY($backrotateY) skew($backskew);
+                }
+                transform-origin: $backorigin;
+                transition: all $backduration*1ms $backeasing $backdelay*1ms;
+                // Easing custom cubic-bezier
+                @each $easingName,
+                $cubic in $easeCubic {
+                    @if ($backeasing==$easingName) {
+                        transition: all $backduration*1ms $cubic $backdelay*1ms;
+                    }
+                }
+            }
+            &:hover {
+                #{$front} {
+                    opacity: $frontopacity;
+                    @if ($frontrotateX==0) and ($frontrotateY==0) {
+                        transform: perspective($frontperspective) translate($fronttranslate) scale($frontscale) rotate($frontrotate) skew($frontskew);
+                    }
+                    @else {
+                        transform: perspective($frontperspective) translate($fronttranslate) scale($frontscale) rotateX($frontrotateX) rotateY($frontrotateY) skew($frontskew);
+                    }
+                    // Easing custom cubic-bezier
+                    @each $easingName,
+                    $cubic in $easeCubic {
+                        @if ($fronteasing==$easingName) {
+                            transition: all $frontduration*1ms $cubic $frontdelay*1ms;
+                        }
+                    }
+                }
+                #{$back} {
+                    visibility: visible;
+                    opacity: 1;
+                    transform: perspective($backperspective) translate(0, 0) scale(1) rotate(0) skew(0);
+                }
+            }
+        }
+        // Include mixin
+        @if $dataDefault {
+            @include dataDefault;
+        }
+        @else {
+            @if $effectType {
+                @include effectType;
+                @if ($effectType==true) {
+                    @include effectCustom;
+                }
+            }
+        }
+        @if ($effectType==false) {
+            @if not ($effectName=='') {
+                &[#{$dataEffect}="#{$effectName}"] {
+                    @include effectCustom;
+                }
+            }
+        }
+    }
+} // End effectSettings
+// Mixin Children full
+@mixin childFull($class, $zIndex) {
+    #{$class} {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: $zIndex;
+        @content;
+    }
+}
+
+// Css Style basic
+%styleBasic {
+    position: relative;
+    display: inline-block;
+    overflow: hidden;
+    z-index: 9;
+    #{$front} {
+        position: relative;
+    }
+    @include childFull($back, 99);
+}
+
+%transitionDefault {
+    transition: all 400ms cubic-bezier(.5, .72, .24, .94);
+}
+
+// EFFECT DEFAULT
+$effectsDefault: ( 'classic', 'fade', 'fadeUp', 'fadeRight', 'fadeDown', 'fadeLeft', 'flipX', 'flipY');
+// Classic
+%classic {
+    #{$back} {
+        display: none;
+    }
+    &:hover {
+        #{$back} {
+            display: block;
+        }
+    }
+}
+
+// Fade
+%fade {
+    #{$back} {
+        opacity: 0;
+        visibility: hidden;
+    }
+    &:hover {
+        #{$back} {
+            opacity: 1;
+            visibility: visible;
+        }
+    }
+}
+
+// Fade Up
+%fadeUp {
+    @extend %fade;
+    #{$back} {
+        transform: translateY(-100%);
+    }
+    &:hover {
+        #{$back} {
+            transform: translateY(0);
+        }
+    }
+}
+
+// Fade Down
+%fadeDown {
+    @extend %fade;
+    #{$back} {
+        transform: translateY(100%);
+    }
+    &:hover {
+        #{$back} {
+            transform: translateY(0);
+        }
+    }
+}
+
+// Fade Left
+%fadeLeft {
+    @extend %fade;
+    #{$back} {
+        transform: translateX(-100%);
+    }
+    &:hover {
+        #{$back} {
+            transform: translateX(0);
+        }
+    }
+}
+
+// Fade Right
+%fadeRight {
+    @extend %fade;
+    #{$back} {
+        transform: translateX(100%);
+    }
+    &:hover {
+        #{$back} {
+            transform: translateX(0);
+        }
+    }
+}
+
+// FlipX
+%flipX {
+    overflow: visible !important;
+    #{$front},
+    #{$back} {
+        backface-visibility: hidden;
+    }
+    #{$front} {
+        transform: perspective(300em) rotateX(0);
+    }
+    #{$back} {
+        transform: perspective(300em) rotateX(-180deg);
+    }
+    &:hover {
+        #{$front} {
+            transform: perspective(300em) rotateX(180deg);
+        }
+        #{$back} {
+            z-index: 9;
+            transform: perspective(300em) rotateX(0);
+        }
+    }
+}
+
+// FlipY
+%flipY {
+    overflow: visible !important;
+    #{$front},
+    #{$back} {
+        backface-visibility: hidden;
+    }
+    #{$front} {
+        transform: perspective(300em) rotateY(0);
+    }
+    #{$back} {
+        transform: perspective(300em) rotateY(180deg);
+    }
+    &:hover {
+        #{$front} {
+            transform: perspective(300em) rotateY(-180deg);
+        }
+        #{$back} {
+            z-index: 9;
+            transform: perspective(300em) rotateY(0);
+        }
+    }
+}
+

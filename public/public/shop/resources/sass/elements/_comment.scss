@@ -1,0 +1,87 @@
+.ps-comment {
+    margin-bottom: 50px;
+    @include display(flex);
+    @include flex-flow(row nowrap);
+    .ps-comment__thumbnail {
+        min-width: 100px;
+        width: 100px;
+        padding-right: 20px;
+        img {
+            @include border-radius(50%);
+        }
+    }
+    .ps-comment__content {
+        padding: 20px;
+        @include border-radius(0 20px 0 20px);
+        background-color: #f3f3f3;
+        > header {
+            margin-bottom: 10px;
+            @include clearfix;
+            h4 {
+                display: inline-block;
+                font-family: $font-2nd;
+                font-size: 14px;
+                font-weight: 700;
+                color: #29203c;
+                span {
+                    margin-left: 20px;
+                    font-family: Montserrat;
+                    font-size: 14px;
+                    line-height: 1.8em;
+                    color: #989898;
+                }
+            }
+            > a {
+                display: inline-block;
+                float: right;
+                font-family: $font-2nd;
+                font-weight: 700;
+                font-size: 16px;
+                color: #2ac37d;
+                text-transform: uppercase;
+                i {
+                    margin-left: 10px;
+                }
+                &:hover {
+                    color: #000;
+                }
+            }
+        }
+    }
+    &--reply {
+        margin-left: 100px;
+    }
+    @media (max-width: 640px) {
+        display: block;
+        .ps-comment__thumbnail {
+            width: 60px;
+            margin-bottom: 15px;
+            img {
+                border: 5px solid #f3f3f3;
+            }
+        }
+        .ps-comment__content {
+            width: 100%;
+            > header {
+                > a {
+                    float: none;
+                }
+            }
+        }
+        &--reply {
+            margin-left: 30px;
+        }
+    }
+}
+
+.ps-comments {
+    h3 {
+        margin-bottom: 30px;
+        display: block;
+        font-family: $font-2nd;
+        font-size: 24px;
+        font-weight: 700;
+        color: #313131;
+        text-transform: uppercase;
+    }
+}

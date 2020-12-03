@@ -1,0 +1,24 @@
+block module
+    .ps-home-contact
+        #contact-map(data-address="New York, NY" data-title="BAKERY LOCATION!" data-zoom="17")
+        .ps-home-contact__form
+            header
+                h3 Contact Us
+                p Learn about our company profile, communityimpact, sustainable motivation, and more.
+            footer
+                form(action="product-listing.html" method="post")
+                    .form-group
+                        label Name
+                            span *
+                        input.form-control(type="text")
+                    .form-group
+                        label Email
+                            span *
+                        input.form-control(type="email")
+                    .form-group
+                        label Your message
+                            span *
+                        textarea.form-control(rows="4")
+                    .form-group.text-center
+                        button.ps-btn Send Message
+                            i.fa.fa-angle-right

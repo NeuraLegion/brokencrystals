@@ -1,0 +1,14 @@
+block module
+    .ps-subscribe
+        .ps-container
+            .row
+                +column({cols: [3, 12, 12, 12]})
+                    h3
+                        i.fa.fa-envelope
+                        | Sign up to Newsletter
+                +column({cols: [5, 7, 12, 12]})
+                    form(action="do_action" method="post" class="ps-subscribe__form")
+                        input.form-control(type="text" placeholder="")
+                        button Sign up now
+                +column({cols: [4, 5, 12, 12]})
+                    p ...and receive  <span>$20</span>  coupon for first shopping.

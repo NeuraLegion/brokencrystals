@@ -1,0 +1,68 @@
+mixin countdown(time = 'December 13, 2017 00:00:00')
+    ul.ps-countdown(data-time=time)
+        li <span class="hours"></span><p>Hours</p>
+        li.divider :
+        li <span class="minutes"></span><p>minutes</p>
+        li.divider :
+        li <span class="seconds"></span><p>Seconds</p>
+.ps-section.ps-owl-root.ps-hotdeal--2.pt-80.pb-80
+    .ps-container
+        .ps-section__header.mb-50
+            .row
+                +column({cols: [9, 9, 9, 12]})
+                    h3.ps-section__title(data-mask='SALE OFF') - HOT DEAL TODAY
+                +column({cols: [3, 3, 3, 12]})
+                    .ps-owl-actions
+                        a(href='#').ps-prev
+                            i.ps-icon-arrow-right
+                            | Prev
+                        a(href='#').ps-next
+                            | Next
+                            i.ps-icon-arrow-left
+
+        .ps-section__content
+            .row
+                .ps-owl--collection.owl-slider(
+                data-owl-auto= 'true',
+                data-owl-loop= 'true',
+                data-owl-speed= '50000',
+                data-owl-gap= '30',
+                data-owl-nav= 'false',
+                data-owl-dots= 'false',
+                data-owl-item= '2',
+                data-owl-item-xs= '1',
+                data-owl-item-sm= '1',
+                data-owl-item-md= '2',
+                data-owl-item-lg= '2',
+                data-owl-duration= '1000',
+                data-owl-mousedrag= 'on'
+                )
+                    - for (var i = 0; i < 2; i ++)
+                        .ps-product--hotdeal
+                            .ps-product__thumbnail
+                                a(href='product-detail.html').ps-product__overlay
+                                img(src="images/offer/clothes-1.jpg" alt="")
+                            .ps-product__content
+                                a(href='product-detail.html').ps-product__title Slim Fit Men Sport Hoodie
+                                p.ps-product__price Only: <span>£155</span>
+                                .ps-product__status
+                                    .sold Already sold: <span>10</span>
+                                    .avaiable avaiable: <span>30</span>
+                                .progress: .progress-bar( role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" style="width: 60%;")
+                                +countdown('December 1, 2017 00:00:00')
+                                a(href='cart.html').ps-btn Order Today
+                                    i.ps-icon-next
+                        .ps-product--hotdeal
+                            .ps-product__thumbnail
+                                a(href='product-detail.html').ps-product__overlay
+                                img(src="images/offer/clothes-2.jpg" alt="")
+                            .ps-product__content
+                                a(href='product-detail.html').ps-product__title Mens Long-sleeved Polos
+                                p.ps-product__price Only: <span>£79</span>
+                                .ps-product__status
+                                    .sold Already sold: <span>10</span>
+                                    .avaiable avaiable: <span>30</span>
+                                .progress: .progress-bar( role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" style="width: 60%;")
+                                +countdown('May 1, 2018 00:00:00')
+                                a(href='cart.html').ps-btn Order Today
+                                    i.ps-icon-next

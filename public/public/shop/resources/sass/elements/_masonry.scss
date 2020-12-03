@@ -1,0 +1,61 @@
+
+//  Background color item
+//      bgColorItem: #ccc,
+//
+//  Space item default
+//      columnGap: 10,
+//
+//  Column default
+//      colDefault: 1,
+//
+//  Example ratio 4:3 = 3/4*100% = 75%
+//      ratioItem: 100%,
+//
+//  Responsive Device large >=1200, medium >=992, small >=768, extraSmall <=767
+//      responsive: (
+//          large: 6,
+//          medium: 5,
+//          small: 3,
+//          extraSmall: 1
+//      ),
+//
+//  Options with data html
+//  (data-gap, data-ratio, data-col-lg, data-col-md, data-col-sm, data-col-xs)
+//      optionsData: false,
+//
+//      data-ratio: 16by9, 4by3
+
+//  Max column with data html ( large & wide column = 2 column )
+//      maxColumn: 6,
+//
+//  Max gap with value = 5, 10, 15, 20 ...
+//      maxGap: 6
+//
+
+// Data Setting
+@include gridOptions('.masonry-wrapper', (
+    bgColorItem: #9EC3C3,
+    optionsData: true,
+    maxGap: 10
+));
+
+
+// Private Setting
+@include gridOptions('.setting', (
+    ratioItem: 60%,
+    bgColorItem: #ccc,
+    columnGap: 10,
+    responsive: (
+        large: 3,
+        medium: 3,
+        small: 2,
+        extraSmall: 1
+    ),
+));
+
+.masonry__filter {
+    // margin-bottom: 30px;
+}
+
+
+

@@ -1,0 +1,48 @@
+.ps-iconbox {
+    text-align: center;
+    margin: 0 0 30px;
+    max-width: 400px;
+    &__header {
+        i {
+            display: inline-block;
+            margin-bottom: 20px;
+            font-size: 50px;
+            color: $color-1st;
+        }
+        h3 {
+            font-family: $font-2nd;
+            font-size: 24px;
+            line-height: 1;
+            font-weight: 700;
+            color: $color-1st;
+            text-transform: uppercase;
+        }
+        p {
+            font-family: $font-2nd;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.7em;
+            color: #000;
+        }
+    }
+    &__content {
+        p {
+            font-family: $font-1st;
+            font-size: 16px;
+            line-height: 1.6em;
+            color: #4a4a4a;
+        }
+    }
+    &.ps-iconbox--inverse {
+        .ps-iconbox__header {
+            i, p {
+                color: #fff;
+            }
+        }
+        .ps-iconbox__content {
+            p {
+                color: #fff;
+            }
+        }
+    }
+}

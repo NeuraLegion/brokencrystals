@@ -1,0 +1,20 @@
+block module
+    .ps-home-partner: .ps-container: .owl-slider(
+        data-owl-auto= 'true',
+        data-owl-loop= 'true',
+        data-owl-speed= '5000',
+        data-owl-gap= '40',
+        data-owl-nav= 'false',
+        data-owl-dots= 'false',
+        data-owl-item= '6',
+        data-owl-item-xs= '2',
+        data-owl-item-sm= '4',
+        data-owl-item-md= '5',
+        data-owl-item-lg= '6',
+        data-owl-duration= '1000',
+        data-owl-mousedrag= 'on'
+        )
+            - for (var i = 1; i < 9; i ++)
+                a(href='#'): img(src="images/partner/" + i + ".png" alt="")
+
+

@@ -1,0 +1,23 @@
+.ps-badge {
+    display: inline-block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 80px;
+    height: 35px;
+    z-index: 10;
+    background-color: $color-1st;
+    > span {
+        @include center();
+        font-family: $font-1st;
+        font-size: 16px;
+        font-weight: 500;
+        color: #efefef;
+    }
+    &--sale {
+        background-color: #cf5050;
+    }
+    &--2nd {
+        top: 50px;
+    }
+}

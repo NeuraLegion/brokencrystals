@@ -1,0 +1,36 @@
+mixin countdown()
+    ul.ps-countdown(data-time="December 13, 2017 15:37:25")
+        li <span class="hours"></span><p>Hours</p>
+        li.divider :
+        li <span class="minutes"></span><p>minutes</p>
+        li.divider :
+        li <span class="seconds"></span><p>Seconds</p>
+
+.ps-section.ps-section--hotdeal-3.pt-80.pb-40
+    .ps-container
+        .ps-section__header.mb-50
+            h3.ps-section__title(data-mask='Promotion') - Our Event
+        .ps-section__content
+            .row
+                +column({cols: [6, 12, 12, 12]})
+                    .ps-product--hotdeal.reverse
+                        .ps-product__thumbnail
+                            a(href='product-detail.html').ps-product__overlay
+                            img(src="images/access/5.jpg" alt="")
+                        .ps-product__content
+                            a(href='product-detail.html').ps-product__title Slim Fit Men Sport Hoodie
+                            p.ps-product__price Only: <span>£178</span>
+                            .ps-product__status
+                                .sold Already sold: <span>10</span>
+                                .avaiable Avaiable: <span>30</span>
+                            .progress: .progress-bar( role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" style="width: 60%;")
+                            +countdown('September 1, 2017 00:00:00')
+                            a(href='cart.html').ps-btn Order Today
+                                i.ps-icon-next
+                +column({cols: [3, 6, 6, 12]})
+                    a(href='product-detail.html').ps-offer.mb-30: img(src="images/offer/home-3-1.jpg" alt="")
+                    a(href='product-detail.html').ps-offer: img(src="images/offer/home-3-3.jpg" alt="")
+                +column({cols: [3, 6, 6, 12]})
+                    a(href='product-detail.html').ps-offer: img(src="images/offer/home-3-2.jpg" alt="")
+
+

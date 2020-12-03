@@ -1,0 +1,69 @@
+@mixin shadow_1 {
+    -webkit-box-shadow: 0 10px 6px -6px #777;
+    -moz-box-shadow: 0 10px 6px -6px #777;
+    box-shadow: 0 10px 6px -6px #777;
+}
+
+@mixin shadow_2 {
+    -webkit-box-shadow: 0 1px 2px #777;
+    -moz-box-shadow: 0 2px 1px #777;
+    box-shadow: 0 2px 1px #777;
+}
+
+@mixin shadow_3 {
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.15);
+}
+
+@mixin shadow_4 {
+    box-shadow: 0 0 4px 1px rgba(0, 0, 0, 0.3);
+}
+
+@mixin shadow_5 {
+    box-shadow: 0 0 1px rgba(34, 25, 25, 0.4);
+}
+
+@mixin shadow_6 {
+    box-shadow: 0 1px #FFFFFF inset, 0 1px 3px rgba(34, 25, 25, 0.4);
+}
+
+@mixin shadow_7 {
+    box-shadow: 0 4px 2px -3px;
+}
+
+@mixin shadow_8 {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.15);
+}
+
+@mixin shadow_9 {
+    border-bottom: 0 none;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.46);
+}
+
+@mixin shadow_10 {
+    -webkit-box-shadow: 0 7px 4px #777;
+    -moz-box-shadow: 0 7px 4px #777;
+    box-shadow: 0 7px 4px #777;
+}
+
+@mixin shadow_11 {
+    -webkit-box-shadow: 0 3px 2px #777;
+    -moz-box-shadow: 0 3px 2px #777;
+    box-shadow: 0 3px 2px #777;
+}
+
+@mixin shadow_12 {
+    box-shadow: 0 0.5px 0 0 #ffffff inset, 0 1px 2px 0 #B3B3B3;
+}
+
+@mixin shadow_13 {
+    -webkit-box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    -moz-box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    box-shadow: 0px 0 4px rgba(0, 0, 0, 0.5);
+}
+
+@mixin shadow_14 {
+    -webkit-box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), 0 0 40px rgba(0, 0, 0, 0.1) inset;
+    -moz-box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), 0 0 40px rgba(0, 0, 0, 0.1) inset;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), 0 0 40px rgba(0, 0, 0, 0.1) inset;
+}

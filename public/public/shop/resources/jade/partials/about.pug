@@ -1,0 +1,64 @@
+block module
+    include ../data/list
+    .ps-mission.bg-cover(data-background="images/parallax/home-testimonial.jpg")
+        .ps-container
+            h3 our mission
+            h2 Your success is our ambition. <br/> Your defeat spurs us on to be better.
+    .ps-section.ps-ourteam.pt-80.pb-80
+        .ps-container
+            .ps-section__header.mb-50
+                h2.ps-section__title(data-mask="TEAM") - OUR STAFF
+            .ps-section__content
+                .row
+                    each val in ourteam
+                        +column({cols: [3, 3, 6, 12]})
+                            .ps-user
+                                .ps-user__thumbnnail
+                                    img(src=val.imagepath alt="")
+                                    ul.ps-user__social
+                                        li: a(href='#'): i.fa.fa-twitter
+                                        li: a(href='#'): i.fa.fa-facebook
+                                        li: a(href='#'): i.fa.fa-dribbble
+                                .ps-user__content
+                                    h3 #{val.name}
+                                    p #{val.position}
+    .ps-all-user.pt-25.pb-50
+        .ps-container
+            .row.ps-col-tiny
+                +column({cols: [2, 2, 3, 12]})
+                    .ps-team
+                        h3 Staff.
+                        ul.ps-team__listing
+                            li: a(href='#') Carolyn Flowers
+                            li: a(href='#') Norman Barnett
+                            li: a(href='#') Gabriel Barnes
+                            li: a(href='#') Harriett Weaver
+                +column({cols: [2, 2, 3, 12]})
+                    .ps-team
+                        h3 Assistant.
+                        ul.ps-team__listing
+                            li: a(href='#') Hattie Figueroa
+                            li: a(href='#') Sarah Cruz
+                            li: a(href='#') Edna Cortez
+                            li: a(href='#') Mabel Castillo
+                +column({cols: [2, 2, 3, 12]})
+                    .ps-team
+                        h3 Staff.
+                        ul.ps-team__listing
+                            li: a(href='#') Max Wagner
+                            li: a(href='#') Robert Peterson
+                            li: a(href='#') Lee McLaughlin
+                            li: a(href='#') Cory Payne
+                +column({cols: [2, 2, 3, 12]})
+                    .ps-team
+                        h3 Staff.
+                        ul.ps-team__listing
+                            li: a(href='#') Sally Murray
+                            li: a(href='#') Sally Sherman
+                            li: a(href='#') Edith King
+                            li: a(href='#') Mathilda Austin
+                +column({cols: [4, 4, 12, 12]})
+                    .ps-join-team
+                        h3 Would you like to join team & build your dream NOW?
+                        a(href='#').ps-btn JOIN OUR TEAM
+                            i.ps-icon-arrow-left

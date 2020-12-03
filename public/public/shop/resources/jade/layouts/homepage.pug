@@ -1,0 +1,35 @@
+extends ../master
+
+block title
+    title Shoe - Homepage
+
+block page_header
+
+    - var currentPage = 'homepage'
+    include ../utils/mixins
+    include ../partials/header
+
+block page_content
+    include ../partials/sections/slider-3
+    include ../partials/sections/home-features-product
+    include ../partials/sections/home-banner
+    include ../partials/sections/home-hot-deal
+    include ../partials/sections/home-top-sales
+    include ../partials/sections/home-testimonial
+    include ../partials/sections/home-blog
+    include ../partials/modules/partner
+    include ../partials/sections/home-contact
+    include ../partials/sections/subscribe
+block page_footer
+    include ../partials/footer
+
+
+
+
+
+
+
+
+
+
+

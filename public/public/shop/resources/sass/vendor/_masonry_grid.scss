@@ -1,0 +1,430 @@
+//|
+//|
+//|
+//|
+//|     ▒█▀▄▀█ ░█▀▀█ ▒█▀▀▀█ ▒█▀▀▀█ ▒█▄░▒█ ▒█▀▀█ ▒█░░▒█ 　 ▒█▀▀█ ▒█▀▀█ ▀█▀ ▒█▀▀▄
+//|     ▒█▒█▒█ ▒█▄▄█ ░▀▀▀▄▄ ▒█░░▒█ ▒█▒█▒█ ▒█▄▄▀ ▒█▄▄▄█ 　 ▒█░▄▄ ▒█▄▄▀ ▒█░ ▒█░▒█
+//|     ▒█░░▒█ ▒█░▒█ ▒█▄▄▄█ ▒█▄▄▄█ ▒█░░▀█ ▒█░▒█ ░░▒█░░ 　 ▒█▄▄█ ▒█░▒█ ▄█▄ ▒█▄▄▀
+//|
+//|     Grid v1.4
+//|
+//|     Nguyen Long
+//|     hpvanlong@gmail.com
+//|
+/////////////////////////////////////////////////////////////////////////////////////|
+//|
+//|     OPTIONS
+//|
+//|     @include gridOptions((
+//|         ...
+//|     ));
+//|
+//|
+//|
+//|
+//|     Background color item
+//|         bgColorItem: value,
+//|
+//|     Space item default
+//|         columnGap: 0,
+//|
+//|     Column default
+//|         colDefault: 1,
+//|
+//|     Example ratio 4:3 = 3/4*100% = 75%
+//|         ratioItem: 100%,
+//|
+//|     Responsive Device large >=1200, medium >=992, small >=768, extraSmall <=767
+//|         responsive: (
+//|             large: 6,
+//|             medium: 5,
+//|             small: 3,
+//|             extraSmall: 1
+//|         ),
+//|
+//|     Options with data html
+//|     (data-gap, data-ratio, data-col-lg, data-col-md, data-col-sm, data-col-xs)
+//|         optionsData: false,
+//|
+//|     data-ratio: 16by9, 4by3
+//|
+//|
+//|     Max column with data html ( large & wide column = 2 column )
+//|         maxColumn: 6,
+//|
+//|     Max gap with value = 5, 10, 15, 20 ...
+//|         maxGap: 6
+//|
+//|
+//|     HTML STRUCTURE
+//|
+//|     <div class="ac_masonry-grid" data-col-lg="3">
+//|         <div class="ac_masonry">
+//|             <div class="grid-sizer"></div>
+//|
+//|             <div class="grid-item high">
+//|                 <div class="grid-item__inner">
+//|                     <div class="grid-item__content-wrapper">
+//|                         <!-- CONTENT -->
+//|                     </div>
+//|                 </div>
+//|             </div>
+//|
+//|             <div class="grid-item high">
+//|                 <div class="grid-item__inner">
+//|                     <div class="grid-item__content-wrapper">
+//|                         <!-- CONTENT -->
+//|                     </div>
+//|                 </div>
+//|             </div>
+//|
+//|             <div class="grid-item wide">
+//|                 <div class="grid-item__inner">
+//|                     <div class="grid-item__content-wrapper">
+//|                         <!-- CONTENT -->
+//|                     </div>
+//|                 </div>
+//|             </div>
+//|         </div>
+//|     </div>
+//|
+/////////////////////////////////////////////////////////////////////////////////////|
+
+
+
+
+////////////
+////////////
+// Variable
+$masonryGrid: '.ac_masonry-grid';
+$gridItem: '.grid-item';
+$gridSizer: '.grid-sizer';
+$gridItemInner: '.grid-item__inner';
+$gridItemContentWrap: '.grid-item__content-wrapper';
+$wideItem: '.wide';
+$largeItem: '.large';
+$highItem: '.high';
+$extraLargeItem: '.extra-large';
+//Data html
+$dataGap: 'data-gap';
+$dataRatio: 'data-ratio';
+$dataColXs: 'data-col-xs';
+$dataColSm: 'data-col-sm';
+$dataColMd: 'data-col-md';
+$dataColLg: 'data-col-lg';
+
+
+
+// Map deep get
+@function map-deep-get($map, $keys...) {
+    @each $key in $keys {
+        $map: map-get($map, $key);
+    }
+    @return $map;
+}
+
+
+// Map deep merge
+@function extend($map, $maps.../*, $deep */) {
+    $last: nth($maps, -1);
+    $deep: $last == true;
+    $max: if($deep, length($maps) - 1, length($maps));
+
+    @for $i from 1 through $max {
+        $current: nth($maps, $i);
+
+        @if not $deep {
+            $map: map-merge($map, $current);
+        } @else {
+            @each $key, $value in $current {
+
+                @if type-of($value) == "map" and type-of(map-get($map, $key)) == "map" {
+                    $value: extend(map-get($map, $key), $value, true);
+                }
+
+                $map: map-merge($map, ($key: $value));
+            }
+        }
+    }
+
+    @return $map;
+}
+
+
+%relative {
+    position: relative;
+}
+%absolute {
+    position: absolute;
+}
+%overHidden {
+    overflow: hidden;
+}
+%margin0 {
+    margin: 0 !important;
+}
+
+
+
+
+////////////
+////////////
+// Grid
+@mixin grid($col) {
+    #{$gridItem},
+    #{$gridSizer} {
+        $widthDefault: (100 * 1/$col) * 1%;
+        width: $widthDefault;
+    }
+    @if ($col > 1) {
+        #{$gridItem} {
+            $widthLarge: (100 * 1/$col * 2) * 1%;
+            &#{$wideItem},
+            &#{$largeItem} {
+                width: $widthLarge;
+            }
+            &#{$extraLargeItem} {
+                width: 100%;
+            }
+        }
+    }
+}
+
+////////////
+////////////
+// Ratio
+@mixin ratio($ratio: 100%) {
+    #{$gridItemInner} {
+        padding-top: $ratio;
+    }
+    #{$gridItem} {
+        &#{$extraLargeItem},
+        &#{$wideItem} {
+            #{$gridItemInner} {
+                padding-top: $ratio / 2;
+            }
+        }
+        &#{$highItem} {
+            #{$gridItemInner} {
+                padding-top: $ratio * 2;
+            }
+        }
+    }
+}
+
+$gridRatio: (
+    '100': 100%,
+    '4by3': 3/4 * 100%,
+    '16by9': 9/16 * 100%
+);
+@each $key, $value in $gridRatio {
+    %ratio#{$key} {
+        #{$gridItemInner} {
+            padding-top: $value;
+        }
+        #{$gridItem} {
+            &#{$extraLargeItem},
+            &#{$wideItem} {
+                #{$gridItemInner} {
+                    padding-top: $value / 2;
+                }
+            }
+            &#{$highItem} {
+                #{$gridItemInner} {
+                    padding-top: $value * 2;
+                }
+            }
+        }
+    }
+}
+
+// breakpoints: large >=1200, medium >=992, small >=768, extraSmall <=767
+$gridBreakpoints: (
+    'large': 1200px,
+    'medium': 992px,
+    'small': 768px
+);
+
+%dataColumn {
+    $maxCol: 10;
+    @for $i from 1 through $maxCol {
+        &[#{$dataColXs}="#{$i}"] {
+            @include grid($i);
+        }
+    }
+    @for $i from 1 through $maxCol {
+        @media (min-width: map-get($gridBreakpoints, 'small')) {
+            &[#{$dataColSm}="#{$i}"] {
+                @include grid($i);
+            }
+        }
+    }
+    @for $i from 1 through $maxCol {
+        @media (min-width: map-get($gridBreakpoints, 'medium')) {
+            &[#{$dataColMd}="#{$i}"] {
+                @include grid($i);
+            }
+        }
+    }
+    @for $i from 1 through $maxCol {
+        @media (min-width: map-get($gridBreakpoints, 'large')) {
+            &[#{$dataColLg}="#{$i}"] {
+                @include grid($i);
+            }
+        }
+    }
+
+}
+%dataGap {
+    @for $i from 1 through 6 {
+        $gap: $i * 5;
+        $valueGap: ($gap / 2) * 1px;
+        &[#{$dataGap}="#{$gap}"] {
+            margin: round(-$valueGap);
+            #{$gridItem} {
+                #{$gridItemContentWrap} {
+                    margin: round($valueGap);
+                    top: round($valueGap);
+                    right: round($valueGap);
+                    bottom: round($valueGap);
+                    left: round($valueGap);
+                }
+            }
+        }
+    }
+}
+
+
+
+// Start
+@mixin gridOptions($mainClass, $options) {
+    $default: extend((
+        'bgColorItem': #ccc,                        // Background color item
+        'columnGap': 0,                             // Space item default
+        'colDefault': 1,                            // Column default
+        'ratioItem': 100%,                          // Example ratio 4:3 = 3/4*100% = 75%
+        'responsive': (                             // Responsive Device large >=1200, medium >=992, small >=768, extraSmall <=767
+            'large': 4,
+            'medium': 3,
+            'small': 2,
+            'extraSmall': 1
+        ),
+        'optionsData': false,                       // Options with data html (data-gap, data-ratio, data-col-lg, data-col-md, data-col-sm, data-col-xs)
+    ), $options, true);
+
+    // $maxColumn: map-get($default, 'maxColumn');
+    // $maxGap: map-get($default, 'maxGap');
+    $bgColorItem: map-get($default, 'bgColorItem');
+    $columnGap: map-get($default, 'columnGap');
+    $colDefault: map-get($default, 'colDefault');
+    $optionsData: map-get($default, 'optionsData');
+    $ratioItem: map-get($default, 'ratioItem');
+    $large: map-deep-get($default, 'responsive', 'large');
+    $medium: map-deep-get($default, 'responsive', 'medium');
+    $small: map-deep-get($default, 'responsive', 'small');
+    $extraSmall: map-deep-get($default, 'responsive', 'extraSmall');
+
+    $valueGapDefault: ($columnGap / 2) * 1px;
+
+
+
+
+
+
+    ////////////
+    ////////////
+    // Style
+
+    #{$mainClass} {
+        margin: 0;
+        // Set column default
+        @include grid($colDefault);
+        #{$gridItem} {
+            #{$gridItemInner} {
+                @extend %relative;
+                #{$gridItemContentWrap} {
+                    @extend %overHidden;
+                    background-color: $bgColorItem;
+                }
+            }
+        }
+
+        &#{$masonryGrid} {
+
+
+            #{$gridItemContentWrap} {
+                @extend %absolute;
+
+                // Set space default
+                top: 0;
+                right: 0;
+                bottom: 0;
+                left: 0;
+                @extend %margin0; // fix masonry style
+            }
+            ////////////
+            ////////////
+            // Set ratio
+            @if $optionsData {
+                @extend %ratio100;
+                @each $key, $value in $gridRatio {
+                    &[#{$dataRatio}="#{$key}"] {
+                        @extend %ratio#{$key};
+                    }
+                }
+            } @else {
+                @include ratio($ratioItem);
+            }
+        }
+
+
+        @if $optionsData {
+            ////////////
+            ////////////
+            // Set gap
+            @extend %dataGap;
+
+            ////////////
+            ////////////
+            // Column responsive
+            @extend %dataColumn;
+        } @else {
+
+            $valueGap: ($columnGap / 2) * 1px;
+            margin: round(-$valueGap);
+            #{$gridItem} {
+                #{$gridItemContentWrap} {
+                    margin: round($valueGap);
+                    top: round($valueGap);
+                    right: round($valueGap);
+                    bottom: round($valueGap);
+                    left: round($valueGap);
+                }
+            }
+
+
+
+            @if $extraSmall {
+                @include grid($extraSmall);
+            }
+            @if $small {
+                @media (min-width: map-get($gridBreakpoints, 'small')) {
+                    @include grid($small);
+                }
+            }
+            @if $medium {
+                @media (min-width: map-get($gridBreakpoints, 'medium')) {
+                    @include grid($medium);
+                }
+            }
+            @if $large {
+                @media (min-width: map-get($gridBreakpoints, 'large')) {
+                    @include grid($large);
+                }
+            }
+        }
+
+
+    }
+}
+

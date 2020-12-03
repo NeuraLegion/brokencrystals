@@ -1,0 +1,67 @@
+html, body {
+    height: 100%;
+}
+
+.ps-404 {
+    height: 100%;
+    position: relative;
+    z-index: 10;
+    &:before {
+        content: '';
+        @include max-area();
+        z-index: -1;
+        background-color: rgba(#000, .1);
+    }
+    .ps-404__content {
+        max-width: 700px;
+        @include center();
+        text-align: center;
+    }
+    h1 {
+        font-family: $font-2nd;
+        font-size: 144px;
+        font-weight: 700;
+        letter-spacing: 20px;
+        color: #fff;
+    }
+    h3 {
+        margin-bottom: 25px;
+        font-family: $font-1st;
+        font-size: 36px;
+        font-weight: 600;
+        letter-spacing: 2px;
+        color: #fff;
+        text-transform: uppercase;
+    }
+    p {
+        margin-bottom: 30px;
+        font-size: 24px;
+        line-height: 1.5em;
+        color: #999999;
+    }
+    .ps-btn {
+        &:before {
+            background-color: rgba(#fff, .25);
+        }
+    }
+    @include media("<md") {
+        .ps-404__content {
+            max-width: 100%;
+            width: 100%;
+            padding: 0 30px;
+        }
+    }
+    @include media("<sm") {
+        h1 {
+            font-size: 60px;
+        }
+        h3 {
+            font-size: 25px;
+            margin-bottom: 10px;
+        }
+        p {
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+    }
+}

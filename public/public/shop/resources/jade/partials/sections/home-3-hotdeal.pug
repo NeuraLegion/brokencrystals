@@ -1,0 +1,36 @@
+.ps-section.pt-40.pb-80
+     .ps-container
+        .ps-section__header.mb-50
+            h3.ps-section__title(data-mask='SALE OFF') - - HOT DEAL TODAY
+        .ps-section__content
+            .row
+                +column({cols: [6, 12, 12, 12]})
+                    .ps-product--hotdeal.reverse
+                        .ps-product__thumbnail
+                            a(href='product-detail.html').ps-product__overlay
+                            img(src="images/access/4.jpg" alt="")
+                        .ps-product__content
+                            a(href='product-detail.html').ps-product__title.text-uppercase Jordan pro andre hat
+                            p.ps-product__price Only: <span>£178</span>
+                            .ps-product__status
+                                .sold Already sold: <span>10</span>
+                                .avaiable Avaiable: <span>30</span>
+                            .progress: .progress-bar( role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" style="width: 60%;")
+                            +countdown('September 1, 2017 00:00:00')
+                            a(href='cart.html').ps-btn Order Today
+                                i.ps-icon-next
+                +column({cols: [6, 12, 12, 12]})
+                    .ps-product--hotdeal.reverse
+                        .ps-product__thumbnail
+                            a(href='product-detail.html').ps-product__overlay
+                            img(src="images/access/1.jpg" alt="")
+                        .ps-product__content
+                            a(href='product-detail.html').ps-product__title.text-uppercase brasilia small bag
+                            p.ps-product__price Only: <span>£178</span>
+                            .ps-product__status
+                                .sold Already sold: <span>10</span>
+                                .avaiable Avaiable: <span>30</span>
+                            .progress: .progress-bar( role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" style="width: 60%;")
+                            +countdown('September 1, 2017 00:00:00')
+                            a(href='cart.html').ps-btn Order Today
+                                i.ps-icon-next

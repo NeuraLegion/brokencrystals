@@ -1,0 +1,18 @@
+ul(class="ps-tab__nav" role="tablist")
+    li(role="presentation")
+        a(href="#tab_01" aria-controls="tab_01" role="tab" data-toggle="tab")
+           | Tab 1
+    li(role="presentation").active
+        a(href="#tab_02" aria-controls="tab_02" role="tab" data-toggle="tab")
+
+            | Tab 2
+    li(role="presentation")
+        a(href="#tab_03" aria-controls="tab_03" role="tab" data-toggle="tab")
+            | Tab 3
+.tab-content.ps-tab__content
+    .tab-pane(role='tabpanel')#tab_01
+
+    .tab-pane.active(role='tabpanel')#tab_02
+
+
+    .tab-pane(role='tabpanel')#tab_03

@@ -1,0 +1,264 @@
+.header__actions {
+    float: right;
+    > a, .ps-dropdown > a {
+        display: inline-block;
+        padding: 0 15px;
+        font-family: $font-2nd;
+        font-size: 13px;
+        text-align: center;
+        color: #8d8d8d;
+        text-transform: uppercase;
+        line-height: 40px;
+        border-left: 1px solid #e5e5e5;
+        vertical-align: top;
+        @include box-shadow(none);
+        > i {
+            margin-left: 5px;
+        }
+        &:hover {
+            background-color: #e5e5e5;
+            color: $color-1st;
+        }
+    }
+    > a {
+        margin-right: -4px;
+    }
+    .ps-dropdown {
+        margin-right: -4px;
+        &.open {
+            a.dropdown-toggle {
+                @include box-shadow(none);
+                background-color: #e5e5e5;
+                color: $color-1st;
+            }
+        }
+        .dropdown-menu {
+            padding: 0;
+            right: 0;
+            left: auto;
+            @include border-radius(0);
+            border: none;
+            li {
+                a {
+                    padding: 9px 20px;
+                    display: block;
+                    line-height: 20px;
+                    border-bottom: 1px solid #e5e5e5;
+                    font-size: 13px;
+                    color: #8d8d8d;
+                    text-transform: uppercase;
+                    img {
+                        max-width: 20px;
+                        border: 1px solid #eee;
+                        margin-right: 10px;
+                    }
+                    &:hover {
+                        background-color: $color-1st;
+                        color: #fff;
+                    }
+                }
+                &:last-child {
+                    border-bottom: none;
+                }
+            }
+        }
+        &:last-child {
+            > a {
+                border-right: 1px solid #e5e5e5;
+            }
+        }
+    }
+    @include media("<xs") {
+        > a, .ps-dropdown > a {
+            font-size: 12px;
+        }
+    }
+}
+
+.header {
+    @include transition(all .4s ease);
+    .ps-logo {
+        padding-top: 15px;
+        display: inline-block;
+        max-width: 150px;
+        line-height: 55px;
+    }
+    .header__top {
+        border-bottom: 1px solid #e5e5e5;
+        p {
+            margin-bottom: 0;
+            font-family: $font-1st;
+            font-size: 13px;
+            text-align: left;
+            color: #5b5b5b;
+            line-height: 40px;
+        }
+    }
+    @include media("<lg") {
+        position: relative;
+        .navigation {
+            padding: 0;
+            min-height: 50px;
+            background-color: #fff;
+        }
+        .menu-toggle {
+            display: inline-block;
+            float: right;
+        }
+    }
+    @include media("<md") {
+        .header__top {
+            p {
+                display: none;
+            }
+        }
+        .ps-logo {
+            max-width: 120px;
+        }
+    }
+    @include media("<sm") {
+        .ps-search--header {
+            max-width: 200px;
+        }
+    }
+}
+
+.header--sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 240px;
+    height: 100%;
+    z-index: 10000;
+    background-color: #f9f9f9;
+    overflow-y: auto;
+    @include transform(translateX(100%));
+    @include transition(all .4s ease);
+    &.active {
+        @include transform(translateX(0%));
+    }
+    @include media("<xs") {
+        .ps-search--header {
+            padding: 15px 0;
+            input {
+                @include border-radius(0);
+            }
+        }
+    }
+}
+
+.header-services {
+    background-color: #eee;
+    height: 50px;
+    overflow: hidden;
+}
+
+.menu--active {
+    @include transform(translateX(-240px));
+    .header--sidebar {
+        overflow-y: auto;
+    }
+    &.navigation--pin {
+        @include transform(translate(-240px, 0));
+
+    }
+    &.navigation--unpin {
+        @include transform(translate(-240px, -100%));
+    }
+}
+
+.navigation--sticky {
+    position: fixed;
+    border-bottom: 1px solid #e5e5e5;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 100000;
+    transition: all 0.4s ease;
+    .navigation {
+        background-color: #fff;
+    }
+
+    @include media("<lg") {
+        background-color: #000 !important;
+        .menu-toggle {
+            span, &:before, &:after {
+                background-color: #fff;
+            }
+        }
+        &.header--2 {
+            .ps-logo {
+                margin-top: 5px;
+            }
+        }
+    }
+}
+
+.navigation--pin {
+    @include transform(translate(0, 0));
+
+}
+
+.navigation--unpin {
+    @include transform(translate(0, -100%));
+}
+
+.ps-services {
+    position: relative;
+    max-width: 780px;
+    padding: 0 30px;
+    margin: 0 auto;
+    .owl-nav {
+        @include vertical-align();
+        right: 0;
+        width: 100%;
+        @include clearfix;
+        height: 0;
+        height: 0;
+    }
+    .owl-next, .owl-prev {
+        display: inline-block;
+        @include transform(translateY(-50%));
+    }
+    .owl-next {
+        float: right;
+    }
+    .ps-service {
+        margin-bottom: 0;
+        text-align: center;
+        font-size: 14px;
+        color: #5b5b5b;
+        vertical-align: middle;
+        line-height: 50px;
+        i {
+            margin-right: 20px;
+            display: inline-block;
+            font-size: 40px;
+            line-height: 50px;
+            color: $color-1st;
+            vertical-align: middle;
+        }
+        strong {
+            text-transform: uppercase;
+
+        }
+
+    }
+    @include media("<lg") {
+        max-width: 100%;
+        padding: 0 30px;
+        .owl-prev {
+            margin-left: 10px;
+        }
+        .owl-next {
+            margin-right: 10px;
+        }
+    }
+    @include media("<sm") {
+        .ps-service {
+            max-height: 50px;
+            overlow-y: hidden;
+            font-size: 12px;
+        }
+    }
+}

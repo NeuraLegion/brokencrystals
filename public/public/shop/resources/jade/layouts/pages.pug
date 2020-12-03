@@ -1,0 +1,34 @@
+extends ../master
+
+block title
+    title Shoe - Page listing
+
+block page_header
+
+    - var currentPage = 'grid'
+    include ../utils/mixins
+block page_content
+    include ../data/pages
+    section.pt-100.pb-100
+        .container
+            h1.text-uppercase.text-center.pb-80 PAGE LISTING
+            ul(style="list-style: decimal; padding-left: 20px; line-height: 30px;")
+                each val in  pages
+                    li: a(href=val.url target="_blank") #{val.text}
+block page_footer
+    include ../partials/footer
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

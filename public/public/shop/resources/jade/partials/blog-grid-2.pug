@@ -1,0 +1,24 @@
+block module
+    include ../data/post
+    .ps-blog-grid.pt-80.pb-80
+        .ps-container
+            .row
+                - for (var i = 0; i < 3; i ++)
+                    each val in home_blog
+                        +column({cols: [4, 4, 12, 12]})
+                            .ps-post.mb-30
+                                .ps-post__thumbnail
+                                    a(href='blog-detail.html').ps-post__overlay
+                                    img(src=val.imagepath alt="")
+                                .ps-post__content
+                                    a(href='blog-detail.html').ps-post__title #{val.title}
+                                    p.ps-post__meta
+                                        span By:
+                                            a(href='blog.html').mr-5 Alena Studio
+                                        |  -
+                                        span.ml-5 Jun 10, 2017
+                                    p #{val.description}
+                                    a(href='blog-detail.html').ps-morelink Read more
+                                        i.fa.fa-long-arrow-right
+            .mt-30
+                include ../partials/modules/pagination

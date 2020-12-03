@@ -1,0 +1,76 @@
+.ps-contact {
+    #contact-map {
+        margin-bottom: 80px;
+        height: 560px;
+    }
+    .ps-contact__form {
+        label {
+            font-weight: 400;
+            font-size: 14px;
+            color: #000;
+            text-transform: uppercase;
+        }
+    }
+    &__block {
+        margin-bottom: 30px;
+        padding: 15px;
+        @include border-radius(4px);
+        background-color: #f3f3f3;
+        > header {
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #c4c4c4;
+            > h3 {
+                font-family: $font-1st;
+                font-size: 24px;
+                font-weight: 600;
+                color: #000;
+                text-transform: uppercase;
+                span {
+                    margin-left: 15px;
+                    font-size: 14px;
+                    font-style: italic;
+                    color: #8d8d8d;
+                    text-transform: none;
+                }
+            }
+        }
+        > footer {
+            p {
+                margin-bottom: 15px;
+                position: relative;
+                padding-left: 35px;
+                font-family: $font-1st;
+                font-size: 12px;
+                line-height: 25px;
+                color: #1d1d1d;
+                i {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 25px;
+                    height: 25px;
+                    @include border-radius(50%);
+                    background-color: #b9b9b9;
+                    &:before {
+                        @include center();
+                        font-size: 12px;
+                        color: #fff;
+                    }
+                }
+                a {
+                    color: $color-1st;
+                    &:hover {
+                        color: #1d1d1d;
+                    }
+                }
+            }
+        }
+    }
+}
+.ps-contact--2 {
+    #contact-map {
+        height: 600px;
+        margin-bottom: 0;
+    }
+}

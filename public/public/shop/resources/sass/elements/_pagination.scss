@@ -1,0 +1,80 @@
+.ps-pagination {
+    @include clearfix;
+    text-align: center;
+    .pagination {
+        margin: 0;
+        display: inline-block;
+        li {
+            display: inline-block;
+            margin-right: 15px;
+            text-align: center;
+            > a {
+                padding: 0 17px;
+                position: relative;
+                display: inline-block;
+                z-index: 30;
+                font-family: $font-1st;
+                font-size: 16px;
+                color: #313131;
+                line-height: 50px;
+                @include border-radius(0);
+                border: none;
+                background-color: transparent !important;
+                &:before, &:after {
+                    content: '';
+                    @include center();
+                    z-index: -2;
+                    @include border-radius(50%);
+                    @include transition(all .4s ease);
+                }
+                &:before {
+                    width: 50px;
+                    height: 50px;
+                    background-color: #e4e4e4;
+                }
+                &:after {
+                    width: 45px;
+                    height: 45px;
+                    background-color: $color-1st;
+                    z-index: -1;
+                    @include hidden;
+                }
+                &:hover {
+                    color: #fff;
+                    &:after {
+                        @include show;
+                    }
+                }
+            }
+            &.active {
+                border: none;
+                a {
+                    color: #fff;
+
+                    &:after {
+                        @include show;
+                    }
+                }
+            }
+        }
+    }
+    @include media("<xs") {
+        .pagination {
+            li {
+                margin-right: 10px;
+                a {
+                    padding: 0 12px;
+                    font-size: 12px;
+                    &:before {
+                        width: 30px;
+                        height: 30px;
+                    }
+                    &:after {
+                        width: 35px;
+                        height: 35px;
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,89 @@
+@media (min-width: 320px) {
+    .ps-container {
+        width: 100%;
+        margin: 0 auto;
+        padding: 0 15px;
+    }
+
+}
+
+@media (min-width: 1200px) {
+    .ps-container {
+        width: 1170px;
+    }
+    .container-fluid {
+        padding: 0 30px;
+    }
+}
+
+@media (min-width: 1440px) {
+    .ps-container {
+        width: 1440px;
+    }
+}
+
+body {
+    position: relative;
+    overflow-x: hidden;
+}
+
+.ps-main {
+    @include transition(all .4s ease);
+}
+
+.ps-col-tiny {
+    @include media("<sm") {
+        .col-xs-12 {
+            width: 50%;
+        }
+    }
+    @include media("<xs") {
+        .col-xs-12 {
+            width: 100%;
+        }
+    }
+}
+
+//Product
+.ps-products-wrap {
+    padding: 0 30px;
+    @include clearfix;
+    .ps-sidebar {
+        position: relative;
+        float: left;
+        padding-right: 30px;
+        width: 270px;
+        right: calc(100% - 270px);
+    }
+    .ps-products {
+        position: relative;
+        left: 270px;
+        padding-left: 10px;
+        float: left;
+        width: calc(100% - 270px);
+    }
+    &.inverse {
+        .ps-sidebar {
+            float: right;
+            right: 0;
+            padding-right: 0;
+            padding-left: 30px;
+        }
+        .ps-products {
+            float: left;
+            left: 0;
+        }
+
+    }
+    @include media("<lg") {
+        .ps-sidebar {
+            float: none;
+            left: 0;
+            max-width: 300px;
+        }
+        .ps-products {
+            width: 100%;
+            left: 0;
+        }
+    }
+}

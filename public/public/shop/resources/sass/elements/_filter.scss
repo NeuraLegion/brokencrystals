@@ -1,0 +1,48 @@
+.ps-widget--filter {
+    .ac-slider {
+        display: block;
+        height: 3px;
+        margin-bottom: 20px;
+        background-color: #cecece;
+        position: relative;
+        @include border-radius(0);
+        border: none;
+    }
+    .ui-slider-range {
+        top: 0;
+        left: 0;
+        height: 100%;
+        background-color: $color-2nd;
+        @include border-radius(0);
+        border: none;
+    }
+    .ui-slider-handle {
+        display: inline-block;
+        top: 50%;
+        height: 18px;
+        width: 18px;
+        outline: none;
+        cursor: pointer;
+        background-color: $color-2nd;
+        border: 2px solid #fff;
+        @include transform(translateY(-50%));
+        @include border-radius(50%);
+    }
+    .ac-slider__meta {
+        display: block;
+        font-family: $font-2nd;
+        font-weight: 400;
+        font-style: italic;
+        font-size: 14px;
+        color: #898989;
+        span {
+            margin-left: 5px;
+            margin-right: 5px;
+        }
+    }
+    .ac-slider__filter {
+        padding: 5px 30px;
+        font-size: 12px;
+        line-height: 15px;
+    }
+}

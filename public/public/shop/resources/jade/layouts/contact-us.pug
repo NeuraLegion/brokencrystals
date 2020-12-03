@@ -1,0 +1,17 @@
+extends ../master
+
+block title
+    title Shoe - Contact Us
+
+block page_header
+
+    - var currentPage = 'grid'
+    include ../utils/mixins
+    include ../partials/header
+block page_content
+    include ../partials/contact-us
+    include ../partials/sections/subscribe
+
+block page_footer
+    include ../partials/footer
+

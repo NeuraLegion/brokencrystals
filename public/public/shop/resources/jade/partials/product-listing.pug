@@ -1,0 +1,18 @@
+block module
+    .ps-products-wrap.pt-80.pb-80
+        .ps-products(data-mh="product-listing")
+            include ../partials/modules/product-action
+            .ps-product__columns
+                - for (var i = 0; i < 10; i ++)
+                    .ps-product__column
+                        include modules/shoe
+                - for (var i = 0; i < 10; i ++)
+                    .ps-product__column
+                        include modules/shoe
+                - for (var i = 0; i < 10; i ++)
+                    .ps-product__column
+                        include modules/shoe
+            include ../partials/modules/product-action
+        .ps-sidebar(data-mh="product-listing")
+            include modules/product-sidebar
+

@@ -1,0 +1,95 @@
+@mixin prefix($property, $value) {
+    -webkit-#{$property}: #{$value};
+    -moz-#{$property}: #{$value};
+    -ms-#{$property}: #{$value};
+    // -o-#{$property}: #{$value};
+    #{$property}: #{$value};
+}
+
+@mixin user-select($vals: none) {
+    @include prefix("user-select", $vals);
+}
+
+@mixin border-radius($radius: 5px) {
+    @include prefix("border-radius", $radius);
+}
+
+@mixin box-shadow($vals) {
+    @include prefix("box-shadow", $vals);
+}
+
+@mixin backface($vals: hidden) {
+    @include prefix("backface-visibility", $vals);
+}
+
+@mixin perspective($vals) {
+    @include prefix("perspective", $vals);
+}
+
+@mixin max-area($index: 10) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: $index;
+}
+
+@mixin hidden() {
+    visibility: hidden;
+    opacity: 0
+}
+
+@mixin show() {
+    visibility: visible;
+    opacity: 1;
+}
+
+// Vertical centering.
+// Note: You should set parent element: transform-style: preserve-3d;
+// @see http://zerosixthree.se/vertical-align-anything-with-just-3-lines-of-css/
+@mixin vertical-align($position: absolute) {
+    position: $position;
+    top: 50%;
+    @include transform(translateY(-50%));
+}
+
+/// Horizontal, vertical or absolute centering.
+@mixin center($width: null, $height: null) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    @if not $width and not $height {
+        @include transform(translate(-50%, -50%));
+    }
+    @else if $width and $height {
+        width: $width;
+        height: $height;
+        margin-top: -($width / 2);
+        margin-left: -($height / 2);
+    }
+    @else if not $height {
+        margin-left: -($width / 2);
+        @include transform(translateY(-50%));
+        width: $width;
+    }
+    @else {
+        margin-top: -($height / 2);
+        @include transform(translateX(-50%));
+        height: $height;
+    }
+}
+
+@mixin font-general($font-family: arial, $font-size: 14, $font-weight: 400, $line-height: 1.5em) {
+    font-family: $font-family;
+    font-size: $font-size;
+    font-weight: $font-weight;
+    line-height: $line-height;
+}
+
+@mixin circle($width, $background) {
+    width: $width;
+    height: $width;
+    @include border-radius(50%);
+    background-color: $background;
+}

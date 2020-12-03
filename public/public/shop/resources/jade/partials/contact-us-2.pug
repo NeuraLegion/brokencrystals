@@ -1,0 +1,26 @@
+block module
+    include ../data/list
+
+    .ps-contact.ps-contact--2.ps-section.pt-80.pb-80
+        .ps-container
+            .row
+                +column({cols: [6, 6, 12, 12]})
+                    .ps-section__header.pt-50
+                        h2.ps-section__title(data-mask="Contact") - Get in touch
+                        form(action="do_action" method="post" class="ps-contact__form")
+                            .form-group
+                                label Name <sub>*</sub>
+                                input.form-control(type="text" placeholder="")
+                            .form-group
+                                label Email <sub>*</sub>
+                                input.form-control(type="email" placeholder="")
+                            .form-group.mb-25
+                                label Your Message <sub>*</sub>
+                                textarea.form-control(rows="6")
+                            .form-group
+                                button.ps-btn Send Message
+                                    i.ps-icon-next
+                +column({cols: [6, 6, 12, 12]})
+                    #contact-map(data-address="New York, NY" data-title="Shoe Store!" data-zoom="17")
+
+

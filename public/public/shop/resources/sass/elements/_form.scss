@@ -1,0 +1,332 @@
+.form-control {
+    outline: none;
+    height: 50px;
+    background-color: #e4e4e4;
+    border-color: #e4e4e4;
+    @include box-shadow(none);
+    @include border-radius(0);
+    padding: 0 20px;
+    &:focus {
+        outline: none;
+        @include box-shadow(none);
+        border-color: $color-1st;
+    }
+}
+
+textarea.form-control {
+    height: auto;
+    padding: 20px;
+}
+
+.ps-input--has-icon {
+    position: relative;
+    > i {
+        @include vertical-align();
+        right: 15px;
+    }
+}
+
+.ps-select {
+    > i {
+        @include vertical-align();
+        right: 15px;
+    }
+    > select {
+        @include appearance(none)
+    }
+}
+
+.ps-checkbox {
+    position: relative;
+    display: block;
+    > input {
+        position: absolute;
+        visibility: hidden;
+        @include box-sizing(border-box);
+    }
+    label {
+        position: relative;
+        padding-left: 30px;
+        font-family: $font-1st;
+        color: #737373;
+        font-weight: 400;
+        cursor: pointer;
+        &:before {
+            content: '';
+            display: block;
+            position: absolute;
+            left: 0;
+            top: 0px;
+            height: 20px;
+            width: 20px;
+            z-index: 10;
+            border: 2px solid #ccc;
+            @include transition(all .4s ease);
+            @include border-radius(3px);
+        }
+        &:after {
+            content: '';
+            display: block;
+            position: absolute;
+            top: 4px;
+            left: 7px;
+            width: 6px;
+            height: 10px;
+            border: 3px solid $color-2nd;
+            border-top: none;
+            border-left: none;
+            z-index: 5;
+            opacity: 0;
+            @include transform(rotate(0deg));
+            @include transition(all .4s ease);
+        }
+    }
+    input[type=checkbox]:checked ~ label {
+        &:after {
+            @include transform(rotate(45deg));
+            opacity: 1;
+        }
+    }
+    &--inline {
+        display: inline-block;
+    }
+}
+
+.ps-radio {
+    position: relative;
+    > input {
+        position: absolute;
+        visibility: hidden;
+        @include box-sizing(border-box);
+    }
+    label {
+        position: relative;
+        padding-left: 30px;
+        font-family: $font-1st;
+        color: #737373;
+        font-weight: 400;
+        cursor: pointer;
+        &:before {
+            content: '';
+            display: block;
+            position: absolute;
+            left: 0;
+            top: 0px;
+            height: 20px;
+            width: 20px;
+            z-index: 10;
+            border: 1px solid #ccc;
+            @include transition(all .4s ease);
+            @include border-radius(50%);
+        }
+        &:after {
+            content: '';
+            display: block;
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            width: 10px;
+            height: 10px;
+            @include border-radius(50%);
+            background-color: #aeaeae;
+            z-index: 5;
+            opacity: 0;
+            @include transform(scale(1.5, 1.5));
+            @include transition(all .6s ease);
+        }
+    }
+    input[type=radio]:checked ~ label {
+        &:after {
+            @include transform(scale(1, 1));
+            opacity: 1;
+        }
+    }
+    &--inline {
+        display: inline-block;
+        margin-right: 20px;
+    }
+}
+
+.ps-select {
+    button.btn {
+        padding: 0 20px;
+        height: 50px;
+        font-family: $font-1st;
+        font-size: 16px;
+        line-height: 1.4em;
+        color: #5b5b5b;
+        border: none;
+        text-transform: uppercase;
+        background-color: #e4e4e4 !important;
+        @include border-radius(3px);
+        outline: none !important;
+        @include box-shadow(none);
+        &:focus, &:active {
+            outline: none !important;
+            @include box-shadow(none);
+        }
+        &:after {
+            @include vertical-align();
+            right: 15px;
+            content: "\f107";
+            font-family: FontAwesome;
+        }
+    }
+    &.open {
+        button.btn {
+            outline: none;
+            @include box-shadow(none);
+            background-color: $color-1st !important;
+        }
+    }
+    .bs-caret {
+        display: none;
+    }
+}
+
+.ps-radio {
+    position: relative;
+    > input {
+        position: absolute;
+        visibility: hidden;
+        @include box-sizing(border-box);
+    }
+    label {
+        position: relative;
+        padding-left: 30px;
+        font-family: $font-1st;
+        color: #737373;
+        font-weight: 400;
+        cursor: pointer;
+        &:before {
+            content: '';
+            display: block;
+            position: absolute;
+            left: 0;
+            top: 0px;
+            height: 16px;
+            width: 16px;
+            z-index: 10;
+            background-color: #fff;
+            @include transition(all .4s ease);
+            @include border-radius(50%);
+        }
+        &:after {
+            content: '';
+            display: block;
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 8px;
+            height: 8px;
+            @include border-radius(50%);
+            background-color: $color-1st;
+            z-index: 10;
+            opacity: 0;
+            @include transform(scale(1.5, 1.5));
+            @include transition(all .6s ease);
+        }
+    }
+    input[type=radio]:checked ~ label {
+        &:after {
+            @include transform(scale(1, 1));
+            opacity: 1;
+        }
+    }
+    &--inline {
+        display: inline-block;
+        margin-right: 20px;
+    }
+}
+
+.ps-form--comment {
+    h3 {
+        margin-bottom: 30px;
+        font-size: 24px;
+        font-weight: 700;
+        text-align: left;
+        color: #313131;
+    }
+    .form-control {
+        @include border-radius(0);
+    }
+    textarea.form-control {
+        padding: 20px 15px;
+    }
+}
+
+.form-group--inline {
+    position: relative;
+    padding-left: 200px;
+    label {
+        @include vertical-align();
+        left: 0;
+        font-size: 16px;
+        line-height: 1.3em;
+        color: #5b5b5b;
+        font-weight: 400;
+    }
+    &.textarea {
+        label {
+            @include transform(translateY(50%));
+            top: 0;
+        }
+    }
+    @include media("<lg") {
+        padding-left: 0;
+        label {
+            position: static;
+            @include transform(translateY(0));
+        }
+        &.textarea {
+            label {
+                @include transform(translateY(0));
+            }
+        }
+    }
+}
+
+.form-group--number {
+    display: inline-block;
+    .input-group-btn {
+        display: inline-block;
+    }
+    input.form-control {
+        position: relative;
+        top: -2px;
+        margin-right: -4px;
+        display: inline-block;
+        width: 130px;
+        height: 40px;
+        text-align: center;
+        @include border-radius(0);
+        &:focus {
+            border-color: #f1f1f1;
+        }
+    }
+    button {
+        display: inline-block;
+        height: 40px;
+        width: 40px;
+        border: none;
+        background-color: #000;
+        font-family: $font-1st;
+        color: #fff;
+        font-size: 20px;
+        @include transition(all .4s ease);
+        &:hover {
+            background-color: $color-2nd;
+        }
+        &.minus {
+            float: left;
+        }
+    }
+}
+
+.ps-form--icon {
+    position: relative;
+    > i {
+        @include vertical-align();
+        right: 20px;
+    }
+}

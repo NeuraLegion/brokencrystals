@@ -1,0 +1,68 @@
+block module
+    .ps-owl-root.ps-section.pt-80.pb-40
+        .ps-container
+            .ps-section__header.mb-50
+                .row
+                    +column({cols: [9, 12, 12, 12]})
+                        h3.ps-section__title(data-mask='BEST SALE') - Top Sales
+                    +column({cols: [3, 12, 12, 12]})
+                        .ps-owl-actions
+                            a(href='#').ps-prev
+                                i.ps-icon-arrow-right
+                                | Prev
+                            a(href='#').ps-next
+                                | Next
+                                i.ps-icon-arrow-left
+
+            .ps-section__content
+                .ps-owl--colection.owl-slider(
+                data-owl-auto= 'true',
+                data-owl-loop= 'true',
+                data-owl-speed= '5000',
+                data-owl-gap= '30',
+                data-owl-nav= 'false',
+                data-owl-dots= 'false',
+                data-owl-item= '4',
+                data-owl-item-xs= '1',
+                data-owl-item-sm= '2',
+                data-owl-item-md= '2',
+                data-owl-item-lg= '4',
+                data-owl-duration= '1000',
+                data-owl-mousedrag= 'on'
+                )
+                    - for (var i = 0; i < 6; i ++)
+                        .ps-shoes--carousel
+                            .ps-shoe
+                                .ps-shoe__thumbnail
+                                    if (i % 2 == 0 || i == 1)
+                                        .ps-badge: span New
+                                    if (i == 1 )
+                                        .ps-badge.ps-badge--sale.ps-badge--2nd: span -35%
+                                    a(href='#').ps-shoe__favorite: i.ps-icon-heart
+                                    img(src="images/access/" + (i + 1) + ".jpg" alt="")
+                                .ps-shoe__content
+                                    .ps-shoe__variants
+                                        .ps-shoe__variant.normal
+                                            img(src="images/access/2.jpg" alt="")
+                                            img(src="images/access/3.jpg" alt="")
+                                            img(src="images/access/4.jpg" alt="")
+                                            img(src="images/access/5.jpg" alt="")
+                                        select.ps-rating.ps-shoe__rating
+                                            option(value='1') 1
+                                            option(value='1') 2
+                                            option(value='1') 3
+                                            option(value='1') 4
+                                            option(value='2') 5
+                                    .ps-shoe__detail
+                                        a(href='product-detai.html').ps-shoe__name Air Jordan 7 Retro
+                                        p.ps-shoe__categories
+                                            a(href='#') Men shoes
+                                            | ,
+                                            a(href='#')  Nike
+                                            | ,
+                                            a(href='#')  Jordan
+                                        span.ps-shoe__price
+                                            if (i == 1)
+                                                del £220
+                                            |  £ 120
+

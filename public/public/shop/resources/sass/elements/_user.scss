@@ -1,0 +1,171 @@
+.ps-user {
+    margin-bottom: 30px;
+    .ps-user__thumbnnail {
+        position: relative;
+        text-align: center;
+        &:before {
+            content: '';
+            position: absolute;
+            z-index: 10;
+            @include max-area();
+            @include hidden;
+            background-color: rgba(#fff, .6);
+            @include transition(all .4s ease);
+        }
+        &:hover {
+            &:before {
+                @include show;
+            }
+            .ps-user__social {
+                @include show;
+            }
+        }
+    }
+    .ps-user__social {
+        display: inline-block;
+        @include center();
+        z-index: 20;
+        @include hidden;
+        @include transition(all .4s ease);
+        li {
+            display: inline-block;
+            margin-right: 12px;
+            a {
+                font-size: 20px;
+                &:hover {
+                    color: $color-1st;
+                }
+            }
+        }
+    }
+    .ps-user__content {
+        padding-top: 15px;
+        text-align: center;
+        h3 {
+            margin-bottom: 0;
+            font-size: 18px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #1d1d1d;
+            line-height: 1.2em;
+        }
+        p {
+            font-size: 13px;
+            font-style: italic;
+            color: #999999;
+        }
+    }
+
+}
+
+.ps-all-user {
+    border-top: 1px solid #e5e5e5;
+}
+
+.ps-team {
+    h3 {
+        margin-bottom: 20px;
+        font-size: 30px;
+        font-weight: 600;
+        color: #1d1d1d;
+    }
+    .ps-team__listing {
+        li {
+            a {
+                display: block;
+                padding: 5px 0;
+                font-size: 18px;
+                font-weight: 500;
+                color: #9297a3;
+                line-height: 1.2em;
+                &:hover {
+                    color: $color-1st;
+                }
+            }
+        }
+    }
+    @include media("<lg") {
+        h3 {
+            font-size: 25px;
+        }
+        .ps-team__listing {
+            li {
+                a {
+                    font-size: 14px;
+                }
+            }
+        }
+    }
+    @include media("<sm") {
+        margin-bottom: 30px;
+    }
+}
+
+.ps-join-team {
+    h3 {
+        margin-bottom: 30px;
+        font-size: 30px;
+        font-weight: 600;
+        color: #1d1d1d;
+        line-height: 1.3em;
+    }
+    @include media("<lg") {
+        h3 {
+            font-size: 25px;
+        }
+    }
+    @include media("<md") {
+        margin-top: 30px;
+    }
+}
+
+.ps-author {
+    margin-bottom: 30px;
+    @include display(flex);
+    @include flex-flow(row nowrap);
+    .ps-author__thumbnail {
+        min-width: 100px;
+        width: 100px;
+        padding-right: 20px;
+        img {
+            @include border-radius(50%);
+        }
+    }
+    .ps-author__content {
+        background-color: #f4f4f4;
+        padding: 20px;
+        > header {
+            h4 {
+                font-family: $font-2nd;
+                font-size: 14px;
+                font-weight: 700;
+                color: #313131;
+            }
+            p {
+                margin-bottom: 0;
+                font-family: $font-1st;
+                font-size: 12px;
+                font-style: italic;
+                line-height: 2em;
+                color: #8d8d8d;
+            }
+        }
+        p {
+            font-family: $font-1st;
+            font-size: 14px;
+            line-height: 1.7em;
+            color: #8d8d8d;
+        }
+    }
+    @media (max-width: 640px) {
+        display: block;
+        .ps-author__thumbnail {
+            margin-bottom: 15px;
+            display: block;
+            max-width: 100px;
+            img {
+                max-width: 60px;
+            }
+        }
+    }
+}

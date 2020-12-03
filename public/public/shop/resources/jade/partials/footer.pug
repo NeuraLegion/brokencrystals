@@ -1,0 +1,67 @@
+block footer
+    .ps-footer.bg--cover(data-background='images/background/parallax.jpg')
+        .ps-footer__content
+            .ps-container
+                .row
+                    +column({cols: [3, 3, 12, 12]})
+                        aside.ps-widget--footer.ps-widget--info
+                            header
+                                a(href='index.html').ps-logo: img(src="images/logo-white.png" alt="")
+                                h3.ps-widget__title Address Office 1
+                            footer
+                                p: strong 460 West 34th Street, 15th floor, New York
+                                p Email: <a href='mailto:support@store.com'>support@store.com</a>
+                                p Phone: +323 32434 5334
+                                p Fax: ++323 32434 5333
+                    +column({cols: [3, 3, 12, 12]})
+                        aside.ps-widget--footer.ps-widget--info.second
+                            header
+                                h3.ps-widget__title Address Office 2
+                            footer
+                                p: strong PO Box 16122 Collins  Victoria 3000 Australia
+                                p Email: <a href='mailto:support@store.com'>support@store.com</a>
+                                p Phone: +323 32434 5334
+                                p Fax: ++323 32434 5333
+                    +column({cols: [2, 2, 4, 12]})
+                        aside.ps-widget--footer.ps-widget--link
+                            header
+                                h3.ps-widget__title Find Our store
+                            footer
+                               ul.ps-list--link
+                                   li: a(href='#') Coupon Code
+                                   li: a(href='#') SignUp For Email
+                                   li: a(href='#') Site Feedback
+                                   li: a(href='#') Careers
+                    +column({cols: [2, 2, 4, 12]})
+                        aside.ps-widget--footer.ps-widget--link
+                            header
+                                h3.ps-widget__title Get Help
+                            footer
+                               ul.ps-list--line
+                                   li: a(href='#') Order Status
+                                   li: a(href='#') Shipping and Delivery
+                                   li: a(href='#') Returns
+                                   li: a(href='#') Payment Options
+                                   li: a(href='#') Contact Us
+                    +column({cols: [2, 2, 4, 12]})
+                        aside.ps-widget--footer.ps-widget--link
+                            header
+                                h3.ps-widget__title Products
+                            footer
+                                ul.ps-list--line
+                                    li: a(href='#') Shoes
+                                    li: a(href='#') Clothing
+                                    li: a(href='#') Accessries
+                                    li: a(href='#') Football Boots
+
+        .ps-footer__copyright
+            .ps-container
+                .row
+                    +column({cols: [6, 6, 6, 12]})
+                        p &copy; <a href="#">NOUTHEMES</a>, Inc. All rights Resevered. Design by <a href="#"> Alena Studio</a>
+                    +column({cols: [6, 6, 6, 12]})
+                        ul.ps-social
+                            li: a(href='#'): i.fa.fa-facebook
+                            li: a(href='#'): i.fa.fa-google-plus
+                            li: a(href='#'): i.fa.fa-twitter
+                            li: a(href='#'): i.fa.fa-instagram

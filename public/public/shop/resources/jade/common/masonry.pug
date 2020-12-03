@@ -1,0 +1,21 @@
+block contentMasonry
+    section.section.section--masonry.pt-100.pb-100
+        .container
+            .section__header.text-center.mb-60
+                h3.section__title Masonry
+            .section__content
+                ul.masonry__filter.list--horizontal
+                    li.active
+                        a(href="#", data-filter="*") All
+                    li
+                        a(href="#" data-filter=".portfolio--html") HTML/CSS
+                    li
+                        a(href="#" data-filter=".portfolio--php") PHP
+                .masonry-wrapper(data-col-md="3" data-col-sm="2" data-col-xs='1' data-gap="30" data-radio="100%")
+                    .masonry
+                        .grid-sizer
+                        each item in data_masonry
+                            .grid-item(class=item.filter)
+                                .grid-item__content-wrapper
+                                    .portfolio-item
+                                        img(src=item.imagepath)

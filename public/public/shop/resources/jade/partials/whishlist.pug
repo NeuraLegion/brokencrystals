@@ -1,0 +1,32 @@
+.ps-content.pt-80.pb-80
+    .ps-container
+        .ps-cart-listing.ps-table--whishlist
+            table.table.ps-cart__table
+                thead
+                    tr
+                        th All Products
+                        th Price
+                        th View
+                        th
+                tbody
+                    - for (var i = 1; i < 4; i ++)
+                        tr
+                            td
+                                a(href='product-detail.html').ps-product__preview
+                                    img(src="images/product/cart-preview/"+i+".jpg" alt="").mr-15
+                                    if i == 1
+                                        |  air jordan One mid
+                                    else if i == 2
+                                        |  The Crusty Croissant
+                                    else
+                                        | The Rolling Pin
+                            td $150
+                            td: a(href='product-detail.html').ps-product-link View Product
+                            td: .ps-remove
+
+
+
+
+
+
+

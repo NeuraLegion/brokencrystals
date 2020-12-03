@@ -1,0 +1,33 @@
+.ps-cart
+    a(href='#').ps-cart__toggle
+        span
+            i 20
+        i.ps-icon-shopping-cart
+    .ps-cart__listing
+        .ps-cart__content
+            - for (var i = 0; i < 3; i ++)
+                .ps-cart-item
+                    a(href='#').ps-cart-item__close
+                    .ps-cart-item__thumbnail
+                        a(href='product-detail.html')
+                        img(src="images/cart-preview/"+(i+1)+".jpg" alt="")
+                    .ps-cart-item__content
+                        if i == 0
+                            a(href='product-detail.html').ps-cart-item__title Amazin’ Glazin’
+                        else if i == 1
+                            a(href='product-detail.html').ps-cart-item__title The Crusty Croissant
+                        else
+                            a(href='product-detail.html').ps-cart-item__title The Rolling Pin
+                        p
+                            span Quantity:
+                                i 12
+                            span Total:
+                                i £176
+        .ps-cart__total
+            p Number of items:
+                span 36
+            p Item Total:
+                span £528.00
+        .ps-cart__footer
+            a(href='cart.html').ps-btn Check out
+                i.ps-icon-arrow-left

@@ -1,0 +1,66 @@
+mixin makeMenu(dataList, classList)
+    ul(class= classList)
+        each item in dataList
+            if (item.subMenu)
+                li.menu-item(class=(currentPage == item.current) ? 'current-menu-item ' + item.extraClass : item.extraClass )
+                    a(href=item.url) #{item.text}
+                    +makeMenu(item.subMenu, item.subClass)
+            else if (item.mega)
+                li.menu-item(class=(currentPage == item.current) ? 'current-menu-item ' : item.extraClass)
+                    a(href=item.url) #{item.text}
+                    include ../common/mega-menu
+            else
+                li.menu-item(class=(currentPage == item.current) ? 'current-menu-item ' : item.extraClass)
+                    a(href=item.url) #{item.text}
+
+mixin column(args)
+    if (args)
+        - var cols = args.cols
+        if (Array.isArray(cols))
+            - var lg = typeof cols[0] != 'undefined' ? 'col-lg-'+ cols[0] : ''
+            - md = typeof cols[1] != 'undefined' ? 'col-md-'+ cols[1] : ''
+            - sm = typeof cols[2] != 'undefined' ? 'col-sm-'+ cols[2] : ''
+            - xs = typeof cols[3] != 'undefined' ? 'col-xs-'+ cols[3] : ''
+            - column = lg +' '+ md+' ' + sm+' ' + xs;
+
+        else
+            - var column = typeof cols != 'undefined' ? 'col-xs-'+ cols : ''
+        - var offsets = args.offsets
+        if (Array.isArray(offsets))
+            - var lgOffset = typeof offsets[0] != 'undefined' ? 'col-lg-offset-'+ offsets[0] : ''
+            - mdOffset = typeof offsets[1] != 'undefined' ? 'col-md-offset-'+ offsets[1] : ''
+            - smOffset = typeof offsets[2] != 'undefined' ? 'col-sm-offset-'+ offsets[2] : ''
+            - xsOffset = typeof offsets[3] != 'undefined' ? 'col-xs-offset-'+ offsets[3] : ''
+            - columnOffset = lgOffset+' ' + mdOffset+' ' + smOffset+' ' + xsOffset;
+        else
+            - var columnOffset = ''
+        div(class=(column + ' ' + columnOffset))
+            block
+    else
+        .col-lg-12.col-md-12.col-sm-12.col-xs-12
+            block
+
+mixin singleList(className, dataList)
+    ul(class=((className) ? className : ''))
+        each val in dataList
+            if (val.type == 'link')
+                li(class=(val.current == true) ? current : '')
+                    if (val.icon)
+                        i(class=val.icon)
+                        | #{val.text}
+                    else
+                        | #{val.text}
+            else if (val.type == 'image')
+                li
+                    +image(val.imagepath, "Image Alt")
+            else
+                li(class=(val.current == true) ? current : '')
+                    a(href=val.url)
+                        if (val.icon)
+                            i(class=val.icon)
+                            | #{val.text}
+                        else
+                            | #{val.text}
+
+
+

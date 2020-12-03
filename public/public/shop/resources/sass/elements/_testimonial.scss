@@ -1,0 +1,66 @@
+.ps-testimonial {
+    text-align: center;
+    padding-bottom: 50px;
+    .ps-testimonial__thumbnail {
+        margin-bottom: 35px;
+        position: relative;
+        max-width: 120px;
+        display: inline-block;
+        @include border-radius(50%);
+        border: 2px solid #fff;
+        img {
+            @include border-radius(50%);
+        }
+        i {
+            display: inline-block;
+            position: absolute;
+            width: 45px;
+            height: 45px;
+            bottom: 0;
+            right: 0;
+            background-color: $color-1st;
+            @include border-radius(50%);
+            border: 2px solid #fff;
+            &:before {
+                @include center();
+                font-size: 20px;
+                color: #fff;
+            }
+        }
+    }
+    > header {
+        margin-bottom: 30px;
+        .ps-rating {
+            margin-bottom: 15px;
+        }
+        p {
+            margin-bottom: 0;
+            font-family: $font-1st;
+            font-size: 18px;
+            text-align: center;
+            color: #fff;
+        }
+    }
+    > footer {
+        p {
+            font-size: 24px;
+            font-style: italic;
+            line-height: 1.88em;
+            color: #fff;
+        }
+    }
+    @include media("<sm") {
+        > header {
+            margin-bottom: 20px;
+            p {
+                font-size: 12px;
+            }
+        }
+        > footer {
+            p {
+                font-size: 14px;
+                line-height: 1.5em;
+            }
+        }
+    }
+}

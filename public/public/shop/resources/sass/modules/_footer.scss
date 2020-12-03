@@ -1,0 +1,49 @@
+.ps-footer {
+    position: relative;
+    &:before {
+        content: '';
+        @include max-area();
+        background-color: rgba(#000, .85);
+        z-index: 0;
+    }
+    &__content {
+        padding: 100px 0;
+    }
+    &__copyright {
+        padding: 40px 0;
+        p {
+            margin-bottom: 0;
+            font-family: $font-2nd;
+            font-size: 16px;
+            font-weight: 400;
+            color: #999999;
+            line-height: 25px;
+            letter-spacing: .05em;
+            a {
+                font-family: inherit;
+                font-weight: 700;
+                color: $color-1st;
+            }
+        }
+        border-top: 1px solid #b3b3b3;
+        .ps-social {
+            text-align: right;
+        }
+    }
+    @include media("<md") {
+        &__content {
+            padding-bottom: 10px;
+        }
+    }
+    @include media("<sm") {
+        &__copyright {
+            text-align: left;
+            p {
+                margin-bottom: 15px;
+            }
+            .ps-social {
+                display: inline-block;
+            }
+        }
+    }
+}

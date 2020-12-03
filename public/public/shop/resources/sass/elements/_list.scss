@@ -1,0 +1,232 @@
+.ps-social {
+    li {
+        display: inline-block;
+        margin-right: 20px;
+        a {
+            position: relative;
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            color: #999;
+            line-height: 25px;
+            > i.fa {
+                @include center();
+            }
+            &:hover {
+                color: $color-1st;
+            }
+        }
+    }
+}
+
+.ps-list--arrow {
+    a {
+        position: relative;
+        display: block;
+        padding-left: 15px;
+        font-family: $font-1st;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+        color: #626262;
+        &:before {
+            content: "\f105";
+            @include vertical-align();
+            left: 0;
+            font-family: FontAwesome;
+        }
+        &:hover {
+            color: $color-2nd;
+            .circle {
+                background-color: $color-2nd;
+                border-color: $color-2nd;
+                &:before {
+                    color: #fff;
+                    @include show;
+                }
+            }
+        }
+    }
+
+    li {
+        margin-bottom: 20px;
+        &.current {
+            a {
+                color: $color-2nd;
+            }
+            .circle {
+                background-color: $color-2nd;
+                &:before {
+                    @include show;
+                    color: #fff;
+                }
+            }
+        }
+    }
+}
+
+.ps-list--line {
+    li {
+        margin-bottom: 10px;
+    }
+    a {
+        position: relative;
+        display: block;
+        font-family: $font-1st;
+        font-size: 14px;
+        line-height: 30px;
+        color: #7d8997;
+        &:before {
+            @include vertical-align();
+            left: 0;
+            content: '';
+            width: 0;
+            height: 1px;
+            background-color: $color-1st;
+            @include transition(all .4s ease);
+        }
+        &:hover {
+            padding-left: 25px;
+            color: $color-1st;
+            &:before {
+                width: 20px;
+            }
+        }
+    }
+}
+
+.ps-list--number {
+    list-style: decimal;
+    li {
+        margin-bottom: 10px;
+    }
+}
+
+.ps-list--checked {
+    li {
+        margin-bottom: 20px;
+        a {
+            position: relative;
+            display: block;
+            padding-left: 30px;
+            font-size: 14px;
+            color: #313131;
+            &:before {
+                display: inline-block;
+                position: absolute;
+                top: 0;
+                left: 0;
+                content: '';
+                width: 20px;
+                height: 20px;
+                border: solid 1px #8d8d8d;
+                @include transition(all .4s ease);
+            }
+            &:after {
+                content: '';
+                display: inline-block;
+                position: absolute;
+                top: 4px;
+                left: 8px;
+                color: #fff;
+                width: 6px;
+                height: 10px;
+                border-right: 2px solid #fff;
+                border-bottom: 2px solid #fff;
+                @include transform(rotate(45deg));
+                @include hidden;
+            }
+            &:hover {
+                &:before {
+                    background-color: $color-1st;
+                    border-color: $color-1st;
+                }
+                &:after {
+                    @include show;
+                }
+            }
+        }
+        &.current {
+            a {
+                &:before {
+                    background-color: $color-1st;
+                    border-color: $color-1st;
+                }
+                &:after {
+                    @include show;
+                }
+            }
+        }
+    }
+}
+
+.ps-list--color {
+    li {
+        display: inline-block;
+        margin-right: 20px;
+        margin-bottom: 20px;
+        a {
+            display: inline-block;
+            @include circle(25px, #50cf96);
+        }
+        &:nth-child(2) {
+            a {
+                background-color: #d0011b;
+            }
+        }
+        &:nth-child(3) {
+            a {
+                background-color: #f8e81c;
+            }
+        }
+        &:nth-child(4) {
+            a {
+                background-color: #8b572a;
+            }
+        }
+        &:nth-child(5) {
+            a {
+                background-color: #bd0fe1;
+            }
+        }
+        &:nth-child(6) {
+            a {
+                background-color: #4990e2;
+            }
+        }
+        &:nth-child(7) {
+            a {
+                background-color: #000;
+            }
+        }
+        &:nth-child(8) {
+            a {
+                background-color: #000;
+            }
+        }
+        &:nth-child(9) {
+            a {
+                background-color: #cfb850;
+            }
+        }
+        &:nth-child(10) {
+            a {
+                background-color: #50cacf;
+            }
+        }
+        &:nth-child(11) {
+            a {
+                background-color: #e29849;
+            }
+        }
+        &:nth-child(12) {
+            a {
+                background-color: #50cf96;
+            }
+        }
+        &:nth-child(13) {
+            a {
+                background-color: #50cf96;
+            }
+        }
+    }
+}

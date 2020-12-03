@@ -1,0 +1,32 @@
+block module
+    .ps-section--features-product.ps-section.masonry-root.pt-100.pb-100
+        .ps-container
+            .ps-section__header.mb-50
+                h3.ps-section__title(data-mask='features') - Features Products
+                ul.ps-masonry__filter
+                  li.current: a(href='#' data-filter="*") All <sup>8</sup>
+                  li: a(href='#' data-filter=".nike") Nike <sup>1</sup>
+                  li: a(href='#' data-filter=".adidas") Adidas <sup>1</sup>
+                  li: a(href='#' data-filter=".men") Men <sup>1</sup>
+                  li: a(href='#' data-filter=".women") Women <sup>1</sup>
+                  li: a(href='#' data-filter=".kids") Kids <sup>4</sup>
+            .ps-section__content.pb-50
+                .masonry-wrapper(data-col-md="4" data-col-sm="2" data-col-xs='1' data-gap="30" data-radio='100%')
+                    .ps-masonry
+                        .grid-sizer
+                        - for (var i = 0; i < 8; i ++)
+                            if (i == 1)
+                                .grid-item.nike: .grid-item__content-wrapper
+                                    include ../modules/shoe
+                            else if (i == 2)
+                                .grid-item.adidas: .grid-item__content-wrapper
+                                    include ../modules/shoe
+                            else if (i == 4)
+                                .grid-item.men: .grid-item__content-wrapper
+                                    include ../modules/shoe
+                            else if (i == 5)
+                                .grid-item.women: .grid-item__content-wrapper
+                                    include ../modules/shoe
+                            else
+                                .grid-item.kids: .grid-item__content-wrapper
+                                    include ../modules/shoe

@@ -1,0 +1,16 @@
+block module
+    .ps-product-action
+        .ps-product__filter
+            select.ps-select.selectpicker
+                option(value="1") Shortby
+                option(value="2") Name
+                option(value="3") Price (Low to High)
+                option(value="3") Price (High to Low)
+        .ps-pagination
+            ul.pagination
+                li: a(href="#"): i.fa.fa-angle-left
+                li.active: a(href="#") 1
+                li: a(href="#") 2
+                li: a(href="#") 3
+                li: a(href="#") ...
+                li: a(href="#"): i.fa.fa-angle-right
