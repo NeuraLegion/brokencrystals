@@ -743,7 +743,7 @@ export const Main: FC = () => {
                   noster magna
                 </p>
                 <form action="" method="post">
-                  <input type="email" name="email" />
+                  <input type="input" name="input" />
                   <input type="submit" value="Subscribe" />
                 </form>
               </div>
