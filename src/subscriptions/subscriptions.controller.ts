@@ -1,6 +1,6 @@
 import { Controller, Post, Query } from '@nestjs/common';
 
-@Controller('subscriptions')
+@Controller('/api/subscriptions')
 export class SubscriptionsController {
   @Post()
   async subscribe(@Query('email') email: string): Promise<string> {

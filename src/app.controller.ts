@@ -5,7 +5,7 @@ import { AppService } from './app.service';
 import { AppModuleConfigProperties } from './app.module.config.properties';
 import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 
-@Controller()
+@Controller('/api')
 export class AppController {
   private log: Logger = new Logger(AppController.name);
 

@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { User } from 'src/model/user.entity';
 
 export class IUser {
   @ApiProperty()
@@ -9,4 +10,12 @@ export class IUser {
 
   @ApiProperty()
   lastName: string;
+
+  public static convertToApi(user: User): IUser {
+    return {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    };
+  }
 }

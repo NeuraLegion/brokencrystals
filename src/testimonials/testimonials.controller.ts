@@ -5,7 +5,7 @@ import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
 import { ITestimonial } from './api/ITestimonial';
 import { TestimonialsService } from './testimonials.service';
 
-@Controller('testimonials')
+@Controller('/api/testimonials')
 export class TestimonialsController {
   private log: Logger = new Logger(TestimonialsController.name);
 

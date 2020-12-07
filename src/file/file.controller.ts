@@ -12,7 +12,7 @@ import { ReadableStreamBuffer } from 'stream-buffers';
 import { Stream } from 'stream';
 import { Request, Response } from 'express';
 
-@Controller('file')
+@Controller('/api/file')
 export class FileController {
   private static readonly CONTENT_TYPE_HEADER = 'Content-Type';
   private log: Logger = new Logger(FileController.name);
