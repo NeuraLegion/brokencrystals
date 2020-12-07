@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Logger, Options } from '@nestjs/common';
+import { Controller, Get, Header, Logger, Options, RequestMapping } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppConfig } from './app.config.api';
 import { AppService } from './app.service';

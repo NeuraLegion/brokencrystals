@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { HeadersConfiguratorInterceptor } from './interceptors/headers.configurator.interceptor';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as session from 'express-session';
+import { Request, Response } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -19,6 +20,18 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, options);
   SwaggerModule.setup('swagger', app, document);
+
+  app.use(function (req: Request, res: Response, next) {
+    if (req.method === 'TRACE') {
+      if (req.header('Trace-Supported')) {
+        res.header('Trace-Supported', req.header('Trace-Supported'));
+      }
+      res.end();
+    }
+    else {
+      next();
+    }
+  });
 
   app.use(
     session({
