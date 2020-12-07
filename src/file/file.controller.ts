@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Header,
+  HttpException,
+  HttpStatus,
   Logger,
   Post,
   Put,
@@ -34,12 +36,22 @@ export class FileController {
     @Req() request: Request,
     @Res() response: Response,
   ): Promise<void> {
-    if (!contentType) {
-      contentType = 'application/octet-stream';
+    try {
+      if (!contentType) {
+        contentType = 'application/octet-stream';
+      }
+      response.header(FileController.CONTENT_TYPE_HEADER, contentType);
+      const file: Stream = await this.fileService.getFile(path);
+      file.pipe(response);
+    } catch (err) {
+      throw new HttpException(
+        {
+          error: err.message,
+          location: __filename,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
-    response.header(FileController.CONTENT_TYPE_HEADER, contentType);
-    const file: Stream = await this.fileService.getFile(path);
-    file.pipe(response);
   }
 
   @Put('upload')

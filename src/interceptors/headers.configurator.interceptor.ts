@@ -21,7 +21,7 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
   public static readonly NO_SEC_HEADERS_QUERY_PARAM: string = 'no-sec-headers';
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const req = context.switchToHttp().getRequest() as Request;
+    const req = context.switchToHttp().getRequest() as Request;    
 
     //force session cookie
     req.session['visits'] = req.session['visits']

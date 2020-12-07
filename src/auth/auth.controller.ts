@@ -6,6 +6,7 @@ import {
   Logger,
   Post,
 } from '@nestjs/common';
+import { User } from 'src/model/user.entity';
 import { LdapQueryHandler } from 'src/users/ldap.query.handler';
 import { UsersService } from 'src/users/users.service';
 import { LoginRequest } from './api/login.request';
@@ -20,9 +21,27 @@ export class AuthController {
 
   @Post()
   async login(@Body() req: LoginRequest): Promise<LoginResponse> {
-    let user = await this.usersService.findByEmail(req.user);
+    let user: User;
+    try {
+      user = await this.usersService.findByEmail(req.user);
+    } catch (err) {
+      throw new HttpException(
+        {
+          error: err.message,
+          location: __filename,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+
     if (!user || user.password !== (await hashPassword(req.password))) {
-      throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
+      throw new HttpException(
+        {
+          error: 'Invalid credentials',
+          location: __filename,
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
     }
     return {
       email: user.email,

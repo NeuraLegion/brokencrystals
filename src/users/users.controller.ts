@@ -41,8 +41,18 @@ export class UsersController {
     type: IUser,
   })
   async getUser(@Param('email') email: string): Promise<IUser> {
-    this.log.debug('Called getUser');
-    return IUser.convertToApi(await this.usersService.findByEmail(email));
+    try {
+      this.log.debug('Called getUser');
+      return IUser.convertToApi(await this.usersService.findByEmail(email));
+    } catch (err) {
+      throw new HttpException(
+        {
+          error: err.message,
+          location: __filename,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Get('/one/:email/photo')
@@ -57,21 +67,37 @@ export class UsersController {
     this.log.debug('Called getUserPhoto');
     let user = await this.usersService.findByEmail(email);
     if (!user) {
-      throw new HttpException('Could not file user', HttpStatus.NOT_FOUND);
+      throw new HttpException(
+        {
+          error: 'Could not file user',
+          location: __filename,
+        },
+        HttpStatus.NOT_FOUND,
+      );
     }
 
-    if (!user.photo) {
-      response.status(HttpStatus.NO_CONTENT).end();
-      return;
-    }
+    try {
+      if (!user.photo) {
+        response.status(HttpStatus.NO_CONTENT).end();
+        return;
+      }
 
-    const readableInstanceStream = new Readable({
-      read() {
-        this.push(user.photo);
-        this.push(null);
-      },
-    });
-    readableInstanceStream.pipe(response);
+      const readableInstanceStream = new Readable({
+        read() {
+          this.push(user.photo);
+          this.push(null);
+        },
+      });
+      readableInstanceStream.pipe(response);
+    } catch (err) {
+      throw new HttpException(
+        {
+          error: err.message,
+          location: __filename,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Get('/ldap')
@@ -84,7 +110,13 @@ export class UsersController {
       }
       return IUser.convertToApi(user);
     } catch (err) {
-      throw new HttpException(err.message, HttpStatus.INTERNAL_SERVER_ERROR);
+      throw new HttpException(
+        {
+          error: err.message,
+          location: __filename,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -93,21 +125,40 @@ export class UsersController {
     type: IUser,
   })
   async createUser(@Body() user: CreateUserRequest): Promise<IUser> {
-    this.log.debug('Called createUser');
-    return IUser.convertToApi(
-      await this.usersService.createUser(
-        user.email,
-        user.firstName,
-        user.lastName,
-        user.password,
-      ),
-    );
+    try {
+      this.log.debug('Called createUser');
+      return IUser.convertToApi(
+        await this.usersService.createUser(
+          user.email,
+          user.firstName,
+          user.lastName,
+          user.password,
+        ),
+      );
+    } catch (err) {
+      throw new HttpException(
+        {
+          error: err.message,
+          location: __filename,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Put('/one/:email/photo')
   @UseInterceptors(AnyFilesInterceptor())
   async uploadFile(@Param('email') email: string, @UploadedFiles() files) {
-    console.log(files);
-    await this.usersService.updatePhoto(email, files[0].buffer);
+    try {
+      await this.usersService.updatePhoto(email, files[0].buffer);
+    } catch (err) {
+      throw new HttpException(
+        {
+          error: err.message,
+          location: __filename,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

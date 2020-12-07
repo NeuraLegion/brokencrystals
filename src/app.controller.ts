@@ -16,7 +16,7 @@ export class AppController {
 
   @Get()
   getHello(): string {
-    return this.appService.getHello();
+    return __filename; //this.appService.getHello();
   }
 
   @Options()
