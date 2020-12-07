@@ -3,8 +3,10 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
-import { Request } from 'express';
+import { Request, response } from 'express';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
@@ -19,6 +21,8 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
     'Content-Security-Policy';
   //query param backdoor to bypass security headers setting
   public static readonly NO_SEC_HEADERS_QUERY_PARAM: string = 'no-sec-headers';
+  //counter cookie name
+  public static readonly COUNTER_COOKIE_NAME = 'bc-calls-counter';
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const req = context.switchToHttp().getRequest() as Request;    
@@ -27,13 +31,35 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
     req.session['visits'] = req.session['visits']
       ? req.session['visits'] + 1
       : 1;
+    
+    
+      let cookies: string[] = req.headers.cookie.split(' ;=');
+      if (cookies && cookies.length > 0) {
+        try {
+          let cookie = cookies.reverse().find((str)=>str.startsWith(HeadersConfiguratorInterceptor.COUNTER_COOKIE_NAME));
+          if (cookie) {
+            let counter = cookie.split('=');
+            if (isNaN(+counter[2])) {
+              throw new Error('Invalid counter value');
+            }
+          }
+        }
+        catch (err) {
+          throw new HttpException({
+            error: err.message,
+            location: __filename
+          }, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+      }
+
 
     return next.handle().pipe(
       tap(() => {
+        const res = context.switchToHttp().getResponse();
+        res.cookie('bc-calls-counter', req.session['visits']);
         if (
           !req.query[HeadersConfiguratorInterceptor.NO_SEC_HEADERS_QUERY_PARAM]
         ) {
-          const res = context.switchToHttp().getResponse();
           res.header(HeadersConfiguratorInterceptor.XSS_PROTECTION_HEADER, '0');
           res.header(
             HeadersConfiguratorInterceptor.STRICT_TRANSPORT_SECURITY_HEADER,
