@@ -11,12 +11,12 @@ import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    OrmModule,
     AuthModule,
     UsersModule,
     FileModule,
     SubscriptionsModule,
     TestimonialsModule,
-    OrmModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),

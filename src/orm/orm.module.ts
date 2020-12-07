@@ -3,6 +3,7 @@ import { OrmConfigFactory } from './orm.config.factory';
 import { Module } from '@nestjs/common';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { User } from 'src/model/user.entity';
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         new OrmConfigFactory(configService).buildConfig(),
     }),
     MikroOrmModule.forFeature({
-      entities: [Testimonial],
+      entities: [Testimonial, User],
     }),
   ],
   exports: [MikroOrmModule],

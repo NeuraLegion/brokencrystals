@@ -6,6 +6,14 @@ import { hashPassword } from 'src/auth/credentials.utils';
 
 @Injectable()
 export class UsersService {
+  public static readonly LDAP_SEARCH_QUERY = (email) =>
+    `(&(objectClass=person)(objectClass=user)(email=${email}))`;
+  public static readonly LDAP_ERROR_RESPONSE = `
+      Lookup failed: javax.naming.NamingException: 
+      [LDAP: error code 1 - 000004DC: Lda pErr: DSID-0C0906DC, comment: context not found., data 0, v1db1 ]; 
+      remaining name: 'OU=Users,O=BrokenCrystals'
+    `;
+
   private log: Logger = new Logger(UsersService.name);
 
   constructor(
@@ -35,7 +43,7 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<User> {
-    this.log.debug(`Called findAll`);
+    this.log.debug(`Called findByEmail ${email}`);
     return this.usersRepository.findOne({ email });
   }
 }
