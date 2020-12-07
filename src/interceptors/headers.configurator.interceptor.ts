@@ -33,13 +33,15 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
       : 1;
     
     
-      let cookies: string[] = req.headers.cookie.split(' ;=');
+      let cookies: string[] = req.headers.cookie.split('; ');
       if (cookies && cookies.length > 0) {
         try {
           let cookie = cookies.reverse().find((str)=>str.startsWith(HeadersConfiguratorInterceptor.COUNTER_COOKIE_NAME));
+          console.log(cookie);
           if (cookie) {
             let counter = cookie.split('=');
-            if (isNaN(+counter[2])) {
+            console.log(counter);
+            if (isNaN(+counter[1])) {
               throw new Error('Invalid counter value');
             }
           }
