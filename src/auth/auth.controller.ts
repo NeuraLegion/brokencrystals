@@ -11,7 +11,7 @@ import { LdapQueryHandler } from 'src/users/ldap.query.handler';
 import { UsersService } from 'src/users/users.service';
 import { LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';
-import { hashPassword } from './credentials.utils';
+import { passwordMatches } from './credentials.utils';
 
 @Controller('/api/auth')
 export class AuthController {
@@ -33,8 +33,7 @@ export class AuthController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
-
-    if (!user || user.password !== (await hashPassword(req.password))) {
+    if (!user || !(await passwordMatches(req.password, user.password))) {
       throw new HttpException(
         {
           error: 'Invalid credentials',

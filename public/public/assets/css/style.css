@@ -1650,3 +1650,16 @@ section {
   color: #fff;
   text-decoration: none;
 }
+
+.submit-testimonial {
+  background: #00a9b8;
+  border: 0;
+  padding: 10px 24px;
+  color: #fff;
+  transition: 0.4s;
+  border-radius: 5px;
+}
+
+.dangerouslySetInnerHTML {
+  color: #ff0000;
+}

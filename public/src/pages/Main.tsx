@@ -1,4 +1,20 @@
-import React, { FC, useState } from 'react';
+import React, {
+  FC,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import {
+  getTestimonials,
+  postSubscriptions,
+  postTestimonials,
+} from '../api/httpClient';
+import OwlCarousel from 'react-owl-carousel';
+import 'owl.carousel/dist/assets/owl.carousel.css';
+import 'owl.carousel/dist/assets/owl.theme.default.css';
+import { Testimonial } from '../interfaces/Testimonial';
 
 const products = [
   {
@@ -57,8 +73,92 @@ const products = [
   },
 ];
 
+const defaultTestimonial: Testimonial = {
+  name: '',
+  title: '',
+  message: '',
+};
+
 export const Main: FC = () => {
   const [user] = useState({ username: undefined });
+  const [testimonials, setTestimonials] = useState<Array<Testimonial>>([]);
+  const [newTestimonial, setNewTestimonial] = useState<Testimonial>(
+    defaultTestimonial,
+  );
+
+  const [subscriptions, setSubscriptions] = useState<string>('');
+  const [subscriptionsResponse, setSubscriptionsResponse] = useState<any>();
+
+  useEffect(() => {
+    getTestimonials().then((data) => setTestimonials(data));
+  }, []);
+
+  const sendTestimonial = async (e: FormEvent) => {
+    e.preventDefault();
+
+    await postTestimonials(newTestimonial)
+      .then((data) => {
+        setTestimonials([...testimonials, data]);
+        setNewTestimonial(defaultTestimonial);
+        console.log('Testimonial', data, testimonials);
+      })
+      .catch((response) => {
+        console.log('error', response);
+      });
+  };
+
+  const sendSubscription = (e: FormEvent) => {
+    e.preventDefault();
+
+    postSubscriptions(subscriptions)
+      .then((data) => {
+        console.log('Subscribed with email', data);
+        setSubscriptionsResponse(data);
+      })
+      .catch(({ response }) => {
+        const { error } = response.data;
+        console.log('error', error);
+      });
+  };
+
+  const memoizedOwlCarousel = useMemo(
+    () => (
+      <OwlCarousel
+        className="owl-carousel"
+        dots
+        responsive={{
+          0: {
+            items: 1,
+          },
+          768: {
+            items: 2,
+          },
+          900: {
+            items: 3,
+          },
+        }}
+      >
+        {testimonials.map((item, index) => (
+          <div className="testimonial-item" key={item.name + index}>
+            {console.log('update', item)}
+            <p>
+              <i className="bx bxs-quote-alt-left quote-icon-left" />
+              <span className='dangerouslySetInnerHTML' dangerouslySetInnerHTML={{ __html: item.message }} />
+              <i className="bx bxs-quote-alt-right quote-icon-right" />
+            </p>
+            <img
+              src="assets/img/testimonials/testimonials-1.jpg"
+              className="testimonial-img"
+              alt=""
+            />
+            <h3 className='dangerouslySetInnerHTML' dangerouslySetInnerHTML={{ __html: item.name }} />
+            <h4 className='dangerouslySetInnerHTML' dangerouslySetInnerHTML={{ __html: item.title }} />
+          </div>
+        ))}
+      </OwlCarousel>
+    ),
+    [testimonials],
+  );
 
   return (
     <>
@@ -272,116 +372,273 @@ export const Main: FC = () => {
                 Quia fugiat sit in iste officiis commodi quidem hic quas.
               </p>
             </div>
+            {testimonials && testimonials.length ? memoizedOwlCarousel : null}
 
-            <div className="owl-carousel testimonials-carousel">
-              <div className="testimonial-item">
-                <p>
-                  <i className="bx bxs-quote-alt-left quote-icon-left" />
-                  Proin iaculis purus consequat sem cure digni ssim donec
-                  porttitora entum suscipit rhoncus. Accusantium quam, ultricies
-                  eget id, aliquam eget nibh et. Maecen aliquam, risus at
-                  semper.
-                  <i className="bx bxs-quote-alt-right quote-icon-right" />
-                </p>
-                <img
-                  src="assets/img/testimonials/testimonials-1.jpg"
-                  className="testimonial-img"
-                  alt=""
-                />
-                <h3>Saul Goodman</h3>
-                <h4>Ceo &amp; Founder</h4>
-              </div>
+            {/*{testimonials.length ? (*/}
+            {/*  <OwlCarousel*/}
+            {/*    className="owl-carousel"*/}
+            {/*    dots*/}
+            {/*    responsive={{*/}
+            {/*      0: {*/}
+            {/*        items: 1,*/}
+            {/*      },*/}
+            {/*      768: {*/}
+            {/*        items: 2,*/}
+            {/*      },*/}
+            {/*      900: {*/}
+            {/*        items: 3,*/}
+            {/*      },*/}
+            {/*    }}*/}
+            {/*  >*/}
+            {/*    {testimonialsItems(testimonials)}*/}
 
-              <div className="testimonial-item">
-                <p>
-                  <i className="bx bxs-quote-alt-left quote-icon-left" />
-                  Export tempor illum tamen malis malis eram quae irure esse
-                  labore quem cillum quid cillum eram malis quorum velit fore
-                  eram velit sunt aliqua noster fugiat irure amet legam anim
-                  culpa.
-                  <i className="bx bxs-quote-alt-right quote-icon-right" />
-                </p>
-                <img
-                  src="assets/img/testimonials/testimonials-2.jpg"
-                  className="testimonial-img"
-                  alt=""
-                />
-                <h3>Sara Wilsson</h3>
-                <h4>Designer</h4>
-              </div>
+            {/*    /!*<div className="testimonial-item">*!/*/}
+            {/*    /!*  <p>*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-left quote-icon-left" />*!/*/}
+            {/*    /!*    Proin iaculis purus consequat sem cure digni ssim donec*!/*/}
+            {/*    /!*    porttitora entum suscipit rhoncus. Accusantium quam,*!/*/}
+            {/*    /!*    ultricies eget id, aliquam eget nibh et. Maecen aliquam,*!/*/}
+            {/*    /!*    risus at semper.*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-right quote-icon-right" />*!/*/}
+            {/*    /!*  </p>*!/*/}
+            {/*    /!*  <img*!/*/}
+            {/*    /!*    src="assets/img/testimonials/testimonials-1.jpg"*!/*/}
+            {/*    /!*    className="testimonial-img"*!/*/}
+            {/*    /!*    alt=""*!/*/}
+            {/*    /!*  />*!/*/}
+            {/*    /!*  <h3>Saul Goodman</h3>*!/*/}
+            {/*    /!*  <h4>Ceo &amp; Founder</h4>*!/*/}
+            {/*    /!*</div>*!/*/}
 
-              <div className="testimonial-item">
-                <p>
-                  <i className="bx bxs-quote-alt-left quote-icon-left" />
-                  Enim nisi quem export duis labore cillum quae magna enim sint
-                  quorum nulla quem veniam duis minim tempor labore quem eram
-                  duis noster aute amet eram fore quis sint minim.
-                  <i className="bx bxs-quote-alt-right quote-icon-right" />
-                </p>
-                <img
-                  src="assets/img/testimonials/testimonials-3.jpg"
-                  className="testimonial-img"
-                  alt=""
-                />
-                <h3>Jena Karlis</h3>
-                <h4>Store Owner</h4>
-              </div>
+            {/*    /!*<div className="testimonial-item">*!/*/}
+            {/*    /!*  <p>*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-left quote-icon-left" />*!/*/}
+            {/*    /!*    Export tempor illum tamen malis malis eram quae irure esse*!/*/}
+            {/*    /!*    labore quem cillum quid cillum eram malis quorum velit fore*!/*/}
+            {/*    /!*    eram velit sunt aliqua noster fugiat irure amet legam anim*!/*/}
+            {/*    /!*    culpa.*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-right quote-icon-right" />*!/*/}
+            {/*    /!*  </p>*!/*/}
+            {/*    /!*  <img*!/*/}
+            {/*    /!*    src="assets/img/testimonials/testimonials-2.jpg"*!/*/}
+            {/*    /!*    className="testimonial-img"*!/*/}
+            {/*    /!*    alt=""*!/*/}
+            {/*    /!*  />*!/*/}
+            {/*    /!*  <h3>Sara Wilsson</h3>*!/*/}
+            {/*    /!*  <h4>Designer</h4>*!/*/}
+            {/*    /!*</div>*!/*/}
 
-              <div className="testimonial-item">
-                <p>
-                  <i className="bx bxs-quote-alt-left quote-icon-left" />
-                  Fugiat enim eram quae cillum dolore dolor amet nulla culpa
-                  multos export minim fugiat minim velit minim dolor enim duis
-                  veniam ipsum anim magna sunt elit fore quem dolore labore.
-                  <i className="bx bxs-quote-alt-right quote-icon-right" />
-                </p>
-                <img
-                  src="assets/img/testimonials/testimonials-4.jpg"
-                  className="testimonial-img"
-                  alt=""
-                />
-                <h3>Matt Brandon</h3>
-                <h4>Freelancer</h4>
-              </div>
+            {/*    /!*<div className="testimonial-item">*!/*/}
+            {/*    /!*  <p>*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-left quote-icon-left" />*!/*/}
+            {/*    /!*    Enim nisi quem export duis labore cillum quae magna enim*!/*/}
+            {/*    /!*    sint quorum nulla quem veniam duis minim tempor labore quem*!/*/}
+            {/*    /!*    eram duis noster aute amet eram fore quis sint minim.*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-right quote-icon-right" />*!/*/}
+            {/*    /!*  </p>*!/*/}
+            {/*    /!*  <img*!/*/}
+            {/*    /!*    src="assets/img/testimonials/testimonials-3.jpg"*!/*/}
+            {/*    /!*    className="testimonial-img"*!/*/}
+            {/*    /!*    alt=""*!/*/}
+            {/*    /!*  />*!/*/}
+            {/*    /!*  <h3>Jena Karlis</h3>*!/*/}
+            {/*    /!*  <h4>Store Owner</h4>*!/*/}
+            {/*    /!*</div>*!/*/}
 
-              <div className="testimonial-item">
-                <p>
-                  <i className="bx bxs-quote-alt-left quote-icon-left" />
-                  Quis quorum aliqua sint quem legam fore sunt eram irure aliqua
-                  veniam tempor noster veniam enim culpa labore duis sunt culpa
-                  nulla illum cillum fugiat legam esse veniam culpa.
-                  <i className="bx bxs-quote-alt-right quote-icon-right" />
-                </p>
-                <img
-                  src="assets/img/testimonials/testimonials-5.jpg"
-                  className="testimonial-img"
-                  alt=""
-                />
-                <h3>John Larson</h3>
-                <h4>Entrepreneur</h4>
-              </div>
-            </div>
+            {/*    /!*<div className="testimonial-item">*!/*/}
+            {/*    /!*  <p>*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-left quote-icon-left" />*!/*/}
+            {/*    /!*    Fugiat enim eram quae cillum dolore dolor amet nulla culpa*!/*/}
+            {/*    /!*    multos export minim fugiat minim velit minim dolor enim duis*!/*/}
+            {/*    /!*    veniam ipsum anim magna sunt elit fore quem dolore labore.*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-right quote-icon-right" />*!/*/}
+            {/*    /!*  </p>*!/*/}
+            {/*    /!*  <img*!/*/}
+            {/*    /!*    src="assets/img/testimonials/testimonials-4.jpg"*!/*/}
+            {/*    /!*    className="testimonial-img"*!/*/}
+            {/*    /!*    alt=""*!/*/}
+            {/*    /!*  />*!/*/}
+            {/*    /!*  <h3>Matt Brandon</h3>*!/*/}
+            {/*    /!*  <h4>Freelancer</h4>*!/*/}
+            {/*    /!*</div>*!/*/}
+
+            {/*    /!*<div className="testimonial-item">*!/*/}
+            {/*    /!*  <p>*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-left quote-icon-left" />*!/*/}
+            {/*    /!*    Quis quorum aliqua sint quem legam fore sunt eram irure*!/*/}
+            {/*    /!*    aliqua veniam tempor noster veniam enim culpa labore duis*!/*/}
+            {/*    /!*    sunt culpa nulla illum cillum fugiat legam esse veniam*!/*/}
+            {/*    /!*    culpa.*!/*/}
+            {/*    /!*    <i className="bx bxs-quote-alt-right quote-icon-right" />*!/*/}
+            {/*    /!*  </p>*!/*/}
+            {/*    /!*  <img*!/*/}
+            {/*    /!*    src="assets/img/testimonials/testimonials-5.jpg"*!/*/}
+            {/*    /!*    className="testimonial-img"*!/*/}
+            {/*    /!*    alt=""*!/*/}
+            {/*    /!*  />*!/*/}
+            {/*    /!*  <h3>John Larson</h3>*!/*/}
+            {/*    /!*  <h4>Entrepreneur</h4>*!/*/}
+            {/*    /!*</div>*!/*/}
+            {/*  </OwlCarousel>*/}
+            {/*) : null}*/}
+
+            {/*<div className="owl-carousel testimonials-carousel">*/}
+            {/*  <div className="testimonial-item">*/}
+            {/*    <p>*/}
+            {/*      <i className="bx bxs-quote-alt-left quote-icon-left" />*/}
+            {/*      Proin iaculis purus consequat sem cure digni ssim donec*/}
+            {/*      porttitora entum suscipit rhoncus. Accusantium quam, ultricies*/}
+            {/*      eget id, aliquam eget nibh et. Maecen aliquam, risus at*/}
+            {/*      semper.*/}
+            {/*      <i className="bx bxs-quote-alt-right quote-icon-right" />*/}
+            {/*    </p>*/}
+            {/*    <img*/}
+            {/*      src="assets/img/testimonials/testimonials-1.jpg"*/}
+            {/*      className="testimonial-img"*/}
+            {/*      alt=""*/}
+            {/*    />*/}
+            {/*    <h3>Saul Goodman</h3>*/}
+            {/*    <h4>Ceo &amp; Founder</h4>*/}
+            {/*  </div>*/}
+
+            {/*  <div className="testimonial-item">*/}
+            {/*    <p>*/}
+            {/*      <i className="bx bxs-quote-alt-left quote-icon-left" />*/}
+            {/*      Export tempor illum tamen malis malis eram quae irure esse*/}
+            {/*      labore quem cillum quid cillum eram malis quorum velit fore*/}
+            {/*      eram velit sunt aliqua noster fugiat irure amet legam anim*/}
+            {/*      culpa.*/}
+            {/*      <i className="bx bxs-quote-alt-right quote-icon-right" />*/}
+            {/*    </p>*/}
+            {/*    <img*/}
+            {/*      src="assets/img/testimonials/testimonials-2.jpg"*/}
+            {/*      className="testimonial-img"*/}
+            {/*      alt=""*/}
+            {/*    />*/}
+            {/*    <h3>Sara Wilsson</h3>*/}
+            {/*    <h4>Designer</h4>*/}
+            {/*  </div>*/}
+
+            {/*  <div className="testimonial-item">*/}
+            {/*    <p>*/}
+            {/*      <i className="bx bxs-quote-alt-left quote-icon-left" />*/}
+            {/*      Enim nisi quem export duis labore cillum quae magna enim sint*/}
+            {/*      quorum nulla quem veniam duis minim tempor labore quem eram*/}
+            {/*      duis noster aute amet eram fore quis sint minim.*/}
+            {/*      <i className="bx bxs-quote-alt-right quote-icon-right" />*/}
+            {/*    </p>*/}
+            {/*    <img*/}
+            {/*      src="assets/img/testimonials/testimonials-3.jpg"*/}
+            {/*      className="testimonial-img"*/}
+            {/*      alt=""*/}
+            {/*    />*/}
+            {/*    <h3>Jena Karlis</h3>*/}
+            {/*    <h4>Store Owner</h4>*/}
+            {/*  </div>*/}
+
+            {/*  <div className="testimonial-item">*/}
+            {/*    <p>*/}
+            {/*      <i className="bx bxs-quote-alt-left quote-icon-left" />*/}
+            {/*      Fugiat enim eram quae cillum dolore dolor amet nulla culpa*/}
+            {/*      multos export minim fugiat minim velit minim dolor enim duis*/}
+            {/*      veniam ipsum anim magna sunt elit fore quem dolore labore.*/}
+            {/*      <i className="bx bxs-quote-alt-right quote-icon-right" />*/}
+            {/*    </p>*/}
+            {/*    <img*/}
+            {/*      src="assets/img/testimonials/testimonials-4.jpg"*/}
+            {/*      className="testimonial-img"*/}
+            {/*      alt=""*/}
+            {/*    />*/}
+            {/*    <h3>Matt Brandon</h3>*/}
+            {/*    <h4>Freelancer</h4>*/}
+            {/*  </div>*/}
+
+            {/*  <div className="testimonial-item">*/}
+            {/*    <p>*/}
+            {/*      <i className="bx bxs-quote-alt-left quote-icon-left" />*/}
+            {/*      Quis quorum aliqua sint quem legam fore sunt eram irure aliqua*/}
+            {/*      veniam tempor noster veniam enim culpa labore duis sunt culpa*/}
+            {/*      nulla illum cillum fugiat legam esse veniam culpa.*/}
+            {/*      <i className="bx bxs-quote-alt-right quote-icon-right" />*/}
+            {/*    </p>*/}
+            {/*    <img*/}
+            {/*      src="assets/img/testimonials/testimonials-5.jpg"*/}
+            {/*      className="testimonial-img"*/}
+            {/*      alt=""*/}
+            {/*    />*/}
+            {/*    <h3>John Larson</h3>*/}
+            {/*    <h4>Entrepreneur</h4>*/}
+            {/*  </div>*/}
+            {/*</div>*/}
           </div>
 
-          {/*<div className="container mt-5" data-aos="fade-up">*/}
-          {/*  <form method="post" role="form">*/}
-          {/*    <div className="form-row">*/}
-          {/*      <div className="col-md-6 form-group">*/}
-          {/*        <input type="text" name="name" className="form-control" id="name" placeholder="Your Name" data-rule="minlen:4" data-msg="Please enter at least 4 chars" />*/}
-          {/*        <div className="validate"/>*/}
-          {/*      </div>*/}
-          {/*      <div className="col-md-6 form-group">*/}
-          {/*        <input type="text" className="form-control" name="job-title" id="job-title" placeholder="Your Title" data-rule="minlen:4" data-msg="Please enter at least 4 chars" />*/}
-          {/*        <div className="validate"/>*/}
-          {/*      </div>*/}
-          {/*    </div>*/}
-          {/*    <div className="form-group">*/}
-          {/*      <textarea className="form-control" name="testimonial" rows={5} data-rule="required" data-msg="Please write something for us" placeholder="Testimonial"/>*/}
-          {/*      <div className="validate"/>*/}
-          {/*    </div>*/}
-          {/*    <div className="text-center"><button className="btn-primary" type="submit">Send Testimonial</button></div>*/}
-          {/*  </form>*/}
-          {/*</div>*/}
+          <div className="container mt-5" data-aos="fade-up">
+            <form role="form" onSubmit={sendTestimonial}>
+              <div className="form-row">
+                <div className="col-md-6 form-group">
+                  <input
+                    type="text"
+                    name="name"
+                    className="form-control"
+                    id="name"
+                    placeholder="Your Name"
+                    data-rule="minlen:4"
+                    data-msg="Please enter at least 4 chars"
+                    value={newTestimonial.name}
+                    onInput={(e) =>
+                      setNewTestimonial({
+                        ...newTestimonial,
+                        name: e.currentTarget.value,
+                      })
+                    }
+                  />
+                  <div className="validate" />
+                </div>
+                <div className="col-md-6 form-group">
+                  <input
+                    type="text"
+                    className="form-control"
+                    name="job-title"
+                    id="job-title"
+                    placeholder="Your Title"
+                    data-rule="minlen:4"
+                    data-msg="Please enter at least 4 chars"
+                    value={newTestimonial.title}
+                    onInput={(e) =>
+                      setNewTestimonial({
+                        ...newTestimonial,
+                        title: e.currentTarget.value,
+                      })
+                    }
+                  />
+                  <div className="validate" />
+                </div>
+              </div>
+              <div className="form-group">
+                <textarea
+                  className="form-control"
+                  name="testimonial"
+                  rows={5}
+                  data-rule="required"
+                  data-msg="Please write something for us"
+                  placeholder="Testimonial"
+                  value={newTestimonial.message}
+                  onChange={(e) =>
+                    setNewTestimonial({
+                      ...newTestimonial,
+                      message: e.currentTarget.value,
+                    })
+                  }
+                />
+                <div className="validate" />
+              </div>
+              <div className="text-center">
+                <button className="submit-testimonial" type="submit">
+                  Send Testimonial
+                </button>
+              </div>
+            </form>
+          </div>
         </section>
 
         <section id="faq" className="faq">
@@ -742,10 +999,22 @@ export const Main: FC = () => {
                   Tamen quem nulla quae legam multos aute sint culpa legam
                   noster magna
                 </p>
-                <form action="" method="post">
-                  <input type="input" name="input" />
+                <form onSubmit={sendSubscription}>
+                  <input
+                    type="input"
+                    name="input"
+                    value={subscriptions}
+                    onInput={(e) => setSubscriptions(e.currentTarget.value)}
+                  />
                   <input type="submit" value="Subscribe" />
                 </form>
+                {subscriptionsResponse && (
+                  <span
+                    className='dangerouslySetInnerHTML' dangerouslySetInnerHTML={{
+                      __html: subscriptionsResponse + ' subscribed.',
+                    }}
+                  />
+                )}
               </div>
             </div>
           </div>
