@@ -1,6 +1,53 @@
-import React, { FC } from 'react';
+import React, { FC, FormEvent, useState } from 'react';
+import {
+  LoginUser,
+  LoginUserResponse,
+  RegistrationUser,
+} from '../../interfaces/User';
+import { getLdap, getUser } from '../../api/httpClient';
+
+const defaultLoginUser: LoginUser = {
+  user: '',
+  password: '',
+};
+
+const defaultUserResponse: LoginUserResponse = {
+  email: '',
+  ldapProfileLink: '',
+};
+
+const defaultRegistrationUser: RegistrationUser = {
+  email: '',
+  lastName: '',
+  firstName: '',
+  password: '',
+};
 
 export const Login: FC = () => {
+  const [user, setUser] = useState<LoginUser>(defaultLoginUser);
+  const [userResponse, setUserResponse] = useState<LoginUserResponse>(
+    defaultUserResponse,
+  );
+  const [ldapResponse, setLdapResponse] = useState<RegistrationUser>(
+    defaultRegistrationUser,
+  );
+
+  const sendUser = async (e: FormEvent) => {
+    e.preventDefault();
+
+    getUser(user)
+      .then((data: LoginUserResponse) => {
+        setUserResponse(data);
+        return data.ldapProfileLink;
+      })
+      .then((ldapProfileLink) =>
+        getLdap(ldapProfileLink).then((data) => setLdapResponse(data)),
+      )
+      .catch((response) => {
+        console.log('error', response);
+      });
+  };
+
   return (
     <div className="page-content--bge5">
       <div className="container">
@@ -19,15 +66,35 @@ export const Login: FC = () => {
               </a>
             </div>
             <div className="login-form">
-              <form action="" method="post">
+              <form onSubmit={sendUser}>
                 <div className="form-group">
-                  <label>Username</label>
+                  <label>Email</label>
                   <input
                     className="au-input au-input--full"
-                    type="text"
-                    name="username"
-                    placeholder="Username"
+                    type="email"
+                    name="email"
+                    placeholder="Email"
+                    value={user.user}
+                    onInput={(e) =>
+                      setUser({ ...user, user: e.currentTarget.value })
+                    }
                   />
+                  {userResponse.email && (
+                    <div
+                      className="dangerouslySetInnerHTML"
+                      dangerouslySetInnerHTML={{
+                        __html: 'Email: ' + userResponse.email,
+                      }}
+                    />
+                  )}
+                  {userResponse.ldapProfileLink && (
+                    <div
+                      className="dangerouslySetInnerHTML"
+                      dangerouslySetInnerHTML={{
+                        __html: 'LDAP: ' + userResponse.ldapProfileLink,
+                      }}
+                    />
+                  )}
                 </div>
                 <div className="form-group">
                   <label>Password</label>
@@ -36,17 +103,36 @@ export const Login: FC = () => {
                     type="password"
                     name="password"
                     placeholder="Password"
+                    value={user.password}
+                    onInput={(e) =>
+                      setUser({ ...user, password: e.currentTarget.value })
+                    }
                   />
                 </div>
-                <div className="login-checkbox">
-                  <label>
-                    <input type="checkbox" name="remember" />
-                    Remember Me
-                  </label>
-                  <label>
-                    <a href="/forgotten">Forgotten Password?</a>
-                  </label>
-                </div>
+                {ldapResponse.email && (
+                  <div
+                    className="dangerouslySetInnerHTML"
+                    dangerouslySetInnerHTML={{
+                      __html: 'Email: ' + ldapResponse.email,
+                    }}
+                  />
+                )}
+                {ldapResponse.firstName && (
+                  <div
+                    className="dangerouslySetInnerHTML"
+                    dangerouslySetInnerHTML={{
+                      __html: 'First Name: ' + ldapResponse.firstName,
+                    }}
+                  />
+                )}
+                {ldapResponse.lastName && (
+                  <div
+                    className="dangerouslySetInnerHTML"
+                    dangerouslySetInnerHTML={{
+                      __html: 'Last Name: ' + ldapResponse.lastName,
+                    }}
+                  />
+                )}
                 <button
                   className="au-btn au-btn--block au-btn--green m-b-20"
                   type="submit"
@@ -56,8 +142,7 @@ export const Login: FC = () => {
               </form>
               <div className="register-link">
                 <p>
-                  Don't you have account?{' '}
-                  <a href="/register">Sign Up Here</a>
+                  Don't you have account? <a href="/register">Sign Up Here</a>
                 </p>
               </div>
             </div>
