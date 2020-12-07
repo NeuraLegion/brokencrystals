@@ -6,6 +6,7 @@ import {
   Logger,
   Post,
 } from '@nestjs/common';
+import { LdapQueryHandler } from 'src/users/ldap.query.handler';
 import { UsersService } from 'src/users/users.service';
 import { LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';
@@ -25,7 +26,7 @@ export class AuthController {
     }
     return {
       email: user.email,
-      ldapProfileLink: `(&(objectClass=person)(objectClass=user)(email=${user.email}))`,
+      ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
     };
   }
 }

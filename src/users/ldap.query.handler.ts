@@ -1,7 +1,7 @@
 import { Logger } from "@nestjs/common";
 
 export class LdapQueryHandler {
-  private static readonly LDAP_SEARCH_QUERY = (email) =>
+  public static readonly LDAP_SEARCH_QUERY = (email) =>
     `(&(objectClass=person)(objectClass=user)(email=${email}))`;
   private static readonly LDAP_ERROR_RESPONSE = `
       Lookup failed: javax.naming.NamingException: 
