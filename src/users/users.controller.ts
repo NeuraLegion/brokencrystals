@@ -9,15 +9,21 @@ import {
   Options,
   Param,
   Post,
+  Put,
   Query,
+  Res,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { ApiResponse } from '@nestjs/swagger';
-import { query } from 'express';
-import { createSecureServer } from 'http2';
+import { Response } from 'express';
+import { Stream } from 'stream';
 import { CreateUserRequest } from './api/CreateUserRequest';
 import { IUser } from './api/IUser';
 import { LdapQueryHandler } from './ldap.query.handler';
 import { UsersService } from './users.service';
+import { Readable } from 'stream';
 
 @Controller('/api/users')
 export class UsersController {
@@ -39,11 +45,40 @@ export class UsersController {
     return IUser.convertToApi(await this.usersService.findByEmail(email));
   }
 
+  @Get('/one/:email/photo')
+  @Header('Content-Type', 'image/png')
+  @ApiResponse({
+    type: IUser,
+  })
+  async getUserPhoto(
+    @Param('email') email: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    this.log.debug('Called getUserPhoto');
+    let user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new HttpException('Could not file user', HttpStatus.NOT_FOUND);
+    }
+
+    if (!user.photo) {
+      response.status(HttpStatus.NO_CONTENT).end();
+      return;
+    }
+
+    const readableInstanceStream = new Readable({
+      read() {
+        this.push(user.photo);
+        this.push(null);
+      },
+    });
+    readableInstanceStream.pipe(response);
+  }
+
   @Get('/ldap')
   async ldapQuery(@Query('query') query: string): Promise<IUser> {
     try {
       let email = this.ldapQueryHandler.parseQuery(query);
-      let user =await this.usersService.findByEmail(email);
+      let user = await this.usersService.findByEmail(email);
       if (!user) {
         throw new HttpException('User not found in ldap', HttpStatus.NOT_FOUND);
       }
@@ -62,10 +97,17 @@ export class UsersController {
     return IUser.convertToApi(
       await this.usersService.createUser(
         user.email,
-        user.lastName,
         user.firstName,
+        user.lastName,
         user.password,
       ),
     );
+  }
+
+  @Put('/one/:email/photo')
+  @UseInterceptors(AnyFilesInterceptor())
+  async uploadFile(@Param('email') email: string, @UploadedFiles() files) {
+    console.log(files);
+    await this.usersService.updatePhoto(email, files[0].buffer);
   }
 }

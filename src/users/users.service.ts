@@ -1,4 +1,4 @@
-import { EntityRepository } from '@mikro-orm/core';
+import { EntityRepository, wrap } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable, Logger } from '@nestjs/common';
 import { User } from 'src/model/user.entity';
@@ -40,6 +40,20 @@ export class UsersService {
     this.log.debug(`Saved new user`);
 
     return u;
+  }
+
+  async updatePhoto(email: string, photo: Buffer): Promise<User> {
+    this.log.debug(`updatePhoto for ${email}`);
+    let user = await this.findByEmail(email);
+    if (!user) {
+      throw new Error('Could not find user');
+    }
+    wrap(user).assign({
+      photo,
+    });
+
+    await this.usersRepository.persistAndFlush(user);
+    return user;
   }
 
   async findByEmail(email: string): Promise<User> {

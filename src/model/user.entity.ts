@@ -1,5 +1,5 @@
 // item.entity.ts
-import { Entity, Property } from '@mikro-orm/core';
+import { BlobType, Entity, Property } from '@mikro-orm/core';
 import { Base } from './base.entity';
 
 @Entity()
@@ -18,4 +18,10 @@ export class User extends Base {
 
   @Property()
   isAdmin: boolean;
+
+  @Property({
+    nullable: true,
+    type: BlobType,
+  })
+  photo: Buffer;
 }

@@ -1,4 +1,4 @@
-import { Logger } from "@nestjs/common";
+import { Logger } from '@nestjs/common';
 
 export class LdapQueryHandler {
   public static readonly LDAP_SEARCH_QUERY = (email) =>
