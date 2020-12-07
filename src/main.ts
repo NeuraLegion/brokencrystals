@@ -27,8 +27,7 @@ async function bootstrap() {
         res.header('Trace-Supported', req.header('Trace-Supported'));
       }
       res.end();
-    }
-    else {
+    } else {
       next();
     }
   });

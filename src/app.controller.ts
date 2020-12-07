@@ -1,9 +1,23 @@
-import { Controller, Get, Header, Logger, Options, RequestMapping } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Logger,
+  Options,
+  Post,
+  Query,
+  RequestMapping,
+  Res,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppConfig } from './app.config.api';
 import { AppService } from './app.service';
 import { AppModuleConfigProperties } from './app.module.config.properties';
 import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
+import { get } from 'http';
+import { query, Response } from 'express';
+import { parseXml } from 'libxmljs';
 
 @Controller('/api')
 export class AppController {
@@ -15,13 +29,36 @@ export class AppController {
   ) {}
 
   @Get()
-  getHello(): string {
+  getFileName(): string {
     return __filename; //this.appService.getHello();
+  }
+
+  @Get('goto')
+  async redirect(@Query('url') url: string, @Res() res: Response) {
+    res.redirect(url);
+  }
+
+  @Post('metadata')
+  @Header('Content-Type', 'text/xml')
+  async xml(@Query('xml') xml: string): Promise<string> {
+    console.log(xml);
+    var xmlDoc = parseXml(xml, {
+      dtdload: true,
+      noent: false,
+      doctype: true,
+      dtdvalid: true,
+      errors: true,
+    });
+
+    this.log.debug(xmlDoc);
+    this.log.debug(xmlDoc.getDtd());
+
+    return xmlDoc.toString(true);
   }
 
   @Options()
   @Header('Allow', 'OPTIONS, GET, HEAD, POST')
-  getTestOptions(): void {
+  async getTestOptions(): Promise<void> {
     this.log.debug('Called getTestOptions');
   }
 

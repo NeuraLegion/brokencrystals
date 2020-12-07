@@ -25,35 +25,39 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
   public static readonly COUNTER_COOKIE_NAME = 'bc-calls-counter';
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const req = context.switchToHttp().getRequest() as Request;    
+    const req = context.switchToHttp().getRequest() as Request;
 
     //force session cookie
     req.session['visits'] = req.session['visits']
       ? req.session['visits'] + 1
       : 1;
-    
-    
-      let cookies: string[] = req.headers.cookie.split('; ');
-      if (cookies && cookies.length > 0) {
-        try {
-          let cookie = cookies.reverse().find((str)=>str.startsWith(HeadersConfiguratorInterceptor.COUNTER_COOKIE_NAME));
-          console.log(cookie);
-          if (cookie) {
-            let counter = cookie.split('=');
-            console.log(counter);
-            if (isNaN(+counter[1])) {
-              throw new Error('Invalid counter value');
-            }
+
+    let cookies: string[] = req.headers.cookie.split('; ');
+    if (cookies && cookies.length > 0) {
+      try {
+        let cookie = cookies
+          .reverse()
+          .find((str) =>
+            str.startsWith(HeadersConfiguratorInterceptor.COUNTER_COOKIE_NAME),
+          );
+        console.log(cookie);
+        if (cookie) {
+          let counter = cookie.split('=');
+          console.log(counter);
+          if (isNaN(+counter[1])) {
+            throw new Error('Invalid counter value');
           }
         }
-        catch (err) {
-          throw new HttpException({
+      } catch (err) {
+        throw new HttpException(
+          {
             error: err.message,
-            location: __filename
-          }, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+            location: __filename,
+          },
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
-
+    }
 
     return next.handle().pipe(
       tap(() => {
