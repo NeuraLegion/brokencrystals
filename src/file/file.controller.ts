@@ -50,7 +50,7 @@ export class FileController {
       throw new HttpException(
         {
           error: err.message,
-          location: __filename,
+            location: __filename,
         },
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
