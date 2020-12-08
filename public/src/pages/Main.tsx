@@ -1,20 +1,26 @@
 import React, {
+  ChangeEvent,
   FC,
   FormEvent,
-  useCallback,
   useEffect,
   useMemo,
   useState,
 } from 'react';
 import {
+  getPhoto,
   getTestimonials,
+  getTestimonialsCount,
+  goTo,
+  postMetadata,
   postSubscriptions,
   postTestimonials,
+  putPhoto,
 } from '../api/httpClient';
 import OwlCarousel from 'react-owl-carousel';
 import 'owl.carousel/dist/assets/owl.carousel.css';
 import 'owl.carousel/dist/assets/owl.theme.default.css';
 import { Testimonial } from '../interfaces/Testimonial';
+import { createImageUrl } from '../functions/createImageUrl';
 
 const products = [
   {
@@ -80,18 +86,29 @@ const defaultTestimonial: Testimonial = {
 };
 
 export const Main: FC = () => {
-  const [user] = useState({ username: undefined });
+  const [user, setUser] = useState<string | null>(
+    sessionStorage.getItem('email'),
+  );
+  const [userImage, setUserImage] = useState<string>();
+
   const [testimonials, setTestimonials] = useState<Array<Testimonial>>([]);
   const [newTestimonial, setNewTestimonial] = useState<Testimonial>(
     defaultTestimonial,
   );
+  const [testimonialsCount, setTestimonialsCount] = useState<number>(0);
 
   const [subscriptions, setSubscriptions] = useState<string>('');
   const [subscriptionsResponse, setSubscriptionsResponse] = useState<any>();
 
   useEffect(() => {
     getTestimonials().then((data) => setTestimonials(data));
-  }, []);
+    getTestimonialsCount().then((data) => setTestimonialsCount(data));
+    postMetadata().then((data) => console.log('xml', data));
+    user &&
+      getPhoto(user)
+        .then(createImageUrl)
+        .then((url) => setUserImage(url));
+  }, [user]);
 
   const sendTestimonial = async (e: FormEvent) => {
     e.preventDefault();
@@ -100,11 +117,29 @@ export const Main: FC = () => {
       .then((data) => {
         setTestimonials([...testimonials, data]);
         setNewTestimonial(defaultTestimonial);
-        console.log('Testimonial', data, testimonials);
       })
+      .then(() =>
+        getTestimonialsCount().then((data) => setTestimonialsCount(data)),
+      )
       .catch((response) => {
         console.log('error', response);
       });
+  };
+
+  const sendPhoto = (e: ChangeEvent<HTMLInputElement>) => {
+    const file: File = (e.target.files as FileList)[0];
+    file &&
+      user &&
+      putPhoto(file, user)
+        .then(() =>
+          getPhoto(user)
+            .then(createImageUrl)
+            .then((url) => setUserImage(url)),
+        )
+        .catch(({ response }) => {
+          const { error } = response.data;
+          console.log('error', error);
+        });
   };
 
   const sendSubscription = (e: FormEvent) => {
@@ -112,9 +147,22 @@ export const Main: FC = () => {
 
     postSubscriptions(subscriptions)
       .then((data) => {
-        console.log('Subscribed with email', data);
         setSubscriptionsResponse(data);
       })
+      .catch(({ response }) => {
+        const { error } = response.data;
+        console.log('error', error);
+      });
+  };
+
+  const logout = () => {
+    sessionStorage.removeItem('email');
+    setUser(null);
+  };
+
+  const sendGoTo = (url: string) => () => {
+    goTo(url)
+      .then((data) => console.log('data', data))
       .catch(({ response }) => {
         const { error } = response.data;
         console.log('error', error);
@@ -140,10 +188,9 @@ export const Main: FC = () => {
       >
         {testimonials.map((item, index) => (
           <div className="testimonial-item" key={item.name + index}>
-            {console.log('update', item)}
             <p>
               <i className="bx bxs-quote-alt-left quote-icon-left" />
-              <span className='dangerouslySetInnerHTML' dangerouslySetInnerHTML={{ __html: item.message }} />
+              <span dangerouslySetInnerHTML={{ __html: item.message }} />
               <i className="bx bxs-quote-alt-right quote-icon-right" />
             </p>
             <img
@@ -151,8 +198,8 @@ export const Main: FC = () => {
               className="testimonial-img"
               alt=""
             />
-            <h3 className='dangerouslySetInnerHTML' dangerouslySetInnerHTML={{ __html: item.name }} />
-            <h4 className='dangerouslySetInnerHTML' dangerouslySetInnerHTML={{ __html: item.title }} />
+            <h3 dangerouslySetInnerHTML={{ __html: item.name }} />
+            <h4 dangerouslySetInnerHTML={{ __html: item.title }} />
           </div>
         ))}
       </OwlCarousel>
@@ -166,7 +213,7 @@ export const Main: FC = () => {
         <div className="container-fluid">
           <div className="row justify-content-center">
             <div className="col-xl-9 d-flex align-items-center">
-              <a href="/" className="logo mr-auto">
+              <a href="/" className="logo mr-auto" onClick={sendGoTo('/')}>
                 <img src="assets/img/logo.png" alt="" className="img-fluid" />{' '}
                 BROKEN CRYSTALS
               </a>
@@ -183,16 +230,16 @@ export const Main: FC = () => {
                     <a href="">Gemstones</a>
                     <ul>
                       <li>
-                        <a href="#">Gemstone 1</a>
+                        <a href="/">Gemstone 1</a>
                       </li>
                       <li>
-                        <a href="#">Gemstone 2</a>
+                        <a href="/">Gemstone 2</a>
                       </li>
                       <li>
-                        <a href="#">Gemstone 3</a>
+                        <a href="/">Gemstone 3</a>
                       </li>
                       <li>
-                        <a href="#">Gemstone 4</a>
+                        <a href="/">Gemstone 4</a>
                       </li>
                     </ul>
                   </li>
@@ -200,16 +247,16 @@ export const Main: FC = () => {
                     <a href="">Healing</a>
                     <ul>
                       <li>
-                        <a href="#">Healing 1</a>
+                        <a href="/">Healing 1</a>
                       </li>
                       <li>
-                        <a href="#">Healing 2</a>
+                        <a href="/">Healing 2</a>
                       </li>
                       <li>
-                        <a href="#">Healing 3</a>
+                        <a href="/">Healing 3</a>
                       </li>
                       <li>
-                        <a href="#">Healing 4</a>
+                        <a href="/">Healing 4</a>
                       </li>
                     </ul>
                   </li>
@@ -217,31 +264,56 @@ export const Main: FC = () => {
                     <a href="">Jewellery</a>
                     <ul>
                       <li>
-                        <a href="#">Jewellery 1</a>
+                        <a href="/">Jewellery 1</a>
                       </li>
                       <li>
-                        <a href="#">Jewellery 2</a>
+                        <a href="/">Jewellery 2</a>
                       </li>
                       <li>
-                        <a href="#">Jewellery 3</a>
+                        <a href="/">Jewellery 3</a>
                       </li>
                       <li>
-                        <a href="#">Jewellery 4</a>
+                        <a href="/">Jewellery 4</a>
                       </li>
                     </ul>
                   </li>
                   <li>
-                    <a href="#contact">Contact</a>
+                    <a href="/contact">Contact</a>
                   </li>
                   <li>
                     <a href="/vulns">Vulnerabilities</a>
                   </li>
                 </ul>
               </nav>
-              {user && user.username ? (
-                <a href="/logout" className="get-started-btn scrollto">
-                  Log out {user.username}
-                </a>
+              {user ? (
+                <>
+                  <label
+                    htmlFor="file-input"
+                    style={{ cursor: 'pointer', display: 'contents' }}
+                  >
+                    <img
+                      src={userImage || 'assets/img/profile.png'}
+                      alt="user"
+                      width={40}
+                      height={40}
+                      style={{ borderRadius: '50%', marginLeft: 25 }}
+                    />
+                  </label>
+                  <a
+                    href="/"
+                    className="get-started-btn scrollto"
+                    onClick={logout}
+                  >
+                    Log out {user}
+                  </a>
+                  <input
+                    id="file-input"
+                    type="file"
+                    accept="image/x-png"
+                    style={{ display: 'none' }}
+                    onChange={sendPhoto}
+                  />
+                </>
               ) : (
                 <a href="/login" className="get-started-btn scrollto">
                   Sign in
@@ -364,7 +436,7 @@ export const Main: FC = () => {
         <section id="testimonials" className="testimonials section-bg">
           <div className="container" data-aos="fade-up">
             <div className="section-title">
-              <h2>Testimonials</h2>
+              <h2>Testimonials ({testimonialsCount})</h2>
               <p>
                 Magnam dolores commodi suscipit. Necessitatibus eius consequatur
                 ex aliquid fuga eum quidem. Sit sint consectetur velit. Quisquam
@@ -572,73 +644,75 @@ export const Main: FC = () => {
             {/*</div>*/}
           </div>
 
-          <div className="container mt-5" data-aos="fade-up">
-            <form role="form" onSubmit={sendTestimonial}>
-              <div className="form-row">
-                <div className="col-md-6 form-group">
-                  <input
-                    type="text"
-                    name="name"
+          {user && (
+            <div className="container mt-5" data-aos="fade-up">
+              <form role="form" onSubmit={sendTestimonial}>
+                <div className="form-row">
+                  <div className="col-md-6 form-group">
+                    <input
+                      type="text"
+                      name="name"
+                      className="form-control"
+                      id="name"
+                      placeholder="Your Name"
+                      data-rule="minlen:4"
+                      data-msg="Please enter at least 4 chars"
+                      value={newTestimonial.name}
+                      onInput={(e) =>
+                        setNewTestimonial({
+                          ...newTestimonial,
+                          name: e.currentTarget.value,
+                        })
+                      }
+                    />
+                    <div className="validate" />
+                  </div>
+                  <div className="col-md-6 form-group">
+                    <input
+                      type="text"
+                      className="form-control"
+                      name="job-title"
+                      id="job-title"
+                      placeholder="Your Title"
+                      data-rule="minlen:4"
+                      data-msg="Please enter at least 4 chars"
+                      value={newTestimonial.title}
+                      onInput={(e) =>
+                        setNewTestimonial({
+                          ...newTestimonial,
+                          title: e.currentTarget.value,
+                        })
+                      }
+                    />
+                    <div className="validate" />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <textarea
                     className="form-control"
-                    id="name"
-                    placeholder="Your Name"
-                    data-rule="minlen:4"
-                    data-msg="Please enter at least 4 chars"
-                    value={newTestimonial.name}
-                    onInput={(e) =>
+                    name="testimonial"
+                    rows={5}
+                    data-rule="required"
+                    data-msg="Please write something for us"
+                    placeholder="Testimonial"
+                    value={newTestimonial.message}
+                    onChange={(e) =>
                       setNewTestimonial({
                         ...newTestimonial,
-                        name: e.currentTarget.value,
+                        message: e.currentTarget.value,
                       })
                     }
                   />
                   <div className="validate" />
                 </div>
-                <div className="col-md-6 form-group">
-                  <input
-                    type="text"
-                    className="form-control"
-                    name="job-title"
-                    id="job-title"
-                    placeholder="Your Title"
-                    data-rule="minlen:4"
-                    data-msg="Please enter at least 4 chars"
-                    value={newTestimonial.title}
-                    onInput={(e) =>
-                      setNewTestimonial({
-                        ...newTestimonial,
-                        title: e.currentTarget.value,
-                      })
-                    }
-                  />
-                  <div className="validate" />
+                <div className="text-center">
+                  <button className="submit-testimonial" type="submit">
+                    Send Testimonial
+                  </button>
                 </div>
-              </div>
-              <div className="form-group">
-                <textarea
-                  className="form-control"
-                  name="testimonial"
-                  rows={5}
-                  data-rule="required"
-                  data-msg="Please write something for us"
-                  placeholder="Testimonial"
-                  value={newTestimonial.message}
-                  onChange={(e) =>
-                    setNewTestimonial({
-                      ...newTestimonial,
-                      message: e.currentTarget.value,
-                    })
-                  }
-                />
-                <div className="validate" />
-              </div>
-              <div className="text-center">
-                <button className="submit-testimonial" type="submit">
-                  Send Testimonial
-                </button>
-              </div>
-            </form>
-          </div>
+              </form>
+            </div>
+          )}
         </section>
 
         <section id="faq" className="faq">
@@ -946,23 +1020,23 @@ export const Main: FC = () => {
                 <h4>Useful Links</h4>
                 <ul>
                   <li>
-                    <i className="bx bx-chevron-right" /> <a href="#">Home</a>
+                    <i className="bx bx-chevron-right" /> <a href="/">Home</a>
                   </li>
                   <li>
                     <i className="bx bx-chevron-right" />{' '}
-                    <a href="#">About us</a>
+                    <a href="/">About us</a>
                   </li>
                   <li>
                     <i className="bx bx-chevron-right" />{' '}
-                    <a href="#">Services</a>
+                    <a href="/">Services</a>
                   </li>
                   <li>
                     <i className="bx bx-chevron-right" />{' '}
-                    <a href="#">Terms of service</a>
+                    <a href="/">Terms of service</a>
                   </li>
                   <li>
                     <i className="bx bx-chevron-right" />{' '}
-                    <a href="#">Privacy policy</a>
+                    <a href="/">Privacy policy</a>
                   </li>
                 </ul>
               </div>
@@ -972,23 +1046,23 @@ export const Main: FC = () => {
                 <ul>
                   <li>
                     <i className="bx bx-chevron-right" />{' '}
-                    <a href="#">Web Design</a>
+                    <a href="/">Web Design</a>
                   </li>
                   <li>
                     <i className="bx bx-chevron-right" />{' '}
-                    <a href="#">Web Development</a>
+                    <a href="/">Web Development</a>
                   </li>
                   <li>
                     <i className="bx bx-chevron-right" />{' '}
-                    <a href="#">Product Management</a>
+                    <a href="/">Product Management</a>
                   </li>
                   <li>
                     <i className="bx bx-chevron-right" />{' '}
-                    <a href="#">Marketing</a>
+                    <a href="/">Marketing</a>
                   </li>
                   <li>
                     <i className="bx bx-chevron-right" />{' '}
-                    <a href="#">Graphic Design</a>
+                    <a href="/">Graphic Design</a>
                   </li>
                 </ul>
               </div>
@@ -1010,7 +1084,8 @@ export const Main: FC = () => {
                 </form>
                 {subscriptionsResponse && (
                   <span
-                    className='dangerouslySetInnerHTML' dangerouslySetInnerHTML={{
+                    className="dangerouslySetInnerHTML"
+                    dangerouslySetInnerHTML={{
                       __html: subscriptionsResponse + ' subscribed.',
                     }}
                   />
@@ -1032,19 +1107,19 @@ export const Main: FC = () => {
               </div>
             </div>
             <div className="social-links text-center text-md-right pt-3 pt-md-0">
-              <a href="#" className="twitter">
+              <a href="/" className="twitter">
                 <i className="bx bxl-twitter" />
               </a>
-              <a href="#" className="facebook">
+              <a href="/" className="facebook">
                 <i className="bx bxl-facebook" />
               </a>
-              <a href="#" className="instagram">
+              <a href="/" className="instagram">
                 <i className="bx bxl-instagram" />
               </a>
-              <a href="#" className="google-plus">
+              <a href="/" className="google-plus">
                 <i className="bx bxl-skype" />
               </a>
-              <a href="#" className="linkedin">
+              <a href="/" className="linkedin">
                 <i className="bx bxl-linkedin" />
               </a>
             </div>
@@ -1052,7 +1127,7 @@ export const Main: FC = () => {
         </div>
       </footer>
 
-      <a href="#" className="back-to-top">
+      <a href="/" className="back-to-top">
         <i className="icofont-simple-up" />
       </a>
       <div id="preloader" />
