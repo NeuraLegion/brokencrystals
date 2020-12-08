@@ -2,7 +2,7 @@ import { Testimonial } from '../model/testimonial.entity';
 import { OrmConfigFactory } from './orm.config.factory';
 import { Module } from '@nestjs/common';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
 import { User } from 'src/model/user.entity';
 
 @Module({

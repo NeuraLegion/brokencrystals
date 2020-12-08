@@ -14,7 +14,7 @@ export class LdapQueryHandler {
 
   public parseQuery(query: string): string {
     this.log.debug(`parseQuery: ${query}`);
-    let res = query.match(LdapQueryHandler.PARSER);
+    const res = query.match(LdapQueryHandler.PARSER);
     if (!res || res.length != 2 || !res[1]) {
       throw new Error(LdapQueryHandler.LDAP_ERROR_RESPONSE);
     } else {

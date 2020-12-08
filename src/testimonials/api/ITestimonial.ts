@@ -1,4 +1,4 @@
-import { ApiProduces, ApiProperty } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { Testimonial } from 'src/model/testimonial.entity';
 
 export class ITestimonial {

@@ -47,7 +47,7 @@ export class AppController {
     if (req.readable) {
       const raw = await rawbody(req);
       const text = raw.toString().trim();
-      var res = dotT.compile(text)();
+      const res = dotT.compile(text)();
       this.log.debug('rendered template:', res);
       return res;
     }
@@ -69,7 +69,7 @@ export class AppController {
   @Header('Content-Type', 'text/xml')
   async xml(@Query('xml') xml: string): Promise<string> {
     console.log(xml);
-    var xmlDoc = parseXml(xml, {
+    const xmlDoc = parseXml(xml, {
       dtdload: true,
       noent: false,
       doctype: true,

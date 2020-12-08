@@ -18,12 +18,12 @@ import {
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-import { Stream } from 'stream';
 import { CreateUserRequest } from './api/CreateUserRequest';
 import { IUser } from './api/IUser';
 import { LdapQueryHandler } from './ldap.query.handler';
 import { UsersService } from './users.service';
 import { Readable } from 'stream';
+import { User } from 'src/model/user.entity';
 
 @Controller('/api/users')
 @ApiTags('user controller')
@@ -35,7 +35,9 @@ export class UsersController {
 
   @Options()
   @Header('Allow', 'OPTIONS, GET, POST, DELETE')
-  async getTestOptions(): Promise<void> {}
+  async getTestOptions(): Promise<void> {
+    console.log('getTestOptions');
+  }
 
   @Get('/one/:email')
   @ApiOperation({
@@ -74,7 +76,7 @@ export class UsersController {
     @Res() response: Response,
   ): Promise<void> {
     this.log.debug('Called getUserPhoto');
-    let user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new HttpException(
         {
@@ -115,15 +117,25 @@ export class UsersController {
   })
   @ApiResponse({
     type: IUser,
+    isArray: true
   })
-  async ldapQuery(@Query('query') query: string): Promise<IUser> {
+  async ldapQuery(@Query('query') query: string): Promise<IUser[]> {
     try {
-      let email = this.ldapQueryHandler.parseQuery(query);
-      let user = await this.usersService.findByEmail(email);
-      if (!user) {
+      const email = this.ldapQueryHandler.parseQuery(query);
+      let users: User[];
+      if (email && email.endsWith('*')) {
+        users = await this.usersService.findByEmailPrefix(email.slice(0, -1));
+      } else {
+        const user = await this.usersService.findByEmail(email);
+        if (user) {
+          users = [user];
+        }
+      }
+
+      if (!users) {
         throw new HttpException('User not found in ldap', HttpStatus.NOT_FOUND);
       }
-      return IUser.convertToApi(user);
+      return users.map<IUser>(IUser.convertToApi);
     } catch (err) {
       throw new HttpException(
         {

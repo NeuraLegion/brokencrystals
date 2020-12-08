@@ -1,11 +1,7 @@
-import { HighlightSubject } from '@mikro-orm/sql-highlighter/enums';
 import { Body, Controller, Get, Logger, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { get } from 'http';
-import { Testimonial } from 'src/model/testimonial.entity';
 import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
 import { ITestimonial } from './api/ITestimonial';
-import { TestimonialsModule } from './testimonials.module';
 import { TestimonialsService } from './testimonials.service';
 
 @Controller('/api/testimonials')

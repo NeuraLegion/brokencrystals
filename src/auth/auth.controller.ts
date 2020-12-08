@@ -15,13 +15,17 @@ import { UsersService } from 'src/users/users.service';
 import { LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';
 import { passwordMatches } from './credentials.utils';
+import { AuthService } from './auth.service';
 
 @Controller('/api/auth')
 @ApiTags('auth controller')
 export class AuthController {
   private log: Logger = new Logger(AuthController.name);
 
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Post()
   @ApiResponse({
@@ -57,7 +61,10 @@ export class AuthController {
         HttpStatus.UNAUTHORIZED,
       );
     }
-    response.header('Authorization', 'jwttoken-1');
+    response.header(
+      'Authorization',
+      await this.authService.createToken({ user: user.email }),
+    );
     response
       .json({
         email: user.email,

@@ -3,6 +3,7 @@ import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable, Logger } from '@nestjs/common';
 import { User } from 'src/model/user.entity';
 import { hashPassword } from 'src/auth/credentials.utils';
+import { query } from 'express';
 
 @Injectable()
 export class UsersService {
@@ -44,7 +45,7 @@ export class UsersService {
 
   async updatePhoto(email: string, photo: Buffer): Promise<User> {
     this.log.debug(`updatePhoto for ${email}`);
-    let user = await this.findByEmail(email);
+    const user = await this.findByEmail(email);
     if (!user) {
       throw new Error('Could not find user');
     }
@@ -59,5 +60,10 @@ export class UsersService {
   async findByEmail(email: string): Promise<User> {
     this.log.debug(`Called findByEmail ${email}`);
     return this.usersRepository.findOne({ email });
+  }
+
+  async findByEmailPrefix(emailPrefix: string): Promise<User[]> {
+    this.log.debug(`Called findByEmailPrefix ${emailPrefix}`);
+    return this.usersRepository.find({ email: { $like: emailPrefix + '%' } });
   }
 }
