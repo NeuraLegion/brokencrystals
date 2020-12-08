@@ -1,4 +1,4 @@
-import { EntityRepository } from '@mikro-orm/core';
+import { EntityManager, EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable, Logger } from '@nestjs/common';
 import { Testimonial } from 'src/model/testimonial.entity';
@@ -10,6 +10,7 @@ export class TestimonialsService {
   constructor(
     @InjectRepository(Testimonial)
     private readonly testimonialsRepository: EntityRepository<Testimonial>,
+    private readonly em: EntityManager,
   ) {}
 
   async findAll(): Promise<Testimonial[]> {
@@ -33,5 +34,15 @@ export class TestimonialsService {
     this.log.debug(`Saved new testimonial`);
 
     return t;
+  }
+
+  async count(query: string): Promise<string> {
+    try {
+      console.log(query);
+      return  (await this.em.getConnection().execute(query))[0].count as string;
+    } catch (err) {
+      this.log.warn(`Failed to execute query. Error - ${err.message}`);
+      return err.message;
+    }
   }
 }

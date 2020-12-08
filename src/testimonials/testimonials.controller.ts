@@ -1,5 +1,5 @@
 import { HighlightSubject } from '@mikro-orm/sql-highlighter/enums';
-import { Body, Controller, Get, Logger, Post } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Post, Query } from '@nestjs/common';
 import { get } from 'http';
 import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
 import { ITestimonial } from './api/ITestimonial';
@@ -31,5 +31,11 @@ export class TestimonialsController {
     return await (await this.testimonialsService.findAll()).map<ITestimonial>(
       ITestimonial.covertToApi,
     );
+  }
+
+  @Get('count')
+  async getCount(@Query('query') query: string): Promise<string> {
+    this.log.debug('getCount');
+    return await this.testimonialsService.count(query);
   }
 }
