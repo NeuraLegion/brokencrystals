@@ -5,8 +5,10 @@ import {
   HttpStatus,
   Logger,
   Post,
+  Res,
 } from '@nestjs/common';
 import { ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Response, response } from 'express';
 import { User } from 'src/model/user.entity';
 import { LdapQueryHandler } from 'src/users/ldap.query.handler';
 import { UsersService } from 'src/users/users.service';
@@ -30,7 +32,7 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'invliad credentials',
   })
-  async login(@Body() req: LoginRequest): Promise<LoginResponse> {
+  async login(@Body() req: LoginRequest, @Res() response: Response): Promise<void> {
     let user: User;
     try {
       user = await this.usersService.findByEmail(req.user);
@@ -52,9 +54,10 @@ export class AuthController {
         HttpStatus.UNAUTHORIZED,
       );
     }
-    return {
+    response.header('Authorization', 'jwttoken-1');
+    response.json({
       email: user.email,
       ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
-    };
+    }).end();
   }
 }
