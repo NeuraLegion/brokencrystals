@@ -18,22 +18,24 @@ import { UsersService } from '../users/users.service';
 import { Stream } from 'stream';
 import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
 
 @Controller('/api/file')
+@ApiTags('files controller')
 export class FileController {
   private static readonly CONTENT_TYPE_HEADER = 'Content-Type';
   private log: Logger = new Logger(FileController.name);
 
-  constructor(
-    private fileService: FileService,
-    private userService: UsersService,
-  ) {}
+  constructor(private fileService: FileService) {}
 
+  @ApiOperation({
+    description:
+      'Reads the file from the provided path and the supplied content type and returns the file',
+  })
   @Get()
   async loadFile(
     @Query('path') path: string,
     @Query('type') contentType: string,
-    @Req() request: Request,
     @Res() response: Response,
   ): Promise<void> {
     try {
@@ -54,10 +56,14 @@ export class FileController {
     }
   }
 
+  @ApiProperty({
+    description: 'Upload file to server using multipart form upload',
+  })
   @Put('upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(@UploadedFile() file) {
     console.log(file);
     this.uploadFile;
+    //TODO complete
   }
 }

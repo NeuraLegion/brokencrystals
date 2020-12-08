@@ -16,7 +16,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
-import { ApiResponse } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Stream } from 'stream';
 import { CreateUserRequest } from './api/CreateUserRequest';
@@ -26,6 +26,7 @@ import { UsersService } from './users.service';
 import { Readable } from 'stream';
 
 @Controller('/api/users')
+@ApiTags('user controller')
 export class UsersController {
   private log: Logger = new Logger(UsersController.name);
   private ldapQueryHandler: LdapQueryHandler = new LdapQueryHandler();
@@ -37,6 +38,9 @@ export class UsersController {
   async getTestOptions(): Promise<void> {}
 
   @Get('/one/:email')
+  @ApiOperation({
+    description: 'returns user',
+  })
   @ApiResponse({
     type: IUser,
   })
@@ -58,7 +62,12 @@ export class UsersController {
   @Get('/one/:email/photo')
   @Header('Content-Type', 'image/png')
   @ApiResponse({
-    type: IUser,
+    status: HttpStatus.OK,
+    description: 'returns user profile photo',
+  })
+  @ApiResponse({
+    status: HttpStatus.NO_CONTENT,
+    description: 'returns empty content if photo is not set',
   })
   async getUserPhoto(
     @Param('email') email: string,
@@ -101,6 +110,12 @@ export class UsersController {
   }
 
   @Get('/ldap')
+  @ApiOperation({
+    description: 'performs LDAP search for user details',
+  })
+  @ApiResponse({
+    type: IUser,
+  })
   async ldapQuery(@Query('query') query: string): Promise<IUser> {
     try {
       let email = this.ldapQueryHandler.parseQuery(query);
@@ -121,6 +136,9 @@ export class UsersController {
   }
 
   @Post()
+  @ApiOperation({
+    description: 'creates user',
+  })
   @ApiResponse({
     type: IUser,
   })
@@ -147,6 +165,9 @@ export class UsersController {
   }
 
   @Put('/one/:email/photo')
+  @ApiOperation({
+    description: 'uploads user profile photo',
+  })
   @UseInterceptors(AnyFilesInterceptor())
   async uploadFile(@Param('email') email: string, @UploadedFiles() files) {
     try {

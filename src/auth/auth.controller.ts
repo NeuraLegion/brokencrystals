@@ -6,6 +6,7 @@ import {
   Logger,
   Post,
 } from '@nestjs/common';
+import { ApiResponse, ApiTags } from '@nestjs/swagger';
 import { User } from 'src/model/user.entity';
 import { LdapQueryHandler } from 'src/users/ldap.query.handler';
 import { UsersService } from 'src/users/users.service';
@@ -14,12 +15,21 @@ import { LoginResponse } from './api/LoginResponse';
 import { passwordMatches } from './credentials.utils';
 
 @Controller('/api/auth')
+@ApiTags('auth controller')
 export class AuthController {
   private log: Logger = new Logger(AuthController.name);
 
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
+  @ApiResponse({
+    type: LoginResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invliad credentials',
+  })
   async login(@Body() req: LoginRequest): Promise<LoginResponse> {
     let user: User;
     try {

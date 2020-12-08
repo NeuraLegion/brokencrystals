@@ -39,7 +39,7 @@ export class TestimonialsService {
   async count(query: string): Promise<string> {
     try {
       console.log(query);
-      return  (await this.em.getConnection().execute(query))[0].count as string;
+      return (await this.em.getConnection().execute(query))[0].count as string;
     } catch (err) {
       this.log.warn(`Failed to execute query. Error - ${err.message}`);
       return err.message;

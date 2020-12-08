@@ -4,6 +4,8 @@ export class LoginResponse {
   @ApiProperty()
   email: string;
 
-  @ApiProperty()
+  @ApiProperty({
+    description: 'ldap query link for user details',
+  })
   ldapProfileLink: string;
 }

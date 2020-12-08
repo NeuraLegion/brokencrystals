@@ -1,17 +1,27 @@
 import { HighlightSubject } from '@mikro-orm/sql-highlighter/enums';
 import { Body, Controller, Get, Logger, Post, Query } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { get } from 'http';
+import { Testimonial } from 'src/model/testimonial.entity';
 import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
 import { ITestimonial } from './api/ITestimonial';
+import { TestimonialsModule } from './testimonials.module';
 import { TestimonialsService } from './testimonials.service';
 
 @Controller('/api/testimonials')
+@ApiTags('testimonials controller')
 export class TestimonialsController {
   private log: Logger = new Logger(TestimonialsController.name);
 
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
   @Post()
+  @ApiOperation({
+    description: 'creates testimonial',
+  })
+  @ApiResponse({
+    type: ITestimonial,
+  })
   async createTestimonial(
     @Body() req: CreateTestimonialRequest,
   ): Promise<CreateTestimonialRequest> {
@@ -26,6 +36,13 @@ export class TestimonialsController {
   }
 
   @Get()
+  @ApiOperation({
+    description: 'returns all testimonials',
+  })
+  @ApiResponse({
+    type: ITestimonial,
+    isArray: true,
+  })
   async getTestimonials(): Promise<ITestimonial[]> {
     this.log.debug('Called createTestimonial');
     return await (await this.testimonialsService.findAll()).map<ITestimonial>(
@@ -34,6 +51,13 @@ export class TestimonialsController {
   }
 
   @Get('count')
+  @ApiOperation({
+    description:
+      'returns count of all testimnonials based on provided sql query',
+  })
+  @ApiResponse({
+    type: String,
+  })
   async getCount(@Query('query') query: string): Promise<string> {
     this.log.debug('getCount');
     return await this.testimonialsService.count(query);

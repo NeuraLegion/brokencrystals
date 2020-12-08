@@ -1,8 +1,14 @@
+import { ApiProduces, ApiProperty } from '@nestjs/swagger';
 import { Testimonial } from 'src/model/testimonial.entity';
 
 export class ITestimonial {
+  @ApiProperty()
   name: string;
+
+  @ApiProperty()
   title: string;
+
+  @ApiProperty()
   message: string;
 
   public static covertToApi(t: Testimonial): ITestimonial {
