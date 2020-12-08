@@ -12,6 +12,7 @@ import {
   getTestimonialsCount,
   goTo,
   postMetadata,
+  postRender,
   postSubscriptions,
   postTestimonials,
   putPhoto,
@@ -25,55 +26,97 @@ import { createImageUrl } from '../functions/createImageUrl';
 const products = [
   {
     category: { name: 'Healing' },
-    photos: [{ url: 'assets/img/crystals/amethyst.jpg' }],
+    photos: [
+      {
+        url:
+          '/api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg',
+      },
+    ],
     name: 'Amethyst',
     short_description: 'a violet variety of quartz',
   },
   {
     category: { name: 'Gemstones' },
-    photos: [{ url: 'assets/img/crystals/ruby.jpg' }],
+    photos: [
+      {
+        url: '/api/file?path=config/products/crystals/ruby.jpg&type=image/jpg',
+      },
+    ],
     name: 'Ruby',
     short_description: 'an intense heart crystal',
   },
   {
     category: { name: 'Healing' },
-    photos: [{ url: 'assets/img/crystals/opal.jpg' }],
+    photos: [
+      {
+        url: '/api/file?path=config/products/crystals/opal.jpg&type=image/jpg',
+      },
+    ],
     name: 'Opal',
     short_description: 'the precious stone',
   },
   {
     category: { name: 'Jewellery' },
-    photos: [{ url: 'assets/img/crystals/sapphire.jpg' }],
+    photos: [
+      {
+        url:
+          '/api/file?path=config/products/crystals/sapphire.jpg&type=image/jpg',
+      },
+    ],
     name: 'Sapphire',
     short_description: '',
   },
   {
     category: { name: 'Gemstones' },
-    photos: [{ url: 'assets/img/crystals/pyrite.jpg' }],
+    photos: [
+      {
+        url:
+          '/api/file?path=config/products/crystals/pyrite.jpg&type=image/jpg',
+      },
+    ],
     name: 'Pyrite',
     short_description: 'fools gold',
   },
   {
     category: { name: 'Healing' },
-    photos: [{ url: 'assets/img/crystals/amber.jpg' }],
+    photos: [
+      {
+        url: '/api/file?path=config/products/crystals/amber.jpg&type=image/jpg',
+      },
+    ],
     name: 'Amber',
     short_description: 'fossilized tree resin',
   },
   {
     category: { name: 'Jewellery' },
-    photos: [{ url: 'assets/img/crystals/emerald.jpg' }],
+    photos: [
+      {
+        url:
+          '/api/file?path=config/products/crystals/emerald.jpg&type=image/jpg',
+      },
+    ],
     name: 'Emerald',
     short_description: 'symbol of fertility and life',
   },
   {
     category: { name: 'Jewellery' },
-    photos: [{ url: 'assets/img/crystals/shattuckite.jpg' }],
+    photos: [
+      {
+        url:
+          '/api/file?path=config/products/crystals/shattuckite.jpg&type=image/jpg',
+      },
+    ],
     name: 'Shattuckite',
     short_description: 'mistery',
   },
   {
     category: { name: 'Gemstones' },
-    photos: [{ url: 'assets/img/crystals/bismuth.jpg' }],
+    photos: [
+      {
+        url:
+          '/api/file?path=config/products/crystals/bismuth.jpg&type=image/jpg',
+      },
+    ],
     name: 'Bismuth',
     short_description: 'rainbow',
   },
@@ -100,10 +143,14 @@ export const Main: FC = () => {
   const [subscriptions, setSubscriptions] = useState<string>('');
   const [subscriptionsResponse, setSubscriptionsResponse] = useState<any>();
 
+  const [phone, setPhone] = useState<string>('');
+
   useEffect(() => {
     getTestimonials().then((data) => setTestimonials(data));
     getTestimonialsCount().then((data) => setTestimonialsCount(data));
     postMetadata().then((data) => console.log('xml', data));
+    postRender('+1 5589 55488 55').then((data) => setPhone(data));
+
     user &&
       getPhoto(user)
         .then(createImageUrl)
@@ -1009,7 +1056,7 @@ export const Main: FC = () => {
                   <br />
                   United States <br />
                   <br />
-                  <strong>Phone:</strong> +1 5589 55488 55
+                  <strong>Phone:</strong> {phone}
                   <br />
                   <strong>Email:</strong> info@example.com
                   <br />

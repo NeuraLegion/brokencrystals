@@ -93,3 +93,12 @@ export function goTo(url: string): Promise<any> {
     method: 'get',
   });
 }
+
+export function postRender(text: string): Promise<any> {
+  return makeApiRequest({
+    url: ApiUrl.Render,
+    method: 'post',
+    headers: { 'Content-Type': 'text/plain' },
+    data: `{{="${text}"}}`,
+  });
+}
