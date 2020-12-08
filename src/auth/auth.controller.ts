@@ -32,7 +32,10 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'invliad credentials',
   })
-  async login(@Body() req: LoginRequest, @Res() response: Response): Promise<void> {
+  async login(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<void> {
     let user: User;
     try {
       user = await this.usersService.findByEmail(req.user);
@@ -55,9 +58,11 @@ export class AuthController {
       );
     }
     response.header('Authorization', 'jwttoken-1');
-    response.json({
-      email: user.email,
-      ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
-    }).end();
+    response
+      .json({
+        email: user.email,
+        ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
+      })
+      .end();
   }
 }
