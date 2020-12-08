@@ -204,6 +204,7 @@ export const Main: FC = () => {
 
   const logout = () => {
     sessionStorage.removeItem('email');
+    sessionStorage.removeItem('token');
     setUser(null);
   };
 

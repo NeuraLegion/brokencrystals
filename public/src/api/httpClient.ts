@@ -23,6 +23,7 @@ export function postTestimonials(data: Testimonial): Promise<any> {
   return makeApiRequest({
     url: ApiUrl.Testimonials,
     method: 'post',
+    headers: { Authorization: sessionStorage.getItem('token') },
     data,
   });
 }
@@ -82,7 +83,10 @@ export function putPhoto(photo: File, email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${email}/photo`,
     method: 'put',
-    headers: { 'Content-Type': 'image/png' },
+    headers: {
+      'Content-Type': 'image/png',
+      Authorization: sessionStorage.getItem('token'),
+    },
     data,
   });
 }
