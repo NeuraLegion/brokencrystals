@@ -27,7 +27,7 @@ export class AuthController {
     private readonly authService: AuthService,
   ) {}
 
-  @Post()
+  @Post('login')
   @ApiResponse({
     type: LoginResponse,
     status: HttpStatus.OK,
