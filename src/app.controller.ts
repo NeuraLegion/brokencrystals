@@ -7,6 +7,7 @@ import {
   Options,
   Post,
   Query,
+  Req,
   RequestMapping,
   Res,
 } from '@nestjs/common';
@@ -18,6 +19,8 @@ import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 import { get } from 'http';
 import { query, Response } from 'express';
 import { parseXml } from 'libxmljs';
+import * as rawbody from 'raw-body';
+import * as dotT from 'dot';
 
 @Controller('/api')
 export class AppController {
@@ -27,6 +30,17 @@ export class AppController {
     private readonly appService: AppService,
     private readonly configService: ConfigService,
   ) {}
+
+  @Post('render')
+  async renderTemplate(@Body() data, @Req() req): Promise<string> {
+    if (req.readable) {
+      const raw = await rawbody(req);
+      const text = raw.toString().trim();
+      var res = dotT.compile(text)();
+      this.log.debug('rendered template:', res);
+      return res;
+    } 
+  }
 
   @Get()
   getFileName(): string {
