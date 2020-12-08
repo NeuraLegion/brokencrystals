@@ -6,12 +6,13 @@ import {
   Logger,
   Options,
   Post,
+  Put,
   Query,
   Req,
   RequestMapping,
   Res,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ConfigService, registerAs } from '@nestjs/config';
 import { AppConfig } from './app.config.api';
 import { AppService } from './app.service';
 import { AppModuleConfigProperties } from './app.module.config.properties';
@@ -22,6 +23,7 @@ import { parseXml } from 'libxmljs';
 import * as rawbody from 'raw-body';
 import * as dotT from 'dot';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { spawn } from 'child_process';
 
 @Controller('/api')
 @ApiTags('app controller')
@@ -90,6 +92,44 @@ export class AppController {
   @Header('Allow', 'OPTIONS, GET, HEAD, POST')
   async getTestOptions(): Promise<void> {
     this.log.debug('Called getTestOptions');
+  }
+
+  @Get('spawn')
+  @ApiOperation({
+    description: 'launches system command on server',
+  })
+  @ApiResponse({
+    type: String,
+  })
+  async launchCommand(@Query('command') command: string): Promise<string> {
+    this.log.debug(`launchCommand with ${command}`);
+
+    return new Promise((res, rej) => {
+      try {
+        const [exec, ...args] = command.split(' ');
+        const ps = spawn(exec, args);
+
+        ps.stdout.on('data', (data: Buffer) => {
+          this.log.debug(`stdout: ${data}`);
+          res(data.toString('ascii'));
+        });
+
+        ps.stderr.on('data', (data: Buffer) => {
+          this.log.debug(`stderr: ${data}`);
+          res(data.toString('ascii'));
+        });
+
+        ps.on('error', function(err) {
+          rej(err.message);
+        });
+
+        ps.on('close', (code) => {
+          console.log(`child process exited with code ${code}`);
+        });
+      } catch (err) {
+        rej(err.message);
+      }
+    });
   }
 
   @ApiOperation({
