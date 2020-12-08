@@ -3,4 +3,6 @@ export enum ApiUrl {
   Testimonials = '/api/testimonials',
   Users = '/api/users',
   Auth = '/api/auth',
+  Metadata = '/api/metadata',
+  Goto = '/api/goto',
 }

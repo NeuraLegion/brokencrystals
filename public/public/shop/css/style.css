@@ -6850,7 +6850,7 @@ html .bg--parallax {
 #footer {
   color: #fff;
   font-size: 14px;
-  background: linear-gradient(45deg, rgb(83, 189, 156) 0%, rgb(81, 167, 218) 100%), url("../img/hero-bg.jpg") center center no-repeat;
+  background: linear-gradient(45deg, rgb(83, 189, 156) 0%, rgb(81, 167, 218) 100%), url("../../assets/img/hero-bg.jpg") center center no-repeat;
   background-size: cover;
 }
 

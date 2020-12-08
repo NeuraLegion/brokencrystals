@@ -19,7 +19,6 @@ export const Register: FC = () => {
     postUser(user)
       .then((data) => {
         setResponse(data);
-        console.log('User', data);
       })
       .catch((response) => {
         console.log('error', response);

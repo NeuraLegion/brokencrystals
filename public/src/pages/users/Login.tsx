@@ -38,6 +38,7 @@ export const Login: FC = () => {
     getUser(user)
       .then((data: LoginUserResponse) => {
         setUserResponse(data);
+        sessionStorage.setItem('email', data.email);
         return data.ldapProfileLink;
       })
       .then((ldapProfileLink) =>
