@@ -117,7 +117,7 @@ export class UsersController {
   })
   @ApiResponse({
     type: IUser,
-    isArray: true
+    isArray: true,
   })
   async ldapQuery(@Query('query') query: string): Promise<IUser[]> {
     try {

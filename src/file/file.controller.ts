@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Header,
   HttpException,
@@ -45,6 +46,24 @@ export class FileController {
       response.header(FileController.CONTENT_TYPE_HEADER, contentType);
       const file: Stream = await this.fileService.getFile(path);
       file.pipe(response);
+    } catch (err) {
+      throw new HttpException(
+        {
+          error: err.message,
+          location: __filename,
+        },
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @ApiOperation({
+    description: 'deletes file at the given path',
+  })
+  @Delete()
+  async deleteFile(@Query('path') path: string): Promise<void> {
+    try {
+      this.fileService.deleteFile(path);
     } catch (err) {
       throw new HttpException(
         {
