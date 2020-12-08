@@ -4,6 +4,7 @@ import React, {
   FormEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -128,6 +129,23 @@ const defaultTestimonial: Testimonial = {
   message: '',
 };
 
+const testimonialsItems = (testimonials: Array<Testimonial>) => testimonials.map((item, index) => (
+  <div className="testimonial-item" key={item.name + index}>
+    <p>
+      <i className="bx bxs-quote-alt-left quote-icon-left" />
+      <span dangerouslySetInnerHTML={{ __html: item.message }} />
+      <i className="bx bxs-quote-alt-right quote-icon-right" />
+    </p>
+    <img
+      src="assets/img/testimonials/testimonials-1.jpg"
+      className="testimonial-img"
+      alt=""
+    />
+    <h3 dangerouslySetInnerHTML={{ __html: item.name }} />
+    <h4 dangerouslySetInnerHTML={{ __html: item.title }} />
+  </div>
+));
+
 export const Main: FC = () => {
   const [user, setUser] = useState<string | null>(
     sessionStorage.getItem('email'),
@@ -162,8 +180,9 @@ export const Main: FC = () => {
 
     await postTestimonials(newTestimonial)
       .then((data) => {
-        setTestimonials([...testimonials, data]);
+        setTestimonials([]);
         setNewTestimonial(defaultTestimonial);
+        setTestimonials([...testimonials, data]);
       })
       .then(() =>
         getTestimonialsCount().then((data) => setTestimonialsCount(data)),
@@ -234,22 +253,7 @@ export const Main: FC = () => {
           },
         }}
       >
-        {testimonials.map((item, index) => (
-          <div className="testimonial-item" key={item.name + index}>
-            <p>
-              <i className="bx bxs-quote-alt-left quote-icon-left" />
-              <span dangerouslySetInnerHTML={{ __html: item.message }} />
-              <i className="bx bxs-quote-alt-right quote-icon-right" />
-            </p>
-            <img
-              src="assets/img/testimonials/testimonials-1.jpg"
-              className="testimonial-img"
-              alt=""
-            />
-            <h3 dangerouslySetInnerHTML={{ __html: item.name }} />
-            <h4 dangerouslySetInnerHTML={{ __html: item.title }} />
-          </div>
-        ))}
+        {testimonialsItems(testimonials)}
       </OwlCarousel>
     ),
     [testimonials],
