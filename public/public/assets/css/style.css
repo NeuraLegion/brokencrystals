@@ -1707,6 +1707,10 @@ section {
   color: #ff0000;
 }
 
+.dangerous-html > div {
+  display: inline-block;
+}
+
 .profile-image {
   border-radius: 50%;
   margin-left: 25px;

@@ -1,4 +1,5 @@
 import React, { FC } from 'react';
+import InnerHTML from 'dangerously-set-html-content';
 import { Testimonial } from '../../../interfaces/Testimonial';
 
 interface Props {
@@ -13,7 +14,9 @@ export const TestimonialsItems: FC<Props> = (props: Props) => {
         <div className="testimonial-item" key={item.name + index}>
           <p>
             <i className="bx bxs-quote-alt-left quote-icon-left" />
-            <span dangerouslySetInnerHTML={{ __html: item.message }} />
+            <span className="dangerous-html">
+              <InnerHTML html={item.message} />
+            </span>
             <i className="bx bxs-quote-alt-right quote-icon-right" />
           </p>
           <img
@@ -21,8 +24,12 @@ export const TestimonialsItems: FC<Props> = (props: Props) => {
             className="testimonial-img"
             alt=""
           />
-          <h3 dangerouslySetInnerHTML={{ __html: item.name }} />
-          <h4 dangerouslySetInnerHTML={{ __html: item.title }} />
+          <h3 className="dangerous-html">
+            <InnerHTML html={item.name} />
+          </h3>
+          <h4 className="dangerous-html">
+            <InnerHTML html={item.title} />
+          </h4>
         </div>
       ))}
     </>

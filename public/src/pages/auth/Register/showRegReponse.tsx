@@ -1,17 +1,28 @@
 import React from 'react';
+import InnerHTML from 'dangerously-set-html-content';
 import { RegistrationUser } from '../../../interfaces/User';
-import { showVulnElement } from '../../../functions/showVulnMessage';
 
 export function showRegResponse({
   email,
   firstName,
   lastName
 }: RegistrationUser) {
+  const fields = [
+    { title: 'Email', value: email },
+    { title: 'First Name', value: firstName },
+    { title: 'Last Name', value: lastName }
+  ];
+
   return (
     <>
-      {email && showVulnElement('Email: ' + email)}
-      {firstName && showVulnElement('First Name: ' + firstName)}
-      {lastName && showVulnElement('Last Name: ' + lastName)}
+      {fields.map(
+        ({ title, value }) =>
+          value && (
+            <div className="dangerous-html" key={title}>
+              <InnerHTML html={`${title}: ${value}`} />
+            </div>
+          )
+      )}
     </>
   );
 }

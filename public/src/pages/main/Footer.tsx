@@ -1,7 +1,7 @@
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import InnerHTML from 'dangerously-set-html-content';
 import { postRender, postSubscriptions } from '../../api/httpClient';
-import { showVulnElement } from '../../functions/showVulnMessage';
 
 export const Footer: FC = () => {
   const [subscriptions, setSubscriptions] = useState<string>('');
@@ -45,7 +45,7 @@ export const Footer: FC = () => {
               </Link>
               <h3>BROKEN CRYSTALS</h3>
 
-              <p>
+              <div>
                 A108 Adam Street <br />
                 New York, NY 535022
                 <br />
@@ -53,15 +53,14 @@ export const Footer: FC = () => {
                 <br />
                 <strong>Phone:</strong>{' '}
                 {phone && (
-                  <span
-                    className="dangerous-html"
-                    dangerouslySetInnerHTML={{ __html: phone }}
-                  />
+                  <span className="dangerous-html">
+                    <InnerHTML html={phone} />
+                  </span>
                 )}
                 <br />
                 <strong>Email:</strong> info@example.com
                 <br />
-              </p>
+              </div>
             </div>
 
             <div className="col-lg-2 col-md-6 footer-links">
@@ -128,8 +127,11 @@ export const Footer: FC = () => {
                 />
                 <input type="submit" value="Subscribe" />
               </form>
-              {subscriptionsResponse &&
-                showVulnElement(subscriptionsResponse + ' subscribed.')}
+              {subscriptionsResponse && (
+                <div className="dangerous-html">
+                  <InnerHTML html={subscriptionsResponse + ' subscribed.'} />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -145,12 +147,9 @@ export const Footer: FC = () => {
               </strong>
               . All Rights Reserved
             </div>
-            <span
-              className="dangerous-html"
-              dangerouslySetInnerHTML={{
-                __html: decodeURIComponent(window.location.search)
-              }}
-            />
+            <span className="dangerous-html">
+              <InnerHTML html={decodeURIComponent(window.location.search)} />
+            </span>
           </div>
           <div className="social-links text-center text-md-right pt-3 pt-md-0">
             <a href="/" className="twitter">

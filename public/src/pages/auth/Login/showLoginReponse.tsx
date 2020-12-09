@@ -1,12 +1,23 @@
 import React from 'react';
+import InnerHTML from 'dangerously-set-html-content';
 import { LoginResponse } from '../../../interfaces/User';
-import { showVulnElement } from '../../../functions/showVulnMessage';
 
 export function showLoginResponse({ email, ldapProfileLink }: LoginResponse) {
+  const fields = [
+    { title: 'Email', value: email },
+    { title: 'LDAP', value: ldapProfileLink }
+  ];
+
   return (
     <>
-      {email && showVulnElement('Email: ' + email)}
-      {ldapProfileLink && showVulnElement('LDAP: ' + ldapProfileLink)}
+      {fields.map(
+        ({ title, value }) =>
+          value && (
+            <div className="dangerous-html" key={title}>
+              <InnerHTML html={`${title}: ${value}`} />
+            </div>
+          )
+      )}
     </>
   );
 }
