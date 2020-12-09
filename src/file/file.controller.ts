@@ -19,7 +19,7 @@ import {
 import { FileService } from './file.service';
 import { UsersService } from '../users/users.service';
 import { Stream } from 'stream';
-import { query, Request, Response } from 'express';
+import { query, Request, response, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
 import * as rawbody from 'raw-body';
@@ -115,6 +115,7 @@ export class FileController {
     }
     catch (err) {
       this.log.error(err.message);
+      res.status(HttpStatus.NOT_FOUND).end();
     }
   }
 }
