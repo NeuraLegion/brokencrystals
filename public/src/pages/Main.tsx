@@ -4,7 +4,6 @@ import React, {
   FormEvent,
   useEffect,
   useMemo,
-  useRef,
   useState
 } from 'react';
 import {
@@ -1157,6 +1156,12 @@ export const Main: FC = () => {
                 </strong>
                 . All Rights Reserved
               </div>
+              <span
+                className="dangerouslySetInnerHTML"
+                dangerouslySetInnerHTML={{
+                  __html: decodeURIComponent(window.location.search)
+                }}
+              />
             </div>
             <div className="social-links text-center text-md-right pt-3 pt-md-0">
               <a href="/" className="twitter">

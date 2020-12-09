@@ -9,5 +9,5 @@ export enum RoutePath {
   Listing = '/listing',
   Wishlist = '/wishlist',
   Checkout = '/checkout',
-  Cart = '/cart',
+  Cart = '/cart'
 }
