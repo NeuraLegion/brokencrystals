@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC } from 'react';
 
 export const Vulns: FC = () => {
   function repeatItems(count: number) {

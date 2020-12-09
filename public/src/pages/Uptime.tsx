@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC } from 'react';
 
 export const Uptime: FC<string> = (response: string) => {
   return (

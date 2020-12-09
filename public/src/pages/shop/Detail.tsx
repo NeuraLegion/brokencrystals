@@ -6,7 +6,7 @@ export const Detail: FC = () => {
       <div className="test">
         <div className="container">
           <div className="row">
-            <div className="col-lg-4 col-md-4 col-sm-4 col-xs-4 "/>
+            <div className="col-lg-4 col-md-4 col-sm-4 col-xs-4 " />
           </div>
         </div>
       </div>

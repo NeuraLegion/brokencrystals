@@ -2,35 +2,35 @@ import React, { FC, FormEvent, useState } from 'react';
 import {
   LoginUser,
   LoginUserResponse,
-  RegistrationUser,
+  RegistrationUser
 } from '../../interfaces/User';
 import { getLdap, getUser } from '../../api/httpClient';
 
 const defaultLoginUser: LoginUser = {
   user: '',
-  password: '',
+  password: ''
 };
 
 const defaultUserResponse: LoginUserResponse = {
   email: '',
-  ldapProfileLink: '',
+  ldapProfileLink: ''
 };
 
 const defaultRegistrationUser: RegistrationUser = {
   email: '',
   lastName: '',
   firstName: '',
-  password: '',
+  password: ''
 };
 
 export const Login: FC = () => {
   const [user, setUser] = useState<LoginUser>(defaultLoginUser);
   const [userResponse, setUserResponse] = useState<LoginUserResponse>(
-    defaultUserResponse,
+    defaultUserResponse
   );
-  const [ldapResponse, setLdapResponse] = useState<RegistrationUser>(
-    defaultRegistrationUser,
-  );
+  const [ldapResponse, setLdapResponse] = useState<Array<RegistrationUser>>([
+    defaultRegistrationUser
+  ]);
 
   const sendUser = async (e: FormEvent) => {
     e.preventDefault();
@@ -42,7 +42,7 @@ export const Login: FC = () => {
         return data.ldapProfileLink;
       })
       .then((ldapProfileLink) =>
-        getLdap(ldapProfileLink).then((data) => setLdapResponse(data)),
+        getLdap(ldapProfileLink).then((data) => setLdapResponse(data))
       )
       .catch((response) => {
         console.log('error', response);
@@ -84,7 +84,7 @@ export const Login: FC = () => {
                     <div
                       className="dangerouslySetInnerHTML"
                       dangerouslySetInnerHTML={{
-                        __html: 'Email: ' + userResponse.email,
+                        __html: 'Email: ' + userResponse.email
                       }}
                     />
                   )}
@@ -92,7 +92,7 @@ export const Login: FC = () => {
                     <div
                       className="dangerouslySetInnerHTML"
                       dangerouslySetInnerHTML={{
-                        __html: 'LDAP: ' + userResponse.ldapProfileLink,
+                        __html: 'LDAP: ' + userResponse.ldapProfileLink
                       }}
                     />
                   )}
@@ -110,30 +110,36 @@ export const Login: FC = () => {
                     }
                   />
                 </div>
-                {ldapResponse.email && (
-                  <div
-                    className="dangerouslySetInnerHTML"
-                    dangerouslySetInnerHTML={{
-                      __html: 'Email: ' + ldapResponse.email,
-                    }}
-                  />
-                )}
-                {ldapResponse.firstName && (
-                  <div
-                    className="dangerouslySetInnerHTML"
-                    dangerouslySetInnerHTML={{
-                      __html: 'First Name: ' + ldapResponse.firstName,
-                    }}
-                  />
-                )}
-                {ldapResponse.lastName && (
-                  <div
-                    className="dangerouslySetInnerHTML"
-                    dangerouslySetInnerHTML={{
-                      __html: 'Last Name: ' + ldapResponse.lastName,
-                    }}
-                  />
-                )}
+                {ldapResponse && ldapResponse.length
+                  ? ldapResponse.map(({ email, firstName, lastName }) => (
+                      <>
+                        {email && (
+                          <div
+                            className="dangerouslySetInnerHTML"
+                            dangerouslySetInnerHTML={{
+                              __html: 'Email: ' + email
+                            }}
+                          />
+                        )}
+                        {firstName && (
+                          <div
+                            className="dangerouslySetInnerHTML"
+                            dangerouslySetInnerHTML={{
+                              __html: 'First Name: ' + firstName
+                            }}
+                          />
+                        )}
+                        {lastName && (
+                          <div
+                            className="dangerouslySetInnerHTML"
+                            dangerouslySetInnerHTML={{
+                              __html: 'Last Name: ' + lastName
+                            }}
+                          />
+                        )}
+                      </>
+                    ))
+                  : null}
                 <button
                   className="au-btn au-btn--block au-btn--green m-b-20"
                   type="submit"

@@ -5,7 +5,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useState
 } from 'react';
 import {
   getPhoto,
@@ -16,7 +16,7 @@ import {
   postRender,
   postSubscriptions,
   postTestimonials,
-  putPhoto,
+  putPhoto
 } from '../api/httpClient';
 import OwlCarousel from 'react-owl-carousel';
 import 'owl.carousel/dist/assets/owl.carousel.css';
@@ -30,131 +30,131 @@ const products = [
     photos: [
       {
         url:
-          '/api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg',
-      },
+          '/api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg'
+      }
     ],
     name: 'Amethyst',
-    short_description: 'a violet variety of quartz',
+    short_description: 'a violet variety of quartz'
   },
   {
     category: { name: 'Gemstones' },
     photos: [
       {
-        url: '/api/file?path=config/products/crystals/ruby.jpg&type=image/jpg',
-      },
+        url: '/api/file?path=config/products/crystals/ruby.jpg&type=image/jpg'
+      }
     ],
     name: 'Ruby',
-    short_description: 'an intense heart crystal',
+    short_description: 'an intense heart crystal'
   },
   {
     category: { name: 'Healing' },
     photos: [
       {
-        url: '/api/file?path=config/products/crystals/opal.jpg&type=image/jpg',
-      },
+        url: '/api/file?path=config/products/crystals/opal.jpg&type=image/jpg'
+      }
     ],
     name: 'Opal',
-    short_description: 'the precious stone',
+    short_description: 'the precious stone'
   },
   {
     category: { name: 'Jewellery' },
     photos: [
       {
         url:
-          '/api/file?path=config/products/crystals/sapphire.jpg&type=image/jpg',
-      },
+          '/api/file?path=config/products/crystals/sapphire.jpg&type=image/jpg'
+      }
     ],
     name: 'Sapphire',
-    short_description: '',
+    short_description: ''
   },
   {
     category: { name: 'Gemstones' },
     photos: [
       {
-        url:
-          '/api/file?path=config/products/crystals/pyrite.jpg&type=image/jpg',
-      },
+        url: '/api/file?path=config/products/crystals/pyrite.jpg&type=image/jpg'
+      }
     ],
     name: 'Pyrite',
-    short_description: 'fools gold',
+    short_description: 'fools gold'
   },
   {
     category: { name: 'Healing' },
     photos: [
       {
-        url: '/api/file?path=config/products/crystals/amber.jpg&type=image/jpg',
-      },
+        url: '/api/file?path=config/products/crystals/amber.jpg&type=image/jpg'
+      }
     ],
     name: 'Amber',
-    short_description: 'fossilized tree resin',
+    short_description: 'fossilized tree resin'
   },
   {
     category: { name: 'Jewellery' },
     photos: [
       {
         url:
-          '/api/file?path=config/products/crystals/emerald.jpg&type=image/jpg',
-      },
+          '/api/file?path=config/products/crystals/emerald.jpg&type=image/jpg'
+      }
     ],
     name: 'Emerald',
-    short_description: 'symbol of fertility and life',
+    short_description: 'symbol of fertility and life'
   },
   {
     category: { name: 'Jewellery' },
     photos: [
       {
         url:
-          '/api/file?path=config/products/crystals/shattuckite.jpg&type=image/jpg',
-      },
+          '/api/file?path=config/products/crystals/shattuckite.jpg&type=image/jpg'
+      }
     ],
     name: 'Shattuckite',
-    short_description: 'mistery',
+    short_description: 'mistery'
   },
   {
     category: { name: 'Gemstones' },
     photos: [
       {
         url:
-          '/api/file?path=config/products/crystals/bismuth.jpg&type=image/jpg',
-      },
+          '/api/file?path=config/products/crystals/bismuth.jpg&type=image/jpg'
+      }
     ],
     name: 'Bismuth',
-    short_description: 'rainbow',
-  },
+    short_description: 'rainbow'
+  }
 ];
 
 const defaultTestimonial: Testimonial = {
   name: '',
   title: '',
-  message: '',
+  message: ''
 };
 
-const testimonialsItems = (testimonials: Array<Testimonial>) => testimonials.map((item, index) => (
-  <div className="testimonial-item" key={item.name + index}>
-    <p>
-      <i className="bx bxs-quote-alt-left quote-icon-left" />
-      <span dangerouslySetInnerHTML={{ __html: item.message }} />
-      <i className="bx bxs-quote-alt-right quote-icon-right" />
-    </p>
-    <img
-      src="assets/img/testimonials/testimonials-1.jpg"
-      className="testimonial-img"
-      alt=""
-    />
-    <h3 dangerouslySetInnerHTML={{ __html: item.name }} />
-    <h4 dangerouslySetInnerHTML={{ __html: item.title }} />
-  </div>
-));
+const testimonialsItems = (testimonials: Array<Testimonial>) =>
+  testimonials.map((item, index) => (
+    <div className="testimonial-item" key={item.name + index}>
+      <p>
+        <i className="bx bxs-quote-alt-left quote-icon-left" />
+        <span dangerouslySetInnerHTML={{ __html: item.message }} />
+        <i className="bx bxs-quote-alt-right quote-icon-right" />
+      </p>
+      <img
+        src="assets/img/testimonials/testimonials-1.jpg"
+        className="testimonial-img"
+        alt=""
+      />
+      <h3 dangerouslySetInnerHTML={{ __html: item.name }} />
+      <h4 dangerouslySetInnerHTML={{ __html: item.title }} />
+    </div>
+  ));
 
 export const Main: FC = () => {
   const [user, setUser] = useState<string | null>(
-    sessionStorage.getItem('email'),
+    sessionStorage.getItem('email')
   );
   const [userImage, setUserImage] = useState<string>();
 
   const [testimonials, setTestimonials] = useState<Array<Testimonial>>([]);
   const [newTestimonial, setNewTestimonial] = useState<Testimonial>(
-    defaultTestimonial,
+    defaultTestimonial
   );
   const [testimonialsCount, setTestimonialsCount] = useState<number>(0);
 
@@ -185,7 +185,7 @@ export const Main: FC = () => {
         setTestimonials([...testimonials, data]);
       })
       .then(() =>
-        getTestimonialsCount().then((data) => setTestimonialsCount(data)),
+        getTestimonialsCount().then((data) => setTestimonialsCount(data))
       )
       .catch((response) => {
         console.log('error', response);
@@ -200,7 +200,7 @@ export const Main: FC = () => {
         .then(() =>
           getPhoto(user)
             .then(createImageUrl)
-            .then((url) => setUserImage(url)),
+            .then((url) => setUserImage(url))
         )
         .catch(({ response }) => {
           const { error } = response.data;
@@ -243,20 +243,20 @@ export const Main: FC = () => {
         dots
         responsive={{
           0: {
-            items: 1,
+            items: 1
           },
           768: {
-            items: 2,
+            items: 2
           },
           900: {
-            items: 3,
-          },
+            items: 3
+          }
         }}
       >
         {testimonialsItems(testimonials)}
       </OwlCarousel>
     ),
-    [testimonials],
+    [testimonials]
   );
 
   return (
@@ -713,7 +713,7 @@ export const Main: FC = () => {
                       onInput={(e) =>
                         setNewTestimonial({
                           ...newTestimonial,
-                          name: e.currentTarget.value,
+                          name: e.currentTarget.value
                         })
                       }
                     />
@@ -732,7 +732,7 @@ export const Main: FC = () => {
                       onInput={(e) =>
                         setNewTestimonial({
                           ...newTestimonial,
-                          title: e.currentTarget.value,
+                          title: e.currentTarget.value
                         })
                       }
                     />
@@ -751,7 +751,7 @@ export const Main: FC = () => {
                     onChange={(e) =>
                       setNewTestimonial({
                         ...newTestimonial,
-                        message: e.currentTarget.value,
+                        message: e.currentTarget.value
                       })
                     }
                   />
@@ -1138,7 +1138,7 @@ export const Main: FC = () => {
                   <span
                     className="dangerouslySetInnerHTML"
                     dangerouslySetInnerHTML={{
-                      __html: subscriptionsResponse + ' subscribed.',
+                      __html: subscriptionsResponse + ' subscribed.'
                     }}
                   />
                 )}

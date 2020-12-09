@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC } from 'react';
 
 interface Props {
   comments: Array<{ name: any; content: any }>;
@@ -18,7 +18,7 @@ export const PxssOne: FC<Props> = (props: Props) => {
         <button id="submit">Submit</button>
       </form>
       <div>
-        <table style={{ width: "100%" }}>
+        <table style={{ width: '100%' }}>
           {comments.map((comment) => (
             <tr>
               <td>{comment.name}</td>

@@ -2,7 +2,7 @@ import { AxiosRequestConfig } from 'axios';
 import { httpClient } from './httpClient';
 
 export function makeApiRequest<T>(
-  urlOrConfig: string | AxiosRequestConfig,
+  urlOrConfig: string | AxiosRequestConfig
 ): Promise<T> {
   const config: AxiosRequestConfig =
     typeof urlOrConfig === 'string' ? { url: urlOrConfig } : urlOrConfig;

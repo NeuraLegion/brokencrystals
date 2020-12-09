@@ -6,7 +6,7 @@ const defaultUser: RegistrationUser = {
   email: '',
   lastName: '',
   firstName: '',
-  password: '',
+  password: ''
 };
 
 export const Register: FC = () => {

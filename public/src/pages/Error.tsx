@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC } from 'react';
 
 export const Error: FC = () => {
   return <h1>There seems to be a problem :(</h1>;

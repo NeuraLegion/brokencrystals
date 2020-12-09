@@ -1,4 +1,4 @@
-import React, { FC, FormEvent, useState } from "react";
+import React, { FC, FormEvent, useState } from 'react';
 
 export const DomXss2: FC = () => {
   const [firstName, setFirstName] = useState<string>();

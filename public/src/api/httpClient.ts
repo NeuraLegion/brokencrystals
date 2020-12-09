@@ -13,9 +13,9 @@ export function getTestimonials(): Promise<any> {
 export function getTestimonialsCount(): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Testimonials}/count?query=${encodeURIComponent(
-      'select count(1) as count from testimonial',
+      'select count(1) as count from testimonial'
     )}`,
-    method: 'get',
+    method: 'get'
   });
 }
 
@@ -24,14 +24,14 @@ export function postTestimonials(data: Testimonial): Promise<any> {
     url: ApiUrl.Testimonials,
     method: 'post',
     headers: { Authorization: sessionStorage.getItem('token') },
-    data,
+    data
   });
 }
 
 export function postSubscriptions(email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Subscriptions}?email=${email}`,
-    method: 'post',
+    method: 'post'
   });
 }
 
@@ -39,32 +39,32 @@ export function postUser(data: RegistrationUser): Promise<any> {
   return makeApiRequest({
     url: ApiUrl.Users,
     method: 'post',
-    data,
+    data
   });
 }
 
 export function getUser(data: LoginUser): Promise<any> {
   return makeApiRequest({
-    url: ApiUrl.Auth,
+    url: `${ApiUrl.Auth}/login`,
     method: 'post',
-    data,
+    data
   });
 }
 
 export function getLdap(ldapProfileLink: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/ldap?query=${encodeURIComponent(ldapProfileLink)}`,
-    method: 'get',
+    method: 'get'
   });
 }
 
 export function postMetadata(): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Metadata}?xml=${encodeURIComponent(
-      '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE child [ <!ENTITY child SYSTEM "file:///etc/passwd"> ]><child></child>',
+      '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE child [ <!ENTITY child SYSTEM "file:///etc/passwd"> ]><child></child>'
     )}`,
     method: 'post',
-    headers: { 'Content-Type': 'text/xml' },
+    headers: { 'Content-Type': 'text/xml' }
   });
 }
 
@@ -72,7 +72,7 @@ export function getPhoto(email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${email}/photo`,
     method: 'get',
-    responseType: 'blob',
+    responseType: 'blob'
   });
 }
 
@@ -85,16 +85,16 @@ export function putPhoto(photo: File, email: string): Promise<any> {
     method: 'put',
     headers: {
       'Content-Type': 'image/png',
-      Authorization: sessionStorage.getItem('token'),
+      'Authorization': sessionStorage.getItem('token')
     },
-    data,
+    data
   });
 }
 
 export function goTo(url: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Goto}?url=${url}`,
-    method: 'get',
+    method: 'get'
   });
 }
 
@@ -103,6 +103,6 @@ export function postRender(text: string): Promise<any> {
     url: ApiUrl.Render,
     method: 'post',
     headers: { 'Content-Type': 'text/plain' },
-    data: `{{="${text}"}}`,
+    data: `{{="${text}"}}`
   });
 }

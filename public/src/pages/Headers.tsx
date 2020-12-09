@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC } from 'react';
 
 interface Props {
   headers: Array<any>;
@@ -10,7 +10,7 @@ export const Headers: FC<Props> = (props: Props) => {
   return (
     <>
       <h1>Nice headers!</h1>
-      <table style={{ width: "100%" }}>
+      <table style={{ width: '100%' }}>
         {headers.map((header, index) => (
           <tr>
             <td>{index}</td>
