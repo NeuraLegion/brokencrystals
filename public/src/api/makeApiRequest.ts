@@ -11,6 +11,7 @@ export function makeApiRequest<T>(
     if (response) {
       const token = response.headers.authorization;
       token && sessionStorage.setItem('token', token);
+
       return response.data;
     }
   });

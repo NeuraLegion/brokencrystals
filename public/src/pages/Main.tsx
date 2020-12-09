@@ -1060,7 +1060,11 @@ export const Main: FC = () => {
                   <br />
                   United States <br />
                   <br />
-                  <strong>Phone:</strong> {phone}
+                  <strong>Phone:</strong>{' '}
+                  <span
+                    className="dangerouslySetInnerHTML"
+                    dangerouslySetInnerHTML={{ __html: phone }}
+                  />
                   <br />
                   <strong>Email:</strong> info@example.com
                   <br />

@@ -3,7 +3,7 @@ export interface LoginUser {
   password: string;
 }
 
-export interface LoginUserResponse {
+export interface LoginResponse {
   email: string;
   ldapProfileLink: string;
 }
@@ -12,5 +12,5 @@ export interface RegistrationUser {
   email: string;
   lastName: string;
   firstName: string;
-  password: string;
+  password?: string;
 }
