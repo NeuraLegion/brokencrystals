@@ -71,6 +71,7 @@ export function getUserPhoto(email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${email}/photo`,
     method: 'get',
+    headers: { Authorization: sessionStorage.getItem('token') },
     responseType: 'arraybuffer'
   });
 }
