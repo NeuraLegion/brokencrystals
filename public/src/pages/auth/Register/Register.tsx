@@ -61,7 +61,7 @@ export const Register: FC = () => {
             <label>Email Address</label>
             <input
               className="au-input au-input--full"
-              type="email"
+              type="text"
               name="email"
               placeholder="Email"
               value={email}

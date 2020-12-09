@@ -1,19 +1,15 @@
 import React from 'react';
 import { RegistrationUser } from '../../../interfaces/User';
-import { showVulnElement } from '../../../functions/showVulnMessage';
+import showRegResponse from '../Register/showRegReponse';
 
 export function showLdapResponse(ldapResponse: Array<RegistrationUser>) {
+  if (!ldapResponse?.length) return null;
+
   return (
     <>
-      {ldapResponse && ldapResponse.length
-        ? ldapResponse.map(({ email, firstName, lastName }) => (
-            <div key={email}>
-              {email && showVulnElement('Email: ' + email)}
-              {firstName && showVulnElement('First Name: ' + firstName)}
-              {lastName && showVulnElement('Last Name: ' + lastName)}
-            </div>
-          ))
-        : null}
+      {ldapResponse.map((response) => (
+        <div key={response.email}>{showRegResponse(response)}</div>
+      ))}
     </>
   );
 }
