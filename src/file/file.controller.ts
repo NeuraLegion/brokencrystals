@@ -1,7 +1,9 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
+  Head,
   Header,
   HttpException,
   HttpStatus,
@@ -17,9 +19,15 @@ import {
 import { FileService } from './file.service';
 import { UsersService } from '../users/users.service';
 import { Stream } from 'stream';
-import { Request, Response } from 'express';
+import { query, Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
+import * as rawbody from 'raw-body';
+import * as fs from 'fs';
+import * as path from 'path';
+
+import { formatWithCursor } from 'prettier';
+import { W_OK } from 'constants';
 
 @Controller('/api/file')
 @ApiTags('files controller')
@@ -75,14 +83,38 @@ export class FileController {
     }
   }
 
-  @ApiProperty({
-    description: 'Upload file to server using multipart form upload',
+
+  
+  @ApiOperation({
+    description: 'save raw content on server as a file',
   })
-  @Put('upload')
-  @UseInterceptors(FileInterceptor('file'))
-  async uploadFile(@UploadedFile() file) {
-    console.log(file);
-    this.uploadFile;
-    //TODO complete
+  @Put('raw')
+  async uploadFile(@Body() data, @Query('path') file, @Req() req):Promise<void> {
+    if (req.readable) {
+      const raw = await rawbody(req);
+      try {
+        await fs.promises.access(path.dirname(file), W_OK);
+        await fs.promises.writeFile(file, raw);
+      }
+      catch (err) {
+        this.log.error(err.message);
+      }
+    }
+  }
+
+  @ApiOperation({
+    description: 'read file content content on server as a file',
+  })
+  @Get('raw')
+  @Header('Content-Type', 'application/octet-stream')
+  async readFile(@Query('path') file, @Res() res):Promise<void> {
+    try {
+      res.header(FileController.CONTENT_TYPE_HEADER, 'application/octet-stream');
+      const fileStream: Stream = await this.fileService.getFile(file);
+      fileStream.pipe(res);
+    }
+    catch (err) {
+      this.log.error(err.message);
+    }
   }
 }
