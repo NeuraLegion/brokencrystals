@@ -67,12 +67,11 @@ export function postMetadata(): Promise<any> {
     headers: { 'Content-Type': 'text/xml' }
   });
 }
-
-export function getPhoto(email: string): Promise<any> {
+export function getUserPhoto(email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${email}/photo`,
     method: 'get',
-    responseType: 'blob'
+    responseType: 'arraybuffer'
   });
 }
 
@@ -98,11 +97,11 @@ export function goTo(url: string): Promise<any> {
   });
 }
 
-export function postRender(text: string): Promise<any> {
+export function postRender(data: string): Promise<any> {
   return makeApiRequest({
     url: ApiUrl.Render,
     method: 'post',
     headers: { 'Content-Type': 'text/plain' },
-    data: `{{="${text}"}}`
+    data
   });
 }

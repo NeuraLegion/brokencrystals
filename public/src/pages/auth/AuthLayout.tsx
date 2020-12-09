@@ -1,5 +1,4 @@
 import React, { FC } from 'react';
-import { Link } from 'react-router-dom';
 
 export const AuthLayout: FC = ({ children }) => {
   return (
@@ -8,7 +7,7 @@ export const AuthLayout: FC = ({ children }) => {
         <div className="login-wrap">
           <div className="login-content">
             <div className="login-logo">
-              <Link to="/" className="logo mr-auto">
+              <a href="/" className="logo mr-auto">
                 <img
                   width={100}
                   height={100}
@@ -17,7 +16,7 @@ export const AuthLayout: FC = ({ children }) => {
                   className="img-fluid"
                 />
                 BROKEN CRYSTALS
-              </Link>
+              </a>
             </div>
             {children}
           </div>

@@ -41,7 +41,11 @@ export const Login: FC = () => {
   const sendLdap = () => {
     const { ldapProfileLink } = loginResponse || {};
     ldapProfileLink &&
-      getLdap(ldapProfileLink).then((data) => setLdapResponse(data));
+      getLdap(ldapProfileLink)
+        .then((data) => setLdapResponse(data))
+        .then(() => {
+          window.location.href = '/';
+        });
   };
 
   useEffect(() => sendLdap(), [loginResponse]);
@@ -54,7 +58,7 @@ export const Login: FC = () => {
             <label>Email</label>
             <input
               className="au-input au-input--full"
-              type="email"
+              type="text"
               name="user"
               placeholder="Email"
               value={user}
