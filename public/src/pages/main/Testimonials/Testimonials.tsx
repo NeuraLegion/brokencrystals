@@ -5,27 +5,7 @@ import OwlCarousel from 'react-owl-carousel';
 import 'owl.carousel/dist/assets/owl.carousel.css';
 import 'owl.carousel/dist/assets/owl.theme.default.css';
 import TestimonialsForm from './TestimonialsForm';
-
-const testimonialsItems = (testimonials: Array<Testimonial>) => (
-  <>
-    {testimonials.map((item, index) => (
-      <div className="testimonial-item" key={item.name + index}>
-        <p>
-          <i className="bx bxs-quote-alt-left quote-icon-left" />
-          <span dangerouslySetInnerHTML={{ __html: item.message }} />
-          <i className="bx bxs-quote-alt-right quote-icon-right" />
-        </p>
-        <img
-          src="assets/img/testimonials/testimonials-1.jpg"
-          className="testimonial-img"
-          alt=""
-        />
-        <h3 dangerouslySetInnerHTML={{ __html: item.name }} />
-        <h4 dangerouslySetInnerHTML={{ __html: item.title }} />
-      </div>
-    ))}
-  </>
-);
+import TestimonialsItems from './TestimonialsItems';
 
 export const Testimonials: FC = () => {
   const [testimonials, setTestimonials] = useState<Array<Testimonial>>([]);
@@ -59,7 +39,7 @@ export const Testimonials: FC = () => {
 
         {testimonials?.length ? (
           <OwlCarousel className="owl-carousel" dots>
-            {testimonialsItems(testimonials)}
+            <TestimonialsItems testimonials={testimonials} />
           </OwlCarousel>
         ) : null}
       </div>
