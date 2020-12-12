@@ -119,7 +119,7 @@ export class AppController {
           res(data.toString('ascii'));
         });
 
-        ps.on('error', function(err) {
+        ps.on('error', function (err) {
           rej(err.message);
         });
 

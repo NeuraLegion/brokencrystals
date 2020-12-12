@@ -24,16 +24,14 @@ export class AuthService {
     );
   }
 
-  async validateToken(token: string): Promise<boolean> {
+  async validateToken(token: string): Promise<any> {
     const parts = token.split('.');
     console.log(Buffer.from(parts[0], 'base64').toString('ascii'));
-    console.log(decode(token, this.publicKey, false, 'RS256'));
-    return true;
+    return decode(token, this.publicKey, false, 'RS256');
   }
 
   async createToken(payload: unknown): Promise<string> {
     const token = encode(payload, this.privateKey, 'RS256');
-    this.validateToken(token);
     return token;
   }
 }

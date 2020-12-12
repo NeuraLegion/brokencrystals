@@ -83,20 +83,21 @@ export class FileController {
     }
   }
 
-
-  
   @ApiOperation({
     description: 'save raw content on server as a file',
   })
   @Put('raw')
-  async uploadFile(@Body() data, @Query('path') file, @Req() req):Promise<void> {
+  async uploadFile(
+    @Body() data,
+    @Query('path') file,
+    @Req() req,
+  ): Promise<void> {
     if (req.readable) {
       const raw = await rawbody(req);
       try {
         await fs.promises.access(path.dirname(file), W_OK);
         await fs.promises.writeFile(file, raw);
-      }
-      catch (err) {
+      } catch (err) {
         this.log.error(err.message);
       }
     }
@@ -107,13 +108,15 @@ export class FileController {
   })
   @Get('raw')
   @Header('Content-Type', 'application/octet-stream')
-  async readFile(@Query('path') file, @Res() res):Promise<void> {
+  async readFile(@Query('path') file, @Res() res): Promise<void> {
     try {
-      res.header(FileController.CONTENT_TYPE_HEADER, 'application/octet-stream');
+      res.header(
+        FileController.CONTENT_TYPE_HEADER,
+        'application/octet-stream',
+      );
       const fileStream: Stream = await this.fileService.getFile(file);
       fileStream.pipe(res);
-    }
-    catch (err) {
+    } catch (err) {
       this.log.error(err.message);
       res.status(HttpStatus.NOT_FOUND).end();
     }

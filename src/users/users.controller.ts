@@ -13,6 +13,7 @@ import {
   Query,
   Res,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
@@ -24,6 +25,7 @@ import { LdapQueryHandler } from './ldap.query.handler';
 import { UsersService } from './users.service';
 import { Readable } from 'stream';
 import { User } from 'src/model/user.entity';
+import { AuthGuard } from 'src/auth/auth.guard';
 
 @Controller('/api/users')
 @ApiTags('user controller')
@@ -61,6 +63,7 @@ export class UsersController {
     }
   }
 
+  @UseGuards(AuthGuard)
   @Get('/one/:email/photo')
   @Header('Content-Type', 'image/png')
   @ApiResponse({
@@ -176,6 +179,7 @@ export class UsersController {
     }
   }
 
+  @UseGuards(AuthGuard)
   @Put('/one/:email/photo')
   @ApiOperation({
     description: 'uploads user profile photo',

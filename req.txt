@@ -1,9 +1,0 @@
-POST /api/cl HTTP/1.1
-Content-Type: text/plain
-Cookie: connect.sid=s%3A80JR0gGodXLbMX6v5TBrfL4wUOwHMt-Z.xZVLu0EdMd4xy7d4Nk1LAh12Fz3kCyl14SA8Kjwfx94; bc-calls-counter=4
-Content-Length: 3
-Host: localhost:3000
-User-agent: tests
-Content-Length: 3
-
-123
