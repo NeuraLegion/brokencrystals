@@ -41,5 +41,3 @@ export const SWAGGER_DESC_loginWithX5UJwt = `
 
 export const SWAGGER_DESC_validateWithX5UJwt = `
 `;
-
-

@@ -199,8 +199,6 @@ export class AuthController {
     };
   }
 
-
-
   @Post('jwt/jku/login')
   @ApiResponse({
     type: LoginResponse,
@@ -245,8 +243,6 @@ export class AuthController {
       secret: 'this is our secret',
     };
   }
-
-
 
   @Post('jwt/jwk/login')
   @ApiResponse({
@@ -293,7 +289,6 @@ export class AuthController {
     };
   }
 
-
   @Post('jwt/x5c/login')
   @ApiResponse({
     type: LoginResponse,
@@ -338,9 +333,6 @@ export class AuthController {
       secret: 'this is our secret',
     };
   }
-
-
-
 
   @Post('jwt/x5u/login')
   @ApiResponse({
