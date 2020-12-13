@@ -8,6 +8,8 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { TestimonialsModule } from './testimonials/testimonials.module';
 import { OrmModule } from './orm/orm.module';
 import { ConfigModule } from '@nestjs/config';
+import { HttpClientService } from './httpclient/httpclient.service';
+import { HttpClientModule as HttpClientModule } from './httpclient/httpclient.module';
 
 @Module({
   imports: [
@@ -20,8 +22,9 @@ import { ConfigModule } from '@nestjs/config';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    HttpClientModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, HttpClientService],
 })
 export class AppModule {}

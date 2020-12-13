@@ -5,15 +5,24 @@ import * as fs from 'fs';
 import { AuthModuleConfigProperties } from './auth.module.config.properties';
 import { JwtHeader } from './jwt/jwt.header';
 import { EntityManager } from '@mikro-orm/core';
-import { JwtTokenWithRSAKeysProcessor } from './jwt/jwt.token.with.rsa.keys.processor';
 import { JwtTokenProcessor } from './jwt/jwt.token.processor';
+import { JwtTokenWithRSAKeysProcessor } from './jwt/jwt.token.with.rsa.keys.processor';
 import { JwtTokenWithSqlKIDProcessor } from './jwt/jwt.token.with.sql.kid.processor';
-import { JwtTokenWithWeakKeyProcessor } from './jwt/jwt.token.with.weak.key';
+import { JwtTokenWithWeakKeyProcessor } from './jwt/jwt.token.with.weak.key.processor';
+import { JwtTokenWithJKUProcessor } from './jwt/jwt.token.with.jku.processor';
+import { JwtTokenWithJWKProcessor } from './jwt/jwt.token.with.jwk.processor';
+import { JwtTokenWithX5CKeyProcessor } from './jwt/jwt.token.with.x5c.key.processor';
+import { JwtTokenWithX5UKeyProcessor } from './jwt/jwt.token.with.x5u.key.processor';
+import { HttpClientService } from 'src/httpclient/httpclient.service';
 
 export enum JwtProcessorType {
   RSA,
   SQL_KID,
   WEAK_KEY,
+  X5C,
+  X5U,
+  JKU,
+  JWK,
 }
 
 @Injectable()
@@ -24,15 +33,16 @@ export class AuthService {
   constructor(
     private readonly configService: ConfigService,
     private readonly em: EntityManager,
+    private readonly httpClient: HttpClientService,
   ) {
     const privateKey = fs.readFileSync(
-      configService.get<string>(
+      this.configService.get<string>(
         AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION,
       ),
       'utf8',
     );
     const publicKey = fs.readFileSync(
-      configService.get<string>(
+      this.configService.get<string>(
         AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION,
       ),
       'utf8',
@@ -53,6 +63,22 @@ export class AuthService {
     this.processors.set(
       JwtProcessorType.WEAK_KEY,
       new JwtTokenWithWeakKeyProcessor(jwtSecretKey),
+    );
+    this.processors.set(
+      JwtProcessorType.JKU,
+      new JwtTokenWithJKUProcessor(jwtSecretKey, this.httpClient),
+    );
+    this.processors.set(
+      JwtProcessorType.JWK,
+      new JwtTokenWithJWKProcessor(jwtSecretKey),
+    );
+    this.processors.set(
+      JwtProcessorType.X5C,
+      new JwtTokenWithX5CKeyProcessor(jwtSecretKey),
+    );
+    this.processors.set(
+      JwtProcessorType.X5U,
+      new JwtTokenWithX5UKeyProcessor(jwtSecretKey, this.httpClient),
     );
   }
 

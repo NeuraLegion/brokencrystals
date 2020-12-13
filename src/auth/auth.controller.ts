@@ -21,7 +21,14 @@ import { AuthService, JwtProcessorType } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { JwtType } from './jwt/jwt.type.decorator';
 import { JwtValidationResponse } from './api/JwtValidationResponse';
-import { SWAGGER_DESC_loginWithKIDSqlJwt, SWAGGER_DESC_loginWithRSAJwtKeys, SWAGGER_DESC_loginWithWeakKeyJwt, SWAGGER_DESC_validateWithKIDSqlJwt, SWAGGER_DESC_validateWithWeakKeyJwt } from './auth.controller.swagger.desc';
+import {
+  SWAGGER_DESC_loginWithKIDSqlJwt,
+  SWAGGER_DESC_loginWithRSAJwtKeys,
+  SWAGGER_DESC_loginWithWeakKeyJwt,
+  SWAGGER_DESC_validateWithKIDSqlJwt,
+  SWAGGER_DESC_validateWithWeakKeyJwt,
+} from './auth.controller.swagger.desc';
+import { HttpClientService } from 'src/httpclient/httpclient.service';
 
 @Controller('/api/auth')
 @ApiTags('auth controller')
@@ -31,6 +38,7 @@ export class AuthController {
   constructor(
     private readonly usersService: UsersService,
     private readonly authService: AuthService,
+    private readonly httpClient: HttpClientService,
   ) {}
 
   private async login(
@@ -84,7 +92,7 @@ export class AuthController {
     description: 'invliad credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithRSAJwtKeys
+    description: SWAGGER_DESC_loginWithRSAJwtKeys,
   })
   async loginWithRSAJwtKeys(
     @Body() req: LoginRequest,
@@ -106,7 +114,7 @@ export class AuthController {
     description: 'invliad credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithKIDSqlJwt
+    description: SWAGGER_DESC_loginWithKIDSqlJwt,
   })
   async loginWithKIDSqlJwt(
     @Body() req: LoginRequest,
@@ -130,7 +138,7 @@ export class AuthController {
     description: 'invliad credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_validateWithKIDSqlJwt
+    description: SWAGGER_DESC_validateWithKIDSqlJwt,
   })
   async validateWithKIDSqlJwt(): Promise<JwtValidationResponse> {
     return {
@@ -148,7 +156,7 @@ export class AuthController {
     description: 'invliad credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithWeakKeyJwt
+    description: SWAGGER_DESC_loginWithWeakKeyJwt,
   })
   async loginWithWeakKeyJwt(
     @Body() req: LoginRequest,
@@ -164,7 +172,7 @@ export class AuthController {
   @JwtType(JwtProcessorType.WEAK_KEY)
   @Get('jwt/weak-key/validate')
   @ApiOperation({
-    description: SWAGGER_DESC_validateWithWeakKeyJwt
+    description: SWAGGER_DESC_validateWithWeakKeyJwt,
   })
   @ApiResponse({
     type: JwtValidationResponse,
