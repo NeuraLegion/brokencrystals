@@ -22,11 +22,19 @@ import { AuthGuard } from './auth.guard';
 import { JwtType } from './jwt/jwt.type.decorator';
 import { JwtValidationResponse } from './api/JwtValidationResponse';
 import {
+  SWAGGER_DESC_loginWithJKUJwt,
   SWAGGER_DESC_loginWithKIDSqlJwt,
   SWAGGER_DESC_loginWithRSAJwtKeys,
   SWAGGER_DESC_loginWithWeakKeyJwt,
+  SWAGGER_DESC_validateWithJKUJwt,
   SWAGGER_DESC_validateWithKIDSqlJwt,
   SWAGGER_DESC_validateWithWeakKeyJwt,
+  SWAGGER_DESC_loginWithJWKJwt,
+  SWAGGER_DESC_loginWithX5CJwt,
+  SWAGGER_DESC_loginWithX5UJwt,
+  SWAGGER_DESC_validateWithJWKJwt,
+  SWAGGER_DESC_validateWithX5CJwt,
+  SWAGGER_DESC_validateWithX5UJwt,
 } from './auth.controller.swagger.desc';
 import { HttpClientService } from 'src/httpclient/httpclient.service';
 
@@ -183,6 +191,194 @@ export class AuthController {
     description: 'invliad credentials',
   })
   async validateWithWeakKeyJwt(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<JwtValidationResponse> {
+    return {
+      secret: 'this is our secret',
+    };
+  }
+
+
+
+  @Post('jwt/jku/login')
+  @ApiResponse({
+    type: LoginResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invliad credentials',
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_loginWithJKUJwt,
+  })
+  async loginWithJKUJwt(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<void> {
+    this.log.debug('Call loginWithJKUJwt');
+    return this.login(req, response, (user) =>
+      this.authService.createToken({ user }, JwtProcessorType.JKU),
+    );
+  }
+
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.JKU)
+  @Get('jwt/jku/validate')
+  @ApiOperation({
+    description: SWAGGER_DESC_validateWithJKUJwt,
+  })
+  @ApiResponse({
+    type: JwtValidationResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invliad credentials',
+  })
+  async validateWithJKUJwt(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<JwtValidationResponse> {
+    return {
+      secret: 'this is our secret',
+    };
+  }
+
+
+
+  @Post('jwt/jwk/login')
+  @ApiResponse({
+    type: LoginResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invliad credentials',
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_loginWithJWKJwt,
+  })
+  async loginWithJWKJwt(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<void> {
+    this.log.debug('Call loginWithJWKJwt');
+    return this.login(req, response, (user) =>
+      this.authService.createToken({ user }, JwtProcessorType.JWK),
+    );
+  }
+
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.JWK)
+  @Get('jwt/jwk/validate')
+  @ApiOperation({
+    description: SWAGGER_DESC_validateWithJWKJwt,
+  })
+  @ApiResponse({
+    type: JwtValidationResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invliad credentials',
+  })
+  async validateWithJWKJwt(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<JwtValidationResponse> {
+    return {
+      secret: 'this is our secret',
+    };
+  }
+
+
+  @Post('jwt/x5c/login')
+  @ApiResponse({
+    type: LoginResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invliad credentials',
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_loginWithX5CJwt,
+  })
+  async loginWithX5CJwt(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<void> {
+    this.log.debug('Call loginWithX5CJwt');
+    return this.login(req, response, (user) =>
+      this.authService.createToken({ user }, JwtProcessorType.X5C),
+    );
+  }
+
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.X5C)
+  @Get('jwt/x5c/validate')
+  @ApiOperation({
+    description: SWAGGER_DESC_validateWithX5CJwt,
+  })
+  @ApiResponse({
+    type: JwtValidationResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invliad credentials',
+  })
+  async validateWithX5CJwt(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<JwtValidationResponse> {
+    return {
+      secret: 'this is our secret',
+    };
+  }
+
+
+
+
+  @Post('jwt/x5u/login')
+  @ApiResponse({
+    type: LoginResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invliad credentials',
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_loginWithX5UJwt,
+  })
+  async loginWithX5UJwt(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<void> {
+    this.log.debug('Call loginWithX5UJwt');
+    return this.login(req, response, (user) =>
+      this.authService.createToken({ user }, JwtProcessorType.X5U),
+    );
+  }
+
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.X5U)
+  @Get('jwt/x5u/validate')
+  @ApiOperation({
+    description: SWAGGER_DESC_validateWithX5UJwt,
+  })
+  @ApiResponse({
+    type: JwtValidationResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invliad credentials',
+  })
+  async validateWithX5UJwt(
     @Body() req: LoginRequest,
     @Res() response: Response,
   ): Promise<JwtValidationResponse> {

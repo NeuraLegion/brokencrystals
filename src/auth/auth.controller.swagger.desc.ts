@@ -17,3 +17,29 @@ export const SWAGGER_DESC_validateWithWeakKeyJwt = `
     Validates the JWT header and return secret if the header is valid. The token validation is done using algorithm in header and key 
     that is configured in JWT_SECRET_KEY env variable. In case of None algorithm ignores the signature.
 `;
+
+export const SWAGGER_DESC_loginWithJKUJwt = `
+`;
+
+export const SWAGGER_DESC_validateWithJKUJwt = `
+`;
+
+export const SWAGGER_DESC_loginWithJWKJwt = `
+`;
+
+export const SWAGGER_DESC_validateWithJWKJwt = `
+`;
+
+export const SWAGGER_DESC_loginWithX5CJwt = `
+`;
+
+export const SWAGGER_DESC_validateWithX5CJwt = `
+`;
+
+export const SWAGGER_DESC_loginWithX5UJwt = `
+`;
+
+export const SWAGGER_DESC_validateWithX5UJwt = `
+`;
+
+
