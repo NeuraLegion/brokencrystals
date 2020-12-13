@@ -1,12 +1,9 @@
-import { EntityManager } from '@mikro-orm/core';
 import { Logger } from '@nestjs/common';
+import { decode, encode } from 'jwt-simple';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
-import { encode, decode } from 'jwt-simple';
 
 export class JwtTokenWithWeakKeyProcessor extends JwtTokenProcessor {
-  private key: string;
-
-  constructor(key: string) {
+  constructor(private key: string) {
     super(new Logger(JwtTokenWithWeakKeyProcessor.name));
   }
 

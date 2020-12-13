@@ -26,7 +26,7 @@ export class HttpClientService {
     }
 
     const buffer = Buffer.from(resp.data);
-    var textdata = buffer.toString();
+    const textdata = buffer.toString();
     this.log.debug(`Loaded: ${textdata}`);
     return textdata;
   }

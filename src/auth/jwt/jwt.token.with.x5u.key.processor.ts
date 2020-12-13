@@ -1,8 +1,7 @@
-import { EntityManager } from '@mikro-orm/core';
 import { Logger } from '@nestjs/common';
-import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
-import { encode, decode } from 'jwt-simple';
+import { decode, encode } from 'jwt-simple';
 import { HttpClientService } from '../../httpclient/httpclient.service';
+import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
   constructor(private key: string, private httpClient: HttpClientService) {
@@ -17,7 +16,7 @@ export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
     }
     const url = header.x5u;
     this.log.debug(`Loading key from url ${url}`);
-    let crtPayload = await this.httpClient.loadPlain(url);
+    const crtPayload = await this.httpClient.loadPlain(url);
     return decode(token, this.parseCRTChain(crtPayload), false, header.alg);
   }
 

@@ -1,26 +1,15 @@
 import {
-  Body,
   Controller,
   Get,
   Header,
   Logger,
   Options,
   Post,
-  Put,
   Query,
   Req,
-  RequestMapping,
   Res,
 } from '@nestjs/common';
-import { ConfigService, registerAs } from '@nestjs/config';
-import { AppConfig } from './app.config.api';
-import { AppService } from './app.service';
-import { AppModuleConfigProperties } from './app.module.config.properties';
-import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
-import { query, Response } from 'express';
-import { parseXml } from 'libxmljs';
-import * as rawbody from 'raw-body';
-import * as dotT from 'dot';
+import { ConfigService } from '@nestjs/config';
 import {
   ApiBody,
   ApiOperation,
@@ -29,6 +18,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { spawn } from 'child_process';
+import * as dotT from 'dot';
+import { Response } from 'express';
+import { parseXml } from 'libxmljs';
+import * as rawbody from 'raw-body';
+import { AppConfig } from './app.config.api';
+import { AppModuleConfigProperties } from './app.module.config.properties';
+import { AppService } from './app.service';
+import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 
 @Controller('/api')
 @ApiTags('app controller')
@@ -101,7 +98,7 @@ export class AppController {
 
   @Get('spawn')
   @ApiOperation({
-    description: 'launches system command on server',
+    description: 'Launches system command on server',
   })
   @ApiResponse({
     type: String,

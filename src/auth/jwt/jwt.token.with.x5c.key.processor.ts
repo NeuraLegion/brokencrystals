@@ -1,8 +1,6 @@
-import { EntityManager } from '@mikro-orm/core';
 import { Logger } from '@nestjs/common';
+import { decode, encode } from 'jwt-simple';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
-import { encode, decode } from 'jwt-simple';
-import { HttpClientService } from '../../httpclient/httpclient.service';
 
 export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
   constructor(private key: string) {

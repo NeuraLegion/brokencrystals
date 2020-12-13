@@ -10,33 +10,33 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Response, response } from 'express';
+import { Response } from 'express';
+import { HttpClientService } from 'src/httpclient/httpclient.service';
 import { User } from 'src/model/user.entity';
 import { LdapQueryHandler } from 'src/users/ldap.query.handler';
 import { UsersService } from 'src/users/users.service';
+import { JwtValidationResponse } from './api/JwtValidationResponse';
 import { LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';
-import { passwordMatches } from './credentials.utils';
-import { AuthService, JwtProcessorType } from './auth.service';
-import { AuthGuard } from './auth.guard';
-import { JwtType } from './jwt/jwt.type.decorator';
-import { JwtValidationResponse } from './api/JwtValidationResponse';
 import {
   SWAGGER_DESC_loginWithJKUJwt,
+  SWAGGER_DESC_loginWithJWKJwt,
   SWAGGER_DESC_loginWithKIDSqlJwt,
   SWAGGER_DESC_loginWithRSAJwtKeys,
   SWAGGER_DESC_loginWithWeakKeyJwt,
-  SWAGGER_DESC_validateWithJKUJwt,
-  SWAGGER_DESC_validateWithKIDSqlJwt,
-  SWAGGER_DESC_validateWithWeakKeyJwt,
-  SWAGGER_DESC_loginWithJWKJwt,
   SWAGGER_DESC_loginWithX5CJwt,
   SWAGGER_DESC_loginWithX5UJwt,
+  SWAGGER_DESC_validateWithJKUJwt,
   SWAGGER_DESC_validateWithJWKJwt,
+  SWAGGER_DESC_validateWithKIDSqlJwt,
+  SWAGGER_DESC_validateWithWeakKeyJwt,
   SWAGGER_DESC_validateWithX5CJwt,
   SWAGGER_DESC_validateWithX5UJwt,
 } from './auth.controller.swagger.desc';
-import { HttpClientService } from 'src/httpclient/httpclient.service';
+import { AuthGuard } from './auth.guard';
+import { AuthService, JwtProcessorType } from './auth.service';
+import { passwordMatches } from './credentials.utils';
+import { JwtType } from './jwt/jwt.type.decorator';
 
 @Controller('/api/auth')
 @ApiTags('auth controller')
@@ -75,13 +75,7 @@ export class AuthController {
         HttpStatus.UNAUTHORIZED,
       );
     }
-    response.header(
-      'Authorization',
-      await this.authService.createToken(
-        { user: user.email },
-        JwtProcessorType.RSA,
-      ),
-    );
+    response.header('Authorization', await jwtFactory(user.email));
     response
       .json({
         email: user.email,
@@ -190,10 +184,7 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'invliad credentials',
   })
-  async validateWithWeakKeyJwt(
-    @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<JwtValidationResponse> {
+  async validateWithWeakKeyJwt(): Promise<JwtValidationResponse> {
     return {
       secret: 'this is our secret',
     };
@@ -235,10 +226,7 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'invliad credentials',
   })
-  async validateWithJKUJwt(
-    @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<JwtValidationResponse> {
+  async validateWithJKUJwt(): Promise<JwtValidationResponse> {
     return {
       secret: 'this is our secret',
     };
@@ -280,10 +268,7 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'invliad credentials',
   })
-  async validateWithJWKJwt(
-    @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<JwtValidationResponse> {
+  async validateWithJWKJwt(): Promise<JwtValidationResponse> {
     return {
       secret: 'this is our secret',
     };
@@ -325,10 +310,7 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'invliad credentials',
   })
-  async validateWithX5CJwt(
-    @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<JwtValidationResponse> {
+  async validateWithX5CJwt(): Promise<JwtValidationResponse> {
     return {
       secret: 'this is our secret',
     };
@@ -370,10 +352,7 @@ export class AuthController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'invliad credentials',
   })
-  async validateWithX5UJwt(
-    @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<JwtValidationResponse> {
+  async validateWithX5UJwt(): Promise<JwtValidationResponse> {
     return {
       secret: 'this is our secret',
     };

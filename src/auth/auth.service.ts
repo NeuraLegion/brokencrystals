@@ -1,19 +1,17 @@
+import { EntityManager } from '@mikro-orm/core';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { encode, decode, TAlgorithm } from 'jwt-simple';
 import * as fs from 'fs';
+import { HttpClientService } from 'src/httpclient/httpclient.service';
 import { AuthModuleConfigProperties } from './auth.module.config.properties';
-import { JwtHeader } from './jwt/jwt.header';
-import { EntityManager } from '@mikro-orm/core';
 import { JwtTokenProcessor } from './jwt/jwt.token.processor';
+import { JwtTokenWithJKUProcessor } from './jwt/jwt.token.with.jku.processor';
+import { JwtTokenWithJWKProcessor } from './jwt/jwt.token.with.jwk.processor';
 import { JwtTokenWithRSAKeysProcessor } from './jwt/jwt.token.with.rsa.keys.processor';
 import { JwtTokenWithSqlKIDProcessor } from './jwt/jwt.token.with.sql.kid.processor';
 import { JwtTokenWithWeakKeyProcessor } from './jwt/jwt.token.with.weak.key.processor';
-import { JwtTokenWithJKUProcessor } from './jwt/jwt.token.with.jku.processor';
-import { JwtTokenWithJWKProcessor } from './jwt/jwt.token.with.jwk.processor';
 import { JwtTokenWithX5CKeyProcessor } from './jwt/jwt.token.with.x5c.key.processor';
 import { JwtTokenWithX5UKeyProcessor } from './jwt/jwt.token.with.x5u.key.processor';
-import { HttpClientService } from 'src/httpclient/httpclient.service';
 
 export enum JwtProcessorType {
   RSA,

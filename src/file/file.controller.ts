@@ -3,31 +3,23 @@ import {
   Controller,
   Delete,
   Get,
-  Head,
   Header,
   HttpException,
   HttpStatus,
   Logger,
-  Post,
   Put,
   Query,
   Req,
   Res,
-  UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileService } from './file.service';
-import { UsersService } from '../users/users.service';
-import { Stream } from 'stream';
-import { query, Request, response, Response } from 'express';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
-import * as rawbody from 'raw-body';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { W_OK } from 'constants';
+import { Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-
-import { formatWithCursor } from 'prettier';
-import { W_OK } from 'constants';
+import * as rawbody from 'raw-body';
+import { Stream } from 'stream';
+import { FileService } from './file.service';
 
 @Controller('/api/file')
 @ApiTags('files controller')

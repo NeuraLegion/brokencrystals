@@ -9,7 +9,7 @@ export abstract class JwtTokenProcessor {
     this.log = log;
   }
 
-  protected parse(token: string): [header: JwtHeader, payload: object] {
+  protected parse(token: string): [header: JwtHeader, payload: any] {
     this.log.debug('Call parse');
 
     const parts = token.split('.');
@@ -38,7 +38,7 @@ export abstract class JwtTokenProcessor {
       throw new Error('Invalid certificate');
     }
 
-    let key = chainText.slice(
+    const key = chainText.slice(
       0,
       idx + JwtTokenProcessor.END_CERTIFICATE_MARK.length,
     );

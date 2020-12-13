@@ -1,17 +1,15 @@
 import { EntityManager } from '@mikro-orm/core';
 import { Logger } from '@nestjs/common';
-import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
-import { encode, decode } from 'jwt-simple';
+import { decode, encode } from 'jwt-simple';
 import { JwtHeader } from './jwt.header';
+import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
   private static readonly KID: number = 0;
   private static readonly KID_FETCH_QUERY = (key: string, param: string) =>
     `select key from (select '${key}' as key, ${JwtTokenWithSqlKIDProcessor.KID} as id) as keys where keys.id = '${param}'`;
 
-  private key: string;
-
-  constructor(private readonly em: EntityManager, key: string) {
+  constructor(private readonly em: EntityManager, private key: string) {
     super(new Logger(JwtTokenWithSqlKIDProcessor.name));
   }
 

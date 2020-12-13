@@ -1,8 +1,7 @@
 import { Logger } from '@nestjs/common';
-import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
-import { encode } from 'jwt-simple';
-import { HttpClientService } from '../../httpclient/httpclient.service';
 import * as jose from 'jose';
+import { encode } from 'jwt-simple';
+import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
   constructor(private key: string) {
@@ -22,7 +21,7 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
     if (!header.jwk.kty) {
       return payload;
     }
-    let keyLike = await jose.JWK.asKey(JSON.stringify(header.jwk));
+    const keyLike = await jose.JWK.asKey(JSON.stringify(header.jwk));
 
     const res = await jose.JWT.verify(token, keyLike);
 
