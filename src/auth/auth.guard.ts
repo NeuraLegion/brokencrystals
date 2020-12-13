@@ -5,17 +5,27 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
-import { AuthService } from './auth.service';
+import { AuthService, JwtProcessorType } from './auth.service';
+import { JwTypeMetadataField } from './jwt/jwt.type.decorator';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
   private static readonly AUTH_HEADER = 'Authorization';
   private log: Logger = new Logger(AuthGuard.name);
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private reflector: Reflector,
+  ) {}
 
   async canActivate(context) {
     this.log.debug('Called canActivate');
+    const processorType: JwtProcessorType = this.reflector.get<JwtProcessorType>(
+      JwTypeMetadataField,
+      context.getHandler(),
+    );
+
     const request: Request = context.switchToHttp().getRequest();
     const token = request.header(AuthGuard.AUTH_HEADER);
     if (!token || token.length == 0) {
@@ -29,9 +39,10 @@ export class AuthGuard implements CanActivate {
       );
     }
     try {
-      return (await this.authService.validateToken(token)) && true;
-    }
-    catch (err) {
+      return (
+        (await this.authService.validateToken(token, processorType)) && true
+      );
+    } catch (err) {
       this.log.debug(`Failed to validate token: ${err.message}`);
       throw new HttpException(
         {
@@ -41,6 +52,5 @@ export class AuthGuard implements CanActivate {
         HttpStatus.UNAUTHORIZED,
       );
     }
-    
   }
 }

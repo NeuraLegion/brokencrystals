@@ -26,6 +26,8 @@ import { UsersService } from './users.service';
 import { Readable } from 'stream';
 import { User } from 'src/model/user.entity';
 import { AuthGuard } from 'src/auth/auth.guard';
+import { JwtType } from 'src/auth/jwt/jwt.type.decorator';
+import { JwtProcessorType } from 'src/auth/auth.service';
 
 @Controller('/api/users')
 @ApiTags('user controller')
@@ -64,6 +66,7 @@ export class UsersController {
   }
 
   @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
   @Get('/one/:email/photo')
   @Header('Content-Type', 'image/png')
   @ApiResponse({
@@ -180,6 +183,7 @@ export class UsersController {
   }
 
   @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
   @Put('/one/:email/photo')
   @ApiOperation({
     description: 'uploads user profile photo',

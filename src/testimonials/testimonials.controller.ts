@@ -9,6 +9,8 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from 'src/auth/auth.guard';
+import { JwtProcessorType } from 'src/auth/auth.service';
+import { JwtType } from 'src/auth/jwt/jwt.type.decorator';
 import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
 import { ITestimonial } from './api/ITestimonial';
 import { TestimonialsService } from './testimonials.service';
@@ -21,6 +23,7 @@ export class TestimonialsController {
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
   @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
   @Post()
   @ApiOperation({
     description: 'creates testimonial',

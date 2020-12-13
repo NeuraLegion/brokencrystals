@@ -22,7 +22,7 @@ import { query, Response } from 'express';
 import { parseXml } from 'libxmljs';
 import * as rawbody from 'raw-body';
 import * as dotT from 'dot';
-import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { spawn } from 'child_process';
 
 @Controller('/api')
@@ -38,14 +38,14 @@ export class AppController {
   @ApiBody({
     type: 'text/plain',
     description:
-      'Template for rendering by doT. Expects plain text as request body',
+      'Template for rendering by doT. Expects plain text as request body'
   })
+  @ApiProduces('text/plain')
   @ApiResponse({
-    type: String,
     description: 'Rendered result',
   })
   @Post('render')
-  async renderTemplate(@Body() data, @Req() req): Promise<string> {
+  async renderTemplate(@Req() req): Promise<string> {
     if (req.readable) {
       const raw = await rawbody(req);
       const text = raw.toString().trim();
