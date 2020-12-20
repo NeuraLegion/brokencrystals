@@ -24,6 +24,9 @@ export class OrmConfigFactory {
       dbName: this.configService.get<string>(
         OrmModuleConfigProperties.ENV_DATABASE_SCHEMA,
       ),
+      user: this.configService.get<string>(
+        OrmModuleConfigProperties.ENV_DATABASE_USER,
+      ),
       password: this.configService.get<string>(
         OrmModuleConfigProperties.ENV_DATABASE_PASSWORD,
       ),

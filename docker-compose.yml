@@ -1,0 +1,64 @@
+version: '3'
+
+services:
+  db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: bc
+      POSTGRES_USER: bc
+      POSTGRES_PASSWORD: bc
+    volumes:
+    - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
+    networks:
+      - app-network
+  nodejs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nodejs
+    container_name: nodejs
+    restart: unless-stopped
+    depends_on:
+      - db
+    networks:
+      - app-network
+  webserver:
+    image: nginx:mainline-alpine
+    container_name: webserver
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - web-root:/var/www/html
+      - keys-dir:/etc/nginx/keys
+      - nginx-conf-dir:/etc/nginx/conf.d
+    depends_on:
+      - nodejs
+    networks:
+      - app-network
+volumes:
+  certbot-etc:
+  certbot-var:
+  web-root:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./public/build
+      o: bind
+  keys-dir:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./config/keys
+      o: bind
+  nginx-conf-dir:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./nginx-config
+      o: bind
+networks:
+  app-network:
+    driver: bridge
