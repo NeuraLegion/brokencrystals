@@ -91,7 +91,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   @ApiOperation({
     description: SWAGGER_DESC_loginWithRSAJwtKeys,
@@ -113,7 +113,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   @ApiOperation({
     description: SWAGGER_DESC_loginWithKIDSqlJwt,
@@ -137,7 +137,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   @ApiOperation({
     description: SWAGGER_DESC_validateWithKIDSqlJwt,
@@ -155,7 +155,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   @ApiOperation({
     description: SWAGGER_DESC_loginWithWeakKeyJwt,
@@ -182,7 +182,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   async validateWithWeakKeyJwt(): Promise<JwtValidationResponse> {
     return {
@@ -197,7 +197,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   @ApiOperation({
     description: SWAGGER_DESC_loginWithJKUJwt,
@@ -224,7 +224,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   async validateWithJKUJwt(): Promise<JwtValidationResponse> {
     return {
@@ -239,7 +239,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   @ApiOperation({
     description: SWAGGER_DESC_loginWithJWKJwt,
@@ -266,7 +266,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   async validateWithJWKJwt(): Promise<JwtValidationResponse> {
     return {
@@ -281,7 +281,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   @ApiOperation({
     description: SWAGGER_DESC_loginWithX5CJwt,
@@ -308,7 +308,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   async validateWithX5CJwt(): Promise<JwtValidationResponse> {
     return {
@@ -323,7 +323,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   @ApiOperation({
     description: SWAGGER_DESC_loginWithX5UJwt,
@@ -350,7 +350,7 @@ export class AuthController {
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
-    description: 'invliad credentials',
+    description: 'invalid credentials',
   })
   async validateWithX5UJwt(): Promise<JwtValidationResponse> {
     return {
