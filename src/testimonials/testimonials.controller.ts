@@ -30,6 +30,7 @@ export class TestimonialsController {
   })
   @ApiResponse({
     type: ITestimonial,
+    status: 200
   })
   async createTestimonial(
     @Body() req: CreateTestimonialRequest,
@@ -51,6 +52,7 @@ export class TestimonialsController {
   @ApiResponse({
     type: ITestimonial,
     isArray: true,
+    status: 200
   })
   async getTestimonials(): Promise<ITestimonial[]> {
     this.log.debug('Called createTestimonial');
@@ -66,6 +68,7 @@ export class TestimonialsController {
   })
   @ApiResponse({
     type: String,
+    status: 200
   })
   async getCount(@Query('query') query: string): Promise<string> {
     this.log.debug('getCount');

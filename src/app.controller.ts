@@ -45,14 +45,12 @@ export class AppController {
   @ApiProduces("text/plain")
   @ApiConsumes("text/plain")
   @ApiBody({
-    type: "string",
     description:
       'Template for rendering by doT. Expects plain text as request body',
   })
-  @ApiProduces('text/plain')
   @ApiResponse({
     description: 'Rendered result',
-    type: String,
+    status: 200
   })
   @Post('render')
   async renderTemplate(@Req() req): Promise<string> {
@@ -113,7 +111,8 @@ export class AppController {
     description: 'Launches system command on server',
   })
   @ApiResponse({
-    type: "string",
+    type: String,
+    status: 200
   })
   async launchCommand(@Query('command') command: string): Promise<string> {
     this.log.debug(`launchCommand with ${command}`);
@@ -151,6 +150,7 @@ export class AppController {
   })
   @ApiResponse({
     type: AppConfig,
+    status: 200
   })
   @Get('/config')
   getConfig(): AppConfig {

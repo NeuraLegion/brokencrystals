@@ -49,6 +49,7 @@ export class UsersController {
   })
   @ApiResponse({
     type: IUser,
+    status: 200
   })
   async getUser(@Param('email') email: string): Promise<IUser> {
     try {
@@ -124,6 +125,7 @@ export class UsersController {
   @ApiResponse({
     type: IUser,
     isArray: true,
+    status: 200
   })
   async ldapQuery(@Query('query') query: string): Promise<IUser[]> {
     try {
@@ -159,6 +161,7 @@ export class UsersController {
   })
   @ApiResponse({
     type: IUser,
+    status: 200
   })
   async createUser(@Body() user: CreateUserRequest): Promise<IUser> {
     try {
