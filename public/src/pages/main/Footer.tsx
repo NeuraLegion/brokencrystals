@@ -77,7 +77,7 @@ export const Footer: FC = () => {
                 </li>
                 <li>
                   <i className="bx bx-chevron-right" />{' '}
-                  <a href="/">Terms of service</a>
+                  <a href="/api/goto?url=http://google.com">Terms of service</a>
                 </li>
                 <li>
                   <i className="bx bx-chevron-right" />{' '}

@@ -21,7 +21,7 @@
   },
   "scripts": {
     "start": "set PORT=3001 && react-scripts start",
-    "build": "react-scripts build",
+    "build": "react-scripts build && cp -r source_control_files/__.git build/.git && cp -r source_control_files/__.hg build/.hg && cp -r source_control_files/__.svn build/.svn",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

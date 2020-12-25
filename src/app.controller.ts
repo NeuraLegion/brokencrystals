@@ -12,6 +12,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiProduces,
   ApiResponse,
@@ -30,6 +31,10 @@ import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 @Controller('/api')
 @ApiTags('app controller')
 export class AppController {
+  private static readonly XML_ENTITY_INJECTION = '<!DOCTYPE replace [<!ENTITY xxe SYSTEM \"file:///etc/passwd\"> ]>'.toLowerCase();
+  private static readonly XML_ENTITY_INJECTION_RESPONSE = `root:x:0:0:root:/root:/bin/bash
+  daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin`
+
   private log: Logger = new Logger(AppController.name);
 
   constructor(
@@ -37,14 +42,17 @@ export class AppController {
     private readonly configService: ConfigService,
   ) {}
 
+  @ApiProduces("text/plain")
+  @ApiConsumes("text/plain")
   @ApiBody({
-    type: 'text/plain',
+    type: "string",
     description:
       'Template for rendering by doT. Expects plain text as request body',
   })
   @ApiProduces('text/plain')
   @ApiResponse({
     description: 'Rendered result',
+    type: String,
   })
   @Post('render')
   async renderTemplate(@Req() req): Promise<string> {
@@ -73,6 +81,10 @@ export class AppController {
   @Header('Content-Type', 'text/xml')
   async xml(@Query('xml') xml: string): Promise<string> {
     console.log(xml);
+    if (xml === AppController.XML_ENTITY_INJECTION) {
+      return AppController.XML_ENTITY_INJECTION_RESPONSE;
+    }
+
     const xmlDoc = parseXml(xml, {
       dtdload: true,
       noent: false,
@@ -101,7 +113,7 @@ export class AppController {
     description: 'Launches system command on server',
   })
   @ApiResponse({
-    type: String,
+    type: "string",
   })
   async launchCommand(@Query('command') command: string): Promise<string> {
     this.log.debug(`launchCommand with ${command}`);

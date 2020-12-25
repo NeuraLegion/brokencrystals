@@ -30,4 +30,24 @@ export class HttpClientService {
     this.log.debug(`Loaded: ${textdata}`);
     return textdata;
   }
+
+  async loadAny(url: string): Promise<{
+    content: Buffer,
+    contentType: string
+  }> {
+    const resp = await axios.default.get<ArrayBuffer>(url, {
+      responseType: 'arraybuffer',
+    });
+
+    if (resp.status != 200) {
+      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+    }
+
+    const buffer = Buffer.from(resp.data);
+
+    return {
+      content: buffer,
+      contentType: resp.headers['Content-Type']
+    };
+  }
 }

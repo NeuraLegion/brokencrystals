@@ -32,7 +32,7 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
       ? req.session['visits'] + 1
       : 1;
 
-    const cookies: string[] = req.headers.cookie.split('; ');
+    const cookies: string[] = req.headers.cookie ? req.headers.cookie.split('; ') : [];
     if (cookies && cookies.length > 0) {
       try {
         const cookie = cookies
