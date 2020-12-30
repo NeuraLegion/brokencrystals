@@ -1,0 +1,23 @@
+name: build-docker-image
+
+on:
+  pull_request:
+   
+  push:    
+    branches:
+      - pipeline-test
+#      - releases/*
+
+      
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup node 12
+        uses: actions/setup-node@v2
+        with:
+          node-version: 12.x
+      run: |
+        npm i 
+        npm run build -
