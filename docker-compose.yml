@@ -10,8 +10,8 @@ services:
       POSTGRES_PASSWORD: bc
     volumes:
     - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
-    networks:
-      - app-network
+#    networks:
+#      - app-network
   nodejs:
     build:
       context: .
@@ -21,23 +21,42 @@ services:
     restart: unless-stopped
     depends_on:
       - db
-    networks:
-      - app-network
-  webserver:
-    image: nginx:mainline-alpine
+#    networks:
+#      - app-network
+
+  nginx:
+    image: nginx:1.15-alpine
     container_name: webserver
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+#    command: ['/bin/bash', '-c', 'sleep 3h']
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - web-root:/var/www/html
-      - keys-dir:/etc/nginx/keys
-      - nginx-conf-dir:/etc/nginx/conf.d
+#      - web-root:/var/www/html
+#      - keys-dir:/etc/nginx/keys
+#      - nginx-conf-dir:/etc/nginx/conf.d
+#      - letsencrypt:/etc/letsencrypt
+      - ./data/nginx:/etc/nginx/conf.d
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
     depends_on:
       - nodejs
-    networks:
-      - app-network
+ #   networks:
+  #    - app-network
+
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    container_name: certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+   # networks:
+   #   - app-network
+  
 volumes:
   certbot-etc:
   certbot-var:
@@ -46,6 +65,7 @@ volumes:
     driver_opts:
       type: none
       device: ./public/build
+#      device: ./public/public
       o: bind
   keys-dir:
     driver: local
@@ -59,6 +79,8 @@ volumes:
       type: none
       device: ./nginx-config
       o: bind
-networks:
-  app-network:
-    driver: bridge
+  letsencrypt:
+
+#networks:
+#  app-network:
+#    driver: bridge
