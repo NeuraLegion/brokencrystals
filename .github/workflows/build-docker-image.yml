@@ -6,7 +6,7 @@ on:
   push:    
     branches:
       - pipeline-test
-#      - releases/*
+      - master
 
     strategy:
       matrix:
