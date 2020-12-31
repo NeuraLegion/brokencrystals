@@ -10,20 +10,13 @@ services:
       POSTGRES_PASSWORD: bc
     volumes:
     - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
-#    networks:
-#      - app-network
+
   nodejs:
- #   build:
- #     context: .
- #     dockerfile: Dockerfile
-#    image: nodejs
     image: neuralegion/brokencrystals
     container_name: nodejs
     restart: unless-stopped
     depends_on:
       - db
-#    networks:
-#      - app-network
 
   watchtower:
     image: neuralegion/watchtower-ecr
@@ -33,7 +26,6 @@ services:
         max-size: "10m"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-#      - /home/ubuntu/.docker/config.json:/config.json
     command: --interval 300 --debug
 
   nginx:
@@ -46,17 +38,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-#      - web-root:/var/www/html
-#      - keys-dir:/etc/nginx/keys
-#      - nginx-conf-dir:/etc/nginx/conf.d
-#      - letsencrypt:/etc/letsencrypt
       - ./data/nginx:/etc/nginx/conf.d
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
     depends_on:
       - nodejs
- #   networks:
-  #    - app-network
 
   certbot:
     image: certbot/certbot
@@ -66,8 +52,6 @@ services:
     volumes:
       - ./data/certbot/conf:/etc/letsencrypt
       - ./data/certbot/www:/var/www/certbot
-   # networks:
-   #   - app-network
   
 volumes:
   certbot-etc:
@@ -77,7 +61,6 @@ volumes:
     driver_opts:
       type: none
       device: ./public/build
-#      device: ./public/public
       o: bind
   keys-dir:
     driver: local
@@ -93,6 +76,3 @@ volumes:
       o: bind
   letsencrypt:
 
-#networks:
-#  app-network:
-#    driver: bridge
