@@ -13,16 +13,28 @@ services:
 #    networks:
 #      - app-network
   nodejs:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: nodejs
+ #   build:
+ #     context: .
+ #     dockerfile: Dockerfile
+#    image: nodejs
+    image: neuralegion/brokencrystals
     container_name: nodejs
     restart: unless-stopped
     depends_on:
       - db
 #    networks:
 #      - app-network
+
+  watchtower:
+    image: neuralegion/watchtower-ecr
+    logging:
+      options:
+        max-file: "5"
+        max-size: "10m"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+#      - /home/ubuntu/.docker/config.json:/config.json
+    command: --interval 300 --debug
 
   nginx:
     image: nginx:1.15-alpine
