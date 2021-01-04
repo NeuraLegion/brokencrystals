@@ -23,6 +23,8 @@ services:
       - db
     networks:
       - app-network
+    volumes:
+      - web-root:/home/node/bc/public/build
   webserver:
     image: nginx:mainline-alpine
     container_name: webserver
@@ -31,7 +33,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - web-root:/var/www/html
+      - web-root:/var/www/html:ro
       - keys-dir:/etc/nginx/keys
       - nginx-conf-dir:/etc/nginx/conf.d
     depends_on:
@@ -42,11 +44,6 @@ volumes:
   certbot-etc:
   certbot-var:
   web-root:
-    driver: local
-    driver_opts:
-      type: none
-      device: ./public/build
-      o: bind
   keys-dir:
     driver: local
     driver_opts:
