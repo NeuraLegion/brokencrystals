@@ -16,6 +16,10 @@ services:
     image: neuralegion/brokencrystals
     container_name: nodejs
     restart: unless-stopped
+    logging:
+      options:
+        max-file: "5"
+        max-size: "10m"
     depends_on:
       - db
     networks:
