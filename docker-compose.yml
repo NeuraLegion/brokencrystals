@@ -22,37 +22,23 @@ services:
       - app-network
     volumes:
       - web-root:/home/node/bc/public/build
-  webserver:
-    image: nginx:mainline-alpine
-    container_name: webserver
-    restart: unless-stopped
+  proxy:
+    image: staticfloat/nginx-certbot
+    restart: always
+    environment:
+      CERTBOT_EMAIL: "anatol@neuralegion.com"
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - web-root:/var/www/html:ro
-      - keys-dir:/etc/nginx/keys
-      - nginx-conf-dir:/etc/nginx/conf.d
+      - ./nginx-config:/etc/nginx/user.conf.d:ro
     depends_on:
       - nodejs
     networks:
       - app-network
 volumes:
-  certbot-etc:
-  certbot-var:
   web-root:
-  keys-dir:
-    driver: local
-    driver_opts:
-      type: none
-      device: ./config/keys
-      o: bind
-  nginx-conf-dir:
-    driver: local
-    driver_opts:
-      type: none
-      device: ./nginx-config
-      o: bind
 networks:
   app-network:
     driver: bridge
