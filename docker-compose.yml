@@ -13,10 +13,7 @@ services:
     networks:
       - app-network
   nodejs:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: nodejs
+    image: neuralegion/brokencrystals
     container_name: nodejs
     restart: unless-stopped
     depends_on:
