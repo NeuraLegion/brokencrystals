@@ -41,6 +41,15 @@ services:
       - nodejs
     networks:
       - app-network
+  watchtower:
+    image: containrrr/watchtower
+    logging:
+      options:
+        max-file: "5"
+        max-size: "10m"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 --debug
 volumes:
   web-root:
 networks:
