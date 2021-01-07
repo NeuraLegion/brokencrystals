@@ -11,14 +11,11 @@ COPY --chown=node:node tsconfig.json ./
 COPY --chown=node:node nest-cli.json ./
 COPY --chown=node:node .env ./
 COPY --chown=node:node src ./src
-COPY --chown=node:node public ./public
 
 USER node
 
 RUN npm install
-RUN npm run build
-
-RUN cd public && npm install && npm run build
+RUN npm build
 
 EXPOSE 3000
 

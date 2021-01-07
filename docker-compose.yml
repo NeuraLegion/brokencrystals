@@ -10,8 +10,6 @@ services:
       POSTGRES_PASSWORD: bc
     volumes:
     - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
-    networks:
-      - app-network
   nodejs:
     image: neuralegion/brokencrystals
     container_name: nodejs
@@ -22,25 +20,19 @@ services:
         max-size: "10m"
     depends_on:
       - db
-    networks:
-      - app-network
-    volumes:
-      - web-root:/home/node/bc/public/build
   proxy:
-    image: staticfloat/nginx-certbot
+    image: neuralegion/brokencrystals-client
     restart: always
     environment:
       CERTBOT_EMAIL: "anatol@neuralegion.com"
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - web-root:/var/www/html:ro
-      - ./nginx-config:/etc/nginx/user.conf.d:ro
     depends_on:
       - nodejs
-    networks:
-      - app-network
+    volumes:
+      - ./nginx-config:/etc/nginx/user.conf.d:ro
+      - letsencrypt:/etc/letsencrypt
   watchtower:
     image: containrrr/watchtower
     logging:
@@ -51,7 +43,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 300 --debug
 volumes:
-  web-root:
-networks:
-  app-network:
-    driver: bridge
+  letsencrypt:
