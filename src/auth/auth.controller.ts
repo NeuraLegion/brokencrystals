@@ -84,6 +84,27 @@ export class AuthController {
       .end();
   }
 
+
+  @Post('/admin/login')
+  @ApiResponse({
+    type: LoginResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'invalid credentials',
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_loginWithRSAJwtKeys,
+  })
+  async loginWithRSAJwtKeysAdmin(
+    @Body() req: LoginRequest,
+    @Res() response: Response,
+  ): Promise<void> {
+    this.log.debug('Call loginWithRSAJwtKeysAdmin');
+    this.loginWithRSAJwtKeys(req, response);
+  }
+
   @Post('login')
   @ApiResponse({
     type: LoginResponse,

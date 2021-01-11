@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Header,
+  Headers,
   HttpException,
   HttpStatus,
   Logger,
@@ -38,12 +39,23 @@ export class FileController {
     @Query('path') path: string,
     @Query('type') contentType: string,
     @Res() response: Response,
-  ): Promise<void> {
+    @Headers('Accept') acceptHeader: string,
+    ): Promise<void> {
+    
+    let type:string = null;
+
     try {
-      if (!contentType) {
-        contentType = 'application/octet-stream';
+      if (contentType) {
+        type = contentType;
       }
-      response.header(FileController.CONTENT_TYPE_HEADER, contentType);
+      else if (acceptHeader) {
+        type = acceptHeader;
+      }
+      else {
+        type = 'application/octet-stream';
+      }
+     
+      response.header(FileController.CONTENT_TYPE_HEADER, type);
       const file: Stream = await this.fileService.getFile(path);
       file.pipe(response);
     } catch (err) {
