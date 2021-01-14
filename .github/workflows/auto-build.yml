@@ -1,5 +1,4 @@
-name: CI / Automated testing
-
+name: CI
 on:
   pull_request:
     branches:
@@ -15,5 +14,5 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: 12
-      - run: echo "Hello world"
-
+      - name: Install Dependencies
+        run: npm install
