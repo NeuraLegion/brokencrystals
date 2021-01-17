@@ -13,7 +13,7 @@ services:
   nodejs:
     image: neuralegion/brokencrystals
     container_name: nodejs
-    restart: unless-stopped
+    restart: always
     logging:
       options:
         max-file: "5"
