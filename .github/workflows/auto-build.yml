@@ -1,0 +1,21 @@
+name: run-ci-actions
+
+on:
+  pull_request:
+   
+  push:    
+    branches:
+      - ci-actions
+      - master      
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12
+      - run: npm install
+      - run: npm run build
+      - run: npm run test
+
