@@ -6,8 +6,8 @@ import {
   Options,
   Post,
   Query,
+  Redirect,
   Req,
-  Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -20,7 +20,6 @@ import {
 } from '@nestjs/swagger';
 import { spawn } from 'child_process';
 import * as dotT from 'dot';
-import { Response } from 'express';
 import { parseXml } from 'libxmljs';
 import * as rawbody from 'raw-body';
 import { AppConfig } from './app.config.api';
@@ -31,9 +30,9 @@ import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 @Controller('/api')
 @ApiTags('app controller')
 export class AppController {
-  private static readonly XML_ENTITY_INJECTION = '<!DOCTYPE replace [<!ENTITY xxe SYSTEM \"file:///etc/passwd\"> ]>'.toLowerCase();
+  private static readonly XML_ENTITY_INJECTION = '<!DOCTYPE replace [<!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>'.toLowerCase();
   private static readonly XML_ENTITY_INJECTION_RESPONSE = `root:x:0:0:root:/root:/bin/bash
-  daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin`
+  daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin`;
 
   private log: Logger = new Logger(AppController.name);
 
@@ -42,15 +41,15 @@ export class AppController {
     private readonly configService: ConfigService,
   ) {}
 
-  @ApiProduces("text/plain")
-  @ApiConsumes("text/plain")
+  @ApiProduces('text/plain')
+  @ApiConsumes('text/plain')
   @ApiBody({
     description:
       'Template for rendering by doT. Expects plain text as request body',
   })
   @ApiResponse({
     description: 'Rendered result',
-    status: 200
+    status: 200,
   })
   @Post('render')
   async renderTemplate(@Req() req): Promise<string> {
@@ -67,8 +66,9 @@ export class AppController {
     description: 'Redirects the user to the provided url',
   })
   @Get('goto')
-  async redirect(@Query('url') url: string, @Res() res: Response) {
-    res.redirect(url);
+  @Redirect()
+  async redirect(@Query('url') url: string) {
+    return { url };
   }
 
   @ApiOperation({
@@ -112,7 +112,7 @@ export class AppController {
   })
   @ApiResponse({
     type: String,
-    status: 200
+    status: 200,
   })
   async launchCommand(@Query('command') command: string): Promise<string> {
     this.log.debug(`launchCommand with ${command}`);
@@ -150,7 +150,7 @@ export class AppController {
   })
   @ApiResponse({
     type: AppConfig,
-    status: 200
+    status: 200,
   })
   @Get('/config')
   getConfig(): AppConfig {
