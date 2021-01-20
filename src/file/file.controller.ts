@@ -40,21 +40,18 @@ export class FileController {
     @Query('type') contentType: string,
     @Res() response: Response,
     @Headers('Accept') acceptHeader: string,
-    ): Promise<void> {
-    
-    let type:string = null;
+  ): Promise<void> {
+    let type: string = null;
 
     try {
       if (contentType) {
         type = contentType;
-      }
-      else if (acceptHeader) {
+      } else if (acceptHeader) {
         type = acceptHeader;
-      }
-      else {
+      } else {
         type = 'application/octet-stream';
       }
-     
+
       response.header(FileController.CONTENT_TYPE_HEADER, type);
       const file: Stream = await this.fileService.getFile(path);
       file.pipe(response);
@@ -75,7 +72,7 @@ export class FileController {
   @Delete()
   async deleteFile(@Query('path') path: string): Promise<void> {
     try {
-      this.fileService.deleteFile(path);
+      await this.fileService.deleteFile(path);
     } catch (err) {
       throw new HttpException(
         {
@@ -111,18 +108,17 @@ export class FileController {
     description: 'read file content content on server as a file',
   })
   @Get('raw')
-  @Header('Content-Type', 'application/octet-stream')
-  async readFile(@Query('path') file, @Res() res): Promise<void> {
+  @Header(FileController.CONTENT_TYPE_HEADER, 'application/octet-stream')
+  async readFile(
+    @Query('path') file,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
     try {
-      res.header(
-        FileController.CONTENT_TYPE_HEADER,
-        'application/octet-stream',
-      );
-      const fileStream: Stream = await this.fileService.getFile(file);
-      fileStream.pipe(res);
+      const stream = await this.fileService.getFile(file);
+      stream.pipe(res);
     } catch (err) {
       this.log.error(err.message);
-      res.status(HttpStatus.NOT_FOUND).end();
+      res.status(HttpStatus.NOT_FOUND);
     }
   }
 }
