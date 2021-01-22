@@ -49,7 +49,7 @@ export class UsersController {
   })
   @ApiResponse({
     type: IUser,
-    status: 200
+    status: 200,
   })
   async getUser(@Param('email') email: string): Promise<IUser> {
     try {
@@ -80,7 +80,7 @@ export class UsersController {
   })
   async getUserPhoto(
     @Param('email') email: string,
-    @Res() response: Response,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
     this.log.debug('Called getUserPhoto');
     const user = await this.usersService.findByEmail(email);
@@ -96,7 +96,7 @@ export class UsersController {
 
     try {
       if (!user.photo) {
-        response.status(HttpStatus.NO_CONTENT).end();
+        res.status(HttpStatus.NO_CONTENT);
         return;
       }
 
@@ -106,7 +106,7 @@ export class UsersController {
           this.push(null);
         },
       });
-      readableInstanceStream.pipe(response);
+      readableInstanceStream.pipe(res);
     } catch (err) {
       throw new HttpException(
         {
@@ -125,7 +125,7 @@ export class UsersController {
   @ApiResponse({
     type: IUser,
     isArray: true,
-    status: 200
+    status: 200,
   })
   async ldapQuery(@Query('query') query: string): Promise<IUser[]> {
     try {
@@ -161,7 +161,7 @@ export class UsersController {
   })
   @ApiResponse({
     type: IUser,
-    status: 200
+    status: 200,
   })
   async createUser(@Body() user: CreateUserRequest): Promise<IUser> {
     try {

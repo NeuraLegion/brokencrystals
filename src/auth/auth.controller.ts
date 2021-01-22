@@ -11,7 +11,6 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-import { HttpClientService } from 'src/httpclient/httpclient.service';
 import { User } from 'src/model/user.entity';
 import { LdapQueryHandler } from 'src/users/ldap.query.handler';
 import { UsersService } from 'src/users/users.service';
@@ -46,14 +45,9 @@ export class AuthController {
   constructor(
     private readonly usersService: UsersService,
     private readonly authService: AuthService,
-    private readonly httpClient: HttpClientService,
   ) {}
 
-  private async login(
-    req: LoginRequest,
-    response: Response,
-    jwtFactory: (user) => Promise<string>,
-  ): Promise<void> {
+  private async login(req: LoginRequest): Promise<LoginResponse> {
     let user: User;
     try {
       user = await this.usersService.findByEmail(req.user);
@@ -66,6 +60,7 @@ export class AuthController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+
     if (!user || !(await passwordMatches(req.password, user.password))) {
       throw new HttpException(
         {
@@ -75,15 +70,12 @@ export class AuthController {
         HttpStatus.UNAUTHORIZED,
       );
     }
-    response.header('Authorization', await jwtFactory(user.email));
-    response
-      .json({
-        email: user.email,
-        ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
-      })
-      .end();
-  }
 
+    return {
+      email: user.email,
+      ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
+    };
+  }
 
   @Post('/admin/login')
   @ApiResponse({
@@ -99,10 +91,10 @@ export class AuthController {
   })
   async loginWithRSAJwtKeysAdmin(
     @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<void> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
     this.log.debug('Call loginWithRSAJwtKeysAdmin');
-    this.loginWithRSAJwtKeys(req, response);
+    return this.loginWithRSAJwtKeys(req, res);
   }
 
   @Post('login')
@@ -119,12 +111,20 @@ export class AuthController {
   })
   async loginWithRSAJwtKeys(
     @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<void> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
     this.log.debug('Call loginWithRSAJwtKeys');
-    return this.login(req, response, (user) =>
-      this.authService.createToken({ user }, JwtProcessorType.RSA),
+    const profile = await this.login(req);
+
+    res.header(
+      'Authorization',
+      await this.authService.createToken(
+        { user: profile.email },
+        JwtProcessorType.RSA,
+      ),
     );
+
+    return profile;
   }
 
   @Post('jwt/kid-sql/login')
@@ -141,12 +141,20 @@ export class AuthController {
   })
   async loginWithKIDSqlJwt(
     @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<void> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
     this.log.debug('Call loginWithKIDSqlJwt');
-    return this.login(req, response, (user) =>
-      this.authService.createToken({ user }, JwtProcessorType.SQL_KID),
+    const profile = await this.login(req);
+
+    res.header(
+      'Authorization',
+      await this.authService.createToken(
+        { user: profile.email },
+        JwtProcessorType.SQL_KID,
+      ),
     );
+
+    return profile;
   }
 
   @UseGuards(AuthGuard)
@@ -183,12 +191,20 @@ export class AuthController {
   })
   async loginWithWeakKeyJwt(
     @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<void> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
     this.log.debug('Call loginWithKIDSqlJwt');
-    return this.login(req, response, (user) =>
-      this.authService.createToken({ user }, JwtProcessorType.WEAK_KEY),
+    const profile = await this.login(req);
+
+    res.header(
+      'Authorization',
+      await this.authService.createToken(
+        { user: profile.email },
+        JwtProcessorType.WEAK_KEY,
+      ),
     );
+
+    return profile;
   }
 
   @UseGuards(AuthGuard)
@@ -225,12 +241,20 @@ export class AuthController {
   })
   async loginWithJKUJwt(
     @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<void> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
     this.log.debug('Call loginWithJKUJwt');
-    return this.login(req, response, (user) =>
-      this.authService.createToken({ user }, JwtProcessorType.JKU),
+    const profile = await this.login(req);
+
+    res.header(
+      'Authorization',
+      await this.authService.createToken(
+        { user: profile.email },
+        JwtProcessorType.JKU,
+      ),
     );
+
+    return profile;
   }
 
   @UseGuards(AuthGuard)
@@ -267,12 +291,20 @@ export class AuthController {
   })
   async loginWithJWKJwt(
     @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<void> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
     this.log.debug('Call loginWithJWKJwt');
-    return this.login(req, response, (user) =>
-      this.authService.createToken({ user }, JwtProcessorType.JWK),
+    const profile = await this.login(req);
+
+    res.header(
+      'Authorization',
+      await this.authService.createToken(
+        { user: profile.email },
+        JwtProcessorType.JWK,
+      ),
     );
+
+    return profile;
   }
 
   @UseGuards(AuthGuard)
@@ -309,12 +341,20 @@ export class AuthController {
   })
   async loginWithX5CJwt(
     @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<void> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
     this.log.debug('Call loginWithX5CJwt');
-    return this.login(req, response, (user) =>
-      this.authService.createToken({ user }, JwtProcessorType.X5C),
+    const profile = await this.login(req);
+
+    res.header(
+      'Authorization',
+      await this.authService.createToken(
+        { user: profile.email },
+        JwtProcessorType.X5C,
+      ),
     );
+
+    return profile;
   }
 
   @UseGuards(AuthGuard)
@@ -351,12 +391,20 @@ export class AuthController {
   })
   async loginWithX5UJwt(
     @Body() req: LoginRequest,
-    @Res() response: Response,
-  ): Promise<void> {
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
     this.log.debug('Call loginWithX5UJwt');
-    return this.login(req, response, (user) =>
-      this.authService.createToken({ user }, JwtProcessorType.X5U),
+    const profile = await this.login(req);
+
+    res.header(
+      'Authorization',
+      await this.authService.createToken(
+        { user: profile.email },
+        JwtProcessorType.X5U,
+      ),
     );
+
+    return profile;
   }
 
   @UseGuards(AuthGuard)
