@@ -38,7 +38,7 @@ export class FileController {
   async loadFile(
     @Query('path') path: string,
     @Query('type') contentType: string,
-    @Res() response: Response,
+    @Res({ passthrough: true }) res: Response,
     @Headers('Accept') acceptHeader: string,
   ): Promise<void> {
     let type: string = null;
@@ -52,9 +52,9 @@ export class FileController {
         type = 'application/octet-stream';
       }
 
-      response.header(FileController.CONTENT_TYPE_HEADER, type);
+      res.header(FileController.CONTENT_TYPE_HEADER, type);
       const file: Stream = await this.fileService.getFile(path);
-      file.pipe(response);
+      file.pipe(res);
     } catch (err) {
       throw new HttpException(
         {
