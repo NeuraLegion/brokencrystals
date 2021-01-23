@@ -100,13 +100,13 @@ export class UsersController {
         return;
       }
 
-      const readableInstanceStream = new Readable({
+      const readable = new Readable({
         read() {
           this.push(user.photo);
           this.push(null);
         },
       });
-      readableInstanceStream.pipe(res);
+      readable.pipe(res);
     } catch (err) {
       throw new HttpException(
         {
