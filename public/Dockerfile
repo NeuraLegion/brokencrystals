@@ -1,7 +1,5 @@
 FROM node:10 AS builder
 
-RUN mkdir -p /home/node/bc/node_modules
-
 WORKDIR /home/node/bc
 
 COPY package*.json ./
