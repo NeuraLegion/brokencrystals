@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { AuthModule } from 'src/auth/auth.module';
-import { OrmModule } from 'src/orm/orm.module';
-import { UsersModule } from 'src/users/users.module';
+import { AuthModule } from '../auth/auth.module';
+import { OrmModule } from '../orm/orm.module';
+import { UsersModule } from '../users/users.module';
 import { TestimonialsController } from './testimonials.controller';
 import { TestimonialsService } from './testimonials.service';
 

@@ -24,10 +24,10 @@ import { IUser } from './api/IUser';
 import { LdapQueryHandler } from './ldap.query.handler';
 import { UsersService } from './users.service';
 import { Readable } from 'stream';
-import { User } from 'src/model/user.entity';
-import { AuthGuard } from 'src/auth/auth.guard';
-import { JwtType } from 'src/auth/jwt/jwt.type.decorator';
-import { JwtProcessorType } from 'src/auth/auth.service';
+import { User } from '../model/user.entity';
+import { AuthGuard } from '../auth/auth.guard';
+import { JwtType } from '../auth/jwt/jwt.type.decorator';
+import { JwtProcessorType } from '../auth/auth.service';
 
 @Controller('/api/users')
 @ApiTags('user controller')

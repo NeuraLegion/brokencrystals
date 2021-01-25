@@ -3,7 +3,7 @@ import { OrmConfigFactory } from './orm.config.factory';
 import { Module } from '@nestjs/common';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { ConfigService } from '@nestjs/config';
-import { User } from 'src/model/user.entity';
+import { User } from '../model/user.entity';
 
 @Module({
   imports: [

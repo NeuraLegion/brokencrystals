@@ -1,8 +1,8 @@
 import { EntityRepository, wrap } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable, Logger } from '@nestjs/common';
-import { hashPassword } from 'src/auth/credentials.utils';
-import { User } from 'src/model/user.entity';
+import { hashPassword } from '../auth/credentials.utils';
+import { User } from '../model/user.entity';
 
 @Injectable()
 export class UsersService {

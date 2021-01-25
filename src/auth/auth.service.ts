@@ -2,7 +2,7 @@ import { EntityManager } from '@mikro-orm/core';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
-import { HttpClientService } from 'src/httpclient/httpclient.service';
+import { HttpClientService } from '../httpclient/httpclient.service';
 import { AuthModuleConfigProperties } from './auth.module.config.properties';
 import { JwtTokenProcessor } from './jwt/jwt.token.processor';
 import { JwtTokenWithJKUProcessor } from './jwt/jwt.token.with.jku.processor';
