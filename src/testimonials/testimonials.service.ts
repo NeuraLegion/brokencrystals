@@ -1,7 +1,7 @@
 import { EntityManager, EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable, Logger } from '@nestjs/common';
-import { Testimonial } from 'src/model/testimonial.entity';
+import { Testimonial } from '../model/testimonial.entity';
 
 @Injectable()
 export class TestimonialsService {

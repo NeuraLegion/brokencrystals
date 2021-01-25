@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { HttpClientModule } from 'src/httpclient/httpclient.module';
-import { UsersModule } from 'src/users/users.module';
+import { HttpClientModule } from '../httpclient/httpclient.module';
+import { UsersModule } from '../users/users.module';
 import { FileController } from './file.controller';
 import { FileService } from './file.service';
 

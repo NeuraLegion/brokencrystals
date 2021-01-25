@@ -11,9 +11,9 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-import { User } from 'src/model/user.entity';
-import { LdapQueryHandler } from 'src/users/ldap.query.handler';
-import { UsersService } from 'src/users/users.service';
+import { User } from '../model/user.entity';
+import { LdapQueryHandler } from '../users/ldap.query.handler';
+import { UsersService } from '../users/users.service';
 import { JwtValidationResponse } from './api/JwtValidationResponse';
 import { LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';

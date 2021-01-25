@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CloudProvidersMetaData } from './cloud.providers.metadata';
 import { R_OK } from 'constants';
-import { HttpClientService } from 'src/httpclient/httpclient.service';
+import { HttpClientService } from '../httpclient/httpclient.service';
 
 @Injectable()
 export class FileService {
