@@ -78,7 +78,6 @@ export class AppController {
   @Post('metadata')
   @Header('Content-Type', 'text/xml')
   async xml(@Query('xml') xml: string): Promise<string> {
-    console.log(xml);
     if (xml === AppController.XML_ENTITY_INJECTION) {
       return AppController.XML_ENTITY_INJECTION_RESPONSE;
     }

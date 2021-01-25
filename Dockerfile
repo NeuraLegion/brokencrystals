@@ -1,20 +1,16 @@
-FROM node:10-alpine
-
-RUN mkdir -p /home/node/bc/node_modules && chown -R node:node /home/node/bc
+FROM node:10
 
 WORKDIR /home/node/bc
 
-COPY --chown=node:node package*.json ./
-COPY --chown=node:node config ./config
-COPY --chown=node:node tsconfig.build.json ./
-COPY --chown=node:node tsconfig.json ./
-COPY --chown=node:node nest-cli.json ./
-COPY --chown=node:node .env ./
-COPY --chown=node:node src ./src
+COPY package*.json ./
+COPY config ./config
+COPY tsconfig.build.json ./
+COPY tsconfig.json ./
+COPY nest-cli.json ./
+COPY .env ./
+COPY src ./src
 
-USER node
-
-RUN npm install
+RUN npm ci -q
 RUN npm build
 
 EXPOSE 3000
