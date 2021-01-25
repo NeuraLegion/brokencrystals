@@ -65,7 +65,12 @@ export const Nav = () => {
           <a href="/">Contact</a>
         </li>
         <li>
-          <a href="/">Vulnerabilities</a>
+          <a
+            href="https://github.com/NeuraLegion/brokencrystals#vulnerabilities-overview"
+            target="_blank"
+          >
+            Vulnerabilities
+          </a>
         </li>
       </ul>
     </nav>

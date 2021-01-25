@@ -9,9 +9,9 @@ COPY tsconfig.json ./
 COPY .env ./
 COPY src ./src
 COPY public ./public
-COPY source_control_files ./source_control_files
+COPY vcs ./vcs
 
-RUN npm install
+RUN npm ci -q
 RUN npm run build
 
 FROM staticfloat/nginx-certbot
