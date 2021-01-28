@@ -13,14 +13,13 @@ The application contains:
 
 ```bash
 # build server
-$ npm i && npm run build
+npm ci --prefix public && npm run build --prefix public
 
 # build client 
-$ cd public
-$ npm i && npm run build
+npm ci && npm run build
 
 #build and start dockers with Postgres DB, nginx and server
-$ docker-compose up -d
+docker-compose up -d
 ```
 ## Vulnerabilities Overview 
 
