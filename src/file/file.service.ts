@@ -8,28 +8,33 @@ import { HttpClientService } from '../httpclient/httpclient.service';
 
 @Injectable()
 export class FileService {
-  private log: Logger = new Logger(FileService.name);
+  private readonly logger = new Logger(FileService.name);
   private cloudProviders = new CloudProvidersMetaData();
 
   constructor(private readonly httpClientService: HttpClientService) {}
 
   async getFile(file: string): Promise<Stream> {
-    this.log.debug(`getFile ${file}`);
+    this.logger.log(`Reading file: ${file}`);
 
     if (file.startsWith('/')) {
-      fs.accessSync(file, R_OK);
+      await fs.promises.access(file, R_OK);
+
       return fs.createReadStream(file);
     } else if (file.startsWith('http')) {
-      let content = this.cloudProviders.get(file);
+      const content = this.cloudProviders.get(file);
+
       if (content) {
         return Readable.from(content);
       } else {
         const httpResp = await this.httpClientService.loadAny(file);
-        return Readable.from(httpResp.content.toString("utf-8"));
+
+        return Readable.from(httpResp.content.toString('utf-8'));
       }
     } else {
       file = path.resolve(process.cwd(), file);
-      fs.accessSync(file, R_OK);
+
+      await fs.promises.access(file, R_OK);
+
       return fs.createReadStream(file);
     }
   }

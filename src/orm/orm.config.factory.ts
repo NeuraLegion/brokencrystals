@@ -15,7 +15,6 @@ export class OrmConfigFactory {
 
   public buildConfig(): Options {
     const config = {
-      // baseDir: __dirname,
       entities: ['dist/model'],
       entitiesTs: ['src/model'],
       host: this.configService.get<string>(

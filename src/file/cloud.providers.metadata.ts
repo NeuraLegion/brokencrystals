@@ -198,14 +198,11 @@ export class CloudProvidersMetaData {
       return this.providers.get(CloudProvidersMetaData.GOOGLE);
     } else if (providerUrl.startsWith(CloudProvidersMetaData.DIGITAL_OCEAN)) {
       return this.providers.get(CloudProvidersMetaData.DIGITAL_OCEAN);
-    }
-    else if (providerUrl.startsWith(CloudProvidersMetaData.AWS)) {
+    } else if (providerUrl.startsWith(CloudProvidersMetaData.AWS)) {
       return this.providers.get(CloudProvidersMetaData.AWS);
-    }
-    else if (providerUrl.startsWith(CloudProvidersMetaData.AZURE)) {
+    } else if (providerUrl.startsWith(CloudProvidersMetaData.AZURE)) {
       return this.providers.get(CloudProvidersMetaData.AZURE);
-    }
-    else {
+    } else {
       return null;
     }
   }

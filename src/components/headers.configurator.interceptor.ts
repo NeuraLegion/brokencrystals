@@ -1,9 +1,9 @@
 import {
   CallHandler,
   ExecutionContext,
-  HttpException,
-  HttpStatus,
   Injectable,
+  InternalServerErrorException,
+  Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import { Request } from 'express';
@@ -23,16 +23,19 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
   public static readonly NO_SEC_HEADERS_QUERY_PARAM: string = 'no-sec-headers';
   //counter cookie name
   public static readonly COUNTER_COOKIE_NAME = 'bc-calls-counter';
+  private readonly logger = new Logger(HeadersConfiguratorInterceptor.name);
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const req = context.switchToHttp().getRequest() as Request;
 
-    //force session cookie
+    // force session cookie
     req.session['visits'] = req.session['visits']
       ? req.session['visits'] + 1
       : 1;
 
-    const cookies: string[] = req.headers.cookie ? req.headers.cookie.split('; ') : [];
+    const cookies: string[] = req.headers.cookie
+      ? req.headers.cookie.split('; ')
+      : [];
     if (cookies && cookies.length > 0) {
       try {
         const cookie = cookies
@@ -40,22 +43,21 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
           .find((str) =>
             str.startsWith(HeadersConfiguratorInterceptor.COUNTER_COOKIE_NAME),
           );
-        console.log(cookie);
+
+        this.logger.log(`Cookie header: ${cookie}`);
+
         if (cookie) {
           const counter = cookie.split('=');
-          console.log(counter);
+
           if (isNaN(+counter[1])) {
             throw new Error('Invalid counter value');
           }
         }
       } catch (err) {
-        throw new HttpException(
-          {
-            error: err.message,
-            location: __filename,
-          },
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
+        throw new InternalServerErrorException({
+          error: err.message,
+          location: __filename,
+        });
       }
     }
 

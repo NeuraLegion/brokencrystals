@@ -4,9 +4,11 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  InternalServerErrorException,
   Logger,
   Post,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -40,7 +42,7 @@ import { JwtType } from './jwt/jwt.type.decorator';
 @Controller('/api/auth')
 @ApiTags('auth controller')
 export class AuthController {
-  private log: Logger = new Logger(AuthController.name);
+  private readonly logger = new Logger(AuthController.name);
 
   constructor(
     private readonly usersService: UsersService,
@@ -52,23 +54,17 @@ export class AuthController {
     try {
       user = await this.usersService.findByEmail(req.user);
     } catch (err) {
-      throw new HttpException(
-        {
-          error: err.message,
-          location: __filename,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
     }
 
     if (!user || !(await passwordMatches(req.password, user.password))) {
-      throw new HttpException(
-        {
-          error: 'Invalid credentials',
-          location: __filename,
-        },
-        HttpStatus.UNAUTHORIZED,
-      );
+      throw new UnauthorizedException({
+        error: 'Invalid credentials',
+        location: __filename,
+      });
     }
 
     return {
@@ -93,7 +89,7 @@ export class AuthController {
     @Body() req: LoginRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    this.log.debug('Call loginWithRSAJwtKeysAdmin');
+    this.logger.debug('Call loginWithRSAJwtKeysAdmin');
     return this.loginWithRSAJwtKeys(req, res);
   }
 
@@ -113,7 +109,7 @@ export class AuthController {
     @Body() req: LoginRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    this.log.debug('Call loginWithRSAJwtKeys');
+    this.logger.debug('Call loginWithRSAJwtKeys');
     const profile = await this.login(req);
 
     res.header(
@@ -143,7 +139,7 @@ export class AuthController {
     @Body() req: LoginRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    this.log.debug('Call loginWithKIDSqlJwt');
+    this.logger.debug('Call loginWithKIDSqlJwt');
     const profile = await this.login(req);
 
     res.header(
@@ -193,7 +189,7 @@ export class AuthController {
     @Body() req: LoginRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    this.log.debug('Call loginWithKIDSqlJwt');
+    this.logger.debug('Call loginWithKIDSqlJwt');
     const profile = await this.login(req);
 
     res.header(
@@ -243,7 +239,7 @@ export class AuthController {
     @Body() req: LoginRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    this.log.debug('Call loginWithJKUJwt');
+    this.logger.debug('Call loginWithJKUJwt');
     const profile = await this.login(req);
 
     res.header(
@@ -293,7 +289,7 @@ export class AuthController {
     @Body() req: LoginRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    this.log.debug('Call loginWithJWKJwt');
+    this.logger.debug('Call loginWithJWKJwt');
     const profile = await this.login(req);
 
     res.header(
@@ -343,7 +339,7 @@ export class AuthController {
     @Body() req: LoginRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    this.log.debug('Call loginWithX5CJwt');
+    this.logger.debug('Call loginWithX5CJwt');
     const profile = await this.login(req);
 
     res.header(
@@ -393,7 +389,7 @@ export class AuthController {
     @Body() req: LoginRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponse> {
-    this.log.debug('Call loginWithX5UJwt');
+    this.logger.debug('Call loginWithX5UJwt');
     const profile = await this.login(req);
 
     res.header(

@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as axios from 'axios';
+import axios from 'axios';
 
 @Injectable()
 export class HttpClientService {
   private readonly log: Logger = new Logger(HttpClientService.name);
 
   async loadJSON(url: string): Promise<unknown> {
-    const resp = await axios.default.get<unknown>(url, {
+    const resp = await axios.get<unknown>(url, {
       responseType: 'json',
     });
     if (resp.status != 200) {
@@ -17,7 +17,7 @@ export class HttpClientService {
   }
 
   async loadPlain(url: string): Promise<string> {
-    const resp = await axios.default.get<ArrayBuffer>(url, {
+    const resp = await axios.get<ArrayBuffer>(url, {
       responseType: 'arraybuffer',
     });
 
@@ -26,16 +26,18 @@ export class HttpClientService {
     }
 
     const buffer = Buffer.from(resp.data);
-    const textdata = buffer.toString();
-    this.log.debug(`Loaded: ${textdata}`);
-    return textdata;
+    const text = buffer.toString();
+    this.log.debug(`Loaded: ${text}`);
+    return text;
   }
 
-  async loadAny(url: string): Promise<{
-    content: Buffer,
-    contentType: string
+  async loadAny(
+    url: string,
+  ): Promise<{
+    content: Buffer;
+    contentType: string;
   }> {
-    const resp = await axios.default.get<ArrayBuffer>(url, {
+    const resp = await axios.get<ArrayBuffer>(url, {
       responseType: 'arraybuffer',
     });
 
@@ -47,7 +49,7 @@ export class HttpClientService {
 
     return {
       content: buffer,
-      contentType: resp.headers['Content-Type']
+      contentType: resp.headers['Content-Type'],
     };
   }
 }
