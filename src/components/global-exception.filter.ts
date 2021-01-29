@@ -9,6 +9,10 @@ import { BaseExceptionFilter } from '@nestjs/core';
 @Catch()
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   public catch(exception: unknown, host: ArgumentsHost) {
+    const applicationRef =
+      this.applicationRef ||
+      (this.httpAdapterHost && this.httpAdapterHost.httpAdapter);
+
     if (exception instanceof HttpException) {
       return super.catch(exception, host);
     }
@@ -18,7 +22,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       'An internal error has occurred, and the API was unable to service your request.',
     );
 
-    return this.httpAdapterHost.httpAdapter.reply(
+    return applicationRef.reply(
       host.getArgByIndex(1),
       unprocessableException.getResponse(),
       unprocessableException.getStatus(),
