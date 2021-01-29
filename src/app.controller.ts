@@ -72,7 +72,7 @@ export class AppController {
       "Receives client's metadata in XML format. Returns the passed XML",
   })
   @Post('metadata')
-  @Header('Content-Type', 'text/xml')
+  @Header('content-type', 'text/xml')
   async xml(@Query('xml') xml: string): Promise<string> {
     if (xml === AppController.XML_ENTITY_INJECTION) {
       return AppController.XML_ENTITY_INJECTION_RESPONSE;
@@ -96,7 +96,7 @@ export class AppController {
     description: 'Returns the list of supported operations',
   })
   @Options()
-  @Header('Allow', 'OPTIONS, GET, HEAD, POST')
+  @Header('allow', 'OPTIONS, GET, HEAD, POST')
   async getTestOptions(): Promise<void> {
     this.logger.debug('Test OPTIONS');
   }
