@@ -7,8 +7,13 @@ import { NextFunction, Request, Response } from 'express';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
 import * as cluster from 'cluster';
+import * as http from 'http';
+import * as https from 'https';
 
 async function bootstrap() {
+  http.globalAgent.maxSockets = Infinity;
+  https.globalAgent.maxSockets = Infinity;
+
   const app = await NestFactory.create(AppModule);
 
   const httpAdapter = app.getHttpAdapter();
