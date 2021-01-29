@@ -24,7 +24,6 @@ import { parseXml } from 'libxmljs';
 import * as rawbody from 'raw-body';
 import { AppConfig } from './app.config.api';
 import { AppModuleConfigProperties } from './app.module.config.properties';
-import { AppService } from './app.service';
 import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 
 @Controller('/api')
@@ -34,12 +33,9 @@ export class AppController {
   private static readonly XML_ENTITY_INJECTION_RESPONSE = `root:x:0:0:root:/root:/bin/bash
   daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin`;
 
-  private log: Logger = new Logger(AppController.name);
+  private readonly logger = new Logger(AppController.name);
 
-  constructor(
-    private readonly appService: AppService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly configService: ConfigService) {}
 
   @ApiProduces('text/plain')
   @ApiConsumes('text/plain')
@@ -57,7 +53,7 @@ export class AppController {
       const raw = await rawbody(req);
       const text = raw.toString().trim();
       const res = dotT.compile(text)();
-      this.log.debug('rendered template:', res);
+      this.logger.debug(`Rendered template: ${res}`);
       return res;
     }
   }
@@ -90,8 +86,8 @@ export class AppController {
       errors: true,
     });
 
-    this.log.debug(xmlDoc);
-    this.log.debug(xmlDoc.getDtd());
+    this.logger.debug(xmlDoc);
+    this.logger.debug(xmlDoc.getDtd());
 
     return xmlDoc.toString(true);
   }
@@ -102,7 +98,7 @@ export class AppController {
   @Options()
   @Header('Allow', 'OPTIONS, GET, HEAD, POST')
   async getTestOptions(): Promise<void> {
-    this.log.debug('Called getTestOptions');
+    this.logger.debug('Test OPTIONS');
   }
 
   @Get('spawn')
@@ -114,7 +110,7 @@ export class AppController {
     status: 200,
   })
   async launchCommand(@Query('command') command: string): Promise<string> {
-    this.log.debug(`launchCommand with ${command}`);
+    this.logger.debug(`launch ${command} command`);
 
     return new Promise((res, rej) => {
       try {
@@ -122,22 +118,20 @@ export class AppController {
         const ps = spawn(exec, args);
 
         ps.stdout.on('data', (data: Buffer) => {
-          this.log.debug(`stdout: ${data}`);
+          this.logger.debug(`stdout: ${data}`);
           res(data.toString('ascii'));
         });
 
         ps.stderr.on('data', (data: Buffer) => {
-          this.log.debug(`stderr: ${data}`);
+          this.logger.debug(`stderr: ${data}`);
           res(data.toString('ascii'));
         });
 
-        ps.on('error', function (err) {
-          rej(err.message);
-        });
+        ps.on('error', (err) => rej(err.message));
 
-        ps.on('close', (code) => {
-          console.log(`child process exited with code ${code}`);
-        });
+        ps.on('close', (code) =>
+          this.logger.debug(`child process exited with code ${code}`),
+        );
       } catch (err) {
         rej(err.message);
       }
@@ -153,7 +147,7 @@ export class AppController {
   })
   @Get('/config')
   getConfig(): AppConfig {
-    this.log.debug('Called getConfig');
+    this.logger.debug('Called getConfig');
     const dbSchema = this.configService.get<string>(
       OrmModuleConfigProperties.ENV_DATABASE_SCHEMA,
     );

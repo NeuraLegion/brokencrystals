@@ -5,8 +5,8 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as session from 'express-session';
 import { NextFunction, Request, Response } from 'express';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
-
-process.on('uncaughtException', (err: Error) => console.error(err));
+import * as os from 'os';
+import * as cluster from 'cluster';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -55,4 +55,19 @@ async function bootstrap() {
 
   await app.listen(3000);
 }
-bootstrap();
+
+const CPUS = os.cpus().length;
+
+if (cluster.isMaster && process.env.NODE_ENV === 'production') {
+  console.log(`MASTER SERVER (${process.pid}) IS RUNNING `);
+
+  for (let i = 0; i < CPUS; i++) {
+    cluster.fork();
+  }
+
+  cluster.on('exit', (worker) => {
+    console.log(`worker ${worker.process.pid} died`);
+  });
+} else {
+  bootstrap();
+}

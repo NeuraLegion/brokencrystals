@@ -25,7 +25,6 @@ export enum JwtProcessorType {
 
 @Injectable()
 export class AuthService {
-  private log: Logger = new Logger(AuthService.name);
   private processors: Map<JwtProcessorType, JwtTokenProcessor>;
 
   constructor(
@@ -80,17 +79,11 @@ export class AuthService {
     );
   }
 
-  async validateToken(
-    token: string,
-    processor: JwtProcessorType,
-  ): Promise<any> {
+  validateToken(token: string, processor: JwtProcessorType): Promise<any> {
     return this.processors.get(processor).validateToken(token);
   }
 
-  async createToken(
-    payload: unknown,
-    processor: JwtProcessorType,
-  ): Promise<string> {
+  createToken(payload: unknown, processor: JwtProcessorType): Promise<string> {
     return this.processors.get(processor).createToken(payload);
   }
 }

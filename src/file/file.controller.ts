@@ -26,7 +26,7 @@ import { FileService } from './file.service';
 @ApiTags('files controller')
 export class FileController {
   private static readonly CONTENT_TYPE_HEADER = 'Content-Type';
-  private log: Logger = new Logger(FileController.name);
+  private readonly logger = new Logger(FileController.name);
 
   constructor(private fileService: FileService) {}
 
@@ -41,29 +41,19 @@ export class FileController {
     @Res({ passthrough: true }) res: Response,
     @Headers('Accept') acceptHeader: string,
   ): Promise<void> {
-    let type: string = null;
+    let type: string;
 
-    try {
-      if (contentType) {
-        type = contentType;
-      } else if (acceptHeader) {
-        type = acceptHeader;
-      } else {
-        type = 'application/octet-stream';
-      }
-
-      res.header(FileController.CONTENT_TYPE_HEADER, type);
-      const file: Stream = await this.fileService.getFile(path);
-      file.pipe(res);
-    } catch (err) {
-      throw new HttpException(
-        {
-          error: err.message,
-          location: __filename,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+    if (contentType) {
+      type = contentType;
+    } else if (acceptHeader) {
+      type = acceptHeader;
+    } else {
+      type = 'application/octet-stream';
     }
+
+    res.header(FileController.CONTENT_TYPE_HEADER, type);
+    const file: Stream = await this.fileService.getFile(path);
+    file.pipe(res);
   }
 
   @ApiOperation({
@@ -71,17 +61,7 @@ export class FileController {
   })
   @Delete()
   async deleteFile(@Query('path') path: string): Promise<void> {
-    try {
-      await this.fileService.deleteFile(path);
-    } catch (err) {
-      throw new HttpException(
-        {
-          error: err.message,
-          location: __filename,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
+    await this.fileService.deleteFile(path);
   }
 
   @ApiOperation({
@@ -99,7 +79,7 @@ export class FileController {
         await fs.promises.access(path.dirname(file), W_OK);
         await fs.promises.writeFile(file, raw);
       } catch (err) {
-        this.log.error(err.message);
+        this.logger.error(err.message);
       }
     }
   }
@@ -117,7 +97,7 @@ export class FileController {
       const stream = await this.fileService.getFile(file);
       stream.pipe(res);
     } catch (err) {
-      this.log.error(err.message);
+      this.logger.error(err.message);
       res.status(HttpStatus.NOT_FOUND);
     }
   }

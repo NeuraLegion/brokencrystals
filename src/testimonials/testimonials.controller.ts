@@ -12,13 +12,13 @@ import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
 import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
-import { ITestimonial } from './api/ITestimonial';
+import { TestimonialDto } from './api/TestimonialDto';
 import { TestimonialsService } from './testimonials.service';
 
 @Controller('/api/testimonials')
 @ApiTags('testimonials controller')
 export class TestimonialsController {
-  private log: Logger = new Logger(TestimonialsController.name);
+  private readonly logger = new Logger(TestimonialsController.name);
 
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
@@ -29,14 +29,14 @@ export class TestimonialsController {
     description: 'creates testimonial',
   })
   @ApiResponse({
-    type: ITestimonial,
-    status: 200
+    type: TestimonialDto,
+    status: 200,
   })
   async createTestimonial(
     @Body() req: CreateTestimonialRequest,
   ): Promise<CreateTestimonialRequest> {
-    this.log.debug('Called createTestimonial');
-    return ITestimonial.covertToApi(
+    this.logger.debug('Create testimonial.');
+    return TestimonialDto.covertToApi(
       await this.testimonialsService.createTestimonial(
         req.message,
         req.name,
@@ -50,28 +50,28 @@ export class TestimonialsController {
     description: 'returns all testimonials',
   })
   @ApiResponse({
-    type: ITestimonial,
+    type: TestimonialDto,
     isArray: true,
-    status: 200
+    status: 200,
   })
-  async getTestimonials(): Promise<ITestimonial[]> {
-    this.log.debug('Called createTestimonial');
-    return await (await this.testimonialsService.findAll()).map<ITestimonial>(
-      ITestimonial.covertToApi,
+  async getTestimonials(): Promise<TestimonialDto[]> {
+    this.logger.debug('Get all testimonials.');
+    return (await this.testimonialsService.findAll()).map<TestimonialDto>(
+      TestimonialDto.covertToApi,
     );
   }
 
   @Get('count')
   @ApiOperation({
     description:
-      'returns count of all testimnonials based on provided sql query',
+      'returns count of all testimonials based on provided sql query',
   })
   @ApiResponse({
     type: String,
-    status: 200
+    status: 200,
   })
   async getCount(@Query('query') query: string): Promise<string> {
-    this.log.debug('getCount');
+    this.logger.debug('Get count of testimonials.');
     return await this.testimonialsService.count(query);
   }
 }

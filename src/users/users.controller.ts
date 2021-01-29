@@ -3,9 +3,10 @@ import {
   Controller,
   Get,
   Header,
-  HttpException,
   HttpStatus,
+  InternalServerErrorException,
   Logger,
+  NotFoundException,
   Options,
   Param,
   Post,
@@ -20,7 +21,7 @@ import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CreateUserRequest } from './api/CreateUserRequest';
-import { IUser } from './api/IUser';
+import { UserDto } from './api/UserDto';
 import { LdapQueryHandler } from './ldap.query.handler';
 import { UsersService } from './users.service';
 import { Readable } from 'stream';
@@ -32,15 +33,15 @@ import { JwtProcessorType } from '../auth/auth.service';
 @Controller('/api/users')
 @ApiTags('user controller')
 export class UsersController {
-  private log: Logger = new Logger(UsersController.name);
-  private ldapQueryHandler: LdapQueryHandler = new LdapQueryHandler();
+  private logger = new Logger(UsersController.name);
+  private ldapQueryHandler = new LdapQueryHandler();
 
   constructor(private readonly usersService: UsersService) {}
 
   @Options()
   @Header('Allow', 'OPTIONS, GET, POST, DELETE')
   async getTestOptions(): Promise<void> {
-    console.log('getTestOptions');
+    this.logger.debug(`Test OPTIONS`);
   }
 
   @Get('/one/:email')
@@ -48,21 +49,18 @@ export class UsersController {
     description: 'returns user',
   })
   @ApiResponse({
-    type: IUser,
+    type: UserDto,
     status: 200,
   })
-  async getUser(@Param('email') email: string): Promise<IUser> {
+  async getUser(@Param('email') email: string): Promise<UserDto> {
     try {
-      this.log.debug('Called getUser');
-      return IUser.convertToApi(await this.usersService.findByEmail(email));
+      this.logger.debug(`Find a user by email: ${email}`);
+      return UserDto.convertToApi(await this.usersService.findByEmail(email));
     } catch (err) {
-      throw new HttpException(
-        {
-          error: err.message,
-          location: __filename,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
     }
   }
 
@@ -82,24 +80,21 @@ export class UsersController {
     @Param('email') email: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    this.log.debug('Called getUserPhoto');
+    this.logger.debug(`Find a user photo by email: ${email}`);
     const user = await this.usersService.findByEmail(email);
     if (!user) {
-      throw new HttpException(
-        {
-          error: 'Could not file user',
-          location: __filename,
-        },
-        HttpStatus.NOT_FOUND,
-      );
+      throw new NotFoundException({
+        error: 'Could not file user',
+        location: __filename,
+      });
+    }
+
+    if (!user.photo) {
+      res.status(HttpStatus.NO_CONTENT);
+      return;
     }
 
     try {
-      if (!user.photo) {
-        res.status(HttpStatus.NO_CONTENT);
-        return;
-      }
-
       const readable = new Readable({
         read() {
           this.push(user.photo);
@@ -108,13 +103,10 @@ export class UsersController {
       });
       readable.pipe(res);
     } catch (err) {
-      throw new HttpException(
-        {
-          error: err.message,
-          location: __filename,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
     }
   }
 
@@ -123,36 +115,37 @@ export class UsersController {
     description: 'performs LDAP search for user details',
   })
   @ApiResponse({
-    type: IUser,
+    type: UserDto,
     isArray: true,
     status: 200,
   })
-  async ldapQuery(@Query('query') query: string): Promise<IUser[]> {
+  async ldapQuery(@Query('query') query: string): Promise<UserDto[]> {
+    let users: User[];
+
     try {
       const email = this.ldapQueryHandler.parseQuery(query);
-      let users: User[];
+
       if (email && email.endsWith('*')) {
         users = await this.usersService.findByEmailPrefix(email.slice(0, -1));
       } else {
         const user = await this.usersService.findByEmail(email);
+
         if (user) {
           users = [user];
         }
       }
-
-      if (!users) {
-        throw new HttpException('User not found in ldap', HttpStatus.NOT_FOUND);
-      }
-      return users.map<IUser>(IUser.convertToApi);
     } catch (err) {
-      throw new HttpException(
-        {
-          error: err.message,
-          location: __filename,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
     }
+
+    if (!users) {
+      throw new NotFoundException('User not found in ldap');
+    }
+
+    return users.map<UserDto>(UserDto.convertToApi);
   }
 
   @Post()
@@ -160,13 +153,14 @@ export class UsersController {
     description: 'creates user',
   })
   @ApiResponse({
-    type: IUser,
+    type: UserDto,
     status: 200,
   })
-  async createUser(@Body() user: CreateUserRequest): Promise<IUser> {
+  async createUser(@Body() user: CreateUserRequest): Promise<UserDto> {
     try {
-      this.log.debug('Called createUser');
-      return IUser.convertToApi(
+      this.logger.debug(`Create a user: ${user}`);
+
+      return UserDto.convertToApi(
         await this.usersService.createUser(
           user.email,
           user.firstName,
@@ -175,13 +169,10 @@ export class UsersController {
         ),
       );
     } catch (err) {
-      throw new HttpException(
-        {
-          error: err.message,
-          location: __filename,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
     }
   }
 
@@ -196,13 +187,10 @@ export class UsersController {
     try {
       await this.usersService.updatePhoto(email, files[0].buffer);
     } catch (err) {
-      throw new HttpException(
-        {
-          error: err.message,
-          location: __filename,
-        },
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
     }
   }
 }
