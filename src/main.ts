@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { HeadersConfiguratorInterceptor } from './components/headers.configurator.interceptor';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { fastifyCookie } from 'fastify-cookie';
 import session from 'fastify-session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
@@ -15,19 +15,23 @@ import fmp from 'fastify-multipart';
 import { randomBytes } from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
+import fastify from 'fastify';
+import * as rawbody from 'raw-body';
 
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
 
+  const server = fastify();
+
   const app: NestFastifyApplication = await NestFactory.create(
     AppModule,
-    new FastifyAdapter(),
+    new FastifyAdapter(server),
   );
 
-  await app.register(fastifyCookie);
-  await app.register(fmp);
-  await app.register(session, {
+  await server.register(fastifyCookie);
+  await server.register(fmp);
+  await server.register(session, {
     secret: randomBytes(32).toString('hex').slice(0, 32),
     cookieName: 'connect.sid',
     cookie: {
@@ -35,6 +39,7 @@ async function bootstrap() {
       httpOnly: false,
     },
   });
+  server.addContentTypeParser('*', (req) => rawbody(req.raw));
 
   const httpAdapter = app.getHttpAdapter();
 

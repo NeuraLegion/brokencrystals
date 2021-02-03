@@ -78,7 +78,7 @@ export class UsersController {
   async getUserPhoto(
     @Param('email') email: string,
     @Res({ passthrough: true }) res: FastifyReply,
-  ): Promise<void> {
+  ) {
     this.logger.debug(`Find a user photo by email: ${email}`);
     const user = await this.usersService.findByEmail(email);
     if (!user) {
@@ -100,7 +100,8 @@ export class UsersController {
           this.push(null);
         },
       });
-      res.type('image/png').send(readable);
+      res.type('image/png');
+      return readable;
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,

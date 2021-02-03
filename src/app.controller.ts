@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Header,
@@ -7,7 +8,6 @@ import {
   Post,
   Query,
   Redirect,
-  Req,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -21,7 +21,6 @@ import {
 import { spawn } from 'child_process';
 import * as dotT from 'dot';
 import { parseXml } from 'libxmljs';
-import * as rawbody from 'raw-body';
 import { AppConfig } from './app.config.api';
 import { AppModuleConfigProperties } from './app.module.config.properties';
 import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
@@ -48,9 +47,8 @@ export class AppController {
     status: 200,
   })
   @Post('render')
-  async renderTemplate(@Req() req): Promise<string> {
-    if (req.raw?.readable) {
-      const raw = await rawbody(req.raw);
+  async renderTemplate(@Body() raw): Promise<string> {
+    if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
       const res = dotT.compile(text)();
       this.logger.debug(`Rendered template: ${res}`);
