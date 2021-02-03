@@ -12,14 +12,12 @@ import {
   Post,
   Put,
   Query,
+  Req,
   Res,
-  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Response } from 'express';
 import { CreateUserRequest } from './api/CreateUserRequest';
 import { UserDto } from './api/UserDto';
 import { LdapQueryHandler } from './ldap.query.handler';
@@ -29,6 +27,8 @@ import { User } from '../model/user.entity';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
 import { JwtProcessorType } from '../auth/auth.service';
+import { FastifyReply, FastifyRequest } from 'fastify';
+import { AnyFilesInterceptor } from 'src/components/any-files.interceptor';
 
 @Controller('/api/users')
 @ApiTags('user controller')
@@ -39,7 +39,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Options()
-  @Header('Allow', 'OPTIONS, GET, POST, DELETE')
+  @Header('allow', 'OPTIONS, GET, POST, DELETE')
   async getTestOptions(): Promise<void> {
     this.logger.debug(`Test OPTIONS`);
   }
@@ -67,7 +67,6 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @Get('/one/:email/photo')
-  @Header('Content-Type', 'image/png')
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'returns user profile photo',
@@ -78,8 +77,8 @@ export class UsersController {
   })
   async getUserPhoto(
     @Param('email') email: string,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<void> {
+    @Res({ passthrough: true }) res: FastifyReply,
+  ) {
     this.logger.debug(`Find a user photo by email: ${email}`);
     const user = await this.usersService.findByEmail(email);
     if (!user) {
@@ -101,7 +100,8 @@ export class UsersController {
           this.push(null);
         },
       });
-      readable.pipe(res);
+      res.type('image/png');
+      return readable;
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
@@ -182,10 +182,11 @@ export class UsersController {
   @ApiOperation({
     description: 'uploads user profile photo',
   })
-  @UseInterceptors(AnyFilesInterceptor())
-  async uploadFile(@Param('email') email: string, @UploadedFiles() files) {
+  @UseInterceptors(AnyFilesInterceptor)
+  async uploadFile(@Param('email') email: string, @Req() req: FastifyRequest) {
     try {
-      await this.usersService.updatePhoto(email, files[0].buffer);
+      const file = await req.file();
+      await this.usersService.updatePhoto(email, await file.toBuffer());
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,

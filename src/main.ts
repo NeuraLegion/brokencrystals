@@ -1,20 +1,45 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { HeadersConfiguratorInterceptor } from './components/headers.configurator.interceptor';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import * as session from 'express-session';
-import { NextFunction, Request, Response } from 'express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { fastifyCookie } from 'fastify-cookie';
+import session from 'fastify-session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
 import * as cluster from 'cluster';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
+import fmp from 'fastify-multipart';
+import { randomBytes } from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
+import fastify from 'fastify';
+import * as rawbody from 'raw-body';
 
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
 
-  const app = await NestFactory.create(AppModule);
+  const server = fastify();
+
+  const app: NestFastifyApplication = await NestFactory.create(
+    AppModule,
+    new FastifyAdapter(server),
+  );
+
+  await server.register(fastifyCookie);
+  await server.register(fmp);
+  await server.register(session, {
+    secret: randomBytes(32).toString('hex').slice(0, 32),
+    cookieName: 'connect.sid',
+    cookie: {
+      secure: false,
+      httpOnly: false,
+    },
+  });
+  server.addContentTypeParser('*', (req) => rawbody(req.raw));
 
   const httpAdapter = app.getHttpAdapter();
 
@@ -35,37 +60,12 @@ async function bootstrap() {
 
   SwaggerModule.setup('swagger', app, document);
 
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.method === 'TRACE') {
-      if (req.header('Trace-Supported')) {
-        res.header('Trace-Supported', req.header('Trace-Supported'));
-      }
-      res.end();
-    } else {
-      next();
-    }
-  });
-
-  app.use(
-    session({
-      secret: 'secret',
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        secure: false,
-        httpOnly: false,
-      },
-    }),
-  );
-
-  await app.listen(3000);
+  await app.listen(3000, '0.0.0.0');
 }
 
 const CPUS = os.cpus().length;
 
 if (cluster.isMaster && process.env.NODE_ENV === 'production') {
-  console.log(`MASTER SERVER (${process.pid}) IS RUNNING `);
-
   for (let i = 0; i < CPUS; i++) {
     cluster.fork();
   }

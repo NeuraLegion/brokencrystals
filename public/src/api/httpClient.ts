@@ -23,7 +23,7 @@ export function postTestimonials(data: Testimonial): Promise<any> {
   return makeApiRequest({
     url: ApiUrl.Testimonials,
     method: 'post',
-    headers: { Authorization: sessionStorage.getItem('token') },
+    headers: { authorization: sessionStorage.getItem('token') },
     data
   });
 }
@@ -64,14 +64,14 @@ export function postMetadata(): Promise<any> {
       '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE child [ <!ENTITY child SYSTEM "file:///etc/passwd"> ]><child></child>'
     )}`,
     method: 'post',
-    headers: { 'Content-Type': 'text/xml' }
+    headers: { 'content-type': 'text/xml' }
   });
 }
 export function getUserPhoto(email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${email}/photo`,
     method: 'get',
-    headers: { Authorization: sessionStorage.getItem('token') },
+    headers: { authorization: sessionStorage.getItem('token') },
     responseType: 'arraybuffer'
   });
 }
@@ -84,8 +84,8 @@ export function putPhoto(photo: File, email: string): Promise<any> {
     url: `${ApiUrl.Users}/one/${email}/photo`,
     method: 'put',
     headers: {
-      'Content-Type': 'image/png',
-      'Authorization': sessionStorage.getItem('token')
+      'content-type': 'image/png',
+      'authorization': sessionStorage.getItem('token')
     },
     data
   });
@@ -102,7 +102,7 @@ export function postRender(data: string): Promise<any> {
   return makeApiRequest({
     url: ApiUrl.Render,
     method: 'post',
-    headers: { 'Content-Type': 'text/plain' },
+    headers: { 'content-type': 'text/plain' },
     data
   });
 }

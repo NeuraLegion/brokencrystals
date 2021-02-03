@@ -19,8 +19,9 @@ export const Testimonials: FC = () => {
 
   useEffect(() => {
     if (newTestimonial) {
-      setTestimonials([...testimonials, newTestimonial]);
+      getTestimonials().then((data) => setTestimonials(data));
       getTestimonialsCount().then((data) => setTestimonialsCount(data));
+      return () => setTestimonials([]);
     }
   }, [newTestimonial]);
 
@@ -38,7 +39,7 @@ export const Testimonials: FC = () => {
         </div>
 
         {testimonials?.length ? (
-          <OwlCarousel className="owl-carousel" dots>
+          <OwlCarousel className="owl-carousel" dots items={3} loop={false}>
             <TestimonialsItems testimonials={testimonials} />
           </OwlCarousel>
         ) : null}

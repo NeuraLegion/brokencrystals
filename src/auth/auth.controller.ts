@@ -12,7 +12,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Response } from 'express';
 import { User } from '../model/user.entity';
 import { LdapQueryHandler } from '../users/ldap.query.handler';
 import { UsersService } from '../users/users.service';
@@ -38,6 +37,7 @@ import { AuthGuard } from './auth.guard';
 import { AuthService, JwtProcessorType } from './auth.service';
 import { passwordMatches } from './credentials.utils';
 import { JwtType } from './jwt/jwt.type.decorator';
+import { FastifyReply } from 'fastify';
 
 @Controller('/api/auth')
 @ApiTags('auth controller')
@@ -87,7 +87,7 @@ export class AuthController {
   })
   async loginWithRSAJwtKeysAdmin(
     @Body() req: LoginRequest,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithRSAJwtKeysAdmin');
     return this.loginWithRSAJwtKeys(req, res);
@@ -107,13 +107,13 @@ export class AuthController {
   })
   async loginWithRSAJwtKeys(
     @Body() req: LoginRequest,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithRSAJwtKeys');
     const profile = await this.login(req);
 
     res.header(
-      'Authorization',
+      'authorization',
       await this.authService.createToken(
         { user: profile.email },
         JwtProcessorType.RSA,
@@ -137,13 +137,13 @@ export class AuthController {
   })
   async loginWithKIDSqlJwt(
     @Body() req: LoginRequest,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithKIDSqlJwt');
     const profile = await this.login(req);
 
     res.header(
-      'Authorization',
+      'authorization',
       await this.authService.createToken(
         { user: profile.email },
         JwtProcessorType.SQL_KID,
@@ -187,13 +187,13 @@ export class AuthController {
   })
   async loginWithWeakKeyJwt(
     @Body() req: LoginRequest,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithKIDSqlJwt');
     const profile = await this.login(req);
 
     res.header(
-      'Authorization',
+      'authorization',
       await this.authService.createToken(
         { user: profile.email },
         JwtProcessorType.WEAK_KEY,
@@ -237,13 +237,13 @@ export class AuthController {
   })
   async loginWithJKUJwt(
     @Body() req: LoginRequest,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithJKUJwt');
     const profile = await this.login(req);
 
     res.header(
-      'Authorization',
+      'authorization',
       await this.authService.createToken(
         { user: profile.email },
         JwtProcessorType.JKU,
@@ -287,13 +287,13 @@ export class AuthController {
   })
   async loginWithJWKJwt(
     @Body() req: LoginRequest,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithJWKJwt');
     const profile = await this.login(req);
 
     res.header(
-      'Authorization',
+      'authorization',
       await this.authService.createToken(
         { user: profile.email },
         JwtProcessorType.JWK,
@@ -337,13 +337,13 @@ export class AuthController {
   })
   async loginWithX5CJwt(
     @Body() req: LoginRequest,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithX5CJwt');
     const profile = await this.login(req);
 
     res.header(
-      'Authorization',
+      'authorization',
       await this.authService.createToken(
         { user: profile.email },
         JwtProcessorType.X5C,
@@ -387,7 +387,7 @@ export class AuthController {
   })
   async loginWithX5UJwt(
     @Body() req: LoginRequest,
-    @Res({ passthrough: true }) res: Response,
+    @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithX5UJwt');
     const profile = await this.login(req);

@@ -49,7 +49,7 @@ export class HttpClientService {
 
     return {
       content: buffer,
-      contentType: resp.headers['Content-Type'],
+      contentType: resp.headers['content-type'],
     };
   }
 }

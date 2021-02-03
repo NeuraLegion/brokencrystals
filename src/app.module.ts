@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -9,6 +9,7 @@ import { OrmModule } from './orm/orm.module';
 import { ConfigModule } from '@nestjs/config';
 import { HttpClientService } from './httpclient/httpclient.service';
 import { HttpClientModule as HttpClientModule } from './httpclient/httpclient.module';
+import { TraceMiddleware } from './components/trace.middleware';
 
 @Module({
   imports: [
@@ -26,4 +27,8 @@ import { HttpClientModule as HttpClientModule } from './httpclient/httpclient.mo
   controllers: [AppController],
   providers: [HttpClientService],
 })
-export class AppModule {}
+export class AppModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(TraceMiddleware).forRoutes('(.*)');
+  }
+}
