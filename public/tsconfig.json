@@ -3,6 +3,7 @@
     "jsx": "react",
     "target": "es5",
     "module": "esnext",
+    "baseUrl": ".",
     "strict": true,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,

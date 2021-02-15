@@ -20,9 +20,10 @@
     "web-vitals": "^0.2.4"
   },
   "scripts": {
-    "start": "set PORT=3001 && react-scripts start",
+    "cypress:run": "cypress open --browser chrome",
+    "test": "start-test 3001 cypress:run",
+    "start": "PORT=3001 react-scripts start",
     "build": "react-scripts build && cp -r vcs/git build/.git && cp -r vcs/hg build/.hg && cp -r vcs/svn build/.svn",
-    "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -48,6 +49,12 @@
     "@types/node": "^14.14.10",
     "@types/react": "^17.0.0",
     "@types/react-dom": "^17.0.0",
-    "@types/react-router-dom": "^5.1.6"
+    "@types/react-router-dom": "^5.1.6",
+    "@typescript-eslint/eslint-plugin": "^4.15.0",
+    "@typescript-eslint/parser": "^4.15.0",
+    "cypress": "^6.4.0",
+    "eslint": "^7.20.0",
+    "eslint-config-prettier": "^7.2.0",
+    "start-server-and-test": "^1.12.0"
   }
 }
