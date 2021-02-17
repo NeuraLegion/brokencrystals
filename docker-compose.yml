@@ -35,6 +35,7 @@ services:
       - letsencrypt:/etc/letsencrypt
   watchtower:
     image: containrrr/watchtower
+    restart: always
     logging:
       options:
         max-file: "5"
