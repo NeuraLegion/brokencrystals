@@ -4,14 +4,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CloudProvidersMetaData } from './cloud.providers.metadata';
 import { R_OK } from 'constants';
-import { HttpClientService } from '../httpclient/httpclient.service';
 
 @Injectable()
 export class FileService {
   private readonly logger = new Logger(FileService.name);
   private cloudProviders = new CloudProvidersMetaData();
-
-  constructor(private readonly httpClientService: HttpClientService) {}
 
   async getFile(file: string): Promise<Stream> {
     this.logger.log(`Reading file: ${file}`);
@@ -26,9 +23,7 @@ export class FileService {
       if (content) {
         return Readable.from(content);
       } else {
-        const httpResp = await this.httpClientService.loadAny(file);
-
-        return Readable.from(httpResp.content.toString('utf-8'));
+        throw new Error(`no such file or directory, access '${file}'`);
       }
     } else {
       file = path.resolve(process.cwd(), file);
