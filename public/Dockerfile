@@ -12,6 +12,10 @@ COPY vcs ./vcs
 RUN npm ci -q
 RUN npm run build
 
-FROM staticfloat/nginx-certbot
+FROM nginx AS http
+
+COPY --from=builder  /home/node/bc/build /var/www/html
+
+FROM staticfloat/nginx-certbot AS https
 
 COPY --from=builder  /home/node/bc/build /var/www/html
