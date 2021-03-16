@@ -15,6 +15,7 @@ RUN npm run build
 FROM nginx AS http
 
 COPY --from=builder  /home/node/bc/build /var/www/html
+COPY ./nginx-config/default.conf /etc/nginx/conf.d/default.conf
 
 FROM staticfloat/nginx-certbot AS https
 
