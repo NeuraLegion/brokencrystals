@@ -115,7 +115,9 @@ export class AuthController {
     res.header(
       'authorization',
       await this.authService.createToken(
-        { user: profile.email },
+        { user: profile.email,
+          exp: Math.round(Date.now() / 1000) + 90
+        },
         JwtProcessorType.RSA,
       ),
     );

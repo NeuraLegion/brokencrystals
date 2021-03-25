@@ -7,12 +7,20 @@ export function makeApiRequest<T>(
   const config: AxiosRequestConfig =
     typeof urlOrConfig === 'string' ? { url: urlOrConfig } : urlOrConfig;
 
-  return httpClient.request(config).then((response) => {
-    if (response) {
-      const token = response.headers.authorization;
-      token && sessionStorage.setItem('token', token);
-
-      return response.data;
-    }
-  });
+  return httpClient
+    .request(config)
+    .then((response) => {
+      if (response) {
+        const token = response.headers.authorization;
+        token && sessionStorage.setItem('token', token);
+        return response.data;
+      }
+    })
+    .catch((response) => {
+      if (response) {
+        sessionStorage.removeItem('email');
+        sessionStorage.removeItem('token');
+        window.location.reload();
+      }
+    });
 }
