@@ -16,8 +16,8 @@ export function makeApiRequest<T>(
         return response.data;
       }
     })
-    .catch((response) => {
-      if (response) {
+    .catch((error) => {
+      if (error.response.status === 401) {
         sessionStorage.removeItem('email');
         sessionStorage.removeItem('token');
         window.location.reload();
