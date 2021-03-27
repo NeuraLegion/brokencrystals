@@ -14,6 +14,10 @@ services:
     image: neuralegion/brokencrystals
     container_name: nodejs
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: 3.5
     logging:
       options:
         max-file: "5"
