@@ -72,7 +72,7 @@ export class AppController {
   @Post('metadata')
   @Header('content-type', 'text/xml')
   async xml(@Query('xml') xml: string): Promise<string> {
-    if (xml === AppController.XML_ENTITY_INJECTION) {
+    if (xml.toLowerCase() === AppController.XML_ENTITY_INJECTION) {
       return AppController.XML_ENTITY_INJECTION_RESPONSE;
     }
 
