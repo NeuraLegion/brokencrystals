@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { makeApiRequest } from './makeApiRequest';
 import { ApiUrl } from './ApiUrl';
 import { Testimonial } from '../interfaces/Testimonial';
@@ -43,11 +43,15 @@ export function postUser(data: RegistrationUser): Promise<any> {
   });
 }
 
-export function getUser(data: LoginUser): Promise<any> {
+export function getUser(
+  data: LoginUser,
+  config: AxiosRequestConfig = {}
+): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Auth}/login`,
     method: 'post',
-    data
+    data,
+    ...config
   });
 }
 

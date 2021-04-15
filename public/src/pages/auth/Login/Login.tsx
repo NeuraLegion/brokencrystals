@@ -1,23 +1,26 @@
+import { AxiosRequestConfig } from 'axios';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getLdap, getUser } from '../../../api/httpClient';
 import {
-  LoginUser,
+  AuthType,
   LoginResponse,
+  LoginUser,
   RegistrationUser
 } from '../../../interfaces/User';
-import { getLdap, getUser } from '../../../api/httpClient';
 import AuthLayout from '../AuthLayout';
-import showLoginResponse from './showLoginReponse';
 import showLdapResponse from './showLdapReponse';
+import showLoginResponse from './showLoginReponse';
 
 const defaultLoginUser: LoginUser = {
   user: '',
-  password: ''
+  password: '',
+  op: AuthType.APPLICATION_JSON
 };
 
 export const Login: FC = () => {
   const [form, setForm] = useState<LoginUser>(defaultLoginUser);
-  const { user, password } = form;
+  const { user, password, op } = form;
 
   const [loginResponse, setLoginResponse] = useState<LoginResponse | null>();
   const [ldapResponse, setLdapResponse] = useState<Array<RegistrationUser>>([]);
@@ -29,8 +32,11 @@ export const Login: FC = () => {
 
   const sendUser = (e: FormEvent) => {
     e.preventDefault();
-
-    getUser(form)
+    const config: Pick<AxiosRequestConfig, 'headers'> =
+      form.op === AuthType.FORM_BASED
+        ? { headers: { 'content-type': AuthType.FORM_BASED } }
+        : {};
+    getUser(form, config)
       .then((data: LoginResponse) => {
         setLoginResponse(data);
         return data.email;
@@ -54,6 +60,24 @@ export const Login: FC = () => {
     <AuthLayout>
       <div className="login-form">
         <form onSubmit={sendUser}>
+          <div className="form-group">
+            <label>Authentication Type</label>
+            <select
+              className="form-control"
+              name="op"
+              placeholder="Authentication Type"
+              value={op}
+              onChange={onInput}
+            >
+              <option value={AuthType.APPLICATION_JSON}>
+                Simple REST-based Authentication
+              </option>
+              <option value={AuthType.FORM_BASED}>
+                Simple HTML Form-based Authentication
+              </option>
+            </select>
+          </div>
+
           <div className="form-group">
             <label>Email</label>
             <input
