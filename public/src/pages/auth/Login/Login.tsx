@@ -18,16 +18,36 @@ const defaultLoginUser: LoginUser = {
   op: AuthType.APPLICATION_JSON
 };
 
+enum FormMode {
+  BASIC = 'basic',
+  HTML = 'html',
+  CSRF = 'csrf'
+}
+
 export const Login: FC = () => {
   const [form, setForm] = useState<LoginUser>(defaultLoginUser);
-  const { user, password, op } = form;
+  const { user, password } = form;
 
   const [loginResponse, setLoginResponse] = useState<LoginResponse | null>();
   const [ldapResponse, setLdapResponse] = useState<Array<RegistrationUser>>([]);
 
+  const [mode, setMode] = useState<FormMode>(FormMode.BASIC);
+
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
     setForm({ ...form, [name]: value });
+  };
+
+  const onSelectMode = ({ target }: { target: EventTarget | null }) => {
+    const { value } = target as HTMLSelectElement & { value: FormMode };
+    setMode(value);
+    switch (value as FormMode) {
+      case FormMode.HTML:
+        setForm({ ...form, op: AuthType.FORM_BASED });
+        break;
+      default:
+        return;
+    }
   };
 
   const sendUser = (e: FormEvent) => {
@@ -66,13 +86,13 @@ export const Login: FC = () => {
               className="form-control"
               name="op"
               placeholder="Authentication Type"
-              value={op}
-              onChange={onInput}
+              value={mode}
+              onChange={onSelectMode}
             >
-              <option value={AuthType.APPLICATION_JSON}>
+              <option value={FormMode.BASIC}>
                 Simple REST-based Authentication
               </option>
-              <option value={AuthType.FORM_BASED}>
+              <option value={FormMode.HTML}>
                 Simple HTML Form-based Authentication
               </option>
             </select>
