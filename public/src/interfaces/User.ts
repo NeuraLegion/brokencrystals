@@ -7,7 +7,6 @@ export interface LoginUser {
   user: string;
   password: string;
   op?: AuthType;
-  csrf?: string;
 }
 
 export interface LoginResponse {

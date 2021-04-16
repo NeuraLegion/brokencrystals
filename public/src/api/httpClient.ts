@@ -62,13 +62,6 @@ export function getLdap(ldapProfileLink: string): Promise<any> {
   });
 }
 
-export function loadXsrfToken(): Promise<string> {
-  return makeApiRequest({
-    url: `${ApiUrl.Auth}/simple-csrf-flow`,
-    method: 'get'
-  });
-}
-
 export function postMetadata(): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Metadata}?xml=${encodeURIComponent(
