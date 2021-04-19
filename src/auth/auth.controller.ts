@@ -52,6 +52,12 @@ export class AuthController {
   private async login(req: LoginRequest): Promise<LoginResponse> {
     let user: User;
     try {
+      // for request with content-type application/x-www-form-urlencoded
+      // body will be in format {'json data': ''}
+      // fastify-formbody still does not parse correctly
+      if (!req.user) {
+        req = JSON.parse(Object.keys(req)[0]);
+      }
       user = await this.usersService.findByEmail(req.user);
     } catch (err) {
       throw new InternalServerErrorException({

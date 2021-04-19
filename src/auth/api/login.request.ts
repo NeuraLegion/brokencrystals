@@ -6,4 +6,7 @@ export class LoginRequest {
 
   @ApiProperty()
   password: string;
+
+  @ApiProperty()
+  op?: string;
 }
