@@ -1,13 +1,6 @@
-export enum AuthType {
-  FORM = 'form',
-  OIDC = 'OIDC',
-  NTLM = 'NTLM'
-}
-
 export interface LoginUser {
   user: string;
   password: string;
-  op?: AuthType;
   csrf?: string;
 }
 
