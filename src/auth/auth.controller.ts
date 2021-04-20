@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  HttpException,
   HttpStatus,
   InternalServerErrorException,
   Logger,
@@ -38,11 +37,14 @@ import { AuthService, JwtProcessorType } from './auth.service';
 import { passwordMatches } from './credentials.utils';
 import { JwtType } from './jwt/jwt.type.decorator';
 import { FastifyReply } from 'fastify';
+import { randomBytes } from 'crypto';
+import { CsrfGuard } from './csrf.guard';
 
 @Controller('/api/auth')
 @ApiTags('auth controller')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
+  private readonly CSRF_COOKIE_HEADER = '_csrf';
 
   constructor(
     private readonly usersService: UsersService,
@@ -94,6 +96,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @UseGuards(CsrfGuard)
   @ApiResponse({
     type: LoginResponse,
     status: HttpStatus.OK,
@@ -121,6 +124,18 @@ export class AuthController {
     );
 
     return profile;
+  }
+
+  @Get('simple-csrf-flow')
+  async getCsrfToken(
+    @Res({ passthrough: true }) res: FastifyReply,
+  ): Promise<string> {
+    const token = randomBytes(32).toString('base64').substring(0, 32);
+    res.setCookie(this.CSRF_COOKIE_HEADER, token, {
+      httpOnly: true,
+      sameSite: 'strict',
+    });
+    return token;
   }
 
   @Post('jwt/kid-sql/login')
