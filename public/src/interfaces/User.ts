@@ -1,6 +1,7 @@
 export enum AuthType {
-  FORM_BASED = 'application/x-www-form-urlencoded',
-  APPLICATION_JSON = 'application/json'
+  FORM = 'form',
+  OIDC = 'OIDC',
+  NTLM = 'NTLM'
 }
 
 export interface LoginUser {

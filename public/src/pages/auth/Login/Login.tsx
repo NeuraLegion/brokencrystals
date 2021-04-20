@@ -15,8 +15,13 @@ import showLoginResponse from './showLoginReponse';
 const defaultLoginUser: LoginUser = {
   user: '',
   password: '',
-  op: AuthType.APPLICATION_JSON
+  op: AuthType.FORM
 };
+
+enum RequestHeaders {
+  FORM_URLENCODED = 'application/x-www-form-urlencoded',
+  APPLICATION_JSON = 'application/json'
+}
 
 enum FormMode {
   BASIC = 'basic',
@@ -44,7 +49,7 @@ export const Login: FC = () => {
     setMode(value);
     switch (value as FormMode) {
       case FormMode.HTML:
-        setForm({ ...form, op: AuthType.FORM_BASED });
+        setForm({ ...form, op: AuthType.FORM });
         break;
       default:
         return;
@@ -54,8 +59,8 @@ export const Login: FC = () => {
   const sendUser = (e: FormEvent) => {
     e.preventDefault();
     const config: Pick<AxiosRequestConfig, 'headers'> =
-      form.op === AuthType.FORM_BASED
-        ? { headers: { 'content-type': AuthType.FORM_BASED } }
+      mode === FormMode.HTML
+        ? { headers: { 'content-type': RequestHeaders.FORM_URLENCODED } }
         : {};
     const params = appendParams(form);
 
