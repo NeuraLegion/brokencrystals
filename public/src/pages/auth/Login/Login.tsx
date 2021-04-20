@@ -3,7 +3,6 @@ import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getLdap, getUser } from '../../../api/httpClient';
 import {
-  AuthType,
   LoginResponse,
   LoginUser,
   RegistrationUser
@@ -14,8 +13,7 @@ import showLoginResponse from './showLoginReponse';
 
 const defaultLoginUser: LoginUser = {
   user: '',
-  password: '',
-  op: AuthType.FORM
+  password: ''
 };
 
 enum RequestHeaders {
@@ -47,9 +45,6 @@ export const Login: FC = () => {
     const { value } = target as HTMLSelectElement & { value: FormMode };
     setMode(value);
     switch (value as FormMode) {
-      case FormMode.HTML:
-        setForm({ ...form, op: AuthType.FORM });
-        break;
       default:
         return;
     }
