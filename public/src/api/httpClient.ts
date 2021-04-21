@@ -1,8 +1,8 @@
-import axios, { AxiosInstance } from 'axios';
-import { makeApiRequest } from './makeApiRequest';
-import { ApiUrl } from './ApiUrl';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { Testimonial } from '../interfaces/Testimonial';
-import { LoginUser, RegistrationUser } from '../interfaces/User';
+import { LoginFormMode, LoginUser, RegistrationUser } from '../interfaces/User';
+import { ApiUrl } from './ApiUrl';
+import { makeApiRequest } from './makeApiRequest';
 
 export const httpClient: AxiosInstance = axios.create();
 
@@ -43,17 +43,29 @@ export function postUser(data: RegistrationUser): Promise<any> {
   });
 }
 
-export function getUser(data: LoginUser): Promise<any> {
+export function getUser(
+  user: LoginUser,
+  config: AxiosRequestConfig = {}
+): Promise<any> {
+  const data = user.op === LoginFormMode.HTML ? mapToUrlParams(user) : user;
   return makeApiRequest({
     url: `${ApiUrl.Auth}/login`,
     method: 'post',
-    data
+    data,
+    ...config
   });
 }
 
 export function getLdap(ldapProfileLink: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/ldap?query=${encodeURIComponent(ldapProfileLink)}`,
+    method: 'get'
+  });
+}
+
+export function loadXsrfToken(): Promise<string> {
+  return makeApiRequest({
+    url: `${ApiUrl.Auth}/simple-csrf-flow`,
     method: 'get'
   });
 }
@@ -105,4 +117,11 @@ export function postRender(data: string): Promise<any> {
     headers: { 'content-type': 'text/plain' },
     data
   });
+}
+
+function mapToUrlParams<T>(data: T): URLSearchParams {
+  return Object.entries(data).reduce((acc, [k, v]) => {
+    acc.append(k, v);
+    return acc;
+  }, new URLSearchParams());
 }

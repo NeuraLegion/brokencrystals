@@ -1,6 +1,14 @@
 export interface LoginUser {
   user: string;
   password: string;
+  csrf?: string;
+  op?: LoginFormMode;
+}
+
+export enum LoginFormMode {
+  BASIC = 'basic',
+  HTML = 'html',
+  CSRF = 'csrf'
 }
 
 export interface LoginResponse {
