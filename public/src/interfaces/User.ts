@@ -10,7 +10,8 @@ export enum LoginFormMode {
   BASIC = 'basic',
   HTML = 'html',
   CSRF = 'csrf',
-  DOM_BASED_CSRF = 'csrf_dom'
+  DOM_BASED_CSRF = 'csrf_dom',
+  OIDC = 'oidc',
 }
 
 export interface LoginResponse {
