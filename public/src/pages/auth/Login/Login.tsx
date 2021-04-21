@@ -1,19 +1,27 @@
+import { AxiosRequestConfig } from 'axios';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getLdap, getUser, loadXsrfToken } from '../../../api/httpClient';
 import {
-  LoginUser,
+  LoginFormMode,
   LoginResponse,
+  LoginUser,
   RegistrationUser
 } from '../../../interfaces/User';
-import { getLdap, getUser } from '../../../api/httpClient';
 import AuthLayout from '../AuthLayout';
-import showLoginResponse from './showLoginReponse';
 import showLdapResponse from './showLdapReponse';
+import showLoginResponse from './showLoginReponse';
 
 const defaultLoginUser: LoginUser = {
   user: '',
-  password: ''
+  password: '',
+  op: LoginFormMode.BASIC
 };
+
+enum RequestHeaders {
+  FORM_URLENCODED = 'application/x-www-form-urlencoded',
+  APPLICATION_JSON = 'application/json'
+}
 
 export const Login: FC = () => {
   const [form, setForm] = useState<LoginUser>(defaultLoginUser);
@@ -22,15 +30,33 @@ export const Login: FC = () => {
   const [loginResponse, setLoginResponse] = useState<LoginResponse | null>();
   const [ldapResponse, setLdapResponse] = useState<Array<RegistrationUser>>([]);
 
+  const [mode, setMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
+  const [csrf, setCsrf] = useState<string>();
+
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
     setForm({ ...form, [name]: value });
   };
 
+  const onSelectMode = ({ target }: { target: EventTarget | null }) => {
+    const { value } = target as HTMLSelectElement & { value: LoginFormMode };
+    setForm({ ...form, op: value });
+    setMode(value);
+    switch (value as LoginFormMode) {
+      default:
+        return;
+    }
+  };
+
   const sendUser = (e: FormEvent) => {
     e.preventDefault();
+    const config: Pick<AxiosRequestConfig, 'headers'> =
+      mode === LoginFormMode.HTML
+        ? { headers: { 'content-type': RequestHeaders.FORM_URLENCODED } }
+        : {};
+    const params = appendParams(form);
 
-    getUser(form)
+    getUser(params, config)
       .then((data: LoginResponse) => {
         setLoginResponse(data);
         return data.email;
@@ -48,12 +74,53 @@ export const Login: FC = () => {
         });
   };
 
+  const appendParams = (data: LoginUser): LoginUser => {
+    switch (mode) {
+      case LoginFormMode.CSRF:
+        return { ...data, csrf };
+      default:
+        return data;
+    }
+  };
+
+  const loadCsrf = () => {
+    loadXsrfToken().then((token) => setCsrf(token));
+  };
+
   useEffect(() => sendLdap(), [loginResponse]);
+  useEffect(() => {
+    switch (mode) {
+      case LoginFormMode.CSRF: {
+        return loadCsrf();
+      }
+    }
+  }, [mode]);
 
   return (
     <AuthLayout>
       <div className="login-form">
         <form onSubmit={sendUser}>
+          <div className="form-group">
+            <label>Authentication Type</label>
+            <select
+              className="form-control"
+              name="op"
+              placeholder="Authentication Type"
+              value={mode}
+              onChange={onSelectMode}
+            >
+              <option value={LoginFormMode.BASIC}>
+                Simple REST-based Authentication
+              </option>
+              <option value={LoginFormMode.HTML}>
+                Simple HTML Form-based Authentication
+              </option>
+              <option value={LoginFormMode.CSRF}>
+                Simple CSRF-based Authentication
+              </option>
+            </select>
+          </div>
+
           <div className="form-group">
             <label>Email</label>
             <input
@@ -77,6 +144,9 @@ export const Login: FC = () => {
               onInput={onInput}
             />
           </div>
+          {mode === LoginFormMode.CSRF && csrf && (
+            <input name="xsrf" type="hidden" value={csrf} />
+          )}
 
           {loginResponse && showLoginResponse(loginResponse)}
           <br />
