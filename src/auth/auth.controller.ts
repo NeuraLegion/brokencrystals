@@ -15,7 +15,7 @@ import { User } from '../model/user.entity';
 import { LdapQueryHandler } from '../users/ldap.query.handler';
 import { UsersService } from '../users/users.service';
 import { JwtValidationResponse } from './api/JwtValidationResponse';
-import { LoginRequest } from './api/login.request';
+import { FormMode, LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';
 import {
   SWAGGER_DESC_loginWithJKUJwt,
@@ -39,6 +39,7 @@ import { JwtType } from './jwt/jwt.type.decorator';
 import { FastifyReply } from 'fastify';
 import { randomBytes } from 'crypto';
 import { CsrfGuard } from './csrf.guard';
+import { KeyCloakService } from '../users/keycloak.service';
 
 @Controller('/api/auth')
 @ApiTags('auth controller')
@@ -48,8 +49,25 @@ export class AuthController {
 
   constructor(
     private readonly usersService: UsersService,
+    private readonly keyCloakService: KeyCloakService,
     private readonly authService: AuthService,
   ) {}
+
+  private async loginOidc(req: LoginRequest): Promise<LoginResponse> {
+    try {
+      await this.keyCloakService.findByEmail(req.user);
+
+      return {
+        email: req.user,
+        ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(req.user),
+      };
+    } catch (err) {
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
+    }
+  }
 
   private async login(req: LoginRequest): Promise<LoginResponse> {
     let user: User;
@@ -113,18 +131,28 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithRSAJwtKeys');
-    const profile = await this.login(req);
 
-    res.header(
-      'authorization',
-      await this.authService.createToken(
-        { 
+    let authorizationToken: string;
+    let profile: LoginResponse;
+    if (req.op === FormMode.OIDC) {
+      profile = await this.loginOidc(req);
+      const {
+        tokenType,
+        accessToken,
+      } = await this.keyCloakService.getAccessToken(req.user, req.password);
+      authorizationToken = `${tokenType} ${accessToken}`;
+    } else {
+      profile = await this.login(req);
+      authorizationToken = await this.authService.createToken(
+        {
           user: profile.email,
-          exp:  90 + Math.floor(Date.now() / 1000)
+          exp: 90 + Math.floor(Date.now() / 1000),
         },
         JwtProcessorType.RSA,
-      ),
-    );
+      );
+    }
+
+    res.header('authorization', authorizationToken);
 
     return profile;
   }

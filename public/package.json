@@ -22,7 +22,7 @@
   "scripts": {
     "cypress:run": "cypress open --browser chrome",
     "test": "start-test 3001 cypress:run",
-    "start": "PORT=3001 react-scripts start",
+    "start": "cross-env PORT=3001 react-scripts start",
     "build": "react-scripts build && cp -r vcs/git build/.git && cp -r vcs/hg build/.hg && cp -r vcs/svn build/.svn",
     "eject": "react-scripts eject"
   },
@@ -52,6 +52,7 @@
     "@types/react-router-dom": "^5.1.6",
     "@typescript-eslint/eslint-plugin": "^4.15.0",
     "@typescript-eslint/parser": "^4.15.0",
+    "cross-env": "^7.0.3",
     "cypress": "^6.4.0",
     "eslint": "^7.20.0",
     "eslint-config-prettier": "^7.2.0",

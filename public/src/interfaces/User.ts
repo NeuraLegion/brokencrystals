@@ -8,7 +8,8 @@ export interface LoginUser {
 export enum LoginFormMode {
   BASIC = 'basic',
   HTML = 'html',
-  CSRF = 'csrf'
+  CSRF = 'csrf',
+  OIDC = 'oidc'
 }
 
 export interface LoginResponse {

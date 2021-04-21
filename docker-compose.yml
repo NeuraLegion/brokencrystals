@@ -47,5 +47,33 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 300 --debug
+  keycloak-db:
+    image: "postgres:12.2-alpine"
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    restart: on-failure
+    stdin_open: true
+    tty: true
+    volumes:
+      - "./docker/keycloak-db:/var/lib/postgresql/data/"
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    volumes:
+      - "./docker/keycloak/realm-export.json:/opt/jboss/keycloak/imports/realm-export.json"
+    environment:
+      DB_VENDOR: POSTGRES
+      DB_ADDR: keycloak-db
+      DB_DATABASE: keycloak
+      DB_USER: keycloak
+      DB_SCHEMA: public
+      DB_PASSWORD: password
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: Pa55w0rd
+      KEYCLOAK_IMPORT: /opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled
+    depends_on:
+      - keycloak-db
+
 volumes:
   letsencrypt:

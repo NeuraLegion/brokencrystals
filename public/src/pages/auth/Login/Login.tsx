@@ -118,6 +118,9 @@ export const Login: FC = () => {
               <option value={LoginFormMode.CSRF}>
                 Simple CSRF-based Authentication
               </option>
+              <option value={LoginFormMode.OIDC}>
+                Simple OIDC-based Authentication
+              </option>
             </select>
           </div>
 
