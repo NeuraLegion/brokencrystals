@@ -1,7 +1,7 @@
 import { AxiosRequestConfig } from 'axios';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getLdap, getUser } from '../../../api/httpClient';
+import { getLdap, getUser, loadXsrfToken } from '../../../api/httpClient';
 import {
   LoginFormMode,
   LoginResponse,
@@ -31,6 +31,7 @@ export const Login: FC = () => {
   const [ldapResponse, setLdapResponse] = useState<Array<RegistrationUser>>([]);
 
   const [mode, setMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
+  const [csrf, setCsrf] = useState<string>();
 
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
@@ -53,7 +54,9 @@ export const Login: FC = () => {
       mode === LoginFormMode.HTML
         ? { headers: { 'content-type': RequestHeaders.FORM_URLENCODED } }
         : {};
-    getUser(form, config)
+    const params = appendParams(form);
+
+    getUser(params, config)
       .then((data: LoginResponse) => {
         setLoginResponse(data);
         return data.email;
@@ -71,7 +74,27 @@ export const Login: FC = () => {
         });
   };
 
+  const appendParams = (data: LoginUser): LoginUser => {
+    switch (mode) {
+      case LoginFormMode.CSRF:
+        return { ...data, csrf };
+      default:
+        return data;
+    }
+  };
+
+  const loadCsrf = () => {
+    loadXsrfToken().then((token) => setCsrf(token));
+  };
+
   useEffect(() => sendLdap(), [loginResponse]);
+  useEffect(() => {
+    switch (mode) {
+      case LoginFormMode.CSRF: {
+        return loadCsrf();
+      }
+    }
+  }, [mode]);
 
   return (
     <AuthLayout>
@@ -91,6 +114,9 @@ export const Login: FC = () => {
               </option>
               <option value={LoginFormMode.HTML}>
                 Simple HTML Form-based Authentication
+              </option>
+              <option value={LoginFormMode.CSRF}>
+                Simple CSRF-based Authentication
               </option>
             </select>
           </div>
@@ -118,6 +144,9 @@ export const Login: FC = () => {
               onInput={onInput}
             />
           </div>
+          {mode === LoginFormMode.CSRF && csrf && (
+            <input name="xsrf" type="hidden" value={csrf} />
+          )}
 
           {loginResponse && showLoginResponse(loginResponse)}
           <br />

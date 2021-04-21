@@ -1,6 +1,7 @@
 export interface LoginUser {
   user: string;
   password: string;
+  csrf?: string;
   op?: LoginFormMode;
 }
 

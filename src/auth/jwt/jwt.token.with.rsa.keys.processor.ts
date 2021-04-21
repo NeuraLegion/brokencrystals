@@ -11,11 +11,10 @@ export class JwtTokenWithRSAKeysProcessor extends JwtTokenProcessor {
     this.log.debug('Call validateToken');
 
     const [header, payload] = this.parse(token);
-    // if (header.alg === 'None') {
-    //   return payload;
-    // }
-    // return decode(token, this.publicKey, false, header.alg);
-    return payload;
+    if (header.alg === 'None') {
+      return payload;
+    }
+    return decode(token, this.publicKey, false, header.alg);
   }
 
   async createToken(payload: unknown): Promise<string> {
