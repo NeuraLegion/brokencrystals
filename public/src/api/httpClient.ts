@@ -1,8 +1,8 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-import { makeApiRequest } from './makeApiRequest';
-import { ApiUrl } from './ApiUrl';
 import { Testimonial } from '../interfaces/Testimonial';
-import { LoginUser, RegistrationUser } from '../interfaces/User';
+import { LoginFormMode, LoginUser, RegistrationUser } from '../interfaces/User';
+import { ApiUrl } from './ApiUrl';
+import { makeApiRequest } from './makeApiRequest';
 
 export const httpClient: AxiosInstance = axios.create();
 
@@ -44,9 +44,10 @@ export function postUser(data: RegistrationUser): Promise<any> {
 }
 
 export function getUser(
-  data: LoginUser,
+  user: LoginUser,
   config: AxiosRequestConfig = {}
 ): Promise<any> {
+  const data = user.op === LoginFormMode.HTML ? mapToUrlParams(user) : user;
   return makeApiRequest({
     url: `${ApiUrl.Auth}/login`,
     method: 'post',
@@ -116,4 +117,11 @@ export function postRender(data: string): Promise<any> {
     headers: { 'content-type': 'text/plain' },
     data
   });
+}
+
+function mapToUrlParams<T>(data: T): URLSearchParams {
+  return Object.entries(data).reduce((acc, [k, v]) => {
+    acc.append(k, v);
+    return acc;
+  }, new URLSearchParams());
 }
