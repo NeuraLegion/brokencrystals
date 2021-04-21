@@ -3,6 +3,7 @@ import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getLdap, getUser } from '../../../api/httpClient';
 import {
+  LoginFormMode,
   LoginResponse,
   LoginUser,
   RegistrationUser
@@ -13,18 +14,13 @@ import showLoginResponse from './showLoginReponse';
 
 const defaultLoginUser: LoginUser = {
   user: '',
-  password: ''
+  password: '',
+  op: LoginFormMode.BASIC
 };
 
 enum RequestHeaders {
   FORM_URLENCODED = 'application/x-www-form-urlencoded',
   APPLICATION_JSON = 'application/json'
-}
-
-enum FormMode {
-  BASIC = 'basic',
-  HTML = 'html',
-  CSRF = 'csrf'
 }
 
 export const Login: FC = () => {
@@ -34,7 +30,7 @@ export const Login: FC = () => {
   const [loginResponse, setLoginResponse] = useState<LoginResponse | null>();
   const [ldapResponse, setLdapResponse] = useState<Array<RegistrationUser>>([]);
 
-  const [mode, setMode] = useState<FormMode>(FormMode.BASIC);
+  const [mode, setMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
 
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
@@ -42,9 +38,10 @@ export const Login: FC = () => {
   };
 
   const onSelectMode = ({ target }: { target: EventTarget | null }) => {
-    const { value } = target as HTMLSelectElement & { value: FormMode };
+    const { value } = target as HTMLSelectElement & { value: LoginFormMode };
+    setForm({ ...form, op: value });
     setMode(value);
-    switch (value as FormMode) {
+    switch (value as LoginFormMode) {
       default:
         return;
     }
@@ -53,7 +50,7 @@ export const Login: FC = () => {
   const sendUser = (e: FormEvent) => {
     e.preventDefault();
     const config: Pick<AxiosRequestConfig, 'headers'> =
-      mode === FormMode.HTML
+      mode === LoginFormMode.HTML
         ? { headers: { 'content-type': RequestHeaders.FORM_URLENCODED } }
         : {};
     getUser(form, config)
@@ -89,10 +86,10 @@ export const Login: FC = () => {
               value={mode}
               onChange={onSelectMode}
             >
-              <option value={FormMode.BASIC}>
+              <option value={LoginFormMode.BASIC}>
                 Simple REST-based Authentication
               </option>
-              <option value={FormMode.HTML}>
+              <option value={LoginFormMode.HTML}>
                 Simple HTML Form-based Authentication
               </option>
             </select>
