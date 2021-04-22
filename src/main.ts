@@ -54,7 +54,11 @@ async function bootstrap() {
 
   const options = new DocumentBuilder()
     .setTitle('Broken Crystal')
+    .setDescription(
+      'Broken Crystals is a benchmark application that uses modern technologies and implements a set of common security vulnerabilities.',
+    )
     .setVersion('1.0')
+    .addServer('https://brokencrystals.com/')
     .build();
   const document = SwaggerModule.createDocument(app, options);
 
