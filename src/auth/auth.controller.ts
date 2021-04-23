@@ -118,9 +118,9 @@ export class AuthController {
     res.header(
       'authorization',
       await this.authService.createToken(
-        { 
+        {
           user: profile.email,
-          exp:  90 + Math.floor(Date.now() / 1000)
+          exp: 90 + Math.floor(Date.now() / 1000),
         },
         JwtProcessorType.RSA,
       ),
@@ -138,7 +138,7 @@ export class AuthController {
       httpOnly: true,
       sameSite: 'strict',
     });
-    return token;
+    return encodeURIComponent(token);
   }
 
   @Post('jwt/kid-sql/login')
