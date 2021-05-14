@@ -4,6 +4,7 @@ export enum FormMode {
   BASIC = 'basic',
   HTML = 'html',
   CSRF = 'csrf',
+  DOM_BASED_CSRF = 'csrf_dom',
 }
 
 export class LoginRequest {
@@ -19,4 +20,6 @@ export class LoginRequest {
   op?: string;
 
   csrf?: string;
+
+  fingerprint?: string;
 }

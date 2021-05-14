@@ -63,11 +63,23 @@ export function getLdap(ldapProfileLink: string): Promise<any> {
   });
 }
 
+export function loadDomXsrfToken(fingerprint: string): Promise<string> {
+  const config: AxiosRequestConfig = {
+    url: `${ApiUrl.Auth}/dom-csrf-flow`,
+    method: 'get',
+    headers: { fingerprint }
+  };
+
+  return makeApiRequest(config);
+}
+
 export function loadXsrfToken(): Promise<string> {
-  return makeApiRequest({
+  const config: AxiosRequestConfig = {
     url: `${ApiUrl.Auth}/simple-csrf-flow`,
     method: 'get'
-  });
+  };
+
+  return makeApiRequest(config);
 }
 
 export function postMetadata(): Promise<any> {

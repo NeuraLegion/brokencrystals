@@ -5,6 +5,7 @@ import {
   ExecutionContext,
   Logger,
 } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { FastifyRequest } from 'fastify';
 import { FormMode, LoginRequest } from './api/login.request';
 
@@ -20,10 +21,21 @@ export class CsrfGuard implements CanActivate {
 
     try {
       const body: LoginRequest = request.body as LoginRequest;
-      if (body?.op === FormMode.CSRF) {
+      const mode = body?.op
+      if ( mode === FormMode.CSRF || mode === FormMode.DOM_BASED_CSRF) {
         const csrfCookie = request.cookies[CsrfGuard.CSRF_COOKIE_HEADER];
+
         if (decodeURIComponent(csrfCookie) !== body.csrf) {
           this.throwError();
+        }
+
+        if (mode === FormMode.DOM_BASED_CSRF && !body.fingerprint ) {
+          const fpHash = createHash('md5')
+            .update(body.fingerprint)
+            .digest('hex');
+          if (body.csrf !== fpHash) {
+            this.throwError()
+          }
         }
       }
 

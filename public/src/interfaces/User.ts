@@ -3,12 +3,14 @@ export interface LoginUser {
   password: string;
   csrf?: string;
   op?: LoginFormMode;
+  fingerprint?: string;
 }
 
 export enum LoginFormMode {
   BASIC = 'basic',
   HTML = 'html',
-  CSRF = 'csrf'
+  CSRF = 'csrf',
+  DOM_BASED_CSRF = 'csrf_dom'
 }
 
 export interface LoginResponse {

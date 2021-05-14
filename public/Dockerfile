@@ -6,6 +6,7 @@ COPY package*.json ./
 COPY tsconfig.json ./
 COPY .env ./
 COPY src ./src
+COPY typings ./typings
 COPY public ./public
 COPY vcs ./vcs
 
