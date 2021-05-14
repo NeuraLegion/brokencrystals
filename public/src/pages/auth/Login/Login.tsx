@@ -1,7 +1,13 @@
 import { AxiosRequestConfig } from 'axios';
+import getBrowserFingerprint from 'get-browser-fingerprint';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getLdap, getUser, loadXsrfToken } from '../../../api/httpClient';
+import {
+  getLdap,
+  getUser,
+  loadDomXsrfToken,
+  loadXsrfToken
+} from '../../../api/httpClient';
 import {
   LoginFormMode,
   LoginResponse,
@@ -78,6 +84,9 @@ export const Login: FC = () => {
     switch (mode) {
       case LoginFormMode.CSRF:
         return { ...data, csrf };
+      case LoginFormMode.DOM_BASED_CSRF:
+        const fingerprint = getBrowserFingerprint();
+        return { ...data, csrf, fingerprint };
       default:
         return data;
     }
@@ -87,11 +96,19 @@ export const Login: FC = () => {
     loadXsrfToken().then((token) => setCsrf(token));
   };
 
+  const loadDomCsrf = (fingerprint: string) => {
+    loadDomXsrfToken(fingerprint).then((token) => setCsrf(token));
+  };
+
   useEffect(() => sendLdap(), [loginResponse]);
   useEffect(() => {
     switch (mode) {
       case LoginFormMode.CSRF: {
         return loadCsrf();
+      }
+      case LoginFormMode.DOM_BASED_CSRF: {
+        const fingerprint = getBrowserFingerprint();
+        return loadDomCsrf(fingerprint);
       }
     }
   }, [mode]);
@@ -117,6 +134,9 @@ export const Login: FC = () => {
               </option>
               <option value={LoginFormMode.CSRF}>
                 Simple CSRF-based Authentication
+              </option>
+              <option value={LoginFormMode.DOM_BASED_CSRF}>
+                DOM based CSRF Authentication
               </option>
             </select>
           </div>
@@ -144,9 +164,10 @@ export const Login: FC = () => {
               onInput={onInput}
             />
           </div>
-          {mode === LoginFormMode.CSRF && csrf && (
-            <input name="xsrf" type="hidden" value={csrf} />
-          )}
+
+          {(mode === LoginFormMode.CSRF ||
+            mode === LoginFormMode.DOM_BASED_CSRF) &&
+            csrf && <input name="xsrf" type="hidden" value={csrf} />}
 
           {loginResponse && showLoginResponse(loginResponse)}
           <br />

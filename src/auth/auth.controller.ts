@@ -1,15 +1,17 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   HttpStatus,
   InternalServerErrorException,
   Logger,
-  Post,
+  Post, Req,
   Res,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { User } from '../model/user.entity';
 import { LdapQueryHandler } from '../users/ldap.query.handler';
@@ -36,7 +38,7 @@ import { AuthGuard } from './auth.guard';
 import { AuthService, JwtProcessorType } from './auth.service';
 import { passwordMatches } from './credentials.utils';
 import { JwtType } from './jwt/jwt.type.decorator';
-import { FastifyReply } from 'fastify';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import { randomBytes } from 'crypto';
 import { CsrfGuard } from './csrf.guard';
 
@@ -118,15 +120,37 @@ export class AuthController {
     res.header(
       'authorization',
       await this.authService.createToken(
-        { 
+        {
           user: profile.email,
-          exp:  90 + Math.floor(Date.now() / 1000)
+          exp: 90 + Math.floor(Date.now() / 1000),
         },
         JwtProcessorType.RSA,
       ),
     );
 
     return profile;
+  }
+
+  @Get('dom-csrf-flow')
+  async getDomCsrfToken(
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) res: FastifyReply,
+  ): Promise<string> {
+    const fp = request.headers['fingerprint'] as string;
+
+    if (!fp) {
+      throw new BadRequestException('Fingerprint  header is required')
+    }
+    const token = createHash('md5')
+      .update(fp)
+      .digest('hex');
+
+    res.setCookie(this.CSRF_COOKIE_HEADER, token, {
+      httpOnly: true,
+      sameSite: 'strict',
+    });
+
+    return token;
   }
 
   @Get('simple-csrf-flow')
