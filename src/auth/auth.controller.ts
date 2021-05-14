@@ -11,7 +11,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { Md5 } from 'md5-typescript';
+import { createHash } from 'crypto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { User } from '../model/user.entity';
 import { LdapQueryHandler } from '../users/ldap.query.handler';
@@ -136,12 +136,15 @@ export class AuthController {
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<string> {
-    const fp = request.headers['fingerprint'];
+    const fp = request.headers['fingerprint'] as string;
 
     if (!fp) {
       throw new BadRequestException('Fingerprint  header is required')
     }
-    const token = Md5.init(fp);
+    const token = createHash('md5')
+      .update(fp)
+      .digest('hex');
+
     res.setCookie(this.CSRF_COOKIE_HEADER, token, {
       httpOnly: true,
       sameSite: 'strict',

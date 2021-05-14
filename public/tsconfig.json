@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "typeRoots": [ "./types", "./node_modules/@types"],
+    "typeRoots": [ "./typings", "./node_modules/@types"],
     "jsx": "react",
     "target": "es5",
     "module": "esnext",

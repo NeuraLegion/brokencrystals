@@ -67,7 +67,7 @@ export function loadDomXsrfToken(fingerprint: string): Promise<string> {
   const config: AxiosRequestConfig = {
     url: `${ApiUrl.Auth}/dom-csrf-flow`,
     method: 'get',
-    headers: { Fingerprint: fingerprint }
+    headers: { fingerprint }
   };
 
   return makeApiRequest(config);
