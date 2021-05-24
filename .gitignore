@@ -22,6 +22,7 @@ lerna-debug.log*
 /.nyc_output
 
 # IDEs and editors
+.vscode
 /.idea
 .project
 .classpath
@@ -35,3 +36,5 @@ lerna-debug.log*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/extensions.json
+
+docker/keycloak-db

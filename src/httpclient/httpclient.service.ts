@@ -5,8 +5,8 @@ import axios, { AxiosRequestConfig } from 'axios';
 export class HttpClientService {
   private readonly log: Logger = new Logger(HttpClientService.name);
 
-  async loadJSON(url: string): Promise<unknown> {
-    const resp = await axios.get<unknown>(url, {
+  async loadJSON<T = unknown>(url: string): Promise<T> {
+    const resp = await axios.get<T>(url, {
       responseType: 'json',
     });
     if (resp.status != 200) {

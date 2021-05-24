@@ -137,12 +137,14 @@ export class AuthController {
 
     let authorizationToken: string;
     let profile: LoginResponse;
+
     if (req.op === FormMode.OIDC) {
       profile = await this.loginOidc(req);
       const {
         tokenType,
         accessToken,
       } = await this.keyCloakService.getAccessToken(req.user, req.password);
+
       authorizationToken = `${tokenType} ${accessToken}`;
     } else {
       profile = await this.login(req);

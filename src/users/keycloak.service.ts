@@ -67,10 +67,10 @@ export class KeyCloakService {
       KeyCloakConfigs.ENV_KEYCLOAK_USERS_URI,
     );
     this.userName = this.configService.get(
-      KeyCloakConfigs.ENV_KEYCLOAK_USERS_NAME,
+      KeyCloakConfigs.ENV_KEYCLOAK_CLIENT_ID,
     );
     this.userSecret = this.configService.get(
-      KeyCloakConfigs.ENV_KEYCLOAK_USERS_SECRET,
+      KeyCloakConfigs.ENV_KEYCLOAK_CLIENT_SECRET,
     );
     this.userId = this.configService.get(KeyCloakConfigs.ENV_KEYCLOAK_USERS_ID);
   }

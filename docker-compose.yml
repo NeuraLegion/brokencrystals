@@ -10,6 +10,7 @@ services:
       POSTGRES_PASSWORD: bc
     volumes:
     - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
+
   nodejs:
     image: neuralegion/brokencrystals
     container_name: nodejs
@@ -24,6 +25,7 @@ services:
         max-size: "10m"
     depends_on:
       - db
+
   proxy:
     image: neuralegion/brokencrystals-client
     restart: always
@@ -37,6 +39,7 @@ services:
     volumes:
       - ./nginx-config:/etc/nginx/user.conf.d:ro
       - letsencrypt:/etc/letsencrypt
+
   watchtower:
     image: containrrr/watchtower
     restart: always
@@ -47,6 +50,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 300 --debug
+
   keycloak-db:
     image: "postgres:12.2-alpine"
     environment:
@@ -58,6 +62,7 @@ services:
     tty: true
     volumes:
       - "./docker/keycloak-db:/var/lib/postgresql/data/"
+
   keycloak:
     image: quay.io/keycloak/keycloak:latest
     volumes:
@@ -72,6 +77,8 @@ services:
       KEYCLOAK_USER: admin
       KEYCLOAK_PASSWORD: Pa55w0rd
       KEYCLOAK_IMPORT: /opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled
+    ports:
+      - "8080:8080"
     depends_on:
       - keycloak-db
 

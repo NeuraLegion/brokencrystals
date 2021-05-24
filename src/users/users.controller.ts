@@ -179,6 +179,7 @@ export class UsersController {
         user.lastName,
         user.password,
       );
+
       return newUser;
     } catch (err) {
       throw new InternalServerErrorException({
