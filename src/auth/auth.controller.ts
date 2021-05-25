@@ -42,7 +42,7 @@ import { JwtType } from './jwt/jwt.type.decorator';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { randomBytes } from 'crypto';
 import { CsrfGuard } from './csrf.guard';
-import { KeyCloakService } from '../users/keycloak.service';
+import { KeyCloakService } from '../keycloak/keycloak.service';
 
 @Controller('/api/auth')
 @ApiTags('auth controller')
@@ -58,7 +58,7 @@ export class AuthController {
 
   private async loginOidc(req: LoginRequest): Promise<LoginResponse> {
     try {
-      await this.keyCloakService.findByEmail(req.user);
+      await this.keyCloakService.findUserByEmail(req.user);
 
       return {
         email: req.user,
@@ -140,12 +140,16 @@ export class AuthController {
 
     if (req.op === FormMode.OIDC) {
       profile = await this.loginOidc(req);
-      const {
-        tokenType,
-        accessToken,
-      } = await this.keyCloakService.getAccessToken(req.user, req.password);
 
-      authorizationToken = `${tokenType} ${accessToken}`;
+      const {
+        token_type,
+        access_token,
+      } = await this.keyCloakService.generateToken({
+        username: req.user,
+        password: req.password,
+      });
+
+      authorizationToken = `${token_type} ${access_token}`;
     } else {
       profile = await this.login(req);
       authorizationToken = await this.authService.createToken(

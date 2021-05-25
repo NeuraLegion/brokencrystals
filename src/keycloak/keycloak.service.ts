@@ -1,6 +1,7 @@
 import {
   Injectable,
   InternalServerErrorException,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -17,15 +18,37 @@ import {
 } from 'jsonwebtoken';
 
 export interface OIDCIdentityOptions {
-  issuer: string;
-  introspection_endpoint: string;
-  jwks_uri: string;
-  token_endpoint: string;
+  issuer?: string;
+  introspection_endpoint?: string;
+  jwks_uri?: string;
+  token_endpoint?: string;
+}
+
+export interface RegisterUserData {
+  email: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+}
+
+export interface GenerateTokenData {
+  username: string;
+  password: string;
+}
+
+export interface Token {
+  readonly token_type: string;
+  readonly access_token: string;
+  readonly refresh_token?: string;
+  readonly refresh_expires_in: number;
+  readonly expires_in?: number;
 }
 
 @Injectable()
 export class KeyCloakService {
-  private readonly metadata_uri: string;
+  private log: Logger = new Logger(KeyCloakService.name);
+  private readonly server_uri: string;
+  private readonly realm: string;
   private readonly client_id: string;
   private readonly client_secret: string;
   private options: OIDCIdentityOptions;
@@ -34,8 +57,11 @@ export class KeyCloakService {
     private readonly configService: ConfigService,
     private readonly httpClient: HttpClientService,
   ) {
-    this.metadata_uri = this.configService.get(
-      KeyCloakConfigProperties.ENV_KEYCLOAK_METADATA_URI,
+    this.server_uri = this.configService.get(
+      KeyCloakConfigProperties.ENV_KEYCLOAK_SERVER_URI,
+    );
+    this.realm = this.configService.get(
+      KeyCloakConfigProperties.ENV_KEYCLOAK_REALM,
     );
     this.client_id = this.configService.get(
       KeyCloakConfigProperties.ENV_KEYCLOAK_CLIENT_ID,
@@ -43,15 +69,22 @@ export class KeyCloakService {
     this.client_secret = this.configService.get(
       KeyCloakConfigProperties.ENV_KEYCLOAK_CLIENT_SECRET,
     );
-  }
 
-  public async init(): Promise<void> {
+    ok(this.realm, '"realm" is not defined.');
+    ok(this.server_uri, '"metadata_uri" is not defined.');
     ok(this.client_id, '"client_id" is not defined.');
     ok(this.client_secret, '"client_secret" is not defined.');
-    ok(this.metadata_uri, '"metadata_uri" is not defined.');
 
-    await this.discovery();
+    this.discovery().catch((err: any) => console.error(err));
   }
+
+  // public async init(): Promise<void> {
+  //   ok(this.client_id, '"client_id" is not defined.');
+  //   ok(this.client_secret, '"client_secret" is not defined.');
+  //   ok(this.metadata_uri, '"metadata_uri" is not defined.');
+
+  //   await this.discovery();
+  // }
 
   public async verifyToken(token: string, kid: string) {
     const pems: Map<string, string> = await this.getJWKs();
@@ -73,26 +106,110 @@ export class KeyCloakService {
       'Missing "introspection_endpoint"',
     );
 
-    // const { accessToken, tokenType } = await this.getAccessToken(
-    //   this.userName,
-    //   this.userSecret,
-    // );
+    const { access_token, token_type } = await this.generateToken();
     const data = stringify({ token });
 
     return this.httpClient.post(this.options.introspection_endpoint, data, {
       headers: {
-        // Authorization: `${tokenType} ${accessToken}`,
-        Authorization: `Bearer ${token}`,
+        Authorization: `${token_type} ${access_token}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
     });
   }
 
-  public async registerUser(): Promise<void> {}
+  public async findUserByEmail(email: string) {
+    const { token_type, access_token } = await this.generateToken();
+
+    return this.httpClient.get(
+      `${this.server_uri}/admin/realms/${this.realm}/users`,
+      {
+        params: {
+          email,
+        },
+        headers: {
+          Authorization: `${token_type} ${access_token}`,
+        },
+        responseType: 'json',
+      },
+    );
+  }
+
+  public async registerUser({
+    firstName,
+    lastName,
+    email,
+    password,
+  }: RegisterUserData): Promise<void> {
+    this.log.debug(`Called registerUser`);
+
+    const { access_token, token_type } = await this.generateToken();
+
+    console.log(`${token_type} ${access_token}`);
+    try {
+      await this.httpClient.post(
+        `${this.server_uri}/admin/realms/${this.realm}/users`,
+        {
+          firstName,
+          lastName,
+          email,
+          enabled: true,
+          username: email,
+          credentials: [
+            {
+              type: 'password',
+              value: password,
+              temporary: false,
+            },
+          ],
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `${token_type} ${access_token}`,
+          },
+          responseType: 'json',
+        },
+      );
+    } catch (err) {
+      console.error(err);
+      this.log.error(err);
+      throw err;
+    }
+  }
+
+  public async generateToken(tokenData?: GenerateTokenData): Promise<Token> {
+    let data: string;
+
+    if (tokenData) {
+      data = stringify({
+        ...tokenData,
+        grant_type: 'password',
+        client_id: this.client_id,
+      });
+    } else {
+      data = stringify({
+        grant_type: 'client_credentials',
+        client_secret: this.client_secret,
+        client_id: this.client_id,
+      });
+    }
+
+    try {
+      return this.httpClient.post<Token>(this.options.token_endpoint, data, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        responseType: 'json',
+      });
+    } catch (err) {
+      this.log.error(err);
+      throw err;
+    }
+  }
 
   private async discovery(): Promise<void> {
     this.options = (await this.httpClient.loadJSON(
-      this.metadata_uri,
+      `${this.server_uri}/realms/master/.well-known/openid-configuration`,
     )) as OIDCIdentityOptions;
   }
 

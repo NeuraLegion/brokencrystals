@@ -2,7 +2,7 @@ import { EntityManager } from '@mikro-orm/core';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
-import { KeyCloakService } from '../users/keycloak.service';
+import { KeyCloakService } from '../keycloak/keycloak.service';
 import { HttpClientService } from '../httpclient/httpclient.service';
 import { AuthModuleConfigProperties } from './auth.module.config.properties';
 import { JwtBearerTokenProcessor } from './jwt/jwt.token.bearer.processor';

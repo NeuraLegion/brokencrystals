@@ -37,4 +37,4 @@ lerna-debug.log*
 !.vscode/tasks.json
 !.vscode/extensions.json
 
-docker/keycloak-db
+keycloak/db

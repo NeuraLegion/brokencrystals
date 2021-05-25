@@ -29,7 +29,7 @@ import { JwtType } from '../auth/jwt/jwt.type.decorator';
 import { JwtProcessorType } from '../auth/auth.service';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { AnyFilesInterceptor } from '../components/any-files.interceptor';
-import { KeyCloakService } from './keycloak.service';
+import { KeyCloakService } from '../keycloak/keycloak.service';
 
 @Controller('/api/users')
 @ApiTags('user controller')
@@ -173,12 +173,12 @@ export class UsersController {
         ),
       );
 
-      await this.keyCloakService.registerUser(
-        user.email,
-        user.firstName,
-        user.lastName,
-        user.password,
-      );
+      await this.keyCloakService.registerUser({
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        password: user.password,
+      });
 
       return newUser;
     } catch (err) {

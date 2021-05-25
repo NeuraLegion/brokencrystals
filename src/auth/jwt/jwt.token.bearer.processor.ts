@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { TokenExpiredError } from 'jsonwebtoken';
 import { encode } from 'jwt-simple';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
-import { KeyCloakService } from '../../users/keycloak.service';
+import { KeyCloakService } from '../../keycloak/keycloak.service';
 
 export class JwtBearerTokenProcessor extends JwtTokenProcessor {
   constructor(
@@ -34,20 +34,6 @@ export class JwtBearerTokenProcessor extends JwtTokenProcessor {
     return encode(payload, this.key, 'HS256');
   }
 
-  private async decodeAndVerifyToken(token: string, kid: string): Promise<any> {
-    try {
-      return await this.keyCloakService.verifyToken(token, kid);
-    } catch (e) {
-      this.log.debug(`Invalid JWT token. jwt.verify() failed: ${e.message}.`);
-      if (e instanceof TokenExpiredError) {
-        throw new Error(
-          `Authorization header contains a JWT token that expired at ${e.expiredAt.toISOString()}.`,
-        );
-      }
-      throw new Error('Authorization header contains an invalid JWT token.');
-    }
-  }
-
   async introspect(token: string): Promise<Record<string, string>> {
     try {
       const body = await this.keyCloakService.introspectToken(token);
@@ -65,6 +51,20 @@ export class JwtBearerTokenProcessor extends JwtTokenProcessor {
       }
       this.log.debug(`Failed to introspect JWT token. err: ${e.message}`);
       throw new Error('Internal error occurred introspecting JWT token.');
+    }
+  }
+
+  private async decodeAndVerifyToken(token: string, kid: string): Promise<any> {
+    try {
+      return await this.keyCloakService.verifyToken(token, kid);
+    } catch (e) {
+      this.log.debug(`Invalid JWT token. jwt.verify() failed: ${e.message}.`);
+      if (e instanceof TokenExpiredError) {
+        throw new Error(
+          `Authorization header contains a JWT token that expired at ${e.expiredAt.toISOString()}.`,
+        );
+      }
+      throw new Error('Authorization header contains an invalid JWT token.');
     }
   }
 }

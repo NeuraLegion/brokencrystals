@@ -61,12 +61,12 @@ services:
     stdin_open: true
     tty: true
     volumes:
-      - "./docker/keycloak-db:/var/lib/postgresql/data/"
+      - "./keycloak/db:/var/lib/postgresql/data/"
 
   keycloak:
-    image: quay.io/keycloak/keycloak:latest
+    image: jboss/keycloak:latest
     volumes:
-      - "./docker/keycloak/realm-export.json:/opt/jboss/keycloak/imports/realm-export.json"
+      - "./keycloak/realm-export.json:/opt/jboss/keycloak/imports/realm-export.json"
     environment:
       DB_VENDOR: POSTGRES
       DB_ADDR: keycloak-db

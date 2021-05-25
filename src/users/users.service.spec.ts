@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpClientService } from '../httpclient/httpclient.service';
-import { KeyCloakService } from './keycloak.service';
+import { KeyCloakService } from '../keycloak/keycloak.service';
 import { UsersService } from './users.service';
 
 describe('UsersService', () => {
