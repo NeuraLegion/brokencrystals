@@ -38,3 +38,5 @@ lerna-debug.log*
 !.vscode/extensions.json
 
 keycloak/db
+
+.env

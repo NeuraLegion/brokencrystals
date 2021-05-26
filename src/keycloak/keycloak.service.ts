@@ -10,14 +10,9 @@ import { HttpClientService } from '../httpclient/httpclient.service';
 import { KeyCloakConfigProperties } from './keycloak.config.properties';
 import jwkToPem, { JWK } from 'jwk-to-pem';
 import { stringify } from 'qs';
-import {
-  Secret,
-  GetPublicKeyOrSecret,
-  verify,
-  VerifyOptions,
-} from 'jsonwebtoken';
+import { verify } from 'jsonwebtoken';
 
-export interface OIDCIdentityOptions {
+export interface OIDCIdentityConfig {
   issuer?: string;
   introspection_endpoint?: string;
   jwks_uri?: string;
@@ -44,14 +39,19 @@ export interface Token {
   readonly expires_in?: number;
 }
 
+interface ClientCredentials {
+  client_id: string;
+  client_secret?: string;
+}
+
 @Injectable()
 export class KeyCloakService {
   private log: Logger = new Logger(KeyCloakService.name);
   private readonly server_uri: string;
   private readonly realm: string;
-  private readonly client_id: string;
-  private readonly client_secret: string;
-  private options: OIDCIdentityOptions;
+  private config: OIDCIdentityConfig;
+  private readonly clientAdmin: ClientCredentials;
+  private readonly clientUser: ClientCredentials;
 
   constructor(
     private readonly configService: ConfigService,
@@ -63,28 +63,33 @@ export class KeyCloakService {
     this.realm = this.configService.get(
       KeyCloakConfigProperties.ENV_KEYCLOAK_REALM,
     );
-    this.client_id = this.configService.get(
-      KeyCloakConfigProperties.ENV_KEYCLOAK_CLIENT_ID,
-    );
-    this.client_secret = this.configService.get(
-      KeyCloakConfigProperties.ENV_KEYCLOAK_CLIENT_SECRET,
-    );
+
+    this.clientUser = {
+      client_id: this.configService.get(
+        KeyCloakConfigProperties.ENV_KEYCLOAK_USER_CLIENT_ID,
+      ),
+      client_secret: this.configService.get(
+        KeyCloakConfigProperties.ENV_KEYCLOAK_USER_CLIENT_SECRET,
+      ),
+    };
+
+    this.clientAdmin = {
+      client_id: this.configService.get(
+        KeyCloakConfigProperties.ENV_KEYCLOAK_ADMIN_CLIENT_ID,
+      ),
+      client_secret: this.configService.get(
+        KeyCloakConfigProperties.ENV_KEYCLOAK_ADMIN_CLIENT_SECRET,
+      ),
+    };
 
     ok(this.realm, '"realm" is not defined.');
     ok(this.server_uri, '"metadata_uri" is not defined.');
-    ok(this.client_id, '"client_id" is not defined.');
-    ok(this.client_secret, '"client_secret" is not defined.');
+    ok(this.clientUser.client_id, '"client_id" is not defined.');
+    ok(this.clientAdmin.client_id, 'Admin "client_id" is not defined.');
+    ok(this.clientAdmin.client_secret, 'Admin "client_secret" is not defined.');
 
     this.discovery().catch((err: any) => console.error(err));
   }
-
-  // public async init(): Promise<void> {
-  //   ok(this.client_id, '"client_id" is not defined.');
-  //   ok(this.client_secret, '"client_secret" is not defined.');
-  //   ok(this.metadata_uri, '"metadata_uri" is not defined.');
-
-  //   await this.discovery();
-  // }
 
   public async verifyToken(token: string, kid: string) {
     const pems: Map<string, string> = await this.getJWKs();
@@ -96,42 +101,25 @@ export class KeyCloakService {
     }
 
     return verify(token, pems.get(kid), {
-      issuer: this.options.issuer,
+      issuer: this.config.issuer,
     });
   }
 
   public async introspectToken(token: string): Promise<Record<string, string>> {
     ok(
-      (this.options as OIDCIdentityOptions).introspection_endpoint,
+      (this.config as OIDCIdentityConfig).introspection_endpoint,
       'Missing "introspection_endpoint"',
     );
 
     const { access_token, token_type } = await this.generateToken();
     const data = stringify({ token });
 
-    return this.httpClient.post(this.options.introspection_endpoint, data, {
+    return this.httpClient.post(this.config.introspection_endpoint, data, {
       headers: {
         Authorization: `${token_type} ${access_token}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
     });
-  }
-
-  public async findUserByEmail(email: string) {
-    const { token_type, access_token } = await this.generateToken();
-
-    return this.httpClient.get(
-      `${this.server_uri}/admin/realms/${this.realm}/users`,
-      {
-        params: {
-          email,
-        },
-        headers: {
-          Authorization: `${token_type} ${access_token}`,
-        },
-        responseType: 'json',
-      },
-    );
   }
 
   public async registerUser({
@@ -171,7 +159,6 @@ export class KeyCloakService {
         },
       );
     } catch (err) {
-      console.error(err);
       this.log.error(err);
       throw err;
     }
@@ -184,18 +171,20 @@ export class KeyCloakService {
       data = stringify({
         ...tokenData,
         grant_type: 'password',
-        client_id: this.client_id,
+        client_id: this.clientUser.client_id,
+        client_secret: this.clientUser.client_secret,
       });
     } else {
       data = stringify({
         grant_type: 'client_credentials',
-        client_secret: this.client_secret,
-        client_id: this.client_id,
+        client_id: this.clientAdmin.client_id,
+        client_secret: this.clientAdmin.client_secret,
       });
     }
 
+    console.log(data);
     try {
-      return this.httpClient.post<Token>(this.options.token_endpoint, data, {
+      return this.httpClient.post<Token>(this.config.token_endpoint, data, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
@@ -208,17 +197,17 @@ export class KeyCloakService {
   }
 
   private async discovery(): Promise<void> {
-    this.options = (await this.httpClient.loadJSON(
-      `${this.server_uri}/realms/master/.well-known/openid-configuration`,
-    )) as OIDCIdentityOptions;
+    this.config = (await this.httpClient.loadJSON(
+      `${this.server_uri}/realms/${this.realm}/.well-known/openid-configuration`,
+    )) as OIDCIdentityConfig;
   }
 
   private async getJWKs(): Promise<Map<string, string>> {
-    ok((this.options as OIDCIdentityOptions).jwks_uri, 'Missing "jwks_uri"');
+    ok((this.config as OIDCIdentityConfig).jwks_uri, 'Missing "jwks_uri"');
 
     const data = await this.httpClient.loadJSON<{
       keys: (JWK & { kid: string })[];
-    }>(this.options.jwks_uri);
+    }>(this.config.jwks_uri);
 
     if (!data.keys) {
       throw new InternalServerErrorException(

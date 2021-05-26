@@ -44,6 +44,12 @@ import { randomBytes } from 'crypto';
 import { CsrfGuard } from './csrf.guard';
 import { KeyCloakService } from '../keycloak/keycloak.service';
 
+interface LoginData {
+  email: string;
+  ldapProfileLink: string;
+  token: string;
+}
+
 @Controller('/api/auth')
 @ApiTags('auth controller')
 export class AuthController {
@@ -56,13 +62,20 @@ export class AuthController {
     private readonly authService: AuthService,
   ) {}
 
-  private async loginOidc(req: LoginRequest): Promise<LoginResponse> {
+  private async loginOidc(req: LoginRequest): Promise<LoginData> {
     try {
-      await this.keyCloakService.findUserByEmail(req.user);
+      const {
+        token_type,
+        access_token,
+      } = await this.keyCloakService.generateToken({
+        username: req.user,
+        password: req.password,
+      });
 
       return {
         email: req.user,
         ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(req.user),
+        token: `${token_type} ${access_token}`,
       };
     } catch (err) {
       throw new InternalServerErrorException({
@@ -72,8 +85,9 @@ export class AuthController {
     }
   }
 
-  private async login(req: LoginRequest): Promise<LoginResponse> {
+  private async login(req: LoginRequest): Promise<LoginData> {
     let user: User;
+
     try {
       user = await this.usersService.findByEmail(req.user);
     } catch (err) {
@@ -90,7 +104,16 @@ export class AuthController {
       });
     }
 
+    const token = await this.authService.createToken(
+      {
+        user: user.email,
+        exp: 90 + Math.floor(Date.now() / 1000),
+      },
+      JwtProcessorType.RSA,
+    );
+
     return {
+      token,
       email: user.email,
       ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
     };
@@ -135,35 +158,19 @@ export class AuthController {
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithRSAJwtKeys');
 
-    let authorizationToken: string;
-    let profile: LoginResponse;
+    let loginData: LoginData;
 
     if (req.op === FormMode.OIDC) {
-      profile = await this.loginOidc(req);
-
-      const {
-        token_type,
-        access_token,
-      } = await this.keyCloakService.generateToken({
-        username: req.user,
-        password: req.password,
-      });
-
-      authorizationToken = `${token_type} ${access_token}`;
+      loginData = await this.loginOidc(req);
     } else {
-      profile = await this.login(req);
-      authorizationToken = await this.authService.createToken(
-        {
-          user: profile.email,
-          exp: 90 + Math.floor(Date.now() / 1000),
-        },
-        JwtProcessorType.RSA,
-      );
+      loginData = await this.login(req);
     }
 
-    res.header('authorization', authorizationToken);
+    const { token, ...loginResponse } = loginData;
 
-    return profile;
+    res.header('authorization', token);
+
+    return loginResponse;
   }
 
   @Get('dom-csrf-flow')
