@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  Query,
   Controller,
   Get,
   HttpStatus,
@@ -20,6 +21,8 @@ import { UsersService } from '../users/users.service';
 import { JwtValidationResponse } from './api/JwtValidationResponse';
 import { FormMode, LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';
+import { OidcClientRequest } from './api/OidcClientRequest';
+import { OidcClientResponse } from './api/OidcClientResponse';
 import {
   SWAGGER_DESC_loginWithJKUJwt,
   SWAGGER_DESC_loginWithJWKJwt,
@@ -42,7 +45,7 @@ import { JwtType } from './jwt/jwt.type.decorator';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { randomBytes } from 'crypto';
 import { CsrfGuard } from './csrf.guard';
-import { KeyCloakService } from '../keycloak/keycloak.service';
+import { ClientType, KeyCloakService } from '../keycloak/keycloak.service';
 
 interface LoginData {
   email: string;
@@ -203,6 +206,20 @@ export class AuthController {
       sameSite: 'strict',
     });
     return token;
+  }
+
+  @Get('oidc-client')
+  async getOidcClient(
+    @Query() query: OidcClientRequest,
+  ): Promise<OidcClientResponse> {
+    const client = this.keyCloakService.getClient(
+      (query.type as ClientType) || ClientType.ADMIN,
+    );
+
+    return {
+      clientId: client.client_id,
+      clientSecret: client.client_secret,
+    };
   }
 
   @Post('jwt/kid-sql/login')

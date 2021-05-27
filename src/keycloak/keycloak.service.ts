@@ -2,6 +2,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -39,13 +40,18 @@ export interface Token {
   readonly expires_in?: number;
 }
 
+export enum ClientType {
+  ADMIN = 'admin',
+  USER = 'user',
+}
+
 interface ClientCredentials {
   client_id: string;
   client_secret?: string;
 }
 
 @Injectable()
-export class KeyCloakService {
+export class KeyCloakService implements OnModuleInit {
   private log: Logger = new Logger(KeyCloakService.name);
   private readonly server_uri: string;
   private readonly realm: string;
@@ -81,14 +87,16 @@ export class KeyCloakService {
         KeyCloakConfigProperties.ENV_KEYCLOAK_ADMIN_CLIENT_SECRET,
       ),
     };
+  }
 
+  async onModuleInit(): Promise<void> {
     ok(this.realm, '"realm" is not defined.');
-    ok(this.server_uri, '"metadata_uri" is not defined.');
-    ok(this.clientUser.client_id, '"client_id" is not defined.');
+    ok(this.server_uri, '"server_uri" is not defined.');
+    ok(this.clientUser.client_id, 'User "client_id" is not defined.');
     ok(this.clientAdmin.client_id, 'Admin "client_id" is not defined.');
     ok(this.clientAdmin.client_secret, 'Admin "client_secret" is not defined.');
 
-    this.discovery().catch((err: any) => console.error(err));
+    await this.discovery();
   }
 
   public async verifyToken(token: string, kid: string) {
@@ -194,6 +202,10 @@ export class KeyCloakService {
       this.log.error(err);
       throw err;
     }
+  }
+
+  public getClient(clientType: ClientType): ClientCredentials {
+    return clientType === ClientType.ADMIN ? this.clientAdmin : this.clientUser;
   }
 
   private async discovery(): Promise<void> {

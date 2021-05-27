@@ -2,11 +2,12 @@ import { AxiosRequestConfig } from 'axios';
 import getBrowserFingerprint from 'get-browser-fingerprint';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { OidcClient, OidcClientType } from 'src/interfaces/Auth';
 import {
   getLdap,
   getUser,
-  loadDomXsrfToken,
-  loadXsrfToken
+  loadXsrfToken,
+  loadDomXsrfToken
 } from '../../../api/httpClient';
 import {
   LoginFormMode,
@@ -38,6 +39,7 @@ export const Login: FC = () => {
 
   const [mode, setMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
   const [csrf, setCsrf] = useState<string>();
+  const [oidcClient, setOidcClient] = useState<OidcClient>();
 
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
@@ -99,17 +101,21 @@ export const Login: FC = () => {
   const loadDomCsrf = (fingerprint: string) => {
     loadDomXsrfToken(fingerprint).then((token) => setCsrf(token));
   };
+  const loadOidcClient = (type: OidcClientType) => {
+    getOidcClient(type).then((client) => setOidcClient(client));
+  };
 
   useEffect(() => sendLdap(), [loginResponse]);
   useEffect(() => {
     switch (mode) {
-      case LoginFormMode.CSRF: {
+      case LoginFormMode.CSRF:
         return loadCsrf();
-      }
       case LoginFormMode.DOM_BASED_CSRF: {
         const fingerprint = getBrowserFingerprint();
         return loadDomCsrf(fingerprint);
       }
+      case LoginFormMode.OIDC:
+        return loadOidcClient(OidcClientType.USER);
     }
   }, [mode]);
 
@@ -143,6 +149,18 @@ export const Login: FC = () => {
               </option>
             </select>
           </div>
+
+          {oidcClient && (
+            <div>
+              <p>
+                <b>clientId:</b> {oidcClient.clientId}
+              </p>
+              <p>
+                <b>clientSecret:</b> {oidcClient.clientSecret}
+              </p>
+              <br />
+            </div>
+          )}
 
           <div className="form-group">
             <label>Email</label>

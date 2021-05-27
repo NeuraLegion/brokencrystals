@@ -1,9 +1,10 @@
-import React, { FC, FormEvent, useState } from 'react';
-import { postUser } from '../../../api/httpClient';
+import React, { FC, FormEvent, useEffect, useState } from 'react';
+import { getOidcClient, postUser } from '../../../api/httpClient';
 import { RegistrationUser } from '../../../interfaces/User';
 import AuthLayout from '../AuthLayout';
 import { Link } from 'react-router-dom';
 import showRegResponse from './showRegReponse';
+import { OidcClient, OidcClientType } from 'src/interfaces/Auth';
 
 const defaultUser: RegistrationUser = {
   email: '',
@@ -17,6 +18,7 @@ export const Register: FC = () => {
   const { email, firstName, lastName, password } = form;
 
   const [regResponse, setRegResponse] = useState<RegistrationUser | null>();
+  const [oidcClient, setOidcClient] = useState<OidcClient>();
 
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
@@ -28,6 +30,12 @@ export const Register: FC = () => {
 
     postUser(form).then((data) => setRegResponse(data));
   };
+
+  const loadOidcClient = (type: OidcClientType) => {
+    getOidcClient(type).then((client) => setOidcClient(client));
+  };
+
+  useEffect(() => loadOidcClient(OidcClientType.ADMIN));
 
   return (
     <AuthLayout>
@@ -44,6 +52,18 @@ export const Register: FC = () => {
               onInput={onInput}
             />
           </div>
+
+          {oidcClient && (
+            <div>
+              <p>
+                <b>clientId:</b> {oidcClient.clientId}
+              </p>
+              <p>
+                <b>clientSecret:</b> {oidcClient.clientSecret}
+              </p>
+              <br />
+            </div>
+          )}
 
           <div className="form-group">
             <label>Last name</label>
