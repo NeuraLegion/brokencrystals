@@ -10,7 +10,7 @@ import { ok } from 'assert';
 import { HttpClientService } from '../httpclient/httpclient.service';
 import { KeyCloakConfigProperties } from './keycloak.config.properties';
 import jwkToPem, { JWK } from 'jwk-to-pem';
-import { stringify } from 'qs';
+import { stringify } from 'querystring';
 import { verify } from 'jsonwebtoken';
 
 export interface OIDCIdentityConfig {
