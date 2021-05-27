@@ -2,7 +2,7 @@ import { AxiosRequestConfig } from 'axios';
 import getBrowserFingerprint from 'get-browser-fingerprint';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { OidcClient, OidcClientType } from 'src/interfaces/Auth';
+import { OidcClient, OidcClientType } from '../../../interfaces/Auth';
 import {
   getLdap,
   getUser,
@@ -115,7 +115,7 @@ export const Login: FC = () => {
         return loadDomCsrf(fingerprint);
       }
       case LoginFormMode.OIDC:
-        return loadOidcClient(OidcClientType.USER);
+        return loadOidcClient(OidcClientType.PUBLIC);
     }
   }, [mode]);
 

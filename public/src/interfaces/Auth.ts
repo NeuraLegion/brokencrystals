@@ -1,6 +1,6 @@
 export enum OidcClientType {
   ADMIN = 'admin',
-  USER = 'user'
+  PUBLIC = 'public'
 }
 
 export interface OidcClient {

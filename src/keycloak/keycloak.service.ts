@@ -42,7 +42,7 @@ export interface Token {
 
 export enum ClientType {
   ADMIN = 'admin',
-  USER = 'user',
+  PUBLIC = 'public',
 }
 
 interface ClientCredentials {
@@ -57,7 +57,7 @@ export class KeyCloakService implements OnModuleInit {
   private readonly realm: string;
   private config: OIDCIdentityConfig;
   private readonly clientAdmin: ClientCredentials;
-  private readonly clientUser: ClientCredentials;
+  private readonly clientPublic: ClientCredentials;
 
   constructor(
     private readonly configService: ConfigService,
@@ -70,12 +70,12 @@ export class KeyCloakService implements OnModuleInit {
       KeyCloakConfigProperties.ENV_KEYCLOAK_REALM,
     );
 
-    this.clientUser = {
+    this.clientPublic = {
       client_id: this.configService.get(
-        KeyCloakConfigProperties.ENV_KEYCLOAK_USER_CLIENT_ID,
+        KeyCloakConfigProperties.ENV_KEYCLOAK_PUBLIC_CLIENT_ID,
       ),
       client_secret: this.configService.get(
-        KeyCloakConfigProperties.ENV_KEYCLOAK_USER_CLIENT_SECRET,
+        KeyCloakConfigProperties.ENV_KEYCLOAK_PUBLIC_CLIENT_SECRET,
       ),
     };
 
@@ -92,7 +92,7 @@ export class KeyCloakService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     ok(this.realm, '"realm" is not defined.');
     ok(this.server_uri, '"server_uri" is not defined.');
-    ok(this.clientUser.client_id, 'User "client_id" is not defined.');
+    ok(this.clientPublic.client_id, 'User "client_id" is not defined.');
     ok(this.clientAdmin.client_id, 'Admin "client_id" is not defined.');
     ok(this.clientAdmin.client_secret, 'Admin "client_secret" is not defined.');
 
@@ -140,7 +140,6 @@ export class KeyCloakService implements OnModuleInit {
 
     const { access_token, token_type } = await this.generateToken();
 
-    console.log(`${token_type} ${access_token}`);
     try {
       await this.httpClient.post(
         `${this.server_uri}/admin/realms/${this.realm}/users`,
@@ -179,8 +178,8 @@ export class KeyCloakService implements OnModuleInit {
       data = stringify({
         ...tokenData,
         grant_type: 'password',
-        client_id: this.clientUser.client_id,
-        client_secret: this.clientUser.client_secret,
+        client_id: this.clientPublic.client_id,
+        client_secret: this.clientPublic.client_secret,
       });
     } else {
       data = stringify({
@@ -190,7 +189,6 @@ export class KeyCloakService implements OnModuleInit {
       });
     }
 
-    console.log(data);
     try {
       return this.httpClient.post<Token>(this.config.token_endpoint, data, {
         headers: {
@@ -205,7 +203,9 @@ export class KeyCloakService implements OnModuleInit {
   }
 
   public getClient(clientType: ClientType): ClientCredentials {
-    return clientType === ClientType.ADMIN ? this.clientAdmin : this.clientUser;
+    return clientType === ClientType.ADMIN
+      ? this.clientAdmin
+      : this.clientPublic;
   }
 
   private async discovery(): Promise<void> {
