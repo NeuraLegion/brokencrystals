@@ -47,7 +47,7 @@ export enum ClientType {
 
 interface ClientCredentials {
   client_id: string;
-  client_secret?: string;
+  client_secret: string;
 }
 
 @Injectable()
@@ -93,6 +93,7 @@ export class KeyCloakService implements OnModuleInit {
     ok(this.realm, '"realm" is not defined.');
     ok(this.server_uri, '"server_uri" is not defined.');
     ok(this.clientPublic.client_id, 'User "client_id" is not defined.');
+    ok(this.clientPublic.client_secret, 'User "client_secret" is not defined.');
     ok(this.clientAdmin.client_id, 'Admin "client_id" is not defined.');
     ok(this.clientAdmin.client_secret, 'Admin "client_secret" is not defined.');
 
@@ -172,30 +173,32 @@ export class KeyCloakService implements OnModuleInit {
   }
 
   public async generateToken(tokenData?: GenerateTokenData): Promise<Token> {
-    let data: string;
+    const tokenPayload = {
+      ...this.clientAdmin,
+    };
 
     if (tokenData) {
-      data = stringify({
+      Object.assign(tokenPayload, {
         ...tokenData,
         grant_type: 'password',
-        client_id: this.clientPublic.client_id,
-        client_secret: this.clientPublic.client_secret,
       });
     } else {
-      data = stringify({
+      Object.assign(tokenPayload, {
         grant_type: 'client_credentials',
-        client_id: this.clientAdmin.client_id,
-        client_secret: this.clientAdmin.client_secret,
       });
     }
 
     try {
-      return this.httpClient.post<Token>(this.config.token_endpoint, data, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+      return this.httpClient.post<Token>(
+        this.config.token_endpoint,
+        stringify(tokenPayload),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          responseType: 'json',
         },
-        responseType: 'json',
-      });
+      );
     } catch (err) {
       this.log.error(err);
       throw err;

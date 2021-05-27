@@ -21,7 +21,6 @@ import { UsersService } from '../users/users.service';
 import { JwtValidationResponse } from './api/JwtValidationResponse';
 import { FormMode, LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';
-import { OidcClientRequest } from './api/OidcClientRequest';
 import { OidcClientResponse } from './api/OidcClientResponse';
 import {
   SWAGGER_DESC_loginWithJKUJwt,
@@ -209,12 +208,8 @@ export class AuthController {
   }
 
   @Get('oidc-client')
-  async getOidcClient(
-    @Query() query: OidcClientRequest,
-  ): Promise<OidcClientResponse> {
-    const client = this.keyCloakService.getClient(
-      (query.type as ClientType) || ClientType.ADMIN,
-    );
+  async getOidcClient(): Promise<OidcClientResponse> {
+    const client = this.keyCloakService.getClient(ClientType.PUBLIC);
 
     return {
       clientId: client.client_id,

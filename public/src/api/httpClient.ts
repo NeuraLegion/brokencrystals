@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { Testimonial } from '../interfaces/Testimonial';
 import { LoginFormMode, LoginUser, RegistrationUser } from '../interfaces/User';
-import { OidcClient, OidcClientType } from '../interfaces/Auth';
+import { OidcClient } from '../interfaces/Auth';
 import { ApiUrl } from './ApiUrl';
 import { makeApiRequest } from './makeApiRequest';
 
@@ -83,9 +83,9 @@ export function loadXsrfToken(): Promise<string> {
   return makeApiRequest(config);
 }
 
-export function getOidcClient(type: OidcClientType): Promise<OidcClient> {
+export function getOidcClient(): Promise<OidcClient> {
   return makeApiRequest({
-    url: `${ApiUrl.Auth}/oidc-client?type=${type}`,
+    url: `${ApiUrl.Auth}/oidc-client`,
     method: 'get'
   });
 }
