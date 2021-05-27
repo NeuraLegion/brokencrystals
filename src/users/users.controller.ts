@@ -124,6 +124,7 @@ export class UsersController {
     status: 200,
   })
   async ldapQuery(@Query('query') query: string): Promise<UserDto[]> {
+    this.logger.debug(`Call ldapQuery: ${query}`);
     let users: User[];
 
     try {

@@ -80,6 +80,13 @@ export class AuthController {
         token: `${token_type} ${access_token}`,
       };
     } catch (err) {
+      if (err.response.status === 401) {
+        throw new UnauthorizedException({
+          error: 'Invalid credentials',
+          location: __filename,
+        });
+      }
+
       throw new InternalServerErrorException({
         error: err.message,
         location: __filename,
@@ -180,6 +187,8 @@ export class AuthController {
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<string> {
+    this.logger.debug('Call getDomCsrfToken');
+
     const fp = request.headers['fingerprint'] as string;
 
     if (!fp) {
@@ -199,6 +208,8 @@ export class AuthController {
   async getCsrfToken(
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<string> {
+    this.logger.debug('Call getCsrfToken');
+
     const token = randomBytes(32).toString('base64').substring(0, 32);
     res.setCookie(this.CSRF_COOKIE_HEADER, token, {
       httpOnly: true,
@@ -209,6 +220,8 @@ export class AuthController {
 
   @Get('oidc-client')
   async getOidcClient(): Promise<OidcClientResponse> {
+    this.logger.debug('Call getOidcClient');
+
     const client = this.keyCloakService.getClient(ClientType.PUBLIC);
 
     return {

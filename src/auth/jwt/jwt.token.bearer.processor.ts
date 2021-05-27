@@ -18,6 +18,7 @@ export class JwtBearerTokenProcessor extends JwtTokenProcessor {
       this.log.debug(`Invalid JWT token. parse() failure.`);
       throw new Error('Authorization header contains an invalid JWT token.');
     }
+
     if (!header.kid) {
       this.log.debug(
         `Invalid JWT token. Expected a known KID but found ${header.kid}.`,
@@ -26,6 +27,7 @@ export class JwtBearerTokenProcessor extends JwtTokenProcessor {
     }
 
     await this.decodeAndVerifyToken(token, header.kid);
+
     return payload;
   }
 

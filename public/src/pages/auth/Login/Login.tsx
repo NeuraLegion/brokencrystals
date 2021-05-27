@@ -7,7 +7,8 @@ import {
   getLdap,
   getUser,
   loadXsrfToken,
-  loadDomXsrfToken
+  loadDomXsrfToken,
+  getOidcClient
 } from '../../../api/httpClient';
 import {
   LoginFormMode,
@@ -110,10 +111,8 @@ export const Login: FC = () => {
     switch (mode) {
       case LoginFormMode.CSRF:
         return loadCsrf();
-      case LoginFormMode.DOM_BASED_CSRF: {
-        const fingerprint = getBrowserFingerprint();
-        return loadDomCsrf(fingerprint);
-      }
+      case LoginFormMode.DOM_BASED_CSRF:
+        return loadDomCsrf(getBrowserFingerprint());
       case LoginFormMode.OIDC:
         return loadOidcClient();
     }
