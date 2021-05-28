@@ -1,9 +1,11 @@
 import { EntityManager } from '@mikro-orm/core';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
+import { KeyCloakService } from '../keycloak/keycloak.service';
 import { HttpClientService } from '../httpclient/httpclient.service';
 import { AuthModuleConfigProperties } from './auth.module.config.properties';
+import { JwtBearerTokenProcessor } from './jwt/jwt.token.bearer.processor';
 import { JwtTokenProcessor } from './jwt/jwt.token.processor';
 import { JwtTokenWithJKUProcessor } from './jwt/jwt.token.with.jku.processor';
 import { JwtTokenWithJWKProcessor } from './jwt/jwt.token.with.jwk.processor';
@@ -21,6 +23,7 @@ export enum JwtProcessorType {
   X5U,
   JKU,
   JWK,
+  BEARER,
 }
 
 @Injectable()
@@ -31,6 +34,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly em: EntityManager,
     private readonly httpClient: HttpClientService,
+    private readonly keyCloakService: KeyCloakService,
   ) {
     const privateKey = fs.readFileSync(
       this.configService.get<string>(
@@ -48,6 +52,7 @@ export class AuthService {
     const jwtSecretKey = configService.get<string>(
       AuthModuleConfigProperties.ENV_JWT_SECRET_KEY,
     );
+
     this.processors = new Map();
     this.processors.set(
       JwtProcessorType.RSA,
@@ -76,6 +81,11 @@ export class AuthService {
     this.processors.set(
       JwtProcessorType.X5U,
       new JwtTokenWithX5UKeyProcessor(jwtSecretKey, this.httpClient),
+    );
+
+    this.processors.set(
+      JwtProcessorType.BEARER,
+      new JwtBearerTokenProcessor(jwtSecretKey, this.keyCloakService),
     );
   }
 

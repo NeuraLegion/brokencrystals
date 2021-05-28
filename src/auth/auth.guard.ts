@@ -21,23 +21,33 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext) {
-    this.logger.debug('Called canActivate');
-    const processorType: JwtProcessorType = this.reflector.get<JwtProcessorType>(
-      JwTypeMetadataField,
-      context.getHandler(),
-    );
-
-    const request: FastifyRequest = context.switchToHttp().getRequest();
-    const token = request.headers[AuthGuard.AUTH_HEADER] as string;
-    if (!token || token.length == 0) {
-      this.logger.debug('Authorization header is missing');
-      throw new UnauthorizedException({
-        error: 'Unauthorized',
-        line: __filename,
-      });
-    }
     try {
-      return !!(await this.authService.validateToken(token, processorType));
+      this.logger.debug('Called canActivate');
+
+      const request: FastifyRequest = context.switchToHttp().getRequest();
+      const token = request.headers[AuthGuard.AUTH_HEADER] as string;
+      if (!token || token.length == 0) {
+        const token = request.cookies[AuthGuard.AUTH_HEADER];
+
+        return token
+          ? !!(await this.authService.validateToken(
+              token,
+              JwtProcessorType.BEARER,
+            ))
+          : true;
+      } else if (this.checkIsBearer(token)) {
+        return !!(await this.authService.validateToken(
+          token.substring(7),
+          JwtProcessorType.BEARER,
+        ));
+      } else {
+        const processorType: JwtProcessorType = this.reflector.get<JwtProcessorType>(
+          JwTypeMetadataField,
+          context.getHandler(),
+        );
+
+        return !!(await this.authService.validateToken(token, processorType));
+      }
     } catch (err) {
       this.logger.debug(`Failed to validate token: ${err.message}`);
       throw new UnauthorizedException({
@@ -45,5 +55,16 @@ export class AuthGuard implements CanActivate {
         line: __filename,
       });
     }
+  }
+
+  private checkIsBearer(bearer: string): boolean {
+    if (!bearer || bearer.length < 10) {
+      return false;
+    }
+    const prefix = bearer.substring(0, 7).toLowerCase();
+    if (prefix !== 'bearer ') {
+      return false;
+    }
+    return true;
   }
 }
