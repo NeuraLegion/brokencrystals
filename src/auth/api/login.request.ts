@@ -5,6 +5,7 @@ export enum FormMode {
   HTML = 'html',
   CSRF = 'csrf',
   DOM_BASED_CSRF = 'csrf_dom',
+  OIDC = 'oidc',
 }
 
 export class LoginRequest {

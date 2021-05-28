@@ -28,7 +28,8 @@ import { AuthGuard } from '../auth/auth.guard';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
 import { JwtProcessorType } from '../auth/auth.service';
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { AnyFilesInterceptor } from 'src/components/any-files.interceptor';
+import { AnyFilesInterceptor } from '../components/any-files.interceptor';
+import { KeyCloakService } from '../keycloak/keycloak.service';
 
 @Controller('/api/users')
 @ApiTags('user controller')
@@ -36,7 +37,10 @@ export class UsersController {
   private logger = new Logger(UsersController.name);
   private ldapQueryHandler = new LdapQueryHandler();
 
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly keyCloakService: KeyCloakService,
+  ) {}
 
   @Options()
   @Header('allow', 'OPTIONS, GET, POST, DELETE')
@@ -120,6 +124,7 @@ export class UsersController {
     status: 200,
   })
   async ldapQuery(@Query('query') query: string): Promise<UserDto[]> {
+    this.logger.debug(`Call ldapQuery: ${query}`);
     let users: User[];
 
     try {
@@ -160,7 +165,7 @@ export class UsersController {
     try {
       this.logger.debug(`Create a user: ${user}`);
 
-      return UserDto.convertToApi(
+      const newUser = UserDto.convertToApi(
         await this.usersService.createUser(
           user.email,
           user.firstName,
@@ -168,6 +173,15 @@ export class UsersController {
           user.password,
         ),
       );
+
+      await this.keyCloakService.registerUser({
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        password: user.password,
+      });
+
+      return newUser;
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
