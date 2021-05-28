@@ -142,35 +142,30 @@ export class KeyCloakService implements OnModuleInit {
 
     const { access_token, token_type } = await this.generateToken();
 
-    try {
-      await this.httpClient.post(
-        `${this.server_uri}/admin/realms/${this.realm}/users`,
-        {
-          firstName,
-          lastName,
-          email,
-          enabled: true,
-          username: email,
-          credentials: [
-            {
-              type: 'password',
-              value: password,
-              temporary: false,
-            },
-          ],
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `${token_type} ${access_token}`,
+    await this.httpClient.post(
+      `${this.server_uri}/admin/realms/${this.realm}/users`,
+      {
+        firstName,
+        lastName,
+        email,
+        enabled: true,
+        username: email,
+        credentials: [
+          {
+            type: 'password',
+            value: password,
+            temporary: false,
           },
-          responseType: 'json',
+        ],
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `${token_type} ${access_token}`,
         },
-      );
-    } catch (err) {
-      this.log.error(err);
-      throw err;
-    }
+        responseType: 'json',
+      },
+    );
   }
 
   public async generateToken(tokenData?: GenerateTokenData): Promise<Token> {
@@ -189,21 +184,16 @@ export class KeyCloakService implements OnModuleInit {
       });
     }
 
-    try {
-      return this.httpClient.post<Token>(
-        this.config.token_endpoint,
-        stringify(tokenPayload),
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          responseType: 'json',
+    return this.httpClient.post<Token>(
+      this.config.token_endpoint,
+      stringify(tokenPayload),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
-      );
-    } catch (err) {
-      this.log.error(err);
-      throw err;
-    }
+        responseType: 'json',
+      },
+    );
   }
 
   public getClient(clientType: ClientType): ClientCredentials {
