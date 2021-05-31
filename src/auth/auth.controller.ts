@@ -227,6 +227,7 @@ export class AuthController {
     return {
       clientId: client.client_id,
       clientSecret: client.client_secret,
+      metadataUrl: client.metadata_rul,
     };
   }
 
