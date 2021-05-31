@@ -7,7 +7,7 @@ COPY config ./config
 COPY tsconfig.build.json ./
 COPY tsconfig.json ./
 COPY nest-cli.json ./
-COPY ./examples/.env.example ./.env
+COPY .env ./
 COPY src ./src
 
 RUN npm ci -q
