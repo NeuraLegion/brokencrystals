@@ -6,4 +6,7 @@ export class OidcClientResponse {
 
   @ApiProperty()
   clientSecret: string;
+
+  @ApiProperty()
+  metadataUrl: string;
 }

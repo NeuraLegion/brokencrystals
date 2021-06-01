@@ -49,6 +49,7 @@ export enum ClientType {
 interface ClientCredentials {
   client_id: string;
   client_secret: string;
+  metadata_rul: string;
 }
 
 @Injectable()
@@ -71,7 +72,10 @@ export class KeyCloakService implements OnModuleInit {
       KeyCloakConfigProperties.ENV_KEYCLOAK_REALM,
     );
 
+    const metadata_rul = `${this.server_uri}/realms/${this.realm}/.well-known/openid-configuration`;
+
     this.clientPublic = {
+      metadata_rul,
       client_id: this.configService.get(
         KeyCloakConfigProperties.ENV_KEYCLOAK_PUBLIC_CLIENT_ID,
       ),
@@ -81,6 +85,7 @@ export class KeyCloakService implements OnModuleInit {
     };
 
     this.clientAdmin = {
+      metadata_rul,
       client_id: this.configService.get(
         KeyCloakConfigProperties.ENV_KEYCLOAK_ADMIN_CLIENT_ID,
       ),
@@ -204,7 +209,7 @@ export class KeyCloakService implements OnModuleInit {
 
   private async discovery(): Promise<void> {
     this.config = (await this.httpClient.loadJSON(
-      `${this.server_uri}/realms/${this.realm}/.well-known/openid-configuration`,
+      this.clientAdmin.metadata_rul,
     )) as OIDCIdentityConfig;
   }
 

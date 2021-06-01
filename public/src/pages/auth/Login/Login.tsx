@@ -152,10 +152,13 @@ export const Login: FC = () => {
           {oidcClient && (
             <div>
               <p>
-                <b>clientId:</b> {oidcClient.clientId}
+                <b>client_id:</b> {oidcClient.clientId}
               </p>
               <p>
-                <b>clientSecret:</b> {oidcClient.clientSecret}
+                <b>client_secret:</b> {oidcClient.clientSecret}
+              </p>
+              <p>
+                <b>Openid-configuration URL:</b> {oidcClient.metadataUrl}
               </p>
               <br />
             </div>
