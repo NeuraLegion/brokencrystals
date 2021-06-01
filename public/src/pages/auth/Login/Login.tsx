@@ -158,7 +158,7 @@ export const Login: FC = () => {
                 <b>client_secret:</b> {oidcClient.clientSecret}
               </p>
               <p>
-                <b>oidc_config/metadata URL:</b> {oidcClient.metadataUrl}
+                <b>oidc-config URL:</b> {oidcClient.metadataUrl}
               </p>
               <br />
             </div>
