@@ -79,7 +79,7 @@ services:
       KEYCLOAK_PASSWORD: Pa55w0rd
       KEYCLOAK_IMPORT: /opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/auth/realms/brokencrystals" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/auth/realms/brokencrystals/health/check/database" ]
       timeout: 10s
       interval: 30s
       retries: 3
