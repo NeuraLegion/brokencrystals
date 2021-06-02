@@ -75,8 +75,8 @@ services:
       DB_USER: keycloak
       DB_SCHEMA: public
       DB_PASSWORD: password
-      KEYCLOAK_USER: admin
-      KEYCLOAK_PASSWORD: Pa55w0rd
+      KEYCLOAK_USER: root
+      KEYCLOAK_PASSWORD: Ro!1815N
       KEYCLOAK_IMPORT: /opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/auth/realms/brokencrystals/health/check/database" ]
