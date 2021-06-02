@@ -2,11 +2,13 @@ import { AxiosRequestConfig } from 'axios';
 import getBrowserFingerprint from 'get-browser-fingerprint';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { OidcClient } from '../../../interfaces/Auth';
 import {
   getLdap,
   getUser,
+  loadXsrfToken,
   loadDomXsrfToken,
-  loadXsrfToken
+  getOidcClient
 } from '../../../api/httpClient';
 import {
   LoginFormMode,
@@ -38,6 +40,7 @@ export const Login: FC = () => {
 
   const [mode, setMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
   const [csrf, setCsrf] = useState<string>();
+  const [oidcClient, setOidcClient] = useState<OidcClient>();
 
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
@@ -99,17 +102,19 @@ export const Login: FC = () => {
   const loadDomCsrf = (fingerprint: string) => {
     loadDomXsrfToken(fingerprint).then((token) => setCsrf(token));
   };
+  const loadOidcClient = () => {
+    getOidcClient().then((client) => setOidcClient(client));
+  };
 
   useEffect(() => sendLdap(), [loginResponse]);
   useEffect(() => {
     switch (mode) {
-      case LoginFormMode.CSRF: {
+      case LoginFormMode.CSRF:
         return loadCsrf();
-      }
-      case LoginFormMode.DOM_BASED_CSRF: {
-        const fingerprint = getBrowserFingerprint();
-        return loadDomCsrf(fingerprint);
-      }
+      case LoginFormMode.DOM_BASED_CSRF:
+        return loadDomCsrf(getBrowserFingerprint());
+      case LoginFormMode.OIDC:
+        return loadOidcClient();
     }
   }, [mode]);
 
@@ -138,8 +143,26 @@ export const Login: FC = () => {
               <option value={LoginFormMode.DOM_BASED_CSRF}>
                 DOM based CSRF Authentication
               </option>
+              <option value={LoginFormMode.OIDC}>
+                Simple OIDC-based Authentication
+              </option>
             </select>
           </div>
+
+          {oidcClient && (
+            <div>
+              <p>
+                <b>client_id:</b> {oidcClient.clientId}
+              </p>
+              <p>
+                <b>client_secret:</b> {oidcClient.clientSecret}
+              </p>
+              <p>
+                <b>Openid-configuration URL:</b> {oidcClient.metadataUrl}
+              </p>
+              <br />
+            </div>
+          )}
 
           <div className="form-group">
             <label>Email</label>

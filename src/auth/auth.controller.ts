@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   Body,
+  Query,
   Controller,
   Get,
   HttpStatus,
   InternalServerErrorException,
   Logger,
-  Post, Req,
+  Post,
+  Req,
   Res,
   UnauthorizedException,
   UseGuards,
@@ -17,8 +19,9 @@ import { User } from '../model/user.entity';
 import { LdapQueryHandler } from '../users/ldap.query.handler';
 import { UsersService } from '../users/users.service';
 import { JwtValidationResponse } from './api/JwtValidationResponse';
-import { LoginRequest } from './api/login.request';
+import { FormMode, LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';
+import { OidcClientResponse } from './api/OidcClientResponse';
 import {
   SWAGGER_DESC_loginWithJKUJwt,
   SWAGGER_DESC_loginWithJWKJwt,
@@ -41,6 +44,13 @@ import { JwtType } from './jwt/jwt.type.decorator';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { randomBytes } from 'crypto';
 import { CsrfGuard } from './csrf.guard';
+import { ClientType, KeyCloakService } from '../keycloak/keycloak.service';
+
+interface LoginData {
+  email: string;
+  ldapProfileLink: string;
+  token: string;
+}
 
 @Controller('/api/auth')
 @ApiTags('auth controller')
@@ -50,11 +60,43 @@ export class AuthController {
 
   constructor(
     private readonly usersService: UsersService,
+    private readonly keyCloakService: KeyCloakService,
     private readonly authService: AuthService,
   ) {}
 
-  private async login(req: LoginRequest): Promise<LoginResponse> {
+  private async loginOidc(req: LoginRequest): Promise<LoginData> {
+    try {
+      const {
+        token_type,
+        access_token,
+      } = await this.keyCloakService.generateToken({
+        username: req.user,
+        password: req.password,
+      });
+
+      return {
+        email: req.user,
+        ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(req.user),
+        token: `${token_type} ${access_token}`,
+      };
+    } catch (err) {
+      if (err.response.status === 401) {
+        throw new UnauthorizedException({
+          error: 'Invalid credentials',
+          location: __filename,
+        });
+      }
+
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
+    }
+  }
+
+  private async login(req: LoginRequest): Promise<LoginData> {
     let user: User;
+
     try {
       user = await this.usersService.findByEmail(req.user);
     } catch (err) {
@@ -71,7 +113,16 @@ export class AuthController {
       });
     }
 
+    const token = await this.authService.createToken(
+      {
+        user: user.email,
+        exp: 90 + Math.floor(Date.now() / 1000),
+      },
+      JwtProcessorType.RSA,
+    );
+
     return {
+      token,
       email: user.email,
       ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
     };
@@ -115,20 +166,20 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithRSAJwtKeys');
-    const profile = await this.login(req);
 
-    res.header(
-      'authorization',
-      await this.authService.createToken(
-        {
-          user: profile.email,
-          exp: 90 + Math.floor(Date.now() / 1000),
-        },
-        JwtProcessorType.RSA,
-      ),
-    );
+    let loginData: LoginData;
 
-    return profile;
+    if (req.op === FormMode.OIDC) {
+      loginData = await this.loginOidc(req);
+    } else {
+      loginData = await this.login(req);
+    }
+
+    const { token, ...loginResponse } = loginData;
+
+    res.header('authorization', token);
+
+    return loginResponse;
   }
 
   @Get('dom-csrf-flow')
@@ -136,14 +187,14 @@ export class AuthController {
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<string> {
+    this.logger.debug('Call getDomCsrfToken');
+
     const fp = request.headers['fingerprint'] as string;
 
     if (!fp) {
-      throw new BadRequestException('Fingerprint  header is required')
+      throw new BadRequestException('Fingerprint  header is required');
     }
-    const token = createHash('md5')
-      .update(fp)
-      .digest('hex');
+    const token = createHash('md5').update(fp).digest('hex');
 
     res.setCookie(this.CSRF_COOKIE_HEADER, token, {
       httpOnly: true,
@@ -157,12 +208,27 @@ export class AuthController {
   async getCsrfToken(
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<string> {
+    this.logger.debug('Call getCsrfToken');
+
     const token = randomBytes(32).toString('base64').substring(0, 32);
     res.setCookie(this.CSRF_COOKIE_HEADER, token, {
       httpOnly: true,
       sameSite: 'strict',
     });
     return token;
+  }
+
+  @Get('oidc-client')
+  async getOidcClient(): Promise<OidcClientResponse> {
+    this.logger.debug('Call getOidcClient');
+
+    const client = this.keyCloakService.getClient(ClientType.PUBLIC);
+
+    return {
+      clientId: client.client_id,
+      clientSecret: client.client_secret,
+      metadataUrl: client.metadata_url,
+    };
   }
 
   @Post('jwt/kid-sql/login')
