@@ -1,11 +1,13 @@
 import React, { FC } from 'react';
-import { Route, Switch } from 'react-router-dom';
+import { Route, Switch, Redirect } from 'react-router-dom';
 import { RoutePath } from './RoutePath';
 import Main from '../pages/main/Main';
 import Login from '../pages/auth/Login/Login';
 import Register from '../pages/auth/Register/Register';
+import Marketplace from '../pages/marketplace/Marketplace';
 
 export const Routes: FC = () => {
+  const user = sessionStorage.getItem('email');
   return (
     <Switch>
       <Route path={RoutePath.Login}>
@@ -14,6 +16,10 @@ export const Routes: FC = () => {
 
       <Route path={RoutePath.Register}>
         <Register />
+      </Route>
+
+      <Route path={RoutePath.Marketplace}>
+        {user ? <Marketplace /> : <Redirect to={RoutePath.Login} />}
       </Route>
 
       <Route path={RoutePath.Home}>

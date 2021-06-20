@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import Marketplace from './Marketplace/Marketplace';
+import MarketplacePreview from './MarketplacePreview';
 import Counts from './Counts';
 import Hero from './Hero';
 import Header from './Header/Header';
@@ -15,7 +15,7 @@ export const Main: FC = () => {
       <Hero />
 
       <main id="main">
-        <Marketplace />
+        <MarketplacePreview />
         <Counts />
         <Testimonials />
         <FAQ />

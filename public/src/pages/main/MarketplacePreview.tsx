@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { getProducts } from './getProducts';
+import { getProducts } from '../marketplace/getProducts';
 
 const products = getProducts();
 
@@ -8,24 +8,11 @@ export const Marketplace: FC = () => {
     <section id="marketplace" className="portfolio">
       <div className="container" data-aos="fade-up">
         <div className="section-title">
-          <h2>Marketplace</h2>
-        </div>
-
-        <div className="row">
-          <div className="col-lg-12 d-flex justify-content-center">
-            <ul id="portfolio-flters">
-              <li data-filter="*" className="filter-active">
-                All
-              </li>
-              <li data-filter=".filter-Healing">Healing</li>
-              <li data-filter=".filter-Jewellery">Jewellery</li>
-              <li data-filter=".filter-Gemstones">Gemstones</li>
-            </ul>
-          </div>
+          <h2>Latest Products</h2>
         </div>
 
         <div className="row portfolio-container">
-          {products.map((product) => (
+          {products.slice(0, 3).map((product) => (
             <div
               className={`col-lg-4 col-md-6 portfolio-item filter-${product.category.name}`}
               key={product.name}
