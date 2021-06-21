@@ -9,7 +9,10 @@ export const Hero: FC = () => {
             <h1>Your Vulnerable Crystal Marketplace</h1>
             <h2>Find the most beautiful stones in one place!</h2>
             <div>
-              <a href="#marketplace" className="btn-get-started scrollto">
+              <a
+                href="#marketplacePreview"
+                className="btn-get-started scrollto"
+              >
                 Get Started
               </a>
             </div>

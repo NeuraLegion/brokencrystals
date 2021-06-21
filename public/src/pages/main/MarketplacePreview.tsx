@@ -5,7 +5,7 @@ const products = getProducts();
 
 export const Marketplace: FC = () => {
   return (
-    <section id="marketplace" className="portfolio">
+    <section id="marketplacePreview" className="portfolio">
       <div className="container" data-aos="fade-up">
         <div className="section-title">
           <h2>Latest Products</h2>
