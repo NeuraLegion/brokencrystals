@@ -4,6 +4,7 @@ import { reportWebVitals } from './reportWebVitals';
 import { Router } from 'react-router-dom';
 import { Routes } from './router/Routes';
 import { history } from './router/history';
+import './interceptor.ts';
 
 ReactDOM.render(
   <Router history={history}>
