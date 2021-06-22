@@ -37,6 +37,11 @@ export const Marketplace: FC = () => {
             </div>
           ))}
         </div>
+        <div className="section-readmore">
+          <a href="/marketplace">
+            <p>See all products</p>
+          </a>
+        </div>
       </div>
     </section>
   );
