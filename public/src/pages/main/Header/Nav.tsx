@@ -64,6 +64,24 @@ export const Nav = () => {
         <li>
           <a href="/">Contact</a>
         </li>
+        <li className="drop-down">
+          <a href="">API Schema</a>
+          <ul>
+            <li>
+              <a href="https://brokencrystals.com/swagger/json" target="_blank">
+                OpenAPI 3.0 JSON
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://brokencrystals.com/swagger/static/index.html"
+                target="_blank"
+              >
+                Schema Editor
+              </a>
+            </li>
+          </ul>
+        </li>
         <li>
           <a
             href="https://github.com/NeuraLegion/brokencrystals#vulnerabilities-overview"
