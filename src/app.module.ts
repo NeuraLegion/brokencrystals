@@ -5,6 +5,7 @@ import { UsersModule } from './users/users.module';
 import { FileModule } from './file/file.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { TestimonialsModule } from './testimonials/testimonials.module';
+import { CrystalsModule } from './crystals/crystals.module';
 import { OrmModule } from './orm/orm.module';
 import { ConfigModule } from '@nestjs/config';
 import { HttpClientService } from './httpclient/httpclient.service';
@@ -19,6 +20,7 @@ import { TraceMiddleware } from './components/trace.middleware';
     FileModule,
     SubscriptionsModule,
     TestimonialsModule,
+    CrystalsModule,
     ConfigModule.forRoot({
       isGlobal: true,
     }),
