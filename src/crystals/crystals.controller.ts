@@ -46,6 +46,8 @@ export class CrystalsController {
     );
   }
 
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
   @Get()
   @ApiOperation({
     description: 'returns all crystals',
