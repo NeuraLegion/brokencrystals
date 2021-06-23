@@ -62,17 +62,19 @@ export class CrystalsController {
     );
   }
 
-  @Get('count')
+  @Get('latest')
   @ApiOperation({
-    description:
-      'returns count of all crystals based on provided sql query',
+    description: 'returns 3 latest crystals',
   })
   @ApiResponse({
-    type: String,
+    type: CrystalDto,
+    isArray: true,
     status: 200,
   })
-  async getCount(@Query('query') query: string): Promise<string> {
-    this.logger.debug('Get count of crystals.');
-    return await this.crystalsService.count(query);
+  async getLatestCrystals(): Promise<CrystalDto[]> {
+    this.logger.debug('Get latest crystals.');
+    return (await this.crystalsService.findAll()).map<CrystalDto>(
+      CrystalDto.covertToApi,
+    ).slice(0, 3);
   }
 }
