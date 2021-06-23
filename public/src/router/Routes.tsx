@@ -19,7 +19,13 @@ export const Routes: FC = () => {
       </Route>
 
       <Route path={RoutePath.Marketplace}>
-        {user ? <Marketplace /> : <Redirect to={RoutePath.Login} />}
+        {user ? (
+          <Marketplace />
+        ) : (
+          <Redirect
+            to={{ pathname: RoutePath.Login, state: { from: '/marketplace' } }}
+          />
+        )}
       </Route>
 
       <Route path={RoutePath.Home}>

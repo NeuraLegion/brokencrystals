@@ -1,7 +1,7 @@
 import { AxiosRequestConfig } from 'axios';
 import getBrowserFingerprint from 'get-browser-fingerprint';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { OidcClient } from '../../../interfaces/Auth';
 import {
   getLdap,
@@ -31,7 +31,13 @@ enum RequestHeaders {
   APPLICATION_JSON = 'application/json'
 }
 
+interface stateType {
+  from: string;
+}
+
 export const Login: FC = () => {
+  const { state } = useLocation<stateType>();
+
   const [form, setForm] = useState<LoginUser>(defaultLoginUser);
   const { user, password } = form;
 
@@ -79,7 +85,7 @@ export const Login: FC = () => {
       getLdap(ldapProfileLink)
         .then((data) => setLdapResponse(data))
         .then(() => {
-          window.location.href = '/';
+          window.location.href = state ? state.from : '/';
         });
   };
 
