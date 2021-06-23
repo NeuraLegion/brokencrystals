@@ -11,4 +11,12 @@ set session_replication_role = 'origin';
 --password is admin
 INSERT INTO public."user" (created_at, updated_at, email, password, first_name, last_name, is_admin, photo) VALUES (now(), now(), 'admin', '$2b$10$BBJjmVNNdyEgv7pV/zQR9u/ssIuwZsdDJbowW/Dgp28uws3GmO0Ky', 'admin', 'admin', false, null);
 
-COPY crystal ("category", "photo_url", "name", "short_description") FROM '/initialCrystals.csv' WITH (FORMAT csv);
+--insert default crystals into the table
+INSERT INTO "crystal" ("category", "photo_url", "name", "short_description") VALUES ('Healing', '/api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg', 'Amethyst', 'a violet variety of quartz');
+INSERT INTO "crystal" ("category", "photo_url", "name", "short_description") VALUES ('Gemstones', '/api/file?path=config/products/crystals/ruby.jpg&type=image/jpg', 'Ruby', 'an intense heart crystal');
+INSERT INTO "crystal" ("category", "photo_url", "name", "short_description") VALUES ('Healing', '/api/file?path=config/products/crystals/opal.jpg&type=image/jpg', 'Opal', 'the precious stone');
+INSERT INTO "crystal" ("category", "photo_url", "name", "short_description") VALUES ('Jewellery', '/api/file?path=config/products/crystals/sapphire.jpg&type=image/jpg', 'Sapphire', '');
+INSERT INTO "crystal" ("category", "photo_url", "name", "short_description") VALUES ('Healing', '/api/file?path=config/products/crystals/amber.jpg&type=image/jpg', 'Amber', 'fossilized tree resin');
+INSERT INTO "crystal" ("category", "photo_url", "name", "short_description") VALUES ('Jewellery', '/api/file?path=config/products/crystals/emerald.jpg&type=image/jpg', 'Emerald', 'symbol of fertility and life');
+INSERT INTO "crystal" ("category", "photo_url", "name", "short_description") VALUES ('Jewellery', '/api/file?path=config/products/crystals/shattuckite.jpg&type=image/jpg', 'Shattuckite', 'mistery');
+INSERT INTO "crystal" ("category", "photo_url", "name", "short_description") VALUES ('Gemstones', '/api/file?path=config/products/crystals/bismuth.jpg&type=image/jpg', 'Bismuth', 'rainbow');

@@ -11,7 +11,6 @@ services:
       - 5432:5432
     volumes:
     - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
-    - ./initialCrystals.csv:/initialCrystals.csv
 
   proxy:
     image: nginx:1.17.3-alpine
