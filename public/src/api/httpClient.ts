@@ -21,7 +21,11 @@ export function getTestimonialsCount(): Promise<any> {
 }
 
 export function getCrystals(): Promise<any> {
-  return makeApiRequest({ url: ApiUrl.Crystals, method: 'get' });
+  return makeApiRequest({
+    url: ApiUrl.Crystals,
+    method: 'get',
+    headers: { authorization: sessionStorage.getItem('token') }
+  });
 }
 
 export function getLatestCrystals(): Promise<any> {
