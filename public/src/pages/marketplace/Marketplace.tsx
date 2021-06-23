@@ -1,10 +1,15 @@
-import React, { FC } from 'react';
-import { getProducts } from './getProducts';
+import React, { FC, useEffect, useState } from 'react';
+import { Crystal } from '../../interfaces/Crystal';
+import { getCrystals } from '../../api/httpClient';
 import Header from '../main/Header/Header';
 
-const products = getProducts();
-
 export const Marketplace: FC = () => {
+  const [crystals, setCrystals] = useState<Array<Crystal>>([]);
+
+  useEffect(() => {
+    getCrystals().then((data) => setCrystals(data));
+  }, []);
+
   return (
     <>
       <Header onInnerPage={true} />
@@ -29,27 +34,23 @@ export const Marketplace: FC = () => {
           </div>
 
           <div className="row portfolio-container">
-            {products.map((product) => (
+            {crystals.map((crystal) => (
               <div
-                className={`col-lg-4 col-md-6 portfolio-item filter-${product.category.name}`}
-                key={product.name}
+                className={`col-lg-4 col-md-6 portfolio-item filter-${crystal.category}`}
+                key={crystal.name}
               >
                 <div className="portfolio-wrap">
-                  <img
-                    src={product.photos[0].url}
-                    className="img-fluid"
-                    alt=""
-                  />
+                  <img src={crystal.photo_URL} className="img-fluid" alt="" />
                   <div className="portfolio-info">
-                    <h4>{product.name}</h4>
-                    <p>{product.short_description}</p>
+                    <h4>{crystal.name}</h4>
+                    <p>{crystal.short_description}</p>
                   </div>
                   <div className="portfolio-links">
                     <a
-                      href={product.photos[0].url}
+                      href={crystal.photo_URL}
                       data-gall="portfolioGallery"
                       className="venobox"
-                      title={product.name}
+                      title={crystal.name}
                     >
                       <i className="bx bx-plus" />
                     </a>
