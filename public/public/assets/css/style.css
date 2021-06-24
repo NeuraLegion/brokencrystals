@@ -569,6 +569,10 @@ section {
   padding-bottom: 30px;
 }
 
+.portfolio .marketplaceTitle {
+  padding-top: 30px;
+}
+
 .section-title h2 {
   font-size: 32px;
   font-weight: bold;

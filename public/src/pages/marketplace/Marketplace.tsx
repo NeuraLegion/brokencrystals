@@ -22,7 +22,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
 
       <section id="marketplace" className="portfolio">
         <div className="container" data-aos="fade-up">
-          <div className="section-title">
+          <div className="section-title marketplaceTitle">
             <h2>Marketplace</h2>
           </div>
 
