@@ -15,7 +15,9 @@ export const Main: FC = () => {
       <Hero />
 
       <main id="main">
-        <Marketplace preview={true} />
+        <div id="marketplacePreview">
+          <Marketplace preview={true} />
+        </div>
         <Counts />
         <Testimonials />
         <FAQ />
