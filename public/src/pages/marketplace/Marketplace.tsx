@@ -19,7 +19,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
 
   return (
     <>
-      <Header onInnerPage={true} />
+      {props.preview || <Header onInnerPage={true} />}
 
       <section id="marketplace" className="portfolio">
         <div className="container" data-aos="fade-up">
