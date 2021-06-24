@@ -2,6 +2,7 @@ import React, { FC, useEffect, useState } from 'react';
 import { Crystal } from '../../interfaces/Crystal';
 import { getCrystals, getLatestCrystals } from '../../api/httpClient';
 import Header from '../main/Header/Header';
+import Testimonials from './Testimonials/Testimonials';
 
 interface Props {
   preview: boolean;
@@ -76,6 +77,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
           </div>
         )}
       </section>
+      <Testimonials preview={props.preview} />
     </>
   );
 };

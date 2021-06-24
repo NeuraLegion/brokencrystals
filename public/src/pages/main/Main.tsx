@@ -6,7 +6,6 @@ import Header from './Header/Header';
 import FAQ from './FAQ';
 import Contact from './Contact';
 import Footer from './Footer';
-import Testimonials from './Testimonials/Testimonials';
 
 export const Main: FC = () => {
   return (
@@ -19,7 +18,6 @@ export const Main: FC = () => {
           <Marketplace preview={true} />
         </div>
         <Counts />
-        <Testimonials />
         <FAQ />
         <Contact />
       </main>
