@@ -1,13 +1,19 @@
 import React, { FC, useEffect, useState } from 'react';
 import { Crystal } from '../../interfaces/Crystal';
-import { getCrystals } from '../../api/httpClient';
+import { getCrystals, getLatestCrystals } from '../../api/httpClient';
 import Header from '../main/Header/Header';
 
-export const Marketplace: FC = () => {
+interface Props {
+  preview: boolean;
+}
+
+export const Marketplace: FC<Props> = (props: Props) => {
   const [crystals, setCrystals] = useState<Array<Crystal>>([]);
 
   useEffect(() => {
-    getCrystals().then((data) => setCrystals(data));
+    props.preview
+      ? getLatestCrystals().then((data) => setCrystals(data))
+      : getCrystals().then((data) => setCrystals(data));
   }, []);
 
   return (
@@ -20,18 +26,20 @@ export const Marketplace: FC = () => {
             <h2>Marketplace</h2>
           </div>
 
-          <div className="row">
-            <div className="col-lg-12 d-flex justify-content-center">
-              <ul id="portfolio-flters">
-                <li data-filter="*" className="filter-active">
-                  All
-                </li>
-                <li data-filter=".filter-Healing">Healing</li>
-                <li data-filter=".filter-Jewellery">Jewellery</li>
-                <li data-filter=".filter-Gemstones">Gemstones</li>
-              </ul>
+          {props.preview || (
+            <div className="row">
+              <div className="col-lg-12 d-flex justify-content-center">
+                <ul id="portfolio-flters">
+                  <li data-filter="*" className="filter-active">
+                    All
+                  </li>
+                  <li data-filter=".filter-Healing">Healing</li>
+                  <li data-filter=".filter-Jewellery">Jewellery</li>
+                  <li data-filter=".filter-Gemstones">Gemstones</li>
+                </ul>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="row portfolio-container">
             {crystals.map((crystal) => (
@@ -60,6 +68,13 @@ export const Marketplace: FC = () => {
             ))}
           </div>
         </div>
+        {props.preview && (
+          <div className="section-readmore">
+            <a href="/marketplace">
+              <p>See all products</p>
+            </a>
+          </div>
+        )}
       </section>
     </>
   );
