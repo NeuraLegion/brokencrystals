@@ -77,7 +77,7 @@ export const Nav = () => {
                 href="https://brokencrystals.com/swagger/static/index.html"
                 target="_blank"
               >
-                Schema Editor
+                API Reference
               </a>
             </li>
           </ul>
