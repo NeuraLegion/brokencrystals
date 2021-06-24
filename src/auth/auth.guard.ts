@@ -34,7 +34,7 @@ export class AuthGuard implements CanActivate {
               token,
               JwtProcessorType.BEARER,
             ))
-          : true;
+          : false;
       } else if (this.checkIsBearer(token)) {
         return !!(await this.authService.validateToken(
           token.substring(7),
