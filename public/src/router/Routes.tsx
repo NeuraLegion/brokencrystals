@@ -20,7 +20,7 @@ export const Routes: FC = () => {
 
       <Route path={RoutePath.Marketplace}>
         {user ? (
-          <Marketplace preview={false}/>
+          <Marketplace preview={false} />
         ) : (
           <Redirect
             to={{ pathname: RoutePath.Login, state: { from: '/marketplace' } }}
