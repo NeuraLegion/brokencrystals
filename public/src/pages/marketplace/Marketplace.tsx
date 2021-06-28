@@ -49,14 +49,14 @@ export const Marketplace: FC<Props> = (props: Props) => {
                 key={crystal.name}
               >
                 <div className="portfolio-wrap">
-                  <img src={crystal.photo_URL} className="img-fluid" alt="" />
+                  <img src={crystal.photoUrl} className="img-fluid" alt="" />
                   <div className="portfolio-info">
                     <h4>{crystal.name}</h4>
                     <p>{crystal.short_description}</p>
                   </div>
                   <div className="portfolio-links">
                     <a
-                      href={crystal.photo_URL}
+                      href={crystal.photoUrl}
                       data-gall="portfolioGallery"
                       className="venobox"
                       title={crystal.name}
