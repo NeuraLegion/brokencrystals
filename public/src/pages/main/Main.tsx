@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import Marketplace from '../marketplace/Marketplace';
+import Marketplace from '../Marketplace/Marketplace';
 import Counts from './Counts';
 import Hero from './Hero';
 import Header from './Header/Header';
