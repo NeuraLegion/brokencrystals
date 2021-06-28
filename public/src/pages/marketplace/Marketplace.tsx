@@ -34,9 +34,9 @@ export const Marketplace: FC<Props> = (props: Props) => {
                   <li data-filter="*" className="filter-active">
                     All
                   </li>
-                  <li data-filter=".filter-Healing">Healing</li>
-                  <li data-filter=".filter-Jewellery">Jewellery</li>
-                  <li data-filter=".filter-Gemstones">Gemstones</li>
+                  <li data-filter=".filter-healing">Healing</li>
+                  <li data-filter=".filter-jewellery">Jewellery</li>
+                  <li data-filter=".filter-gemstones">Gemstones</li>
                 </ul>
               </div>
             </div>
