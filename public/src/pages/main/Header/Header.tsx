@@ -20,7 +20,7 @@ export const Header: FC<Props> = (props: Props) => {
   return (
     <header
       id="header"
-      className={`fixed-top ${props.onInnerPage ? 'header-inner-pages' : null}`}
+      className={`fixed-top ${props.onInnerPage ? 'header-inner-pages' : ''}`}
     >
       <div className="container-fluid">
         <div className="row justify-content-center">
