@@ -8,7 +8,7 @@ export class CreateCrystalRequest {
   category: string;
 
   @ApiProperty()
-  photo_URL: string;
+  photoUrl: string;
 
   @ApiProperty()
   description: string;
