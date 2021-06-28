@@ -11,5 +11,5 @@ export class CreateCrystalRequest {
   photo_URL: string;
 
   @ApiProperty()
-  short_description: string;
+  description: string;
 }
