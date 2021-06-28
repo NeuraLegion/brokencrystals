@@ -72,7 +72,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
         {props.preview && (
           <div className="section-readmore">
             <a href="/marketplace">
-              <p>See all products</p>
+              <span>See all products</span>
             </a>
           </div>
         )}
