@@ -42,9 +42,10 @@ export const Marketplace: FC<Props> = (props: Props) => {
             </div>
           )}
           <div className="row portfolio-container">
-            {products.map((product, i) => (
-              <ProductView product={product} key={i} />
-            ))}
+            {products &&
+              products.map((product, i) => (
+                <ProductView product={product} key={i} />
+              ))}
           </div>
         </div>
         {props.preview && (
