@@ -1,4 +1,4 @@
-export interface Crystal {
+export interface Product {
   category: string;
   photoUrl: string;
   name: string;

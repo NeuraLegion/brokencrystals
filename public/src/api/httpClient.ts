@@ -20,16 +20,16 @@ export function getTestimonialsCount(): Promise<any> {
   });
 }
 
-export function getCrystals(): Promise<any> {
+export function getProducts(): Promise<any> {
   return makeApiRequest({
-    url: ApiUrl.Crystals,
+    url: ApiUrl.Products,
     method: 'get',
     headers: { authorization: sessionStorage.getItem('token') }
   });
 }
 
-export function getLatestCrystals(): Promise<any> {
-  return makeApiRequest({ url: ApiUrl.LatestCrystals, method: 'get' });
+export function getLatestProducts(): Promise<any> {
+  return makeApiRequest({ url: ApiUrl.LatestProducts, method: 'get' });
 }
 
 export function postTestimonials(data: Testimonial): Promise<any> {

@@ -1,21 +1,21 @@
 import React, { FC, useEffect, useState } from 'react';
-import { Crystal } from '../../interfaces/Crystal';
-import { getCrystals, getLatestCrystals } from '../../api/httpClient';
+import { Product } from '../../interfaces/Product';
+import { getProducts, getLatestProducts } from '../../api/httpClient';
 import Header from '../main/Header/Header';
 import Testimonials from './Testimonials/Testimonials';
-import CrystalView from './CrystalView';
+import ProductView from './ProductView';
 
 interface Props {
   preview: boolean;
 }
 
 export const Marketplace: FC<Props> = (props: Props) => {
-  const [crystals, setCrystals] = useState<Array<Crystal>>([]);
+  const [products, setProducts] = useState<Array<Product>>([]);
 
   useEffect(() => {
     props.preview
-      ? getLatestCrystals().then((data) => setCrystals(data))
-      : getCrystals().then((data) => setCrystals(data));
+      ? getLatestProducts().then((data) => setProducts(data))
+      : getProducts().then((data) => setProducts(data));
   }, []);
 
   return (
@@ -42,8 +42,8 @@ export const Marketplace: FC<Props> = (props: Props) => {
             </div>
           )}
           <div className="row portfolio-container">
-            {crystals.map((crystal, i) => (
-              <CrystalView crystal={crystal} key={i} />
+            {products.map((product, i) => (
+              <ProductView product={product} key={i} />
             ))}
           </div>
         </div>

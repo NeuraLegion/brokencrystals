@@ -3,7 +3,7 @@ import { Entity, Property } from '@mikro-orm/core';
 import { Base } from './base.entity';
 
 @Entity()
-export class Crystal extends Base {
+export class Product extends Base {
   @Property()
   name: string;
 

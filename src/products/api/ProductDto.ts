@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Crystal } from '../../model/crystal.entity';
+import { Product } from '../../model/product.entity';
 
-export class CrystalDto {
+export class ProductDto {
   @ApiProperty()
   name: string;
 
@@ -14,7 +14,7 @@ export class CrystalDto {
   @ApiProperty()
   description: string;
 
-  public static covertToApi(c: Crystal): CrystalDto {
+  public static covertToApi(c: Product): ProductDto {
     return {
       name: c.name,
       category: c.category,
