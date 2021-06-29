@@ -40,8 +40,8 @@ export class CrystalsController {
       await this.crystalsService.createCrystal(
         req.name,
         req.category,
-        req.photo_URL,
-        req.short_description,
+        req.photoUrl,
+        req.description,
       ),
     );
   }

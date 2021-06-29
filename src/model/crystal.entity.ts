@@ -11,8 +11,8 @@ export class Crystal extends Base {
   category: string;
 
   @Property()
-  photo_URL: string;
+  photoUrl: string;
 
   @Property()
-  short_description: string;
+  description: string;
 }

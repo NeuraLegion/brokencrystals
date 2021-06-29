@@ -9,17 +9,17 @@ export class CrystalDto {
   category: string;
 
   @ApiProperty()
-  photo_URL: string;
+  photoUrl: string;
 
   @ApiProperty()
-  short_description: string;
+  description: string;
 
   public static covertToApi(c: Crystal): CrystalDto {
     return {
       name: c.name,
       category: c.category,
-      photo_URL: c.photo_URL,
-      short_description: c.short_description,
+      photoUrl: c.photoUrl,
+      description: c.description,
     };
   }
 }

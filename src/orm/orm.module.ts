@@ -14,7 +14,7 @@ import { Crystal } from '../model/crystal.entity';
         new OrmConfigFactory(configService).buildConfig(),
     }),
     MikroOrmModule.forFeature({
-      entities: [Testimonial, User, Product],
+      entities: [Testimonial, User, Crystal],
     }),
   ],
   exports: [MikroOrmModule],

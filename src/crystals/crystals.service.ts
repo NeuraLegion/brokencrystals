@@ -22,11 +22,11 @@ export class CrystalsService {
   async createCrystal(
     name: string,
     category: string,
-    photo_URL: string,
-    short_description: string,
+    photoUrl: string,
+    description: string,
   ): Promise<Crystal> {
     this.logger.debug(
-      `Create a crystal. Name: ${name}, category: ${category}, short_description: ${short_description}, photo_URL: ${photo_URL}`,
+      `Create a crystal. Name: ${name}, category: ${category}, escription: ${description}, photoUrl: ${photoUrl}`,
     );
 
     const connection = this.em.getConnection();
@@ -47,8 +47,8 @@ export class CrystalsService {
     const c = new Crystal();
     c.name = name;
     c.category = category;
-    c.photo_URL = photo_URL;
-    c.short_description = short_description;
+    c.photoUrl = photoUrl;
+    c.description = description;
 
     await this.crystalsRepository.persistAndFlush(c);
     this.logger.debug(`Saved new crystal`);
