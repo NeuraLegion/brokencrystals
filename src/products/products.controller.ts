@@ -24,30 +24,6 @@ export class ProductsController {
 
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
-  @Post()
-  @ApiOperation({
-    description: 'creates product',
-  })
-  @ApiResponse({
-    type: ProductDto,
-    status: 200,
-  })
-  async createProduct(
-    @Body() req: CreateProductRequest,
-  ): Promise<CreateProductRequest> {
-    this.logger.debug('Create product.');
-    return ProductDto.covertToApi(
-      await this.productsService.createProduct(
-        req.name,
-        req.category,
-        req.photoUrl,
-        req.description,
-      ),
-    );
-  }
-
-  @UseGuards(AuthGuard)
-  @JwtType(JwtProcessorType.RSA)
   @Get()
   @ApiOperation({
     description: 'returns all products',
