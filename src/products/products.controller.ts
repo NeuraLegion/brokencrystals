@@ -51,8 +51,8 @@ export class ProductsController {
   })
   async getLatestProducts(): Promise<ProductDto[]> {
     this.logger.debug('Get latest products.');
-    return (await this.productsService.findAll()).map<ProductDto>(
+    return (await this.productsService.findLatest(3)).map<ProductDto>(
       ProductDto.covertToApi,
-    ).slice(0, 3);
+    );
   }
 }

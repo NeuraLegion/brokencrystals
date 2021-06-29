@@ -19,4 +19,8 @@ export class ProductsService {
     return this.productsRepository.findAll();
   }
 
+  async findLatest(limit: number): Promise<Product[]> {
+    this.logger.debug(`Find ${limit} latest products`);
+    return this.productsRepository.find({},{limit: limit});
+  }
 }
