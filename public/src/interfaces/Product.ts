@@ -1,6 +1,6 @@
 export interface Product {
+  name: string;
   category: string;
   photoUrl: string;
-  name: string;
-  short_description: string;
+  description: string;
 }
