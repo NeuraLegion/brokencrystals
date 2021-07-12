@@ -15,7 +15,7 @@ export const ProductView: FC<Props> = (props: Props) => {
         <img src={props.product.photoUrl} className="img-fluid" alt="" />
         <div className="portfolio-info">
           <h4>{props.product.name}</h4>
-          <p>{props.product.short_description}</p>
+          <p>{props.product.description}</p>
         </div>
         <div className="portfolio-links">
           <a
