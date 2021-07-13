@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { Testimonial } from '../interfaces/Testimonial';
 import { LoginFormMode, LoginUser, RegistrationUser } from '../interfaces/User';
+import { Product } from '../interfaces/Product';
 import { OidcClient } from '../interfaces/Auth';
 import { ApiUrl } from './ApiUrl';
 import { makeApiRequest } from './makeApiRequest';
@@ -20,7 +21,7 @@ export function getTestimonialsCount(): Promise<any> {
   });
 }
 
-export function getProducts(): Promise<any> {
+export function getProducts(): Promise<Array<Product>> {
   return makeApiRequest({
     url: ApiUrl.Products,
     method: 'get',
@@ -28,7 +29,7 @@ export function getProducts(): Promise<any> {
   });
 }
 
-export function getLatestProducts(): Promise<any> {
+export function getLatestProducts(): Promise<Array<Product>> {
   return makeApiRequest({ url: ApiUrl.LatestProducts, method: 'get' });
 }
 
