@@ -5,7 +5,6 @@ import { Product } from '../model/product.entity';
 
 @Injectable()
 export class ProductsService {
-  private readonly MAX_LIMIT = 5;
   private readonly logger = new Logger(ProductsService.name);
 
   constructor(
