@@ -21,7 +21,7 @@ export function getTestimonialsCount(): Promise<any> {
   });
 }
 
-export function getProducts(): Promise<Array<Product>> {
+export function getProducts(): Promise<Product[]> {
   return makeApiRequest({
     url: ApiUrl.Products,
     method: 'get',
