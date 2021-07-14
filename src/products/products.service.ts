@@ -23,7 +23,7 @@ export class ProductsService {
     this.logger.debug(`Find ${limit} latest products`);
     return this.productsRepository.find(
       {},
-      { limit: limit, orderBy: { created_at: 'desc' } },
+      { limit, orderBy: { created_at: 'desc' } },
     );
   }
 }
