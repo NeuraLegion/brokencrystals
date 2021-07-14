@@ -29,7 +29,7 @@ export function getProducts(): Promise<Product[]> {
   });
 }
 
-export function getLatestProducts(): Promise<Array<Product>> {
+export function getLatestProducts(): Promise<Product[]> {
   return makeApiRequest({ url: ApiUrl.LatestProducts, method: 'get' });
 }
 
