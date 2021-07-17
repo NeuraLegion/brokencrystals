@@ -569,6 +569,10 @@ section {
   padding-bottom: 30px;
 }
 
+.portfolio .marketplace-title {
+  padding-top: 30px;
+}
+
 .section-title h2 {
   font-size: 32px;
   font-weight: bold;
@@ -591,6 +595,12 @@ section {
 
 .section-title p {
   margin-bottom: 0;
+}
+
+.section-readmore {
+  text-align: center;
+  color: #00a9b8;
+  font-size: 22px;
 }
 
 /*--------------------------------------------------------------

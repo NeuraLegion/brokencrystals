@@ -4,7 +4,11 @@ import { goTo, postMetadata } from '../../../api/httpClient';
 import Nav from './Nav';
 import Sign from './Sign';
 
-export const Header: FC = () => {
+interface Props {
+  onInnerPage?: boolean;
+}
+
+export const Header: FC<Props> = (props: Props) => {
   useEffect(() => {
     postMetadata().then((data) => console.log('xml', data));
   }, []);
@@ -14,7 +18,10 @@ export const Header: FC = () => {
   };
 
   return (
-    <header id="header" className="fixed-top ">
+    <header
+      id="header"
+      className={`fixed-top ${props.onInnerPage ? 'header-inner-pages' : ''}`}
+    >
       <div className="container-fluid">
         <div className="row justify-content-center">
           <div className="col-xl-9 d-flex align-items-center">
