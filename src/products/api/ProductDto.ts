@@ -14,12 +14,12 @@ export class ProductDto {
   @ApiProperty()
   description: string;
 
-  public static covertToApi(c: Product): ProductDto {
+  public static covertToApi(p: Product): ProductDto {
     return {
-      name: c.name,
-      category: c.category,
-      photoUrl: c.photoUrl,
-      description: c.description,
+      name: p.name,
+      category: p.category,
+      photoUrl: p.photoUrl,
+      description: p.description,
     };
   }
 }
