@@ -1,7 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Product } from '../../model/product.entity';
 
 export class ProductDto {
+  constructor(params: {
+    name: string;
+    category: string;
+    photoUrl: string;
+    description: string;
+  }) {
+    Object.assign(this, params);
+  }
+
   @ApiProperty()
   name: string;
 
@@ -13,13 +21,4 @@ export class ProductDto {
 
   @ApiProperty()
   description: string;
-
-  public static covertToApi(p: Product): ProductDto {
-    return {
-      name: p.name,
-      category: p.category,
-      photoUrl: p.photoUrl,
-      description: p.description,
-    };
-  }
 }

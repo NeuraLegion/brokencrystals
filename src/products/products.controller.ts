@@ -14,6 +14,7 @@ import { JwtType } from '../auth/jwt/jwt.type.decorator';
 import { CreateProductRequest } from './api/CreateProductRequest';
 import { ProductDto } from './api/ProductDto';
 import { ProductsService } from './products.service';
+import { Product } from '../model/product.entity';
 
 @Controller('/api/products')
 @ApiTags('products controller')
@@ -21,6 +22,15 @@ export class ProductsController {
   private readonly logger = new Logger(ProductsController.name);
 
   constructor(private readonly productsService: ProductsService) {}
+
+  convertToApi(p: Product): ProductDto {
+    return new ProductDto({
+      name: p.name,
+      category: p.category,
+      photoUrl: p.photoUrl,
+      description: p.description,
+    });
+  }
 
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
@@ -36,7 +46,7 @@ export class ProductsController {
   async getProducts(): Promise<ProductDto[]> {
     this.logger.debug('Get all products.');
     const allProducts = await this.productsService.findAll();
-    return allProducts.map<ProductDto>(ProductDto.covertToApi);
+    return allProducts.map<ProductDto>(this.convertToApi);
   }
 
   @Get('latest')
@@ -51,6 +61,6 @@ export class ProductsController {
   async getLatestProducts(): Promise<ProductDto[]> {
     this.logger.debug('Get latest products.');
     const products = await this.productsService.findLatest(3);
-    return products.map(ProductDto.covertToApi);
+    return products.map(this.convertToApi);
   }
 }
