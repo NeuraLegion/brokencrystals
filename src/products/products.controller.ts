@@ -23,15 +23,6 @@ export class ProductsController {
 
   constructor(private readonly productsService: ProductsService) {}
 
-  convertToApi(p: Product): ProductDto {
-    return new ProductDto({
-      name: p.name,
-      category: p.category,
-      photoUrl: p.photoUrl,
-      description: p.description,
-    });
-  }
-
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @Get()
@@ -46,7 +37,7 @@ export class ProductsController {
   async getProducts(): Promise<ProductDto[]> {
     this.logger.debug('Get all products.');
     const allProducts = await this.productsService.findAll();
-    return allProducts.map<ProductDto>(this.convertToApi);
+    return allProducts.map<ProductDto>((p: Product) => new ProductDto(p));
   }
 
   @Get('latest')
@@ -61,6 +52,6 @@ export class ProductsController {
   async getLatestProducts(): Promise<ProductDto[]> {
     this.logger.debug('Get latest products.');
     const products = await this.productsService.findLatest(3);
-    return products.map(this.convertToApi);
+    return products.map((p: Product) => new ProductDto(p));
   }
 }
