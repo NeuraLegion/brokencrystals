@@ -7,7 +7,11 @@ import 'owl.carousel/dist/assets/owl.theme.default.css';
 import TestimonialsForm from './TestimonialsForm';
 import TestimonialsItems from './TestimonialsItems';
 
-export const Testimonials: FC = () => {
+interface Props {
+  preview: boolean;
+}
+
+export const Testimonials: FC<Props> = (props: Props) => {
   const [testimonials, setTestimonials] = useState<Array<Testimonial>>([]);
   const [newTestimonial, setNewTestimonial] = useState<any>();
   const [testimonialsCount, setTestimonialsCount] = useState<number>(0);
@@ -45,7 +49,9 @@ export const Testimonials: FC = () => {
         ) : null}
       </div>
 
-      <TestimonialsForm setNewTestimonial={setNewTestimonial} />
+      {props.preview || (
+        <TestimonialsForm setNewTestimonial={setNewTestimonial} />
+      )}
     </section>
   );
 };
