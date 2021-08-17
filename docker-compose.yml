@@ -8,8 +8,21 @@ services:
       POSTGRES_DB: bc
       POSTGRES_USER: bc
       POSTGRES_PASSWORD: bc
+    healthcheck:
+      interval: 10s
+      retries: 10
+      test:
+        [
+          'CMD',
+          'pg_isready',
+          '-U',
+          '${POSTGRES_USER}',
+          '-P',
+          '${POSTGRES_PASSWORD}',
+        ]
+      timeout: 45s
     volumes:
-    - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
+      - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
 
   nodejs:
     image: neuralegion/brokencrystals
@@ -21,8 +34,8 @@ services:
           cpus: 3.5
     logging:
       options:
-        max-file: "5"
-        max-size: "10m"
+        max-file: '5'
+        max-size: '10m'
     depends_on:
       - db
       - keycloak
@@ -31,10 +44,10 @@ services:
     image: neuralegion/brokencrystals-client
     restart: always
     environment:
-      CERTBOT_EMAIL: "anatol@neuralegion.com"
+      CERTBOT_EMAIL: 'anatol@neuralegion.com'
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     depends_on:
       - nodejs
     volumes:
@@ -46,28 +59,41 @@ services:
     restart: always
     logging:
       options:
-        max-file: "5"
-        max-size: "10m"
+        max-file: '5'
+        max-size: '10m'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --interval 300 --debug
 
   keycloak-db:
-    image: "postgres:12.2-alpine"
+    image: 'postgres:12.2-alpine'
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: password
+    healthcheck:
+      interval: 10s
+      retries: 10
+      test:
+        [
+            'CMD',
+            'pg_isready',
+            '-U',
+            '${POSTGRES_USER}',
+            '-P',
+            '${POSTGRES_PASSWORD}',
+        ]
+      timeout: 45s
     restart: on-failure
     stdin_open: true
     tty: true
     volumes:
-      - "./keycloak/db:/var/lib/postgresql/data/"
+      - './keycloak/db:/var/lib/postgresql/data/'
 
   keycloak:
     image: jboss/keycloak:latest
     volumes:
-      - "./keycloak/imports/realm-export.json:/opt/jboss/keycloak/imports/realm-export.json"
+      - './keycloak/imports/realm-export.json:/opt/jboss/keycloak/imports/realm-export.json'
     environment:
       DB_VENDOR: POSTGRES
       DB_ADDR: keycloak-db
@@ -79,7 +105,13 @@ services:
       KEYCLOAK_PASSWORD: Pa55w0rd
       KEYCLOAK_IMPORT: /opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/auth/realms/brokencrystals/health/check/database" ]
+      test:
+        [
+          'CMD',
+          'curl',
+          '-f',
+          'http://localhost:8080/auth/realms/brokencrystals/health/check/database',
+        ]
       timeout: 10s
       interval: 30s
       retries: 3
