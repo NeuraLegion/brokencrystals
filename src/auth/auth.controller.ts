@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Body,
-  Query,
   Controller,
   Get,
   HttpStatus,
@@ -13,7 +12,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { User } from '../model/user.entity';
 import { LdapQueryHandler } from '../users/ldap.query.handler';
@@ -42,7 +41,6 @@ import { AuthService, JwtProcessorType } from './auth.service';
 import { passwordMatches } from './credentials.utils';
 import { JwtType } from './jwt/jwt.type.decorator';
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { randomBytes } from 'crypto';
 import { CsrfGuard } from './csrf.guard';
 import { ClientType, KeyCloakService } from '../keycloak/keycloak.service';
 
@@ -63,70 +61,6 @@ export class AuthController {
     private readonly keyCloakService: KeyCloakService,
     private readonly authService: AuthService,
   ) {}
-
-  private async loginOidc(req: LoginRequest): Promise<LoginData> {
-    try {
-      const {
-        token_type,
-        access_token,
-      } = await this.keyCloakService.generateToken({
-        username: req.user,
-        password: req.password,
-      });
-
-      return {
-        email: req.user,
-        ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(req.user),
-        token: `${token_type} ${access_token}`,
-      };
-    } catch (err) {
-      if (err.response.status === 401) {
-        throw new UnauthorizedException({
-          error: 'Invalid credentials',
-          location: __filename,
-        });
-      }
-
-      throw new InternalServerErrorException({
-        error: err.message,
-        location: __filename,
-      });
-    }
-  }
-
-  private async login(req: LoginRequest): Promise<LoginData> {
-    let user: User;
-
-    try {
-      user = await this.usersService.findByEmail(req.user);
-    } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message,
-        location: __filename,
-      });
-    }
-
-    if (!user || !(await passwordMatches(req.password, user.password))) {
-      throw new UnauthorizedException({
-        error: 'Invalid credentials',
-        location: __filename,
-      });
-    }
-
-    const token = await this.authService.createToken(
-      {
-        user: user.email,
-        exp: 90 + Math.floor(Date.now() / 1000),
-      },
-      JwtProcessorType.RSA,
-    );
-
-    return {
-      token,
-      email: user.email,
-      ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
-    };
-  }
 
   @Post('/admin/login')
   @ApiResponse({
@@ -528,6 +462,70 @@ export class AuthController {
   async validateWithX5UJwt(): Promise<JwtValidationResponse> {
     return {
       secret: 'this is our secret',
+    };
+  }
+
+  private async loginOidc(req: LoginRequest): Promise<LoginData> {
+    try {
+      const {
+        token_type,
+        access_token,
+      } = await this.keyCloakService.generateToken({
+        username: req.user,
+        password: req.password,
+      });
+
+      return {
+        email: req.user,
+        ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(req.user),
+        token: `${token_type} ${access_token}`,
+      };
+    } catch (err) {
+      if (err.response.status === 401) {
+        throw new UnauthorizedException({
+          error: 'Invalid credentials',
+          location: __filename,
+        });
+      }
+
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
+    }
+  }
+
+  private async login(req: LoginRequest): Promise<LoginData> {
+    let user: User;
+
+    try {
+      user = await this.usersService.findByEmail(req.user);
+    } catch (err) {
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
+    }
+
+    if (!user || !(await passwordMatches(req.password, user.password))) {
+      throw new UnauthorizedException({
+        error: 'Invalid credentials',
+        location: __filename,
+      });
+    }
+
+    const token = await this.authService.createToken(
+      {
+        user: user.email,
+        exp: 90 + Math.floor(Date.now() / 1000),
+      },
+      JwtProcessorType.RSA,
+    );
+
+    return {
+      token,
+      email: user.email,
+      ldapProfileLink: LdapQueryHandler.LDAP_SEARCH_QUERY(user.email),
     };
   }
 }
