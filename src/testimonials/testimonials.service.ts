@@ -1,6 +1,6 @@
-import { EntityManager, EntityRepository, MikroORM } from '@mikro-orm/core';
+import { EntityManager, EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Testimonial } from '../model/testimonial.entity';
 
 @Injectable()
