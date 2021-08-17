@@ -54,7 +54,7 @@ const menu: Array<MenuItem> = [
         newTab: true
       },
       {
-        name: 'Schema Editor',
+        name: 'API Reference',
         path: 'https://brokencrystals.com/swagger/static/index.html',
         newTab: true
       }
