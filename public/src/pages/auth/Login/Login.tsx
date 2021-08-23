@@ -48,6 +48,8 @@ export const Login: FC = () => {
   const [csrf, setCsrf] = useState<string>();
   const [oidcClient, setOidcClient] = useState<OidcClient>();
 
+  const [errorStatusText, setErrorStatusText] = useState<string>('');
+
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
     setForm({ ...form, [name]: value });
@@ -74,9 +76,12 @@ export const Login: FC = () => {
     getUser(params, config)
       .then((data: LoginResponse) => {
         setLoginResponse(data);
-        return data.email;
+        return data;
       })
-      .then((email) => sessionStorage.setItem('email', email));
+      .then(({ statusText, email }) => {
+        setErrorStatusText(statusText || '');
+        sessionStorage.setItem('email', email);
+      });
   };
 
   const sendLdap = () => {
@@ -112,7 +117,9 @@ export const Login: FC = () => {
     getOidcClient().then((client) => setOidcClient(client));
   };
 
-  useEffect(() => sendLdap(), [loginResponse]);
+  useEffect(() => {
+    sendLdap();
+  }, [loginResponse]);
   useEffect(() => {
     switch (mode) {
       case LoginFormMode.CSRF:
@@ -180,6 +187,7 @@ export const Login: FC = () => {
               value={user}
               onInput={onInput}
             />
+            <div className="dangerous-html">{errorStatusText}</div>
           </div>
 
           <div className="form-group">

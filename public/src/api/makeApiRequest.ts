@@ -15,10 +15,20 @@ export function makeApiRequest<T>(
       return response.data;
     })
     .catch((error) => {
+      if (error.response.status === 500) {
+        return {
+          ...error,
+          statusText: 'Authentication failed, please try again later'
+        };
+      }
       if (error.response.status === 401) {
         sessionStorage.removeItem('email');
         sessionStorage.removeItem('token');
-        window.location.reload();
+        return {
+          ...error,
+          statusText:
+            'Authentication failed, please check your credentials and try again'
+        };
       }
     });
 }

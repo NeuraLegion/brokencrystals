@@ -17,6 +17,7 @@ export enum LoginFormMode {
 export interface LoginResponse {
   email: string;
   ldapProfileLink: string;
+  statusText: string;
 }
 
 export interface RegistrationUser {
