@@ -43,9 +43,7 @@ export const Login: FC = () => {
 
   const [loginResponse, setLoginResponse] = useState<LoginResponse | null>();
   const [ldapResponse, setLdapResponse] = useState<Array<RegistrationUser>>([]);
-  const [errorTextFromResponse, setErrorTextFromResponse] = useState<string>(
-    ''
-  );
+  const [errorText, setErrorText] = useState<string>('');
 
   const [mode, setMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
   const [csrf, setCsrf] = useState<string>();
@@ -80,7 +78,7 @@ export const Login: FC = () => {
         return data;
       })
       .then(({ email, errorText }) => {
-        setErrorTextFromResponse(errorText);
+        setErrorText(errorText);
         sessionStorage.setItem('email', email);
       });
   };
@@ -187,7 +185,7 @@ export const Login: FC = () => {
               onInput={onInput}
             />
           </div>
-          <div className="dangerous-html">{errorTextFromResponse}</div>
+          <div className="dangerous-html">{errorText}</div>
           <div className="form-group">
             <label>Password</label>
             <input
