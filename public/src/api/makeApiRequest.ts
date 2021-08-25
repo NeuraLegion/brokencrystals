@@ -15,15 +15,18 @@ export function makeApiRequest<T>(
       return response.data;
     })
     .catch((error) => {
-      return error.response.status === 401
-        ? {
-            ...error,
-            errorText:
-              'Authentication failed, please check your credentials and try again'
-          }
-        : {
-            ...error,
-            errorText: 'Something went wrong. Please try again later'
-          };
+      if (error.response.status === 401) {
+        sessionStorage.removeItem('email');
+        sessionStorage.removeItem('token');
+        return {
+          ...error,
+          errorText:
+            'Authentication failed, please check your credentials and try again'
+        };
+      }
+      return {
+        ...error,
+        errorText: 'Something went wrong. Please try again later'
+      };
     });
 }
