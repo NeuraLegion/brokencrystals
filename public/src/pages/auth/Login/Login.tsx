@@ -185,7 +185,7 @@ export const Login: FC = () => {
               onInput={onInput}
             />
           </div>
-          <div className="error-text">{errorText}</div>
+          {errorText && <div className="error-text">{errorText}</div>}
           <div className="form-group">
             <label>Password</label>
             <input
