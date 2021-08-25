@@ -15,8 +15,6 @@ export function makeApiRequest<T>(
       return response.data;
     })
     .catch((error) => {
-      sessionStorage.removeItem('email');
-      sessionStorage.removeItem('token');
       return error.response.status === 401
         ? {
             ...error,
