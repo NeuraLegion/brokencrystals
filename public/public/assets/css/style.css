@@ -1732,3 +1732,7 @@ section {
   display: contents;
   cursor: pointer;
 }
+
+.error-text {
+  color: #ff0000;
+}

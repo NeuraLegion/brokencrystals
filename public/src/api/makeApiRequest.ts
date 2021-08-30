@@ -18,7 +18,15 @@ export function makeApiRequest<T>(
       if (error.response.status === 401) {
         sessionStorage.removeItem('email');
         sessionStorage.removeItem('token');
-        window.location.reload();
+        return {
+          ...error,
+          errorText:
+            'Authentication failed, please check your credentials and try again'
+        };
       }
+      return {
+        ...error,
+        errorText: 'Something went wrong. Please try again later'
+      };
     });
 }
