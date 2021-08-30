@@ -174,13 +174,6 @@ export class UsersController {
         ),
       );
 
-      await this.keyCloakService.registerUser({
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        password: user.password,
-      });
-
       return newUser;
     } catch (err) {
       throw new InternalServerErrorException({
