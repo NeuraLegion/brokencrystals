@@ -51,7 +51,7 @@ export function postSubscriptions(email: string): Promise<any> {
 
 export function postUser(data: RegistrationUser): Promise<any> {
   return makeApiRequest({
-    url: ApiUrl.Users,
+    url: `${ApiUrl.Users}/${data.op}`,
     method: 'post',
     data
   });

@@ -24,6 +24,12 @@ export function makeApiRequest<T>(
             'Authentication failed, please check your credentials and try again'
         };
       }
+      if (error.response.status === 409) {
+        return {
+          ...error,
+          errorText: 'User already exists'
+        };
+      }
       return {
         ...error,
         errorText: 'Something went wrong. Please try again later'

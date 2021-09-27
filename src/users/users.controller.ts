@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Header,
+  HttpException,
   HttpStatus,
   InternalServerErrorException,
   Logger,
@@ -153,7 +154,7 @@ export class UsersController {
     return users.map<UserDto>(UserDto.convertToApi);
   }
 
-  @Post()
+  @Post('/basic')
   @ApiOperation({
     description: 'creates user',
   })
@@ -163,8 +164,14 @@ export class UsersController {
   })
   async createUser(@Body() user: CreateUserRequest): Promise<UserDto> {
     try {
-      this.logger.debug(`Create a user: ${user}`);
-
+      this.logger.debug(`Create a basic user: ${user}`);
+      const userIsExist = await this.usersService.findByEmail(user.email);
+      if (userIsExist) {
+        throw new HttpException(
+          'User already exists',
+          409
+        )
+      }
       const newUser = UserDto.convertToApi(
         await this.usersService.createUser(
           user.email,
@@ -173,20 +180,44 @@ export class UsersController {
           user.password,
         ),
       );
-
-      await this.keyCloakService.registerUser({
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        password: user.password,
-      });
-
       return newUser;
-    } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message,
-        location: __filename,
+    } catch ({ response = 'Something went wrong', status = 500 }) {
+      throw new HttpException(response, status)
+    }
+  }
+
+  @Post('/oidc')
+  @ApiOperation({
+    description: 'creates user',
+  })
+  @ApiResponse({
+    type: UserDto,
+    status: 200,
+  })
+  async createOIDCUser(@Body() user: CreateUserRequest): Promise<any> {
+    try {
+      this.logger.debug(`Create a OIDC user: ${user}`);
+
+      const userIsExist = await this.keyCloakService.isUserExists({
+        email: user.email,
       });
+      if (userIsExist) {
+        throw new HttpException(
+          'User already exists',
+          409
+        )
+      }
+      const newUser = UserDto.convertToApi(
+        await this.keyCloakService.registerUser({
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          password: user.password,
+        }));
+      return newUser;
+
+    } catch ({ response = 'Something went wrong', status = 500 }) {
+      throw new HttpException(response, status)
     }
   }
 
