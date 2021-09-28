@@ -13,6 +13,7 @@ import * as jwkToPem from 'jwk-to-pem';
 import { JWK } from 'jwk-to-pem';
 import { stringify } from 'querystring';
 import { verify } from 'jsonwebtoken';
+import { User } from 'src/model/user.entity';
 
 export interface OIDCIdentityConfig {
   issuer?: string;
@@ -166,12 +167,12 @@ export class KeyCloakService implements OnModuleInit {
     lastName,
     email,
     password,
-  }: RegisterUserData): Promise<any> {
+  }: RegisterUserData): Promise<User> {
     this.log.debug(`Called registerUser`);
 
     const { access_token, token_type } = await this.generateToken();
 
-    const user = await this.httpClient.post(
+    const user: User = await this.httpClient.post(
       `${this.server_uri}/admin/realms/${this.realm}/users`,
       {
         firstName,
