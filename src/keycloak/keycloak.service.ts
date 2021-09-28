@@ -158,10 +158,7 @@ export class KeyCloakService implements OnModuleInit {
         responseType: 'json',
       }
     );
-    if (existingUser[0]) {
-      return true
-    }
-    return false;
+    return existingUser[0] ? true : false;
   }
 
   public async registerUser({

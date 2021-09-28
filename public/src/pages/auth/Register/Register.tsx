@@ -20,21 +20,17 @@ export const Register: FC = () => {
   const [regResponse, setRegResponse] = useState<RegistrationUser | null>();
   const [errorText, setErrorText] = useState<string | null>();
 
-  const [mode, setMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
+  const [authMode, setAuthMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
 
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
     setForm({ ...form, [name]: value });
   };
 
-  const onSelectMode = ({ target }: { target: EventTarget | null }) => {
+  const onAuthModeChange = ({ target }: { target: EventTarget | null }) => {
     const { value } = target as HTMLSelectElement & { value: LoginFormMode };
     setForm({ ...form, op: value });
-    setMode(value);
-    switch (value as LoginFormMode) {
-      default:
-        return;
-    }
+    setAuthMode(value);
   };
 
   const sendUser = (e: FormEvent) => {
@@ -56,8 +52,8 @@ export const Register: FC = () => {
               className="form-control"
               name="op"
               placeholder="Authentication Type"
-              value={mode}
-              onChange={onSelectMode}
+              value={authMode}
+              onChange={onAuthModeChange}
             >
               <option value={LoginFormMode.BASIC}>
                 Simple REST-based Registration

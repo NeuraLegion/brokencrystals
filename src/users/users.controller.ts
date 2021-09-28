@@ -165,8 +165,8 @@ export class UsersController {
   async createUser(@Body() user: CreateUserRequest): Promise<UserDto> {
     try {
       this.logger.debug(`Create a basic user: ${user}`);
-      const userIsExist = await this.usersService.findByEmail(user.email);
-      if (userIsExist) {
+      const userExists = await this.usersService.findByEmail(user.email);
+      if (userExists) {
         throw new HttpException(
           'User already exists',
           409
@@ -194,14 +194,14 @@ export class UsersController {
     type: UserDto,
     status: 200,
   })
-  async createOIDCUser(@Body() user: CreateUserRequest): Promise<any> {
+  async createOIDCUser(@Body() user: CreateUserRequest): Promise<object | string> {
     try {
       this.logger.debug(`Create a OIDC user: ${user}`);
 
-      const userIsExist = await this.keyCloakService.isUserExists({
+      const userExists = await this.keyCloakService.isUserExists({
         email: user.email,
       });
-      if (userIsExist) {
+      if (userExists) {
         throw new HttpException(
           'User already exists',
           409
