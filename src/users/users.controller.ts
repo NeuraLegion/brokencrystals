@@ -60,7 +60,7 @@ export class UsersController {
   async getUser(@Param('email') email: string): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by email: ${email}`);
-      return UserDto.convertToApi(await this.usersService.findByEmail(email));
+      return new UserDto(await this.usersService.findByEmail(email));
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
@@ -151,7 +151,7 @@ export class UsersController {
       throw new NotFoundException('User not found in ldap');
     }
 
-    return users.map<UserDto>(UserDto.convertToApi);
+    return users.map((user: User) => new UserDto(user));
   }
 
   @Post('/basic')
@@ -165,14 +165,14 @@ export class UsersController {
   async createUser(@Body() user: CreateUserRequest): Promise<UserDto> {
     try {
       this.logger.debug(`Create a basic user: ${user}`);
+
       const userExists = await this.usersService.findByEmail(user.email);
+
       if (userExists) {
-        throw new HttpException(
-          'User already exists',
-          409
-        )
+        throw new HttpException('User already exists', 409);
       }
-      const newUser = UserDto.convertToApi(
+
+      return new UserDto(
         await this.usersService.createUser(
           user.email,
           user.firstName,
@@ -180,9 +180,11 @@ export class UsersController {
           user.password,
         ),
       );
-      return newUser;
     } catch (err) {
-      throw new HttpException(err.message ?? 'Something went wrong', err.status ?? 500)
+      throw new HttpException(
+        err.message ?? 'Something went wrong',
+        err.status ?? 500,
+      );
     }
   }
 
@@ -194,30 +196,31 @@ export class UsersController {
     type: UserDto,
     status: 200,
   })
-  async createOIDCUser(@Body() user: CreateUserRequest): Promise<object | string> {
+  async createOIDCUser(@Body() user: CreateUserRequest): Promise<UserDto> {
     try {
       this.logger.debug(`Create a OIDC user: ${user}`);
 
       const userExists = await this.keyCloakService.isUserExists({
         email: user.email,
       });
+
       if (userExists) {
-        throw new HttpException(
-          'User already exists',
-          409
-        )
+        throw new HttpException('User already exists', 409);
       }
-      const newUser = UserDto.convertToApi(
+
+      return new UserDto(
         await this.keyCloakService.registerUser({
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
           password: user.password,
-        }));
-      return newUser;
-
-    } catch ({ response = 'Something went wrong', status = 500 }) {
-      throw new HttpException(response, status)
+        }),
+      );
+    } catch (err) {
+      throw new HttpException(
+        err.message ?? 'Something went wrong',
+        err.status ?? 500,
+      );
     }
   }
 
