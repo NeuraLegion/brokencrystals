@@ -58,10 +58,6 @@ export const Login: FC = () => {
     const { value } = target as HTMLSelectElement & { value: LoginFormMode };
     setForm({ ...form, op: value });
     setMode(value);
-    switch (value as LoginFormMode) {
-      default:
-        return;
-    }
   };
 
   const sendUser = (e: FormEvent) => {

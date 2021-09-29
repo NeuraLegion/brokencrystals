@@ -1,5 +1,4 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { User } from '../../model/user.entity';
 
 export class UserDto {
   @ApiProperty()
@@ -11,11 +10,11 @@ export class UserDto {
   @ApiProperty()
   lastName: string;
 
-  public static convertToApi(user: User): UserDto {
-    return {
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-    };
+  constructor(
+    params: {
+      [P in keyof UserDto]: UserDto[P];
+    },
+  ) {
+    Object.assign(this, params);
   }
 }
