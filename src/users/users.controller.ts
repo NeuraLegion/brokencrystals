@@ -181,8 +181,8 @@ export class UsersController {
         ),
       );
       return newUser;
-    } catch ({ response = 'Something went wrong', status = 500 }) {
-      throw new HttpException(response, status)
+    } catch (err) {
+      throw new HttpException(err.message ?? 'Something went wrong', err.status ?? 500)
     }
   }
 
