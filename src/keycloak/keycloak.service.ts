@@ -30,7 +30,7 @@ export interface RegisterUserData {
 }
 
 export interface ExistingUserData {
-  email: string,
+  email: string;
 }
 
 export interface GenerateTokenData {
@@ -142,14 +142,12 @@ export class KeyCloakService implements OnModuleInit {
     });
   }
 
-  public async isUserExists({
-    email,
-  }: ExistingUserData): Promise<Boolean> {
-      this.log.debug(`Called isUserExist`);
+  public async isUserExists({ email }: ExistingUserData): Promise<boolean> {
+    this.log.debug(`Called isUserExist`);
 
     const { access_token, token_type } = await this.generateToken();
 
-    const [existingUser] = await this.httpClient.get(
+    const [existingUser]: unknown[] = await this.httpClient.get(
       `${this.server_uri}/admin/realms/${this.realm}/users?email=${email}`,
       {
         headers: {
@@ -157,7 +155,7 @@ export class KeyCloakService implements OnModuleInit {
           Authorization: `${token_type} ${access_token}`,
         },
         responseType: 'json',
-      }
+      },
     );
     return !!existingUser;
   }
@@ -172,7 +170,7 @@ export class KeyCloakService implements OnModuleInit {
 
     const { access_token, token_type } = await this.generateToken();
 
-    const user: User = await this.httpClient.post(
+    return this.httpClient.post(
       `${this.server_uri}/admin/realms/${this.realm}/users`,
       {
         firstName,
@@ -195,8 +193,7 @@ export class KeyCloakService implements OnModuleInit {
         },
         responseType: 'json',
       },
-    )
-      return user;
+    );
   }
 
   public async generateToken(tokenData?: GenerateTokenData): Promise<Token> {
