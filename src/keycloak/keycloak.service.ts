@@ -149,7 +149,7 @@ export class KeyCloakService implements OnModuleInit {
 
     const { access_token, token_type } = await this.generateToken();
 
-    const existingUser = await this.httpClient.get(
+    const [existingUser] = await this.httpClient.get(
       `${this.server_uri}/admin/realms/${this.realm}/users?email=${email}`,
       {
         headers: {
@@ -159,7 +159,7 @@ export class KeyCloakService implements OnModuleInit {
         responseType: 'json',
       }
     );
-    return existingUser[0] ? true : false;
+    return !!existingUser;
   }
 
   public async registerUser({
