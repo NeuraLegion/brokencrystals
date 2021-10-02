@@ -13,6 +13,7 @@ import * as jwkToPem from 'jwk-to-pem';
 import { JWK } from 'jwk-to-pem';
 import { stringify } from 'querystring';
 import { verify } from 'jsonwebtoken';
+import { User } from 'src/model/user.entity';
 
 export interface OIDCIdentityConfig {
   issuer?: string;
@@ -26,6 +27,10 @@ export interface RegisterUserData {
   firstName: string;
   lastName: string;
   password: string;
+}
+
+export interface ExistingUserData {
+  email: string;
 }
 
 export interface GenerateTokenData {
@@ -137,17 +142,35 @@ export class KeyCloakService implements OnModuleInit {
     });
   }
 
+  public async isUserExists({ email }: ExistingUserData): Promise<boolean> {
+    this.log.debug(`Called isUserExist`);
+
+    const { access_token, token_type } = await this.generateToken();
+
+    const [existingUser]: unknown[] = await this.httpClient.get(
+      `${this.server_uri}/admin/realms/${this.realm}/users?email=${email}`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `${token_type} ${access_token}`,
+        },
+        responseType: 'json',
+      },
+    );
+    return !!existingUser;
+  }
+
   public async registerUser({
     firstName,
     lastName,
     email,
     password,
-  }: RegisterUserData): Promise<void> {
+  }: RegisterUserData): Promise<User> {
     this.log.debug(`Called registerUser`);
 
     const { access_token, token_type } = await this.generateToken();
 
-    await this.httpClient.post(
+    return this.httpClient.post(
       `${this.server_uri}/admin/realms/${this.realm}/users`,
       {
         firstName,
