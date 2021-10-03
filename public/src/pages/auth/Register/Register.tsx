@@ -1,6 +1,6 @@
 import React, { FC, FormEvent, useState } from 'react';
 import { postUser } from '../../../api/httpClient';
-import { RegistrationUser } from '../../../interfaces/User';
+import { RegistrationUser, LoginFormMode } from '../../../interfaces/User';
 import AuthLayout from '../AuthLayout';
 import { Link } from 'react-router-dom';
 import showRegResponse from './showRegReponse';
@@ -9,7 +9,8 @@ const defaultUser: RegistrationUser = {
   email: '',
   firstName: '',
   lastName: '',
-  password: ''
+  password: '',
+  op: LoginFormMode.BASIC
 };
 
 export const Register: FC = () => {
@@ -17,22 +18,51 @@ export const Register: FC = () => {
   const { email, firstName, lastName, password } = form;
 
   const [regResponse, setRegResponse] = useState<RegistrationUser | null>();
+  const [errorText, setErrorText] = useState<string | null>();
+
+  const [authMode, setAuthMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
 
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
     setForm({ ...form, [name]: value });
   };
 
+  const onAuthModeChange = ({ target }: { target: EventTarget | null }) => {
+    const { value } = target as HTMLSelectElement & { value: LoginFormMode };
+    setForm({ ...form, op: value });
+    setAuthMode(value);
+  };
+
   const sendUser = (e: FormEvent) => {
     e.preventDefault();
 
-    postUser(form).then((data) => setRegResponse(data));
+    postUser(form).then((data) => {
+      setRegResponse(data);
+      setErrorText(data.errorText);
+    });
   };
 
   return (
     <AuthLayout>
       <div className="login-form">
         <form onSubmit={sendUser}>
+          <div className="form-group">
+            <label>Registration Type</label>
+            <select
+              className="form-control"
+              name="op"
+              placeholder="Authentication Type"
+              value={authMode}
+              onChange={onAuthModeChange}
+            >
+              <option value={LoginFormMode.BASIC}>
+                Simple REST-based Registration
+              </option>
+              <option value={LoginFormMode.OIDC}>
+                Simple OIDC-based Registration
+              </option>
+            </select>
+          </div>
           <div className="form-group">
             <label>First name</label>
             <input
@@ -68,7 +98,7 @@ export const Register: FC = () => {
               onInput={onInput}
             />
           </div>
-
+          {errorText && <div className="error-text">{errorText}</div>}
           <div className="form-group">
             <label>Password</label>
             <input
