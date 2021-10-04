@@ -7,7 +7,7 @@ export const SWAGGER_DESC_loginWithKIDSqlJwt = `
 `;
 
 export const SWAGGER_DESC_callOIDCClient = `
-    Get OIDC client configuration. Returns public OIDC. This keys are configurable via CLIENT_ID, CLIENT_SECRET env variables.
+    Get OIDC client configuration. Returns public OIDC. These keys are configurable via CLIENT_ID, CLIENT_SECRET env variables.
 `;
 
 export const SWAGGER_DESC_validateWithKIDSqlJwt = `
