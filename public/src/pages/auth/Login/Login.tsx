@@ -209,7 +209,13 @@ export const Login: FC = () => {
             sign in
           </button>
         </form>
-
+        <div>
+          Hint: if you are looking for an authentication protected endpoint, try
+          using:
+          <a href="https://brokencrystals.com/api/products">
+            https://brokencrystals.com/api/products
+          </a>
+        </div>
         <div className="register-link">
           <p>
             Don't you have account? <Link to="/register">Sign Up Here</Link>

@@ -35,6 +35,7 @@ import {
   SWAGGER_DESC_validateWithWeakKeyJwt,
   SWAGGER_DESC_validateWithX5CJwt,
   SWAGGER_DESC_validateWithX5UJwt,
+  SWAGGER_DESC_callOIDCClient,
 } from './auth.controller.swagger.desc';
 import { AuthGuard } from './auth.guard';
 import { AuthService, JwtProcessorType } from './auth.service';
@@ -153,6 +154,13 @@ export class AuthController {
   }
 
   @Get('oidc-client')
+  @ApiResponse({
+    type: OidcClientResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_callOIDCClient,
+  })
   async getOidcClient(): Promise<OidcClientResponse> {
     this.logger.debug('Call getOidcClient');
 
