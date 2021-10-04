@@ -218,7 +218,7 @@ export const Login: FC = () => {
         </div>
         <div className="register-link">
           <p>
-            Don't you have account? <Link to="/register">Sign Up Here</Link>
+            Don't have an account? <Link to="/register">Sign Up Here</Link>
           </p>
         </div>
       </div>
