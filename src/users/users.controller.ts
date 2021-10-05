@@ -44,6 +44,9 @@ export class UsersController {
   ) {}
 
   @Options()
+  @ApiOperation({
+    description: 'List of permitted communication options',
+  })
   @Header('allow', 'OPTIONS, GET, POST, DELETE')
   async getTestOptions(): Promise<void> {
     this.logger.debug(`Test OPTIONS`);
@@ -156,11 +159,17 @@ export class UsersController {
 
   @Post('/basic')
   @ApiOperation({
-    description: 'creates user',
+    description: 'Creates BASIC user',
+  })
+  @ApiResponse({
+    type: Error,
+    status: 409,
+    description: 'User Already exists',
   })
   @ApiResponse({
     type: UserDto,
-    status: 200,
+    status: 201,
+    description: 'User created',
   })
   async createUser(@Body() user: CreateUserRequest): Promise<UserDto> {
     try {
@@ -190,11 +199,17 @@ export class UsersController {
 
   @Post('/oidc')
   @ApiOperation({
-    description: 'creates user',
+    description: 'Creates OIDC user',
+  })
+  @ApiResponse({
+    type: Error,
+    status: 409,
+    description: 'User Already exists',
   })
   @ApiResponse({
     type: UserDto,
-    status: 200,
+    status: 201,
+    description: 'User created',
   })
   async createOIDCUser(@Body() user: CreateUserRequest): Promise<UserDto> {
     try {
