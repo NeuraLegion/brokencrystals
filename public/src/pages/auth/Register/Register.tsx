@@ -22,6 +22,8 @@ export const Register: FC = () => {
 
   const [authMode, setAuthMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
 
+  const [submitBtnDisabled, setSubmitBtnDisabled] = useState<boolean>(false);
+
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
     setForm({ ...form, [name]: value });
@@ -35,10 +37,18 @@ export const Register: FC = () => {
 
   const sendUser = (e: FormEvent) => {
     e.preventDefault();
-
+    console.log('click');
+    setSubmitBtnDisabled(true);
     postUser(form).then((data) => {
-      setRegResponse(data);
-      setErrorText(data.errorText);
+      if (data.errorText) {
+        setErrorText(data.errorText);
+        setSubmitBtnDisabled(false);
+      } else {
+        setRegResponse(data);
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 1500);
+      }
     });
   };
 
@@ -116,6 +126,7 @@ export const Register: FC = () => {
           <button
             className="au-btn au-btn--block au-btn--green m-b-20"
             type="submit"
+            disabled={submitBtnDisabled}
           >
             register
           </button>
