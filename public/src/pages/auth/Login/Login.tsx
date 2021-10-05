@@ -3,6 +3,7 @@ import getBrowserFingerprint from 'get-browser-fingerprint';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { OidcClient } from '../../../interfaces/Auth';
+import { RoutePath } from 'src/router/RoutePath';
 import {
   getLdap,
   getUser,
@@ -218,7 +219,8 @@ export const Login: FC = () => {
         </div>
         <div className="register-link">
           <p>
-            Don't have an account? <Link to="/register">Sign Up Here</Link>
+            Don't have an account?{' '}
+            <Link to={RoutePath.Register}>Sign Up Here</Link>
           </p>
         </div>
       </div>

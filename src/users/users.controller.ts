@@ -215,14 +215,6 @@ export class UsersController {
     try {
       this.logger.debug(`Create a OIDC user: ${user}`);
 
-      const userExists = await this.keyCloakService.isUserExists({
-        email: user.email,
-      });
-
-      if (userExists) {
-        throw new HttpException('User already exists', 409);
-      }
-
       return new UserDto(
         await this.keyCloakService.registerUser({
           email: user.email,
@@ -233,8 +225,8 @@ export class UsersController {
       );
     } catch (err) {
       throw new HttpException(
-        err.message ?? 'Something went wrong',
-        err.status ?? 500,
+        err.response.data ?? 'Something went wrong',
+        err.response.status ?? 500,
       );
     }
   }
