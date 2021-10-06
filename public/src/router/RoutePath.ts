@@ -1,6 +1,6 @@
 export enum RoutePath {
   Home = '/',
-  Login = '/login',
-  Register = '/register',
+  Login = '/userlogin',
+  Register = '/usersignup',
   Marketplace = '/marketplace'
 }
