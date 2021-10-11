@@ -17,17 +17,22 @@ import * as path from 'path';
 import { Stream } from 'stream';
 import { FileService } from './file.service';
 import { FastifyReply } from 'fastify';
+import {
+  SWAGGER_DESC_deleteFile,
+  SWAGGER_DESC_readFile,
+  SWAGGER_DESC_readFileOnServer,
+  SWAGGER_DESC_saveRawContent,
+} from './file.controller.swagger.desc';
 
 @Controller('/api/file')
-@ApiTags('files controller')
+@ApiTags('Files controller')
 export class FileController {
   private readonly logger = new Logger(FileController.name);
 
   constructor(private fileService: FileService) {}
 
   @ApiOperation({
-    description:
-      'Reads the file from the provided path and the supplied content type and returns the file',
+    description: SWAGGER_DESC_readFile,
   })
   @Get()
   async loadFile(
@@ -53,7 +58,7 @@ export class FileController {
   }
 
   @ApiOperation({
-    description: 'deletes file at the given path',
+    description: SWAGGER_DESC_deleteFile,
   })
   @Delete()
   async deleteFile(@Query('path') path: string): Promise<void> {
@@ -61,7 +66,7 @@ export class FileController {
   }
 
   @ApiOperation({
-    description: 'save raw content on server as a file',
+    description: SWAGGER_DESC_saveRawContent,
   })
   @Put('raw')
   async uploadFile(@Query('path') file, @Body() raw: Buffer): Promise<void> {
@@ -76,7 +81,7 @@ export class FileController {
   }
 
   @ApiOperation({
-    description: 'read file content content on server as a file',
+    description: SWAGGER_DESC_readFileOnServer,
   })
   @Get('raw')
   async readFile(

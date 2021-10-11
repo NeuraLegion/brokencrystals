@@ -13,7 +13,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { User } from '../model/user.entity';
 import { LdapQueryHandler } from '../users/ldap.query.handler';
 import { UsersService } from '../users/users.service';
@@ -36,6 +42,8 @@ import {
   SWAGGER_DESC_validateWithX5CJwt,
   SWAGGER_DESC_validateWithX5UJwt,
   SWAGGER_DESC_callOIDCClient,
+  SWAGGER_DESC_requestWithDomCsrfToken,
+  SWAGGER_DESC_requestWithSimpleCsrfToken,
 } from './auth.controller.swagger.desc';
 import { AuthGuard } from './auth.guard';
 import { AuthService, JwtProcessorType } from './auth.service';
@@ -52,7 +60,7 @@ interface LoginData {
 }
 
 @Controller('/api/auth')
-@ApiTags('auth controller')
+@ApiTags('Auth controller')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
   private readonly CSRF_COOKIE_HEADER = '_csrf';
@@ -118,6 +126,12 @@ export class AuthController {
   }
 
   @Get('dom-csrf-flow')
+  @ApiOperation({
+    description: SWAGGER_DESC_requestWithDomCsrfToken,
+  })
+  @ApiBadRequestResponse({
+    description: 'Bad request, fingerprint is required',
+  })
   async getDomCsrfToken(
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
@@ -140,6 +154,10 @@ export class AuthController {
   }
 
   @Get('simple-csrf-flow')
+  @ApiOperation({
+    description: SWAGGER_DESC_requestWithSimpleCsrfToken,
+  })
+  @ApiOkResponse()
   async getCsrfToken(
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<string> {

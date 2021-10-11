@@ -17,6 +17,7 @@ import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
 import * as rawbody from 'raw-body';
+// import { } from '../public/public/assets/img/logo.svg'
 
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
@@ -48,17 +49,43 @@ async function bootstrap() {
     .useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
 
   app.enableCors({
-    origin: '*',
+    origin: true,
     preflightContinue: true,
+    credentials: true,
   });
 
   const options = new DocumentBuilder()
-    .setTitle('Broken Crystal')
+    .setTitle('Broken Crystals')
     .setDescription(
-      'Broken Crystals is a benchmark application that uses modern technologies and implements a set of common security vulnerabilities.',
+      `
+  ![BC logo](https://brokencrystals.neuralegion.com/assets/img/logo_blue_small.png)
+
+  This is the _Broken Crystals_ REST API.
+
+  _Broken Crystals_ is a benchmark application that uses modern technologies and implements a set of common security vulnerabilities.
+
+  ## Available endpoints
+
+  * [App](#/App%20controller) - common operations
+
+  * [Auth](#/Auth%20controller) - operations with authentication methods
+
+  * [User](#/User%20controller) - operations with users(creation, searching)
+
+  * [Files](#/Files%20controller) - operations with files
+
+  * [Subscriptions](#/Subscriptions%20controller) - operations with subscriptions
+
+  * [Testimonials](#/Testimonials%20controller) - operations with testimonials
+
+  * [Products](#/Products%20controller) — operations with products
+
+
+  `,
     )
     .setVersion('1.0')
-    .addServer('https://brokencrystals.com/')
+    // .addServer('https://brokencrystals.com/')
+    .addServer('http://127.0.0.1:3000/')
     .build();
   const document = SwaggerModule.createDocument(app, options);
 
