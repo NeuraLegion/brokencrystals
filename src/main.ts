@@ -17,7 +17,6 @@ import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
 import * as rawbody from 'raw-body';
-// import { } from '../public/public/assets/img/logo.svg'
 
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
@@ -84,8 +83,7 @@ async function bootstrap() {
   `,
     )
     .setVersion('1.0')
-    // .addServer('https://brokencrystals.com/')
-    .addServer('http://127.0.0.1:3000/')
+    .addServer('https://brokencrystals.com/')
     .build();
   const document = SwaggerModule.createDocument(app, options);
 
