@@ -7,16 +7,21 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
 import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
 import { TestimonialDto } from './api/TestimonialDto';
+import {
+  SWAGGER_DESC_createTestimonial,
+  SWAGGER_DESC_getTestimonials,
+  SWAGGER_DESC_getTestimonialsOnSqlQuery,
+} from './testimonials.controller.swagger.desc';
 import { TestimonialsService } from './testimonials.service';
 
 @Controller('/api/testimonials')
-@ApiTags('testimonials controller')
+@ApiTags('Testimonials controller')
 export class TestimonialsController {
   private readonly logger = new Logger(TestimonialsController.name);
 
@@ -26,11 +31,10 @@ export class TestimonialsController {
   @JwtType(JwtProcessorType.RSA)
   @Post()
   @ApiOperation({
-    description: 'creates testimonial',
+    description: SWAGGER_DESC_createTestimonial,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: TestimonialDto,
-    status: 200,
   })
   async createTestimonial(
     @Body() req: CreateTestimonialRequest,
@@ -47,12 +51,11 @@ export class TestimonialsController {
 
   @Get()
   @ApiOperation({
-    description: 'returns all testimonials',
+    description: SWAGGER_DESC_getTestimonials,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: TestimonialDto,
     isArray: true,
-    status: 200,
   })
   async getTestimonials(): Promise<TestimonialDto[]> {
     this.logger.debug('Get all testimonials.');
@@ -63,12 +66,10 @@ export class TestimonialsController {
 
   @Get('count')
   @ApiOperation({
-    description:
-      'returns count of all testimonials based on provided sql query',
+    description: SWAGGER_DESC_getTestimonialsOnSqlQuery,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: String,
-    status: 200,
   })
   async getCount(@Query('query') query: string): Promise<string> {
     this.logger.debug('Get count of testimonials.');

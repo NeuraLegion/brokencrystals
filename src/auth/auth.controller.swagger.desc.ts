@@ -14,9 +14,19 @@ export const SWAGGER_DESC_validateWithKIDSqlJwt = `
     Validates the JWT header and returns secret if the header is valid. Executes SQL query by concatenating the KID value with the query.
     In case of None algorithm ignores the signature.
 `;
+
 export const SWAGGER_DESC_loginWithWeakKeyJwt = `
     Authenticates user and returns JWT token with HCA256. The key is configurable on server via the JWT_SECRET_KEY env variable.
 `;
+
+export const SWAGGER_DESC_requestWithDomCsrfToken = `
+    Authenticates user and returns DOM CSRF token.
+`;
+
+export const SWAGGER_DESC_requestWithSimpleCsrfToken = `
+    Returns Simple CSRF token.
+`;
+
 export const SWAGGER_DESC_validateWithWeakKeyJwt = `
     Validates the JWT header and return secret if the header is valid. The token validation is done using algorithm in header and key
     that is configured in JWT_SECRET_KEY env variable. In case of None algorithm ignores the signature.
