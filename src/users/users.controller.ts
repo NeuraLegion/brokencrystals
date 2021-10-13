@@ -18,7 +18,15 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CreateUserRequest } from './api/CreateUserRequest';
 import { UserDto } from './api/UserDto';
 import { LdapQueryHandler } from './ldap.query.handler';
@@ -31,9 +39,16 @@ import { JwtProcessorType } from '../auth/auth.service';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { AnyFilesInterceptor } from '../components/any-files.interceptor';
 import { KeyCloakService } from '../keycloak/keycloak.service';
+import {
+  SWAGGER_DESC_CREATE_BASIC_USER,
+  SWAGGER_DESC_FIND_USER_BY_EMAIL,
+  SWAGGER_DESC_LDAP_SEARCH,
+  SWAGGER_DESC_OPTIONS_REQUEST,
+  SWAGGER_DESC_UPLOAD_USER_PHOTO,
+} from './users.controller.swagger.desc';
 
 @Controller('/api/users')
-@ApiTags('user controller')
+@ApiTags('User controller')
 export class UsersController {
   private logger = new Logger(UsersController.name);
   private ldapQueryHandler = new LdapQueryHandler();
@@ -45,20 +60,20 @@ export class UsersController {
 
   @Options()
   @ApiOperation({
-    description: 'List of permitted communication options',
+    description: SWAGGER_DESC_OPTIONS_REQUEST,
   })
-  @Header('allow', 'OPTIONS, GET, POST, DELETE')
+  @Header('Access-Control-Request-Headers', 'OPTIONS, GET, POST, DELETE')
   async getTestOptions(): Promise<void> {
     this.logger.debug(`Test OPTIONS`);
   }
 
   @Get('/one/:email')
   @ApiOperation({
-    description: 'returns user',
+    description: SWAGGER_DESC_FIND_USER_BY_EMAIL,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: UserDto,
-    status: 200,
+    description: 'Returns empty object when user is not found',
   })
   async getUser(@Param('email') email: string): Promise<UserDto> {
     try {
@@ -75,13 +90,14 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @Get('/one/:email/photo')
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'returns user profile photo',
+  @ApiOkResponse({
+    description: 'Returns user profile photo',
   })
-  @ApiResponse({
-    status: HttpStatus.NO_CONTENT,
-    description: 'returns empty content if photo is not set',
+  @ApiNoContentResponse({
+    description: 'Returns empty content if photo is not set',
+  })
+  @ApiForbiddenResponse({
+    description: 'Returns this status is user is not authenticated',
   })
   async getUserPhoto(
     @Param('email') email: string,
@@ -120,12 +136,11 @@ export class UsersController {
 
   @Get('/ldap')
   @ApiOperation({
-    description: 'performs LDAP search for user details',
+    description: SWAGGER_DESC_LDAP_SEARCH,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: UserDto,
     isArray: true,
-    status: 200,
   })
   async ldapQuery(@Query('query') query: string): Promise<UserDto[]> {
     this.logger.debug(`Call ldapQuery: ${query}`);
@@ -159,16 +174,14 @@ export class UsersController {
 
   @Post('/basic')
   @ApiOperation({
-    description: 'Creates BASIC user',
+    description: SWAGGER_DESC_CREATE_BASIC_USER,
   })
-  @ApiResponse({
+  @ApiConflictResponse({
     type: Error,
-    status: 409,
     description: 'User Already exists',
   })
-  @ApiResponse({
+  @ApiCreatedResponse({
     type: UserDto,
-    status: 201,
     description: 'User created',
   })
   async createUser(@Body() user: CreateUserRequest): Promise<UserDto> {
@@ -199,16 +212,14 @@ export class UsersController {
 
   @Post('/oidc')
   @ApiOperation({
-    description: 'Creates OIDC user',
+    description: '',
   })
-  @ApiResponse({
+  @ApiConflictResponse({
     type: Error,
-    status: 409,
     description: 'User Already exists',
   })
-  @ApiResponse({
+  @ApiCreatedResponse({
     type: UserDto,
-    status: 201,
     description: 'User created',
   })
   async createOIDCUser(@Body() user: CreateUserRequest): Promise<UserDto> {
@@ -235,7 +246,7 @@ export class UsersController {
   @JwtType(JwtProcessorType.RSA)
   @Put('/one/:email/photo')
   @ApiOperation({
-    description: 'uploads user profile photo',
+    description: SWAGGER_DESC_UPLOAD_USER_PHOTO,
   })
   @UseInterceptors(AnyFilesInterceptor)
   async uploadFile(@Param('email') email: string, @Req() req: FastifyRequest) {
