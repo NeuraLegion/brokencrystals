@@ -18,10 +18,10 @@ import { Stream } from 'stream';
 import { FileService } from './file.service';
 import { FastifyReply } from 'fastify';
 import {
-  SWAGGER_DESC_deleteFile,
-  SWAGGER_DESC_readFile,
-  SWAGGER_DESC_readFileOnServer,
-  SWAGGER_DESC_saveRawContent,
+  SWAGGER_DESC_DELETE_FILE,
+  SWAGGER_DESC_READ_FILE,
+  SWAGGER_DESC_READ_FILE_ON_SERVER,
+  SWAGGER_DESC_SAVE_RAW_CONTENT,
 } from './file.controller.swagger.desc';
 
 @Controller('/api/file')
@@ -32,7 +32,7 @@ export class FileController {
   constructor(private fileService: FileService) {}
 
   @ApiOperation({
-    description: SWAGGER_DESC_readFile,
+    description: SWAGGER_DESC_READ_FILE,
   })
   @Get()
   async loadFile(
@@ -58,7 +58,7 @@ export class FileController {
   }
 
   @ApiOperation({
-    description: SWAGGER_DESC_deleteFile,
+    description: SWAGGER_DESC_DELETE_FILE,
   })
   @Delete()
   async deleteFile(@Query('path') path: string): Promise<void> {
@@ -66,7 +66,7 @@ export class FileController {
   }
 
   @ApiOperation({
-    description: SWAGGER_DESC_saveRawContent,
+    description: SWAGGER_DESC_SAVE_RAW_CONTENT,
   })
   @Put('raw')
   async uploadFile(@Query('path') file, @Body() raw: Buffer): Promise<void> {
@@ -81,7 +81,7 @@ export class FileController {
   }
 
   @ApiOperation({
-    description: SWAGGER_DESC_readFileOnServer,
+    description: SWAGGER_DESC_READ_FILE_ON_SERVER,
   })
   @Get('raw')
   async readFile(

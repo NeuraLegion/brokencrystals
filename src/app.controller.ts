@@ -26,12 +26,12 @@ import { AppConfig } from './app.config.api';
 import { AppModuleConfigProperties } from './app.module.config.properties';
 import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 import {
-  SWAGGER_DESC_configserver,
-  SWAGGER_DESC_launchcommand,
-  SWAGGER_DESC_optionsrequest,
-  SWAGGER_DESC_redirectrequest,
-  SWAGGER_DESC_renderrequest,
-  SWAGGER_DESC_xmlmetadata,
+  SWAGGER_DESC_CONFIG_SERVER,
+  SWAGGER_DESC_LAUNCH_COMMAND,
+  SWAGGER_DESC_OPTIONS_REQUEST,
+  SWAGGER_DESC_REDIRECT_REQUEST,
+  SWAGGER_DESC_RENDER_REQUEST,
+  SWAGGER_DESC_XML_METADATA,
 } from './app.controller.swagger.desc';
 
 @Controller('/api')
@@ -48,7 +48,7 @@ export class AppController {
   @ApiProduces('text/plain')
   @ApiConsumes('text/plain')
   @ApiOperation({
-    description: SWAGGER_DESC_renderrequest,
+    description: SWAGGER_DESC_RENDER_REQUEST,
   })
   @ApiCreatedResponse({
     description: 'Rendered result',
@@ -64,7 +64,7 @@ export class AppController {
   }
 
   @ApiOperation({
-    description: SWAGGER_DESC_redirectrequest,
+    description: SWAGGER_DESC_REDIRECT_REQUEST,
   })
   @Get('goto')
   @Redirect()
@@ -73,7 +73,7 @@ export class AppController {
   }
 
   @ApiOperation({
-    description: SWAGGER_DESC_xmlmetadata,
+    description: SWAGGER_DESC_XML_METADATA,
   })
   @ApiInternalServerErrorResponse({
     description: 'Invalid data',
@@ -103,7 +103,7 @@ export class AppController {
   }
 
   @ApiOperation({
-    description: SWAGGER_DESC_optionsrequest,
+    description: SWAGGER_DESC_OPTIONS_REQUEST,
   })
   @Options()
   @Header('allow', 'OPTIONS, GET, HEAD, POST')
@@ -113,7 +113,7 @@ export class AppController {
 
   @Get('spawn')
   @ApiOperation({
-    description: SWAGGER_DESC_launchcommand,
+    description: SWAGGER_DESC_LAUNCH_COMMAND,
   })
   @ApiOkResponse({
     type: String,
@@ -148,7 +148,7 @@ export class AppController {
   }
 
   @ApiOperation({
-    description: SWAGGER_DESC_configserver,
+    description: SWAGGER_DESC_CONFIG_SERVER,
   })
   @ApiOkResponse({
     type: AppConfig,

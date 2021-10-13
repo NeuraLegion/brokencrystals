@@ -1,6 +1,6 @@
 import { Controller, Logger, Post, Query } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { SWAGGER_DESC_createSubscription } from './subscriptions.controller.swagger.desc';
+import { SWAGGER_DESC_CREATE_SUBSCRIPTION } from './subscriptions.controller.swagger.desc';
 
 @Controller('/api/subscriptions')
 @ApiTags('Subscriptions controller')
@@ -9,7 +9,7 @@ export class SubscriptionsController {
 
   @Post()
   @ApiOperation({
-    description: SWAGGER_DESC_createSubscription,
+    description: SWAGGER_DESC_CREATE_SUBSCRIPTION,
   })
   @ApiCreatedResponse({
     description: 'Returns subscribed email',

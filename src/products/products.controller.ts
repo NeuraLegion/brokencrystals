@@ -7,8 +7,8 @@ import { ProductDto } from './api/ProductDto';
 import { ProductsService } from './products.service';
 import { Product } from '../model/product.entity';
 import {
-  SWAGGER_DESC_getLatestProducts,
-  SWAGGER_DESC_getProducts,
+  SWAGGER_DESC_GET_LATEST_PRODUCTS,
+  SWAGGER_DESC_GET_PRODUCTS,
 } from './products.controller.swagger.desc';
 
 @Controller('/api/products')
@@ -22,7 +22,7 @@ export class ProductsController {
   @JwtType(JwtProcessorType.RSA)
   @Get()
   @ApiOperation({
-    description: SWAGGER_DESC_getProducts,
+    description: SWAGGER_DESC_GET_PRODUCTS,
   })
   @ApiOkResponse({
     type: ProductDto,
@@ -36,7 +36,7 @@ export class ProductsController {
 
   @Get('latest')
   @ApiOperation({
-    description: SWAGGER_DESC_getLatestProducts,
+    description: SWAGGER_DESC_GET_LATEST_PRODUCTS,
   })
   @ApiOkResponse({
     type: ProductDto,

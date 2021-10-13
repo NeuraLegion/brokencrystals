@@ -14,9 +14,9 @@ import { JwtType } from '../auth/jwt/jwt.type.decorator';
 import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
 import { TestimonialDto } from './api/TestimonialDto';
 import {
-  SWAGGER_DESC_createTestimonial,
-  SWAGGER_DESC_getTestimonials,
-  SWAGGER_DESC_getTestimonialsOnSqlQuery,
+  SWAGGER_DESC_CREATE_TESTIMONIAL,
+  SWAGGER_DESC_GET_TESTIMONIALS,
+  SWAGGER_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
 } from './testimonials.controller.swagger.desc';
 import { TestimonialsService } from './testimonials.service';
 
@@ -31,7 +31,7 @@ export class TestimonialsController {
   @JwtType(JwtProcessorType.RSA)
   @Post()
   @ApiOperation({
-    description: SWAGGER_DESC_createTestimonial,
+    description: SWAGGER_DESC_CREATE_TESTIMONIAL,
   })
   @ApiOkResponse({
     type: TestimonialDto,
@@ -51,7 +51,7 @@ export class TestimonialsController {
 
   @Get()
   @ApiOperation({
-    description: SWAGGER_DESC_getTestimonials,
+    description: SWAGGER_DESC_GET_TESTIMONIALS,
   })
   @ApiOkResponse({
     type: TestimonialDto,
@@ -66,7 +66,7 @@ export class TestimonialsController {
 
   @Get('count')
   @ApiOperation({
-    description: SWAGGER_DESC_getTestimonialsOnSqlQuery,
+    description: SWAGGER_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
   })
   @ApiOkResponse({
     type: String,

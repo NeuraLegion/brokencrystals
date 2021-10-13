@@ -40,11 +40,11 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { AnyFilesInterceptor } from '../components/any-files.interceptor';
 import { KeyCloakService } from '../keycloak/keycloak.service';
 import {
-  SWAGGER_DESC_createbasicuser,
-  SWAGGER_DESC_finduserbyemail,
-  SWAGGER_DESC_LDAPsearch,
-  SWAGGER_DESC_optionsrequest,
-  SWAGGER_DESC_uploaduserphoto,
+  SWAGGER_DESC_CREATE_BASIC_USER,
+  SWAGGER_DESC_FIND_USER_BY_EMAIL,
+  SWAGGER_DESC_LDAP_SEARCH,
+  SWAGGER_DESC_OPTIONS_REQUEST,
+  SWAGGER_DESC_UPLOAD_USER_PHOTO,
 } from './users.controller.swagger.desc';
 
 @Controller('/api/users')
@@ -60,7 +60,7 @@ export class UsersController {
 
   @Options()
   @ApiOperation({
-    description: SWAGGER_DESC_optionsrequest,
+    description: SWAGGER_DESC_OPTIONS_REQUEST,
   })
   @Header('Access-Control-Request-Headers', 'OPTIONS, GET, POST, DELETE')
   async getTestOptions(): Promise<void> {
@@ -69,7 +69,7 @@ export class UsersController {
 
   @Get('/one/:email')
   @ApiOperation({
-    description: SWAGGER_DESC_finduserbyemail,
+    description: SWAGGER_DESC_FIND_USER_BY_EMAIL,
   })
   @ApiOkResponse({
     type: UserDto,
@@ -136,7 +136,7 @@ export class UsersController {
 
   @Get('/ldap')
   @ApiOperation({
-    description: SWAGGER_DESC_LDAPsearch,
+    description: SWAGGER_DESC_LDAP_SEARCH,
   })
   @ApiOkResponse({
     type: UserDto,
@@ -174,7 +174,7 @@ export class UsersController {
 
   @Post('/basic')
   @ApiOperation({
-    description: SWAGGER_DESC_createbasicuser,
+    description: SWAGGER_DESC_CREATE_BASIC_USER,
   })
   @ApiConflictResponse({
     type: Error,
@@ -246,7 +246,7 @@ export class UsersController {
   @JwtType(JwtProcessorType.RSA)
   @Put('/one/:email/photo')
   @ApiOperation({
-    description: SWAGGER_DESC_uploaduserphoto,
+    description: SWAGGER_DESC_UPLOAD_USER_PHOTO,
   })
   @UseInterceptors(AnyFilesInterceptor)
   async uploadFile(@Param('email') email: string, @Req() req: FastifyRequest) {
