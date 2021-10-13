@@ -1,15 +1,18 @@
 import { Controller, Logger, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SWAGGER_DESC_CREATE_SUBSCRIPTION } from './subscriptions.controller.swagger.desc';
 
 @Controller('/api/subscriptions')
-@ApiTags('subscriptions controller')
+@ApiTags('Subscriptions controller')
 export class SubscriptionsController {
   private readonly logger = new Logger(SubscriptionsController.name);
 
   @Post()
   @ApiOperation({
-    description:
-      'creates subscription for provided email and returns the email address',
+    description: SWAGGER_DESC_CREATE_SUBSCRIPTION,
+  })
+  @ApiCreatedResponse({
+    description: 'Returns subscribed email',
   })
   async subscribe(@Query('email') email: string): Promise<string> {
     this.logger.log(`Subscribed with email ${email}`);

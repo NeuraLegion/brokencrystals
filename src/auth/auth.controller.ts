@@ -13,7 +13,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { User } from '../model/user.entity';
 import { LdapQueryHandler } from '../users/ldap.query.handler';
 import { UsersService } from '../users/users.service';
@@ -22,19 +28,22 @@ import { FormMode, LoginRequest } from './api/login.request';
 import { LoginResponse } from './api/LoginResponse';
 import { OidcClientResponse } from './api/OidcClientResponse';
 import {
-  SWAGGER_DESC_loginWithJKUJwt,
-  SWAGGER_DESC_loginWithJWKJwt,
-  SWAGGER_DESC_loginWithKIDSqlJwt,
-  SWAGGER_DESC_loginWithRSAJwtKeys,
-  SWAGGER_DESC_loginWithWeakKeyJwt,
-  SWAGGER_DESC_loginWithX5CJwt,
-  SWAGGER_DESC_loginWithX5UJwt,
-  SWAGGER_DESC_validateWithJKUJwt,
-  SWAGGER_DESC_validateWithJWKJwt,
-  SWAGGER_DESC_validateWithKIDSqlJwt,
-  SWAGGER_DESC_validateWithWeakKeyJwt,
-  SWAGGER_DESC_validateWithX5CJwt,
-  SWAGGER_DESC_validateWithX5UJwt,
+  SWAGGER_DESC_LOGIN_WITH_JKU_JWT,
+  SWAGGER_DESC_LOGIN_WITH_JWK_JWT,
+  SWAGGER_DESC_LOGIN_WITH_KID_SQL_JWT,
+  SWAGGER_DESC_LOGIN_WITH_RSA_JWT_KEYS,
+  SWAGGER_DESC_LOGIN_WITH_WEAK_KEY_JWT,
+  SWAGGER_DESC_LOGIN_WITH_X5C_JWT,
+  SWAGGER_DESC_LOGIN_WITH_X5U_JWT,
+  SWAGGER_DESC_VALIDATE_WITH_JKU_JWT,
+  SWAGGER_DESC_VALIDATE_WITH_JWK_JWT,
+  SWAGGER_DESC_VALIDATE_WITH_KID_SQL_JWT,
+  SWAGGER_DESC_VALIDATE_WITH_WEAK_KEY_JWT,
+  SWAGGER_DESC_VALIDATE_WITH_X5C_JWT,
+  SWAGGER_DESC_VALIDATE_WITH_X5U_JWT,
+  SWAGGER_DESC_CALL_OIDC_CLIENT,
+  SWAGGER_DESC_REQUEST_WITH_DOM_CSRF_TOKEN,
+  SWAGGER_DESC_REQUEST_WITH_SIMPLE_CSRF_TOKEN,
 } from './auth.controller.swagger.desc';
 import { AuthGuard } from './auth.guard';
 import { AuthService, JwtProcessorType } from './auth.service';
@@ -51,7 +60,7 @@ interface LoginData {
 }
 
 @Controller('/api/auth')
-@ApiTags('auth controller')
+@ApiTags('Auth controller')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
   private readonly CSRF_COOKIE_HEADER = '_csrf';
@@ -72,7 +81,7 @@ export class AuthController {
     description: 'invalid credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithRSAJwtKeys,
+    description: SWAGGER_DESC_LOGIN_WITH_RSA_JWT_KEYS,
   })
   async loginWithRSAJwtKeysAdmin(
     @Body() req: LoginRequest,
@@ -93,7 +102,7 @@ export class AuthController {
     description: 'invalid credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithRSAJwtKeys,
+    description: SWAGGER_DESC_LOGIN_WITH_RSA_JWT_KEYS,
   })
   async loginWithRSAJwtKeys(
     @Body() req: LoginRequest,
@@ -117,6 +126,12 @@ export class AuthController {
   }
 
   @Get('dom-csrf-flow')
+  @ApiOperation({
+    description: SWAGGER_DESC_REQUEST_WITH_DOM_CSRF_TOKEN,
+  })
+  @ApiBadRequestResponse({
+    description: 'Bad request, fingerprint is required',
+  })
   async getDomCsrfToken(
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply,
@@ -139,6 +154,10 @@ export class AuthController {
   }
 
   @Get('simple-csrf-flow')
+  @ApiOperation({
+    description: SWAGGER_DESC_REQUEST_WITH_SIMPLE_CSRF_TOKEN,
+  })
+  @ApiOkResponse()
   async getCsrfToken(
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<string> {
@@ -153,6 +172,13 @@ export class AuthController {
   }
 
   @Get('oidc-client')
+  @ApiResponse({
+    type: OidcClientResponse,
+    status: HttpStatus.OK,
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_CALL_OIDC_CLIENT,
+  })
   async getOidcClient(): Promise<OidcClientResponse> {
     this.logger.debug('Call getOidcClient');
 
@@ -175,7 +201,7 @@ export class AuthController {
     description: 'invalid credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithKIDSqlJwt,
+    description: SWAGGER_DESC_LOGIN_WITH_KID_SQL_JWT,
   })
   async loginWithKIDSqlJwt(
     @Body() req: LoginRequest,
@@ -207,7 +233,7 @@ export class AuthController {
     description: 'invalid credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_validateWithKIDSqlJwt,
+    description: SWAGGER_DESC_VALIDATE_WITH_KID_SQL_JWT,
   })
   async validateWithKIDSqlJwt(): Promise<JwtValidationResponse> {
     return {
@@ -225,7 +251,7 @@ export class AuthController {
     description: 'invalid credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithWeakKeyJwt,
+    description: SWAGGER_DESC_LOGIN_WITH_WEAK_KEY_JWT,
   })
   async loginWithWeakKeyJwt(
     @Body() req: LoginRequest,
@@ -249,7 +275,7 @@ export class AuthController {
   @JwtType(JwtProcessorType.WEAK_KEY)
   @Get('jwt/weak-key/validate')
   @ApiOperation({
-    description: SWAGGER_DESC_validateWithWeakKeyJwt,
+    description: SWAGGER_DESC_VALIDATE_WITH_WEAK_KEY_JWT,
   })
   @ApiResponse({
     type: JwtValidationResponse,
@@ -275,7 +301,7 @@ export class AuthController {
     description: 'invalid credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithJKUJwt,
+    description: SWAGGER_DESC_LOGIN_WITH_JKU_JWT,
   })
   async loginWithJKUJwt(
     @Body() req: LoginRequest,
@@ -299,7 +325,7 @@ export class AuthController {
   @JwtType(JwtProcessorType.JKU)
   @Get('jwt/jku/validate')
   @ApiOperation({
-    description: SWAGGER_DESC_validateWithJKUJwt,
+    description: SWAGGER_DESC_VALIDATE_WITH_JKU_JWT,
   })
   @ApiResponse({
     type: JwtValidationResponse,
@@ -325,7 +351,7 @@ export class AuthController {
     description: 'invalid credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithJWKJwt,
+    description: SWAGGER_DESC_LOGIN_WITH_JWK_JWT,
   })
   async loginWithJWKJwt(
     @Body() req: LoginRequest,
@@ -349,7 +375,7 @@ export class AuthController {
   @JwtType(JwtProcessorType.JWK)
   @Get('jwt/jwk/validate')
   @ApiOperation({
-    description: SWAGGER_DESC_validateWithJWKJwt,
+    description: SWAGGER_DESC_VALIDATE_WITH_JWK_JWT,
   })
   @ApiResponse({
     type: JwtValidationResponse,
@@ -375,7 +401,7 @@ export class AuthController {
     description: 'invalid credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithX5CJwt,
+    description: SWAGGER_DESC_LOGIN_WITH_X5C_JWT,
   })
   async loginWithX5CJwt(
     @Body() req: LoginRequest,
@@ -399,7 +425,7 @@ export class AuthController {
   @JwtType(JwtProcessorType.X5C)
   @Get('jwt/x5c/validate')
   @ApiOperation({
-    description: SWAGGER_DESC_validateWithX5CJwt,
+    description: SWAGGER_DESC_VALIDATE_WITH_X5C_JWT,
   })
   @ApiResponse({
     type: JwtValidationResponse,
@@ -425,7 +451,7 @@ export class AuthController {
     description: 'invalid credentials',
   })
   @ApiOperation({
-    description: SWAGGER_DESC_loginWithX5UJwt,
+    description: SWAGGER_DESC_LOGIN_WITH_X5U_JWT,
   })
   async loginWithX5UJwt(
     @Body() req: LoginRequest,
@@ -449,7 +475,7 @@ export class AuthController {
   @JwtType(JwtProcessorType.X5U)
   @Get('jwt/x5u/validate')
   @ApiOperation({
-    description: SWAGGER_DESC_validateWithX5UJwt,
+    description: SWAGGER_DESC_VALIDATE_WITH_X5U_JWT,
   })
   @ApiResponse({
     type: JwtValidationResponse,

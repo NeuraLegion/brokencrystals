@@ -11,11 +11,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  ApiBody,
   ApiConsumes,
+  ApiCreatedResponse,
+  ApiInternalServerErrorResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiProduces,
-  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { spawn } from 'child_process';
@@ -24,9 +25,17 @@ import { parseXml } from 'libxmljs';
 import { AppConfig } from './app.config.api';
 import { AppModuleConfigProperties } from './app.module.config.properties';
 import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
+import {
+  SWAGGER_DESC_CONFIG_SERVER,
+  SWAGGER_DESC_LAUNCH_COMMAND,
+  SWAGGER_DESC_OPTIONS_REQUEST,
+  SWAGGER_DESC_REDIRECT_REQUEST,
+  SWAGGER_DESC_RENDER_REQUEST,
+  SWAGGER_DESC_XML_METADATA,
+} from './app.controller.swagger.desc';
 
 @Controller('/api')
-@ApiTags('app controller')
+@ApiTags('App controller')
 export class AppController {
   private static readonly XML_ENTITY_INJECTION = '<!DOCTYPE replace [<!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>'.toLowerCase();
   private static readonly XML_ENTITY_INJECTION_RESPONSE = `root:x:0:0:root:/root:/bin/bash
@@ -38,13 +47,11 @@ export class AppController {
 
   @ApiProduces('text/plain')
   @ApiConsumes('text/plain')
-  @ApiBody({
-    description:
-      'Template for rendering by doT. Expects plain text as request body',
+  @ApiOperation({
+    description: SWAGGER_DESC_RENDER_REQUEST,
   })
-  @ApiResponse({
+  @ApiCreatedResponse({
     description: 'Rendered result',
-    status: 200,
   })
   @Post('render')
   async renderTemplate(@Body() raw): Promise<string> {
@@ -57,7 +64,7 @@ export class AppController {
   }
 
   @ApiOperation({
-    description: 'Redirects the user to the provided url',
+    description: SWAGGER_DESC_REDIRECT_REQUEST,
   })
   @Get('goto')
   @Redirect()
@@ -66,8 +73,13 @@ export class AppController {
   }
 
   @ApiOperation({
-    description:
-      "Receives client's metadata in XML format. Returns the passed XML",
+    description: SWAGGER_DESC_XML_METADATA,
+  })
+  @ApiInternalServerErrorResponse({
+    description: 'Invalid data',
+  })
+  @ApiOkResponse({
+    description: 'XML passed successfully',
   })
   @Post('metadata')
   @Header('content-type', 'text/xml')
@@ -91,7 +103,7 @@ export class AppController {
   }
 
   @ApiOperation({
-    description: 'Returns the list of supported operations',
+    description: SWAGGER_DESC_OPTIONS_REQUEST,
   })
   @Options()
   @Header('allow', 'OPTIONS, GET, HEAD, POST')
@@ -101,11 +113,10 @@ export class AppController {
 
   @Get('spawn')
   @ApiOperation({
-    description: 'Launches system command on server',
+    description: SWAGGER_DESC_LAUNCH_COMMAND,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: String,
-    status: 200,
   })
   async launchCommand(@Query('command') command: string): Promise<string> {
     this.logger.debug(`launch ${command} command`);
@@ -137,9 +148,9 @@ export class AppController {
   }
 
   @ApiOperation({
-    description: 'Returns server configuration to the client',
+    description: SWAGGER_DESC_CONFIG_SERVER,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: AppConfig,
     status: 200,
   })
