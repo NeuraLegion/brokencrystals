@@ -70,6 +70,17 @@ export function getUser(
   });
 }
 
+export function getUserName(
+  email: string,
+  config: AxiosRequestConfig = {}
+): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/one/${email}`,
+    method: 'get',
+    ...config
+  });
+}
+
 export function getLdap(ldapProfileLink: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/ldap?query=${encodeURIComponent(ldapProfileLink)}`,
