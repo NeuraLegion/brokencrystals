@@ -7,7 +7,7 @@ import { RoutePath } from 'src/router/RoutePath';
 import {
   getLdap,
   getUser,
-  getUserName,
+  getUserData,
   loadXsrfToken,
   loadDomXsrfToken,
   getOidcClient
@@ -78,7 +78,7 @@ export const Login: FC = () => {
       .then(async ({ email, errorText }) => {
         setErrorText(errorText);
         sessionStorage.setItem('email', email);
-        const userData = await getUserName(email);
+        const userData = await getUserData(email);
         sessionStorage.setItem(
           'userName',
           `${userData.firstName} ${userData.lastName}`

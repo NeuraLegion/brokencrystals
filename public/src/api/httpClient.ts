@@ -70,7 +70,7 @@ export function getUser(
   });
 }
 
-export function getUserName(
+export function getUserData(
   email: string,
   config: AxiosRequestConfig = {}
 ): Promise<any> {
