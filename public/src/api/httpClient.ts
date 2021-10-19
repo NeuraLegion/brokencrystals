@@ -75,7 +75,7 @@ export function getUserData(
   config: AxiosRequestConfig = {}
 ): Promise<any> {
   return makeApiRequest({
-    url: `${ApiUrl.Users}/one/${email}`,
+    url: `${ApiUrl.Users}/one/${email.trim()}`,
     method: 'get',
     ...config
   });
