@@ -16,6 +16,7 @@ import {
   LoginFormMode,
   LoginResponse,
   LoginUser,
+  UserData,
   RegistrationUser
 } from '../../../interfaces/User';
 import AuthLayout from '../AuthLayout';
@@ -76,9 +77,11 @@ export const Login: FC = () => {
         return data;
       })
       .then(async ({ email, errorText }) => {
-        setErrorText(errorText);
+        errorText ?? setErrorText(errorText);
         sessionStorage.setItem('email', email);
-        const userData = await getUserData(email);
+        return getUserData(email);
+      })
+      .then((userData: UserData) => {
         sessionStorage.setItem(
           'userName',
           `${userData.firstName} ${userData.lastName}`
