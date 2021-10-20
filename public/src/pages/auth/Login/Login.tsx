@@ -7,6 +7,7 @@ import { RoutePath } from 'src/router/RoutePath';
 import {
   getLdap,
   getUser,
+  getUserData,
   loadXsrfToken,
   loadDomXsrfToken,
   getOidcClient
@@ -15,6 +16,7 @@ import {
   LoginFormMode,
   LoginResponse,
   LoginUser,
+  UserData,
   RegistrationUser
 } from '../../../interfaces/User';
 import AuthLayout from '../AuthLayout';
@@ -75,9 +77,18 @@ export const Login: FC = () => {
         return data;
       })
       .then(({ email, errorText }) => {
-        setErrorText(errorText);
+        if (errorText) {
+          setErrorText(errorText);
+        }
         sessionStorage.setItem('email', email);
-      });
+        return getUserData(email);
+      })
+      .then((userData: UserData) =>
+        sessionStorage.setItem(
+          'userName',
+          `${userData.firstName} ${userData.lastName}`
+        )
+      );
   };
 
   const sendLdap = () => {

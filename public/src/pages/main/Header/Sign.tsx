@@ -5,6 +5,7 @@ import { RoutePath } from 'src/router/RoutePath';
 
 export const Sign: FC = () => {
   const user = sessionStorage.getItem('email');
+  const userName = sessionStorage.getItem('userName');
   const [userImage, setUserImage] = useState<string | null>();
 
   useEffect(() => {
@@ -49,7 +50,7 @@ export const Sign: FC = () => {
             className="get-started-btn scrollto"
             onClick={logout}
           >
-            Log out {user}
+            Log out {userName}
           </Link>
           <input
             id="file-input"

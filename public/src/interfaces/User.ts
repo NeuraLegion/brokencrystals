@@ -27,3 +27,9 @@ export interface RegistrationUser {
   password?: string;
   op?: LoginFormMode;
 }
+
+export interface UserData {
+  email: string;
+  lastName: string;
+  firstName: string;
+}
