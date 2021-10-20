@@ -77,14 +77,18 @@ export const Login: FC = () => {
         return data;
       })
       .then(({ email, errorText }) => {
-        errorText ?? setErrorText(errorText);
+        if (errorText) {
+          setErrorText(errorText);
+        }
         sessionStorage.setItem('email', email);
         return getUserData(email);
       })
-      .then((userData: UserData) => sessionStorage.setItem(
-        'userName',
-        `${userData.firstName} ${userData.lastName}`
-      ));
+      .then((userData: UserData) =>
+        sessionStorage.setItem(
+          'userName',
+          `${userData.firstName} ${userData.lastName}`
+        )
+      );
   };
 
   const sendLdap = () => {
