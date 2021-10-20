@@ -76,7 +76,7 @@ export const Login: FC = () => {
         setLoginResponse(data);
         return data;
       })
-      .then(async ({ email, errorText }) => {
+      .then(({ email, errorText }) => {
         errorText ?? setErrorText(errorText);
         sessionStorage.setItem('email', email);
         return getUserData(email);
