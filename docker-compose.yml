@@ -8,18 +8,12 @@ services:
       POSTGRES_DB: bc
       POSTGRES_USER: bc
       POSTGRES_PASSWORD: bc
+      PGUSER: bc
+      PGPASSWORD: bc
     healthcheck:
       interval: 10s
       retries: 10
-      test:
-        [
-          'CMD',
-          'pg_isready',
-          '-U',
-          '${POSTGRES_USER}',
-          '-P',
-          '${POSTGRES_PASSWORD}',
-        ]
+      test: ['CMD', 'pg_isready']
       timeout: 45s
     volumes:
       - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
@@ -29,6 +23,8 @@ services:
     container_name: nodejs
     restart: always
     deploy:
+      restart_policy:
+        condition: on-failure
       resources:
         limits:
           cpus: 3.5
@@ -71,18 +67,12 @@ services:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: password
+      PGUSER: keycloak
+      PGPASSWORD: password
     healthcheck:
       interval: 10s
       retries: 10
-      test:
-        [
-            'CMD',
-            'pg_isready',
-            '-U',
-            '${POSTGRES_USER}',
-            '-P',
-            '${POSTGRES_PASSWORD}',
-        ]
+      test: ['CMD', 'pg_isready']
       timeout: 45s
     restart: on-failure
     stdin_open: true
@@ -105,13 +95,14 @@ services:
       KEYCLOAK_PASSWORD: Pa55w0rd
       KEYCLOAK_IMPORT: /opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled
       PROXY_ADDRESS_FORWARDING: 'true'
+      KEYCLOAK_FRONTEND_URL: 'https://auth.brokencrystals.neuralegion.com/auth/'
     healthcheck:
       test:
         [
           'CMD',
           'curl',
           '-f',
-          'http://localhost:8080/auth/realms/brokencrystals/health/check/database',
+          'https://auth.brokencrystals.neuralegion.com/auth/realms/brokencrystals/health/check/database',
         ]
       timeout: 10s
       interval: 30s
