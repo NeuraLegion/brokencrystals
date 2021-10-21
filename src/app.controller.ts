@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  ApiBody,
   ApiConsumes,
   ApiCreatedResponse,
   ApiInternalServerErrorResponse,
@@ -45,15 +46,16 @@ export class AppController {
 
   constructor(private readonly configService: ConfigService) {}
 
+  @Post('render')
   @ApiProduces('text/plain')
   @ApiConsumes('text/plain')
   @ApiOperation({
     description: SWAGGER_DESC_RENDER_REQUEST,
   })
+  @ApiBody({ description: 'text' })
   @ApiCreatedResponse({
     description: 'Rendered result',
   })
-  @Post('render')
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
@@ -63,25 +65,28 @@ export class AppController {
     }
   }
 
+  @Get('goto')
   @ApiOperation({
     description: SWAGGER_DESC_REDIRECT_REQUEST,
   })
-  @Get('goto')
+  @ApiOkResponse({
+    description: 'Redirected',
+  })
   @Redirect()
   async redirect(@Query('url') url: string) {
     return { url };
   }
 
+  @Post('metadata')
   @ApiOperation({
     description: SWAGGER_DESC_XML_METADATA,
   })
   @ApiInternalServerErrorResponse({
     description: 'Invalid data',
   })
-  @ApiOkResponse({
+  @ApiCreatedResponse({
     description: 'XML passed successfully',
   })
-  @Post('metadata')
   @Header('content-type', 'text/xml')
   async xml(@Query('xml') xml: string): Promise<string> {
     if (xml?.toLowerCase() === AppController.XML_ENTITY_INJECTION) {
@@ -102,10 +107,10 @@ export class AppController {
     return xmlDoc.toString(true);
   }
 
+  @Options()
   @ApiOperation({
     description: SWAGGER_DESC_OPTIONS_REQUEST,
   })
-  @Options()
   @Header('allow', 'OPTIONS, GET, HEAD, POST')
   async getTestOptions(): Promise<void> {
     this.logger.debug('Test OPTIONS');
@@ -117,6 +122,9 @@ export class AppController {
   })
   @ApiOkResponse({
     type: String,
+  })
+  @ApiInternalServerErrorResponse({
+    type: Object,
   })
   async launchCommand(@Query('command') command: string): Promise<string> {
     this.logger.debug(`launch ${command} command`);
@@ -147,6 +155,7 @@ export class AppController {
     });
   }
 
+  @Get('/config')
   @ApiOperation({
     description: SWAGGER_DESC_CONFIG_SERVER,
   })
@@ -154,7 +163,6 @@ export class AppController {
     type: AppConfig,
     status: 200,
   })
-  @Get('/config')
   getConfig(): AppConfig {
     this.logger.debug('Called getConfig');
     const dbSchema = this.configService.get<string>(

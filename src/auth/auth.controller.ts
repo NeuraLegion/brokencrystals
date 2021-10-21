@@ -15,10 +15,13 @@ import {
 import { createHash, randomBytes } from 'crypto';
 import {
   ApiBadRequestResponse,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiResponse,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { User } from '../model/user.entity';
 import { LdapQueryHandler } from '../users/ldap.query.handler';
@@ -52,6 +55,9 @@ import { JwtType } from './jwt/jwt.type.decorator';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { CsrfGuard } from './csrf.guard';
 import { ClientType, KeyCloakService } from '../keycloak/keycloak.service';
+import { BadRequestResponse } from '../api/BadRequestResponse';
+import { LoginJwtResponse } from './api/LoginJwtResponse';
+import { ServerErrorResponse } from 'src/api/ServerErrorResponse';
 
 interface LoginData {
   email: string;
@@ -72,12 +78,11 @@ export class AuthController {
   ) {}
 
   @Post('/admin/login')
-  @ApiResponse({
+  @ApiCreatedResponse({
     type: LoginResponse,
-    status: HttpStatus.OK,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiUnauthorizedResponse({
+    type: ServerErrorResponse,
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -93,12 +98,11 @@ export class AuthController {
 
   @Post('login')
   @UseGuards(CsrfGuard)
-  @ApiResponse({
+  @ApiCreatedResponse({
     type: LoginResponse,
-    status: HttpStatus.OK,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiUnauthorizedResponse({
+    type: ServerErrorResponse,
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -131,6 +135,7 @@ export class AuthController {
   })
   @ApiBadRequestResponse({
     description: 'Bad request, fingerprint is required',
+    type: BadRequestResponse,
   })
   async getDomCsrfToken(
     @Req() request: FastifyRequest,
@@ -192,12 +197,11 @@ export class AuthController {
   }
 
   @Post('jwt/kid-sql/login')
-  @ApiResponse({
-    type: LoginResponse,
-    status: HttpStatus.OK,
+  @ApiCreatedResponse({
+    type: LoginJwtResponse,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiUnauthorizedResponse({
+    type: ServerErrorResponse,
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -221,16 +225,15 @@ export class AuthController {
     return profile;
   }
 
+  @Get('jwt/kid-sql/validate')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.SQL_KID)
-  @Get('jwt/kid-sql/validate')
-  @ApiResponse({
+  @ApiOkResponse({
     type: JwtValidationResponse,
-    status: HttpStatus.OK,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiForbiddenResponse({
     description: 'invalid credentials',
+    type: BadRequestResponse,
   })
   @ApiOperation({
     description: SWAGGER_DESC_VALIDATE_WITH_KID_SQL_JWT,
@@ -242,12 +245,11 @@ export class AuthController {
   }
 
   @Post('jwt/weak-key/login')
-  @ApiResponse({
-    type: LoginResponse,
-    status: HttpStatus.OK,
+  @ApiCreatedResponse({
+    type: LoginJwtResponse,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiUnauthorizedResponse({
+    type: ServerErrorResponse,
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -271,18 +273,17 @@ export class AuthController {
     return profile;
   }
 
+  @Get('jwt/weak-key/validate')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.WEAK_KEY)
-  @Get('jwt/weak-key/validate')
   @ApiOperation({
     description: SWAGGER_DESC_VALIDATE_WITH_WEAK_KEY_JWT,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: JwtValidationResponse,
-    status: HttpStatus.OK,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiForbiddenResponse({
+    type: BadRequestResponse,
     description: 'invalid credentials',
   })
   async validateWithWeakKeyJwt(): Promise<JwtValidationResponse> {
@@ -292,13 +293,12 @@ export class AuthController {
   }
 
   @Post('jwt/jku/login')
-  @ApiResponse({
-    type: LoginResponse,
-    status: HttpStatus.OK,
+  @ApiCreatedResponse({
+    type: LoginJwtResponse,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiUnauthorizedResponse({
     description: 'invalid credentials',
+    type: ServerErrorResponse,
   })
   @ApiOperation({
     description: SWAGGER_DESC_LOGIN_WITH_JKU_JWT,
@@ -321,18 +321,17 @@ export class AuthController {
     return profile;
   }
 
+  @Get('jwt/jku/validate')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.JKU)
-  @Get('jwt/jku/validate')
   @ApiOperation({
     description: SWAGGER_DESC_VALIDATE_WITH_JKU_JWT,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: JwtValidationResponse,
-    status: HttpStatus.OK,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiForbiddenResponse({
+    type: BadRequestResponse,
     description: 'invalid credentials',
   })
   async validateWithJKUJwt(): Promise<JwtValidationResponse> {
@@ -342,12 +341,11 @@ export class AuthController {
   }
 
   @Post('jwt/jwk/login')
-  @ApiResponse({
-    type: LoginResponse,
-    status: HttpStatus.OK,
+  @ApiCreatedResponse({
+    type: LoginJwtResponse,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiUnauthorizedResponse({
+    type: ServerErrorResponse,
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -371,18 +369,17 @@ export class AuthController {
     return profile;
   }
 
+  @Get('jwt/jwk/validate')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.JWK)
-  @Get('jwt/jwk/validate')
   @ApiOperation({
     description: SWAGGER_DESC_VALIDATE_WITH_JWK_JWT,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: JwtValidationResponse,
-    status: HttpStatus.OK,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiForbiddenResponse({
+    type: BadRequestResponse,
     description: 'invalid credentials',
   })
   async validateWithJWKJwt(): Promise<JwtValidationResponse> {
@@ -392,12 +389,11 @@ export class AuthController {
   }
 
   @Post('jwt/x5c/login')
-  @ApiResponse({
-    type: LoginResponse,
-    status: HttpStatus.OK,
+  @ApiCreatedResponse({
+    type: LoginJwtResponse,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiUnauthorizedResponse({
+    type: ServerErrorResponse,
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -421,18 +417,17 @@ export class AuthController {
     return profile;
   }
 
+  @Get('jwt/x5c/validate')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.X5C)
-  @Get('jwt/x5c/validate')
   @ApiOperation({
     description: SWAGGER_DESC_VALIDATE_WITH_X5C_JWT,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: JwtValidationResponse,
-    status: HttpStatus.OK,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiForbiddenResponse({
+    type: BadRequestResponse,
     description: 'invalid credentials',
   })
   async validateWithX5CJwt(): Promise<JwtValidationResponse> {
@@ -442,12 +437,11 @@ export class AuthController {
   }
 
   @Post('jwt/x5u/login')
-  @ApiResponse({
-    type: LoginResponse,
-    status: HttpStatus.OK,
+  @ApiCreatedResponse({
+    type: LoginJwtResponse,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiUnauthorizedResponse({
+    type: ServerErrorResponse,
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -471,18 +465,17 @@ export class AuthController {
     return profile;
   }
 
+  @Get('jwt/x5u/validate')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.X5U)
-  @Get('jwt/x5u/validate')
   @ApiOperation({
     description: SWAGGER_DESC_VALIDATE_WITH_X5U_JWT,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: JwtValidationResponse,
-    status: HttpStatus.OK,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
+  @ApiForbiddenResponse({
+    type: BadRequestResponse,
     description: 'invalid credentials',
   })
   async validateWithX5UJwt(): Promise<JwtValidationResponse> {
