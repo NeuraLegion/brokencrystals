@@ -102,7 +102,7 @@ services:
           'CMD',
           'curl',
           '-f',
-          'https://auth.brokencrystals.neuralegion.com/auth/realms/brokencrystals/health/check/database',
+          'https://auth.brokencrystals.neuralegion.com/auth/realms/master',
         ]
       timeout: 10s
       interval: 30s
