@@ -43,9 +43,10 @@ export class FileController {
   })
   @ApiInternalServerErrorResponse({
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
   })
@@ -80,9 +81,10 @@ export class FileController {
   })
   @ApiInternalServerErrorResponse({
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
   })

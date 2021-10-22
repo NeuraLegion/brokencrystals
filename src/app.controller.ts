@@ -44,7 +44,7 @@ export class AppController {
 
   private readonly logger = new Logger(AppController.name);
 
-  constructor(private readonly configService: ConfigService) { }
+  constructor(private readonly configService: ConfigService) {}
 
   @Post('render')
   @ApiProduces('text/plain')
@@ -125,7 +125,8 @@ export class AppController {
   })
   @ApiInternalServerErrorResponse({
     schema: {
-      default: { location: 'string' }
+      type: 'object',
+      properties: { location: { type: 'string' } },
     },
   })
   async launchCommand(@Query('command') command: string): Promise<string> {

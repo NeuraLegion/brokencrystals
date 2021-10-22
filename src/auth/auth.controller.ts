@@ -81,9 +81,10 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -106,9 +107,10 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -144,10 +146,11 @@ export class AuthController {
   @ApiBadRequestResponse({
     description: 'Bad request, fingerprint is required',
     schema: {
-      default: {
-        statusCode: 'string',
-        message: 'string',
-        error: 'string',
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
       },
     },
   })
@@ -216,9 +219,10 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -253,10 +257,11 @@ export class AuthController {
   @ApiForbiddenResponse({
     description: 'invalid credentials',
     schema: {
-      default: {
-        statusCode: 'string',
-        message: 'string',
-        error: 'string',
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
       },
     },
   })
@@ -275,9 +280,10 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -314,10 +320,11 @@ export class AuthController {
   })
   @ApiForbiddenResponse({
     schema: {
-      default: {
-        statusCode: 'string',
-        message: 'string',
-        error: 'string',
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -335,9 +342,10 @@ export class AuthController {
   @ApiUnauthorizedResponse({
     description: 'invalid credentials',
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
   })
@@ -373,10 +381,11 @@ export class AuthController {
   })
   @ApiForbiddenResponse({
     schema: {
-      default: {
-        statusCode: 'string',
-        message: 'string',
-        error: 'string',
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -393,9 +402,10 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -432,10 +442,11 @@ export class AuthController {
   })
   @ApiForbiddenResponse({
     schema: {
-      default: {
-        statusCode: 'string',
-        message: 'string',
-        error: 'string',
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -452,9 +463,10 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -491,10 +503,11 @@ export class AuthController {
   })
   @ApiForbiddenResponse({
     schema: {
-      default: {
-        statusCode: 'string',
-        message: 'string',
-        error: 'string',
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -511,9 +524,10 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({
     schema: {
-      default: {
-        error: 'string',
-        location: 'string',
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
     description: 'invalid credentials',
@@ -550,10 +564,11 @@ export class AuthController {
   })
   @ApiForbiddenResponse({
     schema: {
-      default: {
-        statusCode: 'string',
-        message: 'string',
-        error: 'string',
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
       },
     },
     description: 'invalid credentials',

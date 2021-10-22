@@ -178,7 +178,12 @@ export class UsersController {
   })
   @ApiConflictResponse({
     schema: {
-      default: { statusCode: 'string', message: 'string', error: 'string' },
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
     },
     description: 'User Already exists',
   })
@@ -218,7 +223,12 @@ export class UsersController {
   })
   @ApiConflictResponse({
     schema: {
-      default: { statusCode: 'string', message: 'string', error: 'string' },
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
     },
     description: 'User Already exists',
   })
