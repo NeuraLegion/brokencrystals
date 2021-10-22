@@ -8,17 +8,15 @@ services:
       POSTGRES_DB: bc
       POSTGRES_USER: bc
       POSTGRES_PASSWORD: bc
+      PGUSER: bc
+      PGPASSWORD: bc
     healthcheck:
       interval: 10s
       retries: 10
       test:
         [
           'CMD-SHELL',
-          'pg_isready',
-          '-U',
-          '${POSTGRES_USER}',
-          '-P',
-          '${POSTGRES_PASSWORD}',
+          'pg_isready'
         ]
       timeout: 45s
     volumes:
@@ -28,12 +26,10 @@ services:
     image: neuralegion/brokencrystals
     container_name: nodejs
     restart: always
-    deploy:
-      restart_policy:
-        condition: on-failure
-      resources:
-        limits:
-          cpus: 3.5
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '3.5'
     logging:
       options:
         max-file: '5'
@@ -73,17 +69,15 @@ services:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
       POSTGRES_PASSWORD: password
+      PGUSER: keycloak
+      PGPASSWORD: password
     healthcheck:
       interval: 10s
       retries: 10
       test:
         [
           'CMD-SHELL',
-          'pg_isready',
-          '-U',
-          '${POSTGRES_USER}',
-          '-P',
-          '${POSTGRES_PASSWORD}',
+          'pg_isready'
         ]
       timeout: 45s
     restart: on-failure

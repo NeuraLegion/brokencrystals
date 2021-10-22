@@ -9,15 +9,13 @@ services:
       retries: 10
       test:
         [
-          'CMD-SHELL',
+          'CMD',
           'pg_isready',
-          '-U',
-          '${POSTGRES_USER}',
-          '-P',
-          '${POSTGRES_PASSWORD}'
         ]
       timeout: 45s
     environment:
+      PGUSER: bc
+      PGPASSWORD: bc
       POSTGRES_DB: bc
       POSTGRES_USER: bc
       POSTGRES_PASSWORD: bc
@@ -34,12 +32,6 @@ services:
     restart: always
     ports:
      - '3000:3000'
-    deploy:
-      restart_policy:
-        condition: on-failure
-      resources:
-        limits:
-          cpus: 3.5
     logging:
       options:
         max-file: '5'
@@ -53,6 +45,8 @@ services:
       dockerfile: Dockerfile.local
     ports:
       - 8090:80
+    depends_on:
+      - nodejs
 
 
 
