@@ -13,7 +13,6 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { BadRequestResponse } from 'src/api/BadRequestResponse';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
@@ -43,7 +42,9 @@ export class TestimonialsController {
     type: TestimonialDto,
   })
   @ApiForbiddenResponse({
-    type: BadRequestResponse,
+    schema: {
+      default: { statusCode: 'string', message: 'string', error: 'string' },
+    },
   })
   async createTestimonial(
     @Body() req: CreateTestimonialRequest,

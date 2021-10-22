@@ -46,7 +46,6 @@ import {
   SWAGGER_DESC_OPTIONS_REQUEST,
   SWAGGER_DESC_UPLOAD_USER_PHOTO,
 } from './users.controller.swagger.desc';
-import { BadRequestResponse } from '../api/BadRequestResponse';
 
 @Controller('/api/users')
 @ApiTags('User controller')
@@ -178,7 +177,9 @@ export class UsersController {
     description: SWAGGER_DESC_CREATE_BASIC_USER,
   })
   @ApiConflictResponse({
-    type: BadRequestResponse,
+    schema: {
+      default: { statusCode: 'string', message: 'string', error: 'string' },
+    },
     description: 'User Already exists',
   })
   @ApiCreatedResponse({
@@ -216,7 +217,9 @@ export class UsersController {
     description: '',
   })
   @ApiConflictResponse({
-    type: BadRequestResponse,
+    schema: {
+      default: { statusCode: 'string', message: 'string', error: 'string' },
+    },
     description: 'User Already exists',
   })
   @ApiCreatedResponse({

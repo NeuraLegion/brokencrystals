@@ -29,7 +29,6 @@ import {
   SWAGGER_DESC_READ_FILE_ON_SERVER,
   SWAGGER_DESC_SAVE_RAW_CONTENT,
 } from './file.controller.swagger.desc';
-import { ServerErrorResponse } from 'src/api/ServerErrorResponse';
 
 @Controller('/api/file')
 @ApiTags('Files controller')
@@ -43,7 +42,12 @@ export class FileController {
     description: 'File read successfully',
   })
   @ApiInternalServerErrorResponse({
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
   })
   @ApiOperation({
     description: SWAGGER_DESC_READ_FILE,
@@ -75,7 +79,12 @@ export class FileController {
     description: SWAGGER_DESC_DELETE_FILE,
   })
   @ApiInternalServerErrorResponse({
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
   })
   @ApiOkResponse({
     description: 'File deleted successfully',

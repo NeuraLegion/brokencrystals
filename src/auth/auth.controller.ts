@@ -55,9 +55,7 @@ import { JwtType } from './jwt/jwt.type.decorator';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { CsrfGuard } from './csrf.guard';
 import { ClientType, KeyCloakService } from '../keycloak/keycloak.service';
-import { BadRequestResponse } from '../api/BadRequestResponse';
 import { LoginJwtResponse } from './api/LoginJwtResponse';
-import { ServerErrorResponse } from 'src/api/ServerErrorResponse';
 
 interface LoginData {
   email: string;
@@ -82,7 +80,12 @@ export class AuthController {
     type: LoginResponse,
   })
   @ApiUnauthorizedResponse({
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -102,7 +105,12 @@ export class AuthController {
     type: LoginResponse,
   })
   @ApiUnauthorizedResponse({
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -135,7 +143,13 @@ export class AuthController {
   })
   @ApiBadRequestResponse({
     description: 'Bad request, fingerprint is required',
-    type: BadRequestResponse,
+    schema: {
+      default: {
+        statusCode: 'string',
+        message: 'string',
+        error: 'string',
+      },
+    },
   })
   async getDomCsrfToken(
     @Req() request: FastifyRequest,
@@ -201,7 +215,12 @@ export class AuthController {
     type: LoginJwtResponse,
   })
   @ApiUnauthorizedResponse({
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -233,7 +252,13 @@ export class AuthController {
   })
   @ApiForbiddenResponse({
     description: 'invalid credentials',
-    type: BadRequestResponse,
+    schema: {
+      default: {
+        statusCode: 'string',
+        message: 'string',
+        error: 'string',
+      },
+    },
   })
   @ApiOperation({
     description: SWAGGER_DESC_VALIDATE_WITH_KID_SQL_JWT,
@@ -249,7 +274,12 @@ export class AuthController {
     type: LoginJwtResponse,
   })
   @ApiUnauthorizedResponse({
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -283,7 +313,13 @@ export class AuthController {
     type: JwtValidationResponse,
   })
   @ApiForbiddenResponse({
-    type: BadRequestResponse,
+    schema: {
+      default: {
+        statusCode: 'string',
+        message: 'string',
+        error: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   async validateWithWeakKeyJwt(): Promise<JwtValidationResponse> {
@@ -298,7 +334,12 @@ export class AuthController {
   })
   @ApiUnauthorizedResponse({
     description: 'invalid credentials',
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
   })
   @ApiOperation({
     description: SWAGGER_DESC_LOGIN_WITH_JKU_JWT,
@@ -331,7 +372,13 @@ export class AuthController {
     type: JwtValidationResponse,
   })
   @ApiForbiddenResponse({
-    type: BadRequestResponse,
+    schema: {
+      default: {
+        statusCode: 'string',
+        message: 'string',
+        error: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   async validateWithJKUJwt(): Promise<JwtValidationResponse> {
@@ -345,7 +392,12 @@ export class AuthController {
     type: LoginJwtResponse,
   })
   @ApiUnauthorizedResponse({
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -379,7 +431,13 @@ export class AuthController {
     type: JwtValidationResponse,
   })
   @ApiForbiddenResponse({
-    type: BadRequestResponse,
+    schema: {
+      default: {
+        statusCode: 'string',
+        message: 'string',
+        error: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   async validateWithJWKJwt(): Promise<JwtValidationResponse> {
@@ -393,7 +451,12 @@ export class AuthController {
     type: LoginJwtResponse,
   })
   @ApiUnauthorizedResponse({
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -427,7 +490,13 @@ export class AuthController {
     type: JwtValidationResponse,
   })
   @ApiForbiddenResponse({
-    type: BadRequestResponse,
+    schema: {
+      default: {
+        statusCode: 'string',
+        message: 'string',
+        error: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   async validateWithX5CJwt(): Promise<JwtValidationResponse> {
@@ -441,7 +510,12 @@ export class AuthController {
     type: LoginJwtResponse,
   })
   @ApiUnauthorizedResponse({
-    type: ServerErrorResponse,
+    schema: {
+      default: {
+        error: 'string',
+        location: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   @ApiOperation({
@@ -475,7 +549,13 @@ export class AuthController {
     type: JwtValidationResponse,
   })
   @ApiForbiddenResponse({
-    type: BadRequestResponse,
+    schema: {
+      default: {
+        statusCode: 'string',
+        message: 'string',
+        error: 'string',
+      },
+    },
     description: 'invalid credentials',
   })
   async validateWithX5UJwt(): Promise<JwtValidationResponse> {

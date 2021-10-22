@@ -15,7 +15,6 @@ import {
   SWAGGER_DESC_GET_LATEST_PRODUCTS,
   SWAGGER_DESC_GET_PRODUCTS,
 } from './products.controller.swagger.desc';
-import { BadRequestResponse } from 'src/api/BadRequestResponse';
 
 @Controller('/api/products')
 @ApiTags('Products controller')
@@ -35,7 +34,9 @@ export class ProductsController {
     isArray: true,
   })
   @ApiForbiddenResponse({
-    type: BadRequestResponse,
+    schema: {
+      default: { statusCode: 'string', message: 'string', error: 'string' },
+    },
   })
   async getProducts(): Promise<ProductDto[]> {
     this.logger.debug('Get all products.');
