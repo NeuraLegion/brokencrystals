@@ -9,7 +9,7 @@ services:
       retries: 10
       test:
         [
-          'CMD',
+          'CMD-SHELL',
           'pg_isready',
         ]
       timeout: 45s
