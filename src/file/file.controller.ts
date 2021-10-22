@@ -117,7 +117,7 @@ export class FileController {
     description: SWAGGER_DESC_READ_FILE_ON_SERVER,
   })
   @ApiNotFoundResponse({
-    description: 'Not Found',
+    description: 'File not Found',
   })
   @ApiOkResponse()
   async readFile(

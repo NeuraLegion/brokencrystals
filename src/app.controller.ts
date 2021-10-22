@@ -52,7 +52,7 @@ export class AppController {
   @ApiOperation({
     description: SWAGGER_DESC_RENDER_REQUEST,
   })
-  @ApiBody({ description: 'text' })
+  @ApiBody({ description: 'Write your text here' })
   @ApiCreatedResponse({
     description: 'Rendered result',
   })
