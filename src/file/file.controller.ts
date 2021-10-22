@@ -10,7 +10,13 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiInternalServerErrorResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { W_OK } from 'constants';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -31,10 +37,22 @@ export class FileController {
 
   constructor(private fileService: FileService) {}
 
+  @Get()
+  @ApiOkResponse({
+    description: 'File read successfully',
+  })
+  @ApiInternalServerErrorResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
+      },
+    },
+  })
   @ApiOperation({
     description: SWAGGER_DESC_READ_FILE,
   })
-  @Get()
   async loadFile(
     @Query('path') path: string,
     @Query('type') contentType: string,
@@ -57,19 +75,35 @@ export class FileController {
     return file;
   }
 
+  @Delete()
   @ApiOperation({
     description: SWAGGER_DESC_DELETE_FILE,
   })
-  @Delete()
+  @ApiInternalServerErrorResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'File deleted successfully',
+  })
   async deleteFile(@Query('path') path: string): Promise<void> {
     await this.fileService.deleteFile(path);
   }
 
+  @Put('raw')
   @ApiOperation({
     description: SWAGGER_DESC_SAVE_RAW_CONTENT,
   })
-  @Put('raw')
-  async uploadFile(@Query('path') file, @Body() raw: Buffer): Promise<void> {
+  @ApiOkResponse()
+  async uploadFile(
+    @Query('path') file: string,
+    @Body() raw: string,
+  ): Promise<void> {
     try {
       if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
         await fs.promises.access(path.dirname(file), W_OK);
@@ -80,12 +114,16 @@ export class FileController {
     }
   }
 
+  @Get('raw')
   @ApiOperation({
     description: SWAGGER_DESC_READ_FILE_ON_SERVER,
   })
-  @Get('raw')
+  @ApiNotFoundResponse({
+    description: 'File not Found',
+  })
+  @ApiOkResponse()
   async readFile(
-    @Query('path') file,
+    @Query('path') file: string,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
     try {
