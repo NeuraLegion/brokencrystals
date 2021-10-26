@@ -4,15 +4,6 @@ services:
   db:
     image: postgres
     restart: always
-    healthcheck:
-      interval: 10s
-      retries: 10
-      test:
-        [
-          'CMD-SHELL',
-          'pg_isready',
-        ]
-      timeout: 45s
     environment:
       PGUSER: bc
       PGPASSWORD: bc
@@ -43,6 +34,7 @@ services:
     build:
       context: './public'
       dockerfile: Dockerfile.local
+    restart: always
     ports:
       - 8090:80
     depends_on:
