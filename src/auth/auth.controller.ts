@@ -179,7 +179,9 @@ export class AuthController {
   @ApiOperation({
     description: SWAGGER_DESC_REQUEST_WITH_SIMPLE_CSRF_TOKEN,
   })
-  @ApiOkResponse()
+  @ApiOkResponse({
+    description: 'Returns simple csrf token'
+  })
   async getCsrfToken(
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<string> {

@@ -193,7 +193,6 @@ export const Login: FC = () => {
               onInput={onInput}
             />
           </div>
-          {errorText && <div className="error-text">{errorText}</div>}
           <div className="form-group">
             <label>Password</label>
             <input
@@ -222,6 +221,7 @@ export const Login: FC = () => {
           </button>
         </form>
         <div>
+          {errorText && <div className="error-text">{errorText}</div>}
           <b>Hint</b>: if you are looking for an authentication protected
           endpoint, try using:
           <a href="https://brokencrystals.com/api/products">

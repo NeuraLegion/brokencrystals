@@ -41,10 +41,12 @@ import { AnyFilesInterceptor } from '../components/any-files.interceptor';
 import { KeyCloakService } from '../keycloak/keycloak.service';
 import {
   SWAGGER_DESC_CREATE_BASIC_USER,
+  SWAGGER_DESC_PHOTO_USER_BY_EMAIL,
   SWAGGER_DESC_FIND_USER_BY_EMAIL,
   SWAGGER_DESC_LDAP_SEARCH,
   SWAGGER_DESC_OPTIONS_REQUEST,
   SWAGGER_DESC_UPLOAD_USER_PHOTO,
+  SWAGGER_DESC_CREATE_OIDC_USER,
 } from './users.controller.swagger.desc';
 
 @Controller('/api/users')
@@ -90,6 +92,9 @@ export class UsersController {
   @Get('/one/:email/photo')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_PHOTO_USER_BY_EMAIL
+  })
   @ApiOkResponse({
     description: 'Returns user profile photo',
   })
@@ -97,7 +102,7 @@ export class UsersController {
     description: 'Returns empty content if photo is not set',
   })
   @ApiForbiddenResponse({
-    description: 'Returns this status is user is not authenticated',
+    description: 'Returns then user is not authenticated',
   })
   async getUserPhoto(
     @Param('email') email: string,
@@ -219,7 +224,7 @@ export class UsersController {
 
   @Post('/oidc')
   @ApiOperation({
-    description: '',
+    description: SWAGGER_DESC_CREATE_OIDC_USER,
   })
   @ApiConflictResponse({
     schema: {
@@ -260,6 +265,9 @@ export class UsersController {
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
     description: SWAGGER_DESC_UPLOAD_USER_PHOTO,
+  })
+  @ApiOkResponse({
+    description: 'Photo updated'
   })
   @UseInterceptors(AnyFilesInterceptor)
   async uploadFile(@Param('email') email: string, @Req() req: FastifyRequest) {

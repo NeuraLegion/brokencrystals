@@ -121,7 +121,9 @@ export class FileController {
   @ApiNotFoundResponse({
     description: 'File not Found',
   })
-  @ApiOkResponse()
+  @ApiOkResponse({
+    description: 'Returns requested file'
+  })
   async readFile(
     @Query('path') file: string,
     @Res({ passthrough: true }) res: FastifyReply,
