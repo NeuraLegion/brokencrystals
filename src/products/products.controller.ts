@@ -1,5 +1,10 @@
 import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
-import { ApiOperation, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiOkResponse,
+  ApiTags,
+  ApiForbiddenResponse,
+} from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
@@ -18,15 +23,25 @@ export class ProductsController {
 
   constructor(private readonly productsService: ProductsService) {}
 
+  @Get()
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
-  @Get()
   @ApiOperation({
     description: SWAGGER_DESC_GET_PRODUCTS,
   })
   @ApiOkResponse({
     type: ProductDto,
     isArray: true,
+  })
+  @ApiForbiddenResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
   })
   async getProducts(): Promise<ProductDto[]> {
     this.logger.debug('Get all products.');

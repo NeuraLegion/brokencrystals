@@ -41,10 +41,12 @@ import { AnyFilesInterceptor } from '../components/any-files.interceptor';
 import { KeyCloakService } from '../keycloak/keycloak.service';
 import {
   SWAGGER_DESC_CREATE_BASIC_USER,
+  SWAGGER_DESC_PHOTO_USER_BY_EMAIL,
   SWAGGER_DESC_FIND_USER_BY_EMAIL,
   SWAGGER_DESC_LDAP_SEARCH,
   SWAGGER_DESC_OPTIONS_REQUEST,
   SWAGGER_DESC_UPLOAD_USER_PHOTO,
+  SWAGGER_DESC_CREATE_OIDC_USER,
 } from './users.controller.swagger.desc';
 
 @Controller('/api/users')
@@ -73,7 +75,7 @@ export class UsersController {
   })
   @ApiOkResponse({
     type: UserDto,
-    description: 'Returns empty object when user is not found',
+    description: 'Returns user object or empty object when user is not found',
   })
   async getUser(@Param('email') email: string): Promise<UserDto> {
     try {
@@ -87,9 +89,12 @@ export class UsersController {
     }
   }
 
+  @Get('/one/:email/photo')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
-  @Get('/one/:email/photo')
+  @ApiOperation({
+    description: SWAGGER_DESC_PHOTO_USER_BY_EMAIL
+  })
   @ApiOkResponse({
     description: 'Returns user profile photo',
   })
@@ -97,7 +102,7 @@ export class UsersController {
     description: 'Returns empty content if photo is not set',
   })
   @ApiForbiddenResponse({
-    description: 'Returns this status is user is not authenticated',
+    description: 'Returns then user is not authenticated',
   })
   async getUserPhoto(
     @Param('email') email: string,
@@ -177,7 +182,14 @@ export class UsersController {
     description: SWAGGER_DESC_CREATE_BASIC_USER,
   })
   @ApiConflictResponse({
-    type: Error,
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
     description: 'User Already exists',
   })
   @ApiCreatedResponse({
@@ -212,15 +224,21 @@ export class UsersController {
 
   @Post('/oidc')
   @ApiOperation({
-    description: '',
+    description: SWAGGER_DESC_CREATE_OIDC_USER,
   })
   @ApiConflictResponse({
-    type: Error,
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
     description: 'User Already exists',
   })
   @ApiCreatedResponse({
-    type: UserDto,
-    description: 'User created',
+    description: 'User created, returns empty object',
   })
   async createOIDCUser(@Body() user: CreateUserRequest): Promise<UserDto> {
     try {
@@ -242,11 +260,14 @@ export class UsersController {
     }
   }
 
+  @Put('/one/:email/photo')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
-  @Put('/one/:email/photo')
   @ApiOperation({
     description: SWAGGER_DESC_UPLOAD_USER_PHOTO,
+  })
+  @ApiOkResponse({
+    description: 'Photo updated'
   })
   @UseInterceptors(AnyFilesInterceptor)
   async uploadFile(@Param('email') email: string, @Req() req: FastifyRequest) {
