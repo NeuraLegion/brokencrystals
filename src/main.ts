@@ -82,7 +82,6 @@ async function bootstrap() {
   `,
     )
     .setVersion('1.0')
-    .addServer('https://brokencrystals.com/')
     .build();
   const document = SwaggerModule.createDocument(app, options);
 
