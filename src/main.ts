@@ -82,7 +82,7 @@ async function bootstrap() {
   `,
     )
     .setVersion('1.0')
-    .addServer(process.env.HOST)
+    .addServer(process.env.URL)
     .build();
   const document = SwaggerModule.createDocument(app, options);
 
