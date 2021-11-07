@@ -13,7 +13,7 @@ services:
       retries: 10
       test:
         [
-          'CMD',
+          'CMD-SHELL',
           'pg_isready',
           '-U',
           '${POSTGRES_USER}',
@@ -29,6 +29,8 @@ services:
     container_name: nodejs
     restart: always
     deploy:
+      restart_policy:
+        condition: on-failure
       resources:
         limits:
           cpus: 3.5
@@ -76,12 +78,12 @@ services:
       retries: 10
       test:
         [
-            'CMD',
-            'pg_isready',
-            '-U',
-            '${POSTGRES_USER}',
-            '-P',
-            '${POSTGRES_PASSWORD}',
+          'CMD-SHELL',
+          'pg_isready',
+          '-U',
+          '${POSTGRES_USER}',
+          '-P',
+          '${POSTGRES_PASSWORD}',
         ]
       timeout: 45s
     restart: on-failure
@@ -105,14 +107,9 @@ services:
       KEYCLOAK_PASSWORD: Pa55w0rd
       KEYCLOAK_IMPORT: /opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled
       PROXY_ADDRESS_FORWARDING: 'true'
+      KEYCLOAK_FRONTEND_URL: 'https://auth.brokencrystals.neuralegion.com/auth/'
     healthcheck:
-      test:
-        [
-          'CMD',
-          'curl',
-          '-f',
-          'http://localhost:8080/auth/realms/brokencrystals/health/check/database',
-        ]
+      test: ['CMD', 'curl', '-f', 'http://localhost:8080/auth/realms/master']
       timeout: 10s
       interval: 30s
       retries: 3

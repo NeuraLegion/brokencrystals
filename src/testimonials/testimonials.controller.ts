@@ -7,7 +7,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
@@ -27,14 +32,24 @@ export class TestimonialsController {
 
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
+  @Post()
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
-  @Post()
   @ApiOperation({
     description: SWAGGER_DESC_CREATE_TESTIMONIAL,
   })
   @ApiOkResponse({
     type: TestimonialDto,
+  })
+  @ApiForbiddenResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
   })
   async createTestimonial(
     @Body() req: CreateTestimonialRequest,
