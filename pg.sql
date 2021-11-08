@@ -20,3 +20,4 @@ INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('
 INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Jewellery', '/api/file?path=config/products/crystals/emerald.jpg&type=image/jpg', 'Emerald', 'symbol of fertility and life');
 INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Jewellery', '/api/file?path=config/products/crystals/shattuckite.jpg&type=image/jpg', 'Shattuckite', 'mistery');
 INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Gemstones', '/api/file?path=config/products/crystals/bismuth.jpg&type=image/jpg', 'Bismuth', 'rainbow');
+CREATE INDEX IF NOT EXISTS "IDX_users_email" ON "user" ("email");
