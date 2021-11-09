@@ -107,7 +107,7 @@ services:
       KEYCLOAK_PASSWORD: Pa55w0rd
       KEYCLOAK_IMPORT: /opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled
       PROXY_ADDRESS_FORWARDING: 'true'
-      KEYCLOAK_FRONTEND_URL: 'https://auth.brokencrystals.neuralegion.com/auth/'
+      KEYCLOAK_FRONTEND_URL: 'https://auth.qa.brokencrystals.com/auth/'
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:8080/auth/realms/master']
       timeout: 10s
