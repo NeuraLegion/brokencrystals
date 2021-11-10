@@ -32,6 +32,8 @@ services:
       dockerfile: Dockerfile
     container_name: nodejs
     restart: always
+    environment:
+      URL: http://localhost:3000
     ports:
      - '3000:3000'
     deploy:

@@ -27,6 +27,9 @@ async function bootstrap() {
   const app: NestFastifyApplication = await NestFactory.create(
     AppModule,
     new FastifyAdapter(server),
+    {
+      logger: process.env.NODE_ENV === 'production' ? ['error'] : true
+    }
   );
 
   await server.register(fastifyCookie);
@@ -82,7 +85,7 @@ async function bootstrap() {
   `,
     )
     .setVersion('1.0')
-    .addServer('https://brokencrystals.com/')
+    .addServer(process.env.URL)
     .build();
   const document = SwaggerModule.createDocument(app, options);
 
