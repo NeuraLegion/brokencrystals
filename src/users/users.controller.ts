@@ -47,6 +47,7 @@ import {
   SWAGGER_DESC_OPTIONS_REQUEST,
   SWAGGER_DESC_UPLOAD_USER_PHOTO,
   SWAGGER_DESC_CREATE_OIDC_USER,
+  SWAGGER_DESC_UPDATE_USER_INFO,
 } from './users.controller.swagger.desc';
 
 @Controller('/api/users')
@@ -230,9 +231,7 @@ export class UsersController {
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number' },
-        message: { type: 'string' },
-        error: { type: 'string' },
+        errorMessage: { type: 'string' }
       },
     },
     description: 'User Already exists',
@@ -257,6 +256,41 @@ export class UsersController {
         err.response.data ?? 'Something went wrong',
         err.response.status ?? 500,
       );
+    }
+  }
+
+  @Put('/one/:email/info')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_UPDATE_USER_INFO
+  })
+  @ApiForbiddenResponse({
+    description: 'invalid credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Returns updated user',
+  })
+  async changeUserInfo(
+    @Body() body: User,
+    @Param('email') email: string,
+  ) {
+    try {
+      const newInfo = body;
+      return await this.usersService.updateUserInfo(email, newInfo);
+    } catch (err) {
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
     }
   }
 

@@ -9,8 +9,8 @@ export class UsersService {
   public static readonly LDAP_SEARCH_QUERY = (email) =>
     `(&(objectClass=person)(objectClass=user)(email=${email}))`;
   public static readonly LDAP_ERROR_RESPONSE = `
-      Lookup failed: javax.naming.NamingException: 
-      [LDAP: error code 1 - 000004DC: Lda pErr: DSID-0C0906DC, comment: context not found., data 0, v1db1 ]; 
+      Lookup failed: javax.naming.NamingException:
+      [LDAP: error code 1 - 000004DC: Lda pErr: DSID-0C0906DC, comment: context not found., data 0, v1db1 ];
       remaining name: 'OU=Users,O=BrokenCrystals'
     `;
 
@@ -52,6 +52,19 @@ export class UsersService {
       photo,
     });
 
+    await this.usersRepository.persistAndFlush(user);
+    return user;
+  }
+
+  async updateUserInfo(email: string, info: User): Promise<User> {
+    this.log.debug(`updateUserInfo ${email}`);
+    const user = await this.findByEmail(email);
+    if (!user) {
+      throw new Error('Could not find user');
+    }
+    wrap(user).assign({
+      ...info,
+    });
     await this.usersRepository.persistAndFlush(user);
     return user;
   }
