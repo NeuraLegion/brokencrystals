@@ -280,12 +280,11 @@ export class UsersController {
     description: 'Returns updated user',
   })
   async changeUserInfo(
-    @Body() body: User,
+    @Body() body: UserDto,
     @Param('email') email: string,
   ) {
     try {
-      const newInfo = body;
-      return await this.usersService.updateUserInfo(email, newInfo);
+      return await this.usersService.updateUserInfo(email, body);
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
