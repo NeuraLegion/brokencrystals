@@ -209,10 +209,7 @@ export class UsersController {
 
       return new UserDto(
         await this.usersService.createUser(
-          user.email,
-          user.firstName,
-          user.lastName,
-          user.password,
+          user
         ),
       );
     } catch (err) {
