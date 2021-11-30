@@ -180,7 +180,7 @@ export class AuthController {
     description: SWAGGER_DESC_REQUEST_WITH_SIMPLE_CSRF_TOKEN,
   })
   @ApiOkResponse({
-    description: 'Returns simple csrf token'
+    description: 'Returns simple csrf token',
   })
   async getCsrfToken(
     @Res({ passthrough: true }) res: FastifyReply,

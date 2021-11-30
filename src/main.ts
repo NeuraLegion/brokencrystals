@@ -28,8 +28,8 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(server),
     {
-      logger: process.env.NODE_ENV === 'production' ? ['error'] : true
-    }
+      logger: process.env.NODE_ENV === 'production' ? ['error'] : true,
+    },
   );
 
   await server.register(fastifyCookie);

@@ -13,7 +13,7 @@ import * as jwkToPem from 'jwk-to-pem';
 import { JWK } from 'jwk-to-pem';
 import { stringify } from 'querystring';
 import { verify } from 'jsonwebtoken';
-import { User } from 'src/model/user.entity';
+import { User } from '../model/user.entity';
 
 export interface OIDCIdentityConfig {
   issuer?: string;

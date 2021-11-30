@@ -10,6 +10,12 @@ export class UserDto {
   @ApiProperty()
   lastName: string;
 
+  @ApiProperty()
+  isAdmin: boolean;
+
+  @ApiProperty()
+  password: string;
+
   constructor(
     params: {
       [P in keyof UserDto]: UserDto[P];
