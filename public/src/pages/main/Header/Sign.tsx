@@ -11,14 +11,8 @@ export const Sign: FC = () => {
 
   useEffect(() => {
     getPhoto();
-    checkIsAdmin();
+    user && getUserData(user).then((data) => setIsAdminUser(data.isAdmin));
   }, [isAdminUser]);
-
-  const checkIsAdmin = () => {
-    user
-      ? getUserData(user).then((data) => setIsAdminUser(data.isAdmin))
-      : null;
-  };
 
   const sendPhoto = (e: ChangeEvent<HTMLInputElement>) => {
     const file: File = (e.target.files as FileList)[0];

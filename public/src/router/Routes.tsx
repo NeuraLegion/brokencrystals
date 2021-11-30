@@ -13,14 +13,8 @@ export const Routes: FC = () => {
   const user = sessionStorage.getItem('email');
   const [isAdminUser, setIsAdminUser] = useState<boolean>(true);
   useEffect(() => {
-    verifyAdminPermissions();
+    user && getUserData(user).then((data) => setIsAdminUser(data.isAdmin));
   }, [isAdminUser]);
-
-  const verifyAdminPermissions = () => {
-    user
-      ? getUserData(user).then((data) => setIsAdminUser(data.isAdmin))
-      : null;
-  };
 
   return (
     <Switch>
