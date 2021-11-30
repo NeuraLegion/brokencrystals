@@ -23,7 +23,7 @@ export class UsersService {
   ) {}
 
   async createUser(
-    user
+    user: UserDto
   ): Promise<User> {
     this.log.debug(`Called createUser`);
 

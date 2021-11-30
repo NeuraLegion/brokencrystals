@@ -27,11 +27,10 @@ export const Userprofile = () => {
 
   const sendUserData = (e: FormEvent) => {
     e.preventDefault();
-    putUserData(user);
-    sessionStorage.setItem('userName', `${user.firstName} ${user.lastName}`);
-    setTimeout(() => {
+    putUserData(user).then(() => {
+      sessionStorage.setItem('userName', `${user.firstName} ${user.lastName}`);
       window.location.href = RoutePath.Home;
-    }, 1500);
+    });
   };
 
   return (
