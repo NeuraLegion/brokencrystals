@@ -20,22 +20,19 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: EntityRepository<User>,
-  ) {}
+  ) { }
 
   async createUser(
-    email: string,
-    firstName: string,
-    lastName: string,
-    password: string,
+    user: UserDto
   ): Promise<User> {
     this.log.debug(`Called createUser`);
 
     const u = new User();
-    u.email = email;
-    u.firstName = firstName;
-    u.lastName = lastName;
-    u.isAdmin = false;
-    u.password = await hashPassword(password);
+    u.email = user.email;
+    u.firstName = user.firstName;
+    u.lastName = user.lastName;
+    u.isAdmin = user.isAdmin || false;
+    u.password = await hashPassword(user.password);
 
     await this.usersRepository.persistAndFlush(u);
     this.log.debug(`Saved new user`);
