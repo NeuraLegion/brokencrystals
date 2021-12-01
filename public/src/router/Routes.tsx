@@ -17,9 +17,9 @@ export const Routes: FC = () => {
   }, [isAdminUser]);
 
   const verifyAdminPermissions = () => {
-    user
-      ? getUserData(user).then((data) => setIsAdminUser(data.isAdmin))
-      : null;
+    if (user) {
+      getUserData(user).then((data) => setIsAdminUser(data.isAdmin));
+    }
   };
 
   return (

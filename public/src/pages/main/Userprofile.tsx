@@ -22,7 +22,9 @@ export const Userprofile = () => {
   };
 
   useEffect(() => {
-    email ? getUserData(email).then((data) => setUser(data)) : '';
+    if (email) {
+      getUserData(email).then((data) => setUser(data));
+    }
   }, []);
 
   const sendUserData = (e: FormEvent) => {
