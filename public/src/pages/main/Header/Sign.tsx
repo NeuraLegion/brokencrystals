@@ -15,9 +15,9 @@ export const Sign: FC = () => {
   }, [isAdminUser]);
 
   const checkIsAdmin = () => {
-    user
-      ? getUserData(user).then((data) => setIsAdminUser(data.isAdmin))
-      : null;
+    if (user) {
+      getUserData(user).then((data) => setIsAdminUser(data.isAdmin));
+    }
   };
 
   const sendPhoto = (e: ChangeEvent<HTMLInputElement>) => {

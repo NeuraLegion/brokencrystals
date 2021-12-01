@@ -3,6 +3,9 @@ FROM node:14
 WORKDIR /home/node/bc
 
 COPY package*.json ./
+
+RUN npm ci -q
+
 COPY config ./config
 COPY tsconfig.build.json ./
 COPY tsconfig.json ./
@@ -10,7 +13,6 @@ COPY nest-cli.json ./
 COPY .env ./
 COPY src ./src
 
-RUN npm ci -q
 RUN npm run build
 RUN npm prune --production
 
