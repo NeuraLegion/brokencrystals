@@ -36,12 +36,6 @@ services:
       URL: http://localhost:3000
     ports:
      - '3000:3000'
-    deploy:
-      restart_policy:
-        condition: on-failure
-      resources:
-        limits:
-          cpus: 3.5
     logging:
       options:
         max-file: '5'

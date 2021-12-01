@@ -10,6 +10,7 @@ create table "product" ("id" serial primary key, "created_at" timestamptz(0) not
 set session_replication_role = 'origin';
 --password is admin
 INSERT INTO "user" (created_at, updated_at, email, password, first_name, last_name, is_admin, photo) VALUES (now(), now(), 'admin', '$2b$10$BBJjmVNNdyEgv7pV/zQR9u/ssIuwZsdDJbowW/Dgp28uws3GmO0Ky', 'admin', 'admin', false, null);
+INSERT INTO "user" (created_at, updated_at, email, password, first_name, last_name, is_admin, photo) VALUES (now(), now(), 'alexander.pukharev+2@neuralegion.com', '$2b$10$ufpya27zR6JGazKcMLUCKOybPMlX9upMw24iWeRlV5JbNhjxJU0eK', 'Alex', 'Pukharev', false, null);
 
 --insert default products into the table
 INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Healing', '/api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg', 'Amethyst', 'a violet variety of quartz');
