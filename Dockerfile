@@ -1,6 +1,6 @@
 FROM node:14
 
-WORKDIR /home/node/bc
+WORKDIR /var/www/
 
 COPY package*.json ./
 
@@ -16,7 +16,7 @@ COPY src ./src
 RUN npm run build
 RUN npm prune --production
 
-RUN chown -R node:node /home/*
+RUN chown -R node:node /var/www/*
 
 USER node
 
