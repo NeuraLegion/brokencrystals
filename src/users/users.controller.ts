@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Header,
   HttpException,
@@ -48,6 +49,7 @@ import {
   SWAGGER_DESC_UPLOAD_USER_PHOTO,
   SWAGGER_DESC_CREATE_OIDC_USER,
   SWAGGER_DESC_UPDATE_USER_INFO,
+  SWAGGER_DESC_ADMIN_RIGHTS,
 } from './users.controller.swagger.desc';
 
 @Controller('/api/users')
@@ -280,6 +282,42 @@ export class UsersController {
         error: err.message,
         location: __filename,
       });
+    }
+  }
+
+  @Get('/one/:email/isadmin')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_ADMIN_RIGHTS,
+  })
+  @ApiForbiddenResponse({
+    description: 'user has no admin rights',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Returns true if user has admin rights',
+  })
+  async getAdminStatus(@Param('email') email: string) {
+    try {
+      return await this.usersService.findByEmail(email).then(({ isAdmin }) => {
+        if (isAdmin === true) {
+          return isAdmin;
+        } else {
+          throw new ForbiddenException('Forbidden');
+        }
+      });
+    } catch (err) {
+      throw new HttpException(
+        err.response.message ?? 'Something went wrong',
+        err.response.statusCode ?? 500,
+      );
     }
   }
 
