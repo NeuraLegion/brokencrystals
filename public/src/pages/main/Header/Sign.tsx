@@ -1,16 +1,24 @@
 import React, { ChangeEvent, FC, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getUserPhoto, putPhoto } from '../../../api/httpClient';
-import { RoutePath } from 'src/router/RoutePath';
+import { getUserData, getUserPhoto, putPhoto } from '../../../api/httpClient';
+import { RoutePath } from '../../../router/RoutePath';
 
 export const Sign: FC = () => {
   const user = sessionStorage.getItem('email');
   const userName = sessionStorage.getItem('userName');
+  const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
   const [userImage, setUserImage] = useState<string | null>();
 
   useEffect(() => {
     getPhoto();
-  }, []);
+    checkIsAdmin();
+  }, [isAdminUser]);
+
+  const checkIsAdmin = () => {
+    if (user) {
+      getUserData(user).then((data) => setIsAdminUser(data.isAdmin));
+    }
+  };
 
   const sendPhoto = (e: ChangeEvent<HTMLInputElement>) => {
     const file: File = (e.target.files as FileList)[0];
@@ -31,6 +39,7 @@ export const Sign: FC = () => {
   const logout = () => {
     sessionStorage.removeItem('email');
     sessionStorage.removeItem('token');
+    sessionStorage.removeItem('userName');
     window.location.reload();
   };
 
@@ -45,6 +54,14 @@ export const Sign: FC = () => {
               className="profile-image"
             />
           </label>
+          <a href={RoutePath.Userprofile} className="get-started-btn">
+            Edit data
+          </a>
+          {isAdminUser && (
+            <a href={RoutePath.Adminpage} className="get-started-btn">
+              Adminpage
+            </a>
+          )}
           <Link
             to={RoutePath.Home}
             className="get-started-btn scrollto"

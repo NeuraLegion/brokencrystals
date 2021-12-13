@@ -94,7 +94,7 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
-    description: SWAGGER_DESC_PHOTO_USER_BY_EMAIL
+    description: SWAGGER_DESC_PHOTO_USER_BY_EMAIL,
   })
   @ApiOkResponse({
     description: 'Returns user profile photo',
@@ -207,14 +207,7 @@ export class UsersController {
         throw new HttpException('User already exists', 409);
       }
 
-      return new UserDto(
-        await this.usersService.createUser(
-          user.email,
-          user.firstName,
-          user.lastName,
-          user.password,
-        ),
-      );
+      return new UserDto(await this.usersService.createUser(user));
     } catch (err) {
       throw new HttpException(
         err.message ?? 'Something went wrong',
@@ -231,7 +224,7 @@ export class UsersController {
     schema: {
       type: 'object',
       properties: {
-        errorMessage: { type: 'string' }
+        errorMessage: { type: 'string' },
       },
     },
     description: 'User Already exists',
@@ -263,7 +256,7 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
-    description: SWAGGER_DESC_UPDATE_USER_INFO
+    description: SWAGGER_DESC_UPDATE_USER_INFO,
   })
   @ApiForbiddenResponse({
     description: 'invalid credentials',
@@ -279,10 +272,7 @@ export class UsersController {
   @ApiOkResponse({
     description: 'Returns updated user',
   })
-  async changeUserInfo(
-    @Body() body: UserDto,
-    @Param('email') email: string,
-  ) {
+  async changeUserInfo(@Body() body: UserDto, @Param('email') email: string) {
     try {
       return await this.usersService.updateUserInfo(email, body);
     } catch (err) {
@@ -300,7 +290,7 @@ export class UsersController {
     description: SWAGGER_DESC_UPLOAD_USER_PHOTO,
   })
   @ApiOkResponse({
-    description: 'Photo updated'
+    description: 'Photo updated',
   })
   @UseInterceptors(AnyFilesInterceptor)
   async uploadFile(@Param('email') email: string, @Req() req: FastifyRequest) {

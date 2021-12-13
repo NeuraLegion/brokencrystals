@@ -19,6 +19,7 @@ export function makeApiRequest<T>(
         case 401:
           sessionStorage.removeItem('email');
           sessionStorage.removeItem('token');
+          sessionStorage.removeItem('userName');
           return {
             ...error,
             errorText:

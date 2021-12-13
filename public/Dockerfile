@@ -3,14 +3,16 @@ FROM node:14 AS builder
 WORKDIR /home/node/bc
 
 COPY package*.json ./
-COPY tsconfig.json ./
+
+RUN npm ci -q
+
 COPY .env ./
+COPY tsconfig.json ./
 COPY src ./src
 COPY typings ./typings
 COPY public ./public
 COPY vcs ./vcs
 
-RUN npm ci -q
 RUN npm run build
 
 FROM nginx AS http
