@@ -7,12 +7,12 @@ export const AdminPage: FC = () => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   useEffect(() => {
-    if (user) getAdminStatus(user).then((data) => setIsAdmin(data || false));
+    if (user) getAdminStatus(user).then((data) => setIsAdmin(!!data));
   }, [user]);
 
   return (
     <AuthLayout>
-      {isAdmin === true ? (
+      {isAdmin ? (
         <div>This is AdminPage</div>
       ) : (
         <div>This page is forbidden for you</div>

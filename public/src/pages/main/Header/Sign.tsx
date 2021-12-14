@@ -21,7 +21,7 @@ export const Sign: FC = () => {
   const checkIsAdmin = () => {
     if (user) {
       getAdminStatus(user).then((data) => {
-        setIsAdminUser(data === true ? true : false);
+        setIsAdminUser(data.isAdmin === true ? true : false);
       });
     }
   };

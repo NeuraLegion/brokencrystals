@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Header,
   HttpException,
@@ -285,7 +284,7 @@ export class UsersController {
     }
   }
 
-  @Get('/one/:email/isadmin')
+  @Get('/one/:email/adminpermission')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -306,13 +305,7 @@ export class UsersController {
   })
   async getAdminStatus(@Param('email') email: string) {
     try {
-      return await this.usersService.findByEmail(email).then(({ isAdmin }) => {
-        if (isAdmin === true) {
-          return isAdmin;
-        } else {
-          throw new ForbiddenException('Forbidden');
-        }
-      });
+      return await this.usersService.checkAdminPermissions(email);
     } catch (err) {
       throw new HttpException(
         err.response.message ?? 'Something went wrong',
