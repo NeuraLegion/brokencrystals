@@ -50,6 +50,8 @@ import {
   SWAGGER_DESC_UPDATE_USER_INFO,
   SWAGGER_DESC_ADMIN_RIGHTS,
 } from './users.controller.swagger.desc';
+import { AdminGuard } from './users.guard';
+import { PermissionDto } from './api/PermissionDto';
 
 @Controller('/api/users')
 @ApiTags('User controller')
@@ -285,7 +287,7 @@ export class UsersController {
   }
 
   @Get('/one/:email/adminpermission')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, AdminGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
     description: SWAGGER_DESC_ADMIN_RIGHTS,
@@ -303,15 +305,8 @@ export class UsersController {
   @ApiOkResponse({
     description: 'Returns true if user has admin rights',
   })
-  async getAdminStatus(@Param('email') email: string) {
-    try {
-      return await this.usersService.checkAdminPermissions(email);
-    } catch (err) {
-      throw new HttpException(
-        err.response.message ?? 'Something went wrong',
-        err.response.statusCode ?? 500,
-      );
-    }
+  async getAdminStatus(@Param('email') email: string): Promise<PermissionDto> {
+    return this.usersService.getPermissions(email);
   }
 
   @Put('/one/:email/photo')

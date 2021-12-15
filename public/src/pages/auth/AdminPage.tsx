@@ -7,7 +7,7 @@ export const AdminPage: FC = () => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   useEffect(() => {
-    if (user) getAdminStatus(user).then((data) => setIsAdmin(!!data));
+    if (user) getAdminStatus(user).then((data) => setIsAdmin(!!data.isAdmin));
   }, [user]);
 
   return (

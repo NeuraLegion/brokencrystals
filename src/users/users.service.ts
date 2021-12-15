@@ -1,7 +1,7 @@
 import { EntityRepository, NotFoundError, wrap } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { permissionDto } from './api/permissionDto';
+import { PermissionDto } from './api/PermissionDto';
 import { hashPassword } from '../auth/credentials.utils';
 import { User } from '../model/user.entity';
 import { UserDto } from './api/UserDto';
@@ -71,18 +71,16 @@ export class UsersService {
     return this.usersRepository.findOne({ email });
   }
 
-  async checkAdminPermissions(email: string): Promise<permissionDto> {
-    return {
-      isAdmin: await this.usersRepository
-        .findOne({ email })
-        .then(({ isAdmin }) => {
-          if (isAdmin) {
-            return isAdmin;
-          } else {
-            throw new ForbiddenException('Forbidden');
-          }
-        }),
-    };
+  async getPermissions(email: string): Promise<PermissionDto> {
+    const user = await this.usersRepository.findOne({ email });
+
+    if (user.isAdmin) {
+      return new PermissionDto({
+        isAdmin: user.isAdmin,
+      });
+    } else {
+      throw new ForbiddenException('Forbidden');
+    }
   }
 
   async findByEmailPrefix(emailPrefix: string): Promise<User[]> {
