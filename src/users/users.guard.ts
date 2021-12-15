@@ -1,5 +1,4 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { Observable } from 'rxjs';
 import { UsersService } from './users.service';
 import { FastifyRequest } from 'fastify';
 

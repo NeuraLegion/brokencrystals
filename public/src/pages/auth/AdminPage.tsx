@@ -1,5 +1,5 @@
 import React, { FC, useEffect, useState } from 'react';
-import { getAdminStatus } from 'src/api/httpClient';
+import { getAdminStatus } from '../../api/httpClient';
 import AuthLayout from './AuthLayout';
 
 export const AdminPage: FC = () => {

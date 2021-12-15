@@ -305,7 +305,7 @@ export class UsersController {
   @ApiOkResponse({
     description: 'Returns true if user has admin rights',
   })
-  async getAdminStatus(@Param('email') email: string): Promise<PermissionDto> {
+  getAdminStatus(@Param('email') email: string): Promise<PermissionDto> {
     return this.usersService.getPermissions(email);
   }
 
