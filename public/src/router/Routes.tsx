@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useState } from 'react';
+import React, { FC } from 'react';
 import { Route, Switch, Redirect } from 'react-router-dom';
 import { RoutePath } from './RoutePath';
 import Main from '../pages/main/Main';
@@ -7,20 +7,9 @@ import Register from '../pages/auth/Register/Register';
 import Marketplace from '../pages/marketplace/Marketplace';
 import Userprofile from '../pages/main/Userprofile';
 import AdminPage from '../pages/auth/AdminPage';
-import { getUserData } from '../api/httpClient';
 
 export const Routes: FC = () => {
   const user = sessionStorage.getItem('email');
-  const [isAdminUser, setIsAdminUser] = useState<boolean>(true);
-  useEffect(() => {
-    verifyAdminPermissions();
-  }, [isAdminUser]);
-
-  const verifyAdminPermissions = () => {
-    if (user) {
-      getUserData(user).then((data) => setIsAdminUser(data.isAdmin));
-    }
-  };
 
   return (
     <Switch>
@@ -53,7 +42,7 @@ export const Routes: FC = () => {
       </Route>
 
       <Route path={RoutePath.Adminpage}>
-        {user && isAdminUser ? (
+        {user ? (
           <AdminPage />
         ) : (
           <Redirect

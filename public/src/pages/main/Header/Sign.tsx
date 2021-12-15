@@ -1,6 +1,10 @@
 import React, { ChangeEvent, FC, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getUserData, getUserPhoto, putPhoto } from '../../../api/httpClient';
+import {
+  getAdminStatus,
+  getUserPhoto,
+  putPhoto
+} from '../../../api/httpClient';
 import { RoutePath } from '../../../router/RoutePath';
 
 export const Sign: FC = () => {
@@ -16,7 +20,9 @@ export const Sign: FC = () => {
 
   const checkIsAdmin = () => {
     if (user) {
-      getUserData(user).then((data) => setIsAdminUser(data.isAdmin));
+      getAdminStatus(user).then((data) => {
+        setIsAdminUser(data.isAdmin);
+      });
     }
   };
 

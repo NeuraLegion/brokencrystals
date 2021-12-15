@@ -48,7 +48,10 @@ import {
   SWAGGER_DESC_UPLOAD_USER_PHOTO,
   SWAGGER_DESC_CREATE_OIDC_USER,
   SWAGGER_DESC_UPDATE_USER_INFO,
+  SWAGGER_DESC_ADMIN_RIGHTS,
 } from './users.controller.swagger.desc';
+import { AdminGuard } from './users.guard';
+import { PermissionDto } from './api/PermissionDto';
 
 @Controller('/api/users')
 @ApiTags('User controller')
@@ -281,6 +284,29 @@ export class UsersController {
         location: __filename,
       });
     }
+  }
+
+  @Get('/one/:email/adminpermission')
+  @UseGuards(AuthGuard, AdminGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_ADMIN_RIGHTS,
+  })
+  @ApiForbiddenResponse({
+    description: 'user has no admin rights',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Returns true if user has admin rights',
+  })
+  getAdminStatus(@Param('email') email: string): Promise<PermissionDto> {
+    return this.usersService.getPermissions(email);
   }
 
   @Put('/one/:email/photo')
