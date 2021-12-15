@@ -188,8 +188,8 @@ export class AppController {
         AppModuleConfigProperties.ENV_AWS_BUCKET,
       ),
       sql: `postgres://${dbUser}:${dbPwd}@${dbHost}:${dbPort}/${dbSchema} `,
-      mailgun: this.configService.get<string>(
-        AppModuleConfigProperties.ENV_MAILGUN_API,
+      googlemaps: this.configService.get<string>(
+        AppModuleConfigProperties.ENV_GOOGLE_MAPS,
       ),
     };
   }

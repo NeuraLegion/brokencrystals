@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { HttpClientService } from 'src/httpclient/httpclient.service';
+import { HttpClientService } from '../httpclient/httpclient.service';
 import { KeyCloakService } from './keycloak.service';
 
 @Module({

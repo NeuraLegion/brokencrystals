@@ -47,6 +47,7 @@ import {
   SWAGGER_DESC_OPTIONS_REQUEST,
   SWAGGER_DESC_UPLOAD_USER_PHOTO,
   SWAGGER_DESC_CREATE_OIDC_USER,
+  SWAGGER_DESC_UPDATE_USER_INFO,
 } from './users.controller.swagger.desc';
 
 @Controller('/api/users')
@@ -93,7 +94,7 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
-    description: SWAGGER_DESC_PHOTO_USER_BY_EMAIL
+    description: SWAGGER_DESC_PHOTO_USER_BY_EMAIL,
   })
   @ApiOkResponse({
     description: 'Returns user profile photo',
@@ -206,14 +207,7 @@ export class UsersController {
         throw new HttpException('User already exists', 409);
       }
 
-      return new UserDto(
-        await this.usersService.createUser(
-          user.email,
-          user.firstName,
-          user.lastName,
-          user.password,
-        ),
-      );
+      return new UserDto(await this.usersService.createUser(user));
     } catch (err) {
       throw new HttpException(
         err.message ?? 'Something went wrong',
@@ -230,9 +224,7 @@ export class UsersController {
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number' },
-        message: { type: 'string' },
-        error: { type: 'string' },
+        errorMessage: { type: 'string' },
       },
     },
     description: 'User Already exists',
@@ -260,6 +252,37 @@ export class UsersController {
     }
   }
 
+  @Put('/one/:email/info')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_UPDATE_USER_INFO,
+  })
+  @ApiForbiddenResponse({
+    description: 'invalid credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Returns updated user',
+  })
+  async changeUserInfo(@Body() body: UserDto, @Param('email') email: string) {
+    try {
+      return await this.usersService.updateUserInfo(email, body);
+    } catch (err) {
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
+    }
+  }
+
   @Put('/one/:email/photo')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
@@ -267,7 +290,7 @@ export class UsersController {
     description: SWAGGER_DESC_UPLOAD_USER_PHOTO,
   })
   @ApiOkResponse({
-    description: 'Photo updated'
+    description: 'Photo updated',
   })
   @UseInterceptors(AnyFilesInterceptor)
   async uploadFile(@Param('email') email: string, @Req() req: FastifyRequest) {

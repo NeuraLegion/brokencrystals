@@ -4,7 +4,7 @@ import { RegistrationUser, LoginFormMode } from '../../../interfaces/User';
 import AuthLayout from '../AuthLayout';
 import { Link } from 'react-router-dom';
 import showRegResponse from './showRegReponse';
-import { RoutePath } from 'src/router/RoutePath';
+import { RoutePath } from '../../../router/RoutePath';
 
 const defaultUser: RegistrationUser = {
   email: '',

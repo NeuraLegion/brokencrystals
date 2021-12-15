@@ -137,6 +137,18 @@ export function getUserPhoto(email: string): Promise<any> {
   });
 }
 
+export function putUserData(user: UserData): Promise<UserData> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/one/${user.email}/info`,
+    method: 'put',
+    headers: {
+      'content-type': 'application/json',
+      'authorization': sessionStorage.getItem('token')
+    },
+    data: user
+  });
+}
+
 export function putPhoto(photo: File, email: string): Promise<any> {
   const data = new FormData();
   data.append(email, photo, photo.name);
