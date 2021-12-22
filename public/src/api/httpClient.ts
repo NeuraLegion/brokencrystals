@@ -137,6 +137,14 @@ export function getUserPhoto(email: string): Promise<any> {
   });
 }
 
+export function getAdminStatus(email: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/one/${email}/adminpermission`,
+    method: 'get',
+    headers: { authorization: sessionStorage.getItem('token') }
+  });
+}
+
 export function putUserData(user: UserData): Promise<UserData> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${user.email}/info`,
