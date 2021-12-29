@@ -1,6 +1,7 @@
 import { EntityRepository, NotFoundError, wrap } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable, Logger } from '@nestjs/common';
+import { PermissionDto } from './api/PermissionDto';
 import { hashPassword } from '../auth/credentials.utils';
 import { User } from '../model/user.entity';
 import { UserDto } from './api/UserDto';
@@ -68,6 +69,14 @@ export class UsersService {
   async findByEmail(email: string): Promise<User> {
     this.log.debug(`Called findByEmail ${email}`);
     return this.usersRepository.findOne({ email });
+  }
+
+  async getPermissions(email: string): Promise<PermissionDto> {
+    const user = await this.usersRepository.findOne({ email });
+
+    return new PermissionDto({
+      isAdmin: user.isAdmin,
+    });
   }
 
   async findByEmailPrefix(emailPrefix: string): Promise<User[]> {
