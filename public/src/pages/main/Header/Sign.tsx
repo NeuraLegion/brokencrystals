@@ -84,9 +84,14 @@ export const Sign: FC = () => {
           />
         </>
       ) : (
-        <a href={RoutePath.Login} className="get-started-btn scrollto">
-          Sign in
-        </a>
+        <>
+          <a href={RoutePath.Login} className="get-started-btn scrollto">
+            Sign in
+          </a>
+          <a href={RoutePath.LoginNew} className="get-started-btn scrollto">
+            2-step Sign in
+          </a>
+        </>
       )}
     </>
   );
