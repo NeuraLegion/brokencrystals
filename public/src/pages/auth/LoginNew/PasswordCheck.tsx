@@ -33,7 +33,7 @@ export const PasswordCheck: FC = () => {
   const sendUser = (e: FormEvent) => {
     e.preventDefault();
     const config: Pick<AxiosRequestConfig, 'headers'> = {
-      headers: {}
+      headers: { 'content-type': 'application/json' }
     };
 
     getUser(form, config)

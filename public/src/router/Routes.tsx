@@ -8,7 +8,7 @@ import Register from '../pages/auth/Register/Register';
 import Marketplace from '../pages/marketplace/Marketplace';
 import Userprofile from '../pages/main/Userprofile';
 import AdminPage from '../pages/auth/AdminPage';
-import PasswordCheck from 'src/pages/auth/LoginNew/PasswordCheck';
+import PasswordCheck from '../pages/auth/LoginNew/PasswordCheck';
 
 export const Routes: FC = () => {
   const user = sessionStorage.getItem('email');

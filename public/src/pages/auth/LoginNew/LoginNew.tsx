@@ -12,11 +12,6 @@ const defaultLoginUser: LoginUser = {
   op: LoginFormMode.BASIC
 };
 
-enum RequestHeaders {
-  FORM_URLENCODED = 'application/x-www-form-urlencoded',
-  APPLICATION_JSON = 'application/json'
-}
-
 export const LoginNew: FC = () => {
   const [form, setForm] = useState<LoginUser>(defaultLoginUser);
   const { user } = form;
@@ -30,13 +25,11 @@ export const LoginNew: FC = () => {
   const sendUser = (e: FormEvent) => {
     e.preventDefault();
     const config: Pick<AxiosRequestConfig, 'headers'> = {
-      headers: { 'content-type': RequestHeaders.FORM_URLENCODED }
+      headers: { 'content-type': 'application/x-www-form-urlencoded' }
     };
 
     getUserData(form.user, config)
-      .then((data: UserData) => {
-        return data;
-      })
+      .then((data: UserData) => data)
       .then(({ email }) => {
         if (!email) {
           setErrorText('User doesn`t exist, try to signup');
