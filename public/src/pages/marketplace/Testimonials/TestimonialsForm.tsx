@@ -19,7 +19,7 @@ interface Props {
 }
 
 export const TestimonialsForm: FC<Props> = (props: Props) => {
-  const user = sessionStorage.getItem('email');
+  const user = sessionStorage.getItem('email') || localStorage.getItem('email');
 
   const [form, setForm] = useState<Testimonial>(defaultTestimonial);
   const { name, title, message } = form;

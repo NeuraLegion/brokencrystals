@@ -44,15 +44,32 @@ export const PasswordCheck: FC = () => {
         if (errorText) {
           setErrorText(errorText);
         } else {
-          sessionStorage.setItem('email', email);
+          if (form.rememberuser) {
+            localStorage.setItem(
+              'email',
+              sessionStorage.getItem('email') || ''
+            );
+            localStorage.setItem(
+              'token',
+              sessionStorage.getItem('token') || ''
+            );
+            sessionStorage.clear();
+          }
         }
         return getUserData(email);
       })
       .then((userData: UserData) => {
-        sessionStorage.setItem(
-          'userName',
-          `${userData.firstName} ${userData.lastName}`
-        );
+        if (form.rememberuser) {
+          localStorage.setItem(
+            'userName',
+            `${userData.firstName} ${userData.lastName}`
+          );
+        } else {
+          sessionStorage.setItem(
+            'userName',
+            `${userData.firstName} ${userData.lastName}`
+          );
+        }
         window.location.href = RoutePath.Home;
       });
   };
@@ -79,6 +96,16 @@ export const PasswordCheck: FC = () => {
               value={password}
               onInput={onInput}
             />
+            <label htmlFor="rememberuser">
+              <input
+                type="checkbox"
+                id="rememberuser"
+                name="rememberuser"
+                value="true"
+                onChange={onInput}
+              />
+              &nbsp;Remember me
+            </label>
           </div>
           <button
             className="au-btn au-btn--block au-btn--green m-b-20"

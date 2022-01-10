@@ -11,7 +11,7 @@ import AdminPage from '../pages/auth/AdminPage';
 import PasswordCheck from '../pages/auth/LoginNew/PasswordCheck';
 
 export const Routes: FC = () => {
-  const user = sessionStorage.getItem('email');
+  const user = sessionStorage.getItem('email') || localStorage.getItem('email');
 
   return (
     <Switch>

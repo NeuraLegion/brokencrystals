@@ -3,7 +3,7 @@ import { getAdminStatus } from '../../api/httpClient';
 import AuthLayout from './AuthLayout';
 
 export const AdminPage: FC = () => {
-  const user = sessionStorage.getItem('email');
+  const user = sessionStorage.getItem('email') || localStorage.getItem('email');
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   useEffect(() => {
