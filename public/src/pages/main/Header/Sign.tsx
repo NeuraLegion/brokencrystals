@@ -10,7 +10,7 @@ import { RoutePath } from '../../../router/RoutePath';
 export const Sign: FC = () => {
   const user = sessionStorage.getItem('email') || localStorage.getItem('email');
   const userName =
-    sessionStorage.getItem('userName') || localStorage.getItem('username');
+    sessionStorage.getItem('userName') || localStorage.getItem('userName');
   const [isAdminUser, setIsAdminUser] = useState<boolean>(false);
   const [userImage, setUserImage] = useState<string | null>();
 
