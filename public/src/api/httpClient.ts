@@ -30,7 +30,10 @@ export function getProducts(): Promise<Product[]> {
   return makeApiRequest({
     url: ApiUrl.Products,
     method: 'get',
-    headers: { authorization: sessionStorage.getItem('token') }
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    }
   });
 }
 
@@ -42,7 +45,10 @@ export function postTestimonials(data: Testimonial): Promise<any> {
   return makeApiRequest({
     url: ApiUrl.Testimonials,
     method: 'post',
-    headers: { authorization: sessionStorage.getItem('token') },
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    },
     data
   });
 }
@@ -132,7 +138,10 @@ export function getUserPhoto(email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${email}/photo`,
     method: 'get',
-    headers: { authorization: sessionStorage.getItem('token') },
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    },
     responseType: 'arraybuffer'
   });
 }
@@ -141,7 +150,10 @@ export function getAdminStatus(email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${email}/adminpermission`,
     method: 'get',
-    headers: { authorization: sessionStorage.getItem('token') }
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    }
   });
 }
 
@@ -151,7 +163,8 @@ export function putUserData(user: UserData): Promise<UserData> {
     method: 'put',
     headers: {
       'content-type': 'application/json',
-      'authorization': sessionStorage.getItem('token')
+      'authorization':
+        sessionStorage.getItem('token') || localStorage.getItem('token')
     },
     data: user
   });
@@ -166,7 +179,8 @@ export function putPhoto(photo: File, email: string): Promise<any> {
     method: 'put',
     headers: {
       'content-type': 'image/png',
-      'authorization': sessionStorage.getItem('token')
+      'authorization':
+        sessionStorage.getItem('token') || localStorage.getItem('token')
     },
     data
   });

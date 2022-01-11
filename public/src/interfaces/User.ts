@@ -4,6 +4,7 @@ export interface LoginUser {
   csrf?: string;
   op?: LoginFormMode;
   fingerprint?: string;
+  rememberuser?: string;
 }
 
 export enum LoginFormMode {
