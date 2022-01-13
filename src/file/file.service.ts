@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CloudProvidersMetaData } from './cloud.providers.metadata';
 import { R_OK } from 'constants';
+import axios from 'axios';
 
 @Injectable()
 export class FileService {
@@ -18,7 +19,7 @@ export class FileService {
 
       return fs.createReadStream(file);
     } else if (file.startsWith('http')) {
-      const content = this.cloudProviders.get(file);
+      const content = await this.cloudProviders.get(file) || await axios(file).then(({ data }) => data);
 
       if (content) {
         return Readable.from(content);
