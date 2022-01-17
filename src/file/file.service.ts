@@ -19,8 +19,11 @@ export class FileService {
 
       return fs.createReadStream(file);
     } else if (file.startsWith('http')) {
-      const content = await this.cloudProviders.get(file) || await axios(file).then(({ data }) => data);
-
+      let content = this.cloudProviders.get(file);
+      if (content === null) {
+        const data = await axios(file);
+        content = data.data;
+      }
       if (content) {
         return Readable.from(content);
       } else {
