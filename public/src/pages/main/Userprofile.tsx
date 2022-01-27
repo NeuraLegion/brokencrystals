@@ -13,7 +13,8 @@ const defaultUserData: UserData = {
 };
 
 export const Userprofile = () => {
-  const email: string | null = sessionStorage.getItem('email');
+  const email: string | null =
+    sessionStorage.getItem('email') || localStorage.getItem('email');
   const [user, setUser] = useState<UserData>(defaultUserData);
 
   const onInput = ({ target }: { target: EventTarget | null }) => {
@@ -30,7 +31,14 @@ export const Userprofile = () => {
   const sendUserData = (e: FormEvent) => {
     e.preventDefault();
     putUserData(user).then(() => {
-      sessionStorage.setItem('userName', `${user.firstName} ${user.lastName}`);
+      if (localStorage.getItem('email')) {
+        localStorage.setItem('userName', `${user.firstName} ${user.lastName}`);
+      } else {
+        sessionStorage.setItem(
+          'userName',
+          `${user.firstName} ${user.lastName}`
+        );
+      }
       window.location.href = RoutePath.Home;
     });
   };
