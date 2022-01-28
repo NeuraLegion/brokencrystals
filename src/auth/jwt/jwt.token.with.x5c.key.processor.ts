@@ -14,7 +14,7 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
       return payload;
     }
     const keys = header.x5c;
-    this.log.debug(`Taking keys from from ${JSON.stringify(keys)}`);
+    this.log.debug(`Taking keys from ${JSON.stringify(keys)}`);
     return decode(token, keys[0], false, header.alg);
   }
 

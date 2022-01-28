@@ -26,15 +26,18 @@ export class AuthGuard implements CanActivate {
 
       const request: FastifyRequest = context.switchToHttp().getRequest();
       const token = request.headers[AuthGuard.AUTH_HEADER] as string;
+
       if (!token || token.length == 0) {
         const token = request.cookies[AuthGuard.AUTH_HEADER];
 
-        return token
-          ? !!(await this.authService.validateToken(
-              token,
-              JwtProcessorType.BEARER,
-            ))
-          : false;
+        if (token) {
+          return !!(await this.authService.validateToken(
+            token,
+            JwtProcessorType.BEARER,
+          ));
+        } else {
+          throw new UnauthorizedException();
+        }
       } else if (this.checkIsBearer(token)) {
         return !!(await this.authService.validateToken(
           token.substring(7),
@@ -45,7 +48,6 @@ export class AuthGuard implements CanActivate {
           JwTypeMetadataField,
           context.getHandler(),
         );
-
         return !!(await this.authService.validateToken(token, processorType));
       }
     } catch (err) {
