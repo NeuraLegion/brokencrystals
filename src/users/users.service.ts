@@ -1,9 +1,15 @@
 import { EntityRepository, NotFoundError, wrap } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PermissionDto } from './api/PermissionDto';
 import { hashPassword } from '../auth/credentials.utils';
 import { User } from '../model/user.entity';
+import { FastifyRequest } from 'fastify';
 import { UserDto } from './api/UserDto';
 
 @Injectable()
@@ -53,11 +59,18 @@ export class UsersService {
     return user;
   }
 
-  async updateUserInfo(email: string, info: UserDto): Promise<User> {
+  async updateUserInfo(
+    request: FastifyRequest,
+    email: string,
+    info: UserDto,
+  ): Promise<User> {
     this.log.debug(`updateUserInfo ${email}`);
     const user = await this.findByEmail(email);
     if (!user) {
-      throw new NotFoundError('Could not find user');
+      throw new NotFoundException('Could not find user');
+    }
+    if (this.decodeUser(request) !== email) {
+      throw new ForbiddenException();
     }
     wrap(user).assign({
       ...info,
@@ -82,5 +95,14 @@ export class UsersService {
   async findByEmailPrefix(emailPrefix: string): Promise<User[]> {
     this.log.debug(`Called findByEmailPrefix ${emailPrefix}`);
     return this.usersRepository.find({ email: { $like: emailPrefix + '%' } });
+  }
+
+  decodeUser(request: FastifyRequest): string {
+    return JSON.parse(
+      Buffer.from(
+        request.headers.authorization.split('.')[1],
+        'base64',
+      ).toString(),
+    ).user;
   }
 }
