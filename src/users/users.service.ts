@@ -1,11 +1,6 @@
 import { EntityRepository, NotFoundError, wrap } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import {
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PermissionDto } from './api/PermissionDto';
 import { hashPassword } from '../auth/credentials.utils';
 import { User } from '../model/user.entity';
@@ -58,24 +53,14 @@ export class UsersService {
     return user;
   }
 
-  async updateUserInfo(
-    originEmail: string,
-    email: string,
-    info: UserDto,
-  ): Promise<User> {
-    this.log.debug(`updateUserInfo ${email}`);
-    const user = await this.findByEmail(email);
-    if (!user) {
-      throw new NotFoundException('Could not find user');
-    }
-    if (originEmail !== email) {
-      throw new ForbiddenException();
-    }
-    wrap(user).assign({
-      ...info,
+  async updateUserInfo(oldUser: User, newData: UserDto): Promise<User> {
+    this.log.debug(`updateUserInfo ${oldUser.email}`);
+    const newUser = oldUser;
+    wrap(newUser).assign({
+      ...newData,
     });
-    await this.usersRepository.persistAndFlush(user);
-    return user;
+    await this.usersRepository.persistAndFlush(newUser);
+    return newUser;
   }
 
   async findByEmail(email: string): Promise<User> {

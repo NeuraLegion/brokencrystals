@@ -278,23 +278,19 @@ export class UsersController {
     description: 'Returns updated user',
   })
   async changeUserInfo(
-    @Body() body: UserDto,
+    @Body() newData: UserDto,
     @Param('email') email: string,
     @Req() req: FastifyRequest,
   ) {
     try {
-      const originEmail = JSON.parse(
-        Buffer.from(
-          req.headers.authorization.split('.')[1],
-          'base64',
-        ).toString(),
-      ).user;
-
-      const user = await this.usersService.updateUserInfo(
-        originEmail,
-        email,
-        body,
-      );
+      let user = await this.usersService.findByEmail(email);
+      if (!user) {
+        throw new NotFoundException('Could not find user');
+      }
+      if (this.originEmail(req) !== email) {
+        throw new ForbiddenException();
+      }
+      user = await this.usersService.updateUserInfo(user, newData);
       return {
         email: user.email,
         firstName: user.firstName,
@@ -332,16 +328,11 @@ export class UsersController {
   async getUserInfo(@Param('email') email: string, @Req() req: FastifyRequest) {
     try {
       const user = await this.usersService.findByEmail(email);
-      const originEmail = JSON.parse(
-        Buffer.from(
-          req.headers.authorization.split('.')[1],
-          'base64',
-        ).toString(),
-      ).user;
+
       if (!user) {
         throw new NotFoundException('Could not find user');
       }
-      if (originEmail !== email) {
+      if (this.originEmail(req) !== email) {
         throw new ForbiddenException();
       }
       return {
@@ -400,5 +391,14 @@ export class UsersController {
         location: __filename,
       });
     }
+  }
+
+  originEmail(request: FastifyRequest): string {
+    return JSON.parse(
+      Buffer.from(
+        request.headers.authorization.split('.')[1],
+        'base64',
+      ).toString(),
+    ).user;
   }
 }
