@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Header,
   HttpException,
@@ -23,6 +24,7 @@ import {
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -275,14 +277,74 @@ export class UsersController {
   @ApiOkResponse({
     description: 'Returns updated user',
   })
-  async changeUserInfo(@Body() body: UserDto, @Param('email') email: string) {
+  async changeUserInfo(
+    @Body() newData: UserDto,
+    @Param('email') email: string,
+    @Req() req: FastifyRequest,
+  ) {
     try {
-      return await this.usersService.updateUserInfo(email, body);
+      let user = await this.usersService.findByEmail(email);
+      if (!user) {
+        throw new NotFoundException('Could not find user');
+      }
+      if (this.originEmail(req) !== email) {
+        throw new ForbiddenException();
+      }
+      user = await this.usersService.updateUserInfo(user, newData);
+      return {
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      };
     } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message,
-        location: __filename,
-      });
+      throw new HttpException(
+        err.message || 'Internal server error',
+        err.status || 500,
+      );
+    }
+  }
+
+  @Get('/one/:email/info')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_USER_BY_EMAIL,
+  })
+  @ApiForbiddenResponse({
+    description: 'invalid credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
+  })
+  @ApiNotFoundResponse()
+  @ApiOkResponse({
+    description: 'Returns user info',
+  })
+  async getUserInfo(@Param('email') email: string, @Req() req: FastifyRequest) {
+    try {
+      const user = await this.usersService.findByEmail(email);
+
+      if (!user) {
+        throw new NotFoundException('Could not find user');
+      }
+      if (this.originEmail(req) !== email) {
+        throw new ForbiddenException();
+      }
+      return {
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      };
+    } catch (err) {
+      throw new HttpException(
+        err.message || 'Internal server error',
+        err.status || 500,
+      );
     }
   }
 
@@ -329,5 +391,14 @@ export class UsersController {
         location: __filename,
       });
     }
+  }
+
+  public originEmail(request: FastifyRequest): string {
+    return JSON.parse(
+      Buffer.from(
+        request.headers.authorization.split('.')[1],
+        'base64',
+      ).toString(),
+    ).user;
   }
 }

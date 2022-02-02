@@ -53,17 +53,14 @@ export class UsersService {
     return user;
   }
 
-  async updateUserInfo(email: string, info: UserDto): Promise<User> {
-    this.log.debug(`updateUserInfo ${email}`);
-    const user = await this.findByEmail(email);
-    if (!user) {
-      throw new NotFoundError('Could not find user');
-    }
-    wrap(user).assign({
-      ...info,
+  async updateUserInfo(oldUser: User, newData: UserDto): Promise<User> {
+    this.log.debug(`updateUserInfo ${oldUser.email}`);
+    const newUser = oldUser;
+    wrap(newUser).assign({
+      ...newData,
     });
-    await this.usersRepository.persistAndFlush(user);
-    return user;
+    await this.usersRepository.persistAndFlush(newUser);
+    return newUser;
   }
 
   async findByEmail(email: string): Promise<User> {
