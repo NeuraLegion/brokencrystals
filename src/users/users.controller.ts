@@ -393,7 +393,7 @@ export class UsersController {
     }
   }
 
-  originEmail(request: FastifyRequest): string {
+  public originEmail(request: FastifyRequest): string {
     return JSON.parse(
       Buffer.from(
         request.headers.authorization.split('.')[1],
