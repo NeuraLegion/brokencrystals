@@ -9,7 +9,6 @@ import {
 import { PermissionDto } from './api/PermissionDto';
 import { hashPassword } from '../auth/credentials.utils';
 import { User } from '../model/user.entity';
-import { FastifyRequest } from 'fastify';
 import { UserDto } from './api/UserDto';
 
 @Injectable()
@@ -60,7 +59,7 @@ export class UsersService {
   }
 
   async updateUserInfo(
-    request: FastifyRequest,
+    originEmail: string,
     email: string,
     info: UserDto,
   ): Promise<User> {
@@ -69,7 +68,7 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('Could not find user');
     }
-    if (this.decodeUser(request) !== email) {
+    if (originEmail !== email) {
       throw new ForbiddenException();
     }
     wrap(user).assign({
@@ -95,14 +94,5 @@ export class UsersService {
   async findByEmailPrefix(emailPrefix: string): Promise<User[]> {
     this.log.debug(`Called findByEmailPrefix ${emailPrefix}`);
     return this.usersRepository.find({ email: { $like: emailPrefix + '%' } });
-  }
-
-  decodeUser(request: FastifyRequest): string {
-    return JSON.parse(
-      Buffer.from(
-        request.headers.authorization.split('.')[1],
-        'base64',
-      ).toString(),
-    ).user;
   }
 }

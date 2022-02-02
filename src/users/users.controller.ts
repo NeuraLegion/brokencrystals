@@ -283,7 +283,18 @@ export class UsersController {
     @Req() req: FastifyRequest,
   ) {
     try {
-      const user = await this.usersService.updateUserInfo(req, email, body);
+      const originEmail = JSON.parse(
+        Buffer.from(
+          req.headers.authorization.split('.')[1],
+          'base64',
+        ).toString(),
+      ).user;
+
+      const user = await this.usersService.updateUserInfo(
+        originEmail,
+        email,
+        body,
+      );
       return {
         email: user.email,
         firstName: user.firstName,
@@ -321,10 +332,16 @@ export class UsersController {
   async getUserInfo(@Param('email') email: string, @Req() req: FastifyRequest) {
     try {
       const user = await this.usersService.findByEmail(email);
+      const originEmail = JSON.parse(
+        Buffer.from(
+          req.headers.authorization.split('.')[1],
+          'base64',
+        ).toString(),
+      ).user;
       if (!user) {
         throw new NotFoundException('Could not find user');
       }
-      if (this.usersService.decodeUser(req) !== email) {
+      if (originEmail !== email) {
         throw new ForbiddenException();
       }
       return {
