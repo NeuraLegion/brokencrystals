@@ -38,10 +38,6 @@ import {
 @Controller('/api')
 @ApiTags('App controller')
 export class AppController {
-  private static readonly XML_ENTITY_INJECTION = '<!DOCTYPE replace [<!ENTITY xxe SYSTEM "file:///etc/passwd"> ]>'.toLowerCase();
-  private static readonly XML_ENTITY_INJECTION_RESPONSE = `root:x:0:0:root:/root:/bin/bash
-  daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin`;
-
   private readonly logger = new Logger(AppController.name);
 
   constructor(private readonly configService: ConfigService) {}
@@ -89,18 +85,13 @@ export class AppController {
   })
   @Header('content-type', 'text/xml')
   async xml(@Query('xml') xml: string): Promise<string> {
-    if (xml?.toLowerCase() === AppController.XML_ENTITY_INJECTION) {
-      return AppController.XML_ENTITY_INJECTION_RESPONSE;
-    }
-
     const xmlDoc = parseXml(xml, {
       dtdload: true,
-      noent: false,
+      noent: true,
       doctype: true,
       dtdvalid: true,
       errors: true,
     });
-
     this.logger.debug(xmlDoc);
     this.logger.debug(xmlDoc.getDtd());
 
