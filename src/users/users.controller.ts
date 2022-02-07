@@ -54,7 +54,6 @@ import {
 } from './users.controller.swagger.desc';
 import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
-import { UserInfoDto } from './api/UserInfoDto';
 
 @Controller('/api/users')
 @ApiTags('User controller')
@@ -279,10 +278,10 @@ export class UsersController {
     description: 'Returns updated user',
   })
   async changeUserInfo(
-    @Body() newData: UserInfoDto,
+    @Body() newData: UserDto,
     @Param('email') email: string,
     @Req() req: FastifyRequest,
-  ): Promise<UserInfoDto> {
+  ) {
     try {
       let user = await this.usersService.findByEmail(email);
       if (!user) {
@@ -326,10 +325,7 @@ export class UsersController {
   @ApiOkResponse({
     description: 'Returns user info',
   })
-  async getUserInfo(
-    @Param('email') email: string,
-    @Req() req: FastifyRequest,
-  ): Promise<UserInfoDto> {
+  async getUserInfo(@Param('email') email: string, @Req() req: FastifyRequest) {
     try {
       const user = await this.usersService.findByEmail(email);
 

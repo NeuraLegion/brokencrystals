@@ -5,7 +5,6 @@ import { PermissionDto } from './api/PermissionDto';
 import { hashPassword } from '../auth/credentials.utils';
 import { User } from '../model/user.entity';
 import { UserDto } from './api/UserDto';
-import { UserInfoDto } from './api/UserInfoDto';
 
 @Injectable()
 export class UsersService {
@@ -54,7 +53,7 @@ export class UsersService {
     return user;
   }
 
-  async updateUserInfo(oldUser: User, newData: UserInfoDto): Promise<User> {
+  async updateUserInfo(oldUser: User, newData: UserDto): Promise<User> {
     this.log.debug(`updateUserInfo ${oldUser.email}`);
     const newUser = oldUser;
     wrap(newUser).assign({

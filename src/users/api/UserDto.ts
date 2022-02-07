@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
 
 export class UserDto {
   @ApiProperty()
@@ -10,10 +10,10 @@ export class UserDto {
   @ApiProperty()
   lastName: string;
 
-  @ApiProperty()
+  @ApiHideProperty()
   isAdmin: boolean;
 
-  @ApiProperty()
+  @ApiHideProperty()
   password: string;
 
   constructor(
