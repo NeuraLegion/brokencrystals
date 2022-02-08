@@ -23,13 +23,7 @@ export const Userprofile = () => {
 
   useEffect(() => {
     if (email) {
-      getUserData(email).then((data) =>
-        setUser({
-          email: data.email,
-          firstName: data.firstName,
-          lastName: data.lastName
-        })
-      );
+      getUserData(email).then((data) => setUser(data));
     }
   }, []);
 
