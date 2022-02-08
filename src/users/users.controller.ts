@@ -1,5 +1,6 @@
 import {
   Body,
+  ClassSerializerInterceptor,
   Controller,
   ForbiddenException,
   Get,
@@ -56,6 +57,7 @@ import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
 
 @Controller('/api/users')
+@UseInterceptors(ClassSerializerInterceptor)
 @ApiTags('User controller')
 export class UsersController {
   private logger = new Logger(UsersController.name);

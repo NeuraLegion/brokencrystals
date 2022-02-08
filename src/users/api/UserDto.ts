@@ -1,4 +1,5 @@
-import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
+import { Exclude } from 'class-transformer';
 
 export class UserDto {
   @ApiProperty()
@@ -10,21 +11,29 @@ export class UserDto {
   @ApiProperty()
   lastName: string;
 
-  @ApiHideProperty()
+  @Exclude()
   isAdmin?: boolean;
 
-  @ApiHideProperty()
+  @Exclude()
   password?: string;
+
+  @Exclude()
+  id: number;
+
+  @Exclude()
+  photo: Buffer;
+
+  @Exclude()
+  updatedAt: Date;
+
+  @Exclude()
+  createdAt: Date;
 
   constructor(
     params: {
       [P in keyof UserDto]: UserDto[P];
     },
   ) {
-    Object.assign(this, {
-      email: params.email,
-      firstName: params.firstName,
-      lastName: params.lastName,
-    });
+    Object.assign(this, params);
   }
 }
