@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
 
 export class UserDto {
@@ -12,9 +12,11 @@ export class UserDto {
   lastName: string;
 
   @Exclude()
+  @ApiHideProperty()
   isAdmin?: boolean;
 
   @Exclude()
+  @ApiHideProperty()
   password?: string;
 
   @Exclude()
