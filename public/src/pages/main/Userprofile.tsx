@@ -8,8 +8,7 @@ import AuthLayout from '../auth/AuthLayout';
 const defaultUserData: UserData = {
   email: '',
   firstName: '',
-  lastName: '',
-  isAdmin: false
+  lastName: ''
 };
 
 export const Userprofile = () => {
@@ -24,7 +23,13 @@ export const Userprofile = () => {
 
   useEffect(() => {
     if (email) {
-      getUserData(email).then((data) => setUser(data));
+      getUserData(email).then((data) =>
+        setUser({
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName
+        })
+      );
     }
   }, []);
 

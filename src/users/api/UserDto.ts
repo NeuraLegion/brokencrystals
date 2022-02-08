@@ -11,16 +11,20 @@ export class UserDto {
   lastName: string;
 
   @ApiHideProperty()
-  isAdmin: boolean;
+  isAdmin?: boolean;
 
   @ApiHideProperty()
-  password: string;
+  password?: string;
 
   constructor(
     params: {
       [P in keyof UserDto]: UserDto[P];
     },
   ) {
-    Object.assign(this, params);
+    Object.assign(this, {
+      email: params.email,
+      firstName: params.firstName,
+      lastName: params.lastName,
+    });
   }
 }
