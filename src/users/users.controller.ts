@@ -1,5 +1,6 @@
 import {
   Body,
+  ClassSerializerInterceptor,
   Controller,
   ForbiddenException,
   Get,
@@ -56,6 +57,7 @@ import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
 
 @Controller('/api/users')
+@UseInterceptors(ClassSerializerInterceptor)
 @ApiTags('User controller')
 export class UsersController {
   private logger = new Logger(UsersController.name);
@@ -81,17 +83,24 @@ export class UsersController {
   })
   @ApiOkResponse({
     type: UserDto,
-    description: 'Returns user object or empty object when user is not found',
+    description: 'Returns user object if it exists',
+  })
+  @ApiNotFoundResponse({
+    description: 'User not founded',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
   })
   async getUser(@Param('email') email: string): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by email: ${email}`);
       return new UserDto(await this.usersService.findByEmail(email));
     } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message,
-        location: __filename,
-      });
+      throw new HttpException(err.message, err.status);
     }
   }
 
@@ -207,13 +216,13 @@ export class UsersController {
       this.logger.debug(`Create a basic user: ${user}`);
 
       const userExists = await this.usersService.findByEmail(user.email);
-
       if (userExists) {
         throw new HttpException('User already exists', 409);
       }
-
-      return new UserDto(await this.usersService.createUser(user));
     } catch (err) {
+      if (err.status === 404) {
+        return new UserDto(await this.usersService.createUser(user));
+      }
       throw new HttpException(
         err.message ?? 'Something went wrong',
         err.status ?? 500,
@@ -281,21 +290,16 @@ export class UsersController {
     @Body() newData: UserDto,
     @Param('email') email: string,
     @Req() req: FastifyRequest,
-  ) {
+  ): Promise<UserDto> {
     try {
-      let user = await this.usersService.findByEmail(email);
+      const user = await this.usersService.findByEmail(email);
       if (!user) {
         throw new NotFoundException('Could not find user');
       }
       if (this.originEmail(req) !== email) {
         throw new ForbiddenException();
       }
-      user = await this.usersService.updateUserInfo(user, newData);
-      return {
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-      };
+      return new UserDto(await this.usersService.updateUserInfo(user, newData));
     } catch (err) {
       throw new HttpException(
         err.message || 'Internal server error',
@@ -325,7 +329,10 @@ export class UsersController {
   @ApiOkResponse({
     description: 'Returns user info',
   })
-  async getUserInfo(@Param('email') email: string, @Req() req: FastifyRequest) {
+  async getUserInfo(
+    @Param('email') email: string,
+    @Req() req: FastifyRequest,
+  ): Promise<UserDto> {
     try {
       const user = await this.usersService.findByEmail(email);
 
@@ -335,11 +342,7 @@ export class UsersController {
       if (this.originEmail(req) !== email) {
         throw new ForbiddenException();
       }
-      return {
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-      };
+      return new UserDto(user);
     } catch (err) {
       throw new HttpException(
         err.message || 'Internal server error',
