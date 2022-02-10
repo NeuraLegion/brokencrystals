@@ -50,12 +50,12 @@ const menu: Array<MenuItem> = [
     subItems: [
       {
         name: 'OpenAPI 3.0 JSON',
-        path: 'https://brokencrystals.com/swagger/json',
+        path: '/swagger/json',
         newTab: true
       },
       {
         name: 'API Reference',
-        path: 'https://brokencrystals.com/swagger/static/index.html',
+        path: '/swagger/static/index.html',
         newTab: true
       }
     ]
