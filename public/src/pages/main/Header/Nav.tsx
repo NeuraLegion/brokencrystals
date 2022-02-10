@@ -6,6 +6,8 @@ interface MenuItem {
   subItems?: Array<MenuItem>;
 }
 
+const SITE_URL = process.env.URL;
+
 const menu: Array<MenuItem> = [
   { name: 'Home', path: '/', newTab: false },
   { name: 'Marketplace', path: '/marketplace', newTab: false },
@@ -50,12 +52,12 @@ const menu: Array<MenuItem> = [
     subItems: [
       {
         name: 'OpenAPI 3.0 JSON',
-        path: 'https://brokencrystals.com/swagger/json',
+        path: `${SITE_URL}/swagger/json`,
         newTab: true
       },
       {
         name: 'API Reference',
-        path: 'https://brokencrystals.com/swagger/static/index.html',
+        path: `${SITE_URL}/swagger/static/index.html`,
         newTab: true
       }
     ]
