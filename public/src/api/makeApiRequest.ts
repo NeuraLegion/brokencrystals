@@ -12,13 +12,14 @@ export function makeApiRequest<T>(
     .then((response) => {
       const token = response.headers.authorization;
       token && sessionStorage.setItem('token', token);
+
       return response.data;
     })
     .catch((error) => {
       switch (error.response.status) {
         case 401:
-          sessionStorage.removeItem('email');
-          sessionStorage.removeItem('token');
+          sessionStorage.clear();
+          localStorage.clear();
           return {
             ...error,
             errorText:

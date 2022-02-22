@@ -3,7 +3,7 @@ import getBrowserFingerprint from 'get-browser-fingerprint';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { OidcClient } from '../../../interfaces/Auth';
-import { RoutePath } from 'src/router/RoutePath';
+import { RoutePath } from '../../../router/RoutePath';
 import {
   getLdap,
   getUser,

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Logger,
   Post,
   Query,
@@ -80,6 +81,7 @@ export class TestimonialsController {
   }
 
   @Get('count')
+  @Header('content-type', 'text/html')
   @ApiOperation({
     description: SWAGGER_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
   })

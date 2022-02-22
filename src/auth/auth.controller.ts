@@ -16,7 +16,6 @@ import { createHash, randomBytes } from 'crypto';
 import {
   ApiBadRequestResponse,
   ApiCreatedResponse,
-  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiResponse,
@@ -180,7 +179,7 @@ export class AuthController {
     description: SWAGGER_DESC_REQUEST_WITH_SIMPLE_CSRF_TOKEN,
   })
   @ApiOkResponse({
-    description: 'Returns simple csrf token'
+    description: 'Returns simple csrf token',
   })
   async getCsrfToken(
     @Res({ passthrough: true }) res: FastifyReply,
@@ -256,14 +255,13 @@ export class AuthController {
   @ApiOkResponse({
     type: JwtValidationResponse,
   })
-  @ApiForbiddenResponse({
+  @ApiUnauthorizedResponse({
     description: 'invalid credentials',
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number' },
-        message: { type: 'string' },
         error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
   })
@@ -320,16 +318,15 @@ export class AuthController {
   @ApiOkResponse({
     type: JwtValidationResponse,
   })
-  @ApiForbiddenResponse({
+  @ApiUnauthorizedResponse({
+    description: 'invalid credentials',
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number' },
-        message: { type: 'string' },
         error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
-    description: 'invalid credentials',
   })
   async validateWithWeakKeyJwt(): Promise<JwtValidationResponse> {
     return {
@@ -381,16 +378,15 @@ export class AuthController {
   @ApiOkResponse({
     type: JwtValidationResponse,
   })
-  @ApiForbiddenResponse({
+  @ApiUnauthorizedResponse({
+    description: 'invalid credentials',
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number' },
-        message: { type: 'string' },
         error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
-    description: 'invalid credentials',
   })
   async validateWithJKUJwt(): Promise<JwtValidationResponse> {
     return {
@@ -442,16 +438,15 @@ export class AuthController {
   @ApiOkResponse({
     type: JwtValidationResponse,
   })
-  @ApiForbiddenResponse({
+  @ApiUnauthorizedResponse({
+    description: 'invalid credentials',
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number' },
-        message: { type: 'string' },
         error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
-    description: 'invalid credentials',
   })
   async validateWithJWKJwt(): Promise<JwtValidationResponse> {
     return {
@@ -503,16 +498,15 @@ export class AuthController {
   @ApiOkResponse({
     type: JwtValidationResponse,
   })
-  @ApiForbiddenResponse({
+  @ApiUnauthorizedResponse({
+    description: 'invalid credentials',
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number' },
-        message: { type: 'string' },
         error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
-    description: 'invalid credentials',
   })
   async validateWithX5CJwt(): Promise<JwtValidationResponse> {
     return {
@@ -564,16 +558,15 @@ export class AuthController {
   @ApiOkResponse({
     type: JwtValidationResponse,
   })
-  @ApiForbiddenResponse({
+  @ApiUnauthorizedResponse({
+    description: 'invalid credentials',
     schema: {
       type: 'object',
       properties: {
-        statusCode: { type: 'number' },
-        message: { type: 'string' },
         error: { type: 'string' },
+        location: { type: 'string' },
       },
     },
-    description: 'invalid credentials',
   })
   async validateWithX5UJwt(): Promise<JwtValidationResponse> {
     return {

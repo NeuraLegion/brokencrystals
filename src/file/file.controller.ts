@@ -122,7 +122,7 @@ export class FileController {
     description: 'File not Found',
   })
   @ApiOkResponse({
-    description: 'Returns requested file'
+    description: 'Returns requested file',
   })
   async readFile(
     @Query('path') file: string,

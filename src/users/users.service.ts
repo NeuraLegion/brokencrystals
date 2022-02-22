@@ -1,6 +1,7 @@
 import { EntityRepository, NotFoundError, wrap } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { PermissionDto } from './api/PermissionDto';
 import { hashPassword } from '../auth/credentials.utils';
 import { User } from '../model/user.entity';
 import { UserDto } from './api/UserDto';
@@ -22,20 +23,15 @@ export class UsersService {
     private readonly usersRepository: EntityRepository<User>,
   ) {}
 
-  async createUser(
-    email: string,
-    firstName: string,
-    lastName: string,
-    password: string,
-  ): Promise<User> {
+  async createUser(user: UserDto): Promise<User> {
     this.log.debug(`Called createUser`);
 
     const u = new User();
-    u.email = email;
-    u.firstName = firstName;
-    u.lastName = lastName;
-    u.isAdmin = false;
-    u.password = await hashPassword(password);
+    u.email = user.email;
+    u.firstName = user.firstName;
+    u.lastName = user.lastName;
+    u.isAdmin = user.isAdmin || false;
+    u.password = await hashPassword(user.password);
 
     await this.usersRepository.persistAndFlush(u);
     this.log.debug(`Saved new user`);
@@ -57,22 +53,32 @@ export class UsersService {
     return user;
   }
 
-  async updateUserInfo(email: string, info: UserDto): Promise<User> {
-    this.log.debug(`updateUserInfo ${email}`);
-    const user = await this.findByEmail(email);
-    if (!user) {
-      throw new NotFoundError('Could not find user');
-    }
-    wrap(user).assign({
-      ...info,
+  async updateUserInfo(oldUser: User, newData: UserDto): Promise<UserDto> {
+    this.log.debug(`updateUserInfo ${oldUser.email}`);
+    const newUser = oldUser;
+    wrap(newUser).assign({
+      ...newData,
     });
-    await this.usersRepository.persistAndFlush(user);
-    return user;
+    await this.usersRepository.persistAndFlush(newUser);
+    return newUser;
   }
 
   async findByEmail(email: string): Promise<User> {
     this.log.debug(`Called findByEmail ${email}`);
-    return this.usersRepository.findOne({ email });
+    const user = await this.usersRepository.findOne({ email });
+    if (user) {
+      return user;
+    } else {
+      throw new NotFoundException('User not found');
+    }
+  }
+
+  async getPermissions(email: string): Promise<PermissionDto> {
+    const user = await this.usersRepository.findOne({ email });
+
+    return new PermissionDto({
+      isAdmin: user.isAdmin,
+    });
   }
 
   async findByEmailPrefix(emailPrefix: string): Promise<User[]> {
