@@ -1,10 +1,13 @@
 import { Logger } from '@nestjs/common';
-import { decode, encode } from 'jwt-simple';
+import * as jose from 'jose';
 import { HttpClientService } from '../../httpclient/httpclient.service';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
-
 export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
-  constructor(private key: string, private httpClient: HttpClientService) {
+  constructor(
+    private key: string,
+    private httpClient: HttpClientService,
+    private x5uUrl: string,
+  ) {
     super(new Logger(JwtTokenWithX5UKeyProcessor.name));
   }
 
@@ -17,11 +20,23 @@ export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
     const url = header.x5u;
     this.log.debug(`Loading key from url ${url}`);
     const crtPayload = await this.httpClient.loadPlain(url);
-    return decode(token, this.parseCRTChain(crtPayload), false, header.alg);
+    const x509 = await jose.importX509(crtPayload, 'RS256');
+
+    const result = await jose.jwtVerify(token, x509);
+    return result;
   }
 
-  async createToken(payload: unknown): Promise<string> {
+  async createToken(payload: jose.JWTPayload): Promise<string> {
     this.log.debug('Call createToken');
-    return encode(payload, this.key, 'HS256');
+
+    const pkcs8 = await jose.importPKCS8(this.key, 'RS256');
+    const jwt = await new jose.SignJWT(payload)
+      .setProtectedHeader({
+        typ: 'JWT',
+        alg: 'RS256',
+        x5u: this.x5uUrl,
+      })
+      .sign(pkcs8);
+    return jwt;
   }
 }
