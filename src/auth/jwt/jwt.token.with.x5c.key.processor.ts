@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { decode, encode } from 'jwt-simple';
+import * as jose from 'jose';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
@@ -14,12 +14,20 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
       return payload;
     }
     const keys = header.x5c;
+    const keyLike = await jose.importPKCS8(keys[0], 'RS256');
     this.log.debug(`Taking keys from ${JSON.stringify(keys)}`);
-    return decode(token, keys[0], false, header.alg);
+    return await jose.jwtVerify(token, keyLike);
   }
 
-  async createToken(payload: unknown): Promise<string> {
+  async createToken(payload: jose.JWTPayload): Promise<string> {
     this.log.debug('Call createToken');
-    return encode(payload, this.key, 'HS256');
+    const pkcs8 = await jose.importPKCS8(this.key, 'RS256');
+    return new jose.SignJWT(payload)
+      .setProtectedHeader({
+        typ: 'JWT',
+        alg: 'RS256',
+        x5c: [this.key],
+      })
+      .sign(pkcs8);
   }
 }

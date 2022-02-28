@@ -1,10 +1,9 @@
 import { Logger } from '@nestjs/common';
 import * as jose from 'jose';
-import { encode } from 'jwt-simple';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
-  constructor(private key: string) {
+  constructor(private key: string, private jwk: jose.JWK) {
     super(new Logger(JwtTokenWithJWKProcessor.name));
   }
 
@@ -21,9 +20,9 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
     if (!header.jwk.kty) {
       return payload;
     }
-    const keyLike = await jose.JWK.asKey(JSON.stringify(header.jwk));
+    const keyLike = await jose.importJWK(header.jwk);
 
-    const res = await jose.JWT.verify(token, keyLike);
+    const res = await jose.jwtVerify(token, keyLike);
 
     if (res) {
       return payload;
@@ -31,8 +30,15 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
     throw new Error('Could not validate token');
   }
 
-  async createToken(payload: unknown): Promise<string> {
+  async createToken(payload: jose.JWTPayload): Promise<string> {
     this.log.debug('Call createToken');
-    return encode(payload, this.key, 'HS256');
+    const pkcs8 = await jose.importPKCS8(this.key, 'RS256');
+    return new jose.SignJWT(payload)
+      .setProtectedHeader({
+        typ: 'JWT',
+        alg: 'RS256',
+        jwk: this.jwk,
+      })
+      .sign(pkcs8);
   }
 }
