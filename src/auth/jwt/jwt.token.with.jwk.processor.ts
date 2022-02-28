@@ -33,7 +33,7 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
   async createToken(payload: jose.JWTPayload): Promise<string> {
     this.log.debug('Call createToken');
     const pkcs8 = await jose.importPKCS8(this.key, 'RS256');
-    return await new jose.SignJWT(payload)
+    return new jose.SignJWT(payload)
       .setProtectedHeader({
         typ: 'JWT',
         alg: 'RS256',
