@@ -48,7 +48,32 @@ export class AuthService {
       ),
       'utf8',
     );
-
+    const jwkPrivateKey = fs.readFileSync(
+      this.configService.get<string>(
+        AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION,
+      ),
+      'utf8',
+    );
+    const jwkPublicKey = fs.readFileSync(
+      this.configService.get<string>(
+        AuthModuleConfigProperties.ENV_JWK_PUBLIC_KEY_LOCATION,
+      ),
+      'utf8',
+    );
+    const jwkPublicJson = JSON.parse(
+      fs.readFileSync(
+        this.configService.get<string>(
+          AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON,
+        ),
+        'utf8',
+      ),
+    );
+    const jkuUrl = this.configService.get<string>(
+      AuthModuleConfigProperties.ENV_JKU_URL,
+    );
+    const x5uUrl = this.configService.get<string>(
+      AuthModuleConfigProperties.ENV_X5U_URL,
+    );
     const jwtSecretKey = configService.get<string>(
       AuthModuleConfigProperties.ENV_JWT_SECRET_KEY,
     );
@@ -68,19 +93,19 @@ export class AuthService {
     );
     this.processors.set(
       JwtProcessorType.JKU,
-      new JwtTokenWithJKUProcessor(jwtSecretKey, this.httpClient),
+      new JwtTokenWithJKUProcessor(jwkPrivateKey, this.httpClient, jkuUrl),
     );
     this.processors.set(
       JwtProcessorType.JWK,
-      new JwtTokenWithJWKProcessor(jwtSecretKey),
+      new JwtTokenWithJWKProcessor(jwkPrivateKey, jwkPublicJson),
     );
     this.processors.set(
       JwtProcessorType.X5C,
-      new JwtTokenWithX5CKeyProcessor(jwtSecretKey),
+      new JwtTokenWithX5CKeyProcessor(jwkPrivateKey),
     );
     this.processors.set(
       JwtProcessorType.X5U,
-      new JwtTokenWithX5UKeyProcessor(jwtSecretKey, this.httpClient),
+      new JwtTokenWithX5UKeyProcessor(jwkPrivateKey, this.httpClient, x5uUrl),
     );
 
     this.processors.set(

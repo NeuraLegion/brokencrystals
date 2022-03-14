@@ -2,7 +2,8 @@ import { Logger } from '@nestjs/common';
 import { JwtHeader } from './jwt.header';
 
 export abstract class JwtTokenProcessor {
-  private static readonly END_CERTIFICATE_MARK = '-----END PUBLIC KEY-----';
+  private static readonly END_CERTIFICATE_MARK = '-----END CERTIFICATE-----';
+  private static readonly END_PUBLIC_KEY_MARK = '-----END PUBLIC KEY-----';
   protected log: Logger = new Logger(JwtTokenProcessor.name);
 
   constructor(log: Logger) {
@@ -33,7 +34,10 @@ export abstract class JwtTokenProcessor {
     let idx = -1;
     if (
       !chainText ||
-      (idx = chainText.indexOf(JwtTokenProcessor.END_CERTIFICATE_MARK)) == -1
+      (idx = Math.max(
+        chainText.indexOf(JwtTokenProcessor.END_CERTIFICATE_MARK),
+        chainText.indexOf(JwtTokenProcessor.END_PUBLIC_KEY_MARK),
+      )) === -1
     ) {
       throw new Error('Invalid certificate');
     }
