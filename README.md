@@ -50,7 +50,7 @@ docker-compose --file=docker-compose.local.yml up -d --build
   - The same form with both authenticated and unauthenticated user - the _Email subscription_ UI forms can be used for testing this vulnerability.
   - Different form for an authenticated and unauthenticated user - the _Add testimonial_ form can be used for testing. The forms are only available to authenticated users.
 
-* **Cross-Site Scripting (XSS) -
+* **Cross-Site Scripting (XSS)** -
   - **Reflective XSS** can be demonstrated by using the mailing list subscription form on the landing page.
   - **Persistent XSS** can be demonstrated using add testimonial form on the landing page (for authenticated users only).
 
@@ -73,6 +73,8 @@ docker-compose --file=docker-compose.local.yml up -d --build
 * **LDAP Injection** - The login request returns an LDAP query for the user's profile, which can be used as a query parameter in /api/users/ldap _query_ query parameter. The returned query can be modified to search for other users. If the structure of the LDAP query is changed, a detailed LDAP error will be returned (with LDAP server information and hierarchy).
 
 * **Local File Inclusion (LFI)** - The /api/files endpoint returns any file on the server from the path that is provided in the _path_ param. The UI uses this endpoint to load crystal images on the landing page.
+
+* **Mass Assignment** - You can add to user admin privilegies upon creating user or updating userdata. When you creating a new user /api/users/basic you can use additional hidden field in body request { ... "isAdmin" : true }. If you are trying to edit userdata with PUT request /api/users/one/{email}/info you can add this additional field mentioned above. For checking admin permissions there is one more endpoint: /api/users/one/{email}/adminpermission.
 
 * **Open Database** - The index.html file includes a link to manifest URL, which returns the server's configuration, including a DB connection string.
 
