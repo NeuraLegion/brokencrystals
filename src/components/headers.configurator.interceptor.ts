@@ -28,11 +28,6 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const req = context.switchToHttp().getRequest() as FastifyRequest;
 
-    // force session cookie
-    req.session['visits'] = req.session['visits']
-      ? req.session['visits'] + 1
-      : 1;
-
     const cookies: string[] = req.headers.cookie
       ? req.headers.cookie.split('; ')
       : [];
@@ -64,7 +59,9 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(() => {
         const res = context.switchToHttp().getResponse() as FastifyReply;
-        res.setCookie('bc-calls-counter', req.session['visits']);
+        res.setCookie('bc-calls-counter', Date.now().toString(), {
+          secure: false
+        });
         if (
           !req.query[HeadersConfiguratorInterceptor.NO_SEC_HEADERS_QUERY_PARAM]
         ) {
