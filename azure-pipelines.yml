@@ -1,0 +1,35 @@
+# Maven
+# Build your Java project and run tests with Apache Maven.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/java
+
+trigger:
+- master
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- task: Bash@3
+  inputs:
+   targetType: 'inline'
+   script: |
+    i=0
+        while [ $i -lt 30 ]
+        do
+            curl --location --request POST 'https://app.armorcode.com/client/buildvalidation' --header 'Content-Type: application/json' --header 'Authorization: Bearer ff8e2b52-0e7a-4543-a762-2439d9e64764'  -d '{ "env": "Production", "product": "2264", "subProduct": "6513", "buildTool":"AZURE_PIPELINE", "buildNumber": "$(Build.BuildId)"}' > result.json
+            status=$(jq -r '.status' result.json)
+            if [ $status = "HOLD" ]
+            then
+                sleep 10
+                i=$(( $i + 1 ))
+                if [ $i = 30 ]
+                then
+                    exit 1
+                else
+                    continue
+                fi
+            else
+                break
+            fi
+        done
