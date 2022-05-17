@@ -24,7 +24,4 @@ export class User extends Base {
     type: BlobType,
   })
   photo: Buffer;
-
-  @Property()
-  toJSON: any;
 }
