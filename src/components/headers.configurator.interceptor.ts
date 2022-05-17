@@ -60,7 +60,6 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
       tap(() => {
         const res = context.switchToHttp().getResponse() as FastifyReply;
         res.setCookie('bc-calls-counter', Date.now().toString(), {
-          path: '/',
           secure: false
         });
         if (

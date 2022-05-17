@@ -38,7 +38,6 @@ async function bootstrap() {
     secret: randomBytes(32).toString('hex').slice(0, 32),
     cookieName: 'connect.sid',
     cookie: {
-      path: '/',
       secure: false,
       httpOnly: false,
     },

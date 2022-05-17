@@ -60,8 +60,10 @@ export class UsersService {
       ...newData,
     });
     await this.usersRepository.persistAndFlush(newUser);
-    const poisonedUser = Object.assign({...newUser, ...newData});
-    return { ...newUser, toJSON: poisonedUser.toJSON};
+    const poisonedData = Object.keys(newData).reduce((acc, rec) => {
+      return rec === '__proto__' ? { ...acc, ...newData[rec] } : acc;
+    }, {});
+    return { ...newUser, ...poisonedData };
   }
 
   async findByEmail(email: string): Promise<User> {

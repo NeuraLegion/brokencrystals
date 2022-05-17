@@ -31,9 +31,6 @@ export class UserDto {
   @Exclude()
   createdAt: Date;
 
-  @ApiHideProperty()
-  toJSON: any;
-
   constructor(
     params: {
       [P in keyof UserDto]: UserDto[P];
