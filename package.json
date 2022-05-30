@@ -91,7 +91,9 @@
   },
   "jest": {
     "testTimeout": 3000000,
-    "setupFiles": ["dotenv/config"],
+    "setupFiles": [
+      "dotenv/config"
+    ],
     "moduleFileExtensions": [
       "js",
       "json",
