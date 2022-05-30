@@ -1,4 +1,3 @@
-
 import { SecRunner, SecScan } from '@sec-tester/runner';
 import { TestType } from '@sec-tester/scan';
 
@@ -9,18 +8,18 @@ describe('/api', () => {
   beforeEach(async () => {
     runner = new SecRunner({ hostname: process.env.BRIGHT_CLUSTER });
     await runner.init();
-
   });
 
   afterEach(() => runner.clear());
 
   describe('GET /spawn', () => {
     it('should not be able to execute shell commands on the host operating system', () => {
-      return runner.createScan({ tests: [TestType.OSI], name: 'OS Command Injection' })
+      return runner
+        .createScan({ tests: [TestType.OSI], name: 'OS Command Injection' })
         .timeout(3000000)
         .run({
           method: 'GET',
-          url: `${process.env.SEC_TESTER_TARGET}/api/spawn?command=pwd`
+          url: `${process.env.SEC_TESTER_TARGET}/api/spawn?command=pwd`,
         });
     });
   });

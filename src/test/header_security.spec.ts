@@ -1,4 +1,3 @@
-
 import { SecRunner, SecScan } from '@sec-tester/runner';
 import { TestType } from '@sec-tester/scan';
 
@@ -15,11 +14,15 @@ describe('/api', () => {
 
   describe('GET /config', () => {
     it('should contain proper Security Headers configuration', () => {
-      return runner.createScan({ tests: [TestType.HEADER_SECURITY], name: 'HEADER_SECURITY' })
+      return runner
+        .createScan({
+          tests: [TestType.HEADER_SECURITY],
+          name: 'HEADER_SECURITY',
+        })
         .timeout(3000000)
         .run({
           method: 'GET',
-          url: `${process.env.SEC_TESTER_TARGET}/api/config?query=no-sec-headers`
+          url: `${process.env.SEC_TESTER_TARGET}/api/config?query=no-sec-headers`,
         });
     });
   });
