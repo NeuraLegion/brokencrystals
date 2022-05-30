@@ -1,102 +1,97 @@
 
-import { SecRunner, SecScan } from '@sec-tester/runner'
-import { TestType, Severity } from '@sec-tester/scan'
-import { Configuration } from "@sec-tester/core";
+import { SecRunner, SecScan } from '@sec-tester/runner';
+import { TestType } from '@sec-tester/scan';
 import axios from 'axios';
 
 const generateToken = async (jwtType) => {
-  return await axios.post(`${process.env.URL}/api/auth/jwt/${jwtType}/login`, {
+  return await axios.post(`${process.env.SEC_TESTER_TARGET}/api/auth/jwt/${jwtType}/login`, {
     "user": "admin",
     "password": "admin",
     "op": "basic"
   })
     .then(({ headers }) => headers)
     .then(({ authorization }) => {
-      return { authorization: authorization }
-    })
-}
+      return { authorization: authorization };
+    });
+};
 
-describe('JWT', () => {
+describe('/api', () => {
   let runner: SecRunner;
   let scan: SecScan;
-  let configuration: Configuration = new Configuration({
-    hostname: process.env.BRIGHT_CLUSTER
-  });
-
 
   beforeEach(async () => {
-    runner = new SecRunner(configuration);
+    runner = new SecRunner({ hostname: process.env.BRIGHT_CLUSTER });
     await runner.init();
 
   });
 
-  afterEach(async () => {
-    await runner.clear();
+  afterEach(() => runner.clear());
+
+  describe('GET /auth/jwt/{jwtType}/validate', () => {
+    it('should contain secure implementation of JSON Web Token (JWT)', () => {
+      const jwtType = 'kid-sql';
+      return generateToken(jwtType).then((headers) => runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          headers: headers,
+          url: `${process.env.SEC_TESTER_TARGET}/api/auth/jwt/${jwtType}/validate`
+        }));
+    });
+
+    it('should contain secure implementation of JSON Web Token (JWT)', () => {
+      const jwtType = 'weak-key';
+      return generateToken(jwtType).then((headers) => runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          headers: headers,
+          url: `${process.env.SEC_TESTER_TARGET}/api/auth/jwt/${jwtType}/validate`
+        }));
+    });
+
+    it('should contain secure implementation of JSON Web Token (JWT)', () => {
+      const jwtType = 'jku';
+      return generateToken(jwtType).then((headers) => runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          headers: headers,
+          url: `${process.env.SEC_TESTER_TARGET}/api/auth/jwt/${jwtType}/validate`
+        }));
+    });
+
+    it('should contain secure implementation of JSON Web Token (JWT)', () => {
+      const jwtType = 'jwk';
+      return generateToken(jwtType).then((headers) => runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          headers: headers,
+          url: `${process.env.SEC_TESTER_TARGET}/api/auth/jwt/${jwtType}/validate`
+        }));
+    });
+
+    it('should contain secure implementation of JSON Web Token (JWT)', () => {
+      const jwtType = 'x5c';
+      return generateToken(jwtType).then((headers) => runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          headers: headers,
+          url: `${process.env.SEC_TESTER_TARGET}/api/auth/jwt/${jwtType}/validate`
+        }));
+    });
+
+    it('should contain secure implementation of JSON Web Token (JWT)', () => {
+      const jwtType = 'x5u';
+      return generateToken(jwtType).then((headers) => runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          headers: headers,
+          url: `${process.env.SEC_TESTER_TARGET}/api/auth/jwt/${jwtType}/validate`
+        }));
+    });
   });
-
-  it('kid-sql', async () => {
-    const jwtType = 'kid-sql'
-    scan = runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
-      .timeout(3000000);
-    await generateToken(jwtType).then((headers) => scan.run({
-      method: 'GET',
-      headers: headers,
-      url: `${process.env.URL}/api/auth/jwt/${jwtType}/validate`
-    }))
-  })
-
-  it('weak-key', async () => {
-    const jwtType = 'weak-key'
-    scan = runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
-      .timeout(3000000);
-    await generateToken(jwtType).then((headers) => scan.run({
-      method: 'GET',
-      headers: headers,
-      url: `${process.env.URL}/api/auth/jwt/${jwtType}/validate`
-    }))
-  })
-
-  it('jku', async () => {
-    const jwtType = 'jku'
-    scan = runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
-      .timeout(3000000);
-    await generateToken(jwtType).then((headers) => scan.run({
-      method: 'GET',
-      headers: headers,
-      url: `${process.env.URL}/api/auth/jwt/${jwtType}/validate`
-    }))
-  })
-
-  it('jwk', async () => {
-    const jwtType = 'jwk'
-    scan = runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
-      .timeout(3000000);
-    await generateToken(jwtType).then((headers) => scan.run({
-      method: 'GET',
-      headers: headers,
-      url: `${process.env.URL}/api/auth/jwt/${jwtType}/validate`
-    }))
-  })
-
-  it('x5c', async () => {
-    const jwtType = 'x5c'
-    scan = runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
-      .timeout(3000000);
-    await generateToken(jwtType).then((headers) => scan.run({
-      method: 'GET',
-      headers: headers,
-      url: `${process.env.URL}/api/auth/jwt/${jwtType}/validate`
-    }))
-  })
-
-  it('x5u', async () => {
-    const jwtType = 'x5u'
-    scan = runner.createScan({ tests: [TestType.JWT], name: `JWT ${jwtType}` })
-      .timeout(3000000);
-    await generateToken(jwtType).then((headers) => scan.run({
-      method: 'GET',
-      headers: headers,
-      url: `${process.env.URL}/api/auth/jwt/${jwtType}/validate`
-    }))
-  })
-})
+});

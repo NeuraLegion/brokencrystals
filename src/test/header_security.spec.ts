@@ -1,32 +1,26 @@
 
-import { SecRunner, SecScan } from '@sec-tester/runner'
-import { TestType, Severity } from '@sec-tester/scan'
-import { Configuration } from "@sec-tester/core";
+import { SecRunner, SecScan } from '@sec-tester/runner';
+import { TestType } from '@sec-tester/scan';
 
-describe('HEADER_SECURITY', () => {
+describe('/api', () => {
   let runner: SecRunner;
   let scan: SecScan;
-   let configuration: Configuration = new Configuration({
-    hostname: process.env.BRIGHT_CLUSTER
-  });
-
 
   beforeEach(async () => {
-    runner = new SecRunner(configuration);
+    runner = new SecRunner({ hostname: process.env.BRIGHT_CLUSTER });
     await runner.init();
-
   });
 
-  afterEach(async () => {
-    await runner.clear();
-  });
+  afterEach(() => runner.clear());
 
-  it('HEADER_SECURITY', async () => {
-  scan = runner.createScan({ tests: [TestType.HEADER_SECURITY], name: 'HEADER_SECURITY' })
-    .timeout(3000000);
-  await scan.run({
-    method: 'GET',
-    url: `${process.env.URL}/api/config?query=no-sec-headers`
-  })
-})
-})
+  describe('GET /config', () => {
+    it('should contain proper Security Headers configuration', () => {
+      return runner.createScan({ tests: [TestType.HEADER_SECURITY], name: 'HEADER_SECURITY' })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          url: `${process.env.SEC_TESTER_TARGET}/api/config?query=no-sec-headers`
+        });
+    });
+  });
+});

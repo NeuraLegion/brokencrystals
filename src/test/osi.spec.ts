@@ -1,32 +1,27 @@
 
-import { SecRunner, SecScan } from '@sec-tester/runner'
-import { TestType, Severity } from '@sec-tester/scan'
-import { Configuration } from "@sec-tester/core";
+import { SecRunner, SecScan } from '@sec-tester/runner';
+import { TestType } from '@sec-tester/scan';
 
-describe('OS Command Injection', () => {
+describe('/api', () => {
   let runner: SecRunner;
   let scan: SecScan;
-   let configuration: Configuration = new Configuration({
-    hostname: process.env.BRIGHT_CLUSTER
-  });
-
 
   beforeEach(async () => {
-    runner = new SecRunner(configuration);
+    runner = new SecRunner({ hostname: process.env.BRIGHT_CLUSTER });
     await runner.init();
 
   });
 
-  afterEach(async () => {
-    await runner.clear();
-  });
+  afterEach(() => runner.clear());
 
-  it('OS Command Injection', async () => {
-  scan = runner.createScan({ tests: [TestType.OSI], name: 'OS Command Injection' })
-    .timeout(3000000);
-  await scan.run({
-    method: 'GET',
-    url: `${process.env.URL}/api/spawn?command=pwd`
-  })
-})
-})
+  describe('GET /spawn', () => {
+    it('should not be able to execute shell commands on the host operating system', () => {
+      return runner.createScan({ tests: [TestType.OSI], name: 'OS Command Injection' })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          url: `${process.env.SEC_TESTER_TARGET}/api/spawn?command=pwd`
+        });
+    });
+  });
+});

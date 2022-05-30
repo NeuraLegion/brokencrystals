@@ -1,31 +1,29 @@
 
-import { SecRunner, SecScan } from '@sec-tester/runner'
-import { TestType, Severity } from '@sec-tester/scan'
-import { Configuration } from "@sec-tester/core";
+import { SecRunner, SecScan } from '@sec-tester/runner';
+import { TestType } from '@sec-tester/scan';
 
-describe('CSRF', () => {
+describe('/api', () => {
   let runner: SecRunner;
   let scan: SecScan;
-  let configuration: Configuration = new Configuration({
-    hostname: process.env.BRIGHT_CLUSTER
-  });
 
   beforeEach(async () => {
-    runner = new SecRunner(configuration);
+    runner = new SecRunner({ hostname: process.env.BRIGHT_CLUSTER });
     await runner.init();
-
   });
 
-  afterEach(async () => {
-    await runner.clear();
-  });
+  afterEach(() => runner.clear());
 
-  it('CSRF', async () => {
-    scan = runner.createScan({ tests: [TestType.CSRF], name: 'CSRF' })
-      .timeout(3000000);
-    await scan.run({
-      method: 'POST',
-      url: `${process.env.URL}/api/metadata?xml=%3C%3Fxml+version%3D%221.0%22+encoding%3D%22UTF-8%22%3F%3E%3C%21DOCTYPE+child+%5B+%3C%21ENTITY+child+SYSTEM+%22file%3A%2F%2F%2Fetc%2Fpasswd%22%3E+%5D%3E%3Cchild%3E%3C%2Fchild%3E`
-    })
-  })
-})
+  describe('POST /metadata', () => {
+    it('should not contains forms liable vulnerable cross-site filling and submitting', () => {
+      return runner.createScan({ tests: [TestType.CSRF], name: 'CSRF' })
+        .timeout(3000000)
+        .run({
+          method: 'POST',
+          url: `${process.env.SEC_TESTER_TARGET}/api/metadata`,
+          query: {
+            xml: '%3C%3Fxml+version%3D%221.0%22+encoding%3D%22UTF-8%22%3F%3E%3C%21DOCTYPE+child+%5B+%3C%21ENTITY+child+SYSTEM+%22file%3A%2F%2F%2Fetc%2Fpasswd%22%3E+%5D%3E%3Cchild%3E%3C%2Fchild%3E'
+          }
+        });
+    });
+  });
+});

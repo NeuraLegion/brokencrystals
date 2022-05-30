@@ -1,39 +1,33 @@
 
-import { SecRunner, SecScan } from '@sec-tester/runner'
-import { TestType, Severity } from '@sec-tester/scan'
-import { Configuration } from "@sec-tester/core";
+import { SecRunner, SecScan } from '@sec-tester/runner';
+import { TestType } from '@sec-tester/scan';
 
-describe('SSTI', () => {
+describe('/api', () => {
   let runner: SecRunner;
   let scan: SecScan;
-  let configuration: Configuration = new Configuration({
-    hostname: process.env.BRIGHT_CLUSTER
-  });
-
 
   beforeEach(async () => {
-    runner = new SecRunner(configuration);
+    runner = new SecRunner({ hostname: process.env.BRIGHT_CLUSTER });
     await runner.init();
 
   });
 
-  afterEach(async () => {
-    await runner.clear();
+  afterEach(() => runner.clear());
+
+  describe('POST /render', () => {
+    it('should not contain possibility to server-side code execution', () => {
+      return runner.createScan({ tests: [TestType.SSTI], name: 'SSTI' })
+        .timeout(3000000)
+        .run({
+          method: 'POST',
+          headers: {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "text/plain",
+            "Origin": process.env.SEC_TESTER_TARGET
+          },
+          body: `{{=""+1""}} {{=5589}} {{=55488}} {{=55}}{{=840931+350734}}`,
+          url: `${process.env.SEC_TESTER_TARGET}/api/render?`
+        });
+    });
   });
-
-  it('SSTI', async () => {
-    scan = runner.createScan({ tests: [TestType.SSTI], name: 'SSTI' })
-      .timeout(3000000);
-    await scan.run({
-      method: 'POST',
-      headers: {
-        "Accept": "application/json, text/plain, */*",
-        "Content-Type": "text/plain",
-        "Origin": process.env.URL
-      },
-      body: `{{=""+1""}} {{=5589}} {{=55488}} {{=55}}{{=840931+350734}}`,
-      url: `${process.env.URL}/api/render?`
-    })
-  })
-})
-
+});

@@ -1,32 +1,27 @@
 
-import { SecRunner, SecScan } from '@sec-tester/runner'
-import { TestType, Severity } from '@sec-tester/scan'
-import { Configuration } from "@sec-tester/core";
+import { SecRunner, SecScan } from '@sec-tester/runner';
+import { TestType } from '@sec-tester/scan';
 
-describe('COMMON_FILES', () => {
+describe('/', () => {
   let runner: SecRunner;
   let scan: SecScan;
-   let configuration: Configuration = new Configuration({
-    hostname: process.env.BRIGHT_CLUSTER
-  });
-
 
   beforeEach(async () => {
-    runner = new SecRunner(configuration);
+    runner = new SecRunner({ hostname: process.env.BRIGHT_CLUSTER });
     await runner.init();
 
   });
 
-  afterEach(async () => {
-    await runner.clear();
-  });
+  afterEach(() => runner.clear());
 
-  it('COMMON_FILES', async () => {
-    scan = runner.createScan({ tests: [TestType.COMMON_FILES, TestType.COOKIE_SECURITY, TestType.CSRF, ], name: 'COMMON_FILES' })
-    .timeout(3000000);
-  await scan.run({
-    method: 'GET',
-    url: `${process.env.URL}`
-  })
-})
-})
+  describe('GET /', () => {
+    it('should not access common files', () => {
+      return runner.createScan({ tests: [TestType.COMMON_FILES], name: 'COMMON_FILES' })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          url: `${process.env.SEC_TESTER_TARGET}`
+        });
+    });
+  });
+});

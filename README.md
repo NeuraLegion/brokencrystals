@@ -27,12 +27,13 @@ docker-compose --file=docker-compose.local.yml up -d
 docker-compose --file=docker-compose.local.yml up -d --build
 ```
 
-## Included tests for @sec-tester/runner (https://github.com/NeuraLegion/sec-tester-js/tree/master/packages/runner)
+## Included tests for [@sec-tester/runner](https://github.com/NeuraLegion/sec-tester-js/tree/master/packages/runner)
 
-In the path './src/test/' you can find UNIT tests to run with Jest.
-You must obtain API key from Neuralegion (https://docs.brightsec.com/docs/manage-your-personal-account#manage-your-personal-api-keys-authentication-tokens) and place it into *BRIGHT_TOKEN* environment variable.
-Cluster can be changed via *BRIGHT_CLUSTER* environment variable.
-Run test with command *jest ./src/test/sec-tester/**NAME_OF_TEST**.spec.ts --setupFiles dotenv/config*
+In the path *./src/test/* you can find tests to run with Jest.
+You must obtain API key from [Neuralegion](https://docs.brightsec.com/docs/manage-your-personal-account#manage-your-personal-api-keys-authentication-tokens) and place it into `BRIGHT_TOKEN` environment variable.
+Scanning target can be modified via `SEC_TESTER_TARGET` environment variable.
+Cluster can be changed via `BRIGHT_CLUSTER` environment variable.
+Run test with command *jest ./src/test/sec-tester/**NAME_OF_TEST**.spec.ts*
 
 ## Vulnerabilities Overview
 

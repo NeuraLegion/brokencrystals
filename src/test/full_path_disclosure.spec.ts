@@ -1,47 +1,57 @@
+import { SecRunner, SecScan } from '@sec-tester/runner';
+import { TestType } from '@sec-tester/scan';
 
-import { SecRunner, SecScan } from '@sec-tester/runner'
-import { TestType, Severity } from '@sec-tester/scan'
-import { Configuration } from "@sec-tester/core";
-
-describe('FULL_PATH_DISCLOSURE', () => {
+describe('/api', () => {
   let runner: SecRunner;
   let scan: SecScan;
-  let configuration: Configuration = new Configuration({
-    hostname: process.env.BRIGHT_CLUSTER
-  })
 
   beforeEach(async () => {
-    runner = new SecRunner(configuration);
+    runner = new SecRunner({ hostname: process.env.BRIGHT_CLUSTER });
     await runner.init();
-
   });
 
-  afterEach(async () => {
-    await runner.clear();
-  });
+  afterEach(() => runner.clear());
 
-  it('FULL_PATH_DISCLOSURE', async () => {
-    scan = runner.createScan({ tests: [TestType.FULL_PATH_DISCLOSURE], name: 'FULL_PATH_DISCLOSURE' })
-      .timeout(3000000);
-    await scan.run({
-      method: 'POST',
-      url: `${process.env.URL}/api/subscriptions?email=lorem`
-    })
-  })
-  it('FULL_PATH_DISCLOSURE', async () => {
-    scan = runner.createScan({ tests: [TestType.FULL_PATH_DISCLOSURE], name: 'FULL_PATH_DISCLOSURE' })
-      .timeout(3000000);
-    await scan.run({
-      method: 'GET',
-      url: `${process.env.URL}/api/auth/oidc-client?`
-    })
-  })
-  it('FULL_PATH_DISCLOSURE', async () => {
-    scan = runner.createScan({ tests: [TestType.FULL_PATH_DISCLOSURE], name: 'FULL_PATH_DISCLOSURE' })
-      .timeout(3000000);
-    await scan.run({
-      method: 'GET',
-      url: `${process.env.URL}/api/users/one/undefined/adminpermission?`
-    })
-  })
+  describe('POST /subscriptions', () => {
+    it('should not contain errors that include full webroot path', () => {
+      return runner
+        .createScan({
+          tests: [TestType.FULL_PATH_DISCLOSURE],
+          name: 'FULL_PATH_DISCLOSURE',
+        })
+        .timeout(3000000)
+        .run({
+          method: 'POST',
+          url: `${process.env.SEC_TESTER_TARGET}/api/subscriptions?email=lorem`,
+        });
+    });
+  });
+  describe('GET /auth/oidc-client', () => {
+    it('should not contain errors that include full webroot path', () => {
+      return runner
+        .createScan({
+          tests: [TestType.FULL_PATH_DISCLOSURE],
+          name: 'FULL_PATH_DISCLOSURE',
+        })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          url: `${process.env.SEC_TESTER_TARGET}/api/auth/oidc-client?`,
+        });
+    });
+  });
+  describe('GET /users/one/{email}/adminpermission', () => {
+    it('should not contain errors that include full webroot path', () => {
+      return runner
+        .createScan({
+          tests: [TestType.FULL_PATH_DISCLOSURE],
+          name: 'FULL_PATH_DISCLOSURE',
+        })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          url: `${process.env.SEC_TESTER_TARGET}/api/users/one/undefined/adminpermission?`,
+        });
+    });
+  });
 });

@@ -1,31 +1,27 @@
 
-import { SecRunner, SecScan } from '@sec-tester/runner'
-import { TestType, Severity } from '@sec-tester/scan'
-import { Configuration } from "@sec-tester/core";
+import { SecRunner, SecScan } from '@sec-tester/runner';
+import { TestType } from '@sec-tester/scan';
 
-describe('SQLI', () => {
+describe('/api', () => {
   let runner: SecRunner;
   let scan: SecScan;
-  let configuration: Configuration = new Configuration({
-    hostname: process.env.BRIGHT_CLUSTER
-  });
 
   beforeEach(async () => {
-    runner = new SecRunner(configuration);
+    runner = new SecRunner({ hostname: process.env.BRIGHT_CLUSTER });
     await runner.init();
 
   });
 
-  afterEach(async () => {
-    await runner.clear();
-  });
+  afterEach(() => runner.clear());
 
-  it('SQLI', async () => {
-    scan = runner.createScan({ tests: [TestType.SQLI], name: 'SQLI' })
-      .timeout(3000000);
-    await scan.run({
-      method: 'GET',
-      url: `${process.env.URL}/api/testimonials/count?query=lorem`
-    })
+  describe('GET /testimonials/count', () => {
+    it('should not execute commands for SQL database', () => {
+      return runner.createScan({ tests: [TestType.SQLI], name: 'SQLI' })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          url: `${process.env.SEC_TESTER_TARGET}/api/testimonials/count?query=lorem`
+        });
+    });
   });
-})
+});
