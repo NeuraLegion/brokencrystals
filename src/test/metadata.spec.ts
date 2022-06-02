@@ -13,8 +13,8 @@ describe('/api', () => {
   afterEach(() => runner.clear());
 
   describe('POST /metadata', () => {
-    it('should not contains forms liable vulnerable cross-site filling and submitting', () => {
-      return runner
+    it('should not contains forms liable vulnerable cross-site filling and submitting', async () => {
+      await runner
         .createScan({ tests: [TestType.CSRF], name: 'CSRF' })
         .timeout(3000000)
         .run({

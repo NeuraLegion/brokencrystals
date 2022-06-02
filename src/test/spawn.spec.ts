@@ -1,7 +1,7 @@
 import { SecRunner, SecScan } from '@sec-tester/runner';
 import { TestType } from '@sec-tester/scan';
 
-describe('/', () => {
+describe('/api', () => {
   let runner: SecRunner;
   let scan: SecScan;
 
@@ -12,14 +12,14 @@ describe('/', () => {
 
   afterEach(() => runner.clear());
 
-  describe('GET /', () => {
-    it('should not access common files', () => {
-      return runner
-        .createScan({ tests: [TestType.COMMON_FILES], name: 'COMMON_FILES' })
+  describe('GET /spawn', () => {
+    it('should not be able to execute shell commands on the host operating system', async () => {
+      await runner
+        .createScan({ tests: [TestType.OSI], name: 'OS Command Injection' })
         .timeout(3000000)
         .run({
           method: 'GET',
-          url: `${process.env.SEC_TESTER_TARGET}`,
+          url: `${process.env.SEC_TESTER_TARGET}/api/spawn?command=pwd`,
         });
     });
   });

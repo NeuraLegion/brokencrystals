@@ -13,8 +13,18 @@ describe('/', () => {
   afterEach(() => runner.clear());
 
   describe('GET /', () => {
-    it('should contain proper SSL/TLS ciphers and configurations', () => {
-      return runner
+    it('should not access common files', async () => {
+      await runner
+        .createScan({ tests: [TestType.COMMON_FILES], name: 'COMMON_FILES' })
+        .timeout(3000000)
+        .run({
+          method: 'GET',
+          url: `${process.env.SEC_TESTER_TARGET}`,
+        });
+    });
+
+    it('should contain proper SSL/TLS ciphers and configurations', async () => {
+      await runner
         .createScan({
           tests: [TestType.INSECURE_TLS_CONFIGURATION],
           name: 'INSECURE_TLS_CONFIGURATION',

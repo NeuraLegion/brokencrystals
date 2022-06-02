@@ -13,8 +13,8 @@ describe('/api', () => {
   afterEach(() => runner.clear());
 
   describe('GET /testimonials/count', () => {
-    it('should not execute commands for SQL database', () => {
-      return runner
+    it('should not execute commands for SQL database', async () => {
+      await runner
         .createScan({ tests: [TestType.SQLI], name: 'SQLI' })
         .timeout(3000000)
         .run({

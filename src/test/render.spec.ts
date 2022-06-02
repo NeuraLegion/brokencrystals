@@ -13,8 +13,8 @@ describe('/api', () => {
   afterEach(() => runner.clear());
 
   describe('POST /render', () => {
-    it('should not contain possibility to server-side code execution', () => {
-      return runner
+    it('should not contain possibility to server-side code execution', async () => {
+      await runner
         .createScan({ tests: [TestType.SSTI], name: 'SSTI' })
         .timeout(3000000)
         .run({
@@ -24,8 +24,8 @@ describe('/api', () => {
             'Content-Type': 'text/plain',
             Origin: process.env.SEC_TESTER_TARGET,
           },
-          body: `{{=""+1""}} {{=5589}} {{=55488}} {{=55}}{{=840931+350734}}`,
-          url: `${process.env.SEC_TESTER_TARGET}/api/render?`,
+          body: `Some text`,
+          url: `${process.env.SEC_TESTER_TARGET}/api/render`,
         });
     });
   });
