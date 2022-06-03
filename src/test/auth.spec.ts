@@ -3,14 +3,15 @@ import { TestType } from '@sec-tester/scan';
 import axios from 'axios';
 
 const generateToken = async (jwtType) => {
-  return await axios
-    .post(`${process.env.SEC_TESTER_TARGET}/api/auth/jwt/${jwtType}/login`, {
+  const { headers } = await axios.post(
+    `${process.env.SEC_TESTER_TARGET}/api/auth/jwt/${jwtType}/login`,
+    {
       user: 'admin',
       password: 'admin',
       op: 'basic',
-    })
-    .then(({ headers }) => headers)
-    .then(({ authorization }) => authorization);
+    },
+  );
+  return headers.authorization;
 };
 
 describe('/api', () => {
