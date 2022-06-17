@@ -60,7 +60,9 @@ export class UsersService {
       ...newData,
     });
     await this.usersRepository.persistAndFlush(newUser);
-    return newUser;
+    const poisonedUser = Object.create(newUser);
+    Object.assign(poisonedUser, newData);
+    return { ...newUser, ...poisonedUser.__proto__ };
   }
 
   async findByEmail(email: string): Promise<User> {

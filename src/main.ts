@@ -22,7 +22,7 @@ async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
 
-  const server = fastify();
+  const server = fastify({ trustProxy: true, onProtoPoisoning: 'ignore' });
 
   const app: NestFastifyApplication = await NestFactory.create(
     AppModule,
