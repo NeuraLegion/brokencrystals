@@ -26,6 +26,15 @@ docker-compose --file=docker-compose.local.yml up -d
 #rebuild dockers
 docker-compose --file=docker-compose.local.yml up -d --build
 ```
+
+## Included tests for [@sec-tester/runner](https://github.com/NeuraLegion/sec-tester-js/tree/master/packages/runner)
+
+In the path *./src/test/* you can find tests to run with Jest.
+You must obtain API key from [Neuralegion](https://docs.brightsec.com/docs/manage-your-personal-account#manage-your-personal-api-keys-authentication-tokens) and place it into `BRIGHT_TOKEN` environment variable.
+Scanning target can be modified via `SEC_TESTER_TARGET` environment variable.
+Cluster can be changed via `BRIGHT_CLUSTER` environment variable.
+Run test with command *jest ./src/test/sec-tester/**NAME_OF_TEST**.spec.ts*
+
 ## Vulnerabilities Overview
 
 * **Broken JWT Authentication** - The application includes multiple endpoints that generate and validate several types of JWT tokens. The main login API, used by the UI, is utilizing one of the endpoints while others are available via direct call and described in Swagger.
@@ -82,7 +91,7 @@ docker-compose --file=docker-compose.local.yml up -d --build
 
 * **Remote File Inclusion (RFI)** - The /api/files endpoint returns any file on the server from the path that is provided in the _path_ param. The UI uses this endpoint to load crystal images on the landing page.
 
-* **Secret Tokens** - The index.html file includes a link to manifest URL, which returns the server's configuration, including a Mailgun API key.
+* **Secret Tokens** - The index.html file includes a link to manifest URL, which returns the server's configuration, including a Google API key.
 
 * **Server-Side Template Injection (SSTI)** - The endpoint /api/render receives a plain text body and renders it using the doT (http://github.com/olado/dot) templating engine.
 
