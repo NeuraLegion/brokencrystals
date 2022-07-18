@@ -7,7 +7,7 @@ jobs:
       product: SLA
       subProduct: SLAss
       environment: Production
-      token: a9427211-ddeb-4661-86b7-4b1acc4a7680
+      token: $ARMORCODE_TOKEN
       buildTool: CIRCLE_CI
       buildNumber: "<< pipeline.number >>"
       end: 30
@@ -15,8 +15,8 @@ jobs:
       - run:
           name: "Armorcode Validate"
           command: |
-              token=a9427211-ddeb-4661-86b7-4b1acc4a7680
-              wget https://qa.armorcode.ai/static/scripts/slastatus.sh
+              token=699308e1-6899-46a0-889a-fc3fb4da3139
+              wget https://preprod.armorcode.ai/static/scripts/slastatus.sh
               sh slastatus.sh
 workflows:
   armorcode-validation-workflow:
