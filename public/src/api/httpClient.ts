@@ -134,6 +134,15 @@ export function postMetadata(): Promise<any> {
     headers: { 'content-type': 'text/xml' }
   });
 }
+
+export function getSpawnData(): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Spawn}?command=pwd`,
+    method: 'get',
+    headers: { 'content-type': 'text/plain' }
+  });
+}
+
 export function getUserPhoto(email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${email}/photo`,
