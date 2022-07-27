@@ -1,6 +1,6 @@
 import React, { FC, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { goTo, postMetadata } from '../../../api/httpClient';
+import { goTo, postMetadata, getSpawnData } from '../../../api/httpClient';
 import Nav from './Nav';
 import Sign from './Sign';
 
@@ -11,6 +11,7 @@ interface Props {
 export const Header: FC<Props> = (props: Props) => {
   useEffect(() => {
     postMetadata().then((data) => console.log('xml', data));
+    getSpawnData().then((data) => console.log('spawn', data));
   }, []);
 
   const sendGoTo = (url: string) => () => {

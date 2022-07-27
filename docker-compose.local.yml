@@ -49,6 +49,5 @@ services:
       dockerfile: Dockerfile.local
     ports:
       - 8090:80
-
-
-
+    depends_on:
+      - nodejs
