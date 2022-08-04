@@ -9,7 +9,8 @@ create table "product" ("id" serial primary key, "created_at" timestamptz(0) not
 
 set session_replication_role = 'origin';
 --password is admin
-INSERT INTO "user" (created_at, updated_at, email, password, first_name, last_name, is_admin, photo) VALUES (now(), now(), 'admin', '$2b$10$BBJjmVNNdyEgv7pV/zQR9u/ssIuwZsdDJbowW/Dgp28uws3GmO0Ky', 'admin', 'admin', false, null);
+INSERT INTO "user" (created_at, updated_at, email, password, first_name, last_name, is_admin, photo) VALUES (now(), now(), 'admin', '$2b$10$BBJjmVNNdyEgv7pV/zQR9u/ssIuwZsdDJbowW/Dgp28uws3GmO0Ky', 'admin', 'admin', true, null);
+INSERT INTO "user" (created_at, updated_at, email, password, first_name, last_name, is_admin, photo) VALUES (now(), now(), 'user', '$2b$10$edsq4aqzAHnrJu68t8GS2.v0Z7hJSstAo7wBBDmmbpjYGxMMTYpVi', 'user', 'user', false, null);
 
 --insert default products into the table
 INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Healing', '/api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg', 'Amethyst', 'a violet variety of quartz');
