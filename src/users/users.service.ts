@@ -86,9 +86,8 @@ export class UsersService {
     const user = await this.usersRepository.findOne({ id });
     if (!user) {
       throw new NotFoundException('User not found');
-    } else {
-      return user;
     }
+    return user;
   }
 
   async getPermissions(email: string): Promise<PermissionDto> {
