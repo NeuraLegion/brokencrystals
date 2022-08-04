@@ -123,7 +123,7 @@ export class UsersController {
       },
     },
   })
-  async getUserById(@Param('id') id: string): Promise<UserDto> {
+  async getUserById(@Param('id') id: number): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by id: ${id}`);
       return new UserDto(await this.usersService.findById(id));
