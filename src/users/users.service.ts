@@ -81,6 +81,16 @@ export class UsersService {
     }
   }
 
+  async findById(id: string): Promise<User> {
+    this.log.debug(`Called findById ${id}`);
+    const user = await this.usersRepository.findOne({ id: Number(id) });
+    if (user) {
+      return user;
+    } else {
+      throw new NotFoundException('User not found');
+    }
+  }
+
   async getPermissions(email: string): Promise<PermissionDto> {
     const user = await this.usersRepository.findOne({ email });
 
