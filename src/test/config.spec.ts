@@ -1,5 +1,5 @@
-import { SecRunner, SecScan } from '@sec-tester/runner';
-import { TestType } from '@sec-tester/scan';
+import { SecRunner, SecScan } from '@sectester/runner';
+import { TestType } from '@sectester/scan';
 
 describe('/api', () => {
   let runner: SecRunner;
