@@ -52,6 +52,7 @@ import {
   SWAGGER_DESC_CREATE_OIDC_USER,
   SWAGGER_DESC_UPDATE_USER_INFO,
   SWAGGER_DESC_ADMIN_RIGHTS,
+  SWAGGER_DESC_FIND_USER_BY_ID,
 } from './users.controller.swagger.desc';
 import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
@@ -99,6 +100,33 @@ export class UsersController {
     try {
       this.logger.debug(`Find a user by email: ${email}`);
       return new UserDto(await this.usersService.findByEmail(email));
+    } catch (err) {
+      throw new HttpException(err.message, err.status);
+    }
+  }
+
+  @Get('/:id')
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_USER_BY_ID,
+  })
+  @ApiOkResponse({
+    type: UserDto,
+    description: 'Returns user object if it exists',
+  })
+  @ApiNotFoundResponse({
+    description: 'User not founded',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  async getUserById(@Param('id') id: number): Promise<UserDto> {
+    try {
+      this.logger.debug(`Find a user by id: ${id}`);
+      return new UserDto(await this.usersService.findById(id));
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }

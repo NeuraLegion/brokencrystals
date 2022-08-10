@@ -2,6 +2,8 @@ export const SWAGGER_DESC_OPTIONS_REQUEST = `List of permitted communication opt
 
 export const SWAGGER_DESC_FIND_USER_BY_EMAIL = `Returns user by email`;
 
+export const SWAGGER_DESC_FIND_USER_BY_ID = `Returns user by id`;
+
 export const SWAGGER_DESC_PHOTO_USER_BY_EMAIL = `Returns user profile photo`;
 
 export const SWAGGER_DESC_LDAP_SEARCH = `Performs LDAP search for user details`;
