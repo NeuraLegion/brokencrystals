@@ -27,13 +27,29 @@ docker-compose --file=docker-compose.local.yml up -d
 docker-compose --file=docker-compose.local.yml up -d --build
 ```
 
-## Included tests for [SecTester](https://github.com/NeuraLegion/sectester-js/)
+## Running tests by [SecTester](https://github.com/NeuraLegion/sectester-js/)
 
-In the path *./src/test/* you can find tests to run with Jest.
-You must obtain API key from [Neuralegion](https://docs.brightsec.com/docs/manage-your-personal-account#manage-your-personal-api-keys-authentication-tokens) and place it into `BRIGHT_TOKEN` environment variable.
-Scanning target can be modified via `SEC_TESTER_TARGET` environment variable.
-Cluster can be changed via `BRIGHT_CLUSTER` environment variable.
-Run test with command *jest ./src/test/**NAME_OF_TEST**.spec.ts*
+In the path [`./test`](./test) you can find tests to run with Jest.
+
+First, you have to get a [Bright API key](https://docs.brightsec.com/docs/manage-your-personal-account#manage-your-personal-api-keys-authentication-tokens), navigate to your [`.env`](.env) file, and paste your Bright API key as the value of the `BRIGHT_TOKEN` variable:
+
+```text
+BRIGHT_TOKEN = <your_API_key_here>
+```
+
+Then, you can modify a URL to your instance of the application by setting the `SEC_TESTER_TARGET` environment variable in your [`.env`](.env) file:
+
+```text
+SEC_TESTER_TARGET = http://localhost:8090
+```
+
+Finally, you can start tests with SecTester against these endpoints as follows:
+
+```bash
+npm run test:e2e
+```
+
+Full configuration & usage examples can be found in our [demo project](https://github.com/NeuraLegion/sectester-js-demo-broken-crystals);
 
 ## Vulnerabilities Overview
 
