@@ -103,17 +103,16 @@ export class FileController {
   async uploadFile(
     @Query('path') file: string,
     @Body() raw: string,
-    @Res({ passthrough: true }) res: FastifyReply,
-  ): Promise<void> {
+  ): Promise<string> {
     try {
       if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
         await fs.promises.access(path.dirname(file), W_OK);
         await fs.promises.writeFile(file, raw);
-        res.status(HttpStatus.OK).send('File uploaded successfully');
+        return 'File uploaded successfully';
       }
     } catch (err) {
       this.logger.error(err.message);
-      res.status(HttpStatus.INTERNAL_SERVER_ERROR).send(err.message);
+      throw err;
     }
   }
 
