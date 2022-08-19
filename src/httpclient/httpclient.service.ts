@@ -12,7 +12,11 @@ export class HttpClientService {
     if (resp.status != 200) {
       throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
     }
-    this.log.debug(`Loaded: ${resp.data}`);
+    this.log.debug(
+      `Loaded: ${
+        typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data)
+      }`,
+    );
     return resp.data;
   }
 
