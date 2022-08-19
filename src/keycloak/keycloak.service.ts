@@ -14,6 +14,7 @@ import { JWK } from 'jwk-to-pem';
 import { stringify } from 'querystring';
 import { verify } from 'jsonwebtoken';
 import { User } from '../model/user.entity';
+import { promisify } from 'util';
 
 export interface OIDCIdentityConfig {
   issuer?: string;
@@ -213,9 +214,27 @@ export class KeyCloakService implements OnModuleInit {
   }
 
   private async discovery(): Promise<void> {
-    this.config = (await this.httpClient.loadJSON(
-      this.clientAdmin.metadata_url,
-    )) as OIDCIdentityConfig;
+    let count = 0;
+
+    for (;;) {
+      try {
+        this.config = (await this.httpClient.loadJSON(
+          this.clientAdmin.metadata_url,
+        )) as OIDCIdentityConfig;
+
+        return;
+      } catch (err) {
+        count++;
+
+        if (count >= 10) {
+          throw new Error(
+            `Cannot discover medata from ${this.clientAdmin.metadata_url}`,
+          );
+        }
+
+        await promisify(setTimeout)(2 ** count * 120);
+      }
+    }
   }
 
   private async getJWKs(): Promise<Map<string, string>> {
