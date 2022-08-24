@@ -7,7 +7,7 @@ jobs:
       product: heni
       subProduct: test_circle
       environment: Production
-      token: f2f6418b-966d-445d-9b95-6cd1f1ce5060 
+      token: $ARMORCODE_TOKEN
       buildTool: CIRCLE_CI
       buildNumber: "<< pipeline.number >>"
       end: 30
@@ -15,7 +15,7 @@ jobs:
       - run:
           name: "Armorcode Validate"
           command: |
-              token=$ARMORCODE_TOKEN
+              token=f2f6418b-966d-445d-9b95-6cd1f1ce5060
               wget https://qa.armorcode.ai/static/scripts/slastatus.sh
               sh slastatus.sh
 workflows:
