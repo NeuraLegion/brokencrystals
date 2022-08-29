@@ -1,8 +1,10 @@
 export const SWAGGER_DESC_OPTIONS_REQUEST = `List of permitted communication options`;
 
-export const SWAGGER_DESC_FIND_USER_BY_EMAIL = `Returns user by email`;
+export const SWAGGER_DESC_FIND_USER = `Returns user by email/id`;
 
-export const SWAGGER_DESC_FIND_USER_BY_ID = `Returns user by id`;
+export const SWAGGER_DESC_FIND_FULL_USER = `Returns full user by email/id`;
+
+export const SWAGGER_DESC_FIND_USERS = `Return users contains text query in firstName/lastName/email/company fields`;
 
 export const SWAGGER_DESC_PHOTO_USER_BY_EMAIL = `Returns user profile photo`;
 

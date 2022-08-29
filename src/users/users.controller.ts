@@ -45,17 +45,19 @@ import { KeyCloakService } from '../keycloak/keycloak.service';
 import {
   SWAGGER_DESC_CREATE_BASIC_USER,
   SWAGGER_DESC_PHOTO_USER_BY_EMAIL,
-  SWAGGER_DESC_FIND_USER_BY_EMAIL,
+  SWAGGER_DESC_FIND_USER,
   SWAGGER_DESC_LDAP_SEARCH,
   SWAGGER_DESC_OPTIONS_REQUEST,
   SWAGGER_DESC_UPLOAD_USER_PHOTO,
   SWAGGER_DESC_CREATE_OIDC_USER,
   SWAGGER_DESC_UPDATE_USER_INFO,
   SWAGGER_DESC_ADMIN_RIGHTS,
-  SWAGGER_DESC_FIND_USER_BY_ID,
+  SWAGGER_DESC_FIND_USERS,
+  SWAGGER_DESC_FIND_FULL_USER,
 } from './users.controller.swagger.desc';
 import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
+import { FullUserDto } from './api/FullUserDto';
 
 @Controller('/api/users')
 @UseInterceptors(ClassSerializerInterceptor)
@@ -78,16 +80,16 @@ export class UsersController {
     this.logger.debug(`Test OPTIONS`);
   }
 
-  @Get('/one/:email')
+  @Get('/one/:query')
   @ApiOperation({
-    description: SWAGGER_DESC_FIND_USER_BY_EMAIL,
+    description: SWAGGER_DESC_FIND_USER,
   })
   @ApiOkResponse({
     type: UserDto,
     description: 'Returns user object if it exists',
   })
   @ApiNotFoundResponse({
-    description: 'User not founded',
+    description: 'User not found',
     schema: {
       type: 'object',
       properties: {
@@ -96,25 +98,25 @@ export class UsersController {
       },
     },
   })
-  async getUser(@Param('email') email: string): Promise<UserDto> {
+  async getUser(@Param('query') query: string): Promise<UserDto> {
     try {
-      this.logger.debug(`Find a user by email: ${email}`);
-      return new UserDto(await this.usersService.findByEmail(email));
+      this.logger.debug(`Find a user by email/id: ${query}`);
+      return new UserDto(await this.usersService.findUser(query));
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }
   }
 
-  @Get('/:id')
+  @Get('/full/:query')
   @ApiOperation({
-    description: SWAGGER_DESC_FIND_USER_BY_ID,
+    description: SWAGGER_DESC_FIND_FULL_USER,
   })
   @ApiOkResponse({
-    type: UserDto,
-    description: 'Returns user object if it exists',
+    type: FullUserDto,
+    description: 'Returns full user object if it exists',
   })
   @ApiNotFoundResponse({
-    description: 'User not founded',
+    description: 'User not found',
     schema: {
       type: 'object',
       properties: {
@@ -123,10 +125,28 @@ export class UsersController {
       },
     },
   })
-  async getUserById(@Param('id') id: number): Promise<UserDto> {
+  async getFullUser(@Param('query') query: string): Promise<FullUserDto> {
     try {
-      this.logger.debug(`Find a user by id: ${id}`);
-      return new UserDto(await this.usersService.findById(id));
+      this.logger.debug(`Find a full user by email/id: ${query}`);
+      return new FullUserDto(await this.usersService.findUser(query));
+    } catch (err) {
+      throw new HttpException(err.message, err.status);
+    }
+  }
+
+  @Get('/search/:query')
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_USERS,
+  })
+  @ApiOkResponse({
+    type: UserDto,
+    description: 'Returns all array with user objects',
+  })
+  async searchUsers(@Param('query') query: string): Promise<FullUserDto[]> {
+    try {
+      this.logger.debug(`Search users by query: ${query}`);
+      const users = await this.usersService.searchUsers(query);
+      return users.map((user) => new FullUserDto(user));
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }
@@ -152,7 +172,7 @@ export class UsersController {
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
     this.logger.debug(`Find a user photo by email: ${email}`);
-    const user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findUser(email);
     if (!user) {
       throw new NotFoundException({
         error: 'Could not file user',
@@ -200,7 +220,7 @@ export class UsersController {
       if (email && email.endsWith('*')) {
         users = await this.usersService.findByEmailPrefix(email.slice(0, -1));
       } else {
-        const user = await this.usersService.findByEmail(email);
+        const user = await this.usersService.findUser(email);
 
         if (user) {
           users = [user];
@@ -243,7 +263,7 @@ export class UsersController {
     try {
       this.logger.debug(`Create a basic user: ${user}`);
 
-      const userExists = await this.usersService.findByEmail(user.email);
+      const userExists = await this.usersService.findUser(user.email);
       if (userExists) {
         throw new HttpException('User already exists', 409);
       }
@@ -320,7 +340,7 @@ export class UsersController {
     @Req() req: FastifyRequest,
   ): Promise<UserDto> {
     try {
-      const user = await this.usersService.findByEmail(email);
+      const user = await this.usersService.findUser(email);
       if (!user) {
         throw new NotFoundException('Could not find user');
       }
@@ -340,7 +360,7 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
-    description: SWAGGER_DESC_FIND_USER_BY_EMAIL,
+    description: SWAGGER_DESC_FIND_USER,
   })
   @ApiForbiddenResponse({
     description: 'invalid credentials',
@@ -362,7 +382,7 @@ export class UsersController {
     @Req() req: FastifyRequest,
   ): Promise<UserDto> {
     try {
-      const user = await this.usersService.findByEmail(email);
+      const user = await this.usersService.findUser(email);
 
       if (!user) {
         throw new NotFoundException('Could not find user');

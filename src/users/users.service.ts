@@ -31,17 +31,19 @@ export class UsersService {
     u.firstName = user.firstName;
     u.lastName = user.lastName;
     u.isAdmin = user.isAdmin || false;
+    u.company = user.company;
+    u.cardNumber = user.cardNumber;
+    u.phoneNumber = user.phoneNumber;
     u.password = await hashPassword(user.password);
 
     await this.usersRepository.persistAndFlush(u);
     this.log.debug(`Saved new user`);
-
     return u;
   }
 
   async updatePhoto(email: string, photo: Buffer): Promise<User> {
     this.log.debug(`updatePhoto for ${email}`);
-    const user = await this.findByEmail(email);
+    const user = await this.findUser(email);
     if (!user) {
       throw new NotFoundError('Could not find user');
     }
@@ -71,9 +73,10 @@ export class UsersService {
     };
   }
 
-  async findByEmail(email: string): Promise<User> {
-    this.log.debug(`Called findByEmail ${email}`);
-    const user = await this.usersRepository.findOne({ email });
+  async findUser(query: string): Promise<User> {
+    this.log.debug(`Called findByEmail ${query}`);
+    const searchData = isNaN(Number(query)) ? { query } : { id: Number(query) };
+    const user = await this.usersRepository.findOne(searchData);
     if (user) {
       return user;
     } else {
@@ -81,13 +84,18 @@ export class UsersService {
     }
   }
 
-  async findById(id: number): Promise<User> {
-    this.log.debug(`Called findById ${id}`);
-    const user = await this.usersRepository.findOne({ id });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    return user;
+  async searchUsers(query: string): Promise<User[]> {
+    this.log.debug(`Called searchUsers`);
+    const users = await this.usersRepository.findAll();
+    return users.filter((user) => {
+      if (
+        user.firstName.toLowerCase().includes(query.toLowerCase()) ||
+        user.lastName.toLowerCase().includes(query.toLowerCase()) ||
+        user.email.toLowerCase().includes(query.toLowerCase()) ||
+        user.company.toLowerCase().includes(query.toLowerCase())
+      )
+        return user;
+    });
   }
 
   async getPermissions(email: string): Promise<PermissionDto> {
