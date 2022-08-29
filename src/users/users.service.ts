@@ -74,8 +74,10 @@ export class UsersService {
   }
 
   async findUser(query: string): Promise<User> {
-    this.log.debug(`Called findByEmail ${query}`);
-    const searchData = isNaN(Number(query)) ? { query } : { id: Number(query) };
+    this.log.debug(`Called findUser ${query}`);
+    const searchData = isNaN(Number(query))
+      ? { email: query }
+      : { id: Number(query) };
     const user = await this.usersRepository.findOne(searchData);
     if (user) {
       return user;
