@@ -14,7 +14,7 @@ jobs:
     steps:
       - run:
           name: "Armorcode Validate"
-          command: |bbd422e2-ce37-42d1-b82b-450931ab79d8
+          command: |
               token=bbd422e2-ce37-42d1-b82b-450931ab79d8
               wget https://app.armorcode.com/static/scripts/slastatus.sh
               sh slastatus.sh
