@@ -1,5 +1,5 @@
 import React, { FC, useEffect, useState } from 'react';
-import { UserData } from 'src/interfaces/User';
+import { UserData } from '../../interfaces/User';
 import { getAdminStatus, searchUsers } from '../../api/httpClient';
 import AdminLayout from './AdminLayout';
 
@@ -16,9 +16,9 @@ export const AdminPage: FC = () => {
   useEffect(() => {
     if (user) {
       getAdminStatus(user).then((data) => setIsAdmin(!!data.isAdmin));
-      inputValue.length
-        ? searchUsers(inputValue).then((data) => setUsers(data))
-        : setUsers([]);
+      searchUsers(inputValue).then((data) => {
+        setUsers(data);
+      });
     }
   }, [user, inputValue]);
 
@@ -30,7 +30,7 @@ export const AdminPage: FC = () => {
           <input
             type="text"
             className="au-input au-input--full"
-            placeholder="Start typing name/surname/email/company"
+            placeholder="Start typing name"
             onChange={onInput}
           />
           <div>

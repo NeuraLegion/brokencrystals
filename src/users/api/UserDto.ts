@@ -1,23 +1,30 @@
 import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
-import { Exclude } from 'class-transformer';
+import { Exclude, Expose } from 'class-transformer';
+
+export const BASIC_USER_INFO = 'basicUserInfo';
+export const FULL_USER_INFO = 'fullUserInfo';
 
 export class UserDto {
+  @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
   @ApiProperty()
   email: string;
 
+  @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
   @ApiProperty()
   firstName: string;
 
+  @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
   @ApiProperty()
   lastName: string;
 
+  @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
   @ApiProperty()
   company: string;
 
-  @Exclude()
+  @Expose({ groups: [FULL_USER_INFO] })
   cardNumber: string;
 
-  @Exclude()
+  @Expose({ groups: [FULL_USER_INFO] })
   phoneNumber: string;
 
   @Exclude()
@@ -35,10 +42,10 @@ export class UserDto {
   @Exclude()
   photo: Buffer;
 
-  @Exclude()
+  @Expose({ groups: [FULL_USER_INFO] })
   updatedAt: Date;
 
-  @Exclude()
+  @Expose({ groups: [FULL_USER_INFO] })
   createdAt: Date;
 
   constructor(

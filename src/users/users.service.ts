@@ -43,7 +43,7 @@ export class UsersService {
 
   async updatePhoto(email: string, photo: Buffer): Promise<User> {
     this.log.debug(`updatePhoto for ${email}`);
-    const user = await this.findUser(email);
+    const user = await this.findUserByEmail(email);
     if (!user) {
       throw new NotFoundError('Could not find user');
     }
@@ -73,30 +73,28 @@ export class UsersService {
     };
   }
 
-  async findUser(query: string): Promise<User> {
-    this.log.debug(`Called findUser ${query}`);
-    const searchData = isNaN(Number(query))
-      ? { email: query }
-      : { id: Number(query) };
-    const user = await this.usersRepository.findOne(searchData);
-    if (user) {
-      return user;
-    } else {
+  async findUserByEmail(email: string): Promise<User> {
+    this.log.debug(`Called findUserByEmail ${email}`);
+    const user = await this.usersRepository.findOne({ email });
+    if (!user) {
       throw new NotFoundException('User not found');
     }
+    return user;
   }
 
-  async searchUsers(query: string): Promise<User[]> {
-    this.log.debug(`Called searchUsers`);
-    const users = await this.usersRepository.findAll();
-    return users.filter((user) => {
-      if (
-        user.firstName.toLowerCase().includes(query.toLowerCase()) ||
-        user.lastName.toLowerCase().includes(query.toLowerCase()) ||
-        user.email.toLowerCase().includes(query.toLowerCase()) ||
-        user.company.toLowerCase().includes(query.toLowerCase())
-      )
-        return user;
+  async findUserById(id: number): Promise<User> {
+    this.log.debug(`Called findUserById ${id}`);
+    const user = await this.usersRepository.findOne({ id });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
+  }
+
+  async searchUsersByName(query: string): Promise<User[]> {
+    this.log.debug(`Called searchUsersByName`);
+    return this.usersRepository.find({
+      firstName: { $like: query + '%' },
     });
   }
 
