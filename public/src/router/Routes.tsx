@@ -9,6 +9,7 @@ import Marketplace from '../pages/marketplace/Marketplace';
 import Userprofile from '../pages/main/Userprofile';
 import AdminPage from '../pages/auth/AdminPage';
 import PasswordCheck from '../pages/auth/LoginNew/PasswordCheck';
+import Dashboard from 'src/pages/auth/Dashboard';
 
 export const Routes: FC = () => {
   const user = sessionStorage.getItem('email') || localStorage.getItem('email');
@@ -67,7 +68,18 @@ export const Routes: FC = () => {
         )}
       </Route>
 
-      <Route path={RoutePath.Home}>
+      <Route path={RoutePath.Dashboard}>
+        {user ? (
+          <Dashboard />
+        ) : (
+          <Redirect
+            to={{ pathname: RoutePath.Home, state: { from: '/dashboard' } }}
+          />
+        )}
+      </Route>
+
+      <Route path="*">
+        <Redirect to={{ pathname: RoutePath.Home }} />
         <Main />
       </Route>
     </Switch>
