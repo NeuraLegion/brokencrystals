@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { getAdminStatus } from 'src/api/httpClient';
-import { RoutePath } from 'src/router/RoutePath';
+import { getAdminStatus } from '../../../api/httpClient';
+import { RoutePath } from '../../../router/RoutePath';
 interface MenuItem {
   name: string;
   path: string;
@@ -94,15 +94,7 @@ export const Nav = () => {
     <nav className="nav-menu d-none d-lg-block">
       <ul>
         {menu.map((item, i) =>
-          item.admin ? (
-            isAdminUser ? (
-              menuItem(item, i)
-            ) : (
-              <></>
-            )
-          ) : (
-            menuItem(item, i)
-          )
+          !item.admin || isAdminUser ? menuItem(item, i) : <></>
         )}
       </ul>
     </nav>
