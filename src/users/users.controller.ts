@@ -100,10 +100,10 @@ export class UsersController {
       },
     },
   })
-  async getUserByEmail(@Param('email') email: string): Promise<UserDto> {
+  async getByEmail(@Param('email') email: string): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by email: ${email}`);
-      return new UserDto(await this.usersService.findUserByEmail(email));
+      return new UserDto(await this.usersService.findByEmail(email));
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }
@@ -128,10 +128,10 @@ export class UsersController {
       },
     },
   })
-  async getUserById(@Param('id') id: number): Promise<UserDto> {
+  async getById(@Param('id') id: number): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by id: ${id}`);
-      return new UserDto(await this.usersService.findUserById(id));
+      return new UserDto(await this.usersService.findById(id));
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }
@@ -159,7 +159,7 @@ export class UsersController {
   async getFullUserInfo(@Param('email') email: string): Promise<UserDto> {
     try {
       this.logger.debug(`Find a full user info by email: ${email}`);
-      return new UserDto(await this.usersService.findUserByEmail(email));
+      return new UserDto(await this.usersService.findByEmail(email));
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }
@@ -174,10 +174,10 @@ export class UsersController {
     type: UserDto,
     description: SWAGGER_DESC_FIND_USERS,
   })
-  async searchUsers(@Param('name') name: string): Promise<UserDto[]> {
+  async searchByName(@Param('name') name: string): Promise<UserDto[]> {
     try {
       this.logger.debug(`Search users by name: ${name}`);
-      const users = await this.usersService.searchUsersByName(name);
+      const users = await this.usersService.searchByName(name);
       return users.map((user) => new UserDto(user));
     } catch (err) {
       throw new HttpException(err.message, err.status);
@@ -204,7 +204,7 @@ export class UsersController {
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
     this.logger.debug(`Find a user photo by email: ${email}`);
-    const user = await this.usersService.findUserByEmail(email);
+    const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new NotFoundException({
         error: 'Could not file user',
@@ -252,7 +252,7 @@ export class UsersController {
       if (email && email.endsWith('*')) {
         users = await this.usersService.findByEmailPrefix(email.slice(0, -1));
       } else {
-        const user = await this.usersService.findUserByEmail(email);
+        const user = await this.usersService.findByEmail(email);
 
         if (user) {
           users = [user];
@@ -295,7 +295,7 @@ export class UsersController {
     try {
       this.logger.debug(`Create a basic user: ${user}`);
 
-      const userExists = await this.usersService.findUserByEmail(user.email);
+      const userExists = await this.usersService.findByEmail(user.email);
       if (userExists) {
         throw new HttpException('User already exists', 409);
       }
@@ -372,7 +372,7 @@ export class UsersController {
     @Req() req: FastifyRequest,
   ): Promise<UserDto> {
     try {
-      const user = await this.usersService.findUserByEmail(email);
+      const user = await this.usersService.findByEmail(email);
       if (!user) {
         throw new NotFoundException('Could not find user');
       }
@@ -414,7 +414,7 @@ export class UsersController {
     @Req() req: FastifyRequest,
   ): Promise<UserDto> {
     try {
-      const user = await this.usersService.findUserByEmail(email);
+      const user = await this.usersService.findByEmail(email);
 
       if (!user) {
         throw new NotFoundException('Could not find user');

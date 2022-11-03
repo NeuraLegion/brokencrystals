@@ -43,7 +43,7 @@ export class UsersService {
 
   async updatePhoto(email: string, photo: Buffer): Promise<User> {
     this.log.debug(`updatePhoto for ${email}`);
-    const user = await this.findUserByEmail(email);
+    const user = await this.findByEmail(email);
     if (!user) {
       throw new NotFoundError('Could not find user');
     }
@@ -73,8 +73,8 @@ export class UsersService {
     };
   }
 
-  async findUserByEmail(email: string): Promise<User> {
-    this.log.debug(`Called findUserByEmail ${email}`);
+  async findByEmail(email: string): Promise<User> {
+    this.log.debug(`Called findByEmail ${email}`);
     const user = await this.usersRepository.findOne({ email });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -82,8 +82,8 @@ export class UsersService {
     return user;
   }
 
-  async findUserById(id: number): Promise<User> {
-    this.log.debug(`Called findUserById ${id}`);
+  async findById(id: number): Promise<User> {
+    this.log.debug(`Called findById ${id}`);
     const user = await this.usersRepository.findOne({ id });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -91,7 +91,7 @@ export class UsersService {
     return user;
   }
 
-  async searchUsersByName(query: string): Promise<User[]> {
+  async searchByName(query: string): Promise<User[]> {
     this.log.debug(`Called searchUsersByName`);
     return this.usersRepository.find({
       firstName: { $like: query + '%' },
