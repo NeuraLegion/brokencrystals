@@ -608,7 +608,7 @@ export class AuthController {
     let user: User;
 
     try {
-      user = await this.usersService.findUserByEmail(req.user);
+      user = await this.usersService.findByEmail(req.user);
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
