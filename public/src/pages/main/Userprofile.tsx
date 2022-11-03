@@ -8,7 +8,9 @@ import AuthLayout from '../auth/AuthLayout';
 const defaultUserData: UserData = {
   email: '',
   firstName: '',
-  lastName: ''
+  lastName: '',
+  id: '',
+  company: ''
 };
 
 export const Userprofile = () => {

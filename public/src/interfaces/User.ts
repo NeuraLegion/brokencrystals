@@ -25,6 +25,9 @@ export interface RegistrationUser {
   email: string;
   lastName: string;
   firstName: string;
+  company: string;
+  cardNumber: string;
+  phoneNumber: string;
   password?: string;
   op?: LoginFormMode;
 }
@@ -34,4 +37,6 @@ export interface UserData {
   lastName: string;
   firstName: string;
   isAdmin?: boolean;
+  id: string;
+  company: string;
 }
