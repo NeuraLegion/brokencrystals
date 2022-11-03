@@ -31,11 +31,13 @@ export class UsersService {
     u.firstName = user.firstName;
     u.lastName = user.lastName;
     u.isAdmin = user.isAdmin || false;
+    u.company = user.company;
+    u.cardNumber = user.cardNumber;
+    u.phoneNumber = user.phoneNumber;
     u.password = await hashPassword(user.password);
 
     await this.usersRepository.persistAndFlush(u);
     this.log.debug(`Saved new user`);
-
     return u;
   }
 
@@ -74,11 +76,10 @@ export class UsersService {
   async findByEmail(email: string): Promise<User> {
     this.log.debug(`Called findByEmail ${email}`);
     const user = await this.usersRepository.findOne({ email });
-    if (user) {
-      return user;
-    } else {
+    if (!user) {
       throw new NotFoundException('User not found');
     }
+    return user;
   }
 
   async findById(id: number): Promise<User> {
@@ -88,6 +89,13 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
     return user;
+  }
+
+  async searchByName(query: string): Promise<User[]> {
+    this.log.debug(`Called searchUsersByName`);
+    return this.usersRepository.find({
+      firstName: { $like: query + '%' },
+    });
   }
 
   async getPermissions(email: string): Promise<PermissionDto> {

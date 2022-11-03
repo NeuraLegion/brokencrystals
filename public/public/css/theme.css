@@ -368,6 +368,25 @@ section {
     color: #b0b0b0;
 }
 
+.admin-wrap {
+  max-width: 700px;
+  padding-top: 8vh;
+  margin: 0 auto;
+}
+
+.admin-content {
+  background: #fff;
+  padding: 30px 30px 20px;
+  -webkit-border-radius: 2px;
+  -moz-border-radius: 2px;
+  border-radius: 2px;
+}
+
+.admin-logo {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
 @media (max-width: 991px) {
     .login-checkbox {
         -webkit-box-orient: vertical;
