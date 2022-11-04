@@ -10,13 +10,24 @@ const defaultUser: RegistrationUser = {
   email: '',
   firstName: '',
   lastName: '',
+  company: '',
+  cardNumber: '',
+  phoneNumber: '',
   password: '',
   op: LoginFormMode.BASIC
 };
 
 export const Register: FC = () => {
   const [form, setForm] = useState<RegistrationUser>(defaultUser);
-  const { email, firstName, lastName, password } = form;
+  const {
+    email,
+    firstName,
+    lastName,
+    password,
+    company,
+    cardNumber,
+    phoneNumber
+  } = form;
 
   const [regResponse, setRegResponse] = useState<RegistrationUser | null>();
   const [errorText, setErrorText] = useState<string | null>();
@@ -94,6 +105,42 @@ export const Register: FC = () => {
               name="lastName"
               placeholder="Last name"
               value={lastName}
+              onInput={onInput}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Company</label>
+            <input
+              className="au-input au-input--full"
+              type="text"
+              name="company"
+              placeholder="Company"
+              value={company}
+              onInput={onInput}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Card number</label>
+            <input
+              className="au-input au-input--full"
+              type="text"
+              name="cardNumber"
+              placeholder="Card number"
+              value={cardNumber}
+              onInput={onInput}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Phone number</label>
+            <input
+              className="au-input au-input--full"
+              type="text"
+              name="phoneNumber"
+              placeholder="Phone number"
+              value={phoneNumber}
               onInput={onInput}
             />
           </div>

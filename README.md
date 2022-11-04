@@ -122,3 +122,5 @@ Full configuration & usage examples can be found in our [demo project](https://g
 * **XML External Entity (XXE)** - The endpoint, POST /api/metadata, receives URL-encoded XML data in the _xml_ query parameter, processes it with enabled external entities (using libxmnl library) and returns the serialized DOM. Additionally, for a request that tries to load file:///etc/passwd as an entity, the endpoint returns a mocked up content of the file.
 
 * **JavaScript Vulnerabilities Scanning** - Index.html includes an older version of the jQuery library with known vulnerabilities.
+
+* **AO1 Vertical access controls** - The page /dashboard can be reached despite the rights of user.

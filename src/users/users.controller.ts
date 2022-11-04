@@ -17,6 +17,7 @@ import {
   Query,
   Req,
   Res,
+  SerializeOptions,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -45,17 +46,19 @@ import { KeyCloakService } from '../keycloak/keycloak.service';
 import {
   SWAGGER_DESC_CREATE_BASIC_USER,
   SWAGGER_DESC_PHOTO_USER_BY_EMAIL,
-  SWAGGER_DESC_FIND_USER_BY_EMAIL,
+  SWAGGER_DESC_FIND_USER,
   SWAGGER_DESC_LDAP_SEARCH,
   SWAGGER_DESC_OPTIONS_REQUEST,
   SWAGGER_DESC_UPLOAD_USER_PHOTO,
   SWAGGER_DESC_CREATE_OIDC_USER,
   SWAGGER_DESC_UPDATE_USER_INFO,
   SWAGGER_DESC_ADMIN_RIGHTS,
-  SWAGGER_DESC_FIND_USER_BY_ID,
+  SWAGGER_DESC_FIND_USERS,
+  SWAGGER_DESC_FIND_FULL_USER_INFO,
 } from './users.controller.swagger.desc';
 import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
+import { BASIC_USER_INFO, FULL_USER_INFO } from './api/UserDto';
 
 @Controller('/api/users')
 @UseInterceptors(ClassSerializerInterceptor)
@@ -79,15 +82,16 @@ export class UsersController {
   }
 
   @Get('/one/:email')
+  @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
-    description: SWAGGER_DESC_FIND_USER_BY_EMAIL,
+    description: SWAGGER_DESC_FIND_USER,
   })
   @ApiOkResponse({
     type: UserDto,
-    description: 'Returns user object if it exists',
+    description: 'Returns basic user info if it exists',
   })
   @ApiNotFoundResponse({
-    description: 'User not founded',
+    description: 'User not found',
     schema: {
       type: 'object',
       properties: {
@@ -96,7 +100,7 @@ export class UsersController {
       },
     },
   })
-  async getUser(@Param('email') email: string): Promise<UserDto> {
+  async getByEmail(@Param('email') email: string): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by email: ${email}`);
       return new UserDto(await this.usersService.findByEmail(email));
@@ -105,16 +109,17 @@ export class UsersController {
     }
   }
 
-  @Get('/:id')
+  @Get('/id/:id')
+  @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
-    description: SWAGGER_DESC_FIND_USER_BY_ID,
+    description: SWAGGER_DESC_FIND_USER,
   })
   @ApiOkResponse({
     type: UserDto,
-    description: 'Returns user object if it exists',
+    description: 'Returns basic user info if it exists',
   })
   @ApiNotFoundResponse({
-    description: 'User not founded',
+    description: 'User not found',
     schema: {
       type: 'object',
       properties: {
@@ -123,10 +128,57 @@ export class UsersController {
       },
     },
   })
-  async getUserById(@Param('id') id: number): Promise<UserDto> {
+  async getById(@Param('id') id: number): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by id: ${id}`);
       return new UserDto(await this.usersService.findById(id));
+    } catch (err) {
+      throw new HttpException(err.message, err.status);
+    }
+  }
+
+  @Get('/fullinfo/:email')
+  @SerializeOptions({ groups: [FULL_USER_INFO] })
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_FULL_USER_INFO,
+  })
+  @ApiOkResponse({
+    type: UserDto,
+    description: 'Returns full user info if it exists',
+  })
+  @ApiNotFoundResponse({
+    description: 'User not found',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  async getFullUserInfo(@Param('email') email: string): Promise<UserDto> {
+    try {
+      this.logger.debug(`Find a full user info by email: ${email}`);
+      return new UserDto(await this.usersService.findByEmail(email));
+    } catch (err) {
+      throw new HttpException(err.message, err.status);
+    }
+  }
+
+  @Get('/search/:name')
+  @SerializeOptions({ groups: [FULL_USER_INFO] })
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_USERS,
+  })
+  @ApiOkResponse({
+    type: UserDto,
+    description: SWAGGER_DESC_FIND_USERS,
+  })
+  async searchByName(@Param('name') name: string): Promise<UserDto[]> {
+    try {
+      this.logger.debug(`Search users by name: ${name}`);
+      const users = await this.usersService.searchByName(name);
+      return users.map((user) => new UserDto(user));
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }
@@ -340,7 +392,7 @@ export class UsersController {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
-    description: SWAGGER_DESC_FIND_USER_BY_EMAIL,
+    description: SWAGGER_DESC_FIND_USER,
   })
   @ApiForbiddenResponse({
     description: 'invalid credentials',

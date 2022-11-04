@@ -81,6 +81,17 @@ export function getUser(
   });
 }
 
+export function searchUsers(searchText: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/search/${searchText}`,
+    method: 'get',
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    }
+  });
+}
+
 export function getUserData(
   email: string,
   config: AxiosRequestConfig = {}
