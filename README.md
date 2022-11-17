@@ -124,3 +124,4 @@ Full configuration & usage examples can be found in our [demo project](https://g
 * **JavaScript Vulnerabilities Scanning** - Index.html includes an older version of the jQuery library with known vulnerabilities.
 
 * **AO1 Vertical access controls** - The page /dashboard can be reached despite the rights of user.
+
