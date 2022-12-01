@@ -1728,11 +1728,22 @@ section {
   height: 40px;
 }
 
+.upload-file-image {
+  border-radius: 5%;
+  margin-left: 5px;
+  width: 30px;
+  height: 30px;
+}
+
 .file-input-label {
   display: contents;
   cursor: pointer;
 }
 
 .error-text {
+  color: #ff0000;
+}
+
+.warning-text {
   color: #ff0000;
 }
