@@ -46,7 +46,7 @@
     "fastify-session": "^5.2.1",
     "fastify-swagger": "^4.0.1",
     "jose": "^4.10.4",
-    "jsonwebtoken": "^8.5.1",
+    "jsonwebtoken": "^9.0.0",
     "jwk-to-pem": "^2.0.5",
     "jwt-simple": "^0.5.6",
     "libxmljs": "^0.19.7",
