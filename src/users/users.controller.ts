@@ -177,7 +177,7 @@ export class UsersController {
   async searchByName(@Param('name') name: string): Promise<UserDto[]> {
     try {
       this.logger.debug(`Search users by name: ${name}`);
-      const users = await this.usersService.searchByName(name);
+      const users = await this.usersService.searchByName(name, 50);
       return users.map((user) => new UserDto(user));
     } catch (err) {
       throw new HttpException(err.message, err.status);
