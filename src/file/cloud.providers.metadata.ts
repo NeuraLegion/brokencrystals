@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import axios from 'axios';
 
 @Injectable()
 export class CloudProvidersMetaData {
@@ -18,10 +19,74 @@ export class CloudProvidersMetaData {
     this.providers.set(
       CloudProvidersMetaData.GOOGLE,
       `
-        [{"deviceName":"boot","index":0,"mode":"READ_WRITE","type":"PERSISTENT"},
-        {"deviceName":"persistent-disk-1","index":1,"mode":"READ_WRITE","type":"PERSISTENT"},
-        {"deviceName":"persistent-disk-2","index":2,"mode":"READ_ONLY","type":"PERSISTENT"}]    
-    `,
+        attributes/
+        cpu-platform
+        description
+        instance
+        hostname
+        project
+        disks
+        service-accounts
+        tags
+        guest-attributes
+        maintenance-event
+        network-interfaces/
+    `.trim(),
+    );
+    this.providers.set(
+      CloudProvidersMetaData.DIGITAL_OCEAN,
+      `
+      {
+        "droplet_id":2756294,
+        "hostname":"sample-droplet",
+        "vendor_data":"#cloud-config\ndisable_root: false\nmanage_etc_hosts: true\n\ncloud_config_modules:\n - ssh\n - set_hostname\n - [ update_etc_hosts, once-per-instance ]\n\ncloud_final_modules:\n - scripts-vendor\n - scripts-per-once\n - scripts-per-boot\n - scripts-per-instance\n - scripts-user\n",
+        "public_keys":["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCcbi6cygCUmuNlB0KqzBpHXf7CFYb3VE4pDOf/RLJ8OFDjOM+fjF83a24QktSVIpQnHYpJJT2pQMBxD+ZmnhTbKv+OjwHSHwAfkBullAojgZKzz+oN35P4Ea4J78AvMrHw0zp5MknS+WKEDCA2c6iDRCq6/hZ13Mn64f6c372JK99X29lj/B4VQpKCQyG8PUSTFkb5DXTETGbzuiVft+vM6SF+0XZH9J6dQ7b4yD3sOder+M0Q7I7CJD4VpdVD/JFa2ycOS4A4dZhjKXzabLQXdkWHvYGgNPGA5lI73TcLUAueUYqdq3RrDRfaQ5Z0PEw0mDllCzhk5dQpkmmqNi0F sammy@digitalocean.com"],
+        "region":"nyc3",
+        "interfaces":{
+          "private":[
+            {
+              "ipv4":{
+                "ip_address":"10.132.255.113",
+                "netmask":"255.255.0.0",
+                "gateway":"0.0.0.0"
+              },
+              "mac":"04:01:2a:0f:2a:02",
+              "type":"private"
+            }
+          ],
+          "public":[
+            {
+              "ipv4":{
+                "ip_address":"104.131.20.105",
+                "netmask":"255.255.192.0",
+                "gateway":"104.131.0.1"
+              },
+              "ipv6":{
+                "ip_address":"2604:A880:0800:0010:0000:0000:017D:2001",
+                "cidr":64,
+                "gateway":"2604:A880:0800:0010:0000:0000:0000:0001"
+              },
+              "mac":"04:01:2a:0f:2a:01",
+              "type":"public"}
+          ]
+        },
+        "floating_ip": {
+          "ipv4": {
+            "active": false
+          }
+        },
+        "dns":{
+          "nameservers":[
+            "2001:4860:4860::8844",
+            "2001:4860:4860::8888",
+            "8.8.8.8"
+          ]
+        },
+        "features":{
+          "dhcp_enabled": true
+        }
+      }
+      `.trim(),
     );
     this.providers.set(
       CloudProvidersMetaData.AZURE,
@@ -143,57 +208,57 @@ export class CloudProvidersMetaData {
                   "macAddress": "0011AAFFBB22"
               }]
           }
-      }    
-    `,
+      }
+    `.trim(),
     );
     this.providers.set(
       CloudProvidersMetaData.AWS,
       `
-          ami-id
-          ami-launch-index
-          ami-manifest-path
-          block-device-mapping/
-          events/
-          hostname
-          iam/
-          instance-action
-          instance-id
-          instance-life-cycle
-          instance-type
-          local-hostname
-          local-ipv4
-          mac
-          metrics/
-          network/
-          placement/
-          profile
-          public-hostname
-          public-ipv4
-          public-keys/
-          reservation-id
-          security-groups
-          services/
-    `,
+        ami-id
+        ami-launch-index
+        ami-manifest-path
+        block-device-mapping/
+        events/
+        hostname
+        iam/
+        instance-action
+        instance-id
+        instance-life-cycle
+        instance-type
+        local-hostname
+        local-ipv4
+        mac
+        metrics/
+        network/
+        placement/
+        profile
+        public-hostname
+        public-ipv4
+        public-keys/
+        reservation-id
+        security-groups
+        services/
+    `.trim(),
     );
     this.providers.set(
       CloudProvidersMetaData.DIGITAL_OCEAN,
       `
-          id
-          hostname
-          user-data
-          vendor-data
-          public-keys
-          region
-          interfaces/
-          dns/
-          floating_ip/
-          tags/
-          features/
-    `,
+        id
+        hostname
+        user-data
+        vendor-data
+        public-keys
+        region
+        interfaces/
+        dns/
+        floating_ip/
+        tags/
+        features/
+    `.trim(),
     );
   }
 
-  get(providerUrl: string): string {
+  async get(providerUrl: string): Promise<string> {
     if (providerUrl.startsWith(CloudProvidersMetaData.GOOGLE)) {
       return this.providers.get(CloudProvidersMetaData.GOOGLE);
     } else if (providerUrl.startsWith(CloudProvidersMetaData.DIGITAL_OCEAN)) {
@@ -203,7 +268,11 @@ export class CloudProvidersMetaData {
     } else if (providerUrl.startsWith(CloudProvidersMetaData.AZURE)) {
       return this.providers.get(CloudProvidersMetaData.AZURE);
     } else {
-      return null;
+      const { data } = await axios(providerUrl, {
+        timeout: 5000,
+        responseType: 'text',
+      });
+      return data;
     }
   }
 }

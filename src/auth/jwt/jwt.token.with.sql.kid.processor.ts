@@ -22,7 +22,7 @@ export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
       this.key,
       header.kid,
     );
-    this.log.debug(`Executing key fetchign qury: ${query}`);
+    this.log.debug(`Executing key fetching query: ${query}`);
     const keyRow: { key: string } = await this.em
       .getConnection()
       .execute(query);

@@ -4,6 +4,7 @@ export interface LoginUser {
   csrf?: string;
   op?: LoginFormMode;
   fingerprint?: string;
+  rememberuser?: string;
 }
 
 export enum LoginFormMode {
@@ -17,11 +18,25 @@ export enum LoginFormMode {
 export interface LoginResponse {
   email: string;
   ldapProfileLink: string;
+  errorText: string | null;
 }
 
 export interface RegistrationUser {
   email: string;
   lastName: string;
   firstName: string;
+  company: string;
+  cardNumber: string;
+  phoneNumber: string;
   password?: string;
+  op?: LoginFormMode;
+}
+
+export interface UserData {
+  email: string;
+  lastName: string;
+  firstName: string;
+  isAdmin?: boolean;
+  id: string;
+  company: string;
 }

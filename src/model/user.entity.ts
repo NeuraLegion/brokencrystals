@@ -24,4 +24,13 @@ export class User extends Base {
     type: BlobType,
   })
   photo: Buffer;
+
+  @Property()
+  company: string;
+
+  @Property()
+  cardNumber: string;
+
+  @Property()
+  phoneNumber: string;
 }

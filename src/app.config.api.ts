@@ -8,5 +8,5 @@ export class AppConfig {
   sql: string;
 
   @ApiProperty()
-  mailgun: string;
+  googlemaps: string;
 }

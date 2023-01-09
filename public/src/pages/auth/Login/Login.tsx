@@ -3,9 +3,11 @@ import getBrowserFingerprint from 'get-browser-fingerprint';
 import React, { FC, FormEvent, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { OidcClient } from '../../../interfaces/Auth';
+import { RoutePath } from '../../../router/RoutePath';
 import {
   getLdap,
   getUser,
+  getUserData,
   loadXsrfToken,
   loadDomXsrfToken,
   getOidcClient
@@ -14,6 +16,7 @@ import {
   LoginFormMode,
   LoginResponse,
   LoginUser,
+  UserData,
   RegistrationUser
 } from '../../../interfaces/User';
 import AuthLayout from '../AuthLayout';
@@ -43,6 +46,7 @@ export const Login: FC = () => {
 
   const [loginResponse, setLoginResponse] = useState<LoginResponse | null>();
   const [ldapResponse, setLdapResponse] = useState<Array<RegistrationUser>>([]);
+  const [errorText, setErrorText] = useState<string | null>();
 
   const [mode, setMode] = useState<LoginFormMode>(LoginFormMode.BASIC);
   const [csrf, setCsrf] = useState<string>();
@@ -57,10 +61,6 @@ export const Login: FC = () => {
     const { value } = target as HTMLSelectElement & { value: LoginFormMode };
     setForm({ ...form, op: value });
     setMode(value);
-    switch (value as LoginFormMode) {
-      default:
-        return;
-    }
   };
 
   const sendUser = (e: FormEvent) => {
@@ -74,9 +74,21 @@ export const Login: FC = () => {
     getUser(params, config)
       .then((data: LoginResponse) => {
         setLoginResponse(data);
-        return data.email;
+        return data;
       })
-      .then((email) => sessionStorage.setItem('email', email));
+      .then(({ email, errorText }) => {
+        if (errorText) {
+          setErrorText(errorText);
+        }
+        sessionStorage.setItem('email', email);
+        return getUserData(email);
+      })
+      .then((userData: UserData) =>
+        sessionStorage.setItem(
+          'userName',
+          `${userData.firstName} ${userData.lastName}`
+        )
+      );
   };
 
   const sendLdap = () => {
@@ -181,7 +193,6 @@ export const Login: FC = () => {
               onInput={onInput}
             />
           </div>
-
           <div className="form-group">
             <label>Password</label>
             <input
@@ -209,10 +220,18 @@ export const Login: FC = () => {
             sign in
           </button>
         </form>
-
+        <div>
+          {errorText && <div className="error-text">{errorText}</div>}
+          <b>Hint</b>: if you are looking for an authentication protected
+          endpoint, try using:
+          <a href="https://brokencrystals.com/api/products">
+            https://brokencrystals.com/api/products
+          </a>
+        </div>
         <div className="register-link">
           <p>
-            Don't you have account? <Link to="/register">Sign Up Here</Link>
+            Don't have an account?{' '}
+            <Link to={RoutePath.Register}>Sign Up Here</Link>
           </p>
         </div>
       </div>

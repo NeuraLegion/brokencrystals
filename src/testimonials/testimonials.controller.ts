@@ -2,35 +2,55 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Logger,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
 import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
 import { TestimonialDto } from './api/TestimonialDto';
+import {
+  SWAGGER_DESC_CREATE_TESTIMONIAL,
+  SWAGGER_DESC_GET_TESTIMONIALS,
+  SWAGGER_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
+} from './testimonials.controller.swagger.desc';
 import { TestimonialsService } from './testimonials.service';
 
 @Controller('/api/testimonials')
-@ApiTags('testimonials controller')
+@ApiTags('Testimonials controller')
 export class TestimonialsController {
   private readonly logger = new Logger(TestimonialsController.name);
 
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
+  @Post()
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
-  @Post()
   @ApiOperation({
-    description: 'creates testimonial',
+    description: SWAGGER_DESC_CREATE_TESTIMONIAL,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: TestimonialDto,
-    status: 200,
+  })
+  @ApiForbiddenResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
   })
   async createTestimonial(
     @Body() req: CreateTestimonialRequest,
@@ -47,12 +67,11 @@ export class TestimonialsController {
 
   @Get()
   @ApiOperation({
-    description: 'returns all testimonials',
+    description: SWAGGER_DESC_GET_TESTIMONIALS,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: TestimonialDto,
     isArray: true,
-    status: 200,
   })
   async getTestimonials(): Promise<TestimonialDto[]> {
     this.logger.debug('Get all testimonials.');
@@ -62,13 +81,12 @@ export class TestimonialsController {
   }
 
   @Get('count')
+  @Header('content-type', 'text/html')
   @ApiOperation({
-    description:
-      'returns count of all testimonials based on provided sql query',
+    description: SWAGGER_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: String,
-    status: 200,
   })
   async getCount(@Query('query') query: string): Promise<string> {
     this.logger.debug('Get count of testimonials.');

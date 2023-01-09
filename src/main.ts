@@ -22,11 +22,14 @@ async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
 
-  const server = fastify();
+  const server = fastify({ trustProxy: true, onProtoPoisoning: 'ignore' });
 
   const app: NestFastifyApplication = await NestFactory.create(
     AppModule,
     new FastifyAdapter(server),
+    {
+      logger: process.env.NODE_ENV === 'production' ? ['error'] : true,
+    },
   );
 
   await server.register(fastifyCookie);
@@ -53,12 +56,36 @@ async function bootstrap() {
   });
 
   const options = new DocumentBuilder()
-    .setTitle('Broken Crystal')
+    .setTitle('Broken Crystals')
     .setDescription(
-      'Broken Crystals is a benchmark application that uses modern technologies and implements a set of common security vulnerabilities.',
+      `
+  ![BC logo](/assets/img/logo_blue_small.png)
+
+  This is the _Broken Crystals_ REST API.
+
+  _Broken Crystals_ is a benchmark application that uses modern technologies and implements a set of common security vulnerabilities.
+
+  ## Available endpoints
+
+  * [App](#/App%20controller) - common operations
+
+  * [Auth](#/Auth%20controller) - operations with authentication methods
+
+  * [User](#/User%20controller) - operations with users(creation, searching)
+
+  * [Files](#/Files%20controller) - operations with files
+
+  * [Subscriptions](#/Subscriptions%20controller) - operations with subscriptions
+
+  * [Testimonials](#/Testimonials%20controller) - operations with testimonials
+
+  * [Products](#/Products%20controller) — operations with products
+
+
+  `,
     )
     .setVersion('1.0')
-    .addServer('https://brokencrystals.com/')
+    .addServer(process.env.URL)
     .build();
   const document = SwaggerModule.createDocument(app, options);
 

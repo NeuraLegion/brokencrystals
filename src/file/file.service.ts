@@ -18,7 +18,7 @@ export class FileService {
 
       return fs.createReadStream(file);
     } else if (file.startsWith('http')) {
-      const content = this.cloudProviders.get(file);
+      const content = await this.cloudProviders.get(file);
 
       if (content) {
         return Readable.from(content);

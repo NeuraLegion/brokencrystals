@@ -1,8 +1,11 @@
 import {
   Body,
+  ClassSerializerInterceptor,
   Controller,
+  ForbiddenException,
   Get,
   Header,
+  HttpException,
   HttpStatus,
   InternalServerErrorException,
   Logger,
@@ -14,10 +17,20 @@ import {
   Query,
   Req,
   Res,
+  SerializeOptions,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNoContentResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CreateUserRequest } from './api/CreateUserRequest';
 import { UserDto } from './api/UserDto';
 import { LdapQueryHandler } from './ldap.query.handler';
@@ -30,9 +43,26 @@ import { JwtProcessorType } from '../auth/auth.service';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { AnyFilesInterceptor } from '../components/any-files.interceptor';
 import { KeyCloakService } from '../keycloak/keycloak.service';
+import {
+  SWAGGER_DESC_CREATE_BASIC_USER,
+  SWAGGER_DESC_PHOTO_USER_BY_EMAIL,
+  SWAGGER_DESC_FIND_USER,
+  SWAGGER_DESC_LDAP_SEARCH,
+  SWAGGER_DESC_OPTIONS_REQUEST,
+  SWAGGER_DESC_UPLOAD_USER_PHOTO,
+  SWAGGER_DESC_CREATE_OIDC_USER,
+  SWAGGER_DESC_UPDATE_USER_INFO,
+  SWAGGER_DESC_ADMIN_RIGHTS,
+  SWAGGER_DESC_FIND_USERS,
+  SWAGGER_DESC_FIND_FULL_USER_INFO,
+} from './users.controller.swagger.desc';
+import { AdminGuard } from './users.guard';
+import { PermissionDto } from './api/PermissionDto';
+import { BASIC_USER_INFO, FULL_USER_INFO } from './api/UserDto';
 
 @Controller('/api/users')
-@ApiTags('user controller')
+@UseInterceptors(ClassSerializerInterceptor)
+@ApiTags('User controller')
 export class UsersController {
   private logger = new Logger(UsersController.name);
   private ldapQueryHandler = new LdapQueryHandler();
@@ -43,41 +73,131 @@ export class UsersController {
   ) {}
 
   @Options()
-  @Header('allow', 'OPTIONS, GET, POST, DELETE')
+  @ApiOperation({
+    description: SWAGGER_DESC_OPTIONS_REQUEST,
+  })
+  @Header('Access-Control-Request-Headers', 'OPTIONS, GET, POST, DELETE')
   async getTestOptions(): Promise<void> {
     this.logger.debug(`Test OPTIONS`);
   }
 
   @Get('/one/:email')
+  @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
-    description: 'returns user',
+    description: SWAGGER_DESC_FIND_USER,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: UserDto,
-    status: 200,
+    description: 'Returns basic user info if it exists',
   })
-  async getUser(@Param('email') email: string): Promise<UserDto> {
+  @ApiNotFoundResponse({
+    description: 'User not found',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  async getByEmail(@Param('email') email: string): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by email: ${email}`);
-      return UserDto.convertToApi(await this.usersService.findByEmail(email));
+      return new UserDto(await this.usersService.findByEmail(email));
     } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message,
-        location: __filename,
-      });
+      throw new HttpException(err.message, err.status);
     }
   }
 
+  @Get('/id/:id')
+  @SerializeOptions({ groups: [BASIC_USER_INFO] })
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_USER,
+  })
+  @ApiOkResponse({
+    type: UserDto,
+    description: 'Returns basic user info if it exists',
+  })
+  @ApiNotFoundResponse({
+    description: 'User not found',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  async getById(@Param('id') id: number): Promise<UserDto> {
+    try {
+      this.logger.debug(`Find a user by id: ${id}`);
+      return new UserDto(await this.usersService.findById(id));
+    } catch (err) {
+      throw new HttpException(err.message, err.status);
+    }
+  }
+
+  @Get('/fullinfo/:email')
+  @SerializeOptions({ groups: [FULL_USER_INFO] })
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_FULL_USER_INFO,
+  })
+  @ApiOkResponse({
+    type: UserDto,
+    description: 'Returns full user info if it exists',
+  })
+  @ApiNotFoundResponse({
+    description: 'User not found',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  async getFullUserInfo(@Param('email') email: string): Promise<UserDto> {
+    try {
+      this.logger.debug(`Find a full user info by email: ${email}`);
+      return new UserDto(await this.usersService.findByEmail(email));
+    } catch (err) {
+      throw new HttpException(err.message, err.status);
+    }
+  }
+
+  @Get('/search/:name')
+  @SerializeOptions({ groups: [FULL_USER_INFO] })
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_USERS,
+  })
+  @ApiOkResponse({
+    type: UserDto,
+    description: SWAGGER_DESC_FIND_USERS,
+  })
+  async searchByName(@Param('name') name: string): Promise<UserDto[]> {
+    try {
+      this.logger.debug(`Search users by name: ${name}`);
+      const users = await this.usersService.searchByName(name, 50);
+      return users.map((user) => new UserDto(user));
+    } catch (err) {
+      throw new HttpException(err.message, err.status);
+    }
+  }
+
+  @Get('/one/:email/photo')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
-  @Get('/one/:email/photo')
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'returns user profile photo',
+  @ApiOperation({
+    description: SWAGGER_DESC_PHOTO_USER_BY_EMAIL,
   })
-  @ApiResponse({
-    status: HttpStatus.NO_CONTENT,
-    description: 'returns empty content if photo is not set',
+  @ApiOkResponse({
+    description: 'Returns user profile photo',
+  })
+  @ApiNoContentResponse({
+    description: 'Returns empty content if photo is not set',
+  })
+  @ApiForbiddenResponse({
+    description: 'Returns then user is not authenticated',
   })
   async getUserPhoto(
     @Param('email') email: string,
@@ -116,12 +236,11 @@ export class UsersController {
 
   @Get('/ldap')
   @ApiOperation({
-    description: 'performs LDAP search for user details',
+    description: SWAGGER_DESC_LDAP_SEARCH,
   })
-  @ApiResponse({
+  @ApiOkResponse({
     type: UserDto,
     isArray: true,
-    status: 200,
   })
   async ldapQuery(@Query('query') query: string): Promise<UserDto[]> {
     this.logger.debug(`Call ldapQuery: ${query}`);
@@ -150,51 +269,199 @@ export class UsersController {
       throw new NotFoundException('User not found in ldap');
     }
 
-    return users.map<UserDto>(UserDto.convertToApi);
+    return users.map((user: User) => new UserDto(user));
   }
 
-  @Post()
+  @Post('/basic')
   @ApiOperation({
-    description: 'creates user',
+    description: SWAGGER_DESC_CREATE_BASIC_USER,
   })
-  @ApiResponse({
+  @ApiConflictResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
+    description: 'User Already exists',
+  })
+  @ApiCreatedResponse({
     type: UserDto,
-    status: 200,
+    description: 'User created',
   })
   async createUser(@Body() user: CreateUserRequest): Promise<UserDto> {
     try {
-      this.logger.debug(`Create a user: ${user}`);
+      this.logger.debug(`Create a basic user: ${user}`);
 
-      const newUser = UserDto.convertToApi(
-        await this.usersService.createUser(
-          user.email,
-          user.firstName,
-          user.lastName,
-          user.password,
-        ),
-      );
-
-      await this.keyCloakService.registerUser({
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        password: user.password,
-      });
-
-      return newUser;
+      const userExists = await this.usersService.findByEmail(user.email);
+      if (userExists) {
+        throw new HttpException('User already exists', 409);
+      }
     } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message,
-        location: __filename,
-      });
+      if (err.status === 404) {
+        return new UserDto(await this.usersService.createUser(user));
+      }
+      throw new HttpException(
+        err.message ?? 'Something went wrong',
+        err.status ?? 500,
+      );
     }
   }
 
+  @Post('/oidc')
+  @ApiOperation({
+    description: SWAGGER_DESC_CREATE_OIDC_USER,
+  })
+  @ApiConflictResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        errorMessage: { type: 'string' },
+      },
+    },
+    description: 'User Already exists',
+  })
+  @ApiCreatedResponse({
+    description: 'User created, returns empty object',
+  })
+  async createOIDCUser(@Body() user: CreateUserRequest): Promise<UserDto> {
+    try {
+      this.logger.debug(`Create a OIDC user: ${user}`);
+
+      return new UserDto(
+        await this.keyCloakService.registerUser({
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          password: user.password,
+        }),
+      );
+    } catch (err) {
+      throw new HttpException(
+        err.response.data ?? 'Something went wrong',
+        err.response.status ?? 500,
+      );
+    }
+  }
+
+  @Put('/one/:email/info')
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
-  @Put('/one/:email/photo')
   @ApiOperation({
-    description: 'uploads user profile photo',
+    description: SWAGGER_DESC_UPDATE_USER_INFO,
+  })
+  @ApiForbiddenResponse({
+    description: 'invalid credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Returns updated user',
+  })
+  async changeUserInfo(
+    @Body() newData: UserDto,
+    @Param('email') email: string,
+    @Req() req: FastifyRequest,
+  ): Promise<UserDto> {
+    try {
+      const user = await this.usersService.findByEmail(email);
+      if (!user) {
+        throw new NotFoundException('Could not find user');
+      }
+      if (this.originEmail(req) !== email) {
+        throw new ForbiddenException();
+      }
+      return new UserDto(await this.usersService.updateUserInfo(user, newData));
+    } catch (err) {
+      throw new HttpException(
+        err.message || 'Internal server error',
+        err.status || 500,
+      );
+    }
+  }
+
+  @Get('/one/:email/info')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_USER,
+  })
+  @ApiForbiddenResponse({
+    description: 'invalid credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' },
+      },
+    },
+  })
+  @ApiNotFoundResponse()
+  @ApiOkResponse({
+    description: 'Returns user info',
+  })
+  async getUserInfo(
+    @Param('email') email: string,
+    @Req() req: FastifyRequest,
+  ): Promise<UserDto> {
+    try {
+      const user = await this.usersService.findByEmail(email);
+
+      if (!user) {
+        throw new NotFoundException('Could not find user');
+      }
+      if (this.originEmail(req) !== email) {
+        throw new ForbiddenException();
+      }
+      return new UserDto(user);
+    } catch (err) {
+      throw new HttpException(
+        err.message || 'Internal server error',
+        err.status || 500,
+      );
+    }
+  }
+
+  @Get('/one/:email/adminpermission')
+  @UseGuards(AuthGuard, AdminGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_ADMIN_RIGHTS,
+  })
+  @ApiForbiddenResponse({
+    description: 'user has no admin rights',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  @ApiOkResponse({
+    description: 'Returns true if user has admin rights',
+  })
+  getAdminStatus(@Param('email') email: string): Promise<PermissionDto> {
+    return this.usersService.getPermissions(email);
+  }
+
+  @Put('/one/:email/photo')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_UPLOAD_USER_PHOTO,
+  })
+  @ApiOkResponse({
+    description: 'Photo updated',
   })
   @UseInterceptors(AnyFilesInterceptor)
   async uploadFile(@Param('email') email: string, @Req() req: FastifyRequest) {
@@ -207,5 +474,14 @@ export class UsersController {
         location: __filename,
       });
     }
+  }
+
+  public originEmail(request: FastifyRequest): string {
+    return JSON.parse(
+      Buffer.from(
+        request.headers.authorization.split('.')[1],
+        'base64',
+      ).toString(),
+    ).user;
   }
 }

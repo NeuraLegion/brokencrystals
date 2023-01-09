@@ -1,6 +1,11 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { Testimonial } from '../interfaces/Testimonial';
-import { LoginFormMode, LoginUser, RegistrationUser } from '../interfaces/User';
+import {
+  LoginFormMode,
+  LoginUser,
+  RegistrationUser,
+  UserData
+} from '../interfaces/User';
 import { Product } from '../interfaces/Product';
 import { OidcClient } from '../interfaces/Auth';
 import { ApiUrl } from './ApiUrl';
@@ -25,7 +30,10 @@ export function getProducts(): Promise<Product[]> {
   return makeApiRequest({
     url: ApiUrl.Products,
     method: 'get',
-    headers: { authorization: sessionStorage.getItem('token') }
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    }
   });
 }
 
@@ -37,7 +45,10 @@ export function postTestimonials(data: Testimonial): Promise<any> {
   return makeApiRequest({
     url: ApiUrl.Testimonials,
     method: 'post',
-    headers: { authorization: sessionStorage.getItem('token') },
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    },
     data
   });
 }
@@ -51,7 +62,7 @@ export function postSubscriptions(email: string): Promise<any> {
 
 export function postUser(data: RegistrationUser): Promise<any> {
   return makeApiRequest({
-    url: ApiUrl.Users,
+    url: `${ApiUrl.Users}/${data.op}`,
     method: 'post',
     data
   });
@@ -66,6 +77,28 @@ export function getUser(
     url: `${ApiUrl.Auth}/login`,
     method: 'post',
     data,
+    ...config
+  });
+}
+
+export function searchUsers(searchText: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/search/${searchText}`,
+    method: 'get',
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    }
+  });
+}
+
+export function getUserData(
+  email: string,
+  config: AxiosRequestConfig = {}
+): Promise<UserData> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/one/${email.trim()}`,
+    method: 'get',
     ...config
   });
 }
@@ -105,19 +138,55 @@ export function getOidcClient(): Promise<OidcClient> {
 
 export function postMetadata(): Promise<any> {
   return makeApiRequest({
-    url: `${ApiUrl.Metadata}?xml=${encodeURIComponent(
-      '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE child [ <!ENTITY child SYSTEM "file:///etc/passwd"> ]><child></child>'
-    )}`,
+    url: `${ApiUrl.Metadata}`,
     method: 'post',
-    headers: { 'content-type': 'text/xml' }
+    headers: { 'content-type': 'text/xml' },
+    data:
+      '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE child [ <!ENTITY child SYSTEM "file:///etc/passwd"> ]><child></child>'
   });
 }
+
+export function getSpawnData(): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Spawn}?command=pwd`,
+    method: 'get',
+    headers: { 'content-type': 'text/plain' }
+  });
+}
+
 export function getUserPhoto(email: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/one/${email}/photo`,
     method: 'get',
-    headers: { authorization: sessionStorage.getItem('token') },
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    },
     responseType: 'arraybuffer'
+  });
+}
+
+export function getAdminStatus(email: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/one/${email}/adminpermission`,
+    method: 'get',
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    }
+  });
+}
+
+export function putUserData(user: UserData): Promise<UserData> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/one/${user.email}/info`,
+    method: 'put',
+    headers: {
+      'content-type': 'application/json',
+      'authorization':
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    },
+    data: user
   });
 }
 
@@ -130,7 +199,8 @@ export function putPhoto(photo: File, email: string): Promise<any> {
     method: 'put',
     headers: {
       'content-type': 'image/png',
-      'authorization': sessionStorage.getItem('token')
+      'authorization':
+        sessionStorage.getItem('token') || localStorage.getItem('token')
     },
     data
   });
