@@ -2,19 +2,15 @@ import { Logger } from '@nestjs/common';
 import { decode, encode } from 'jwt-simple';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
-export class JwtTokenWithRSAKeysProcessor extends JwtTokenProcessor {
+export class JwtTokenWithRSASignatureKeysProcessor extends JwtTokenProcessor {
   constructor(private publicKey: string, private privateKey: string) {
-    super(new Logger(JwtTokenWithRSAKeysProcessor.name));
+    super(new Logger(JwtTokenWithRSASignatureKeysProcessor.name));
   }
 
   async validateToken(token: string): Promise<any> {
     this.log.debug('Call validateToken');
 
-    const [header, payload] = this.parse(token);
-    if (header.alg === 'none') {
-      return payload;
-    }
-    return decode(token, this.publicKey, false, header.alg);
+    return decode(token, this.publicKey, true, 'RS256');
   }
 
   async createToken(payload: unknown): Promise<string> {
