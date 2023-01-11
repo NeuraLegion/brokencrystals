@@ -169,7 +169,7 @@ export class FileController {
     @Res({ passthrough: true }) res: FastifyReply,
     @Headers('accept') acceptHeader: string,
   ) {
-    const file: Stream = await this.loadCPFile('AZURE', path);
+    const file: Stream = await this.loadCPFile(CloudProvidersMetaData.AZURE, path);
     const type = this.getContentType(contentType, acceptHeader)
     res.type(type);
 
