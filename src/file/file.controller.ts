@@ -238,11 +238,11 @@ export class FileController {
       if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
         await fs.promises.access(path.dirname(file), W_OK);
         await fs.promises.writeFile(file, raw);
-        return 'File uploaded successfully';
+        return `File uploaded successfully at ${file}`;
       }
     } catch (err) {
       this.logger.error(err.message);
-      throw err;
+      throw err.message;
     }
   }
 
@@ -251,7 +251,7 @@ export class FileController {
     description: SWAGGER_DESC_READ_FILE_ON_SERVER,
   })
   @ApiNotFoundResponse({
-    description: 'File not Found',
+    description: 'File not found',
   })
   @ApiOkResponse({
     description: 'Returns requested file',
