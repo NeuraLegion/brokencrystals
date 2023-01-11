@@ -198,7 +198,7 @@ export class FileController {
     @Res({ passthrough: true }) res: FastifyReply,
     @Headers('accept') acceptHeader: string,
   ) {
-    const file: Stream = await this.loadCPFile('DIGITAL_OCEAN', path);
+    const file: Stream = await this.loadCPFile(CloudProvidersMetaData.DIGITAL_OCEAN, path);
     const type = this.getContentType(contentType, acceptHeader)
     res.type(type);
 
