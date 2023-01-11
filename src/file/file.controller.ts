@@ -49,7 +49,7 @@ export class FileController {
     }
   }
 
-  private async loadCPFile(cp_name: string, path: string){
+  private async loadCPFile(cpBaseUrl: string, path: string){
     if (!path.startsWith(cpBaseUrl)){
       throw new BadRequestException(`Invalid paramater 'path' ${path}`)
     }
