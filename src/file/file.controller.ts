@@ -39,7 +39,7 @@ export class FileController {
 
   constructor(private fileService: FileService) {}
 
-  private getContentType = (contentType: string, acceptHeader: string) => {
+  private getContentType(contentType: string, acceptHeader: string) {
     if (contentType) {
       return contentType;
     } else if (acceptHeader) {
