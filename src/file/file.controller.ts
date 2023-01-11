@@ -50,7 +50,7 @@ export class FileController {
   }
 
   private async loadCPFile(cp_name: string, path: string){
-    if (!path.startsWith(CloudProvidersMetaData[cp_name.toUpperCase()])){
+    if (!path.startsWith(cpBaseUrl)){
       throw new BadRequestException(`Invalid paramater 'path' ${path}`)
     }
     
