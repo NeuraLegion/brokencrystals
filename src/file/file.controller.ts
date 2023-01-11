@@ -7,10 +7,8 @@ import {
   Headers,
   HttpStatus,
   Logger,
-  Param,
   Put,
   Query,
-  Req,
   Res,
 } from '@nestjs/common';
 import {
