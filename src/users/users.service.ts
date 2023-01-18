@@ -91,11 +91,13 @@ export class UsersService {
     return user;
   }
 
-  async searchByName(query: string): Promise<User[]> {
+  async searchByName(query: string, limit?: number): Promise<User[]> {
     this.log.debug(`Called searchUsersByName`);
     return this.usersRepository.find({
-      firstName: { $like: query + '%' },
-    });
+        firstName: { $like: query + '%' },
+      },
+      limit ? { limit } : {},
+    );
   }
 
   async getPermissions(email: string): Promise<PermissionDto> {
