@@ -228,3 +228,24 @@ function mapToUrlParams<T>(data: T): URLSearchParams {
     return acc;
   }, new URLSearchParams());
 }
+
+export function putFile(fileName: string, file: File): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.File}/raw?path=${fileName}`,
+    method: 'put',
+    headers: {
+      'content-type': 'file/*'
+    },
+    data: file
+  });
+}
+
+export function getFile(fileName: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.File}/raw?path=${fileName}`,
+    method: 'get',
+    headers: {
+      'content-type': 'file/*'
+    }
+  });
+}
