@@ -172,11 +172,7 @@ export const Footer: FC = () => {
                 <td>
                   <div className="px-1 d-flex flex-row align-items-start social-links text-center text-md-right pt-3 pt-md-0">
                     {section.items.map((item) => (
-                      <a
-                        href={`/api/file/${item.name}?`}
-                        className="google"
-                        style={{ pointerEvents: 'none' }}
-                      >
+                      <a href={`/api/file/${item.name}?`} className="google">
                         <i className={`bx ${item.icon}`} />
                       </a>
                     ))}
