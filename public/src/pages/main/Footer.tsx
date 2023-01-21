@@ -180,9 +180,8 @@ export const Footer: FC = () => {
               Supporting:{' '}
               {cloudProviders.map((provider) => (
                 <a
-                  href={`/api/file/${provider.name}?`}
+                  href={`/api/file/${provider.name}?path=${provider.name}`}
                   className="google"
-                  style={{ pointerEvents: 'none' }}
                 >
                   <i className={`bx ${provider.icon}`} />
                 </a>
