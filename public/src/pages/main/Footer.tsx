@@ -62,12 +62,12 @@ export const Footer: FC = () => {
   ];
 
   const cloudProviders = [
-    { name: 'google', url: '/api/file/google', icon: 'bxl-google' },
-    { name: 'aws', url: '/api/file/aws', icon: 'bxl-amazon' },
-    { name: 'azure', url: '/api/file/azure', icon: 'bxl-microsoft' },
+    { name: 'google', url: `/api/file/google?path=google`, icon: 'bxl-google' },
+    { name: 'aws', url: '/api/file/aws?path=aws', icon: 'bxl-amazon' },
+    { name: 'azure', url: '/api/file/azure?path=azure', icon: 'bxl-microsoft' },
     {
       name: 'digital_ocean',
-      url: '/api/file/digital_ocean',
+      url: '/api/file/digital_ocean?path=digital_ocean',
       icon: 'bxl-digitalocean'
     }
   ];
@@ -172,7 +172,7 @@ export const Footer: FC = () => {
                 <td>
                   <div className="px-1 d-flex flex-row align-items-start social-links text-center text-md-right pt-3 pt-md-0">
                     {section.items.map((item) => (
-                      <a href={`/api/file/${item.name}?`} className="google">
+                      <a href={item.url} className="google">
                         <i className={`bx ${item.icon}`} />
                       </a>
                     ))}
