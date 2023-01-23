@@ -47,7 +47,11 @@ export const FAQ: FC = () => {
         <div className="faq-list">
           <ul>
             {FAQItems.map((item, idx) => (
-              <li data-aos="fade-up" data-aos-delay={100 * idx}>
+              <li
+                data-aos="fade-up"
+                data-aos-delay={100 * idx}
+                key={`faq-item-${idx}`}
+              >
                 <i className="bx bx-help-circle icon-help" />{' '}
                 <a
                   data-toggle="collapse"

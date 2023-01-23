@@ -112,12 +112,15 @@ export const Footer: FC = () => {
               </div>
             </div>
 
-            {footerLinkSections.map((section) => (
-              <div className="col-lg-2 col-md-6 footer-links">
+            {footerLinkSections.map((section, idx) => (
+              <div
+                className="col-lg-2 col-md-6 footer-links"
+                key={`footer-links-section-${idx}`}
+              >
                 <h4>{section.title}</h4>
                 <ul>
-                  {section.items.map((item) => (
-                    <li>
+                  {section.items.map((item, idx) => (
+                    <li key={`${section.title}-item-${idx}`}>
                       <i className={`bx ${item.icon}`} />{' '}
                       <a href={item.url}>{item.name}</a>
                     </li>
@@ -166,13 +169,17 @@ export const Footer: FC = () => {
             </span>
           </div>
           <table>
-            {socialSections.map((section) => (
-              <tr>
+            {socialSections.map((section, idx) => (
+              <tr key={`social-section-${idx}`}>
                 <td>{`${section.title}: `}</td>
                 <td>
                   <div className="px-1 d-flex flex-row align-items-start social-links text-center text-md-right pt-3 pt-md-0">
-                    {section.items.map((item) => (
-                      <a href={item.url} className="google">
+                    {section.items.map((item, idx) => (
+                      <a
+                        href={item.url}
+                        className="google"
+                        key={`${section.title}-item-${idx}`}
+                      >
                         <i className={`bx ${item.icon}`} />
                       </a>
                     ))}

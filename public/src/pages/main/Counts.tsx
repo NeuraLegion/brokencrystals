@@ -12,8 +12,8 @@ export const Counts: FC = () => {
     <section id="counts" className="counts">
       <div className="container">
         <div className="row counters">
-          {counters.map((counter) => (
-            <div className="col-lg-3 col-6 text-center">
+          {counters.map((counter, idx) => (
+            <div className="col-lg-3 col-6 text-center" key={`counter-${idx}`}>
               <span data-toggle="counter-up">{counter.value}</span>
               <p>{counter.name}</p>
             </div>
