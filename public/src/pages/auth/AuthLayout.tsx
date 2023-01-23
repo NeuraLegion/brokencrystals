@@ -1,6 +1,11 @@
-import React, { FC } from 'react';
+import React from 'react';
 
-export const AuthLayout: FC = ({ children }) => {
+type Props = {
+  children?: React.ReactNode;
+  logoUrl?: string;
+};
+
+export const AuthLayout = ({ children, logoUrl }: Props) => {
   return (
     <div className="page-content--bge5">
       <div className="container">
@@ -11,7 +16,7 @@ export const AuthLayout: FC = ({ children }) => {
                 <img
                   width={100}
                   height={100}
-                  src="assets/img/logo_blue.png"
+                  src={logoUrl || 'assets/img/logo_blue.png'}
                   alt=""
                   className="img-fluid"
                 />

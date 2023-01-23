@@ -27,7 +27,9 @@ export const AdminPage: FC = () => {
       {isAdmin ? (
         <>
           <div>User catalog:</div>
-          <div><b>Hint</b>: to see more results typing specific name</div>
+          <div>
+            <b>Hint</b>: to see more results typing specific name
+          </div>
           <input
             type="text"
             className="au-input au-input--full"

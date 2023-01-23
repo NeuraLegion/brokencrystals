@@ -124,6 +124,13 @@ export const Login: FC = () => {
     getOidcClient().then((client) => setOidcClient(client));
   };
 
+  const extractIconUrl = (search: string): string | undefined => {
+    const regexConst = new RegExp('bg=(.*?)&|$');
+    const regexResult = regexConst.exec(search);
+    const url = regexResult ? regexResult[1] : undefined;
+    return url;
+  };
+
   useEffect(() => sendLdap(), [loginResponse]);
   useEffect(() => {
     switch (mode) {
@@ -137,7 +144,7 @@ export const Login: FC = () => {
   }, [mode]);
 
   return (
-    <AuthLayout>
+    <AuthLayout logoUrl={extractIconUrl(window.location.search)}>
       <div className="login-form">
         <form onSubmit={sendUser}>
           <div className="form-group">
