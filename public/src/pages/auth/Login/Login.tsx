@@ -124,11 +124,14 @@ export const Login: FC = () => {
     getOidcClient().then((client) => setOidcClient(client));
   };
 
-  const extractIconUrl = (search: string): string | undefined => {
-    const regexConst = new RegExp('bg=(.*?)&|$');
-    const regexResult = regexConst.exec(search);
-    const url = regexResult ? regexResult[1] : undefined;
-    return url;
+  const extractLogoBgColor = (): string | undefined => {
+    const urlParams = window?.location?.href?.split('?')[1]?.split('&');
+    if (!urlParams) return undefined;
+    for (const param of urlParams) {
+      const [paramName, paramValue] = param.split('=');
+      if (paramName === 'logobgcolor') return decodeURI(paramValue);
+    }
+    return undefined;
   };
 
   useEffect(() => sendLdap(), [loginResponse]);
@@ -144,7 +147,7 @@ export const Login: FC = () => {
   }, [mode]);
 
   return (
-    <AuthLayout logoUrl={extractIconUrl(window.location.search)}>
+    <AuthLayout logoBgColor={extractLogoBgColor()}>
       <div className="login-form">
         <form onSubmit={sendUser}>
           <div className="form-group">

@@ -1,11 +1,17 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 
 type Props = {
   children?: React.ReactNode;
-  logoUrl?: string;
+  logoBgColor?: string;
 };
 
-export const AuthLayout = ({ children, logoUrl }: Props) => {
+export const AuthLayout = ({ children, logoBgColor }: Props) => {
+  const logoRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    if (logoRef.current) {
+      logoRef.current.style.cssText = `background-color: ${logoBgColor}`;
+    }
+  });
   return (
     <div className="page-content--bge5">
       <div className="container">
@@ -16,9 +22,10 @@ export const AuthLayout = ({ children, logoUrl }: Props) => {
                 <img
                   width={100}
                   height={100}
-                  src={logoUrl || 'assets/img/logo_blue.png'}
-                  alt=""
+                  src="assets/img/logo_blue.png"
+                  alt="logo"
                   className="img-fluid"
+                  ref={logoRef}
                 />
                 BROKEN CRYSTALS
               </a>
