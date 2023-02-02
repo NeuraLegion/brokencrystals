@@ -14,6 +14,8 @@ import { JwtTokenWithSqlKIDProcessor } from './jwt/jwt.token.with.sql.kid.proces
 import { JwtTokenWithWeakKeyProcessor } from './jwt/jwt.token.with.weak.key.processor';
 import { JwtTokenWithX5CKeyProcessor } from './jwt/jwt.token.with.x5c.key.processor';
 import { JwtTokenWithX5UKeyProcessor } from './jwt/jwt.token.with.x5u.key.processor';
+import { JwtTokenWithHMACKeysProcessor } from './jwt/jwt.token.with.hmac.keys.processor';
+import { JwtTokenWithRSASignatureKeysProcessor } from './jwt/jwt.token.with.rsa.signature.keys.processor';
 
 export enum JwtProcessorType {
   RSA,
@@ -24,6 +26,8 @@ export enum JwtProcessorType {
   JKU,
   JWK,
   BEARER,
+  HMAC,
+  RSA_SIGNATURE,
 }
 
 @Injectable()
@@ -111,6 +115,15 @@ export class AuthService {
     this.processors.set(
       JwtProcessorType.BEARER,
       new JwtBearerTokenProcessor(jwtSecretKey, this.keyCloakService),
+    );
+
+    this.processors.set(
+      JwtProcessorType.HMAC,
+      new JwtTokenWithHMACKeysProcessor(publicKey, privateKey),
+    );
+    this.processors.set(
+      JwtProcessorType.RSA_SIGNATURE,
+      new JwtTokenWithRSASignatureKeysProcessor(publicKey, privateKey),
     );
   }
 
