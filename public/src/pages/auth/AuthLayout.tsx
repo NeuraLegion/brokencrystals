@@ -1,11 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, FC } from 'react';
 
 type Props = {
   children?: React.ReactNode;
   logoBgColor?: string;
 };
 
-export const AuthLayout = ({ children, logoBgColor }: Props) => {
+export const AuthLayout: FC = ({ children, logoBgColor }: Props) => {
   const logoRef = useRef<HTMLImageElement>(null);
   useEffect(() => {
     if (logoRef.current) {
