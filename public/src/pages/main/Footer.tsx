@@ -175,11 +175,7 @@ export const Footer: FC = () => {
                 <td>
                   <div className="px-1 d-flex flex-row align-items-start social-links text-center text-md-right pt-3 pt-md-0">
                     {section.items.map((item, idx) => (
-                      <a
-                        href={item.url}
-                        className="google"
-                        key={`${section.title}-item-${idx}`}
-                      >
+                      <a href={item.url} key={`${section.title}-item-${idx}`}>
                         <i className={`bx ${item.icon}`} />
                       </a>
                     ))}
