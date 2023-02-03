@@ -1,13 +1,19 @@
 import {
   Body,
+  ClassSerializerInterceptor,
   Controller,
   Get,
   Header,
+  HttpException,
   Logger,
   Options,
+  Param,
   Post,
   Query,
   Redirect,
+  SerializeOptions,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -15,6 +21,7 @@ import {
   ApiConsumes,
   ApiCreatedResponse,
   ApiInternalServerErrorResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiProduces,
@@ -34,13 +41,22 @@ import {
   SWAGGER_DESC_RENDER_REQUEST,
   SWAGGER_DESC_XML_METADATA,
 } from './app.controller.swagger.desc';
+import { UsersService } from './users/users.service';
+import { AuthGuard } from './auth/auth.guard';
+import { JwtType } from './auth/jwt/jwt.type.decorator';
+import { JwtProcessorType } from './auth/auth.service';
+import { BASIC_USER_INFO, UserDto } from './users/api/UserDto';
+import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
 
 @Controller('/api')
 @ApiTags('App controller')
 export class AppController {
   private readonly logger = new Logger(AppController.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly userService: UsersService,
+  ) {}
 
   @Post('render')
   @ApiProduces('text/plain')
@@ -184,5 +200,65 @@ export class AppController {
         AppModuleConfigProperties.ENV_GOOGLE_MAPS,
       ),
     };
+  }
+
+  @Get('/v1/userinfo/:email')
+  @UseInterceptors(ClassSerializerInterceptor)
+  @SerializeOptions({ groups: [BASIC_USER_INFO] })
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_USER,
+  })
+  @ApiOkResponse({
+    type: UserDto,
+    description: 'Returns basic user info if it exists',
+  })
+  @ApiNotFoundResponse({
+    description: 'User not found',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  async getUserInfo(@Param('email') email: string): Promise<UserDto> {
+    try {
+      this.logger.debug(`Find a user by email: ${email}`);
+      return new UserDto(await this.userService.findByEmail(email));
+    } catch (err) {
+      throw new HttpException(err.message, err.status);
+    }
+  }
+
+  @Get('/v2/userinfo/:email')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @UseInterceptors(ClassSerializerInterceptor)
+  @SerializeOptions({ groups: [BASIC_USER_INFO] })
+  @ApiOperation({
+    description: SWAGGER_DESC_FIND_USER,
+  })
+  @ApiOkResponse({
+    type: UserDto,
+    description: 'Returns basic user info if it exists',
+  })
+  @ApiNotFoundResponse({
+    description: 'User not found',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+      },
+    },
+  })
+  async getUserInfoV2(@Param('email') email: string): Promise<UserDto> {
+    try {
+      this.logger.debug(`Find a user by email: ${email}`);
+      return new UserDto(await this.userService.findByEmail(email));
+    } catch (err) {
+      throw new HttpException(err.message, err.status);
+    }
   }
 }

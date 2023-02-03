@@ -1,26 +1,22 @@
 import { Logger } from '@nestjs/common';
-import { decode, encode } from 'jwt-simple';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
+import { encode, decode } from 'jwt-simple';
 
-export class JwtTokenWithRSAKeysProcessor extends JwtTokenProcessor {
+export class JwtTokenWithHMACKeysProcessor extends JwtTokenProcessor {
   constructor(private publicKey: string, private privateKey: string) {
-    super(new Logger(JwtTokenWithRSAKeysProcessor.name));
+    super(new Logger(JwtTokenWithHMACKeysProcessor.name));
   }
 
   async validateToken(token: string): Promise<any> {
     this.log.debug('Call validateToken');
 
-    const [header, payload] = this.parse(token);
-    if (header.alg === 'none') {
-      return payload;
-    }
-    return decode(token, this.publicKey, false, header.alg);
+    return decode(token, this.publicKey, false, 'HS256');
   }
 
   async createToken(payload: unknown): Promise<string> {
     this.log.debug('Call createToken');
 
-    const token = encode(payload, this.privateKey, 'RS256');
+    const token = encode(payload, this.privateKey, 'HS256');
     return token;
   }
 }
