@@ -93,8 +93,8 @@ export const Nav = () => {
   return (
     <nav className="nav-menu d-none d-lg-block">
       <ul>
-        {menu.map(
-          (item, i) => (!item.admin || isAdminUser) && menuItem(item, i)
+        {menu.map((item, i) =>
+          !item.admin || isAdminUser ? menuItem(item, i) : <></>
         )}
       </ul>
     </nav>
