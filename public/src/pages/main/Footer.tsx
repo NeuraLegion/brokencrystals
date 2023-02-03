@@ -181,7 +181,6 @@ export const Footer: FC = () => {
               {cloudProviders.map((provider) => (
                 <a
                   href={`/api/file/${provider.name}?path=${provider.name}`}
-                  className="google"
                 >
                   <i className={`bx ${provider.icon}`} />
                 </a>
