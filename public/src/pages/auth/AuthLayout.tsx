@@ -5,7 +5,7 @@ type Props = {
   logoBgColor?: string;
 };
 
-export const AuthLayout: FC = ({ children, logoBgColor }: Props) => {
+export const AuthLayout: FC<Props> = ({ children, logoBgColor }: Props) => {
   const logoRef = useRef<HTMLImageElement>(null);
   useEffect(() => {
     if (logoRef.current) {
