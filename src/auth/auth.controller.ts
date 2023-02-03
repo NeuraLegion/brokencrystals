@@ -46,6 +46,9 @@ import {
   SWAGGER_DESC_CALL_OIDC_CLIENT,
   SWAGGER_DESC_REQUEST_WITH_DOM_CSRF_TOKEN,
   SWAGGER_DESC_REQUEST_WITH_SIMPLE_CSRF_TOKEN,
+  SWAGGER_DESC_LOGIN_WITH_HMAC_JWT,
+  SWAGGER_DESC_VALIDATE_WITH_HMAC_JWT,
+  SWAGGER_DESC_VALIDATE_WITH_RSA_SIGNATURE_JWT,
 } from './auth.controller.swagger.desc';
 import { AuthGuard } from './auth.guard';
 import { AuthService, JwtProcessorType } from './auth.service';
@@ -136,6 +139,31 @@ export class AuthController {
     res.header('authorization', token);
 
     return loginResponse;
+  }
+
+  @Get('jwt/rsa/signature/validate')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA_SIGNATURE)
+  @ApiOkResponse({
+    type: JwtValidationResponse,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'invalid credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
+      },
+    },
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_VALIDATE_WITH_RSA_SIGNATURE_JWT,
+  })
+  async validateWithRSASignatureJwt(): Promise<JwtValidationResponse> {
+    return {
+      secret: 'this is our secret',
+    };
   }
 
   @Get('dom-csrf-flow')
@@ -569,6 +597,66 @@ export class AuthController {
     },
   })
   async validateWithX5UJwt(): Promise<JwtValidationResponse> {
+    return {
+      secret: 'this is our secret',
+    };
+  }
+
+  @Post('jwt/hmac/login')
+  @ApiCreatedResponse({
+    type: LoginJwtResponse,
+  })
+  @ApiUnauthorizedResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
+      },
+    },
+    description: 'invalid credentials',
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_LOGIN_WITH_HMAC_JWT,
+  })
+  async loginWithHMACJwt(
+    @Body() req: LoginRequest,
+    @Res({ passthrough: true }) res: FastifyReply,
+  ): Promise<LoginResponse> {
+    this.logger.debug('Call loginWithHMACJwt');
+    const profile = await this.login(req);
+
+    res.header(
+      'authorization',
+      await this.authService.createToken(
+        { user: profile.email },
+        JwtProcessorType.HMAC,
+      ),
+    );
+
+    return profile;
+  }
+
+  @Get('jwt/hmac/validate')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.HMAC)
+  @ApiOperation({
+    description: SWAGGER_DESC_VALIDATE_WITH_HMAC_JWT,
+  })
+  @ApiOkResponse({
+    type: JwtValidationResponse,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'invalid credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
+      },
+    },
+  })
+  async validateWithHMACJwt(): Promise<JwtValidationResponse> {
     return {
       secret: 'this is our secret',
     };
