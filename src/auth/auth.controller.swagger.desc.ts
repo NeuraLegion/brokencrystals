@@ -28,6 +28,14 @@ export const SWAGGER_DESC_LOGIN_WITH_X5C_JWT = `Authenticates user and returns J
 
 export const SWAGGER_DESC_VALIDATE_WITH_X5C_JWT = `Vulnerability case: The application doesn’t properly check which X5C key is used for signing and when X5C headers are set to our values and signed with our private key, authentication is bypassed.`;
 
+export const SWAGGER_DESC_LOGIN_WITH_HMAC_JWT = `Authenticates user and returns JWT token with HS256. The key is configurable on server via the JWT_SECRET_KEY env variable.`;
+
+export const SWAGGER_DESC_VALIDATE_WITH_HMAC_JWT = `Vulnerability case: When attacked exploiting JWT token he/she can access to victims sensitive information by manipulation JWT, authentication is bypassed.`;
+
+export const SWAGGER_DESC_LOGIN_WITH_RSA_SIGNATURE_JWT = `Authenticates user and returns JWT token with RS256. The key is configurable on server via the JWT_SECRET_KEY env variable.`;
+
+export const SWAGGER_DESC_VALIDATE_WITH_RSA_SIGNATURE_JWT = `Vulnerability case: The signature is not checked, he/she can access to victims sensitive information by manipulation JWT, authentication is bypassed.`;
+
 export const SWAGGER_DESC_LOGIN_WITH_X5U_JWT = `Authenticates user and returns JWT token with HCA256. The key is configurable on server via the JWT_SECRET_KEY env variable.`;
 
 export const SWAGGER_DESC_VALIDATE_WITH_X5U_JWT = `Vulnerability case: Uses the uploaded certificate to sign the JWT and sets the X5U Header in JWT to point to the uploaded certificate.`;
