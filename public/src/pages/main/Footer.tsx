@@ -169,20 +169,22 @@ export const Footer: FC = () => {
             </span>
           </div>
           <table>
-            {socialSections.map((section, idx) => (
-              <tr key={`social-section-${idx}`}>
-                <td>{`${section.title}: `}</td>
-                <td>
-                  <div className="px-1 d-flex flex-row align-items-start social-links text-center text-md-right pt-3 pt-md-0">
-                    {section.items.map((item, idx) => (
-                      <a href={item.url} key={`${section.title}-item-${idx}`}>
-                        <i className={`bx ${item.icon}`} />
-                      </a>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            <tbody>
+              {socialSections.map((section, idx) => (
+                <tr key={`social-section-${idx}`}>
+                  <td>{`${section.title}: `}</td>
+                  <td>
+                    <div className="px-1 d-flex flex-row align-items-start social-links text-center text-md-right pt-3 pt-md-0">
+                      {section.items.map((item, idx) => (
+                        <a href={item.url} key={`${section.title}-item-${idx}`}>
+                          <i className={`bx ${item.icon}`} />
+                        </a>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       </div>
