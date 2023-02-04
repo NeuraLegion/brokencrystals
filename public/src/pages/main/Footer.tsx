@@ -28,6 +28,13 @@ export const Footer: FC = () => {
     );
   };
 
+  const cloudProviders = [
+    { name: 'google', icon: 'bxl-google' },
+    { name: 'aws', icon: 'bxl-amazon' },
+    { name: 'azure', icon: 'bxl-microsoft' },
+    { name: 'digital_ocean', icon: 'bxl-digitalocean' }
+  ];
+
   return (
     <footer id="footer">
       <div className="footer-top">
@@ -151,22 +158,34 @@ export const Footer: FC = () => {
               <InnerHTML html={decodeURIComponent(window.location.search)} />
             </span>
           </div>
-          <div className="social-links text-center text-md-right pt-3 pt-md-0">
-            <a href="/" className="twitter">
-              <i className="bx bxl-twitter" />
-            </a>
-            <a href="/" className="facebook">
-              <i className="bx bxl-facebook" />
-            </a>
-            <a href="/" className="instagram">
-              <i className="bx bxl-instagram" />
-            </a>
-            <a href="/" className="google-plus">
-              <i className="bx bxl-skype" />
-            </a>
-            <a href="/" className="linkedin">
-              <i className="bx bxl-linkedin" />
-            </a>
+          <div>
+            <div className="social-links text-center text-md-right pt-3 pt-md-0">
+              <a href="/" className="twitter">
+                <i className="bx bxl-twitter" />
+              </a>
+              <a href="/" className="facebook">
+                <i className="bx bxl-facebook" />
+              </a>
+              <a href="/" className="instagram">
+                <i className="bx bxl-instagram" />
+              </a>
+              <a href="/" className="google-plus">
+                <i className="bx bxl-skype" />
+              </a>
+              <a href="/" className="linkedin">
+                <i className="bx bxl-linkedin" />
+              </a>
+            </div>
+            <div className="social-links text-center text-md-right pt-md-2">
+              Supporting:{' '}
+              {cloudProviders.map((provider) => (
+                <a
+                  href={`/api/file/${provider.name}?path=${provider.name}`}
+                >
+                  <i className={`bx ${provider.icon}`} />
+                </a>
+              ))}
+            </div>
           </div>
         </div>
       </div>
