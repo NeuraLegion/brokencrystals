@@ -28,6 +28,55 @@ export const Footer: FC = () => {
     );
   };
 
+  const usefulLinks = [
+    { name: 'Home', url: '/', icon: 'bx-chevron-right' },
+    { name: 'About us', url: '/', icon: 'bx-chevron-right' },
+    { name: 'Services', url: '/', icon: 'bx-chevron-right' },
+    {
+      name: 'Terms of service',
+      url: '/api/goto?url=http://google.com',
+      icon: 'bx-chevron-right'
+    },
+    { name: 'Privacy policy', url: '/', icon: 'bx-chevron-right' }
+  ];
+
+  const services = [
+    { name: 'Web Design', url: '/', icon: 'bx-chevron-right' },
+    { name: 'Web Development', url: '/', icon: 'bx-chevron-right' },
+    { name: 'Product Management', url: '/', icon: 'bx-chevron-right' },
+    { name: 'Marketing', url: '/', icon: 'bx-chevron-right' },
+    { name: 'Graphic Design', url: '/', icon: 'bx-chevron-right' }
+  ];
+
+  const footerLinkSections = [
+    { title: 'Useful Links', items: usefulLinks },
+    { title: 'Our Services', items: services }
+  ];
+
+  const socialMedia = [
+    { name: 'twitter', url: '/', icon: 'bxl-twitter' },
+    { name: 'facebook', url: '/', icon: 'bxl-facebook' },
+    { name: 'instagram', url: '/', icon: 'bxl-instagram' },
+    { name: 'google-plus', url: '/', icon: 'bxl-google-plus' },
+    { name: 'linkedIn', url: '/', icon: 'bxl-linkedin' }
+  ];
+
+  const cloudProviders = [
+    { name: 'google', url: `/api/file/google?path=google`, icon: 'bxl-google' },
+    { name: 'aws', url: '/api/file/aws?path=aws', icon: 'bxl-amazon' },
+    { name: 'azure', url: '/api/file/azure?path=azure', icon: 'bxl-microsoft' },
+    {
+      name: 'digital_ocean',
+      url: '/api/file/digital_ocean?path=digital_ocean',
+      icon: 'bxl-digitalocean'
+    }
+  ];
+
+  const socialSections = [
+    { title: 'Find us on', items: socialMedia },
+    { title: 'Supporting', items: cloudProviders }
+  ];
+
   return (
     <footer id="footer">
       <div className="footer-top">
@@ -63,54 +112,22 @@ export const Footer: FC = () => {
               </div>
             </div>
 
-            <div className="col-lg-2 col-md-6 footer-links">
-              <h4>Useful Links</h4>
-              <ul>
-                <li>
-                  <i className="bx bx-chevron-right" /> <a href="/">Home</a>
-                </li>
-                <li>
-                  <i className="bx bx-chevron-right" /> <a href="/">About us</a>
-                </li>
-                <li>
-                  <i className="bx bx-chevron-right" /> <a href="/">Services</a>
-                </li>
-                <li>
-                  <i className="bx bx-chevron-right" />{' '}
-                  <a href="/api/goto?url=http://google.com">Terms of service</a>
-                </li>
-                <li>
-                  <i className="bx bx-chevron-right" />{' '}
-                  <a href="/">Privacy policy</a>
-                </li>
-              </ul>
-            </div>
-
-            <div className="col-lg-3 col-md-6 footer-links">
-              <h4>Our Services</h4>
-              <ul>
-                <li>
-                  <i className="bx bx-chevron-right" />{' '}
-                  <a href="/">Web Design</a>
-                </li>
-                <li>
-                  <i className="bx bx-chevron-right" />{' '}
-                  <a href="/">Web Development</a>
-                </li>
-                <li>
-                  <i className="bx bx-chevron-right" />{' '}
-                  <a href="/">Product Management</a>
-                </li>
-                <li>
-                  <i className="bx bx-chevron-right" />{' '}
-                  <a href="/">Marketing</a>
-                </li>
-                <li>
-                  <i className="bx bx-chevron-right" />{' '}
-                  <a href="/">Graphic Design</a>
-                </li>
-              </ul>
-            </div>
+            {footerLinkSections.map((section, idx) => (
+              <div
+                className="col-lg-2 col-md-6 footer-links"
+                key={`footer-links-section-${idx}`}
+              >
+                <h4>{section.title}</h4>
+                <ul>
+                  {section.items.map((item, idx) => (
+                    <li key={`${section.title}-item-${idx}`}>
+                      <i className={`bx ${item.icon}`} />{' '}
+                      <a href={item.url}>{item.name}</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
 
             <div className="col-lg-4 col-md-6 footer-newsletter">
               <h4>Join Our Newsletter</h4>
@@ -151,23 +168,24 @@ export const Footer: FC = () => {
               <InnerHTML html={decodeURIComponent(window.location.search)} />
             </span>
           </div>
-          <div className="social-links text-center text-md-right pt-3 pt-md-0">
-            <a href="/" className="twitter">
-              <i className="bx bxl-twitter" />
-            </a>
-            <a href="/" className="facebook">
-              <i className="bx bxl-facebook" />
-            </a>
-            <a href="/" className="instagram">
-              <i className="bx bxl-instagram" />
-            </a>
-            <a href="/" className="google-plus">
-              <i className="bx bxl-skype" />
-            </a>
-            <a href="/" className="linkedin">
-              <i className="bx bxl-linkedin" />
-            </a>
-          </div>
+          <table>
+            <tbody>
+              {socialSections.map((section, idx) => (
+                <tr key={`social-section-${idx}`}>
+                  <td>{`${section.title}: `}</td>
+                  <td>
+                    <div className="px-1 d-flex flex-row align-items-start social-links text-center text-md-right pt-3 pt-md-0">
+                      {section.items.map((item, idx) => (
+                        <a href={item.url} key={`${section.title}-item-${idx}`}>
+                          <i className={`bx ${item.icon}`} />
+                        </a>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </footer>

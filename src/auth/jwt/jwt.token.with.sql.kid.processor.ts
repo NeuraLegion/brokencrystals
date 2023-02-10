@@ -27,10 +27,8 @@ export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
       .getConnection()
       .execute(query);
     this.log.debug(`Key is ${keyRow.key}`);
-    if (header.alg === 'None') {
-      return payload;
-    }
-    return decode(token, this.key, false, header.alg);
+
+    return decode(token, this.key, false, 'HS256');
   }
 
   async createToken(payload: unknown): Promise<string> {

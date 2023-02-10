@@ -10,9 +10,7 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
   async validateToken(token: string): Promise<any> {
     this.log.debug('Call validateToken');
     const [header, payload] = this.parse(token);
-    if (header.alg === 'None') {
-      return payload;
-    }
+
     if (!header.jwk) {
       throw new Error('Unsupported token. JWK is not set');
     }
