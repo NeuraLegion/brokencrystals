@@ -116,6 +116,8 @@ There are specific endpoints for each cloud provider as well - `/api/file/google
 
 * **SQL injection (SQLI)** - The /api/testimonials/count endpoint receives and executes SQL query in the _query_ query parameter.
 
+* **SQL injection (SQLI) through header parameter** - The /api/products/view_product endpoint receives a string representing a product name in the _product-name_ header. It is used to increment the number of views the product had. This parameter can be used to exploit an SQLI as it is directly embedded in an SQL query.
+
 * **Unvalidated Redirect** - The endpoint /api/goto redirects the client to the URL provided in the _url_ query parameter. The UI references the endpoint in the header (while clicking on the site's logo) and as an href source for the Terms and Services link in the footer.
 
 * **Version Control System** - The client_s build process copies SVN, GIT, and Mercurial source control directories to the client application root and they are accessible under Nginx root.

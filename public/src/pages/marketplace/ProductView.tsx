@@ -1,5 +1,6 @@
 import React, { FC } from 'react';
 import { Product } from '../../interfaces/Product';
+import { viewProduct } from '../../api/httpClient';
 
 interface Props {
   product: Product;
@@ -23,6 +24,9 @@ export const ProductView: FC<Props> = (props: Props) => {
             data-gall="portfolioGallery"
             className="venobox"
             title={props.product.name}
+            onClick={() => {
+              viewProduct(props.product.name);
+            }}
           >
             <i className="bx bx-plus" />
           </a>

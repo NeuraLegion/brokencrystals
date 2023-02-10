@@ -1,4 +1,11 @@
-import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Header,
+  Logger,
+  UseGuards,
+  Headers,
+} from '@nestjs/common';
 import {
   ApiOperation,
   ApiOkResponse,
@@ -14,6 +21,7 @@ import { Product } from '../model/product.entity';
 import {
   SWAGGER_DESC_GET_LATEST_PRODUCTS,
   SWAGGER_DESC_GET_PRODUCTS,
+  SWAGGER_DESC_GET_VIEW_PRODUCT,
 } from './products.controller.swagger.desc';
 
 @Controller('/api/products')
@@ -61,5 +69,21 @@ export class ProductsController {
     this.logger.debug('Get latest products.');
     const products = await this.productsService.findLatest(3);
     return products.map((p: Product) => new ProductDto(p));
+  }
+
+
+  @Get('view_product')
+  @Header('content-type', 'text/html')
+  @ApiOperation({
+    description: SWAGGER_DESC_GET_VIEW_PRODUCT,
+  })
+  @ApiOkResponse({
+    type: String,
+  })
+  async viewProduct(
+    @Headers('product-name') productName: string,
+  ): Promise<string> {
+    const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
+    return (await this.productsService.updateProduct(query)) as string;
   }
 }
