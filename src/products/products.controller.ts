@@ -71,7 +71,6 @@ export class ProductsController {
     return products.map((p: Product) => new ProductDto(p));
   }
 
-
   @Get('views')
   @Header('content-type', 'text/html')
   @ApiOperation({
@@ -84,6 +83,6 @@ export class ProductsController {
     @Headers('x-product-name') productName: string,
   ): Promise<string> {
     const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
-    return (await this.productsService.updateProduct(query)) as string;
+    return await this.productsService.updateProduct(query);
   }
 }

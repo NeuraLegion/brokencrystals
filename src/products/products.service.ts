@@ -30,7 +30,7 @@ export class ProductsService {
     try {
       this.logger.debug(`Updating products table with query "${query}"`);
 
-      return (await this.em.getConnection().execute(query)) as string;
+      return String(await this.em.getConnection().execute(query));
     } catch (err) {
       this.logger.warn(`Failed to execute query. Error: ${err.message}`);
       return err.message;
