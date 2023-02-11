@@ -125,13 +125,9 @@ export const Login: FC = () => {
   };
 
   const extractLogoBgColor = (): string | undefined => {
-    const urlParams = window?.location?.href?.split('?')[1]?.split('&');
-    if (!urlParams) return undefined;
-    for (const param of urlParams) {
-      const [paramName, paramValue] = param.split('=');
-      if (paramName === 'logobgcolor') return decodeURI(paramValue);
-    }
-    return undefined;
+    const { searchParams } = new URL(window.location.href);
+    
+    return searchParams.get('logobgcolor');
   };
 
   useEffect(() => sendLdap(), [loginResponse]);
