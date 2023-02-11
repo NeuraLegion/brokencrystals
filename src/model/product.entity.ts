@@ -17,5 +17,5 @@ export class Product extends Base {
   description: string;
 
   @Property()
-  views_count: number
+  viewsCount: number
 }
