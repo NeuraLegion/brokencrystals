@@ -93,7 +93,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
 * **HTML Injection** - Both forms testimonial and mailing list subscription forms allow HTML injection.
 
-* **CSS Injection** - The login page is vulnerable to CSS Injections through a url parameter: http://tamir-vm.lan:3001/userlogin?logobgcolor=transparent.
+* **CSS Injection** - The login page is vulnerable to CSS Injections through a url parameter: https://brokencrystals.com/userlogin?logobgcolor=transparent.
 
 * **HTTP Method fuzzer** - The server supports uploading, deletion, and getting the content of a file via /put.raw addition to the URL. The actual implementation using a regular upload endpoint of the server and the /put.raw endpoint is mapped in Nginx.
 
