@@ -252,7 +252,7 @@ export function getFile(fileName: string): Promise<any> {
 
 export function viewProduct(productName: string): Promise<any> {
   return makeApiRequest({
-    url: `${ApiUrl.Products}/view_product`,
+    url: `${ApiUrl.Products}/views`,
     method: 'get',
     headers: {
       'authorization':
