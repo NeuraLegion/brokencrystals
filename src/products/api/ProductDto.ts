@@ -14,14 +14,14 @@ export class ProductDto {
   description: string;
 
   @ApiProperty()
-  views_count: string;
+  viewsCount: string;
 
   constructor(params: {
     name: string;
     category: string;
     photoUrl: string;
     description: string;
-    views_count: number;
+    viewsCount: number;
   }) {
     Object.assign(this, params);
   }
