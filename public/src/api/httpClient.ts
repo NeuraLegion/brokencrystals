@@ -257,7 +257,7 @@ export function viewProduct(productName: string): Promise<any> {
     headers: {
       'authorization':
         sessionStorage.getItem('token') || localStorage.getItem('token'),
-      'product-name': productName
+      'x-product-name': productName
     }
   });
 }
