@@ -81,7 +81,7 @@ export class ProductsController {
     type: String,
   })
   async viewProduct(
-    @Headers('product-name') productName: string,
+    @Headers('x-product-name') productName: string,
   ): Promise<string> {
     const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
     return (await this.productsService.updateProduct(query)) as string;
