@@ -15,4 +15,7 @@ export class Product extends Base {
 
   @Property()
   description: string;
+
+  @Property()
+  viewsCount: number
 }
