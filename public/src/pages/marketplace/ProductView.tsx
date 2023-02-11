@@ -24,9 +24,7 @@ export const ProductView: FC<Props> = (props: Props) => {
             data-gall="portfolioGallery"
             className="venobox"
             title={props.product.name}
-            onClick={() => {
-              viewProduct(props.product.name);
-            }}
+            onClick={() => viewProduct(props.product.name)}
           >
             <i className="bx bx-plus" />
           </a>
