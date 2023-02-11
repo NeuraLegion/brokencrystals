@@ -93,6 +93,8 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
 * **HTML Injection** - Both forms testimonial and mailing list subscription forms allow HTML injection.
 
+* **CSS Injection** - The login page is vulnerable to CSS Injections through a url parameter: https://brokencrystals.com/userlogin?logobgcolor=transparent.
+
 * **HTTP Method fuzzer** - The server supports uploading, deletion, and getting the content of a file via /put.raw addition to the URL. The actual implementation using a regular upload endpoint of the server and the /put.raw endpoint is mapped in Nginx.
 
 * **LDAP Injection** - The login request returns an LDAP query for the user's profile, which can be used as a query parameter in /api/users/ldap _query_ query parameter. The returned query can be modified to search for other users. If the structure of the LDAP query is changed, a detailed LDAP error will be returned (with LDAP server information and hierarchy).
