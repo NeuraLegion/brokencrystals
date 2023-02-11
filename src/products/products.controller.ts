@@ -72,7 +72,7 @@ export class ProductsController {
   }
 
 
-  @Get('view_product')
+  @Get('views')
   @Header('content-type', 'text/html')
   @ApiOperation({
     description: SWAGGER_DESC_GET_VIEW_PRODUCT,
