@@ -126,8 +126,7 @@ export const Login: FC = () => {
 
   const extractLogoBgColor = (): string | undefined => {
     const { searchParams } = new URL(window.location.href);
-    
-    return searchParams.get('logobgcolor');
+    return searchParams.get('logobgcolor') || undefined;
   };
 
   useEffect(() => sendLdap(), [loginResponse]);
