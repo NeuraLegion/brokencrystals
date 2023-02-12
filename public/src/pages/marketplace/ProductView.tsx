@@ -12,7 +12,10 @@ export const ProductView: FC<Props> = (props: Props) => {
       className={`col-lg-4 col-md-6 portfolio-item filter-${props.product.category}`}
       key={props.product.name}
     >
-      <div className="portfolio-wrap">
+      <div
+        className="portfolio-wrap"
+        onLoad={() => viewProduct(props.product.name)}
+      >
         <img src={props.product.photoUrl} className="img-fluid" alt="" />
         <div className="portfolio-info">
           <h4>{props.product.name}</h4>
@@ -24,7 +27,6 @@ export const ProductView: FC<Props> = (props: Props) => {
             data-gall="portfolioGallery"
             className="venobox"
             title={props.product.name}
-            onClick={() => viewProduct(props.product.name)}
           >
             <i className="bx bx-plus" />
           </a>
