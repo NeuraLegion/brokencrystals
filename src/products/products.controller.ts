@@ -83,6 +83,6 @@ export class ProductsController {
     @Headers('x-product-name') productName: string,
   ): Promise<string> {
     const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
-    return await this.productsService.updateProduct(query);
+    return this.productsService.updateProduct(query);
   }
 }
