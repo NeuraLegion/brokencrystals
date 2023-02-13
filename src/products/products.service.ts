@@ -29,8 +29,8 @@ export class ProductsService {
   async updateProduct(query: string): Promise<string> {
     try {
       this.logger.debug(`Updating products table with query "${query}"`);
-
-      return String(await this.em.getConnection().execute(query));
+      await this.em.getConnection().execute(query);
+      return 'Success';
     } catch (err) {
       this.logger.warn(`Failed to execute query. Error: ${err.message}`);
       return err.message;
