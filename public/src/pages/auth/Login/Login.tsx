@@ -124,9 +124,9 @@ export const Login: FC = () => {
     getOidcClient().then((client) => setOidcClient(client));
   };
 
-  const extractLogoBgColor = (): string | undefined => {
+  const extractLogoBgColor = (): string => {
     const { searchParams } = new URL(window.location.href);
-    return searchParams.get('logobgcolor') || undefined;
+    return searchParams.get('logobgcolor') || 'transparent';
   };
 
   useEffect(() => sendLdap(), [loginResponse]);
