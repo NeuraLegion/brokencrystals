@@ -5,12 +5,14 @@ import {
   Logger,
   UseGuards,
   Headers,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import {
   ApiOperation,
   ApiOkResponse,
   ApiTags,
   ApiForbiddenResponse,
+  ApiInternalServerErrorResponse,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
@@ -72,17 +74,30 @@ export class ProductsController {
   }
 
   @Get('views')
-  @Header('content-type', 'text/html')
   @ApiOperation({
     description: SWAGGER_DESC_GET_VIEW_PRODUCT,
   })
-  @ApiOkResponse({
-    type: String,
+  @ApiOkResponse()
+  @ApiInternalServerErrorResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' },
+      },
+    },
   })
   async viewProduct(
     @Headers('x-product-name') productName: string,
-  ): Promise<string> {
-    const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
-    return await this.productsService.updateProduct(query);
+  ): Promise<void> {
+    try {
+      const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
+      return await this.productsService.updateProduct(query);
+    } catch (err) {
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
+    }
   }
 }
