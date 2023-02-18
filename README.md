@@ -8,7 +8,7 @@ The application contains:
   - BE - http://localhost:3000
 - NodeJS server - the full API documentation is available via swagger
   - Swagger UI - http://localhost:8090/swagger
-  - Swagger JSON file - http://localhost:8090/swagger-json
+  - Swagger JSON file - http://localhost:8090/swagger/json
 - nginx web server that serves the client and acts as a reverse proxy for the server's API requests
 
 ## Building and Running the Application
