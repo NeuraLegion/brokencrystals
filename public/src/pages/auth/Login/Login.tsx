@@ -124,7 +124,7 @@ export const Login: FC = () => {
     getOidcClient().then((client) => setOidcClient(client));
   };
 
-  const extractLogoBgColor = (): string | undefined => {
+  const extractLogoBgColor = (): string | null => {
     const { searchParams } = new URL(window.location.href);
     return searchParams.get('logobgcolor');
   };
