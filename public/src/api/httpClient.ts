@@ -249,3 +249,15 @@ export function getFile(fileName: string): Promise<any> {
     }
   });
 }
+
+export function viewProduct(productName: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Products}/views`,
+    method: 'get',
+    headers: {
+      'authorization':
+        sessionStorage.getItem('token') || localStorage.getItem('token'),
+      'x-product-name': productName
+    }
+  });
+}

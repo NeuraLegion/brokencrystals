@@ -1,6 +1,10 @@
-import { EntityRepository } from '@mikro-orm/core';
+import { EntityManager, EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { Product } from '../model/product.entity';
 
 @Injectable()
@@ -10,6 +14,7 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly productsRepository: EntityRepository<Product>,
+    private readonly em: EntityManager,
   ) {}
 
   async findAll(): Promise<Product[]> {
@@ -23,5 +28,16 @@ export class ProductsService {
       {},
       { limit, orderBy: { created_at: 'desc' } },
     );
+  }
+
+  async updateProduct(query: string): Promise<void> {
+    try {
+      this.logger.debug(`Updating products table with query "${query}"`);
+      await this.em.getConnection().execute(query);
+      return;
+    } catch (err) {
+      this.logger.warn(`Failed to execute query. Error: ${err.message}`);
+      throw new InternalServerErrorException(err.message);
+    }
   }
 }

@@ -1,5 +1,6 @@
 import React, { FC } from 'react';
 import { Product } from '../../interfaces/Product';
+import { viewProduct } from '../../api/httpClient';
 
 interface Props {
   product: Product;
@@ -12,7 +13,12 @@ export const ProductView: FC<Props> = (props: Props) => {
       key={props.product.name}
     >
       <div className="portfolio-wrap">
-        <img src={props.product.photoUrl} className="img-fluid" alt="" />
+        <img
+          src={props.product.photoUrl}
+          className="img-fluid"
+          alt=""
+          onLoad={() => viewProduct(props.product.name)}
+        />
         <div className="portfolio-info">
           <h4>{props.product.name}</h4>
           <p>{props.product.description}</p>

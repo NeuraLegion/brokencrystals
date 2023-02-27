@@ -124,6 +124,11 @@ export const Login: FC = () => {
     getOidcClient().then((client) => setOidcClient(client));
   };
 
+  const extractLogoBgColor = (): string | null => {
+    const { searchParams } = new URL(window.location.href);
+    return searchParams.get('logobgcolor');
+  };
+
   useEffect(() => sendLdap(), [loginResponse]);
   useEffect(() => {
     switch (mode) {
@@ -137,7 +142,7 @@ export const Login: FC = () => {
   }, [mode]);
 
   return (
-    <AuthLayout>
+    <AuthLayout logoBgColor={extractLogoBgColor() || 'transparent'}>
       <div className="login-form">
         <form onSubmit={sendUser}>
           <div className="form-group">
