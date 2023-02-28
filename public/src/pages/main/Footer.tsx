@@ -109,6 +109,14 @@ export const Footer: FC = () => {
                 <br />
                 <strong>Email:</strong> info@example.com
                 <br />
+                <strong>Technical info:</strong>{' '}
+                <a
+                  href="https://takemeover-nexploit.s3.amazonaws.com/something.html"
+                  target="_blank"
+                  className="footer-link"
+                >
+                  AWS
+                </a>
               </div>
             </div>
 
