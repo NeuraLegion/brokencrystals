@@ -2,8 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { HeadersConfiguratorInterceptor } from './components/headers.configurator.interceptor';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { fastifyCookie } from 'fastify-cookie';
-import session from 'fastify-session';
+import fastifyCookie from '@fastify/cookie';
+import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
 import * as cluster from 'cluster';
@@ -11,7 +11,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import fmp from 'fastify-multipart';
+import fmp from '@fastify/multipart';
 import { randomBytes } from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
@@ -28,7 +28,7 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(server),
     {
-      logger: process.env.NODE_ENV === 'production' ? ['error'] : true,
+      logger: process.env.NODE_ENV === 'production' ? ['error'] : ['debug'],
     },
   );
 
