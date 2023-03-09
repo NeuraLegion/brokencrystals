@@ -111,7 +111,7 @@ export const Footer: FC = () => {
                 <br />
                 <strong>Technical info:</strong>{' '}
                 <a
-                  href="https://takemeover-nexploit.s3.amazonaws.com/something.html"
+                  href="https://takemeover-bright.s3.amazonaws.com/privacy-policy.pdf"
                   target="_blank"
                   className="footer-link"
                 >
