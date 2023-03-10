@@ -62,7 +62,7 @@
     "raw-body": "^2.5.2",
     "reflect-metadata": "^0.1.13",
     "rimraf": "^3.0.2",
-    "rxjs": "^6.6.3",
+    "rxjs": "^7.8.0",
     "stream-buffers": "^3.0.2",
     "ts-morph": "^17.0.1"
   },
@@ -73,6 +73,7 @@
     "@nestjs/testing": "^7.6.18",
     "@types/axios": "^0.14.0",
     "@types/dot": "^1.1.5",
+    "@types/estree": "^1.0.0",
     "@types/jest": "^26.0.24",
     "@types/jsonwebtoken": "^8.5.9",
     "@types/jwk-to-pem": "^2.0.1",
@@ -95,7 +96,7 @@
     "ts-loader": "^8.4.0",
     "ts-node": "^9.1.0",
     "tsconfig-paths": "^3.14.2",
-    "typescript": "^4.9.5"
+    "typescript": "^4.7.4"
   },
   "jest": {
     "testTimeout": 3000000,
