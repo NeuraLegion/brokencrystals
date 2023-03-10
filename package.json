@@ -21,7 +21,6 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@apollo/gateway": "^2.3.2",
     "@fastify/cookie": "^8.3.0",
     "@fastify/multipart": "^7.4.1",
     "@fastify/session": "^10.1.1",
@@ -30,11 +29,9 @@
     "@mikro-orm/nestjs": "^4.3.1",
     "@mikro-orm/postgresql": "^4.5.10",
     "@mikro-orm/sql-highlighter": "^1.0.1",
-    "@nestjs/apollo": "^10.2.0",
     "@nestjs/common": "^9.3.9",
     "@nestjs/config": "^2.3.1",
     "@nestjs/core": "^9.3.9",
-    "@nestjs/graphql": "^10.2.0",
     "@nestjs/platform-fastify": "^9.3.9",
     "@nestjs/swagger": "^6.2.1",
     "@sectester/bus": "^0.16.5",
@@ -63,8 +60,7 @@
     "reflect-metadata": "^0.1.13",
     "rimraf": "^3.0.2",
     "rxjs": "^7.8.0",
-    "stream-buffers": "^3.0.2",
-    "ts-morph": "^17.0.1"
+    "stream-buffers": "^3.0.2"
   },
   "devDependencies": {
     "@mikro-orm/cli": "^4.5.10",
