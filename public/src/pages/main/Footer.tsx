@@ -37,7 +37,11 @@ export const Footer: FC = () => {
       url: '/api/goto?url=http://google.com',
       icon: 'bx-chevron-right'
     },
-    { name: 'Privacy policy', url: '/', icon: 'bx-chevron-right' }
+    {
+      name: 'Privacy policy',
+      url: 'https://takemeover-bright.s3.amazonaws.com/privacy-policy.pdf',
+      icon: 'bx-chevron-right'
+    }
   ];
 
   const services = [
@@ -108,15 +112,6 @@ export const Footer: FC = () => {
                 )}
                 <br />
                 <strong>Email:</strong> info@example.com
-                <br />
-                <strong>Technical info:</strong>{' '}
-                <a
-                  href="https://takemeover-nexploit.s3.amazonaws.com/something.html"
-                  target="_blank"
-                  className="footer-link"
-                >
-                  AWS
-                </a>
               </div>
             </div>
 
