@@ -40,7 +40,6 @@
     "@sectester/reporter": "^0.16.5",
     "@sectester/runner": "^0.16.5",
     "@sectester/scan": "^0.16.5",
-    "apollo-server-fastify": "^3.12.0",
     "axios": "^0.21.4",
     "bcrypt": "^5.1.0",
     "class-transformer": "^0.5.1",
