@@ -112,6 +112,7 @@ export const Footer: FC = () => {
                 )}
                 <br />
                 <strong>Email:</strong> info@example.com
+                <br />
               </div>
             </div>
 
