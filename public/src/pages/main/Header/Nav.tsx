@@ -30,7 +30,7 @@ const menu: Array<MenuItem> = [
     subItems: [
       {
         name: 'OpenAPI 3.0 JSON',
-        path: '/swagger',
+        path: '/swagger-json',
         newTab: true
       },
       {
