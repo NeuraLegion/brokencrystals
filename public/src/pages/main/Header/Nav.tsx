@@ -35,7 +35,7 @@ const menu: Array<MenuItem> = [
       },
       {
         name: 'API Reference',
-        path: '/swagger-json',
+        path: '/swagger',
         newTab: true
       }
     ]
