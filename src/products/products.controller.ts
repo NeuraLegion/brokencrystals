@@ -21,10 +21,10 @@ import { ProductDto } from './api/ProductDto';
 import { ProductsService } from './products.service';
 import { Product } from '../model/product.entity';
 import {
-  SWAGGER_DESC_GET_LATEST_PRODUCTS,
-  SWAGGER_DESC_GET_PRODUCTS,
-  SWAGGER_DESC_GET_VIEW_PRODUCT,
-} from './products.controller.swagger.desc';
+  API_DESC_GET_LATEST_PRODUCTS,
+  API_DESC_GET_PRODUCTS,
+  API_DESC_GET_VIEW_PRODUCT,
+} from './products.controller.api.desc';
 
 @Controller('/api/products')
 @ApiTags('Products controller')
@@ -37,7 +37,7 @@ export class ProductsController {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
-    description: SWAGGER_DESC_GET_PRODUCTS,
+    description: API_DESC_GET_PRODUCTS,
   })
   @ApiOkResponse({
     type: ProductDto,
@@ -61,7 +61,7 @@ export class ProductsController {
 
   @Get('latest')
   @ApiOperation({
-    description: SWAGGER_DESC_GET_LATEST_PRODUCTS,
+    description: API_DESC_GET_LATEST_PRODUCTS,
   })
   @ApiOkResponse({
     type: ProductDto,
@@ -75,7 +75,7 @@ export class ProductsController {
 
   @Get('views')
   @ApiOperation({
-    description: SWAGGER_DESC_GET_VIEW_PRODUCT,
+    description: API_DESC_GET_VIEW_PRODUCT,
   })
   @ApiOkResponse()
   @ApiInternalServerErrorResponse({
