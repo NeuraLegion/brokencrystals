@@ -1,4 +1,5 @@
 import { InternalServerErrorException, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
 import { Query, Mutation, Resolver, Args } from '@nestjs/graphql';
@@ -10,13 +11,12 @@ import {
   API_DESC_GET_PRODUCTS,
   API_DESC_GET_VIEW_PRODUCT,
 } from './products.controller.api.desc';
-import { AuthGuard } from '../auth/auth.guard';
 
-@Resolver(() => Product)
+@Resolver((of) => Product)
 export class ProductsResolver {
   constructor(private readonly productsService: ProductsService) {}
 
-  @Query(() => [Product], { description: API_DESC_GET_PRODUCTS })
+  @Query((returns) => [Product], { description: API_DESC_GET_PRODUCTS })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   async AllProducts(): Promise<Product[]> {
@@ -24,7 +24,7 @@ export class ProductsResolver {
     return products.map((p: Product) => new ProductDto(p));
   }
 
-  @Query(() => [Product], {
+  @Query((returns) => [Product], {
     description: API_DESC_GET_LATEST_PRODUCTS,
   })
   async latestProducts(): Promise<Product[]> {
@@ -32,12 +32,12 @@ export class ProductsResolver {
     return products.map((p: Product) => new ProductDto(p));
   }
 
-  @Mutation(() => Boolean, {
+  @Mutation((returns) => Boolean, {
     description: API_DESC_GET_VIEW_PRODUCT,
   })
   async viewProduct(
     @Args('productName') productName: string,
-  ): Promise<boolean> {
+  ): Promise<Boolean> {
     try {
       const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
       await this.productsService.updateProduct(query);
