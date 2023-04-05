@@ -664,13 +664,11 @@ export class AuthController {
 
   private async loginOidc(req: LoginRequest): Promise<LoginData> {
     try {
-      const {
-        token_type,
-        access_token,
-      } = await this.keyCloakService.generateToken({
-        username: req.user,
-        password: req.password,
-      });
+      const { token_type, access_token } =
+        await this.keyCloakService.generateToken({
+          username: req.user,
+          password: req.password,
+        });
 
       return {
         email: req.user,
