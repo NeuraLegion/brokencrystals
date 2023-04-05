@@ -9,6 +9,7 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { FastifyReply, FastifyRequest } from 'fastify';
+import { GqlContextType, GqlExecutionContext } from '@nestjs/graphql';
 
 @Injectable()
 export class HeadersConfiguratorInterceptor implements NestInterceptor {
@@ -26,41 +27,35 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
   private readonly logger = new Logger(HeadersConfiguratorInterceptor.name);
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const req = context.switchToHttp().getRequest() as FastifyRequest;
+    const req = this.getRequest(context);
 
     const cookies: string[] = req.headers.cookie
       ? req.headers.cookie.split('; ')
       : [];
+
     if (cookies && cookies.length > 0) {
-      try {
-        const cookie = cookies
-          .reverse()
-          .find((str) =>
-            str.startsWith(HeadersConfiguratorInterceptor.COUNTER_COOKIE_NAME),
-          );
+      const cookie = cookies
+        .reverse()
+        .find((str) =>
+          str.startsWith(HeadersConfiguratorInterceptor.COUNTER_COOKIE_NAME),
+        );
 
-        this.logger.log(`Cookie header: ${cookie}`);
+      this.logger.log(`Cookie header: ${cookie}`);
 
-        if (cookie) {
-          const counter = cookie.split('=');
+      if (cookie) {
+        const counter = cookie.split('=');
 
-          if (isNaN(+counter[1])) {
-            throw new Error('Invalid counter value');
-          }
+        if (isNaN(+counter[1])) {
+          throw new Error('Invalid counter value');
         }
-      } catch (err) {
-        throw new InternalServerErrorException({
-          error: err.message,
-          location: __filename,
-        });
       }
     }
 
     return next.handle().pipe(
       tap(() => {
-        const res = context.switchToHttp().getResponse() as FastifyReply;
+        const res = this.getResponse(context);
         res.setCookie('bc-calls-counter', Date.now().toString(), {
-          secure: false
+          secure: false,
         });
         if (
           !req.query[HeadersConfiguratorInterceptor.NO_SEC_HEADERS_QUERY_PARAM]
@@ -78,5 +73,17 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
         }
       }),
     );
+  }
+
+  private getRequest(context: ExecutionContext): FastifyRequest {
+    return context.getType<GqlContextType>() === 'graphql'
+      ? GqlExecutionContext.create(context).getContext().req
+      : context.switchToHttp().getRequest();
+  }
+
+  private getResponse(context: ExecutionContext): FastifyReply {
+    return context.getType<GqlContextType>() === 'graphql'
+      ? GqlExecutionContext.create(context).getContext().reply
+      : context.switchToHttp().getResponse();
   }
 }
