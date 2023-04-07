@@ -10,7 +10,7 @@ import { Query, Mutation, Resolver, Args, Int } from '@nestjs/graphql';
 import { Testimonial } from './api/testimonial.model';
 import { TestimonialDto } from './api/TestimonialDto';
 import { TestimonialsService } from './testimonials.service';
-import { CreateTestimonialRequestGQL } from './api/CreateTestimonialRequest';
+import { CreateTestimonialRequest } from './api/CreateTestimonialRequestREST';
 import {
   API_DESC_CREATE_TESTIMONIAL,
   API_DESC_GET_TESTIMONIALS,
@@ -47,7 +47,7 @@ export class TestimonialsResolver {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   async createTestimonial(
-    @Args('testimonialRequest') testimonialRequest: CreateTestimonialRequestGQL,
+    @Args('testimonialRequest') testimonialRequest: CreateTestimonialRequest,
   ) {
     this.logger.debug('Create testimonial.');
     try {
