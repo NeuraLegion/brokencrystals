@@ -37,7 +37,7 @@ export class ProductsResolver {
   })
   async viewProduct(
     @Args('productName') productName: string,
-  ): Promise<Boolean> {
+  ): Promise<boolean> {
     try {
       const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
       await this.productsService.updateProduct(query);
