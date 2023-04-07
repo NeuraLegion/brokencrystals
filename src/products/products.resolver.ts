@@ -24,7 +24,7 @@ export class ProductsResolver {
     return allProducts.map((p: Product) => new ProductDto(p));
   }
 
-  @Query((returns) => [Product], {
+  @Query(() => [Product], {
     description: API_DESC_GET_LATEST_PRODUCTS,
   })
   async latestProducts(): Promise<Product[]> {
