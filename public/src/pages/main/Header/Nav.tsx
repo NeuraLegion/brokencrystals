@@ -30,12 +30,12 @@ const menu: Array<MenuItem> = [
     subItems: [
       {
         name: 'OpenAPI 3.0 JSON',
-        path: '/swagger/json',
+        path: '/swagger-json',
         newTab: true
       },
       {
         name: 'API Reference',
-        path: '/swagger/static/index.html',
+        path: '/swagger',
         newTab: true
       }
     ]
