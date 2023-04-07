@@ -16,7 +16,7 @@ import {
 export class ProductsResolver {
   constructor(private readonly productsService: ProductsService) {}
 
-  @Query((returns) => [Product], { description: API_DESC_GET_PRODUCTS })
+  @Query(() => [Product], { description: API_DESC_GET_PRODUCTS })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   async allProducts(): Promise<Product[]> {
