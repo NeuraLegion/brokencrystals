@@ -1,6 +1,7 @@
 import {
   ArgumentsHost,
   Catch,
+  HttpException,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
@@ -11,7 +12,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
   public catch(exception: unknown, host: ArgumentsHost) {
     const gql = host.getType<GqlContextType>() === 'graphql';
 
-    if (this.isHttpError(exception)) {
+    if (exception instanceof HttpException) {
       if (gql) {
         throw exception;
       }
