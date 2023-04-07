@@ -33,7 +33,7 @@ export class TestimonialsResolver {
     );
   }
 
-  @Query((returns) => Int, {
+  @Query(() => Int, {
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
   })
   async testimonialsCount(@Args('query') query: string): Promise<number> {
