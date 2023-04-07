@@ -36,9 +36,9 @@ export class TestimonialsResolver {
   @Query(() => Int, {
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
   })
-  async testimonialsCount(@Args('query') query: string): Promise<number> {
+  testimonialsCount(@Args('query') query: string): Promise<number> {
     this.logger.debug('Get count of testimonials.');
-    return await this.testimonialsService.count(query);
+    return this.testimonialsService.count(query);
   }
 
   @Mutation((returns) => Testimonial, {
