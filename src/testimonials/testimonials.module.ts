@@ -8,8 +8,8 @@ import { TestimonialsService } from './testimonials.service';
 
 @Module({
   imports: [OrmModule, AuthModule, UsersModule],
-  controllers: [TestimonialsController, TestimonialsResolver],
-  providers: [TestimonialsService],
+  controllers: [TestimonialsController],
+  providers: [TestimonialsService, TestimonialsResolver],
   exports: [TestimonialsService],
 })
 export class TestimonialsModule {}

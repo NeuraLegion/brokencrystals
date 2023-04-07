@@ -10,7 +10,7 @@ import { Query, Mutation, Resolver, Args, Int } from '@nestjs/graphql';
 import { Testimonial } from './api/testimonial.model';
 import { TestimonialDto } from './api/TestimonialDto';
 import { TestimonialsService } from './testimonials.service';
-import { CreateTestimonialRequest } from './api/CreateTestimonialRequestREST';
+import { CreateTestimonialRequest } from './api/CreateTestimonialRequestGQL';
 import {
   API_DESC_CREATE_TESTIMONIAL,
   API_DESC_GET_TESTIMONIALS,
