@@ -19,9 +19,9 @@ export class ProductsResolver {
   @Query((returns) => [Product], { description: API_DESC_GET_PRODUCTS })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
-  async AllProducts(): Promise<Product[]> {
-    const products = await this.productsService.findLatest(3);
-    return products.map((p: Product) => new ProductDto(p));
+  async allProducts(): Promise<Product[]> {
+    const allProducts = await this.productsService.findAll();
+    return allProducts.map((p: Product) => new ProductDto(p));
   }
 
   @Query((returns) => [Product], {
