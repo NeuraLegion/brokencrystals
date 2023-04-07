@@ -32,7 +32,7 @@ export class ProductsResolver {
     return products.map((p: Product) => new ProductDto(p));
   }
 
-  @Mutation((returns) => Boolean, {
+  @Mutation(() => Boolean, {
     description: API_DESC_GET_VIEW_PRODUCT,
   })
   async viewProduct(
