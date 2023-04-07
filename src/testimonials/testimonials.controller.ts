@@ -17,7 +17,7 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
-import { CreateTestimonialRequestREST } from './api/CreateTestimonialRequest';
+import { CreateTestimonialRequest } from './api/CreateTestimonialRequestREST';
 import { TestimonialDto } from './api/TestimonialDto';
 import {
   API_DESC_CREATE_TESTIMONIAL,
@@ -53,8 +53,8 @@ export class TestimonialsController {
     },
   })
   async createTestimonial(
-    @Body() req: CreateTestimonialRequestREST,
-  ): Promise<CreateTestimonialRequestREST> {
+    @Body() req: CreateTestimonialRequest,
+  ): Promise<CreateTestimonialRequest> {
     this.logger.debug('Create testimonial.');
     return TestimonialDto.covertToApi(
       await this.testimonialsService.createTestimonial(
