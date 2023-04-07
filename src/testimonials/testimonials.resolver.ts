@@ -23,7 +23,7 @@ export class TestimonialsResolver {
 
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
-  @Query((returns) => [Testimonial], {
+  @Query(() => [Testimonial], {
     description: API_DESC_GET_TESTIMONIALS,
   })
   async allTestimonials(): Promise<Testimonial[]> {
