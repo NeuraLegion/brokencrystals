@@ -12,7 +12,7 @@ import {
   API_DESC_GET_VIEW_PRODUCT,
 } from './products.controller.api.desc';
 
-@Resolver((of) => Product)
+@Resolver(() => Product)
 export class ProductsResolver {
   constructor(private readonly productsService: ProductsService) {}
 
