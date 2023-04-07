@@ -27,7 +27,7 @@ export class TestimonialsResolver {
     description: API_DESC_GET_TESTIMONIALS,
   })
   async allTestimonials(): Promise<Testimonial[]> {
-    this.logger.debug('Get all testimonials.');
+    this.logger.debug('Get all testimonials');
     return (await this.testimonialsService.findAll()).map<TestimonialDto>(
       TestimonialDto.covertToApi,
     );
@@ -37,11 +37,11 @@ export class TestimonialsResolver {
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
   })
   testimonialsCount(@Args('query') query: string): Promise<number> {
-    this.logger.debug('Get count of testimonials.');
+    this.logger.debug('Get count of testimonials');
     return this.testimonialsService.count(query);
   }
 
-  @Mutation((returns) => Testimonial, {
+  @Mutation(() => Testimonial, {
     description: API_DESC_CREATE_TESTIMONIAL,
   })
   @UseGuards(AuthGuard)
@@ -49,7 +49,7 @@ export class TestimonialsResolver {
   async createTestimonial(
     @Args('testimonialRequest') testimonialRequest: CreateTestimonialRequest,
   ) {
-    this.logger.debug('Create testimonial.');
+    this.logger.debug('Create testimonial');
     try {
       return TestimonialDto.covertToApi(
         await this.testimonialsService.createTestimonial(
