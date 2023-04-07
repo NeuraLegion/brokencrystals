@@ -17,7 +17,7 @@ import {
   API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
 } from './testimonials.controller.api.desc';
 
-@Resolver((of) => Testimonial)
+@Resolver(() => Testimonial)
 export class TestimonialsResolver {
   private readonly logger = new Logger(TestimonialsResolver.name);
 
