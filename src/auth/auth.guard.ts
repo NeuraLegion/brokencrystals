@@ -48,7 +48,7 @@ export class AuthGuard implements CanActivate {
   ): Promise<boolean> {
     let token = request.headers[AuthGuard.AUTH_HEADER];
 
-    if (!token.length) {
+    if (!token?.length) {
       token = request.cookies[AuthGuard.AUTH_HEADER];
     }
 
@@ -56,7 +56,7 @@ export class AuthGuard implements CanActivate {
       token = token.substring(7);
     }
 
-    if (!token.length) {
+    if (!token?.length) {
       return false;
     }
 
