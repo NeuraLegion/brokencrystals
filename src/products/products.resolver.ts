@@ -12,11 +12,11 @@ import {
   API_DESC_GET_VIEW_PRODUCT,
 } from './products.controller.api.desc';
 
-@Resolver((of) => Product)
+@Resolver(() => Product)
 export class ProductsResolver {
   constructor(private readonly productsService: ProductsService) {}
 
-  @Query((returns) => [Product], { description: API_DESC_GET_PRODUCTS })
+  @Query(() => [Product], { description: API_DESC_GET_PRODUCTS })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   async allProducts(): Promise<Product[]> {
@@ -24,7 +24,7 @@ export class ProductsResolver {
     return allProducts.map((p: Product) => new ProductDto(p));
   }
 
-  @Query((returns) => [Product], {
+  @Query(() => [Product], {
     description: API_DESC_GET_LATEST_PRODUCTS,
   })
   async latestProducts(): Promise<Product[]> {
@@ -32,12 +32,12 @@ export class ProductsResolver {
     return products.map((p: Product) => new ProductDto(p));
   }
 
-  @Mutation((returns) => Boolean, {
+  @Mutation(() => Boolean, {
     description: API_DESC_GET_VIEW_PRODUCT,
   })
   async viewProduct(
     @Args('productName') productName: string,
-  ): Promise<Boolean> {
+  ): Promise<boolean> {
     try {
       const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
       await this.productsService.updateProduct(query);

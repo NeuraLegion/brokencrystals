@@ -17,13 +17,13 @@ import {
   API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
 } from './testimonials.controller.api.desc';
 
-@Resolver((of) => Testimonial)
+@Resolver(() => Testimonial)
 export class TestimonialsResolver {
   private readonly logger = new Logger(TestimonialsResolver.name);
 
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
-  @Query((returns) => [Testimonial], {
+  @Query(() => [Testimonial], {
     description: API_DESC_GET_TESTIMONIALS,
   })
   async allTestimonials(): Promise<Testimonial[]> {
@@ -33,12 +33,12 @@ export class TestimonialsResolver {
     );
   }
 
-  @Query((returns) => Int, {
+  @Query(() => Int, {
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
   })
-  async testimonialsCount(@Args('query') query: string): Promise<number> {
+  testimonialsCount(@Args('query') query: string): Promise<number> {
     this.logger.debug('Get count of testimonials.');
-    return await this.testimonialsService.count(query);
+    return this.testimonialsService.count(query);
   }
 
   @Mutation((returns) => Testimonial, {
