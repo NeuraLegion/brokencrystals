@@ -37,6 +37,11 @@ const menu: Array<MenuItem> = [
         name: 'API Reference',
         path: '/swagger',
         newTab: true
+      },
+      {
+        name: 'GraphiQL',
+        path: '/graphiql',
+        newTab: true
       }
     ]
   },
