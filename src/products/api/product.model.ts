@@ -14,6 +14,6 @@ export class Product {
   @Field({ description: 'Product description' })
   description: string;
 
-  @Field((type) => Int, { description: 'Product views count' })
+  @Field(() => Int, { description: 'Product views count' })
   viewsCount: number;
 }
