@@ -12,8 +12,8 @@ The application contains:
   - GraphiQL UI - http://localhost:8090/graphiql
 - nginx web server that serves the client and acts as a reverse proxy for the server's API requests
 
-**Note**
-The GraphQL API does not yet support all of the endpoints the REST API does.
+> **Note**
+> The GraphQL API does not yet support all of the endpoints the REST API does.
 
 ## Building and Running the Application
 
