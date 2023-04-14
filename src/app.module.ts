@@ -11,6 +11,8 @@ import { ConfigModule } from '@nestjs/config';
 import { HttpClientService } from './httpclient/httpclient.service';
 import { HttpClientModule as HttpClientModule } from './httpclient/httpclient.module';
 import { TraceMiddleware } from './components/trace.middleware';
+import { GraphQLModule } from '@nestjs/graphql';
+import { MercuriusDriver, MercuriusDriverConfig } from '@nestjs/mercurius';
 
 @Module({
   imports: [
@@ -25,6 +27,11 @@ import { TraceMiddleware } from './components/trace.middleware';
       isGlobal: true,
     }),
     HttpClientModule,
+    GraphQLModule.forRoot<MercuriusDriverConfig>({
+      driver: MercuriusDriver,
+      graphiql: true,
+      autoSchemaFile: true,
+    }),
   ],
   controllers: [AppController],
   providers: [HttpClientService],
