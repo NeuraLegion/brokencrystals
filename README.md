@@ -6,10 +6,14 @@ The application contains:
 - React based web client
   - FE - http://localhost:8090
   - BE - http://localhost:3000
-- NodeJS server - the full API documentation is available via swagger
+- NodeJS server - the full API documentation is available via swagger or GraphQL
   - Swagger UI - http://localhost:8090/swagger
-  - Swagger JSON file - http://localhost:8090/swagger/json
+  - Swagger JSON file - http://localhost:8090/swagger-json
+  - GraphiQL UI - http://localhost:8090/graphiql
 - nginx web server that serves the client and acts as a reverse proxy for the server's API requests
+
+> **Note**
+> The GraphQL API does not yet support all of the endpoints the REST API does.
 
 ## Building and Running the Application
 

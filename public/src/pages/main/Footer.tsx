@@ -37,7 +37,11 @@ export const Footer: FC = () => {
       url: '/api/goto?url=http://google.com',
       icon: 'bx-chevron-right'
     },
-    { name: 'Privacy policy', url: '/', icon: 'bx-chevron-right' }
+    {
+      name: 'Privacy policy',
+      url: 'https://takemeover-bright.s3.amazonaws.com/privacy-policy.pdf',
+      icon: 'bx-chevron-right'
+    }
   ];
 
   const services = [

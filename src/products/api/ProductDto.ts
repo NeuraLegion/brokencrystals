@@ -14,7 +14,7 @@ export class ProductDto {
   description: string;
 
   @ApiProperty()
-  viewsCount: string;
+  viewsCount: number;
 
   constructor(params: {
     name: string;
