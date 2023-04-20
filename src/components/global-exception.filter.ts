@@ -33,10 +33,10 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       this.applicationRef ||
       (this.httpAdapterHost && this.httpAdapterHost.httpAdapter);
 
-    return this.handleUnknownError(
-      unprocessableException,
-      host,
-      applicationRef,
+    return applicationRef.reply(
+      host.getArgByIndex(1),
+      unprocessableException.getResponse(),
+      unprocessableException.getStatus(),
     );
   }
 }
