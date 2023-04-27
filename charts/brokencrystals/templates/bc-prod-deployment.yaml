@@ -1,0 +1,86 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+  template:
+    metadata:
+      labels:
+        app: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+    spec:
+      containers:
+        - name: {{ include "brokencrystals.fullname" . }}-nodejs-prod-app
+          image: neuralegion/brokencrystals:{{ .Values.images.main }}
+#          command: ["/bin/sleep"]
+#          args: ["10000"]
+          env:
+            - name: URL
+              value: "https://{{ .Values.ingress.url }}"
+     #         value: "https://brokencrystals.com"
+            - name: DATABASE_HOST
+              value: "{{ include "brokencrystals.fullname" . }}-postgres-prod-service"
+            - name: DATABASE_SCHEMA
+              value: "bc"
+            - name: DATABASE_USER
+              value: "bc"
+            - name: DATABASE_PASSWORD
+              value: "bc"
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_DEBUG
+              value: "true"
+            - name: AWS_BUCKET
+              value: "https://neuralegion-open-bucket.s3.amazonaws.com"
+            - name: GOOGLE_MAPS_API
+              value: "AIzaSyD2wIxpYCuNI0Zjt8kChs2hLTS5abVQfRQ"
+            - name: JWT_PRIVATE_KEY_LOCATION
+              value: "config/keys/jwtRS256.key"
+            - name: JWT_PUBLIC_KEY_LOCATION
+              value: "config/keys/jwtRS256.key.pub.pem"
+            - name: JWT_SECRET_KEY
+              value: "1234"
+            - name: JWK_PRIVATE_KEY_LOCATION
+              value: "config/keys/jwk.key.pem"
+            - name: JWK_PUBLIC_KEY_LOCATION
+              value: "config/keys/jwk.pub.key.pem"
+            - name: JWK_PUBLIC_JSON 
+              value: "config/keys/jwk.pub.json"
+            - name: JKU_URL
+              value: "https://raw.githubusercontent.com/NeuraLegion/brokencrystals/development/config/keys/jku.json"
+            - name: X5U_URL
+              value: "https://raw.githubusercontent.com/NeuraLegion/brokencrystals/development/config/keys/x509.crt"
+          resources:
+            requests:
+              cpu: 1800m
+              memory: 1024Mi
+          livenessProbe:
+            httpGet:
+              path: /api/config
+              port: 3000
+              scheme: HTTP
+            initialDelaySeconds: 120
+            periodSeconds: 30
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+#  name: bc-nodejs-prod-service
+  name: {{ include "brokencrystals.fullname" . }}-nodejs
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+  ports:
+    - name: http
+      port: 3000
+      protocol: TCP
+      targetPort: 3000
+
