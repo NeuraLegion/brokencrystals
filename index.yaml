@@ -21,4 +21,15 @@ entries:
     urls:
     - https://github.com/NeuraLegion/brokencrystals/releases/download/brokencrystals-0.0.15/brokencrystals-0.0.15.tgz
     version: 0.0.15
-generated: "2023-04-28T12:10:32.609841438Z"
+  brokencrystals-dev:
+  - apiVersion: v2
+    appVersion: 1.0.19
+    created: "2023-05-03T15:04:14.974997506Z"
+    description: A Helm chart for Kubernetes
+    digest: 9394e8af088969e79414790adc1567ea85b7a61cc8f59efde147dadfe41558c0
+    name: brokencrystals-dev
+    type: application
+    urls:
+    - https://github.com/NeuraLegion/brokencrystals/releases/download/brokencrystals-dev-0.0.19/brokencrystals-dev-0.0.19.tgz
+    version: 0.0.19
+generated: "2023-05-03T15:04:14.975008806Z"
