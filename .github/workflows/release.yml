@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-      - development-helm
+      - development
 
 jobs:
   packages:
@@ -31,4 +31,4 @@ jobs:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           CR_SKIP_EXISTING: true
 
-          
+
