@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - development-helm
 
 jobs:
   packages:
@@ -18,6 +19,12 @@ jobs:
         run: |
           git config --global user.email "devops@brightsec.com"
           git config --global user.name "Bright Security"
+
+      - name: Change name to development
+        if: ${{ github.ref == 'refs/heads/development-helm' }}
+        run: |          
+          sed -i 's/^name.*/name: brokencrystals-dev/' ./charts/brokencrystals/Chart.yaml
+
       - name: Release packages
         uses: helm/chart-releaser-action@v1.5.0
         env:
