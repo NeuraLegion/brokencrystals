@@ -3,7 +3,7 @@ name: Release Charts Development
 on:
   push:
     branches:
-      - development-helm
+      - development
 
 jobs:
   packages:
