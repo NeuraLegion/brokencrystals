@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-      - development-helm
+      - development
 
 jobs:
   packages:
@@ -21,7 +21,7 @@ jobs:
           git config --global user.name "Bright Security"
 
       - name: Change name to development
-        if: ${{ github.ref == 'refs/heads/development-helm' }}
+        if: ${{ github.ref == 'refs/heads/development' }}
         run: |          
           sed -i 's/^name.*/name: brokencrystals-dev/' ./charts/brokencrystals/Chart.yaml
 
