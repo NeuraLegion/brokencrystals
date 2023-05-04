@@ -25,6 +25,12 @@ jobs:
         run: |          
           sed -i 's/^name.*/name: brokencrystals-dev/' ./charts/brokencrystals/Chart.yaml
 
+      - name: Change values to development
+        if: ${{ github.ref == 'refs/heads/development' }}
+        run: |          
+          sed -i 's/^  main:.*/  main: development/' ./charts/brokencrystals/values.yaml
+          sed -i 's/^  client:.*/  client: development/' ./charts/brokencrystals/values.yam
+          
       - name: Release packages
         uses: helm/chart-releaser-action@v1.5.0
         env:
