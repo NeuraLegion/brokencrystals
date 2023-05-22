@@ -48,6 +48,19 @@ entries:
     version: 0.0.15
   brokencrystals-dev:
   - apiVersion: v2
+    created: "2023-05-22T04:18:18.027354407Z"
+    description: 'Benchmark application that uses modern technologies and implements
+      a set of common security vulnerabilities '
+    digest: 966dccf27e537c671576f6bda75fb785ff4f15d57cf984af26f6797630d0f017
+    keywords:
+    - brokencrystals-dev
+    - brkn-dev
+    name: brokencrystals-dev
+    type: application
+    urls:
+    - https://github.com/NeuraLegion/brokencrystals/releases/download/brokencrystals-dev-0.0.21/brokencrystals-dev-0.0.21.tgz
+    version: 0.0.21
+  - apiVersion: v2
     appVersion: 1.0.19
     created: "2023-05-03T15:04:14.974997506Z"
     description: A Helm chart for Kubernetes
@@ -57,4 +70,4 @@ entries:
     urls:
     - https://github.com/NeuraLegion/brokencrystals/releases/download/brokencrystals-dev-0.0.19/brokencrystals-dev-0.0.19.tgz
     version: 0.0.19
-generated: "2023-05-22T04:02:30.756514125Z"
+generated: "2023-05-22T04:18:18.027367107Z"
