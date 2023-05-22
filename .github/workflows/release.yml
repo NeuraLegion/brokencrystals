@@ -23,7 +23,8 @@ jobs:
       - name: Change name to development
         if: ${{ github.ref == 'refs/heads/development' }}
         run: |          
-          sed -i 's/^name.*/name: brokencrystals-dev/' ./charts/brokencrystals/Chart.yaml
+          sed -i 's/brokencrystals/brokencrystals-dev/g' ./charts/brokencrystals/Chart.yaml
+          sed -i 's/brkn/brkn-dev/g' ./charts/brokencrystals/Chart.yaml
 
       - name: Change values to development
         if: ${{ github.ref == 'refs/heads/development' }}
