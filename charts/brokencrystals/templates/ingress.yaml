@@ -1,0 +1,59 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "brokencrystals.fullname" . }}-prod
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-ssl-protocols: "TLSv1.1 TLSv1.2"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    {{ if eq .Values.ingress.cert "" }}
+    cert-manager.io/cluster-issuer: letsencrypt-cf-prod
+    {{ end }}
+spec:
+  tls:
+    - hosts:
+        - {{ .Values.ingress.url }}
+      secretName: {{ if eq .Values.ingress.cert "" }}{{ include "brokencrystals.fullname" . }}-brokencrystals-prod-secret{{ else }}{{ .Values.ingress.cert }}{{ end }}
+  rules:
+    - host: {{ .Values.ingress.url }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "brokencrystals.fullname" . }}-nodejs-proxy-prod-service
+                port:
+                  number: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "brokencrystals.fullname" . }}-prod-keycloak
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-ssl-protocols: "TLSv1.1 TLSv1.2"
+    {{ if eq .Values.ingress.cert "" }}
+    cert-manager.io/cluster-issuer: letsencrypt-cf-prod
+    {{ end }}
+spec:
+  tls:
+    - hosts:
+        - auth{{ .Values.ingress.authlevel }}{{ .Values.ingress.url }}
+      secretName: {{ if eq .Values.ingress.cert "" }}{{ include "brokencrystals.fullname" . }}-brokencrystals-prod-keycloak-secret{{ else }}{{ .Values.ingress.cert }}{{ end }}
+  rules:
+    - host: auth{{ .Values.ingress.authlevel }}{{ .Values.ingress.url }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "brokencrystals.fullname" . }}-keycloak-prod-service
+                port:
+                  number: 8080

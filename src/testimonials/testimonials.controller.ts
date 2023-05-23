@@ -17,13 +17,13 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
-import { CreateTestimonialRequest } from './api/CreateTestimonialRequest';
+import { CreateTestimonialRequest } from './api/CreateTestimonialRequestREST';
 import { TestimonialDto } from './api/TestimonialDto';
 import {
-  SWAGGER_DESC_CREATE_TESTIMONIAL,
-  SWAGGER_DESC_GET_TESTIMONIALS,
-  SWAGGER_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
-} from './testimonials.controller.swagger.desc';
+  API_DESC_CREATE_TESTIMONIAL,
+  API_DESC_GET_TESTIMONIALS,
+  API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
+} from './testimonials.controller.api.desc';
 import { TestimonialsService } from './testimonials.service';
 
 @Controller('/api/testimonials')
@@ -37,7 +37,7 @@ export class TestimonialsController {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
-    description: SWAGGER_DESC_CREATE_TESTIMONIAL,
+    description: API_DESC_CREATE_TESTIMONIAL,
   })
   @ApiOkResponse({
     type: TestimonialDto,
@@ -67,7 +67,7 @@ export class TestimonialsController {
 
   @Get()
   @ApiOperation({
-    description: SWAGGER_DESC_GET_TESTIMONIALS,
+    description: API_DESC_GET_TESTIMONIALS,
   })
   @ApiOkResponse({
     type: TestimonialDto,
@@ -83,12 +83,12 @@ export class TestimonialsController {
   @Get('count')
   @Header('content-type', 'text/html')
   @ApiOperation({
-    description: SWAGGER_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
+    description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,
   })
   @ApiOkResponse({
     type: String,
   })
-  async getCount(@Query('query') query: string): Promise<string> {
+  async getCount(@Query('query') query: string): Promise<number> {
     this.logger.debug('Get count of testimonials.');
     return await this.testimonialsService.count(query);
   }

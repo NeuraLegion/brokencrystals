@@ -1,0 +1,10 @@
+apiVersion: v2
+name: brokencrystals
+description: |
+  Benchmark application that uses modern technologies and implements a set of
+  common security vulnerabilities
+type: application
+version: 0.0.21
+keywords:
+  - brokencrystals
+  - brkn
