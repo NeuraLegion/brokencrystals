@@ -59,6 +59,7 @@ import {
 import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
 import { BASIC_USER_INFO, FULL_USER_INFO } from './api/UserDto';
+import { parseXml } from 'libxmljs';
 
 @Controller('/api/users')
 @UseInterceptors(ClassSerializerInterceptor)
@@ -467,7 +468,27 @@ export class UsersController {
   async uploadFile(@Param('email') email: string, @Req() req: FastifyRequest) {
     try {
       const file = await req.file();
-      await this.usersService.updatePhoto(email, await file.toBuffer());
+      const file_name = file.filename;
+      const file_buffer = await file.toBuffer();
+
+      if (file_name.endsWith('.svg')) {
+        const xml = file_buffer.toString();
+        const xmlDoc = parseXml(xml, {
+          dtdload: true,
+          noent: true,
+          doctype: true,
+          dtdvalid: true,
+          errors: true,
+          recover: true,
+        });
+        await this.usersService.updatePhoto(
+          email,
+          Buffer.from(xmlDoc.toString(), 'utf8'),
+        );
+        return xmlDoc.toString(true);
+      } else {
+        await this.usersService.updatePhoto(email, file_buffer);
+      }
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
