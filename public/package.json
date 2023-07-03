@@ -6,8 +6,10 @@
   "dependencies": {
     "axios": "^0.21.4",
     "dangerously-set-html-content": "^1.0.8",
+    "file-type": "^16.5.3",
     "get-browser-fingerprint": "^2.0.1",
     "history": "^4.10.1",
+    "is-svg": "^4.4.0",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-owl-carousel": "^2.3.3",
