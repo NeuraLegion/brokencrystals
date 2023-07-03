@@ -35,7 +35,6 @@ import { CreateUserRequest } from './api/CreateUserRequest';
 import { UserDto } from './api/UserDto';
 import { LdapQueryHandler } from './ldap.query.handler';
 import { UsersService } from './users.service';
-import { Readable } from 'stream';
 import { User } from '../model/user.entity';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
@@ -219,14 +218,7 @@ export class UsersController {
     }
 
     try {
-      const readable = new Readable({
-        read() {
-          this.push(user.photo);
-          this.push(null);
-        },
-      });
-      res.type('image/png');
-      return readable.read();
+      return user.photo;
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
