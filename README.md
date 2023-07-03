@@ -127,6 +127,7 @@ There are specific endpoints for each cloud provider as well - `/api/file/google
 * **Version Control System** - The client_s build process copies SVN, GIT, and Mercurial source control directories to the client application root and they are accessible under Nginx root.
 
 * **XML External Entity (XXE)** - The endpoint, POST /api/metadata, receives URL-encoded XML data in the _xml_ query parameter, processes it with enabled external entities (using libxmnl library) and returns the serialized DOM. Additionally, for a request that tries to load file:///etc/passwd as an entity, the endpoint returns a mocked up content of the file.
+Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, which are proccessed with libxml library and stored on the server, as well as sent back to the client.
 
 * **JavaScript Vulnerabilities Scanning** - Index.html includes an older version of the jQuery library with known vulnerabilities.
 
