@@ -131,3 +131,5 @@ There are specific endpoints for each cloud provider as well - `/api/file/google
 * **JavaScript Vulnerabilities Scanning** - Index.html includes an older version of the jQuery library with known vulnerabilities.
 
 * **AO1 Vertical access controls** - The page /dashboard can be reached despite the rights of user.
+
+* **Broken Function Level Authorization** - The endpoint DELETE `/users/one/:id/photo?isAdmin=` can be used to delete any user's profile photo by enumerating the user IDs and setting the `isAdmin` query parameter to true, as there is no validation of it's value on the server side.
