@@ -228,7 +228,7 @@ export class UsersController {
         },
       });
       res.type('image/png');
-      return readable.read();
+      return readable;
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
