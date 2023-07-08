@@ -2,6 +2,7 @@ import {
   Body,
   ClassSerializerInterceptor,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Header,
@@ -18,6 +19,7 @@ import {
   Req,
   Res,
   SerializeOptions,
+  UnauthorizedException,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -55,6 +57,7 @@ import {
   SWAGGER_DESC_ADMIN_RIGHTS,
   SWAGGER_DESC_FIND_USERS,
   SWAGGER_DESC_FIND_FULL_USER_INFO,
+  SWAGGER_DESC_DELETE_PHOTO_USER_BY_ID,
 } from './users.controller.swagger.desc';
 import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
@@ -226,6 +229,54 @@ export class UsersController {
       });
       res.type('image/png');
       return readable;
+    } catch (err) {
+      throw new InternalServerErrorException({
+        error: err.message,
+        location: __filename,
+      });
+    }
+  }
+
+  @Delete('/one/:id/photo')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_DELETE_PHOTO_USER_BY_ID,
+  })
+  @ApiOkResponse({
+    description: 'Deletes user profile photo',
+  })
+  @ApiNoContentResponse({
+    description: 'Returns empty content if there was no user profile photo',
+  })
+  @ApiForbiddenResponse({
+    description: 'Returns then user is not authenticated',
+  })
+  async deleteUserPhotoById(
+    @Param('id') id: number,
+    @Query('isAdmin') isAdmin: boolean,
+    @Res({ passthrough: true }) res: FastifyReply,
+  ) {
+    const user = await this.usersService.findById(id);
+    if (!isAdmin) {
+      throw new UnauthorizedException();
+    }
+
+    if (!user) {
+      throw new NotFoundException({
+        error: 'Could not file user',
+        location: __filename,
+      });
+    }
+
+    if (!user.photo) {
+      res.status(HttpStatus.NO_CONTENT);
+      return;
+    }
+
+    try {
+      this.usersService.deletePhoto(id);
+      return;
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
