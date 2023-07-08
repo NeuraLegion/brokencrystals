@@ -228,7 +228,7 @@ export class UsersController {
         },
       });
       res.type('image/png');
-      return readable;
+      return readable.read();
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
@@ -254,14 +254,17 @@ export class UsersController {
   })
   async deleteUserPhotoById(
     @Param('id') id: number,
-    @Query('isAdmin') isAdmin: boolean,
+    @Query('isAdmin') isAdminParam: string,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    const user = await this.usersService.findById(id);
+    isAdminParam = isAdminParam.toLowerCase();
+    const isAdmin =
+      isAdminParam === 'true' || isAdminParam === '1' ? true : false;
     if (!isAdmin) {
       throw new UnauthorizedException();
     }
 
+    const user = await this.usersService.findById(id);
     if (!user) {
       throw new NotFoundException({
         error: 'Could not file user',
