@@ -32,6 +32,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CreateUserRequest } from './api/CreateUserRequest';
 import { UserDto } from './api/UserDto';
@@ -250,7 +251,10 @@ export class UsersController {
     description: 'Returns empty content if there was no user profile photo',
   })
   @ApiForbiddenResponse({
-    description: 'Returns then user is not authenticated',
+    description: 'Returns when user is not authenticated',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Returns when isAdmin is false',
   })
   async deleteUserPhotoById(
     @Param('id') id: number,
