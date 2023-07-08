@@ -21,6 +21,10 @@ export class UserDto {
   @ApiProperty()
   company: string;
 
+  @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
+  @ApiProperty()
+  id: number;
+
   @Expose({ groups: [FULL_USER_INFO] })
   cardNumber: string;
 
@@ -36,10 +40,6 @@ export class UserDto {
   password?: string;
 
   @Exclude()
-  @ApiHideProperty()
-  id: number;
-
-  @Exclude()
   photo: Buffer;
 
   @Expose({ groups: [FULL_USER_INFO] })
@@ -48,11 +48,9 @@ export class UserDto {
   @Expose({ groups: [FULL_USER_INFO] })
   createdAt: Date;
 
-  constructor(
-    params: {
-      [P in keyof UserDto]: UserDto[P];
-    },
-  ) {
+  constructor(params: {
+    [P in keyof UserDto]: UserDto[P];
+  }) {
     Object.assign(this, params);
   }
 }
