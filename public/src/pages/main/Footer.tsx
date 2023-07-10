@@ -113,6 +113,7 @@ export const Footer: FC = () => {
                 <br />
                 <strong>Email:</strong> info@example.com
                 <br />
+                <a href="/api/secrets">🤫</a>
               </div>
             </div>
 

@@ -9,3 +9,5 @@ export const API_DESC_OPTIONS_REQUEST = `Returns the list of supported operation
 export const API_DESC_LAUNCH_COMMAND = `Launches system command on server`;
 
 export const API_DESC_CONFIG_SERVER = `Returns server configuration to the client`;
+
+export const SWAGGER_DESC_SECRETS = `Returns server secrets. Shhhh 🤫`;
