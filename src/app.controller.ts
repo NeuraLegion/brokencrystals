@@ -137,7 +137,10 @@ export class AppController {
     try {
       return await this.appService.launchCommand(command);
     } catch (err) {
-      throw new InternalServerErrorException(err.message);
+      throw new InternalServerErrorException({
+        error: err.message || err,
+        location: __filename,
+      });
     }
   }
 
