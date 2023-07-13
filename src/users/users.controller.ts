@@ -282,8 +282,7 @@ export class UsersController {
     }
 
     try {
-      this.usersService.deletePhoto(id);
-      return;
+      await this.usersService.deletePhoto(id);
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
