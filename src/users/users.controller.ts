@@ -276,19 +276,7 @@ export class UsersController {
       });
     }
 
-    if (!user.photo) {
-      res.status(HttpStatus.NO_CONTENT);
-      return;
-    }
-
-    try {
-      await this.usersService.deletePhoto(id);
-    } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message,
-        location: __filename,
-      });
-    }
+    await this.usersService.deletePhoto(id);
   }
 
   @Get('/ldap')
