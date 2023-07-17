@@ -8,6 +8,8 @@ export const SWAGGER_DESC_FIND_USERS = `Returns users info contains searched sub
 
 export const SWAGGER_DESC_PHOTO_USER_BY_EMAIL = `Returns user profile photo`;
 
+export const SWAGGER_DESC_DELETE_PHOTO_USER_BY_ID = `Deletes user profile photo by user's ID`;
+
 export const SWAGGER_DESC_LDAP_SEARCH = `Performs LDAP search for user details`;
 
 export const SWAGGER_DESC_CREATE_BASIC_USER = `Creates BASIC user in PostGreSQL db`;

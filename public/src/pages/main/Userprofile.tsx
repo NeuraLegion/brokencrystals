@@ -1,6 +1,11 @@
 import React, { FormEvent, useEffect, useState } from 'react';
 import { Redirect } from 'react-router';
-import { getUserData, putUserData } from '../../api/httpClient';
+import {
+  getAdminStatus,
+  getUserData,
+  putUserData,
+  removeUserPhotoById
+} from '../../api/httpClient';
 import { UserData } from '../../interfaces/User';
 import { RoutePath } from '../../router/RoutePath';
 import AuthLayout from '../auth/AuthLayout';
@@ -17,6 +22,7 @@ export const Userprofile = () => {
   const email: string | null =
     sessionStorage.getItem('email') || localStorage.getItem('email');
   const [user, setUser] = useState<UserData>(defaultUserData);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   const onInput = ({ target }: { target: EventTarget | null }) => {
     const { name, value } = target as HTMLInputElement;
@@ -26,6 +32,7 @@ export const Userprofile = () => {
   useEffect(() => {
     if (email) {
       getUserData(email).then((data) => setUser(data));
+      getAdminStatus(email).then((data) => setIsAdmin(!!data.isAdmin));
     }
   }, []);
 
@@ -90,6 +97,14 @@ export const Userprofile = () => {
                 Save changes
               </button>
             </form>
+            <div>
+              <button
+                className="au-btn au-btn--block au-btn--blue m-b-20"
+                onClick={() => removeUserPhotoById(user.id, isAdmin)}
+              >
+                Remove user profile photo
+              </button>
+            </div>
           </div>
         </AuthLayout>
       ) : (

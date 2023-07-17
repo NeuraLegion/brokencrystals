@@ -141,8 +141,7 @@ export function postMetadata(): Promise<any> {
     url: `${ApiUrl.Metadata}`,
     method: 'post',
     headers: { 'content-type': 'text/xml' },
-    data:
-      '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE child [ <!ENTITY child SYSTEM "file:///etc/passwd"> ]><child></child>'
+    data: '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE child [ <!ENTITY child SYSTEM "file:///etc/passwd"> ]><child></child>'
   });
 }
 
@@ -163,6 +162,20 @@ export function getUserPhoto(email: string): Promise<any> {
         sessionStorage.getItem('token') || localStorage.getItem('token')
     },
     responseType: 'arraybuffer'
+  });
+}
+
+export function removeUserPhotoById(
+  id: string,
+  isAdmin: boolean
+): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/one/${id}/photo?isAdmin=${isAdmin}`,
+    method: 'delete',
+    headers: {
+      authorization:
+        sessionStorage.getItem('token') || localStorage.getItem('token')
+    }
   });
 }
 
