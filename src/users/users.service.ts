@@ -55,6 +55,18 @@ export class UsersService {
     return user;
   }
 
+  async deletePhoto(id: number): Promise<User> {
+    this.log.debug(`deletePhoto for user with id ${id}`);
+    const user = await this.findById(id);
+    if (!user) {
+      throw new NotFoundError('Could not find user');
+    }
+    delete user.photo;
+
+    await this.usersRepository.persistAndFlush(user);
+    return user;
+  }
+
   async updateUserInfo(oldUser: User, newData: UserDto): Promise<UserDto> {
     this.log.debug(`updateUserInfo ${oldUser.email}`);
     const newUser = oldUser;
@@ -93,7 +105,8 @@ export class UsersService {
 
   async searchByName(query: string, limit?: number): Promise<User[]> {
     this.log.debug(`Called searchUsersByName`);
-    return this.usersRepository.find({
+    return this.usersRepository.find(
+      {
         firstName: { $like: query + '%' },
       },
       limit ? { limit } : {},

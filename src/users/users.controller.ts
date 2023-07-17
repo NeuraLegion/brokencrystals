@@ -2,6 +2,7 @@ import {
   Body,
   ClassSerializerInterceptor,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Header,
@@ -18,6 +19,7 @@ import {
   Req,
   Res,
   SerializeOptions,
+  UnauthorizedException,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -30,6 +32,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CreateUserRequest } from './api/CreateUserRequest';
 import { UserDto } from './api/UserDto';
@@ -54,6 +57,7 @@ import {
   SWAGGER_DESC_ADMIN_RIGHTS,
   SWAGGER_DESC_FIND_USERS,
   SWAGGER_DESC_FIND_FULL_USER_INFO,
+  SWAGGER_DESC_DELETE_PHOTO_USER_BY_ID,
 } from './users.controller.swagger.desc';
 import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
@@ -225,6 +229,47 @@ export class UsersController {
         location: __filename,
       });
     }
+  }
+
+  @Delete('/one/:id/photo')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
+  @ApiOperation({
+    description: SWAGGER_DESC_DELETE_PHOTO_USER_BY_ID,
+  })
+  @ApiOkResponse({
+    description: 'Deletes user profile photo',
+  })
+  @ApiNoContentResponse({
+    description: 'Returns empty content if there was no user profile photo',
+  })
+  @ApiForbiddenResponse({
+    description: 'Returns when user is not authenticated',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Returns when isAdmin is false',
+  })
+  async deleteUserPhotoById(
+    @Param('id') id: number,
+    @Query('isAdmin') isAdminParam: string,
+    @Res({ passthrough: true }) res: FastifyReply,
+  ) {
+    isAdminParam = isAdminParam.toLowerCase();
+    const isAdmin =
+      isAdminParam === 'true' || isAdminParam === '1' ? true : false;
+    if (!isAdmin) {
+      throw new UnauthorizedException();
+    }
+
+    const user = await this.usersService.findById(id);
+    if (!user) {
+      throw new NotFoundException({
+        error: 'Could not file user',
+        location: __filename,
+      });
+    }
+
+    await this.usersService.deletePhoto(id);
   }
 
   @Get('/ldap')
