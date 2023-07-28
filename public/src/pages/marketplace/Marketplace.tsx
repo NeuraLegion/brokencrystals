@@ -15,6 +15,16 @@ interface Props {
 }
 const path = process.env.NODE_ENV === 'production' ? '/home/node/' : '';
 
+const extractVideoUrlParams = (): {
+  videoSrc: string | null;
+  videoTitle: string | null;
+} => {
+  const { searchParams } = new URL(window.location.href);
+  const videoSrc = searchParams.get('videosrc');
+  const videoTitle = searchParams.get('videotitle');
+  return { videoSrc, videoTitle };
+};
+
 export const Marketplace: FC<Props> = (props: Props) => {
   const [products, setProducts] = useState<Array<Product>>([]);
   const [sendFileResult, setSendFileResult] = useState<string>('');
@@ -47,8 +57,22 @@ export const Marketplace: FC<Props> = (props: Props) => {
       : getProducts().then((data) => setProducts(data));
   }, []);
 
+  useEffect(() => {
+    const videoElement = document.getElementById('testimonials-video');
+    let { videoSrc, videoTitle } = extractVideoUrlParams();
+    videoSrc =
+      videoSrc ||
+      'https://www.youtube-nocookie.com/embed/MPYlxeG-8_w?controls=0';
+    videoTitle = videoTitle || 'BC';
+    if (videoElement) {
+      videoElement.outerHTML = `'<iframe width="560" height="315" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" ${
+        videoSrc && 'src=' + videoSrc
+      } ${videoTitle && 'title=' + videoTitle}></iframe>'`;
+    }
+  }, []);
+
   return (
-    <>
+    <section>
       {props.preview || <Header onInnerPage={true} />}
 
       <section id="marketplace" className="portfolio">
@@ -119,7 +143,22 @@ export const Marketplace: FC<Props> = (props: Props) => {
           </div>
         </div>
       </section>
-    </>
+      {props.preview || (
+        <section id="video" className="testimonials section-bg">
+          <div
+            className="container d-flex justify-content-center"
+            data-aos="fade-up"
+          >
+            <iframe
+              width="560"
+              height="315"
+              id="testimonials-video"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            ></iframe>
+          </div>
+        </section>
+      )}
+    </section>
   );
 };
 
