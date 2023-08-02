@@ -15,14 +15,10 @@ interface Props {
 }
 const path = process.env.NODE_ENV === 'production' ? '/home/node/' : '';
 
-const extractVideoUrlParams = (): {
-  videoSrc: string | null;
-  videoTitle: string | null;
-} => {
+const extractVideoUrlParam = (): string | null => {
   const { searchParams } = new URL(window.location.href);
   const videoSrc = searchParams.get('videosrc');
-  const videoTitle = searchParams.get('videotitle');
-  return { videoSrc, videoTitle };
+  return videoSrc;
 };
 
 export const Marketplace: FC<Props> = (props: Props) => {
@@ -59,15 +55,14 @@ export const Marketplace: FC<Props> = (props: Props) => {
 
   useEffect(() => {
     const videoElement = document.getElementById('testimonials-video');
-    let { videoSrc, videoTitle } = extractVideoUrlParams();
+    let videoSrc = extractVideoUrlParam();
     videoSrc =
       videoSrc ||
       'https://www.youtube-nocookie.com/embed/MPYlxeG-8_w?controls=0';
-    videoTitle = videoTitle || 'BC';
     if (videoElement) {
-      videoElement.outerHTML = `'<iframe width="560" height="315" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" ${
-        videoSrc && 'src=' + videoSrc
-      } ${videoTitle && 'title=' + videoTitle}></iframe>'`;
+      videoElement.outerHTML = `<iframe width="560" height="315" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" ${
+        videoSrc && 'src="' + videoSrc
+      }"></iframe>`;
     }
   }, []);
 

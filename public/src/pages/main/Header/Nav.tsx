@@ -10,10 +10,10 @@ interface MenuItem {
 }
 
 const menu: Array<MenuItem> = [
-  { name: 'Home', path: '/', newTab: false },
+  { name: 'Home', path: '/?maptitle=map', newTab: false },
   {
     name: 'Marketplace',
-    path: '/marketplace?videosrc=https://www.youtube-nocookie.com/embed/MPYlxeG-8_w?controls=0&videotitle=bc',
+    path: '/marketplace?videosrc=https://www.youtube-nocookie.com/embed/MPYlxeG-8_w?controls=0',
     newTab: false
   },
   { name: 'Edit user data', path: RoutePath.Userprofile, newTab: false },
