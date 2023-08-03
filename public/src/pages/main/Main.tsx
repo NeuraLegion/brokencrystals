@@ -7,7 +7,14 @@ import FAQ from './FAQ';
 import Contact from './Contact';
 import Footer from './Footer';
 
+const extractIframeUrlParam = (): string | null => {
+  const { searchParams } = new URL(window.location.href);
+  const mapTitle = searchParams.get('maptitle');
+  return mapTitle;
+};
+
 export const Main: FC = () => {
+  const mapTitle = extractIframeUrlParam();
   return (
     <>
       <Header />
@@ -19,7 +26,7 @@ export const Main: FC = () => {
         </div>
         <Counts />
         <FAQ />
-        <Contact />
+        <Contact mapTitle={mapTitle} />
       </main>
 
       <Footer />
