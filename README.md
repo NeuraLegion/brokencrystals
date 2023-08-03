@@ -134,3 +134,5 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
 * **AO1 Vertical access controls** - The page /dashboard can be reached despite the rights of user.
 
 * **Broken Function Level Authorization** - The endpoint DELETE `/users/one/:id/photo?isAdmin=` can be used to delete any user's profile photo by enumerating the user IDs and setting the `isAdmin` query parameter to true, as there is no validation of it's value on the server side.
+
+* **IFrame Injection** - The `/testimonials` page a URL parameter `videosrc` which directly controls the src attribute of the IFrame at the bottom of this page. Similarly, the home page takes a URL param `maptitle` which directly controls the `title` attribute of the IFrame at the CONTACT section of this page.

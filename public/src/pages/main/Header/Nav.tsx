@@ -10,8 +10,12 @@ interface MenuItem {
 }
 
 const menu: Array<MenuItem> = [
-  { name: 'Home', path: '/', newTab: false },
-  { name: 'Marketplace', path: '/marketplace', newTab: false },
+  { name: 'Home', path: '/?maptitle=map', newTab: false },
+  {
+    name: 'Marketplace',
+    path: '/marketplace?videosrc=https://www.youtube-nocookie.com/embed/MPYlxeG-8_w?controls=0',
+    newTab: false
+  },
   { name: 'Edit user data', path: RoutePath.Userprofile, newTab: false },
   {
     name: 'Adminmenu',
@@ -47,8 +51,7 @@ const menu: Array<MenuItem> = [
   },
   {
     name: 'Vulnerabilities',
-    path:
-      'https://github.com/NeuraLegion/brokencrystals#vulnerabilities-overview',
+    path: 'https://github.com/NeuraLegion/brokencrystals#vulnerabilities-overview',
     newTab: true
   }
 ];
