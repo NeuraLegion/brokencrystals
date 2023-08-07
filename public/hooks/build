@@ -1,2 +1,2 @@
 #!/bin/bash
-docker build --target $TARGET_NAME --file $DOCKERFILE_PATH --tag $IMAGE_NAME .
+docker build --file $DOCKERFILE_PATH --tag $IMAGE_NAME .
