@@ -7,7 +7,6 @@ data:
   # /etc/nginx/conf.d/default.conf
   default.conf: | 
     server {
-        listen [::]:80 ipv6only=on;
         listen 80;
 
         root         /var/www/html;
