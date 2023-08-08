@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: {{ include "brokencrystals.fullname" . }}-nodejs-prod-app
-          image: neuralegion/brokencrystals:{{ .Values.images.main }}
+          image: brightsec/brokencrystals:{{ .Values.images.main }}
 #          command: ["/bin/sleep"]
 #          args: ["10000"]
           env:
