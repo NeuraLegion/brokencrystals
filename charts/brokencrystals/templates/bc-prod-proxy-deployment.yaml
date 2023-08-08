@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: {{ include "brokencrystals.fullname" . }}-nodejs-proxy-prod-app
-          image: neuralegion/brokencrystals-proxy-http:{{ .Values.images.client }}
+          image: brightsec/brokencrystals-proxy-http:{{ .Values.images.client }}
           env:
             - name: URL
               value: "https://{{ .Values.ingress.url }}"
