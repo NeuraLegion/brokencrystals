@@ -7,12 +7,7 @@ data:
   # /etc/nginx/conf.d/default.conf
   default.conf: | 
     server {
-        listen [::]:443 ssl ipv6only=on; # managed by Certbot
-        listen 443 ssl; # managed by Certbot
-
-        server_name         brokencrystals.com;
-        ssl_certificate     /etc/letsencrypt/live/brokencrystals.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/brokencrystals.com/privkey.pem;
+        listen 80;
 
         root         /var/www/html;
 
@@ -27,26 +22,26 @@ data:
         }
 
         location /api {
-            proxy_pass http://nodejs:3000;
+            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
         }
 
         location /swagger {
-            proxy_pass http://nodejs:3000;
+            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
         }
 
         location /graphiql {
-            proxy_pass http://nodejs:3000;
+            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
         }
 
         location /graphql {
-            proxy_pass http://nodejs:3000;
+            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
         }
 
         location /put.raw {
             rewrite put.raw /api/file/raw?path=./gil.txt break;
-            proxy_pass http://nodejs:3000;
+            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
         }
-
+    
         location ~* ^/(config\.js|config\.json|\.htaccess|\.env|\.nginx\.conf|\.robots\.txt)$ {
             allow all;
             log_not_found off;
@@ -62,4 +57,3 @@ data:
         location = /50x.html {
         }
     }
-
