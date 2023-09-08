@@ -36,6 +36,7 @@
     "@nestjs/graphql": "^11.0.0",
     "@nestjs/mercurius": "^11.0.3",
     "@nestjs/platform-fastify": "^9.3.9",
+    "@nestjs/serve-static": "^4.0.0",
     "@nestjs/swagger": "^6.2.1",
     "@sectester/bus": "^0.16.5",
     "@sectester/core": "^0.16.5",

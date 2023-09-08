@@ -25,7 +25,7 @@ services:
       - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
 
   nodejs:
-    image: neuralegion/brokencrystals
+    image: brokencrystals
     container_name: nodejs
     restart: always
     deploy:
@@ -41,20 +41,6 @@ services:
     depends_on:
       - db
       - keycloak
-
-  proxy:
-    image: neuralegion/brokencrystals-client
-    restart: always
-    environment:
-      CERTBOT_EMAIL: 'anatol@neuralegion.com'
-    ports:
-      - '80:80'
-      - '443:443'
-    depends_on:
-      - nodejs
-    volumes:
-      - ./nginx-config:/etc/nginx/user.conf.d:ro
-      - letsencrypt:/etc/letsencrypt
 
   watchtower:
     image: containrrr/watchtower
