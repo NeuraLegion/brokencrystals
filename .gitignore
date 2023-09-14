@@ -1,6 +1,6 @@
 # compiled output
 /dist
-/public/build
+/client/build
 /node_modules
 
 # Logs

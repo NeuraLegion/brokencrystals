@@ -6,6 +6,7 @@ import fastifyCookie from '@fastify/cookie';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
+import { readFileSync } from 'fs';
 import * as cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -22,7 +23,21 @@ async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
 
-  const server = fastify({ trustProxy: true, onProtoPoisoning: 'ignore' });
+  const server = fastify({
+    trustProxy: true,
+    onProtoPoisoning: 'ignore',
+    https:
+      process.env.NODE_ENV === 'production'
+        ? {
+            cert: readFileSync(
+              '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem',
+            ),
+            key: readFileSync(
+              '/etc/letsencrypt/live/brokencrystals.com/privkey.pem',
+            ),
+          }
+        : null,
+  });
 
   const app: NestFastifyApplication = await NestFactory.create(
     AppModule,
