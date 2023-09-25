@@ -6,29 +6,31 @@ export const FULL_USER_INFO = 'fullUserInfo';
 
 export class UserDto {
   @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
-  @ApiProperty()
+  @ApiProperty({ example: 'john.doe@examle.com', required: true })
   email: string;
 
   @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
-  @ApiProperty()
+  @ApiProperty({ example: 'John', required: true })
   firstName: string;
 
   @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
-  @ApiProperty()
+  @ApiProperty({ example: 'Doe', required: true })
   lastName: string;
 
   @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
-  @ApiProperty()
+  @ApiProperty({ example: 'Bright Security', required: true })
   company: string;
 
   @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
-  @ApiProperty()
+  @ApiProperty({ example: 1 })
   id: number;
 
   @Expose({ groups: [FULL_USER_INFO] })
+  @ApiProperty({ example: '4263982640269299' })
   cardNumber: string;
 
   @Expose({ groups: [FULL_USER_INFO] })
+  @ApiProperty({ example: '12065550100' })
   phoneNumber: string;
 
   @Exclude()
@@ -37,6 +39,7 @@ export class UserDto {
 
   @Exclude()
   @ApiHideProperty()
+  @ApiProperty({ example: 'Pa55w0rd' })
   password?: string;
 
   @Exclude()
