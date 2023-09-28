@@ -1,0 +1,6 @@
+ingress:
+  url: brokencrystals-exp.dev.vuln.nexploit.app
+  cert: ""
+  authlevel: "."
+images: 
+  main: experimental
