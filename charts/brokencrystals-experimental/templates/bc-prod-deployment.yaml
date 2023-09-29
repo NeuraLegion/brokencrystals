@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: {{ include "brokencrystals.fullname" . }}-nodejs-app
-          image: brokencrystals:{{ .Values.images.main }}
+          image: brightsec/brokencrystals:{{ .Values.images.main }}
 #          command: ["/bin/sleep"]
 #          args: ["10000"]
           env:
@@ -67,6 +67,10 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 120
             periodSeconds: 30
+      volumes:
+      - name: {{ include "brokencrystals.fullname" . }}-nginx
+        configMap:
+          name: {{ include "brokencrystals.fullname" . }}-nginx
 
 ---
 kind: Service
