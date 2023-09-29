@@ -34,7 +34,7 @@ spec:
             - name: DB_VENDOR
               value: "POSTGRES"
             - name: DB_ADDR
-              value: "{{ include "brokencrystals.fullname" . }}-postgres-service"
+              value: "{{ include "brokencrystals.fullname" . }}-postgres"
             - name: DB_DATABASE
               value: "keycloak"
             - name: DB_SCHEMA
@@ -66,7 +66,7 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
-  name: {{ include "brokencrystals.fullname" . }}-keycloak-service
+  name: {{ include "brokencrystals.fullname" . }}-keycloak
   namespace: {{ .Release.Namespace }}
 spec:
   selector:

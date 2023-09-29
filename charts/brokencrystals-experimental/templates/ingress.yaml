@@ -54,6 +54,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "brokencrystals.fullname" . }}-keycloak-service
+                name: {{ include "brokencrystals.fullname" . }}-keycloak
                 port:
                   number: 8080

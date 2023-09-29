@@ -40,7 +40,7 @@ spec:
 kind: Service
 apiVersion: v1
 metadata:
-  name: {{ include "brokencrystals.fullname" . }}-keycloak-postgres-service
+  name: {{ include "brokencrystals.fullname" . }}-postgres
   namespace: {{ .Release.Namespace }}
 spec:
   selector:
