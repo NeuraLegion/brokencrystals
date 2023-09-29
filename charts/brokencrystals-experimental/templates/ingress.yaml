@@ -14,10 +14,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - {{ .Release.Name }}.{{ .Values.ingress.url }}
+        - {{ .Values.ingress.url }}
       secretName: {{ if eq .Values.ingress.cert "" }}{{ include "brokencrystals.fullname" . }}-brokencrystals-secret{{ else }}{{ .Values.ingress.cert }}{{ end }}
   rules:
-    - host: {{ .Release.Name }}.{{ .Values.ingress.url }}
+    - host: {{ .Values.ingress.url }}
       http:
         paths:
           - path: /
