@@ -9,14 +9,15 @@ export enum FormMode {
 }
 
 export class LoginRequest {
-  @ApiProperty()
+  @ApiProperty({ example: 'john', required: true })
   user: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Pa55w0rd', required: true })
   password: string;
 
   @ApiProperty({
     enum: FormMode,
+    required: true,
   })
   op?: string;
 

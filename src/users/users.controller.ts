@@ -31,6 +31,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -86,6 +87,7 @@ export class UsersController {
   }
 
   @Get('/one/:email')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
     description: SWAGGER_DESC_FIND_USER,
@@ -114,6 +116,7 @@ export class UsersController {
   }
 
   @Get('/id/:id')
+  @ApiQuery({ name: 'id', example: 1, required: true })
   @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
     description: SWAGGER_DESC_FIND_USER,
@@ -142,6 +145,7 @@ export class UsersController {
   }
 
   @Get('/fullinfo/:email')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @SerializeOptions({ groups: [FULL_USER_INFO] })
   @ApiOperation({
     description: SWAGGER_DESC_FIND_FULL_USER_INFO,
@@ -170,6 +174,7 @@ export class UsersController {
   }
 
   @Get('/search/:name')
+  @ApiQuery({ name: 'name', example: 'john', required: true })
   @SerializeOptions({ groups: [FULL_USER_INFO] })
   @ApiOperation({
     description: SWAGGER_DESC_FIND_USERS,
@@ -189,6 +194,7 @@ export class UsersController {
   }
 
   @Get('/one/:email/photo')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -232,6 +238,7 @@ export class UsersController {
   }
 
   @Delete('/one/:id/photo')
+  @ApiQuery({ name: 'id', example: 1, required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -273,6 +280,12 @@ export class UsersController {
   }
 
   @Get('/ldap')
+  @ApiQuery({
+    name: 'query',
+    example:
+      '(&(objectClass=person)(objectClass=user)(email=john.doe@example.com))',
+    required: true,
+  })
   @ApiOperation({
     description: SWAGGER_DESC_LDAP_SEARCH,
   })
@@ -385,6 +398,7 @@ export class UsersController {
   }
 
   @Put('/one/:email/info')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -427,6 +441,7 @@ export class UsersController {
   }
 
   @Get('/one/:email/info')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -470,6 +485,7 @@ export class UsersController {
   }
 
   @Get('/one/:email/adminpermission')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard, AdminGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -493,6 +509,7 @@ export class UsersController {
   }
 
   @Put('/one/:email/photo')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
