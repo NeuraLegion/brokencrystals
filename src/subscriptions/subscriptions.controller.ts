@@ -1,5 +1,10 @@
 import { Controller, Logger, Post, Query } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiCreatedResponse,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { SWAGGER_DESC_CREATE_SUBSCRIPTION } from './subscriptions.controller.swagger.desc';
 
 @Controller('/api/subscriptions')
@@ -8,6 +13,11 @@ export class SubscriptionsController {
   private readonly logger = new Logger(SubscriptionsController.name);
 
   @Post()
+  @ApiQuery({
+    name: 'email',
+    example: 'john.doe@example.com',
+    required: true,
+  })
   @ApiOperation({
     description: SWAGGER_DESC_CREATE_SUBSCRIPTION,
   })

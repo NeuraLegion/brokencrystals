@@ -25,6 +25,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiProduces,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import * as dotT from 'dot';
@@ -73,6 +74,7 @@ export class AppController {
   }
 
   @Get('goto')
+  @ApiQuery({ name: 'url', example: 'https://google.com', required: true })
   @ApiOperation({
     description: API_DESC_REDIRECT_REQUEST,
   })
@@ -85,6 +87,17 @@ export class AppController {
   }
 
   @Post('metadata')
+  @ApiProduces('text/plain')
+  @ApiConsumes('text/plain')
+  @ApiBody({
+    type: String,
+    examples: {
+      xml_doc: {
+        summary: 'XML doc',
+        value: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 915 585"><g stroke-width="3.45" fill="none"><path stroke="#000" d="M11.8 11.8h411v411l-411 .01v-411z"/><path stroke="#448" d="M489 11.7h415v411H489v-411z"/></g></svg>`,
+      },
+    },
+  })
   @ApiOperation({
     description: API_DESC_XML_METADATA,
   })
@@ -120,6 +133,7 @@ export class AppController {
   }
 
   @Get('spawn')
+  @ApiQuery({ name: 'command', example: 'ls -la', required: true })
   @ApiOperation({
     description: API_DESC_LAUNCH_COMMAND,
   })
@@ -191,6 +205,7 @@ export class AppController {
   }
 
   @Get('/v1/userinfo/:email')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseInterceptors(ClassSerializerInterceptor)
   @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
@@ -219,6 +234,7 @@ export class AppController {
   }
 
   @Get('/v2/userinfo/:email')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @UseInterceptors(ClassSerializerInterceptor)

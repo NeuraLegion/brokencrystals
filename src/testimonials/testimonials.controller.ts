@@ -9,9 +9,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
@@ -34,6 +36,9 @@ export class TestimonialsController {
   constructor(private readonly testimonialsService: TestimonialsService) {}
 
   @Post()
+  @ApiBody({
+    type: TestimonialDto,
+  })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -81,6 +86,11 @@ export class TestimonialsController {
   }
 
   @Get('count')
+  @ApiQuery({
+    name: 'query',
+    example: 'select count(*) as count from testimonial',
+    required: true,
+  })
   @Header('content-type', 'text/html')
   @ApiOperation({
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY,

@@ -13,6 +13,7 @@ import {
   ApiTags,
   ApiForbiddenResponse,
   ApiInternalServerErrorResponse,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
@@ -74,6 +75,7 @@ export class ProductsController {
   }
 
   @Get('views')
+  @ApiHeader({ name: 'x-product-name', example: 'Amethyst' })
   @ApiOperation({
     description: API_DESC_GET_VIEW_PRODUCT,
   })
