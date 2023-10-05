@@ -25,7 +25,7 @@ spec:
               value: "https://{{ .Values.ingress.url }}"
      #         value: "https://brokencrystals.com"
             - name: DATABASE_HOST
-              value: "{{ include "brokencrystals.fullname" . }}-postgres-service"
+              value: "{{ include "brokencrystals.fullname" . }}-postgres-nodejs"
             - name: DATABASE_SCHEMA
               value: "bc"
             - name: DATABASE_USER
