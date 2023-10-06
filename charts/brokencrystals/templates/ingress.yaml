@@ -24,7 +24,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "brokencrystals.fullname" . }}-nodejs-proxy-prod-service
+                name: {{ include "brokencrystals.fullname" . }}-nodejs-proxy
                 port:
                   number: 80
 
@@ -32,7 +32,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "brokencrystals.fullname" . }}-prod-keycloak
+  name: {{ include "brokencrystals.fullname" . }}-keycloak
   namespace: {{ .Release.Namespace }}
   annotations:
     kubernetes.io/ingress.class: nginx
@@ -54,6 +54,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "brokencrystals.fullname" . }}-keycloak-prod-service
+                name: {{ include "brokencrystals.fullname" . }}-keycloak
                 port:
                   number: 8080
