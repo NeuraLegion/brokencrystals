@@ -2,22 +2,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+  name: {{ include "brokencrystals.fullname" . }}-nodejs
   namespace: {{ .Release.Namespace }}
   labels:
-    app: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+    app: {{ include "brokencrystals.fullname" . }}-nodejs
 spec:
   selector:
     matchLabels:
-      app: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+      app: {{ include "brokencrystals.fullname" . }}-nodejs
   template:
     metadata:
       labels:
-        app: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+        app: {{ include "brokencrystals.fullname" . }}-nodejs
     spec:
       containers:
-        - name: {{ include "brokencrystals.fullname" . }}-nodejs-prod-app
-          image: brightsec/brokencrystals:{{ .Values.images.main }}
+        - name: {{ include "brokencrystals.fullname" . }}-nodejs-app
+          image: neuralegion/brokencrystals:{{ .Values.images.main }}
 #          command: ["/bin/sleep"]
 #          args: ["10000"]
           env:
@@ -25,7 +25,7 @@ spec:
               value: "https://{{ .Values.ingress.url }}"
      #         value: "https://brokencrystals.com"
             - name: DATABASE_HOST
-              value: "{{ include "brokencrystals.fullname" . }}-postgres-prod-service"
+              value: "{{ include "brokencrystals.fullname" . }}-postgres"
             - name: DATABASE_SCHEMA
               value: "bc"
             - name: DATABASE_USER
@@ -77,7 +77,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   selector:
-    app: {{ include "brokencrystals.fullname" . }}-nodejs-prod
+    app: {{ include "brokencrystals.fullname" . }}-nodejs
   ports:
     - name: http
       port: 3000

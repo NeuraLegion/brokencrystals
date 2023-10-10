@@ -34,7 +34,7 @@ spec:
             - name: DB_VENDOR
               value: "POSTGRES"
             - name: DB_ADDR
-              value: "{{ include "brokencrystals.fullname" . }}-keycloak-postgres"
+              value: "{{ include "brokencrystals.fullname" . }}-keycloak-db"
             - name: DB_DATABASE
               value: "keycloak"
             - name: DB_SCHEMA
