@@ -4,7 +4,7 @@
   "proxy": "http://localhost:3000",
   "private": true,
   "dependencies": {
-    "axios": "^0.21.4",
+    "axios": "^1.6.0",
     "dangerously-set-html-content": "^1.0.8",
     "get-browser-fingerprint": "^2.0.1",
     "history": "^4.10.1",
