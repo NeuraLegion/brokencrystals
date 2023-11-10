@@ -43,7 +43,7 @@
     "@sectester/reporter": "^0.16.5",
     "@sectester/runner": "^0.16.5",
     "@sectester/scan": "^0.16.5",
-    "axios": "^0.21.4",
+    "axios": "^1.6.0",
     "bcrypt": "^5.1.0",
     "class-transformer": "^0.5.1",
     "dot": "^1.1.3",
