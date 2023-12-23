@@ -29,7 +29,7 @@ export class UserDto {
   @ApiProperty({ example: '4263982640269299' })
   cardNumber: string;
 
-  @Expose({ groups: [FULL_USER_INFO] })
+  @Expose({ groups: [BASIC_USER_INFO, FULL_USER_INFO] })
   @ApiProperty({ example: '12065550100' })
   phoneNumber: string;
 
