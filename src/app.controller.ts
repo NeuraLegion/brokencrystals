@@ -40,6 +40,7 @@ import {
   SWAGGER_DESC_REDIRECT_REQUEST,
   SWAGGER_DESC_RENDER_REQUEST,
   SWAGGER_DESC_XML_METADATA,
+  SWAGGER_DESC_NESTED_JSON
 } from './app.controller.swagger.desc';
 import { UsersService } from './users/users.service';
 import { AuthGuard } from './auth/auth.guard';
@@ -56,7 +57,7 @@ export class AppController {
   constructor(
     private readonly configService: ConfigService,
     private readonly userService: UsersService,
-  ) {}
+  ) { }
 
   @Post('render')
   @ApiProduces('text/plain')
@@ -260,5 +261,28 @@ export class AppController {
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }
+  }
+
+  @Get('nestedJson')
+  @ApiOperation({
+    description: SWAGGER_DESC_NESTED_JSON,
+  })
+  @Header('content-type', 'application/json')
+  async getNestedJson(@Query('depth') depth: number = 1): Promise<string> {
+    if (depth < 1) {
+      throw Error("Json nesting depth is invalid!")
+    }
+
+    this.logger.debug(`Creating a json with a nesting depth of ${depth}`);
+
+    var tmpObj: object = {};
+    var jsonObj: object = { "0": "Leaf" };
+    for (let i = 1; i < depth; i++) {
+      tmpObj = {};
+      tmpObj[i.toString()] = structuredClone(jsonObj);
+      jsonObj = structuredClone(tmpObj);
+    }
+
+    return JSON.stringify(jsonObj);
   }
 }
