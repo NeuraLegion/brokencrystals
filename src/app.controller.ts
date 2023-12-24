@@ -270,9 +270,9 @@ export class AppController {
     description: SWAGGER_DESC_NESTED_JSON,
   })
   @Header('content-type', 'application/json')
-  async getNestedJson(@Query('depth', new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE })) depth: number = 1): Promise<string> {
+  async getNestedJson(@Query('depth', new ParseIntPipe({ errorHttpStatusCode: HttpStatus.BAD_REQUEST })) depth: number = 1): Promise<string> {
     if (depth < 1) {
-      throw new HttpException("JSON Nesting depth is invalid", 400);
+      throw new HttpException("JSON Nesting depth is invalid", HttpStatus.BAD_REQUEST);
     }
 
     this.logger.debug(`Creating a JSON with a nesting depth of ${depth}`);
