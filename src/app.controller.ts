@@ -270,17 +270,17 @@ export class AppController {
   @Header('content-type', 'application/json')
   async getNestedJson(@Query('depth') depth: number = 1): Promise<string> {
     if (depth < 1) {
-      throw Error("Json nesting depth is invalid!")
+      throw new HttpException("JSON Nesting depth is invalid", 400);
     }
 
-    this.logger.debug(`Creating a json with a nesting depth of ${depth}`);
+    this.logger.debug(`Creating a JSON with a nesting depth of ${depth}`);
 
     var tmpObj: object = {};
     var jsonObj: object = { "0": "Leaf" };
     for (let i = 1; i < depth; i++) {
       tmpObj = {};
-      tmpObj[i.toString()] = structuredClone(jsonObj);
-      jsonObj = structuredClone(tmpObj);
+      tmpObj[i.toString()] = Object.assign({}, jsonObj);
+      jsonObj = Object.assign({}, tmpObj);
     }
 
     return JSON.stringify(jsonObj);

@@ -10,4 +10,4 @@ export const SWAGGER_DESC_LAUNCH_COMMAND = `Launches system command on server`;
 
 export const SWAGGER_DESC_CONFIG_SERVER = `Returns server configuration to the client`;
 
-export const SWAGGER_DESC_NESTED_JSON = `Returns a nested json response with configurable depth`;
+export const SWAGGER_DESC_NESTED_JSON = `Returns a nested JSON response with configurable depth`;
