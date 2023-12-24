@@ -14,6 +14,8 @@ import {
   SerializeOptions,
   UseGuards,
   UseInterceptors,
+  ParseIntPipe,
+  HttpStatus,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -268,7 +270,7 @@ export class AppController {
     description: SWAGGER_DESC_NESTED_JSON,
   })
   @Header('content-type', 'application/json')
-  async getNestedJson(@Query('depth') depth: number = 1): Promise<string> {
+  async getNestedJson(@Query('depth', new ParseIntPipe({ errorHttpStatusCode: HttpStatus.NOT_ACCEPTABLE })) depth: number = 1): Promise<string> {
     if (depth < 1) {
       throw new HttpException("JSON Nesting depth is invalid", 400);
     }
