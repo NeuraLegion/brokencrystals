@@ -64,7 +64,8 @@
     "rimraf": "^3.0.2",
     "rxjs": "^7.8.0",
     "stream-buffers": "^3.0.2",
-    "ts-morph": "^17.0.1"
+    "ts-morph": "^17.0.1",
+    "xpath": "0.0.34"
   },
   "devDependencies": {
     "@mikro-orm/cli": "^4.5.10",
@@ -79,7 +80,7 @@
     "@types/jwk-to-pem": "^2.0.1",
     "@types/jwt-simple": "^0.5.33",
     "@types/libxmljs": "^0.18.8",
-    "@types/node": "^14.18.37",
+    "@types/node": "^14.18.63",
     "@types/raw-body": "^2.3.0",
     "@types/stream-buffers": "^3.0.4",
     "@types/supertest": "^2.0.12",
