@@ -27,7 +27,7 @@ export class PartnersController {
 
     constructor(private readonly partnersService: PartnersService) { }
 
-    // WIP: XPATH Injection (place in hierarchy is probably wrong)
+    // WIP: XPATH Injection
     @Get('query')
     @ApiQuery({
         name: 'property',
