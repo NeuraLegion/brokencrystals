@@ -139,4 +139,4 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
 
 * **Excessive Data Exposure** - The `/api/users/one/:email` is supposed to expose only basic user information required to be displayed on the UI, but it also returns the user's phone number which is unnecessary information.
 
-* **Business Constraint Bypass** - The `/api/products/latest` endpoint supports a `limit` parameter, which by default is set to 3. The `/api/products` endpoint is a password protected endpoint which returns all of the products, yet if you change the `limit` param of `/api/products/latest` to be high enough you could get the same results without the need to be authenticated.
+* **Business Constraint Bypass** - The `/api/products/latest` endpoint supports a `limit` parameter, which by default is set to 3. The `/api/products` endpoint is a password protected endpoint which returns all of the products, yet if you change the `limit` param of `/api/products/latest` to be high enough you could get the same results without the need to be authenticated. 
