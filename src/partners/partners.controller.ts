@@ -37,7 +37,7 @@ export class PartnersController {
     })
     @ApiQuery({
         name: 'subCategory',
-        example: PartnersService.getPropertiesSubCategoriesAsText(),
+        example: "Possible options: " + PartnersService.getPropertiesSubCategoriesAsText(),
         required: false,
     })
     @Header('content-type', 'text/xml')
@@ -47,7 +47,7 @@ export class PartnersController {
     @ApiOkResponse({
         type: String,
     })
-    async get(@Query('property') property: PartnerProperties, @Query('subCategory') subCategory: string): Promise<String> {
+    async get(@Query('property') property: PartnerProperties, @Query('subCategory') subCategory: string = ''): Promise<String> {
         this.logger.debug(`Getting partners with property ${property} and sub-category ${subCategory}`);
 
         let xpathExpression = `//${property}`
@@ -58,6 +58,8 @@ export class PartnersController {
         }
 
         let nodes = this.partnersService.selectPartnerPropertyByXPATH(xpathExpression)
+
+        // TODO: Return result in a nicer manner
         return nodes.toString()
     }
 }

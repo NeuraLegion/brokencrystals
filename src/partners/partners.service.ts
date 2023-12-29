@@ -14,7 +14,7 @@ export enum PartnerProperties {
 export class PartnersService {
   private readonly log: Logger = new Logger(PartnersService.name);
 
-  private static readonly partnerSubPropertiesMapping = {
+  private static readonly propertiesSubCategoriesMapping = {
     "residency": ['country', 'state', 'city']
   }
 
@@ -66,7 +66,7 @@ export class PartnersService {
 
   static getPropertiesSubCategoriesAsText(): string {
     let mappings = [];
-    for (const [key, value] of Object.entries(this.partnerSubPropertiesMapping)) {
+    for (const [key, value] of Object.entries(PartnersService.propertiesSubCategoriesMapping)) {
       mappings.push(`${key} -> ${value}`)
     }
 
