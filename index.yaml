@@ -150,6 +150,19 @@ entries:
     version: 0.0.19
   brokencrystals-exp:
   - apiVersion: v2
+    created: "2024-01-10T11:04:14.245640885Z"
+    description: 'Benchmark application that uses modern technologies and implements
+      a set of common security vulnerabilities '
+    digest: 7857e4b6ba0c7a9444cd2fb7b0d9f3091b53a1988d4d06f846b05a78a756ebb3
+    keywords:
+    - brokencrystals-exp
+    - brkn-e
+    name: brokencrystals-exp
+    type: application
+    urls:
+    - https://github.com/NeuraLegion/brokencrystals/releases/download/brokencrystals-exp-0.0.27/brokencrystals-exp-0.0.27.tgz
+    version: 0.0.27
+  - apiVersion: v2
     created: "2023-10-05T12:30:14.971812672Z"
     description: 'Benchmark application that uses modern technologies and implements
       a set of common security vulnerabilities '
@@ -227,4 +240,4 @@ entries:
     urls:
     - https://github.com/NeuraLegion/brokencrystals/releases/download/brokencrystals-exp-0.0.21/brokencrystals-exp-0.0.21.tgz
     version: 0.0.21
-generated: "2023-12-15T10:54:17.508048168Z"
+generated: "2024-01-10T11:04:14.245688634Z"
