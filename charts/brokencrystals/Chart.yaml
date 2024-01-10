@@ -1,10 +1,10 @@
 apiVersion: v2
-name: brokencrystals
+name: brokencrystals-exp
 description: |
   Benchmark application that uses modern technologies and implements a set of
   common security vulnerabilities
 type: application
-version: 0.0.22
+version: 0.0.29
 keywords:
-  - brokencrystals
-  - brkn
+  - brokencrystals-exp
+  - brkn-e
