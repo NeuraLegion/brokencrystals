@@ -60,6 +60,8 @@ spec:
             requests:
               cpu: 1800m
               memory: 1024Mi
+            limits:
+              memory: 15G
           livenessProbe:
             httpGet:
               path: /api/config
