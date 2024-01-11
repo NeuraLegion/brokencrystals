@@ -1,7 +1,7 @@
 ingress:
-  url: brokencrystals.dev.vuln.nexploit.app
+  url: k3s.brokencrystals.nexploit.app
   cert: ""
   authlevel: "."
 images: 
-  main: latest
+  main: experimental
   client: latest
