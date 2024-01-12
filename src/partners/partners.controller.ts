@@ -36,8 +36,8 @@ export class PartnersController {
         required: true,
     })
     @ApiQuery({
-        name: 'subCategory',
-        example: "Possible options: " + PartnersService.getPropertiesSubCategoriesAsText(),
+        name: 'subProperty',
+        example: "Possible options - " + PartnersService.getAllSubPropertiesAsText(),
         required: false,
     })
     @Header('content-type', 'text/xml')
@@ -47,19 +47,20 @@ export class PartnersController {
     @ApiOkResponse({
         type: String,
     })
-    async get(@Query('property') property: PartnerProperties, @Query('subCategory') subCategory: string = ''): Promise<String> {
-        this.logger.debug(`Getting partners with property ${property} and sub-category ${subCategory}`);
+    async get(@Query('property') property: PartnerProperties, @Query('subProperty') subProperty: string = ''): Promise<String> {
+        this.logger.debug(`Getting partners with property ${property} and sub-property ${subProperty}`);
 
         let xpathExpression = `//${property}`
 
         // Add element's attribute selector if supplied
-        if (subCategory) {
-            xpathExpression += `[@${subCategory}]`
+        if (subProperty) {
+            xpathExpression += `[@${subProperty}]`
         }
 
         let nodes = this.partnersService.selectPartnerPropertyByXPATH(xpathExpression)
 
         // TODO: Return result in a nicer manner
-        return nodes.toString()
+        let finalXML = `<?xml version="1.0" encoding="UTF-8"?>\n${nodes.join('\n')}`;
+        return finalXML;
     }
 }

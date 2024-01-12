@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-var xpath = require('xpath');
-const { JSDOM } = require("jsdom");
+const xpath = require('xpath');
+const dom = require('xmldom').DOMParser;
 
 export enum PartnerProperties {
   Name = 'name',
@@ -12,8 +12,6 @@ export enum PartnerProperties {
 
 @Injectable()
 export class PartnersService {
-  private readonly log: Logger = new Logger(PartnersService.name);
-
   private static readonly propertiesSubCategoriesMapping = {
     "residency": ['country', 'state', 'city']
   }
@@ -52,10 +50,7 @@ export class PartnersService {
   `;
 
   private getPartnersXMLObj(): object {
-    const dom = new JSDOM();
-    const domParser = new dom.window.DOMParser();
-
-    let partnersXMLObj = domParser.parseFromString(this.XML_AUTHORS_STR, 'text/xml');
+    let partnersXMLObj = new dom().parseFromString(this.XML_AUTHORS_STR, 'text/xml');
     return partnersXMLObj;
   }
 
@@ -64,10 +59,10 @@ export class PartnersService {
     return xpath.select(xpathExpression, partnersXMLObj);
   }
 
-  static getPropertiesSubCategoriesAsText(): string {
+  static getAllSubPropertiesAsText(): string {
     let mappings = [];
     for (const [key, value] of Object.entries(PartnersService.propertiesSubCategoriesMapping)) {
-      mappings.push(`${key} -> ${value}`)
+      mappings.push(`For the property '${key}' you can use: ${value}`)
     }
 
     return mappings.join(' | ');

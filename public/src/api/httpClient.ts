@@ -274,3 +274,10 @@ export function viewProduct(productName: string): Promise<any> {
     }
   });
 }
+
+export function queryPartners(property: string, subPropery: string = ""): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Partners}/query?property=${property}&subPropery=${subPropery}`,
+    method: 'get'
+  });
+}

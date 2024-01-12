@@ -9,5 +9,6 @@ export enum ApiUrl {
   Goto = '/api/goto',
   Render = '/api/render',
   Spawn = '/api/spawn',
-  File = '/api/file'
+  File = '/api/file',
+  Partners = '/api/partners'
 }
