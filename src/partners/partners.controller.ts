@@ -27,7 +27,6 @@ export class PartnersController {
 
     constructor(private readonly partnersService: PartnersService) { }
 
-    // WIP: XPATH Injection
     @Get('query')
     @ApiQuery({
         name: 'property',
@@ -52,15 +51,11 @@ export class PartnersController {
 
         let xpathExpression = `//${property}`
 
-        // Add element's attribute selector if supplied
+        // Add a sub-property filter if supplied
         if (subProperty) {
             xpathExpression += `[@${subProperty}]`
         }
 
-        let nodes = this.partnersService.selectPartnerPropertyByXPATH(xpathExpression)
-
-        // TODO: Return result in a nicer manner
-        let finalXML = `<?xml version="1.0" encoding="UTF-8"?>\n${nodes.join('\n')}`;
-        return finalXML;
+        return this.partnersService.getPartnersProperties(property, xpathExpression);
     }
 }

@@ -8,6 +8,7 @@ export enum PartnerProperties {
   Age = 'age',
   Profession = 'profession',
   Residency = 'residency',
+  Password = 'password'
 }
 
 @Injectable()
@@ -24,40 +25,26 @@ export class PartnersService {
         <age>50</age>
         <profession>Chemistry Teacher</profession>
         <residency country="US" state="New Mexico" city="Albuquerque" />
+        <password>Heisenberg123</password>
       </partner>
 
       <partner>
         <name>Jesse Pinkman</name>
         <age>25</age>
         <profession>Professional Cook</profession>
-        <residency country="US" state="New Mexico" city="Yo Mom" />
+        <residency country="US" state="New Mexico" city="Yo Moma" />
+        <password>Yoyo1!</password>
       </partner>
 
       <partner>
         <name>Michael Ehrmantraut</name>
         <age>65</age>
-        <profession>Security Agent</profession>
+        <profession>Personal Security Agent</profession>
         <residency country="US" state="New Mexico" city="Albuquerque" />
-      </partner>
-
-      <partner>
-        <name>Maximus Prime</name>
-        <age>21</age>
-        <profession>Security Analyst</profession>
-        <residency country="IL" city="Haifa" />
+        <password>LittleKid777</password>
       </partner>
     </partners>
   `;
-
-  private getPartnersXMLObj(): object {
-    let partnersXMLObj = new dom().parseFromString(this.XML_AUTHORS_STR, 'text/xml');
-    return partnersXMLObj;
-  }
-
-  selectPartnerPropertyByXPATH(xpathExpression: string): Array<string> {
-    let partnersXMLObj = this.getPartnersXMLObj();
-    return xpath.select(xpathExpression, partnersXMLObj);
-  }
 
   static getAllSubPropertiesAsText(): string {
     let mappings = [];
@@ -66,5 +53,30 @@ export class PartnersService {
     }
 
     return mappings.join(' | ');
+  }
+
+  private getPartnersXMLObj(): object {
+    let partnersXMLObj = new dom().parseFromString(this.XML_AUTHORS_STR, 'text/xml');
+    return partnersXMLObj;
+  }
+
+  private selectPartnerPropertyByXPATH(xpathExpression: string): Array<string> {
+    let partnersXMLObj = this.getPartnersXMLObj();
+    return xpath.select(xpathExpression, partnersXMLObj);
+  }
+
+  getPartnersProperties(property: string, xpathExpression: string): any {
+    let nodes = this.selectPartnerPropertyByXPATH(xpathExpression)
+
+    if (property === "password") {
+      return "No, this is a secret"
+    }
+
+    let finalXML = `<?xml version="1.0" encoding="UTF-8"?>
+<${property + "-list"}>
+${nodes.join('\n')}
+</${property + "-list"}>`;
+
+    return finalXML;
   }
 }
