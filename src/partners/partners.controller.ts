@@ -2,6 +2,8 @@ import {
     Controller,
     Get,
     Header,
+    HttpException,
+    HttpStatus,
     Logger,
     Query,
 } from '@nestjs/common';
@@ -27,17 +29,13 @@ export class PartnersController {
 
     constructor(private readonly partnersService: PartnersService) { }
 
+    // **** This is a general XPATH injection ep - Will accept anything ****
     @Get('query')
     @ApiQuery({
-        name: 'property',
+        name: 'xpath',
         enum: PartnerProperties,
-        example: 'name',
+        example: PartnerProperties.Name,
         required: true,
-    })
-    @ApiQuery({
-        name: 'subProperty',
-        example: "Possible options - " + PartnersService.getAllSubPropertiesAsText(),
-        required: false,
     })
     @Header('content-type', 'text/xml')
     @ApiOperation({
@@ -46,16 +44,72 @@ export class PartnersController {
     @ApiOkResponse({
         type: String,
     })
-    async get(@Query('property') property: PartnerProperties, @Query('subProperty') subProperty: string = ''): Promise<String> {
-        this.logger.debug(`Getting partners with property ${property} and sub-property ${subProperty}`);
+    async queryPartnersRaw(@Query('xpath') xpath: string): Promise<String> {
+        this.logger.debug(`Getting partners with xpath expression "${xpath}"`);
 
-        let xpathExpression = `//${property}`
-
-        // Add a sub-property filter if supplied
-        if (subProperty) {
-            xpathExpression += `[@${subProperty}]`
+        try {
+            return this.partnersService.getPartnersProperties(xpath);
+        } catch (err) {
+            throw new HttpException(`Failed to load XML using XPATH. Details: ${err}`, HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
 
-        return this.partnersService.getPartnersProperties(property, xpathExpression);
+    // **** This is an XPATH injection boolean detection ep ****
+    @Get('partnerWealth')
+    @ApiQuery({
+        name: 'username',
+        type: 'string',
+        example: 'Walter White',
+        required: true,
+    })
+    @ApiQuery({
+        name: 'password',
+        type: 'string',
+        example: '*****',
+        required: true,
+    })
+    @Header('content-type', 'text/xml')
+    @ApiOperation({
+        description: API_DESC_QUERY_PARTNERS,
+    })
+    @ApiOkResponse({
+        type: String,
+    })
+    async getPartnerWealth(@Query('username') username: string, @Query('password') password: string): Promise<String> {
+        this.logger.debug(`Trying to get partner wealth for ${username} using password ${password}`);
+
+        try {
+            let xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/wealth`
+            return this.partnersService.getPartnersProperties(xpath);
+        } catch (err) {
+            throw new HttpException(`Access denied to partner's wealth`, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+
+    // **** This is an XPATH injection string detection ep ****
+    @Get('searchPartners')
+    @ApiQuery({
+        name: 'keyword',
+        type: 'string',
+        example: 'Walter',
+        required: true,
+    })
+    @Header('content-type', 'text/xml')
+    @ApiOperation({
+        description: API_DESC_QUERY_PARTNERS,
+    })
+    @ApiOkResponse({
+        type: String,
+    })
+    async getTopRankedPartners(@Query('keyword') keyword: string): Promise<String> {
+        this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
+
+        try {
+            let xpath = `//partners/partner[contains(., '${keyword}')]/name`
+            return this.partnersService.getPartnersProperties(xpath);
+        } catch (err) {
+            throw new HttpException(`Access denied to partner's wealth`, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 }
