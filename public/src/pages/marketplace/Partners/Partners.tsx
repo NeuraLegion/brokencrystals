@@ -1,37 +1,21 @@
 import React, { FC, useEffect, useState } from 'react';
-import { queryPartners } from '../../../api/httpClient';
+import { searchPartners, partnerLogin } from '../../../api/httpClient';
 import { Partner } from '../../../interfaces/Partner';
 import OwlCarousel from 'react-owl-carousel';
 import 'owl.carousel/dist/assets/owl.carousel.css';
 import 'owl.carousel/dist/assets/owl.theme.default.css';
-import PartnersItems from './PartnersItems';
-// import TestimonialsForm from './TestimonialsForm';
-// import TestimonialsItems from './TestimonialsItems';
+// import PartnersItems from './PartnersItems';
+import PartnerLoginForm from './PartnerLoginForm';
 
 interface Props {
   preview: boolean;
 }
 
 export const Partners: FC<Props> = (props: Props) => {
-  const [names, setNames] = useState<Array<string>>([]);
-  const [ages, setAges] = useState<Array<number>>([]);
-  const [profession, setProfession] = useState<Array<string>>([]);
-  const [residency, setResidency] = useState<Array<string>>([]);
-  
-  const [partners, setPartners] = useState<Array<Partner>>();
+  const [partnersNames, setPartnersNames] = useState<XMLDocument>();
 
   useEffect(() => {
-    queryPartners("name").then((data) => setNames(data));
-    queryPartners("age").then((data) => setAges(data));
-    queryPartners("profession").then((data) => setProfession(data));
-    queryPartners("residency", "country").then((data) => setResidency(data));
-    
-    let tmpParnterList = Array<Partner>();
-    for(let name in names) {
-      tmpParnterList += {name : "asd"}
-    }
-
-    setPartners
+    searchPartners("").then((data) => setPartnersNames(data));
   }, []);
 
   return (
@@ -41,11 +25,15 @@ export const Partners: FC<Props> = (props: Props) => {
           <h2>Our Partners</h2>
         </div>
 
-        {partnersNames ? (
-          <OwlCarousel className="owl-carousel" dots items={3} loop={true}>
-            <PartnersItems partnersNames={partnersNames} />
-          </OwlCarousel>
-        ) : null}
+        {partnersNames && partnersNames.childNodes.forEach(name => {
+          <h3>{name}</h3>
+        })}
+      </div>
+
+      <div>
+        {props.preview || (
+          <PartnerLoginForm />
+        )}
       </div>
     </section>
   );

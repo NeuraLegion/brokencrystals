@@ -18,7 +18,6 @@ import {
 } from './partners.controller.swagger.desc';
 import {
     PartnersService,
-    PartnerProperties,
 } from './partners.service';
 
 
@@ -33,8 +32,8 @@ export class PartnersController {
     @Get('query')
     @ApiQuery({
         name: 'xpath',
-        enum: PartnerProperties,
-        example: PartnerProperties.Name,
+        type: 'string',
+        example: '/partners/partner/name',
         required: true,
     })
     @Header('content-type', 'text/xml')
@@ -55,17 +54,17 @@ export class PartnersController {
     }
 
     // **** This is an XPATH injection boolean detection ep ****
-    @Get('partnerWealth')
+    @Get('partnerLogin')
     @ApiQuery({
         name: 'username',
         type: 'string',
-        example: 'Walter White',
+        example: 'walter100',
         required: true,
     })
     @ApiQuery({
         name: 'password',
         type: 'string',
-        example: '*****',
+        example: 'Heisenberg123',
         required: true,
     })
     @Header('content-type', 'text/xml')
@@ -75,11 +74,11 @@ export class PartnersController {
     @ApiOkResponse({
         type: String,
     })
-    async getPartnerWealth(@Query('username') username: string, @Query('password') password: string): Promise<String> {
-        this.logger.debug(`Trying to get partner wealth for ${username} using password ${password}`);
+    async partnerLogin(@Query('username') username: string, @Query('password') password: string): Promise<String> {
+        this.logger.debug(`Trying to login partner with username ${username} using password ${password}`);
 
         try {
-            let xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/wealth`
+            let xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`
             return this.partnersService.getPartnersProperties(xpath);
         } catch (err) {
             throw new HttpException(`Access denied to partner's wealth`, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -102,14 +101,14 @@ export class PartnersController {
     @ApiOkResponse({
         type: String,
     })
-    async getTopRankedPartners(@Query('keyword') keyword: string): Promise<String> {
+    async searchPartners(@Query('keyword') keyword: string): Promise<String> {
         this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
 
         try {
             let xpath = `//partners/partner[contains(., '${keyword}')]/name`
             return this.partnersService.getPartnersProperties(xpath);
         } catch (err) {
-            throw new HttpException(`Access denied to partner's wealth`, HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new HttpException(`Couldn't find partners`, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

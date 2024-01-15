@@ -3,22 +3,10 @@ import { Injectable, Logger } from '@nestjs/common';
 const xpath = require('xpath');
 const dom = require('xmldom').DOMParser;
 
-export enum PartnerProperties {
-  Name = '/partners/partner/name',
-  Age = '/partners/partner/age',
-  Profession = '/partners/partner/profession',
-  Residency = '/partners/partner/residency',
-  Ranking = '/partners/partner/ranking',
-  Password = '/partners/partner/password'
-}
 
 @Injectable()
 export class PartnersService {
   private readonly logger = new Logger(PartnersService.name);
-
-  private static readonly propertiesSubCategoriesMapping = {
-    "residency": ['country', 'state', 'city']
-  }
 
   private readonly XML_HEADER = '<?xml version="1.0" encoding="UTF-8"?>';
   private readonly XML_AUTHORS_STR: string = `
@@ -66,15 +54,6 @@ export class PartnersService {
     </partners>
   `;
 
-  static getAllSubPropertiesAsText(): string {
-    let mappings = [];
-    for (const [key, value] of Object.entries(PartnersService.propertiesSubCategoriesMapping)) {
-      mappings.push(`For the property '${key}' you can use: ${value}`)
-    }
-
-    return mappings.join(' | ');
-  }
-
   private getPartnersXMLObj(): object {
     let partnersXMLObj = new dom().parseFromString(this.XML_AUTHORS_STR, 'text/xml');
     return partnersXMLObj;
@@ -90,11 +69,6 @@ export class PartnersService {
   }
 
   getPartnersProperties(xpathExpression: string): any {
-    if (xpathExpression.toLocaleLowerCase() === PartnerProperties.Password) {
-      // Solution: *
-      return `${this.XML_HEADER}\n<h1>You must obtain the password in a more creative manner</h1>`;
-    }
-
     let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
     if (typeof xmlNodes !== typeof Array()) {
@@ -104,6 +78,4 @@ export class PartnersService {
 
     return this.getFormattedXMLOutput(xmlNodes);
   }
-
-  getPartnersBy
 }
