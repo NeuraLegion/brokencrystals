@@ -26,7 +26,7 @@ export const Partners: FC<Props> = (props: Props) => {
         </div>
 
         {partnersNames && partnersNames.childNodes.forEach(name => {
-          <h3>{name}</h3>
+          <h4>{name}</h4>
         })}
       </div>
 
