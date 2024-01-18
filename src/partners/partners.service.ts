@@ -72,7 +72,7 @@ export class PartnersService {
     let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
     if (typeof xmlNodes !== typeof Array()) {
-      this.logger.debug(`xmlNodes's type wasn't 'Array', it's value was: ${xmlNodes}`)
+      this.logger.debug(`xmlNodes's type wasn't 'Array', and it's value was: ${xmlNodes}`)
       xmlNodes = Array();
     }
 

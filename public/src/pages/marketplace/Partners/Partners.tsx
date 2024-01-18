@@ -11,11 +11,28 @@ interface Props {
   preview: boolean;
 }
 
+import { DOMParser } from 'xmldom';
+
 export const Partners: FC<Props> = (props: Props) => {
-  const [partnersNames, setPartnersNames] = useState<XMLDocument>();
+  const [partnersNames, setPartnersNames] = useState<Array<string>>([]);
 
   useEffect(() => {
-    searchPartners("").then((data) => setPartnersNames(data));
+    searchPartners('').then((data) => {
+      const xmlDoc = new DOMParser().parseFromString(data, 'text/xml');
+
+      // console.log('partners search xml: ');
+      // console.log(xmlDoc);
+      // console.log(typeof xmlDoc);
+
+      const nameListTags = xmlDoc.getElementsByTagName('name');
+
+      const namesList: Array<string> = [];
+      for (let i = 0; i < nameListTags.length; i++) {
+        namesList.push(nameListTags[i].textContent || '');
+      }
+
+      setPartnersNames(namesList);
+    });
   }, []);
 
   return (
@@ -25,16 +42,12 @@ export const Partners: FC<Props> = (props: Props) => {
           <h2>Our Partners</h2>
         </div>
 
-        {partnersNames && partnersNames.childNodes.forEach(name => {
-          <h4>{name}</h4>
+        {partnersNames.forEach((name) => {
+          <h4>"AAA" {name}</h4>;
         })}
       </div>
 
-      <div>
-        {props.preview || (
-          <PartnerLoginForm />
-        )}
-      </div>
+      <div>{props.preview || <PartnerLoginForm />}</div>
     </section>
   );
 };
