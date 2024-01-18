@@ -54,6 +54,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ .Release.Name }}-keycloak-keycloak
+                name: {{ .Release.Name }}-keycloak
                 port:
                   number: 8080
