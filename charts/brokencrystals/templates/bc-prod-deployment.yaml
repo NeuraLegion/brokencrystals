@@ -21,10 +21,103 @@ spec:
         - ip: "127.0.0.1"
           hostnames:
             - "postgres"
+            - "keycloak-postgres"
             - "keycloak"
             - "nodejs"
             - "proxy"
       containers:
+        - name: postgres
+          image: postgres
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          env:
+            - name: POSTGRES_DB
+              value: "bc"
+            - name: POSTGRES_USER
+              value: "bc"
+            - name: POSTGRES_PASSWORD
+              value: "bc"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 100Mi
+          volumeMounts:
+          - name: {{ include "brokencrystals.fullname" . }}-postgres
+            mountPath: /docker-entrypoint-initdb.d/pg.sql
+            subPath: pg.sql
+            readOnly: true       
+
+        - name: keycloak-postgres
+          image: postgres:12.2-alpine
+          ports:
+            - containerPort: 5433
+          livenessProbe:
+            tcpSocket:
+              port: 5433
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          env:
+            - name: POSTGRES_DB
+              value: "keycloak"
+            - name: POSTGRES_USER
+              value: "keycloak"
+            - name: POSTGRES_PASSWORD
+              value: "password"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 50Mi          
+          volumeMounts:
+          - name: {{ include "brokencrystals.fullname" . }}-keycloak-postgres
+            mountPath: /usr/local/share/postgresql/postgresql.conf.sample
+            subPath: postgresql.conf.sample
+            readOnly: true
+
+        - name: keycloak
+          image: jboss/keycloak:latest
+          resources:
+            requests:
+              cpu: 100m
+              memory: 500Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          env:
+            - name: DB_VENDOR
+              value: "POSTGRES"
+            - name: DB_ADDR
+              value: "keycloak-postgres"
+            - name: DB_PORT
+              value: "5433"
+            - name: DB_DATABASE
+              value: "keycloak"
+            - name: DB_SCHEMA
+              value: "public"
+            - name: DB_PASSWORD
+              value: "password"
+            - name: KEYCLOAK_USER
+              value: "admin"
+            - name: KEYCLOAK_PASSWORD
+              value: "Pa55w0rd"
+            - name: KEYCLOAK_IMPORT
+              value: "/opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled"
+            - name: PROXY_ADDRESS_FORWARDING
+              value: "true"
+            - name: KEYCLOAK_FRONTEND_URL
+              value: "https://auth{{ .Values.ingress.authlevel }}{{ .Values.ingress.url }}/auth/"
+          volumeMounts:
+          - name: {{ include "brokencrystals.fullname" . }}-keycloak
+            mountPath: /opt/jboss/keycloak/imports/realm-export.json
+            subPath: realm-export.json
+            readOnly: true
+
         - name: nodejs
           image: brightsec/brokencrystals:{{ .Values.images.main }}
           env:
@@ -73,69 +166,7 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 120
             periodSeconds: 30
-        - name: postgres
-          image: postgres
-          livenessProbe:
-            tcpSocket:
-              port: 5432
-            initialDelaySeconds: 60
-            periodSeconds: 30
-          env:
-            - name: POSTGRES_DB
-              value: "bc"
-            - name: POSTGRES_USER
-              value: "bc"
-            - name: POSTGRES_PASSWORD
-              value: "bc"
-          resources:
-            requests:
-              cpu: 200m
-              memory: 100Mi
-          volumeMounts:
-          - name: {{ include "brokencrystals.fullname" . }}-postgres
-            mountPath: /docker-entrypoint-initdb.d/pg.sql
-            subPath: pg.sql
-            readOnly: true       
 
-        - name: keycloak
-          image: jboss/keycloak:latest
-          resources:
-            requests:
-              cpu: 100m
-              memory: 500Mi
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 8080
-              scheme: HTTP
-            initialDelaySeconds: 120
-            periodSeconds: 30
-          env:
-            - name: DB_VENDOR
-              value: "POSTGRES"
-            - name: DB_ADDR
-              value: "{{ include "brokencrystals.fullname" . }}-keycloak-postgres"
-            - name: DB_DATABASE
-              value: "keycloak"
-            - name: DB_SCHEMA
-              value: "public"
-            - name: DB_PASSWORD
-              value: "password"
-            - name: KEYCLOAK_USER
-              value: "admin"
-            - name: KEYCLOAK_PASSWORD
-              value: "Pa55w0rd"
-            - name: KEYCLOAK_IMPORT
-              value: "/opt/jboss/keycloak/imports/realm-export.json -Dkeycloak.profile.feature.upload_scripts=enabled"
-            - name: PROXY_ADDRESS_FORWARDING
-              value: "true"
-            - name: KEYCLOAK_FRONTEND_URL
-              value: "https://auth{{ .Values.ingress.authlevel }}{{ .Values.ingress.url }}/auth/"
-          volumeMounts:
-          - name: {{ include "brokencrystals.fullname" . }}-keycloak
-            mountPath: /opt/jboss/keycloak/imports/realm-export.json
-            subPath: realm-export.json
-            readOnly: true
         - name: proxy
           image: neuralegion/brokencrystals-proxy-http:{{ .Values.images.client }}
           env:
@@ -195,21 +226,12 @@ spec:
       - name: {{ include "brokencrystals.fullname" . }}-postgres
         configMap:
           name: {{ include "brokencrystals.fullname" . }}-postgres
+      - name: {{ include "brokencrystals.fullname" . }}-keycloak-postgres
+        configMap:
+          name: {{ include "brokencrystals.fullname" . }}-keycloak-postgres
       - name: {{ include "brokencrystals.fullname" . }}-keycloak
         configMap:
           name: {{ include "brokencrystals.fullname" . }}-keycloak
       - name: {{ include "brokencrystals.fullname" . }}-nginx-proxy
         configMap:
           name: {{ include "brokencrystals.fullname" . }}-nginx-proxy
----
-kind: Service
-apiVersion: v1
-metadata:
-  name: {{ .Release.Name }}
-spec:
-  selector:
-    app: {{ .Release.Name }}
-  ports:
-    - port: 80
-      protocol: TCP
-      targetPort: 80
