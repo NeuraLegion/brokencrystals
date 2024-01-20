@@ -103,6 +103,13 @@ export function getUserData(
   });
 }
 
+export function getUserDataById(id: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/id/${id}`,
+    method: 'get'
+  });
+}
+
 export function getLdap(ldapProfileLink: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/ldap?query=${encodeURIComponent(ldapProfileLink)}`,

@@ -2,7 +2,7 @@ import React, { FormEvent, useEffect, useState } from 'react';
 import { Redirect } from 'react-router';
 import {
   getAdminStatus,
-  getUserData,
+  getUserDataById,
   putUserData,
   removeUserPhotoById
 } from '../../api/httpClient';
@@ -19,8 +19,11 @@ const defaultUserData: UserData = {
 };
 
 export const Userprofile = () => {
-  const email: string | null =
+  const user_email: string | null =
     sessionStorage.getItem('email') || localStorage.getItem('email');
+  const user_id: string | null =
+    sessionStorage.getItem('user_id') || localStorage.getItem('user_id');
+
   const [user, setUser] = useState<UserData>(defaultUserData);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
@@ -30,9 +33,9 @@ export const Userprofile = () => {
   };
 
   useEffect(() => {
-    if (email) {
-      getUserData(email).then((data) => setUser(data));
-      getAdminStatus(email).then((data) => setIsAdmin(!!data.isAdmin));
+    if (user_email && user_id) {
+      getUserDataById(user_id).then((data) => setUser(data));
+      getAdminStatus(user_email).then((data) => setIsAdmin(!!data.isAdmin));
     }
   }, []);
 
@@ -53,7 +56,7 @@ export const Userprofile = () => {
 
   return (
     <>
-      {email ? (
+      {user_email && user_id ? (
         <AuthLayout>
           <div className="login-form">
             <form onSubmit={sendUserData}>
