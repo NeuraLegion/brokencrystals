@@ -50,7 +50,7 @@ export class AuthGuard implements CanActivate {
     }
 
     if (this.checkIsBearer(token)) {
-      token = token.substring(AuthGuard.BEARER_PREFIX.length);
+      token = token.substring(AuthGuard.BEARER_PREFIX.length).trim();
     }
 
     return token?.length ? token : undefined;
@@ -71,13 +71,11 @@ export class AuthGuard implements CanActivate {
       context.getHandler(),
     );
 
-    const result = await this.authService.validateToken(token, processorType);
-
-    if (!result) {
-      // If the result is falsy, try again with JwtProcessorType.BEARER
+    try {
+      return await this.authService.validateToken(token, processorType);
+    } catch (err) {
       return this.authService.validateToken(token, JwtProcessorType.BEARER);
     }
-    return result;
   }
 
   private checkIsBearer(bearer: string): boolean {
