@@ -157,8 +157,10 @@ spec:
               value: "https://raw.githubusercontent.com/NeuraLegion/brokencrystals/development/config/keys/x509.crt"
           resources:
             requests:
-              cpu: 500m
+              cpu: 1800m
               memory: 1024Mi
+            limits:
+              memory: 15G
           livenessProbe:
             httpGet:
               path: /api/config
