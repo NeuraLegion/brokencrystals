@@ -23,7 +23,7 @@ export class UsersService {
     private readonly usersRepository: EntityRepository<User>,
   ) {}
 
-  async createUser(user: UserDto, isBasicUser: boolean = true): Promise<User> {
+  async createUser(user: UserDto): Promise<User> {
     this.log.debug(`Called createUser`);
 
     const u = new User();
@@ -35,7 +35,6 @@ export class UsersService {
     u.cardNumber = user.cardNumber;
     u.phoneNumber = user.phoneNumber;
     u.password = await hashPassword(user.password);
-    u.isBasic = isBasicUser;
 
     await this.usersRepository.persistAndFlush(u);
     this.log.debug(`Saved new user`);

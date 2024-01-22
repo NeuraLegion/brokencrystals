@@ -14,7 +14,6 @@ import { GqlContextType, GqlExecutionContext } from '@nestjs/graphql';
 @Injectable()
 export class AuthGuard implements CanActivate {
   private static readonly AUTH_HEADER = 'authorization';
-  private static readonly BEARER_PREFIX = 'bearer';
   private readonly logger = new Logger(AuthGuard.name);
 
   constructor(
@@ -26,13 +25,8 @@ export class AuthGuard implements CanActivate {
     try {
       this.logger.debug('Called canActivate');
       const request = this.getRequest(context);
-      const token = this.extractToken(request);
 
-      if (!token) {
-        return false;
-      }
-
-      return await this.verifyToken(token, context);
+      return !!(await this.verifyToken(request, context));
     } catch (err) {
       this.logger.debug(`Failed to validate token: ${err.message}`);
       throw new UnauthorizedException({
@@ -42,20 +36,6 @@ export class AuthGuard implements CanActivate {
     }
   }
 
-  private extractToken(request: FastifyRequest): string | undefined {
-    let token = request.headers[AuthGuard.AUTH_HEADER];
-
-    if (!token?.length) {
-      token = request.cookies[AuthGuard.AUTH_HEADER];
-    }
-
-    if (this.checkIsBearer(token)) {
-      token = token.substring(AuthGuard.BEARER_PREFIX.length).trim();
-    }
-
-    return token?.length ? token : undefined;
-  }
-
   private getRequest(context: ExecutionContext): FastifyRequest {
     return context.getType<GqlContextType>() === 'graphql'
       ? GqlExecutionContext.create(context).getContext().req
@@ -63,25 +43,41 @@ export class AuthGuard implements CanActivate {
   }
 
   private async verifyToken(
-    token: string,
+    request: FastifyRequest,
     context: ExecutionContext,
   ): Promise<boolean> {
+    let token = request.headers[AuthGuard.AUTH_HEADER];
+
+    if (!token?.length) {
+      token = request.cookies[AuthGuard.AUTH_HEADER];
+    }
+
+    if (this.checkIsBearer(token)) {
+      token = token.substring(7);
+    }
+
+    if (!token?.length) {
+      return false;
+    }
+
     const processorType = this.reflector.get<JwtProcessorType>(
       JwTypeMetadataField,
       context.getHandler(),
     );
 
-    try {
-      return await this.authService.validateToken(token, processorType);
-    } catch (err) {
-      return this.authService.validateToken(token, JwtProcessorType.BEARER);
-    }
+    return this.authService.validateToken(
+      token,
+      processorType ?? JwtProcessorType.BEARER,
+    );
   }
 
   private checkIsBearer(bearer: string): boolean {
-    return (
-      !!bearer &&
-      bearer.toLowerCase().startsWith(AuthGuard.BEARER_PREFIX.toLowerCase())
-    );
+    if (!bearer || bearer.length < 10) {
+      return false;
+    }
+
+    const prefix = bearer.substring(0, 7).toLowerCase();
+
+    return prefix === 'bearer ';
   }
 }

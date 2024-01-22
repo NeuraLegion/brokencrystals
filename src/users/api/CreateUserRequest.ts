@@ -1,11 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { UserDto } from './UserDto';
 
-export enum SignupMode {
-  BASIC = 'basic',
-  OIDC = 'oidc',
-}
-
 export class CreateUserRequest extends UserDto {
   @ApiProperty()
   company: string;
@@ -15,5 +10,5 @@ export class CreateUserRequest extends UserDto {
   phoneNumber: string;
   @ApiProperty()
   password: string;
-  op: SignupMode;
+  op: string;
 }
