@@ -105,7 +105,7 @@ export class PartnersController {
         this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
 
         try {
-            let xpath = `//partners/partner[contains(., '${keyword}')]/name`
+            let xpath = `//partners/partner[name[contains(., '${keyword}')]]/name`
             return this.partnersService.getPartnersProperties(xpath);
         } catch (err) {
             throw new HttpException(`Couldn't find partners`, HttpStatus.INTERNAL_SERVER_ERROR);
