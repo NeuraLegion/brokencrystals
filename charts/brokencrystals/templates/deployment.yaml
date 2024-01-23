@@ -170,7 +170,7 @@ spec:
             periodSeconds: 30
 
         - name: proxy
-          image: neuralegion/brokencrystals-proxy-http:{{ .Values.images.client }}
+          image: brightsec/brokencrystals-proxy-http:{{ .Values.images.client }}
           env:
             - name: URL
               value: "https://{{ .Values.ingress.url }}"
