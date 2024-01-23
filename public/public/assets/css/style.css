@@ -849,6 +849,49 @@ section {
 }
 
 /*--------------------------------------------------------------
+# Partners
+--------------------------------------------------------------*/
+.partners .partner-item {
+  box-sizing: content-box;
+}
+
+.partner-item {
+  font-style: italic;
+  margin: 0 15px 0 15px;
+  padding: 10px 20px 20px 20px;
+  background: #fff;
+  position: relative;
+  border-radius: 6px;
+  z-index: 1;
+  box-shadow: 0 0px 20px 0 rgba(0, 0, 0, 0.1);
+
+  max-height: 350px;
+  max-width: 450px;
+}
+
+.partner-img {
+  display: block;
+  border: 6px solid #fff;
+
+  max-height: 280px;
+  max-width: 380px;
+
+  height: 40%;
+  width: 40%;
+
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: auto;
+  margin-top: auto;
+}
+
+.partner-name {
+  color: #4c99df;
+  font-weight: normal;
+  text-align: center;
+}
+
+/*--------------------------------------------------------------
 # Testimonials
 --------------------------------------------------------------*/
 .testimonials .testimonial-item {

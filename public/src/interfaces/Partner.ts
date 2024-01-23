@@ -1,7 +1,4 @@
 export interface Partner {
-    name: string,
-    age: string,
-    profession: string,
-    residency: string,
-  }
-  
+  name: string;
+  photoUrl: string;
+}

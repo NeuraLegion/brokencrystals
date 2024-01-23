@@ -1,37 +1,38 @@
 import React, { FC, useEffect, useState } from 'react';
-import { searchPartners, partnerLogin } from '../../../api/httpClient';
-import { Partner } from '../../../interfaces/Partner';
+import { DOMParser } from 'xmldom';
+
 import OwlCarousel from 'react-owl-carousel';
 import 'owl.carousel/dist/assets/owl.carousel.css';
 import 'owl.carousel/dist/assets/owl.theme.default.css';
-// import PartnersItems from './PartnersItems';
+
+import { searchPartners, partnerLogin } from '../../../api/httpClient';
+import { Partner } from '../../../interfaces/Partner';
+import PartnersItems from './PartnersItems';
 import PartnerLoginForm from './PartnerLoginForm';
 
 interface Props {
   preview: boolean;
 }
 
-import { DOMParser } from 'xmldom';
-
 export const Partners: FC<Props> = (props: Props) => {
-  const [partnersNames, setPartnersNames] = useState<Array<string>>([]);
+  const [partners, setPartners] = useState<Array<Partner>>([]);
 
   useEffect(() => {
     searchPartners('').then((data) => {
       const xmlDoc = new DOMParser().parseFromString(data, 'text/xml');
-
-      // console.log('partners search xml: ');
-      // console.log(xmlDoc);
-      // console.log(typeof xmlDoc);
-
       const nameListTags = xmlDoc.getElementsByTagName('name');
 
-      const namesList: Array<string> = [];
+      const partnersList: Array<any> = [];
       for (let i = 0; i < nameListTags.length; i++) {
-        namesList.push(nameListTags[i].textContent || '');
+        const name = nameListTags[i].textContent || 'Error in loading name';
+        const photoUrl =
+          'assets/img/partners/' +
+          name.toLowerCase().replace(' ', '-') +
+          '.jpg';
+        partnersList.push({ name: name, photoUrl: photoUrl });
       }
 
-      setPartnersNames(namesList);
+      setPartners(partnersList);
     });
   }, []);
 
@@ -42,9 +43,13 @@ export const Partners: FC<Props> = (props: Props) => {
           <h2>Our Partners</h2>
         </div>
 
-        {partnersNames.forEach((name) => {
-          <h4>"AAA" {name}</h4>;
-        })}
+        <div id="parnters-names-list">
+          {partners?.length ? (
+            <OwlCarousel className="owl-carousel" dots items={3} loop={false}>
+              <PartnersItems partners={partners} />
+            </OwlCarousel>
+          ) : null}
+        </div>
       </div>
 
       <div>{props.preview || <PartnerLoginForm />}</div>
