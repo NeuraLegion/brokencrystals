@@ -9,7 +9,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-ssl-protocols: "TLSv1.1 TLSv1.2"
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     {{ if eq .Values.ingress.cert "" }}
-    cert-manager.io/cluster-issuer: letsencrypt-cf
+    cert-manager.io/cluster-issuer: letsencrypt-cf-prod
     {{ end }}
 spec:
   tls:
@@ -39,7 +39,7 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-ssl-protocols: "TLSv1.1 TLSv1.2"
     {{ if eq .Values.ingress.cert "" }}
-    cert-manager.io/cluster-issuer: letsencrypt-cf
+    cert-manager.io/cluster-issuer: letsencrypt-cf-prod
     {{ end }}
 spec:
   tls:
