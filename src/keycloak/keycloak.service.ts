@@ -250,8 +250,9 @@ export class KeyCloakService implements OnModuleInit {
       );
     }
 
-    return new Map<string, string>(
+    const jwks = new Map<string, string>(
       data.keys.map((key: JWK & { kid: string }) => [key.kid, jwkToPem(key)]),
     );
+    return jwks;
   }
 }

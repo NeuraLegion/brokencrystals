@@ -35,7 +35,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { CreateUserRequest } from './api/CreateUserRequest';
+import { CreateUserRequest, SignupMode } from './api/CreateUserRequest';
 import { UserDto } from './api/UserDto';
 import { LdapQueryHandler } from './ldap.query.handler';
 import { UsersService } from './users.service';
@@ -346,17 +346,18 @@ export class UsersController {
     try {
       this.logger.debug(`Create a basic user: ${user}`);
 
-      const userExists = await this.usersService.findByEmail(user.email);
+      const userExists = await this.doesUserExist(user);
       if (userExists) {
-        throw new HttpException('User already exists', 409);
+        throw new HttpException('User already exists', HttpStatus.CONFLICT);
       }
+
+      return new UserDto(
+        await this.usersService.createUser(user, user.op === SignupMode.BASIC),
+      );
     } catch (err) {
-      if (err.status === 404) {
-        return new UserDto(await this.usersService.createUser(user));
-      }
       throw new HttpException(
         err.message ?? 'Something went wrong',
-        err.status ?? 500,
+        err.status ?? HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -381,7 +382,13 @@ export class UsersController {
     try {
       this.logger.debug(`Create a OIDC user: ${user}`);
 
-      return new UserDto(
+      const userExists = await this.doesUserExist(user);
+
+      if (userExists) {
+        throw new HttpException('User already exists', HttpStatus.CONFLICT);
+      }
+
+      const keycloakUser = new UserDto(
         await this.keyCloakService.registerUser({
           email: user.email,
           firstName: user.firstName,
@@ -389,6 +396,10 @@ export class UsersController {
           password: user.password,
         }),
       );
+
+      this.createUser(user);
+
+      return keycloakUser;
     } catch (err) {
       throw new HttpException(
         err.response.data ?? 'Something went wrong',
@@ -558,5 +569,22 @@ export class UsersController {
         'base64',
       ).toString(),
     ).user;
+  }
+
+  private async doesUserExist(user: UserDto): Promise<boolean> {
+    try {
+      const userExists = await this.usersService.findByEmail(user.email);
+      if (userExists) {
+        return true;
+      }
+    } catch (err) {
+      if (err.status === HttpStatus.NOT_FOUND) {
+        return false;
+      }
+      throw new HttpException(
+        err.message ?? 'Something went wrong',
+        err.status ?? HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }
