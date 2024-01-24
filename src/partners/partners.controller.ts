@@ -14,7 +14,9 @@ import {
     ApiTags,
 } from '@nestjs/swagger';
 import {
-    API_DESC_QUERY_PARTNERS
+    API_DESC_QUERY_PARTNERS_RAW,
+    API_DESC_PARTNERS_LOGIN,
+    API_DESC_SEARCH_PARTNERS_NAMES
 } from './partners.controller.swagger.desc';
 import {
     PartnersService,
@@ -38,7 +40,7 @@ export class PartnersController {
     })
     @Header('content-type', 'text/xml')
     @ApiOperation({
-        description: API_DESC_QUERY_PARTNERS,
+        description: API_DESC_QUERY_PARTNERS_RAW,
     })
     @ApiOkResponse({
         type: String,
@@ -69,7 +71,7 @@ export class PartnersController {
     })
     @Header('content-type', 'text/xml')
     @ApiOperation({
-        description: API_DESC_QUERY_PARTNERS,
+        description: API_DESC_PARTNERS_LOGIN,
     })
     @ApiOkResponse({
         type: String,
@@ -79,9 +81,16 @@ export class PartnersController {
 
         try {
             let xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`
-            return this.partnersService.getPartnersProperties(xpath);
+            let xmlStr = this.partnersService.getPartnersProperties(xpath);
+            
+            // Check if account's data contains any information
+            if (!(xmlStr && xmlStr.includes('password') && xmlStr.includes('wealth'))) {
+                throw new Error("Login attempt failed!");
+            }
+
+            return xmlStr;
         } catch (err) {
-            throw new HttpException(`Access denied to partner's wealth`, HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new HttpException(`Access denied to partner's account. Error: ${err}`, HttpStatus.FORBIDDEN);
         }
     }
 
@@ -96,7 +105,7 @@ export class PartnersController {
     })
     @Header('content-type', 'text/xml')
     @ApiOperation({
-        description: API_DESC_QUERY_PARTNERS,
+        description: API_DESC_SEARCH_PARTNERS_NAMES,
     })
     @ApiOkResponse({
         type: String,
