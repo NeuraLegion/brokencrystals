@@ -90,6 +90,9 @@ export class PartnersController {
 
             return xmlStr;
         } catch (err) {
+            if (err.toString().includes('Unterminated string literal')) {
+                err = 'Error in XPath expression'
+            }
             throw new HttpException(`Access denied to partner's account. Error: ${err}`, HttpStatus.FORBIDDEN);
         }
     }
@@ -117,7 +120,10 @@ export class PartnersController {
             let xpath = `//partners/partner[name[contains(., '${keyword}')]]/name`
             return this.partnersService.getPartnersProperties(xpath);
         } catch (err) {
-            throw new HttpException(`Couldn't find partners`, HttpStatus.INTERNAL_SERVER_ERROR);
+            if (err.toString().includes('XPath parse error')) {
+                err = 'Error in XPath expression'
+            }
+            throw new HttpException(`Couldn't find partners. Error: ${err}`, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }
