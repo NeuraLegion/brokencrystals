@@ -105,7 +105,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
           </div>
         )}
       </section>
-      <Partners preview={props.preview} />
+      <Partners />
       <Testimonials preview={props.preview} />
       <section id="feedback" className="testimonials section-bg">
         <div className="container" data-aos="fade-up">

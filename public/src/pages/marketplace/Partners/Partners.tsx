@@ -8,21 +8,25 @@ import 'owl.carousel/dist/assets/owl.theme.default.css';
 import { searchPartners, partnerLogin } from '../../../api/httpClient';
 import { Partner } from '../../../interfaces/Partner';
 import PartnersItems from './PartnersItems';
-import PartnerLoginForm from './PartnerLoginForm';
 
-interface Props {
-  preview: boolean;
-}
-
-export const Partners: FC<Props> = (props: Props) => {
+export const Partners: FC = () => {
   const [partners, setPartners] = useState<Array<Partner>>([]);
 
   useEffect(() => {
+    // XPATH injection string detection
     searchPartners('').then((data) => {
+      const partnersList: Array<any> = [];
+
       const xmlDoc = new DOMParser().parseFromString(data, 'text/xml');
+
+      if (!xmlDoc) {
+        partnersList.push({ name: 'Failed loading name', photoUrl: '' });
+        setPartners(partnersList);
+        return;
+      }
+
       const nameListTags = xmlDoc.getElementsByTagName('name');
 
-      const partnersList: Array<any> = [];
       for (let i = 0; i < nameListTags.length; i++) {
         const name = nameListTags[i].textContent || 'Error in loading name';
         const photoUrl =
@@ -33,6 +37,18 @@ export const Partners: FC<Props> = (props: Props) => {
       }
 
       setPartners(partnersList);
+    });
+
+    // XPATH injection boolean detection
+    partnerLogin('walter100', 'Heisenberg123').then((data) => {
+      const xmlDoc = new DOMParser().parseFromString(data, 'text/xml');
+
+      if (!xmlDoc) {
+        console.log("Partner login for username 'walter100' failed");
+        return;
+      }
+
+      console.log("Partner login for username 'walter100' was successful!");
     });
   }, []);
 
@@ -51,8 +67,6 @@ export const Partners: FC<Props> = (props: Props) => {
           ) : null}
         </div>
       </div>
-
-      <div>{props.preview || <PartnerLoginForm />}</div>
     </section>
   );
 };
