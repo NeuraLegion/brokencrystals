@@ -51,8 +51,12 @@ COPY --chown=node:node --from=development /usr/src/app/client/node_modules ./cli
 
 RUN apk add --no-cache --virtual .gyp python3 py3-pip make g++ 
 
+# Install project dependencies before running build commands
+RUN npm ci
+
 RUN npm run build
-RUN npm run build --prefix=client
+# Build the client (React) project
+RUN cd client && npm ci && npm run build
 
 ENV NODE_ENV production
 

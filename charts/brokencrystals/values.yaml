@@ -3,5 +3,5 @@ ingress:
   cert: ""
   authlevel: "."
 images: 
-  main: latest
+  main: experimental
   client: latest
