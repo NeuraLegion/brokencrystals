@@ -51,9 +51,10 @@ export class UserDto {
   @Expose({ groups: [FULL_USER_INFO] })
   createdAt: Date;
 
-  constructor(params: {
-    [P in keyof UserDto]: UserDto[P];
-  }) {
+  @Exclude()
+  isBasic: boolean;
+
+  constructor(params: UserDto) {
     Object.assign(this, params);
   }
 }

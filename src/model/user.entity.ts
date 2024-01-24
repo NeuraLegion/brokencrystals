@@ -33,4 +33,7 @@ export class User extends Base {
 
   @Property()
   phoneNumber: string;
+
+  @Property()
+  isBasic: boolean;
 }
