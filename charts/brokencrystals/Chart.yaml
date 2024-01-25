@@ -4,7 +4,7 @@ description: |
   Benchmark application that uses modern technologies and implements a set of
   common security vulnerabilities
 type: application
-version: 0.0.51
+version: 0.0.52
 keywords:
   - brokencrystals-exp
   - brkn-e
