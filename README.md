@@ -138,3 +138,9 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
 * **IFrame Injection** - The `/testimonials` page a URL parameter `videosrc` which directly controls the src attribute of the IFrame at the bottom of this page. Similarly, the home page takes a URL param `maptitle` which directly controls the `title` attribute of the IFrame at the CONTACT section of this page.
 
 * **Excessive Data Exposure** - The `/api/users/one/:email` is supposed to expose only basic user information required to be displayed on the UI, but it also returns the user's phone number which is unnecessary information.
+
+* **Business Constraint Bypass** - The `/api/products/latest` endpoint supports a `limit` parameter, which by default is set to 3. The `/api/products` endpoint is a password protected endpoint which returns all of the products, yet if you change the `limit` param of `/api/products/latest` to be high enough you could get the same results without the need to be authenticated. 
+
+* **ID Enumeration** - There are a few ID Enumeration vulnerabilities:
+  1. The endpoint DELETE `/users/one/:id/photo?isAdmin=` which is used to delete a user's profile picture is vulnerable to ID Enumeration together with [Broken Function Level Authorization](#broken-function-level-authorization).
+  2. The `/users/id/:id` endpoint returns user info by ID, it doesn't require neither authentication nor authorization.

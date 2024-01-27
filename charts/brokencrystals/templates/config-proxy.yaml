@@ -23,24 +23,24 @@ data:
         }
 
         location /api {
-            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
+            proxy_pass http://127.0.0.1:3000;
         }
 
         location /swagger {
-            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
+            proxy_pass http://127.0.0.1:3000;
         }
 
         location /graphiql {
-            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
+            proxy_pass http://127.0.0.1:3000;
         }
 
         location /graphql {
-            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
+            proxy_pass http://127.0.0.1:3000;
         }
 
         location /put.raw {
             rewrite put.raw /api/file/raw?path=./gil.txt break;
-            proxy_pass http://{{ include "brokencrystals.fullname" . }}-nodejs:3000;
+            proxy_pass http://127.0.0.1:3000;
         }
     
         location ~* ^/(config\.js|config\.json|\.htaccess|\.env|\.nginx\.conf|\.robots\.txt)$ {
