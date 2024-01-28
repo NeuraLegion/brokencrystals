@@ -74,6 +74,8 @@ export class PartnersService {
     if (typeof xmlNodes !== typeof Array()) {
       this.logger.debug(`xmlNodes's type wasn't 'Array', and it's value was: ${xmlNodes}`)
       xmlNodes = Array();
+    } else {
+      this.logger.debug(`Raw xpath xmlNodes value is: ${xmlNodes}`);
     }
 
     return this.getFormattedXMLOutput(xmlNodes);

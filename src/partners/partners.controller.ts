@@ -30,7 +30,7 @@ export class PartnersController {
 
     constructor(private readonly partnersService: PartnersService) { }
 
-    // **** This is a general XPATH injection ep - Will accept anything ****
+    // **** This is a general XPATH injection EP - Will accept anything ****
     @Get('query')
     @ApiQuery({
         name: 'xpath',
@@ -55,7 +55,7 @@ export class PartnersController {
         }
     }
 
-    // **** This is an XPATH injection boolean detection ep ****
+    // **** This is a boolean based XPATH injection EP ****
     @Get('partnerLogin')
     @ApiQuery({
         name: 'username',
@@ -80,25 +80,20 @@ export class PartnersController {
         this.logger.debug(`Trying to login partner with username ${username} using password ${password}`);
 
         try {
+            // Use `' or '1'='1` in the password field to exploit the EP
             let xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`
-            let xmlStr = this.partnersService.getPartnersProperties(xpath);
-            
-            // Check if account's data contains any information
-            if (!(xmlStr && xmlStr.includes('password') && xmlStr.includes('wealth'))) {
-                throw new Error("Login attempt failed!");
-            }
-
-            return xmlStr;
+            return this.partnersService.getPartnersProperties(xpath);
         } catch (err) {
-            if (err.toString().includes('Unterminated string literal')) {
+            let strErr = err.toString();
+            if (strErr.includes('Unterminated string literal')) {
                 err = 'Error in XPath expression'
             }
-            throw new HttpException(`Access denied to partner's account. Error: ${err}`, HttpStatus.FORBIDDEN);
+            throw new HttpException(`Access denied to partner's account. ${err}`, HttpStatus.FORBIDDEN);
         }
     }
 
 
-    // **** This is an XPATH injection string detection ep ****
+    // **** This is a string based XPATH injection EP ****
     @Get('searchPartners')
     @ApiQuery({
         name: 'keyword',
@@ -117,13 +112,14 @@ export class PartnersController {
         this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
 
         try {
-            let xpath = `//partners/partner[name[contains(., '${keyword}')]]/name`
+            let xpath = `//partners/partner/name[contains(., '${keyword}')]`
             return this.partnersService.getPartnersProperties(xpath);
         } catch (err) {
-            if (err.toString().includes('XPath parse error')) {
+            let strErr = err.toString();
+            if (strErr.includes('XPath parse error') || strErr.includes('Unterminated string literal')) {
                 err = 'Error in XPath expression'
             }
-            throw new HttpException(`Couldn't find partners. Error: ${err}`, HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new HttpException(`Couldn't find partners. ${err}`, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }

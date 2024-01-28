@@ -15,7 +15,7 @@ export const Partners: FC = () => {
   useEffect(() => {
     // XPATH injection string detection
     searchPartners('').then((data) => {
-      const partnersList: Array<any> = [];
+      const partnersList: Array<Partner> = [];
 
       const xmlDoc = new DOMParser().parseFromString(data, 'text/xml');
 
