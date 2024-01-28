@@ -7,7 +7,6 @@ import 'owl.carousel/dist/assets/owl.theme.default.css';
 
 import { searchPartners, partnerLogin } from '../../../api/httpClient';
 import { Partner } from '../../../interfaces/Partner';
-import PartnersItems from './PartnersItems';
 
 export const Partners: FC = () => {
   const PARTNER_DEFAULT_USERNAME = 'walter100';
