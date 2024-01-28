@@ -49,6 +49,7 @@ export class PartnersController {
         this.logger.debug(`Getting partners with xpath expression "${xpath}"`);
 
         try {
+            // Use `')] | //password%00//` or `')] | //* | a[('` to exploit the EP
             return this.partnersService.getPartnersProperties(xpath);
         } catch (err) {
             throw new HttpException(`Failed to load XML using XPATH. Details: ${err}`, HttpStatus.INTERNAL_SERVER_ERROR);

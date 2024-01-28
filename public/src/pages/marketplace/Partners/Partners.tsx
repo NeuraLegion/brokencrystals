@@ -10,8 +10,8 @@ import { Partner } from '../../../interfaces/Partner';
 import PartnersItems from './PartnersItems';
 
 export const Partners: FC = () => {
-  const PARTNER_DEFAULT_USERNAME: string = 'walter100';
-  const PARTNER_DEFAULT_PASSWORD: string = 'Heisenberg123';
+  const PARTNER_DEFAULT_USERNAME = 'walter100';
+  const PARTNER_DEFAULT_PASSWORD = 'Heisenberg123';
 
   const [partners, setPartners] = useState<Array<Partner>>([]);
 
@@ -62,7 +62,14 @@ export const Partners: FC = () => {
   useEffect(() => {
     partnerNameSearchEP();
     partnerLoginEP();
-  }, []);
+  }, [partners]);
+
+  const generatePartnerItem = (partner: Partner, idx: number) => (
+    <div className="partner-item" key={partner.name + idx}>
+      <h4 className="partner-name">{partner.name}</h4>
+      <img src={partner.photoUrl} className="partner-img" alt="" />
+    </div>
+  );
 
   return (
     <section id="partners" className="testimonials section-bg">
@@ -72,9 +79,11 @@ export const Partners: FC = () => {
         </div>
 
         <div id="parnters-names-list">
-          {partners?.length ? (
+          {partners ? (
             <OwlCarousel className="owl-carousel" dots items={3} loop={false}>
-              <PartnersItems partners={partners} />
+              {partners.forEach((partner, idx) => {
+                generatePartnerItem(partner, idx);
+              })}
             </OwlCarousel>
           ) : null}
         </div>
