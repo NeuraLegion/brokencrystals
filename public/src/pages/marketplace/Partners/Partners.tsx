@@ -10,9 +10,12 @@ import { Partner } from '../../../interfaces/Partner';
 import PartnersItems from './PartnersItems';
 
 export const Partners: FC = () => {
+  const PARTNER_DEFAULT_USERNAME: string = 'walter100';
+  const PARTNER_DEFAULT_PASSWORD: string = 'Heisenberg123';
+
   const [partners, setPartners] = useState<Array<Partner>>([]);
 
-  useEffect(() => {
+  const partnerNameSearchEP = () => {
     // XPATH injection string detection
     searchPartners('').then((data) => {
       const partnersList: Array<Partner> = [];
@@ -25,10 +28,10 @@ export const Partners: FC = () => {
         return;
       }
 
-      const nameListTags = xmlDoc.getElementsByTagName('name');
+      const partnerNameTags = xmlDoc.getElementsByTagName('name');
 
-      for (let i = 0; i < nameListTags.length; i++) {
-        const name = nameListTags[i].textContent || 'Error in loading name';
+      for (const nameTag of Array.from(partnerNameTags)) {
+        const name = nameTag.textContent || 'Error in loading name';
         const photoUrl =
           'assets/img/partners/' +
           name.toLowerCase().replace(' ', '-') +
@@ -38,18 +41,27 @@ export const Partners: FC = () => {
 
       setPartners(partnersList);
     });
+  };
 
+  const partnerLoginEP = () => {
     // XPATH injection boolean detection
-    partnerLogin('walter100', 'Heisenberg123').then((data) => {
-      const xmlDoc = new DOMParser().parseFromString(data, 'text/xml');
+    partnerLogin(PARTNER_DEFAULT_USERNAME, PARTNER_DEFAULT_PASSWORD).then(
+      (data) => {
+        const xmlDoc = new DOMParser().parseFromString(data, 'text/xml');
 
-      if (!xmlDoc) {
-        console.log("Partner login for username 'walter100' failed");
-        return;
+        if (!xmlDoc) {
+          console.log("Partner login for username 'walter100' failed");
+          return;
+        }
+
+        console.log("Partner login for username 'walter100' was successful!");
       }
+    );
+  };
 
-      console.log("Partner login for username 'walter100' was successful!");
-    });
+  useEffect(() => {
+    partnerNameSearchEP();
+    partnerLoginEP();
   }, []);
 
   return (

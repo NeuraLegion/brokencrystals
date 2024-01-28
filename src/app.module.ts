@@ -16,7 +16,6 @@ import { MercuriusDriver, MercuriusDriverConfig } from '@nestjs/mercurius';
 import { AppService } from './app.service';
 import { UsersService } from './users/users.service';
 import { AppResolver } from './app.resolver';
-import { PartnersService } from './partners/partners.service';
 import { PartnersModule } from './partners/partners.module';
 
 @Module({
@@ -46,7 +45,6 @@ import { PartnersModule } from './partners/partners.module';
     UsersService,
     ConfigService,
     AppResolver,
-    PartnersService,
   ],
 })
 export class AppModule {

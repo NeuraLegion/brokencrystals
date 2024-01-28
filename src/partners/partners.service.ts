@@ -64,14 +64,14 @@ export class PartnersService {
     return xpath.select(xpathExpression, partnersXMLObj);
   }
 
-  private getFormattedXMLOutput(xmlNodes) {
+  private getFormattedXMLOutput(xmlNodes): string {
     return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
-  getPartnersProperties(xpathExpression: string): any {
+  getPartnersProperties(xpathExpression: string): string {
     let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
-    if (typeof xmlNodes !== typeof Array()) {
+    if (!Array.isArray(xmlNodes)) {
       this.logger.debug(`xmlNodes's type wasn't 'Array', and it's value was: ${xmlNodes}`)
       xmlNodes = Array();
     } else {

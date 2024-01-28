@@ -33,7 +33,7 @@ import { TestimonialsService } from './testimonials.service';
 export class TestimonialsController {
   private readonly logger = new Logger(TestimonialsController.name);
 
-  constructor(private readonly testimonialsService: TestimonialsService) { }
+  constructor(private readonly testimonialsService: TestimonialsService) {}
 
   @Post()
   @ApiBody({
