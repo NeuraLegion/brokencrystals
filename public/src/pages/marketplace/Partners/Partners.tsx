@@ -61,7 +61,7 @@ export const Partners: FC = () => {
   useEffect(() => {
     partnerNameSearchEP();
     partnerLoginEP();
-  }, [partners]);
+  }, [partners.length]);
 
   const generatePartnerItem = (partner: Partner, idx: number) => (
     <div className="partner-item" key={partner.name + idx}>
@@ -79,9 +79,13 @@ export const Partners: FC = () => {
 
         <div id="parnters-names-list">
           {partners ? (
-            <OwlCarousel className="owl-carousel" dots items={3} loop={false}>
-              {partners.forEach((partner, idx) => {
-                generatePartnerItem(partner, idx);
+            <OwlCarousel
+              className="owl-carousel"
+              items={partners.length}
+              loop={false}
+            >
+              {partners.map((partner, idx) => {
+                return generatePartnerItem(partner, idx);
               })}
             </OwlCarousel>
           ) : null}
