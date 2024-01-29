@@ -83,7 +83,14 @@ export class PartnersController {
         try {
             // Use `' or '1'='1` in the password field to exploit the EP
             let xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`
-            return this.partnersService.getPartnersProperties(xpath);
+            let xmlStr = this.partnersService.getPartnersProperties(xpath);
+
+            // Check if account's data contains any information - If not, the login failed!
+            if (!(xmlStr && xmlStr.includes('password') && xmlStr.includes('wealth'))) {
+                throw new Error("Login attempt failed!");
+            }
+
+            return xmlStr;
         } catch (err) {
             let strErr = err.toString();
             if (strErr.includes('Unterminated string literal')) {
