@@ -14,7 +14,7 @@ export const Partners: FC = () => {
 
   const [partners, setPartners] = useState<Array<Partner>>([]);
 
-  const partnerNameSearchEP = () => {
+  const fetchPartners = () => {
     // XPATH injection string detection
     searchPartners('').then((data) => {
       const partnersList: Array<Partner> = [];
@@ -31,10 +31,9 @@ export const Partners: FC = () => {
 
       for (const nameTag of Array.from(partnerNameTags)) {
         const name = nameTag.textContent || 'Error in loading name';
-        const photoUrl =
-          'assets/img/partners/' +
-          name.toLowerCase().replace(' ', '-') +
-          '.jpg';
+        const photoUrl = `assets/img/partners/${name
+          .toLowerCase()
+          .replace(' ', '-')}.jpg`;
         partnersList.push({ name: name, photoUrl: photoUrl });
       }
 
@@ -42,25 +41,25 @@ export const Partners: FC = () => {
     });
   };
 
-  const partnerLoginEP = () => {
+  const loginPartner = () => {
     // XPATH injection boolean detection
     partnerLogin(PARTNER_DEFAULT_USERNAME, PARTNER_DEFAULT_PASSWORD).then(
       (data) => {
         const xmlDoc = new DOMParser().parseFromString(data, 'text/xml');
 
         if (!xmlDoc) {
-          console.log("Partner login for username 'walter100' failed");
+          console.log(`Partner login as '${PARTNER_DEFAULT_USERNAME}' failed`);
           return;
         }
 
-        console.log("Partner login for username 'walter100' was successful!");
+        console.log(`Partner login as '${PARTNER_DEFAULT_USERNAME}' succeded!`);
       }
     );
   };
 
   useEffect(() => {
-    partnerNameSearchEP();
-    partnerLoginEP();
+    fetchPartners();
+    loginPartner();
   }, [partners.length]);
 
   const generatePartnerItem = (partner: Partner, idx: number) => (
@@ -84,9 +83,9 @@ export const Partners: FC = () => {
               items={partners.length}
               loop={false}
             >
-              {partners.map((partner, idx) => {
-                return generatePartnerItem(partner, idx);
-              })}
+              {partners.map((partner, idx) =>
+                generatePartnerItem(partner, idx)
+              )}
             </OwlCarousel>
           ) : null}
         </div>

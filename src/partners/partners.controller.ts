@@ -49,7 +49,6 @@ export class PartnersController {
         this.logger.debug(`Getting partners with xpath expression "${xpath}"`);
 
         try {
-            // Use `')] | //password%00//` or `')] | //* | a[('` to exploit the EP
             return this.partnersService.getPartnersProperties(xpath);
         } catch (err) {
             throw new HttpException(`Failed to load XML using XPATH. Details: ${err}`, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -81,7 +80,6 @@ export class PartnersController {
         this.logger.debug(`Trying to login partner with username ${username} using password ${password}`);
 
         try {
-            // Use `' or '1'='1` in the password field to exploit the EP
             let xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`
             let xmlStr = this.partnersService.getPartnersProperties(xpath);
 
