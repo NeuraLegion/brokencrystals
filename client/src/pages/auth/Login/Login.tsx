@@ -83,12 +83,13 @@ export const Login: FC = () => {
         sessionStorage.setItem('email', email);
         return getUserData(email);
       })
-      .then((userData: UserData) =>
+      .then((userData: UserData) => {
         sessionStorage.setItem(
           'userName',
           `${userData.firstName} ${userData.lastName}`
-        )
-      );
+        );
+        sessionStorage.setItem('user_id', userData.id);
+      });
   };
 
   const sendLdap = () => {

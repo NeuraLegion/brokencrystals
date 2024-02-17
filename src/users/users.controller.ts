@@ -31,10 +31,11 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { CreateUserRequest } from './api/CreateUserRequest';
+import { CreateUserRequest, SignupMode } from './api/CreateUserRequest';
 import { UserDto } from './api/UserDto';
 import { LdapQueryHandler } from './ldap.query.handler';
 import { UsersService } from './users.service';
@@ -86,6 +87,7 @@ export class UsersController {
   }
 
   @Get('/one/:email')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
     description: SWAGGER_DESC_FIND_USER,
@@ -114,6 +116,7 @@ export class UsersController {
   }
 
   @Get('/id/:id')
+  @ApiQuery({ name: 'id', example: 1, required: true })
   @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
     description: SWAGGER_DESC_FIND_USER,
@@ -142,6 +145,7 @@ export class UsersController {
   }
 
   @Get('/fullinfo/:email')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @SerializeOptions({ groups: [FULL_USER_INFO] })
   @ApiOperation({
     description: SWAGGER_DESC_FIND_FULL_USER_INFO,
@@ -170,6 +174,7 @@ export class UsersController {
   }
 
   @Get('/search/:name')
+  @ApiQuery({ name: 'name', example: 'john', required: true })
   @SerializeOptions({ groups: [FULL_USER_INFO] })
   @ApiOperation({
     description: SWAGGER_DESC_FIND_USERS,
@@ -189,6 +194,7 @@ export class UsersController {
   }
 
   @Get('/one/:email/photo')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -232,6 +238,7 @@ export class UsersController {
   }
 
   @Delete('/one/:id/photo')
+  @ApiQuery({ name: 'id', example: 1, required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -273,6 +280,12 @@ export class UsersController {
   }
 
   @Get('/ldap')
+  @ApiQuery({
+    name: 'query',
+    example:
+      '(&(objectClass=person)(objectClass=user)(email=john.doe@example.com))',
+    required: true,
+  })
   @ApiOperation({
     description: SWAGGER_DESC_LDAP_SEARCH,
   })
@@ -333,17 +346,18 @@ export class UsersController {
     try {
       this.logger.debug(`Create a basic user: ${user}`);
 
-      const userExists = await this.usersService.findByEmail(user.email);
+      const userExists = await this.doesUserExist(user);
       if (userExists) {
-        throw new HttpException('User already exists', 409);
+        throw new HttpException('User already exists', HttpStatus.CONFLICT);
       }
+
+      return new UserDto(
+        await this.usersService.createUser(user, user.op === SignupMode.BASIC),
+      );
     } catch (err) {
-      if (err.status === 404) {
-        return new UserDto(await this.usersService.createUser(user));
-      }
       throw new HttpException(
         err.message ?? 'Something went wrong',
-        err.status ?? 500,
+        err.status ?? HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
@@ -368,7 +382,13 @@ export class UsersController {
     try {
       this.logger.debug(`Create a OIDC user: ${user}`);
 
-      return new UserDto(
+      const userExists = await this.doesUserExist(user);
+
+      if (userExists) {
+        throw new HttpException('User already exists', HttpStatus.CONFLICT);
+      }
+
+      const keycloakUser = new UserDto(
         await this.keyCloakService.registerUser({
           email: user.email,
           firstName: user.firstName,
@@ -376,6 +396,10 @@ export class UsersController {
           password: user.password,
         }),
       );
+
+      this.createUser(user);
+
+      return keycloakUser;
     } catch (err) {
       throw new HttpException(
         err.response.data ?? 'Something went wrong',
@@ -385,6 +409,7 @@ export class UsersController {
   }
 
   @Put('/one/:email/info')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -427,6 +452,7 @@ export class UsersController {
   }
 
   @Get('/one/:email/info')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -470,6 +496,7 @@ export class UsersController {
   }
 
   @Get('/one/:email/adminpermission')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard, AdminGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -493,6 +520,7 @@ export class UsersController {
   }
 
   @Put('/one/:email/photo')
+  @ApiQuery({ name: 'email', example: 'john.doe@example.com', required: true })
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
@@ -541,5 +569,22 @@ export class UsersController {
         'base64',
       ).toString(),
     ).user;
+  }
+
+  private async doesUserExist(user: UserDto): Promise<boolean> {
+    try {
+      const userExists = await this.usersService.findByEmail(user.email);
+      if (userExists) {
+        return true;
+      }
+    } catch (err) {
+      if (err.status === HttpStatus.NOT_FOUND) {
+        return false;
+      }
+      throw new HttpException(
+        err.message ?? 'Something went wrong',
+        err.status ?? HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

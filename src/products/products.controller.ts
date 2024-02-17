@@ -6,6 +6,8 @@ import {
   UseGuards,
   Headers,
   InternalServerErrorException,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiOperation,
@@ -13,6 +15,8 @@ import {
   ApiTags,
   ApiForbiddenResponse,
   ApiInternalServerErrorResponse,
+  ApiHeader,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
@@ -60,6 +64,7 @@ export class ProductsController {
   }
 
   @Get('latest')
+  @ApiQuery({ name: 'limit', example: 3, required: false })
   @ApiOperation({
     description: API_DESC_GET_LATEST_PRODUCTS,
   })
@@ -67,13 +72,22 @@ export class ProductsController {
     type: ProductDto,
     isArray: true,
   })
-  async getLatestProducts(): Promise<ProductDto[]> {
+  async getLatestProducts(
+    @Query('limit') limit: number,
+  ): Promise<ProductDto[]> {
     this.logger.debug('Get latest products.');
-    const products = await this.productsService.findLatest(3);
+    if (limit && isNaN(limit)) {
+      throw new BadRequestException('Limit must be a number');
+    }
+    if (limit && limit < 0) {
+      throw new BadRequestException('Limit must be positive');
+    }
+    const products = await this.productsService.findLatest(limit || 3);
     return products.map((p: Product) => new ProductDto(p));
   }
 
   @Get('views')
+  @ApiHeader({ name: 'x-product-name', example: 'Amethyst' })
   @ApiOperation({
     description: API_DESC_GET_VIEW_PRODUCT,
   })

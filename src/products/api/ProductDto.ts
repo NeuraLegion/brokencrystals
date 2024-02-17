@@ -1,19 +1,23 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class ProductDto {
-  @ApiProperty()
+  @ApiProperty({ example: 'Amethyst', required: true })
   name: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'Healing', required: true })
   category: string;
 
-  @ApiProperty()
+  @ApiProperty({
+    default:
+      '/api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg',
+    required: true,
+  })
   photoUrl: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 'a violet variety of quartz', required: true })
   description: string;
 
-  @ApiProperty()
+  @ApiProperty({ example: 1, required: true })
   viewsCount: number;
 
   constructor(params: {
