@@ -9,6 +9,7 @@ import {
 import Header from '../main/Header/Header';
 import Testimonials from './Testimonials/Testimonials';
 import ProductView from './ProductView';
+import Partners from './Partners/Partners';
 
 interface Props {
   preview: boolean;
@@ -104,6 +105,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
           </div>
         )}
       </section>
+      <Partners />
       <Testimonials preview={props.preview} />
       <section id="feedback" className="testimonials section-bg">
         <div className="container" data-aos="fade-up">

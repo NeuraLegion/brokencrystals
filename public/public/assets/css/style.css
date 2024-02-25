@@ -849,6 +849,42 @@ section {
 }
 
 /*--------------------------------------------------------------
+# Partners
+--------------------------------------------------------------*/
+.partners .partner-item {
+  box-sizing: content-box;
+}
+
+.partner-item {
+  font-style: italic;
+  margin: 0 15px 0 15px;
+  padding: 15px 20px 35px 25px;
+  background: #fff;
+  border-radius: 6px;
+  z-index: 1;
+  box-shadow: 0 0px 20px 0 rgba(0, 0, 0, 0.1);
+}
+
+.partner-img {
+  border: 6px solid #fff;
+
+  max-width: 350px;
+  width: 230px;
+
+  height: 100%;
+  vertical-align: middle;
+}
+
+.partner-name {
+  color: #4c99df;
+  font-weight: normal;
+  text-align: center;
+
+  margin-bottom: 5px;
+  margin-top: 5px;
+}
+
+/*--------------------------------------------------------------
 # Testimonials
 --------------------------------------------------------------*/
 .testimonials .testimonial-item {

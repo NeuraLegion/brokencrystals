@@ -281,3 +281,24 @@ export function viewProduct(productName: string): Promise<any> {
     }
   });
 }
+
+export function queryPartnersRaw(xpath: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Partners}/query?xpath=${xpath}`,
+    method: 'get'
+  });
+}
+
+export function partnerLogin(username: string, password: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Partners}/partnerLogin?username=${username}&password=${password}`,
+    method: 'get'
+  });
+}
+
+export function searchPartners(keyword: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Partners}/searchPartners?keyword=${keyword}`,
+    method: 'get'
+  });
+}
