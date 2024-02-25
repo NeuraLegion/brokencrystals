@@ -81,6 +81,8 @@ async function bootstrap() {
 
   * [Products](#/Products%20controller) — operations with products
 
+  * [Partners](#/Partners%20controller) — operations with partners
+
 
   `,
     )
