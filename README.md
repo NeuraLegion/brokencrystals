@@ -150,3 +150,11 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
   2. The endpoint GET `/api/partners/searchPartners` is supposed to search partners' names by a given keyword. It's vulnerable to an XPATH injection using string detection payloads. When exploited, it can grant access to sensitive information like passwords and even lead to full data leak. You can use `')] | //password%00//` or `')] | //* | a[('` to exploit the EP.
   3. The endpoint GET `/api/partners/query` is a raw XPATH injection endpoint. You can put whatever you like there. It is not referenced in the frontend, but it is an exposed API endpoint.
   4. Note: All endpoints are vulnerable to error based payloads.
+
+* **Prototype Pollution** - The `/marketplace?portfolio_query_filter=Bismuth` endpoint is vulnerable to prototype pollution using the following vulnerabilities:
+  1. The EP GET `/marketplace?portfolio_query_filter=Bismuth` represents the client side vulnerabillity, allowing an attacker to infect the `portfolio_query_filter` parameter.
+  2. The EP POST `/api/mail/resetPassword` represents the server side vulnerabillity, allowing an attacker to infect any of the parameters sent.
+  TODO: MENTION PARAMS HERE.
+
+* **Email Injection** - The `/api/mail/resetPassword` endpoint reads the host header and uses it as the domain to which the password reset link points.
+Note: This EP is also vulnerable to `Prototype Pollution`, as mentioned in this README. 

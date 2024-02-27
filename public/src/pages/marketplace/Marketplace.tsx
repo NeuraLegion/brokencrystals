@@ -11,6 +11,8 @@ import Testimonials from './Testimonials/Testimonials';
 import ProductView from './ProductView';
 import Partners from './Partners/Partners';
 
+import splitUriIntoParams_PPVulnerable from '../../utils/url';
+
 interface Props {
   preview: boolean;
 }
@@ -67,6 +69,25 @@ export const Marketplace: FC<Props> = (props: Props) => {
     }
   }, []);
 
+  const searchInProductNameOrDescription = (
+    searchString: string,
+    product: Product
+  ) => {
+    searchString = searchString.toLowerCase();
+    return product.name.toLowerCase().includes(searchString) ||
+      product.description.toLowerCase().includes(searchString)
+      ? product
+      : null;
+  };
+
+  // Note: This function is vulnerable to Prototype Pollution
+  const currentUriParams: Record<string, any> = splitUriIntoParams_PPVulnerable(
+    location.search
+  );
+  const [portfolioQueryFilter, setPortfolioQueryFilter] = useState(
+    currentUriParams['portfolio_query_filter'] || ''
+  );
+
   return (
     <section>
       {props.preview || <Header onInnerPage={true} />}
@@ -75,6 +96,16 @@ export const Marketplace: FC<Props> = (props: Props) => {
         <div className="container" data-aos="fade-up">
           <div className="section-title marketplaceTitle">
             <h2>Marketplace</h2>
+          </div>
+          <div className="section-title marketplaceTitle">
+            <h3>Gem Filter</h3>
+            <input
+              className="form-control marketplace-gem-filter-input"
+              id="portfolio-query-filter"
+              placeholder="Filter for gems easily"
+              defaultValue={portfolioQueryFilter || ''}
+              onChange={(e) => setPortfolioQueryFilter(e.target.value)}
+            />
           </div>
           {props.preview || (
             <div className="row">
@@ -92,9 +123,16 @@ export const Marketplace: FC<Props> = (props: Props) => {
           )}
           <div className="row portfolio-container">
             {products &&
-              products.map((product, i) => (
-                <ProductView product={product} key={i} />
-              ))}
+              products.map((product, i) =>
+                searchInProductNameOrDescription(
+                  portfolioQueryFilter,
+                  product
+                ) ? (
+                  <ProductView product={product} key={i} />
+                ) : (
+                  <></>
+                )
+              )}
           </div>
         </div>
         {props.preview && (

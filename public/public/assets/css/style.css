@@ -573,6 +573,13 @@ section {
   padding-top: 30px;
 }
 
+.marketplace-gem-filter-input {
+  margin-left: 20%;
+  margin-right: 20%;
+  max-width: -webkit-fill-available;
+  margin-top: 15px
+}
+
 .section-title h2 {
   font-size: 32px;
   font-weight: bold;
