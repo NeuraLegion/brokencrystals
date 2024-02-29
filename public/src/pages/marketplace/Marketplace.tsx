@@ -69,7 +69,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
     }
   }, []);
 
-  const searchInProductNameOrDescription = (
+  const searchStringInProductNameOrDescription = (
     searchString: string,
     product: Product
   ) => {
@@ -84,9 +84,32 @@ export const Marketplace: FC<Props> = (props: Props) => {
   const currentUriParams: Record<string, any> = splitUriIntoParams_PPVulnerable(
     location.search
   );
+
   const [portfolioQueryFilter, setPortfolioQueryFilter] = useState(
     currentUriParams['portfolio_query_filter'] || ''
   );
+
+  // If there is a key named 'prototypePollutionDomXss' (which can stem from prototype pollution)
+  // then a script element is created with the key's cooresponding value
+  const ppDomXss = document.createElement('script');
+
+  useEffect(() => {
+    if (currentUriParams.prototypePollutionDomXss) {
+      console.log(
+        'THIS ' + currentUriParams.prototypePollutionDomXss.toString()
+      );
+      ppDomXss.src = currentUriParams.prototypePollutionDomXss;
+      ppDomXss.async = true;
+
+      document.body.appendChild(ppDomXss);
+    }
+
+    return () => {
+      if (currentUriParams.prototypePollutionDomXss) {
+        document.body.removeChild(ppDomXss);
+      }
+    };
+  }, []);
 
   return (
     <section>
@@ -104,7 +127,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
               id="portfolio-query-filter"
               placeholder="Filter for gems easily"
               defaultValue={portfolioQueryFilter || ''}
-              onChange={(e) => setPortfolioQueryFilter(e.target.value)}
+              onChange={(e) => setPortfolioQueryFilter(e ? e.target.value : '')}
             />
           </div>
           {props.preview || (
@@ -124,7 +147,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
           <div className="row portfolio-container">
             {products &&
               products.map((product, i) =>
-                searchInProductNameOrDescription(
+                searchStringInProductNameOrDescription(
                   portfolioQueryFilter,
                   product
                 ) ? (
