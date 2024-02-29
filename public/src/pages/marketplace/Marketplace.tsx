@@ -11,7 +11,7 @@ import Testimonials from './Testimonials/Testimonials';
 import ProductView from './ProductView';
 import Partners from './Partners/Partners';
 
-import splitUriIntoParams_PPVulnerable from '../../utils/url';
+import splitUriIntoParamsPPVulnerable from '../../utils/url';
 
 interface Props {
   preview: boolean;
@@ -81,35 +81,33 @@ export const Marketplace: FC<Props> = (props: Props) => {
   };
 
   // Note: This function is vulnerable to Prototype Pollution
-  const currentUriParams: Record<string, any> = splitUriIntoParams_PPVulnerable(
+  const currentUriParams: Record<string, any> = splitUriIntoParamsPPVulnerable(
     location.search
   );
 
   const [portfolioQueryFilter, setPortfolioQueryFilter] = useState(
-    currentUriParams['portfolio_query_filter'] || ''
+    currentUriParams &&
+      currentUriParams.hasOwnProperty('portfolio_query_filter')
+      ? currentUriParams['portfolio_query_filter']
+      : ''
   );
 
-  // If there is a key named 'prototypePollutionDomXss' (which can stem from prototype pollution)
-  // then a script element is created with the key's cooresponding value
-  const ppDomXss = document.createElement('script');
+  /*
+  If there is a key named 'prototypePollutionDomXss', which can stem from prototype pollution
+  or just a regular URI parameter than a script element is created with the key's cooresponding value
+  */
+  let scriptElementProrotypePollutionDomXSS;
+  if (currentUriParams.prototypePollutionDomXss) {
+    scriptElementProrotypePollutionDomXSS = document.createElement('script');
 
-  useEffect(() => {
-    if (currentUriParams.prototypePollutionDomXss) {
-      console.log(
-        'THIS ' + currentUriParams.prototypePollutionDomXss.toString()
-      );
-      ppDomXss.src = currentUriParams.prototypePollutionDomXss;
-      ppDomXss.async = true;
+    scriptElementProrotypePollutionDomXSS.id =
+      'prototype-pollution-dom-xss-script';
+    scriptElementProrotypePollutionDomXSS.src =
+      currentUriParams.prototypePollutionDomXss;
+    scriptElementProrotypePollutionDomXSS.async = true;
 
-      document.body.appendChild(ppDomXss);
-    }
-
-    return () => {
-      if (currentUriParams.prototypePollutionDomXss) {
-        document.body.removeChild(ppDomXss);
-      }
-    };
-  }, []);
+    document.body.appendChild(scriptElementProrotypePollutionDomXSS);
+  }
 
   return (
     <section>
@@ -120,7 +118,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
           <div className="section-title marketplaceTitle">
             <h2>Marketplace</h2>
           </div>
-          <div className="section-title marketplaceTitle">
+          <div className="section-title qmarketplaceTitle">
             <h3>Gem Filter</h3>
             <input
               className="form-control marketplace-gem-filter-input"

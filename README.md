@@ -151,10 +151,12 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
   3. The endpoint GET `/api/partners/query` is a raw XPATH injection endpoint. You can put whatever you like there. It is not referenced in the frontend, but it is an exposed API endpoint.
   4. Note: All endpoints are vulnerable to error based payloads.
 
-* **Prototype Pollution** - The `/marketplace` endpoint is vulnerable to prototype pollution using the following vulnerabilities:
+* **Prototype Pollution** - The `/marketplace` endpoint is vulnerable to prototype pollution using the following methods:
   1. The EP GET `/marketplace?__proto__[Test]=Test` represents the client side vulnerabillity, by parsing the URI (for portfolio filtering) and converting
   it's parmeters into an object. This means that a requests like `/marketplace?__proto__[TestKey]=TestValue` will lead to a creation of `Object.TestKey`.
-  One can test if an attack was successful by viewing the new property created.
+  One can test if an attack was successful by viewing the new property created in the console.
+  This EP also supports prototyp pollution based DOM XSS using a payload such as `__proto__[prototypePollutionDomXss]=data:,alert(1);`.
+  The "legitimate" code tries to use the `prototypePollutionDomXss` parameter as a source for a script tag, so if the exploit is not used via this key it won't work.
   2. UNDONE - The EP POST `/api/mail/resetPassword` represents the server side vulnerabillity, allowing an attacker to infect any of the parameters sent.
   TODO: MENTION PARAMS HERE.
 
