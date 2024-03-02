@@ -286,7 +286,7 @@ export function getNestedJson(jsonNestingLevel: number = 1): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.NestedJson}?depth=${jsonNestingLevel}`,
     method: 'get'
-  })
+  });
 }
 
 export function queryPartnersRaw(xpath: string): Promise<any> {
