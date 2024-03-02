@@ -15,6 +15,9 @@ import {
   SerializeOptions,
   UseGuards,
   UseInterceptors,
+  ParseIntPipe,
+  DefaultValuePipe,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -39,6 +42,7 @@ import {
   API_DESC_RENDER_REQUEST,
   API_DESC_XML_METADATA,
   SWAGGER_DESC_SECRETS,
+  SWAGGER_DESC_NESTED_JSON,
 } from './app.controller.swagger.desc';
 import { AuthGuard } from './auth/auth.guard';
 import { JwtType } from './auth/jwt/jwt.type.decorator';
@@ -52,7 +56,7 @@ import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
 export class AppController {
   private readonly logger = new Logger(AppController.name);
 
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly appService: AppService) { }
 
   @Post('render')
   @ApiProduces('text/plain')
@@ -262,5 +266,28 @@ export class AppController {
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }
+  }
+
+  @Get('nestedJson')
+  @ApiOperation({
+    description: SWAGGER_DESC_NESTED_JSON,
+  })
+  @Header('content-type', 'application/json')
+  async getNestedJson(@Query('depth', new DefaultValuePipe(1), new ParseIntPipe({ errorHttpStatusCode: HttpStatus.BAD_REQUEST })) depth: number): Promise<string> {
+    if (depth < 1) {
+      throw new HttpException("JSON nesting depth is invalid", HttpStatus.BAD_REQUEST);
+    }
+
+    this.logger.debug(`Creating a JSON with a nesting depth of ${depth}`);
+
+    var tmpObj: object = {};
+    var jsonObj: object = { "0": "Leaf" };
+    for (let i = 1; i < depth; i++) {
+      tmpObj = {};
+      tmpObj[i.toString()] = Object.assign({}, jsonObj);
+      jsonObj = Object.assign({}, tmpObj);
+    }
+
+    return JSON.stringify(jsonObj);
   }
 }
