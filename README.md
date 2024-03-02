@@ -157,8 +157,3 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
   One can test if an attack was successful by viewing the new property created in the console.
   This EP also supports prototyp pollution based DOM XSS using a payload such as `__proto__[prototypePollutionDomXss]=data:,alert(1);`.
   The "legitimate" code tries to use the `prototypePollutionDomXss` parameter as a source for a script tag, so if the exploit is not used via this key it won't work.
-  2. UNDONE - The EP POST `/api/mail/resetPassword` represents the server side vulnerabillity, allowing an attacker to infect any of the parameters sent.
-  TODO: MENTION PARAMS HERE.
-
-* **Email Injection** - The `/api/mail/resetPassword` endpoint reads the host header and uses it as the domain to which the password reset link points.
-Note: This EP is also vulnerable to `Prototype Pollution`, as mentioned in this README. 
