@@ -282,6 +282,13 @@ export function viewProduct(productName: string): Promise<any> {
   });
 }
 
+export function getNestedJson(jsonNestingLevel: number = 1): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.NestedJson}?depth=${jsonNestingLevel}`,
+    method: 'get'
+  });
+}
+
 export function queryPartnersRaw(xpath: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Partners}/query?xpath=${xpath}`,
