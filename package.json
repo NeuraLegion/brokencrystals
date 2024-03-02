@@ -64,7 +64,9 @@
     "rimraf": "^3.0.2",
     "rxjs": "^7.8.0",
     "stream-buffers": "^3.0.2",
-    "ts-morph": "^17.0.1"
+    "ts-morph": "^17.0.1",
+    "xmldom": "^0.6.0",
+    "xpath": "0.0.34"
   },
   "devDependencies": {
     "@mikro-orm/cli": "^4.5.10",

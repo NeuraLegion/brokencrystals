@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpStatus,
   InternalServerErrorException,
@@ -131,7 +132,7 @@ export class AuthController {
     if (req.op === FormMode.OIDC) {
       loginData = await this.loginOidc(req);
     } else {
-      loginData = await this.login(req);
+      loginData = await this.loginBasic(req);
     }
 
     const { token, ...loginResponse } = loginData;
@@ -264,7 +265,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithKIDSqlJwt');
-    const profile = await this.login(req);
+    const profile = await this.loginBasic(req);
 
     res.header(
       'authorization',
@@ -324,7 +325,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithKIDSqlJwt');
-    const profile = await this.login(req);
+    const profile = await this.loginBasic(req);
 
     res.header(
       'authorization',
@@ -384,7 +385,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithJKUJwt');
-    const profile = await this.login(req);
+    const profile = await this.loginBasic(req);
 
     res.header(
       'authorization',
@@ -444,7 +445,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithJWKJwt');
-    const profile = await this.login(req);
+    const profile = await this.loginBasic(req);
 
     res.header(
       'authorization',
@@ -504,7 +505,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithX5CJwt');
-    const profile = await this.login(req);
+    const profile = await this.loginBasic(req);
 
     res.header(
       'authorization',
@@ -564,7 +565,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithX5UJwt');
-    const profile = await this.login(req);
+    const profile = await this.loginBasic(req);
 
     res.header(
       'Authorization',
@@ -624,7 +625,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: FastifyReply,
   ): Promise<LoginResponse> {
     this.logger.debug('Call loginWithHMACJwt');
-    const profile = await this.login(req);
+    const profile = await this.loginBasic(req);
 
     res.header(
       'authorization',
@@ -690,7 +691,7 @@ export class AuthController {
     }
   }
 
-  private async login(req: LoginRequest): Promise<LoginData> {
+  private async loginBasic(req: LoginRequest): Promise<LoginData> {
     let user: User;
 
     try {
@@ -705,6 +706,13 @@ export class AuthController {
     if (!user || !(await passwordMatches(req.password, user.password))) {
       throw new UnauthorizedException({
         error: 'Invalid credentials',
+        location: __filename,
+      });
+    }
+
+    if (!user.isBasic) {
+      throw new ForbiddenException({
+        error: 'Invalid authentication method for this user',
         location: __filename,
       });
     }

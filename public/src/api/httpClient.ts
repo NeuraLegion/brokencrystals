@@ -103,6 +103,13 @@ export function getUserData(
   });
 }
 
+export function getUserDataById(id: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Users}/id/${id}`,
+    method: 'get'
+  });
+}
+
 export function getLdap(ldapProfileLink: string): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.Users}/ldap?query=${encodeURIComponent(ldapProfileLink)}`,
@@ -278,6 +285,27 @@ export function viewProduct(productName: string): Promise<any> {
 export function getNestedJson(jsonNestingLevel: number = 1): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.NestedJson}?depth=${jsonNestingLevel}`,
+    method: 'get'
+  })
+}
+
+export function queryPartnersRaw(xpath: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Partners}/query?xpath=${xpath}`,
+    method: 'get'
+  });
+}
+
+export function partnerLogin(username: string, password: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Partners}/partnerLogin?username=${username}&password=${password}`,
+    method: 'get'
+  });
+}
+
+export function searchPartners(keyword: string): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Partners}/searchPartners?keyword=${keyword}`,
     method: 'get'
   });
 }
