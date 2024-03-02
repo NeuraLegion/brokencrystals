@@ -74,7 +74,8 @@ export const Marketplace: FC<Props> = (props: Props) => {
     product: Product
   ) => {
     searchString = searchString.toLowerCase();
-    return product.name.toLowerCase().includes(searchString) ||
+    return !searchString ||
+      product.name.toLowerCase().includes(searchString) ||
       product.description.toLowerCase().includes(searchString)
       ? product
       : null;
@@ -93,8 +94,8 @@ export const Marketplace: FC<Props> = (props: Props) => {
   );
 
   /*
-  If there is a key named 'prototypePollutionDomXss', which can stem from prototype pollution
-  or just a regular URI parameter than a script element is created with the key's cooresponding value
+  If the 'prototypePollutionDomXss' key is present (which can stem from prototype pollution or just a regular URI parameter)
+  then a <script> element is created with the key's cooresponding value as a source
   */
   let scriptElementProrotypePollutionDomXSS;
   if (currentUriParams.prototypePollutionDomXss) {
