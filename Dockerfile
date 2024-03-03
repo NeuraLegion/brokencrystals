@@ -1,27 +1,87 @@
-FROM node:14
+###################
+# BUILD FOR LOCAL DEVELOPMENT
+###################
 
-WORKDIR /var/www/
+FROM node:14-alpine As development
 
-COPY package*.json ./
+WORKDIR /usr/src/app
 
-RUN npm ci -q
+COPY --chown=node:node package*.json ./
+COPY --chown=node:node tsconfig.build.json ./
+COPY --chown=node:node tsconfig.json ./
+COPY --chown=node:node nest-cli.json ./ 
+COPY --chown=node:node mikro-orm.config.ts ./
+COPY --chown=node:node .env ./
+COPY --chown=node:node config ./config
+COPY --chown=node:node keycloak ./keycloak
+COPY --chown=node:node client ./client
+COPY --chown=node:node src ./src
 
-COPY config ./config
-COPY tsconfig.build.json ./
-COPY tsconfig.json ./
-COPY nest-cli.json ./
-COPY .env ./
-COPY src ./src
 
-RUN npm run build
-RUN npm prune --production
+RUN apk add --no-cache --virtual .gyp python3 py3-pip make g++ 
 
-RUN chown -R node:node /var/www/*
+RUN npm ci  
+RUN npm ci --prefix=client --only=prod
+
+RUN apk del .gyp
 
 USER node
 
-ENV NODE_ENV=production
+###################
+# BUILD FOR PRODUCTION
+###################
 
-EXPOSE 3000
+FROM node:14-alpine As build
+
+WORKDIR /usr/src/app
+
+COPY --chown=node:node package*.json ./
+COPY --chown=node:node tsconfig.build.json ./
+COPY --chown=node:node tsconfig.json ./
+COPY --chown=node:node nest-cli.json ./ 
+COPY --chown=node:node mikro-orm.config.ts ./
+COPY --chown=node:node .env ./
+COPY --chown=node:node config ./config
+COPY --chown=node:node keycloak ./keycloak
+COPY --chown=node:node client ./client
+COPY --chown=node:node src ./src
+
+COPY --chown=node:node --from=development /usr/src/app/node_modules ./node_modules
+COPY --chown=node:node --from=development /usr/src/app/client/node_modules ./client/node_modules
+
+RUN apk add --no-cache --virtual .gyp python3 py3-pip make g++ 
+
+RUN npm run build
+RUN npm run build --prefix=client
+
+ENV NODE_ENV production
+
+RUN npm ci --only=production && npm cache clean --force
+
+RUN apk del .gyp
+
+USER node
+
+###################
+# PRODUCTION
+###################
+
+FROM node:14-alpine As production
+
+WORKDIR /usr/src/app
+
+COPY --chown=node:node nest-cli.json ./ 
+COPY --chown=node:node mikro-orm.config.ts ./
+COPY --chown=node:node .env ./
+COPY --chown=node:node config ./config
+COPY --chown=node:node keycloak ./keycloak
+
+COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
+COPY --chown=node:node --from=build /usr/src/app/package*.json ./
+COPY --chown=node:node --from=build /usr/src/app/dist ./dist
+
+COPY --chown=node:node --from=build /usr/src/app/client/node_modules ./client/node_modules
+COPY --chown=node:node --from=build /usr/src/app/client/package*.json ./client/
+COPY --chown=node:node --from=build /usr/src/app/client/build ./client/build
 
 CMD ["npm", "run", "start:prod"]
