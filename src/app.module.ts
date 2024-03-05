@@ -40,6 +40,7 @@ import { PartnersModule } from './partners/partners.module';
     }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'client', 'build'),
+      serveStaticOptions: { dotfiles: 'allow' },
     }),
   ],
   controllers: [AppController],
