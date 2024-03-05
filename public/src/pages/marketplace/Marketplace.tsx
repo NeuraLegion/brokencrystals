@@ -10,7 +10,6 @@ import Header from '../main/Header/Header';
 import Testimonials from './Testimonials/Testimonials';
 import ProductView from './ProductView';
 import Partners from './Partners/Partners';
-
 import splitUriIntoParamsPPVulnerable from '../../utils/url';
 
 interface Props {
