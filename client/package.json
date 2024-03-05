@@ -20,7 +20,7 @@
     "cypress:run": "cypress open --browser chrome",
     "test": "start-test 3001 cypress:run",
     "start": "cross-env PORT=3001 react-scripts start",
-    "build": "react-scripts build && cp -r vcs/git build/.git && cp -r vcs/hg build/.hg && cp -r vcs/svn build/.svn",
+    "build": "react-scripts build",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

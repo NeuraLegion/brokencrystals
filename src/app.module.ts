@@ -39,6 +39,7 @@ import { AppResolver } from './app.resolver';
     }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'client', 'build'),
+      serveStaticOptions: { dotfiles: 'allow' },
     }),
   ],
   controllers: [AppController],

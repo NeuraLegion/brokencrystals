@@ -6,7 +6,7 @@ import fastifyCookie from '@fastify/cookie';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import * as cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -17,7 +17,59 @@ import { randomBytes } from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
+import { fastifyStatic, ListRender } from '@fastify/static';
+import { join, dirname } from 'path';
 import * as rawbody from 'raw-body';
+
+const renderDirList: ListRender = (dirs, files) => {
+  const currDir = dirname((dirs[0] || files[0]).href);
+  const parentDir = dirname(currDir);
+  return `
+    <head><title>Index of ${currDir}/</title></head>
+    <html><body>
+      <h1>Index of ${currDir}/</h1>
+      <hr>
+      <table style="width: max(450px, 50%);">
+        <tr>
+          <td>
+            <a href="${parentDir}">../</a>
+          </td>
+          <td></td><td></td>
+        </tr>
+        ${dirs.map(
+          (dir) =>
+            `<tr>
+              <td>
+                <a href="${dir.href}">${dir.name}</a>
+              </td>
+              <td>
+                ${dir.stats.ctime.toLocaleString()}
+              </td>
+              <td>
+                -
+              </td>
+            </tr>`,
+        )}
+        <br/>
+        ${files.map(
+          (file) =>
+            `<tr>
+              <td>
+                <a href="${file.href}">${file.name}</a>
+              </td>
+              <td>
+                ${file.stats.ctime.toLocaleString()}
+              </td>
+              <td>
+                ${file.stats.size}
+              </td>
+            </tr>`,
+        )}
+      </table>
+      <hr>
+    </body></html>
+  `;
+};
 
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
@@ -38,6 +90,21 @@ async function bootstrap() {
           }
         : null,
   });
+
+  for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
+    server.register(fastifyStatic, {
+      root: join(__dirname, '..', 'client', 'vcs', dir),
+      prefix: `/.${dir}`,
+      decorateReply: false,
+      redirect: true,
+      index: false,
+      list: {
+        format: 'html',
+        render: renderDirList,
+      },
+      serveDotFiles: true,
+    });
+  }
 
   const app: NestFastifyApplication = await NestFactory.create(
     AppModule,
