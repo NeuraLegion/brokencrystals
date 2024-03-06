@@ -51,3 +51,15 @@ services:
       - 8090:80
     depends_on:
       - nodejs
+
+  mailcatcher:
+    image: sj26/mailcatcher
+    container_name: mailcatcher
+    restart: always
+    ports:
+      - '1080:1080'
+      - '1025:1025'
+    logging:
+      options:
+        max-file: '5'
+        max-size: '10m'
