@@ -28,6 +28,7 @@ import { PartnersModule } from './partners/partners.module';
     FileModule,
     SubscriptionsModule,
     TestimonialsModule,
+    PartnersModule,
     ProductsModule,
     ConfigModule.forRoot({
       isGlobal: true,
