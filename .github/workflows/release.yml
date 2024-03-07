@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - stable
-      - development
+      - unstable
       - experimental
 
 jobs:
@@ -21,17 +21,17 @@ jobs:
           git config --global user.email "devops@brightsec.com"
           git config --global user.name "Bright Security"
 
-      - name: Change name to development
-        if: ${{ github.ref == 'refs/heads/development' }}
+      - name: Change name to unstable
+        if: ${{ github.ref == 'refs/heads/unstable' }}
         run: |          
           sed -i 's/brokencrystals/brokencrystals-dev/g' ./charts/brokencrystals/Chart.yaml
           sed -i 's/brkn/brkn-dev/g' ./charts/brokencrystals/Chart.yaml
 
       - name: Change values to development
-        if: ${{ github.ref == 'refs/heads/development' }}
+        if: ${{ github.ref == 'refs/heads/unstable' }}
         run: |          
-          sed -i 's/^  main:.*/  main: development/' ./charts/brokencrystals/values.yaml
-          sed -i 's/^  client:.*/  client: development/' ./charts/brokencrystals/values.yaml
+          sed -i 's/^  main:.*/  main: unstable/' ./charts/brokencrystals/values.yaml
+          sed -i 's/^  client:.*/  client: unstable/' ./charts/brokencrystals/values.yaml
           
       - name: Release packages
         uses: helm/chart-releaser-action@v1.5.0
