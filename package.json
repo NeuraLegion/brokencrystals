@@ -51,7 +51,7 @@
     "fastify-multipart": "^5.4.0",
     "fastify-swagger": "^4.17.1",
     "graphql": "^16.6.0",
-    "jose": "^4.13.1",
+    "jose": "^4.15.5",
     "jsonwebtoken": "^8.5.1",
     "jwk-to-pem": "^2.0.5",
     "jwt-simple": "^0.5.6",
