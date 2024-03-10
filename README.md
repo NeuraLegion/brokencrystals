@@ -6,7 +6,7 @@ The application contains:
 - React based web client
   - FE - http://localhost:8090
   - BE - http://localhost:3000
-- NodeJS server that serves that React client and provides both OpenAPI and GraphQL endpoints.
+- NodeJS server that serves the React client and provides both OpenAPI and GraphQL endpoints.
 The full API documentation is available via swagger or GraphQL:
   - Swagger UI - http://localhost:8090/swagger
   - Swagger JSON file - http://localhost:8090/swagger-json
