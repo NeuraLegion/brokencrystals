@@ -282,7 +282,7 @@ export function viewProduct(productName: string): Promise<any> {
   });
 }
 
-export function getNestedJson(jsonNestingLevel: number = 1): Promise<any> {
+export function getNestedJson(jsonNestingLevel = 1): Promise<any> {
   return makeApiRequest({
     url: `${ApiUrl.NestedJson}?depth=${jsonNestingLevel}`,
     method: 'get'
