@@ -16,7 +16,8 @@
     "react-router-dom": "^5.2.0",
     "react-scripts": "4.0.3",
     "web-vitals": "^0.2.4",
-    "xmldom": "^0.6.0"
+    "xmldom": "^0.6.0",
+    "react-scripts": "4.0.3"
   },
   "scripts": {
     "cypress:run": "cypress open --browser chrome",
