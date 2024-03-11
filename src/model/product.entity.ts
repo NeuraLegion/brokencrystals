@@ -5,6 +5,9 @@ import { Base } from './base.entity';
 @Entity()
 export class Product extends Base {
   @Property()
+  created_at: Date;
+
+  @Property()
   name: string;
 
   @Property()
@@ -17,5 +20,5 @@ export class Product extends Base {
   description: string;
 
   @Property()
-  viewsCount: number
+  viewsCount: number;
 }

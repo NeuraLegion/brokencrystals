@@ -11,6 +11,14 @@ import { OidcClient } from '../interfaces/Auth';
 import { ApiUrl } from './ApiUrl';
 import { makeApiRequest } from './makeApiRequest';
 
+function formatDateToYYYYMMDD(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+
+  return `${dd}-${mm}-${yyyy}`;
+}
+
 export const httpClient: AxiosInstance = axios.create();
 
 export function getTestimonials(): Promise<any> {
@@ -26,9 +34,11 @@ export function getTestimonialsCount(): Promise<any> {
   });
 }
 
-export function getProducts(): Promise<Product[]> {
+export function getProducts(dateFrom: Date, dateTo: Date): Promise<Product[]> {
   return makeApiRequest({
-    url: ApiUrl.Products,
+    url: `${ApiUrl.Products}?date_from=${formatDateToYYYYMMDD(
+      dateFrom
+    )}&date_to=${formatDateToYYYYMMDD(dateTo)}`,
     method: 'get',
     headers: {
       authorization:
