@@ -13,7 +13,7 @@ const config = {
   metadataProvider: ReflectMetadataProvider,
   highlighter: new SqlHighlighter(),
   debug: true,
-  logger: logger.log.bind(logger)
+  logger: logger.log.bind(logger),
 } as Options;
 
 export default config;
