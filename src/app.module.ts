@@ -13,6 +13,8 @@ import { HttpClientModule as HttpClientModule } from './httpclient/httpclient.mo
 import { TraceMiddleware } from './components/trace.middleware';
 import { GraphQLModule } from '@nestjs/graphql';
 import { MercuriusDriver, MercuriusDriverConfig } from '@nestjs/mercurius';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { AppService } from './app.service';
 import { UsersService } from './users/users.service';
 import { AppResolver } from './app.resolver';
@@ -26,6 +28,7 @@ import { PartnersModule } from './partners/partners.module';
     FileModule,
     SubscriptionsModule,
     TestimonialsModule,
+    PartnersModule,
     ProductsModule,
     ConfigModule.forRoot({
       isGlobal: true,
@@ -36,7 +39,10 @@ import { PartnersModule } from './partners/partners.module';
       graphiql: true,
       autoSchemaFile: true,
     }),
-    PartnersModule,
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'client', 'build'),
+      serveStaticOptions: { dotfiles: 'allow' },
+    }),
   ],
   controllers: [AppController],
   providers: [

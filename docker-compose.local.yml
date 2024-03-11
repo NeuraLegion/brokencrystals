@@ -14,7 +14,7 @@ services:
           '-U',
           '${POSTGRES_USER}',
           '-P',
-          '${POSTGRES_PASSWORD}'
+          '${POSTGRES_PASSWORD}',
         ]
       timeout: 45s
     environment:
@@ -24,7 +24,7 @@ services:
     ports:
       - 5432:5432
     volumes:
-    - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
+      - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
 
   nodejs:
     build:
@@ -35,19 +35,10 @@ services:
     environment:
       URL: http://localhost:3000
     ports:
-     - '3000:3000'
+      - '3000:3000'
     logging:
       options:
         max-file: '5'
         max-size: '10m'
     depends_on:
       - db
-
-  proxy:
-    build:
-      context: './public'
-      dockerfile: Dockerfile.local
-    ports:
-      - 8090:80
-    depends_on:
-      - nodejs
