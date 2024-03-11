@@ -10,12 +10,13 @@
     "get-browser-fingerprint": "^2.0.1",
     "history": "^4.10.1",
     "react": "^17.0.2",
+    "react-datepicker": "^4.10.0",
     "react-dom": "^17.0.2",
     "react-owl-carousel": "^2.3.3",
     "react-router-dom": "^5.2.0",
+    "react-scripts": "4.0.3",
     "web-vitals": "^0.2.4",
-    "xmldom": "^0.6.0",
-    "react-scripts": "4.0.3"
+    "xmldom": "^0.6.0"
   },
   "scripts": {
     "cypress:run": "cypress open --browser chrome",
@@ -49,6 +50,7 @@
     "@types/history": "^4.7.8",
     "@types/node": "^14.14.10",
     "@types/react": "^17.0.0",
+    "@types/react-datepicker": "^6.0.3",
     "@types/react-dom": "^17.0.0",
     "@types/react-router-dom": "^5.1.6",
     "@types/xmldom": "^0.1.34",

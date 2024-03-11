@@ -57,9 +57,23 @@ export class ProductsController {
       },
     },
   })
-  async getProducts(): Promise<ProductDto[]> {
+  @ApiQuery({ name: 'date_from', example: '02-05-2001', required: false })
+  @ApiQuery({ name: 'date_to', example: '02-05-2024', required: false })
+  async getProducts(
+    @Query('date_from') dateFrom: string,
+    @Query('date_to') dateTo: string,
+  ): Promise<ProductDto[]> {
     this.logger.debug('Get all products.');
-    const allProducts = await this.productsService.findAll();
+    let df = new Date(new Date().setFullYear(new Date().getFullYear() - 1));
+    let dt = new Date();
+    if (dateFrom) {
+      df = new Date(`${dateFrom} 00:00:00.000Z`);
+    }
+    if (dateTo) {
+      dt = new Date(`${dateTo} 00:00:00.000Z`);
+    }
+
+    const allProducts = await this.productsService.findAll(df, dt);
     return allProducts.map((p: Product) => new ProductDto(p));
   }
 
