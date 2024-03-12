@@ -5,13 +5,13 @@ metadata:
   name: {{ include "brokencrystals.fullname" . }}
   namespace: {{ .Release.Namespace }}
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/proxy-ssl-protocols: "TLSv1.1 TLSv1.2"
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     {{ if eq .Values.ingress.cert "" }}
     cert-manager.io/cluster-issuer: letsencrypt-cf-prod
     {{ end }}
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - {{ .Values.ingress.url }}
@@ -35,13 +35,13 @@ metadata:
   name: {{ include "brokencrystals.fullname" . }}-keycloak
   namespace: {{ .Release.Namespace }}
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-ssl-protocols: "TLSv1.1 TLSv1.2"
     {{ if eq .Values.ingress.cert "" }}
     cert-manager.io/cluster-issuer: letsencrypt-cf-prod
     {{ end }}
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - auth{{ .Values.ingress.authlevel }}{{ .Values.ingress.url }}
