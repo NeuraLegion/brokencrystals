@@ -84,8 +84,6 @@ COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
 COPY --chown=node:node --from=build /usr/src/app/package*.json ./
 COPY --chown=node:node --from=build /usr/src/app/dist ./dist
 
-COPY --chown=node:node --from=build /usr/src/app/client/node_modules ./client/node_modules
-COPY --chown=node:node --from=build /usr/src/app/client/package*.json ./client/
 COPY --chown=node:node --from=build /usr/src/app/client/build ./client/build
 COPY --chown=node:node --from=build /usr/src/app/client/vcs ./client/vcs
 
