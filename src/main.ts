@@ -105,6 +105,7 @@ async function bootstrap() {
       serveDotFiles: true,
     });
   }
+<<<<<<< HEAD
 
   server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'build', 'vendor'),
@@ -118,6 +119,8 @@ async function bootstrap() {
     },
     serveDotFiles: true,
   });
+=======
+>>>>>>> c28a3de9d4c18207e8f0061153aaba5f3a68b670
 
   const app: NestFastifyApplication = await NestFactory.create(
     AppModule,

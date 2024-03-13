@@ -77,7 +77,7 @@ spec:
             readOnly: true
 
         - name: keycloak
-          image: jboss/keycloak:latest
+          image: quay.io/keycloak/keycloak:16.1.1
           resources:
             requests:
               cpu: 100m
