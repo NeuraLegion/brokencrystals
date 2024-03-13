@@ -106,6 +106,19 @@ async function bootstrap() {
     });
   }
 
+  server.register(fastifyStatic, {
+    root: join(__dirname, '..', 'client', 'build', 'vendor'),
+    prefix: `/vendor`,
+    decorateReply: false,
+    redirect: true,
+    index: false,
+    list: {
+      format: 'html',
+      render: renderDirList,
+    },
+    serveDotFiles: true,
+  });
+
   const app: NestFastifyApplication = await NestFactory.create(
     AppModule,
     new FastifyAdapter(server),
