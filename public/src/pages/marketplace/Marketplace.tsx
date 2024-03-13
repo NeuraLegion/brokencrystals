@@ -82,7 +82,7 @@ export const Marketplace: FC<Props> = (props: Props) => {
 
   // Note: This function is vulnerable to Prototype Pollution
   const currentUriParams: Record<string, any> = splitUriIntoParamsPPVulnerable(
-    location.search
+    document.location.search
   );
 
   const [portfolioQueryFilter, setPortfolioQueryFilter] = useState(

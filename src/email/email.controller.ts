@@ -15,7 +15,7 @@ export class EmailController {
 
   constructor(private emailService: EmailService) {}
 
-  @Get()
+  @Get('/sendMail')
   @ApiQuery({
     name: 'to',
     example: 'username@gmail.com',
