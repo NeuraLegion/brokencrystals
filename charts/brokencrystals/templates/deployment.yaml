@@ -80,7 +80,7 @@ spec:
           image: quay.io/keycloak/keycloak:16.1.1
           resources:
             requests:
-              cpu: 100m
+              cpu: 200m
               memory: 500Mi
           livenessProbe:
             httpGet:
