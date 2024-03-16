@@ -83,6 +83,8 @@ async function bootstrap() {
 
   * [Partners](#/Partners%20controller) — operations with partners
 
+  * [Emails](#/Emails%20controller) — operations with emails
+
 
   `,
     )

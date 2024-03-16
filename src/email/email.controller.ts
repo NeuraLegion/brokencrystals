@@ -1,6 +1,7 @@
 import { FastifyReply } from 'fastify';
 import {
   Controller,
+  Get,
   HttpStatus,
   Logger,
   Post,
@@ -14,7 +15,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { EmailService } from './email.service';
-import { SWAGGER_DESC_SEND_EMAIL } from './email.controller.swagger.desc';
+import { SWAGGER_DESC_DELTE_EMAILS, SWAGGER_DESC_GET_EMAILS, SWAGGER_DESC_SEND_EMAIL } from './email.controller.swagger.desc';
 
 @Controller('/api/email')
 @ApiTags('Email controller')
@@ -38,11 +39,11 @@ export class EmailController {
   })
   @ApiQuery({
     name: 'content',
-    example: 'I would like to request help regarding the matter of..',
+    example: 'I would like to request help regarding..',
     required: true,
   })
   @ApiOkResponse({
-    description: 'Sent email successfully',
+    description: 'Email sent successfully',
   })
   @ApiOperation({
     description: SWAGGER_DESC_SEND_EMAIL,
@@ -64,5 +65,21 @@ export class EmailController {
     return didSucceed
       ? res.status(HttpStatus.OK)
       : res.status(HttpStatus.INTERNAL_SERVER_ERROR);
+  }
+
+  @Get('/getEmails')
+  @ApiOperation({
+    description: SWAGGER_DESC_GET_EMAILS,
+  })
+  async getEmails() {
+    return await this.emailService.getEmails();
+  }
+
+  @Get('/deleteEmails')
+  @ApiOperation({
+    description: SWAGGER_DESC_DELTE_EMAILS,
+  })
+  async deleteEmails() {
+    return await this.emailService.deleteEmails();
   }
 }

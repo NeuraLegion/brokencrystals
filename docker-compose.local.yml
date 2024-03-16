@@ -49,8 +49,9 @@ services:
     build:
       context: './public'
       dockerfile: Dockerfile.local
-    ports:
-      - 8090:80
+    network_mode: "host"
+    # ports:
+    #   - 8090:80
     depends_on:
       - nodejs
 
