@@ -37,6 +37,15 @@ export class ProductsController {
 
   constructor(private readonly productsService: ProductsService) {}
 
+  private parseDate(dateString: string): Date {
+    const dateParts = dateString.split('-');
+    const year = parseInt(dateParts[2], 10);
+    const month = parseInt(dateParts[1], 10) - 1;
+    const day = parseInt(dateParts[0], 10);
+
+    return new Date(year, month, day);
+  }
+
   @Get()
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
@@ -67,10 +76,14 @@ export class ProductsController {
     let df = new Date(new Date().setFullYear(new Date().getFullYear() - 1));
     let dt = new Date();
     if (dateFrom) {
-      df = new Date(`${dateFrom} 00:00:00.000Z`);
+      df = this.parseDate(dateFrom);
     }
     if (dateTo) {
-      dt = new Date(`${dateTo} 00:00:00.000Z`);
+      dt = this.parseDate(dateTo);
+    }
+
+    if (isNaN(df.getTime()) || isNaN(dt.getTime())) {
+      throw new BadRequestException('Invalid date format');
     }
 
     const allProducts = await this.productsService.findAll(df, dt);
