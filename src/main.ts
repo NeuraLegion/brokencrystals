@@ -145,11 +145,6 @@ async function bootstrap() {
     .useGlobalInterceptors(new HeadersConfiguratorInterceptor())
     .useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
 
-  app.enableCors({
-    origin: '*',
-    preflightContinue: true,
-  });
-
   const options = new DocumentBuilder()
     .setTitle('Broken Crystals')
     .setDescription(
