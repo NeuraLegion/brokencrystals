@@ -21,8 +21,9 @@ services:
       POSTGRES_DB: bc
       POSTGRES_USER: bc
       POSTGRES_PASSWORD: bc
-    ports:
-      - 5432:5432
+    network_mode: "host"
+    # ports:
+    #   - 5432:5432
     volumes:
     - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
 
@@ -34,8 +35,9 @@ services:
     restart: always
     environment:
       URL: http://localhost:3000
-    ports:
-     - '3000:3000'
+    network_mode: "host"
+    # ports:
+    #  - '3000:3000'
     logging:
       options:
         max-file: '5'
@@ -54,11 +56,12 @@ services:
 
   mailcatcher:
     image: sj26/mailcatcher
+    network_mode: "host"
     container_name: mailcatcher
     restart: always
-    ports:
-      - '1080:1080'
-      - '1025:1025'
+    # ports:
+    #   - '1080:1080'
+    #   - '1025:1025'
     logging:
       options:
         max-file: '5'

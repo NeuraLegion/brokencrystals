@@ -309,3 +309,17 @@ export function searchPartners(keyword: string): Promise<any> {
     method: 'get'
   });
 }
+
+export function sendSupportRequestEmail(
+  name: string,
+  to: string,
+  subject: string,
+  content: string
+): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Email}/sendEmail`,
+    method: 'post',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    data: `name=${name}&to=${to}&subject=${subject}&content=${content}`
+  });
+}

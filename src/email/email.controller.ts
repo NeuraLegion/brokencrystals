@@ -1,12 +1,20 @@
-import { Controller, Get, Logger, Query } from '@nestjs/common';
+import { FastifyReply } from 'fastify';
 import {
-  ApiHeader,
+  Controller,
+  HttpStatus,
+  Logger,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
+import {
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { EmailService } from './email.service';
+import { SWAGGER_DESC_SEND_EMAIL } from './email.controller.swagger.desc';
 
 @Controller('/api/email')
 @ApiTags('Email controller')
@@ -15,10 +23,12 @@ export class EmailController {
 
   constructor(private emailService: EmailService) {}
 
-  @Get('/sendMail')
+  readonly bc_email_address = 'no-reply@brokencrystals.com';
+
+  @Post('/sendEmail')
   @ApiQuery({
     name: 'to',
-    example: 'username@gmail.com',
+    example: 'username@email.com',
     required: true,
   })
   @ApiQuery({
@@ -31,32 +41,28 @@ export class EmailController {
     example: 'I would like to request help regarding the matter of..',
     required: true,
   })
-  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
   @ApiOkResponse({
-    description: 'File read successfully',
+    description: 'Sent email successfully',
   })
-  // @ApiInternalServerErrorResponse({
-  //   schema: {
-  //     type: 'object',
-  //     properties: {
-  //       error: { type: 'string' },
-  //       location: { type: 'string' },
-  //     },
-  //   },
-  // })
-
-  // @ApiOperation({
-  //   description: SWAGGER_DESC_READ_FILE,
-  // })
-  async sendMail(
+  @ApiOperation({
+    description: SWAGGER_DESC_SEND_EMAIL,
+  })
+  async sendEmail(
     @Query('to') to: string,
     @Query('subject') subject: string,
     @Query('content') content: string,
-    // @Res({ passthrough: true }) res: FastifyReply,
-    // @Headers('accept') acceptHeader: string,
+    @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    // TODO: Remove this in prod, this is a debug email
-    let from = 'testMail@brokencrystals.com';
-    await this.emailService.sendMail(from, to, subject, content);
+    let from = this.bc_email_address;
+    let didSucceed = await this.emailService.sendRawEmail(
+      from,
+      to,
+      subject,
+      content,
+    );
+
+    return didSucceed
+      ? res.status(HttpStatus.OK)
+      : res.status(HttpStatus.INTERNAL_SERVER_ERROR);
   }
 }

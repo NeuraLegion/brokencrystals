@@ -19,7 +19,9 @@ export class EmailService {
     this.smtpServerDetails,
   );
 
-  async sendMail(
+  private readonly MAIL_CATCHER_MESSAGES_URL = 'http://localhost:1080/messages';
+
+  async sendRawEmail(
     from: string,
     to: string,
     subject: string,
@@ -31,13 +33,41 @@ export class EmailService {
     );
     this.logger.debug(`Mail body is (shortened): "${body.substring(0, 16)}"`);
 
-    let result = await this.transporter.sendMail({
-      from: from,
-      to: to,
-      subject: subject,
-      html: body,
+    let mailOptions = {
+      envelope: {
+        from: from,
+        to: to,
+      },
+      raw: `From: sender@example.com
+To: recipient@example.com
+Subject: test message
+
+Hello world!`,
+    };
+
+    this.transporter.sendMail(mailOptions, function (error, info) {
+      if (error) {
+        return console.log(error);
+      }
+      console.log('Message sent: ' + info.response);
     });
 
-    return Boolean(result);
+    return Boolean(true);
+  }
+
+  async getEmails(): Promise<JSON> {
+    this.logger.debug(`Fetching all emails from MailCatcher`);
+
+    return await fetch(this.MAIL_CATCHER_MESSAGES_URL).then((response) =>
+      response.ok ? response.json() : 'Failed to get emails',
+    );
+  }
+
+  async deleteEmails(): Promise<Boolean> {
+    this.logger.debug(`Deleting all emails from MailCatcher`);
+
+    return await fetch(this.MAIL_CATCHER_MESSAGES_URL, {
+      method: 'DELETE',
+    }).then((response) => response.ok);
   }
 }
