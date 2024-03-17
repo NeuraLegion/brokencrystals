@@ -6,7 +6,7 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
 
   private readonly smtpServerDetails = {
-    host: '127.0.0.1',
+    host: 'mailcatcher',
     port: 1025,
     secure: false,
     auth: {
@@ -19,7 +19,8 @@ export class EmailService {
     this.smtpServerDetails,
   );
 
-  private readonly MAIL_CATCHER_MESSAGES_URL = 'http://localhost:1080/messages';
+  private readonly MAIL_CATCHER_MESSAGES_URL =
+    'http://mailcatcher:1080/messages';
 
   async sendRawEmail(
     from: string,
@@ -33,26 +34,26 @@ export class EmailService {
     );
     this.logger.debug(`Mail body is (shortened): "${body.substring(0, 16)}"`);
 
+    // TODO: Need to add support for CC, BCC
     let mailOptions = {
       envelope: {
         from: from,
         to: to,
       },
-      raw: `From: sender@example.com
-To: recipient@example.com
-Subject: test message
+      raw: `From: ${from}
+To: ${to}
+Subject: ${subject}
 
-Hello world!`,
+${body}`,
     };
 
-    this.transporter.sendMail(mailOptions, function (error, info) {
+    return await this.transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
-        return console.log(error);
+        this.logger.debug(`Error sending mail: ${error}`);
+        return false
       }
-      console.log('Message sent: ' + info.response);
+      return true;
     });
-
-    return Boolean(true);
   }
 
   async getEmails(): Promise<JSON> {

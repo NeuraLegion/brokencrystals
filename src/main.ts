@@ -6,7 +6,7 @@ import fastifyCookie from '@fastify/cookie';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync, readFile, readdirSync } from 'fs';
 import * as cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -91,8 +91,45 @@ async function bootstrap() {
         : null,
   });
 
+  server.setDefaultRoute((req, res) => {
+    if (req.url && req.url.startsWith('/api')) {
+      res.statusCode = 404;
+      return res.end({
+        success: false,
+        error: {
+          kind: 'user_input',
+          message: 'Not Found',
+        },
+      });
+    }
+
+    readFile(
+      join(__dirname, '..', 'client', 'build', 'index.html'),
+      'utf8',
+      (err, data) => {
+        if (err) {
+          res.statusCode = 500;
+          res.end('Internal Server Error');
+          return;
+        }
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/html');
+        res.end(data);
+      },
+    );
+  });
+
+  await server.register(fastifyStatic, {
+    root: join(__dirname, '..', 'client', 'build'),
+    prefix: `/`,
+    decorateReply: false,
+    redirect: false,
+    wildcard: false,
+    serveDotFiles: true,
+  });
+
   for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
-    server.register(fastifyStatic, {
+    await server.register(fastifyStatic, {
       root: join(__dirname, '..', 'client', 'vcs', dir),
       prefix: `/.${dir}`,
       decorateReply: false,
@@ -106,7 +143,7 @@ async function bootstrap() {
     });
   }
 
-  server.register(fastifyStatic, {
+  await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'build', 'vendor'),
     prefix: `/vendor`,
     decorateReply: false,
