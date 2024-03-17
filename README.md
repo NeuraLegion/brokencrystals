@@ -6,11 +6,11 @@ The application contains:
 - React based web client
   - FE - http://localhost:8090
   - BE - http://localhost:3000
-- NodeJS server - the full API documentation is available via swagger or GraphQL
+- NodeJS server that serves the React client and provides both OpenAPI and GraphQL endpoints.
+The full API documentation is available via swagger or GraphQL:
   - Swagger UI - http://localhost:8090/swagger
   - Swagger JSON file - http://localhost:8090/swagger-json
   - GraphiQL UI - http://localhost:8090/graphiql
-- nginx web server that serves the client and acts as a reverse proxy for the server's API requests
 
 > **Note**
 > The GraphQL API does not yet support all of the endpoints the REST API does.
@@ -157,3 +157,5 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
   One can test if an attack was successful by viewing the new property created in the console.
   This EP also supports prototyp pollution based DOM XSS using a payload such as `__proto__[prototypePollutionDomXss]=data:,alert(1);`.
   The "legitimate" code tries to use the `prototypePollutionDomXss` parameter as a source for a script tag, so if the exploit is not used via this key it won't work.
+
+* **Date Manipulation** - The `/api/products?date_from={df}&date_to={dt}` endpoint fetches all products that were created between the selected dates. There is no limit on the range of dates and when a user tries to query a range larger than 2 years querying takes a significant amount of time. This EP is used by the frontend in the `/marketplace` page.

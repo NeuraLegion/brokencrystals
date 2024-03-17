@@ -9,6 +9,7 @@ import {
 import Header from '../main/Header/Header';
 import Testimonials from './Testimonials/Testimonials';
 import ProductView from './ProductView';
+import DateRangePicker from './DatePicker';
 import Partners from './Partners/Partners';
 import splitUriIntoParamsPPVulnerable from '../../utils/url';
 
@@ -52,7 +53,10 @@ export const Marketplace: FC<Props> = (props: Props) => {
   useEffect(() => {
     props.preview
       ? getLatestProducts().then((data) => setProducts(data))
-      : getProducts().then((data) => setProducts(data));
+      : getProducts(
+          new Date(new Date().setFullYear(new Date().getFullYear() - 1)),
+          new Date()
+        ).then((data) => setProducts(data));
   }, []);
 
   useEffect(() => {
@@ -109,6 +113,10 @@ export const Marketplace: FC<Props> = (props: Props) => {
     document.body.appendChild(scriptElementProrotypePollutionDomXSS);
   }
 
+  const handleDateChange = (dateFrom: Date, DateTo: Date) => {
+    getProducts(dateFrom, DateTo).then((data) => setProducts(data));
+  };
+
   return (
     <section>
       {props.preview || <Header onInnerPage={true} />}
@@ -130,7 +138,8 @@ export const Marketplace: FC<Props> = (props: Props) => {
           </div>
           {props.preview || (
             <div className="row">
-              <div className="col-lg-12 d-flex justify-content-center">
+              <DateRangePicker onDatesChange={handleDateChange} />
+              <div className="col-lg-12 d-flex justify-content-center pt-2">
                 <ul id="portfolio-flters">
                   <li data-filter="*" className="filter-active">
                     All

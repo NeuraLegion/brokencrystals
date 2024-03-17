@@ -14,7 +14,7 @@ services:
           '-U',
           '${POSTGRES_USER}',
           '-P',
-          '${POSTGRES_PASSWORD}'
+          '${POSTGRES_PASSWORD}',
         ]
       timeout: 45s
     environment:
@@ -25,7 +25,7 @@ services:
     # ports:
     #   - 5432:5432
     volumes:
-    - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
+      - ./pg.sql:/docker-entrypoint-initdb.d/pg.sql
 
   nodejs:
     build:
@@ -44,16 +44,6 @@ services:
         max-size: '10m'
     depends_on:
       - db
-
-  proxy:
-    build:
-      context: './public'
-      dockerfile: Dockerfile.local
-    network_mode: "host"
-    # ports:
-    #   - 8090:80
-    depends_on:
-      - nodejs
 
   mailcatcher:
     image: sj26/mailcatcher

@@ -10,6 +10,7 @@ export const ProductView: FC<Props> = (props: Props) => {
   return (
     <div
       className={`col-lg-4 col-md-6 portfolio-item filter-${props.product.category}`}
+      style={{ zIndex: 0 }}
       key={props.product.name}
     >
       <div className="portfolio-wrap">

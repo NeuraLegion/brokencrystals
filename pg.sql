@@ -13,12 +13,16 @@ INSERT INTO "user" (created_at, updated_at, email, password, first_name, last_na
 INSERT INTO "user" (created_at, updated_at, email, password, first_name, last_name, is_admin, photo, company, card_number, phone_number, is_basic) VALUES (now(), now(), 'user', '$2b$10$edsq4aqzAHnrJu68t8GS2.v0Z7hJSstAo7wBBDmmbpjYGxMMTYpVi', 'user', 'user', false, null, 'Brightsec', '1234 5678 9012 3456', '+1 234 567 890', true);
 
 --insert default products into the table
-INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Healing', '/api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg', 'Amethyst', 'a violet variety of quartz');
-INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Gemstones', '/api/file?path=config/products/crystals/ruby.jpg&type=image/jpg', 'Ruby', 'an intense heart crystal');
-INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Healing', '/api/file?path=config/products/crystals/opal.jpg&type=image/jpg', 'Opal', 'the precious stone');
-INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Jewellery', '/api/file?path=config/products/crystals/sapphire.jpg&type=image/jpg', 'Sapphire', '');
-INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Healing', '/api/file?path=config/products/crystals/amber.jpg&type=image/jpg', 'Amber', 'fossilized tree resin');
-INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Jewellery', '/api/file?path=config/products/crystals/emerald.jpg&type=image/jpg', 'Emerald', 'symbol of fertility and life');
-INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Jewellery', '/api/file?path=config/products/crystals/shattuckite.jpg&type=image/jpg', 'Shattuckite', 'mistery');
-INSERT INTO "product" ("category", "photo_url", "name", "description") VALUES ('Gemstones', '/api/file?path=config/products/crystals/bismuth.jpg&type=image/jpg', 'Bismuth', 'rainbow');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES (now(), 'Healing', '/api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg', 'Amethyst', 'a violet variety of quartz');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES (now(), 'Gemstones', '/api/file?path=config/products/crystals/ruby.jpg&type=image/jpg', 'Ruby', 'an intense heart crystal');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES (now(), 'Healing', '/api/file?path=config/products/crystals/opal.jpg&type=image/jpg', 'Opal', 'the precious stone');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES (now(), 'Jewellery', '/api/file?path=config/products/crystals/sapphire.jpg&type=image/jpg', 'Sapphire', '');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES (now(), 'Healing', '/api/file?path=config/products/crystals/amber.jpg&type=image/jpg', 'Amber', 'fossilized tree resin');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES (now(), 'Jewellery', '/api/file?path=config/products/crystals/emerald.jpg&type=image/jpg', 'Emerald', 'symbol of fertility and life');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES (now(), 'Jewellery', '/api/file?path=config/products/crystals/shattuckite.jpg&type=image/jpg', 'Shattuckite', 'mistery');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES (now(), 'Gemstones', '/api/file?path=config/products/crystals/bismuth.jpg&type=image/jpg', 'Bismuth', 'rainbow');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES ('2005-01-10 12:00:00', 'Gemstones', '/api/file?path=config/products/crystals/labradorite.jpg&type=image/jpg', 'Labradorite', 'rainbow');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES ('2023-12-10 12:00:00', 'Gemstones', '/api/file?path=config/products/crystals/axinite.jpg&type=image/jpg', 'Axinite', 'brown');
+INSERT INTO "product" ("created_at", "category", "photo_url", "name", "description") VALUES ('2020-11-18 12:00:00', 'Gemstones', '/api/file?path=config/products/crystals/pietersite.jpg&type=image/jpg', 'Pietersite', 'blue');
+
 CREATE INDEX IF NOT EXISTS "IDX_users_email" ON "user" ("email");

@@ -37,6 +37,15 @@ export class ProductsController {
 
   constructor(private readonly productsService: ProductsService) {}
 
+  private parseDate(dateString: string): Date {
+    const dateParts = dateString.split('-');
+    const year = parseInt(dateParts[2], 10);
+    const month = parseInt(dateParts[1], 10) - 1;
+    const day = parseInt(dateParts[0], 10);
+
+    return new Date(year, month, day);
+  }
+
   @Get()
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
@@ -57,9 +66,27 @@ export class ProductsController {
       },
     },
   })
-  async getProducts(): Promise<ProductDto[]> {
+  @ApiQuery({ name: 'date_from', example: '02-05-2001', required: false })
+  @ApiQuery({ name: 'date_to', example: '02-05-2024', required: false })
+  async getProducts(
+    @Query('date_from') dateFrom: string,
+    @Query('date_to') dateTo: string,
+  ): Promise<ProductDto[]> {
     this.logger.debug('Get all products.');
-    const allProducts = await this.productsService.findAll();
+    let df = new Date(new Date().setFullYear(new Date().getFullYear() - 1));
+    let dt = new Date();
+    if (dateFrom) {
+      df = this.parseDate(dateFrom);
+    }
+    if (dateTo) {
+      dt = this.parseDate(dateTo);
+    }
+
+    if (isNaN(df.getTime()) || isNaN(dt.getTime())) {
+      throw new BadRequestException('Invalid date format');
+    }
+
+    const allProducts = await this.productsService.findAll(df, dt);
     return allProducts.map((p: Product) => new ProductDto(p));
   }
 
