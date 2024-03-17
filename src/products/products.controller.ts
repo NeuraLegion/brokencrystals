@@ -74,7 +74,7 @@ export class ProductsController {
   ): Promise<ProductDto[]> {
     this.logger.debug('Get all products.');
     let df = new Date(new Date().setFullYear(new Date().getFullYear() - 1));
-    let dt = new Date();
+    let dt = new Date(new Date().setDate(new Date().getDate() + 1));
     if (dateFrom) {
       df = this.parseDate(dateFrom);
     }
