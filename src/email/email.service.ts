@@ -1,4 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+const axios = require('axios');
+
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { json } from 'sequelize';
 const nodemailer = require('nodemailer');
 
 @Injectable()
@@ -50,25 +53,31 @@ ${body}`,
     return await this.transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
         this.logger.debug(`Error sending mail: ${error}`);
-        return false
+        return false;
       }
       return true;
     });
   }
 
-  async getEmails(): Promise<JSON> {
+  async getEmails(): Promise<json> {
     this.logger.debug(`Fetching all emails from MailCatcher`);
 
-    return await fetch(this.MAIL_CATCHER_MESSAGES_URL).then((response) =>
-      response.ok ? response.json() : 'Failed to get emails',
-    );
+    return await axios
+      .get(this.MAIL_CATCHER_MESSAGES_URL)
+      .then((res) =>
+        res.status == HttpStatus.OK
+          ? res.data
+          : { error: 'Failed to get emails' },
+      );
   }
 
   async deleteEmails(): Promise<Boolean> {
     this.logger.debug(`Deleting all emails from MailCatcher`);
 
-    return await fetch(this.MAIL_CATCHER_MESSAGES_URL, {
-      method: 'DELETE',
-    }).then((response) => response.ok);
+    return await axios
+      .get(this.MAIL_CATCHER_MESSAGES_URL, {
+        method: 'DELETE',
+      })
+      .then((res) => res.status == HttpStatus.OK);
   }
 }

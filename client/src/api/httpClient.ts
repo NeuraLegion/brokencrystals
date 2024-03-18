@@ -320,14 +320,14 @@ export function searchPartners(keyword: string): Promise<any> {
   });
 }
 
-export function sendSupportRequestEmail(
+export function sendSupportEmailRequest(
   name: string,
   to: string,
   subject: string,
   content: string
 ): Promise<any> {
   return makeApiRequest({
-    url: `${ApiUrl.Email}/sendEmail`,
+    url: `${ApiUrl.Email}/sendSupportEmail`,
     method: 'post',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     data: `name=${name}&to=${to}&subject=${subject}&content=${content}`

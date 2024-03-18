@@ -1,6 +1,9 @@
+import splitUriIntoParamsPPVulnerable from '../../client/src/utils/url';
+
 import { FastifyReply } from 'fastify';
 import {
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Logger,
@@ -15,7 +18,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { EmailService } from './email.service';
-import { SWAGGER_DESC_DELTE_EMAILS, SWAGGER_DESC_GET_EMAILS, SWAGGER_DESC_SEND_EMAIL } from './email.controller.swagger.desc';
+import {
+  SWAGGER_DESC_DELTE_EMAILS,
+  SWAGGER_DESC_GET_EMAILS,
+  SWAGGER_DESC_SEND_EMAIL,
+} from './email.controller.swagger.desc';
 
 @Controller('/api/email')
 @ApiTags('Email controller')
@@ -24,9 +31,14 @@ export class EmailController {
 
   constructor(private emailService: EmailService) {}
 
-  readonly bc_email_address = 'no-reply@brokencrystals.com';
+  readonly BC_EMAIL_ADDRESS = 'no-reply@brokencrystals.com';
 
-  @Post('/sendEmail')
+  @Post('/sendSupportEmail')
+  @ApiQuery({
+    name: 'name',
+    example: 'Bob Dylan',
+    required: true,
+  })
   @ApiQuery({
     name: 'to',
     example: 'username@email.com',
@@ -42,29 +54,43 @@ export class EmailController {
     example: 'I would like to request help regarding..',
     required: true,
   })
-  @ApiOkResponse({
-    description: 'Email sent successfully',
-  })
   @ApiOperation({
     description: SWAGGER_DESC_SEND_EMAIL,
   })
-  async sendEmail(
+  async sendSupportEmail(
+    @Query('name') name: string,
     @Query('to') to: string,
     @Query('subject') subject: string,
     @Query('content') content: string,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    let from = this.bc_email_address;
     let didSucceed = await this.emailService.sendRawEmail(
-      from,
+      this.BC_EMAIL_ADDRESS,
       to,
       subject,
       content,
     );
 
-    return didSucceed
-      ? res.status(HttpStatus.OK)
-      : res.status(HttpStatus.INTERNAL_SERVER_ERROR);
+    // "Accidentally" forgot this here while coding... Oops.
+    // A server side prototype pollution can be found in the `name` param
+    // You can create a fake `status` variable and return a tempered response
+    const formattedUrlWithName = `?name=${name}`;
+    splitUriIntoParamsPPVulnerable(formattedUrlWithName);
+
+    let responseJson = {
+      status: HttpStatus.OK,
+      message: '',
+    };
+
+    if (didSucceed) {
+      res.status(HttpStatus.OK);
+      responseJson.message = `{'status': ${responseJson.status}, 'message': 'Email sent to "${name} <${to}>" successfully'}`;
+    } else {
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR);
+      responseJson.message = `{'status': ${responseJson.status}, 'message': 'Failed sending mail'}`;
+    }
+
+    return JSON.parse(responseJson.toString());
   }
 
   @Get('/getEmails')
@@ -75,7 +101,7 @@ export class EmailController {
     return await this.emailService.getEmails();
   }
 
-  @Get('/deleteEmails')
+  @Delete('/deleteEmails')
   @ApiOperation({
     description: SWAGGER_DESC_DELTE_EMAILS,
   })
