@@ -139,7 +139,6 @@ export const Contact = (props: { mapTitle: string | null }) => {
               <div className="text-center">
                 <button
                   id="send-email-button"
-                  className="Email Injection"
                   onClick={() => sendSupportRequestEmailAction()}
                   type="submit"
                 >
