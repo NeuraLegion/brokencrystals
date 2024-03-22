@@ -159,8 +159,7 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
   The "legitimate" code tries to use the `prototypePollutionDomXss` parameter as a source for a script tag, so if the exploit is not used via this key it won't work.
   2. The EP GET `/api/email/sendSupportEmail` represents the server side vulnerabillity, by having a rookie URI parsing mistake (similiar to the client side).
   This means that a request such as `/api/email/sendSupportEmail?name=Bob%20Dylan&__proto__[status]=222&to=username%40email.com&subject=Help%20Request&content=Help%20me..`
-  will lead to a creation of `uriParams.status`, which is a parameter used to return the final JSON response, and the request's status HTTP code.
-  Note: Using illigal status codes values (ex. 9999) will lead to NestJs's built-in error handler response.
+  will lead to a creation of `uriParams.status`, which is a parameter used in the final JSON response.
 
 * **Date Manipulation** - The `/api/products?date_from={df}&date_to={dt}` endpoint fetches all products that were created between the selected dates. There is no limit on the range of dates and when a user tries to query a range larger than 2 years querying takes a significant amount of time. This EP is used by the frontend in the `/marketplace` page.
 

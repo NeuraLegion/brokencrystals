@@ -17,6 +17,7 @@ import {
   SWAGGER_DESC_SEND_EMAIL,
 } from './email.controller.swagger.desc';
 import splitUriIntoParamsPPVulnerable from '../utils/url';
+import { boolean } from 'webidl-conversions';
 
 @Controller('/api/email')
 @ApiTags('Emails controller')
@@ -82,7 +83,7 @@ export class EmailController {
     // Remove the inital '&'
     rawQuery = `?${rawQuery.substring(1)}`;
     this.logger.debug(`Raw query ${rawQuery}`);
-    
+
     // "Use" the status code
     let uriParams: any = splitUriIntoParamsPPVulnerable(rawQuery);
     if (uriParams?.status) {
@@ -90,7 +91,7 @@ export class EmailController {
     }
 
     const mailSubject = `Support email regarding "${subject}"`;
-    const mailBody = `Hi ${name},\nWe recieved your email and just wanted to let you know we're on it!\n\nYour original inquiry was:\n\n**********************\n${content}\n**********************`;
+    const mailBody = `Hi ${name},\nWe recieved your email and just wanted to let you know we're on it!\n\nYour original inquiry was:\n**********************\n${content}\n**********************`;
     let didSucceed = await this.emailService.sendRawEmail(
       this.BC_EMAIL_ADDRESS,
       to,
@@ -100,11 +101,12 @@ export class EmailController {
 
     if (didSucceed) {
       responseJson.message = `Email sent to "${name} <${to}>" successfully`;
+      res.status(HttpStatus.OK);
     } else {
-      responseJson.message = `Failed sending a support email. Or your exploit just ain't cutting it... Level up!`;
+      responseJson.message = `Failed sending a support email. Or your exploit just ain't cutting it... Level up.`;
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    res.status(responseJson.status);
     return JSON.stringify(responseJson);
   }
 
@@ -112,9 +114,15 @@ export class EmailController {
   @ApiOperation({
     description: SWAGGER_DESC_GET_EMAILS,
   })
-  async getEmails() {
+  @ApiQuery({
+    name: 'withSource',
+    example: 'true',
+    type: boolean,
+    required: true,
+  })
+  async getEmails(@Query('withSource') withSource: boolean) {
     this.logger.log('Getting Emails');
-    return await this.emailService.getEmails();
+    return await this.emailService.getEmails(withSource);
   }
 
   @Delete('/deleteEmails')
