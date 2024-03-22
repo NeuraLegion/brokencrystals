@@ -50,13 +50,16 @@ Subject: ${subject}
 ${body}`,
     };
 
-    return await this.transporter.sendMail(mailOptions, (error, info) => {
+    let didSucceed = true;
+    await this.transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
         this.logger.debug(`Error sending mail: ${error}`);
-        return false;
+        didSucceed = false;
       }
-      return true;
+      this.logger.debug(`Sent mail successfully!`);
     });
+
+    return didSucceed;
   }
 
   async getEmails(): Promise<json> {

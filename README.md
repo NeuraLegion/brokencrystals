@@ -22,7 +22,7 @@ The full API documentation is available via swagger or GraphQL:
 npm ci && npm run build
 
 # build client
-npm ci --prefix public && npm run build --prefix public
+npm ci --prefix client && npm run build --prefix client
 
 #build and start dockers with Postgres DB, nginx and server
 docker-compose --file=docker-compose.local.yml up -d
@@ -157,5 +157,13 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
   One can test if an attack was successful by viewing the new property created in the console.
   This EP also supports prototyp pollution based DOM XSS using a payload such as `__proto__[prototypePollutionDomXss]=data:,alert(1);`.
   The "legitimate" code tries to use the `prototypePollutionDomXss` parameter as a source for a script tag, so if the exploit is not used via this key it won't work.
+  2. The EP GET `/api/email/sendSupportEmail` represents the server side vulnerabillity, by having a rookie URI parsing mistake (similiar to the client side).
+  This means that a request such as `/api/email/sendSupportEmail?name=Bob%20Dylan&__proto__[status]=222&to=username%40email.com&subject=Help%20Request&content=Help%20me..`
+  will lead to a creation of `uriParams.status`, which is a parameter used to return the final JSON response, and the request's status HTTP code.
+  Note: Using illigal status codes values (ex. 9999) will lead to NestJs's built-in error handler response.
 
 * **Date Manipulation** - The `/api/products?date_from={df}&date_to={dt}` endpoint fetches all products that were created between the selected dates. There is no limit on the range of dates and when a user tries to query a range larger than 2 years querying takes a significant amount of time. This EP is used by the frontend in the `/marketplace` page.
+
+* **Email Injection** - The `/api/email/sendSupportEmail` is vulnerable to email injection by supplying tempred recipients.
+  To exploit the EP you can dispatch a request as such `TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO`
+  Note: This EP is also vulnerable to `Server side prototype pollution`, as mentioned in this README.

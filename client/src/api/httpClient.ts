@@ -327,9 +327,7 @@ export function sendSupportEmailRequest(
   content: string
 ): Promise<any> {
   return makeApiRequest({
-    url: `${ApiUrl.Email}/sendSupportEmail`,
-    method: 'post',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    data: `name=${name}&to=${to}&subject=${subject}&content=${content}`
+    url: `${ApiUrl.Email}/sendSupportEmail?name=${name}&to=${to}&subject=${subject}&content=${content}`,
+    method: 'get'
   });
 }

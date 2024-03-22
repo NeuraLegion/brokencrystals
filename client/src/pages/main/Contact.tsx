@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { sendSupportEmailRequest } from 'src/api/httpClient';
 
 export const Contact = (props: { mapTitle: string | null }) => {
   useEffect(() => {
@@ -9,6 +10,21 @@ export const Contact = (props: { mapTitle: string | null }) => {
       }" src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d12097.433213460943!2d-74.0062269!3d40.7101282!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0xb89d1fe6bc499443!2sDowntown+Conference+Center!5e0!3m2!1smk!2sbg!4v1539943755621" frameborder="0" allowfullscreen="" style="border: 0px; width: 100%; height: 384px;"></iframe>`;
     }
   }, []);
+
+  const sendSupportRequestEmailAction = () => {
+    const formName = document.getElementById('name')?.textContent;
+    const formEmail = document.getElementById('email')?.textContent;
+    const formSubject = document.getElementById('subject')?.textContent;
+    const formMessage = document.getElementById('message')?.textContent || '';
+
+    if (!(formName && formEmail && formSubject)) {
+      return alert(
+        'The email form is incomplete - Please fill out all required sections.'
+      );
+    }
+
+    sendSupportEmailRequest(formName, formEmail, formSubject, formMessage);
+  };
 
   return (
     <section id="contact" className="contact section-bg">
@@ -120,7 +136,12 @@ export const Contact = (props: { mapTitle: string | null }) => {
                 </div>
               </div>
               <div className="text-center">
-                <button type="submit">Send Message</button>
+                <button
+                  onClick={() => sendSupportRequestEmailAction()}
+                  type="submit"
+                >
+                  Send Message
+                </button>
               </div>
             </form>
           </div>

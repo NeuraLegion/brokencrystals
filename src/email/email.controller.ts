@@ -3,26 +3,23 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpStatus,
   Logger,
-  Post,
   Query,
   Res,
 } from '@nestjs/common';
-import {
-  ApiOperation,
-  ApiQuery,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { EmailService } from './email.service';
 import {
   SWAGGER_DESC_DELTE_EMAILS,
   SWAGGER_DESC_GET_EMAILS,
   SWAGGER_DESC_SEND_EMAIL,
 } from './email.controller.swagger.desc';
+import splitUriIntoParamsPPVulnerable from '../utils/url';
 
 @Controller('/api/email')
-@ApiTags('Email controller')
+@ApiTags('Emails controller')
 export class EmailController {
   private readonly logger = new Logger(EmailController.name);
 
@@ -30,7 +27,7 @@ export class EmailController {
 
   readonly BC_EMAIL_ADDRESS = 'no-reply@brokencrystals.com';
 
-  @Post('/sendSupportEmail')
+  @Get('/sendSupportEmail')
   @ApiQuery({
     name: 'name',
     example: 'Bob Dylan',
@@ -54,40 +51,61 @@ export class EmailController {
   @ApiOperation({
     description: SWAGGER_DESC_SEND_EMAIL,
   })
+  @Header('Content-Type', 'application/json')
   async sendSupportEmail(
     @Query('name') name: string,
     @Query('to') to: string,
     @Query('subject') subject: string,
     @Query('content') content: string,
+    @Query() query,
     @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    let didSucceed = await this.emailService.sendRawEmail(
-      this.BC_EMAIL_ADDRESS,
-      to,
-      subject,
-      content,
-    );
+    this.logger.log('Sending a support Email');
+
+    // This is defined here intentionally so we don't override responseJson.status after the prototype pollution has occurred
+    let responseJson = {
+      message: {},
+      status: HttpStatus.OK,
+    };
 
     // "Accidentally" forgot this here while coding... Oops.
     // A server side prototype pollution can be found in the `name` param
     // You can create a fake `status` variable and return a tempered response
-    const formattedUrlWithName = `?name=${name}`;
-    await this.splitUriIntoParamsPPVulnerable(formattedUrlWithName);
-
-    let responseJson = {
-      status: HttpStatus.OK,
-      message: '',
-    };
-
-    if (didSucceed) {
-      res.status(HttpStatus.OK);
-      responseJson.message = `{'status': ${responseJson.status}, 'message': 'Email sent to "${name} <${to}>" successfully'}`;
-    } else {
-      res.status(HttpStatus.INTERNAL_SERVER_ERROR);
-      responseJson.message = `{'status': ${responseJson.status}, 'message': 'Failed sending mail'}`;
+    let rawQuery = '';
+    for (const queryKey of Object.keys(query)) {
+      if (query[queryKey].includes('proto')) {
+        rawQuery += `&${queryKey}=${query[queryKey]}`;
+      } else {
+        rawQuery += encodeURI(`&${queryKey}=${query[queryKey]}`);
+      }
+    }
+    // Remove the inital '&'
+    rawQuery = `?${rawQuery.substring(1)}`;
+    this.logger.debug(`Raw query ${rawQuery}`);
+    
+    // "Use" the status code
+    let uriParams: any = splitUriIntoParamsPPVulnerable(rawQuery);
+    if (uriParams?.status) {
+      responseJson.status = uriParams.status;
     }
 
-    return JSON.parse(responseJson.toString());
+    const mailSubject = `Support email regarding "${subject}"`;
+    const mailBody = `Hi ${name},\nWe recieved your email and just wanted to let you know we're on it!\n\nYour original inquiry was:\n\n**********************\n${content}\n**********************`;
+    let didSucceed = await this.emailService.sendRawEmail(
+      this.BC_EMAIL_ADDRESS,
+      to,
+      mailSubject,
+      mailBody,
+    );
+
+    if (didSucceed) {
+      responseJson.message = `Email sent to "${name} <${to}>" successfully`;
+    } else {
+      responseJson.message = `Failed sending a support email. Or your exploit just ain't cutting it... Level up!`;
+    }
+
+    res.status(responseJson.status);
+    return JSON.stringify(responseJson);
   }
 
   @Get('/getEmails')
@@ -95,6 +113,7 @@ export class EmailController {
     description: SWAGGER_DESC_GET_EMAILS,
   })
   async getEmails() {
+    this.logger.log('Getting Emails');
     return await this.emailService.getEmails();
   }
 
@@ -103,79 +122,7 @@ export class EmailController {
     description: SWAGGER_DESC_DELTE_EMAILS,
   })
   async deleteEmails() {
+    this.logger.log('Deleting Emails');
     return await this.emailService.deleteEmails();
-  }
-
-  async splitUriIntoParamsPPVulnerable(params, coerce=null) {
-    if (params.charAt(0) === '?') {
-      params = params.substring(1);
-    }
-
-    var obj = {},
-      coerce_types = { true: !0, false: !1, null: null };
-
-    if (!params) {
-      return obj;
-    }
-
-    params
-      .replace(/\+/g, ' ')
-      .split('&')
-      .forEach(function (v) {
-        var param = v.split('='),
-          key = decodeURIComponent(param[0]),
-          val,
-          cur = obj,
-          i = 0,
-          keys = key.split(']['),
-          keys_last = keys.length - 1;
-
-        if (/\[/.test(keys[0]) && /\]$/.test(keys[keys_last])) {
-          keys[keys_last] = keys[keys_last].replace(/\]$/, '');
-          keys = keys.shift().split('[').concat(keys);
-          keys_last = keys.length - 1;
-        } else {
-          keys_last = 0;
-        }
-
-        if (param.length === 2) {
-          val = decodeURIComponent(param[1]);
-
-          if (coerce) {
-            val =
-              val && !isNaN(val) && +val + '' === val
-                ? +val // number
-                : val === 'undefined'
-                ? undefined // undefined
-                : coerce_types[val] !== undefined
-                ? coerce_types[val] // true, false, null
-                : val; // string
-          }
-
-          if (keys_last) {
-            for (; i <= keys_last; i++) {
-              //@ts-ignore
-              key = keys[i] === '' ? cur.length : keys[i];
-              cur = cur[key] =
-                i < keys_last
-                  ? //@ts-ignore
-                    cur[key] || (keys[i + 1] && isNaN(keys[i + 1]) ? {} : [])
-                  : val;
-            }
-          } else {
-            if (Object.prototype.toString.call(obj[key]) === '[object Array]') {
-              obj[key].push(val);
-            } else if ({}.hasOwnProperty.call(obj, key)) {
-              obj[key] = [obj[key], val];
-            } else {
-              obj[key] = val;
-            }
-          }
-        } else if (key) {
-          obj[key] = coerce ? undefined : '';
-        }
-      });
-
-    return obj;
   }
 }
