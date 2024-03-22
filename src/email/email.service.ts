@@ -45,14 +45,15 @@ export class EmailService {
       body,
     );
 
-    return await this.transporter.sendMail(mailOptions, (err) => {
-      if (err) {
-        this.logger.debug(`Failed sending email. Error: ${err}`);
-        return false;
-      }
-      this.logger.debug(`Email sent successfully!`);
-      return true;
-    });
+    let response = await this.transporter.sendMail(mailOptions);
+
+    if (response.err) {
+      this.logger.debug(`Failed sending email. Error: ${response.err}`);
+      return false;
+    }
+
+    this.logger.debug(`Email sent successfully!`);
+    return true;
   }
 
   private createMailOptionsForEmailInjetion(
@@ -117,8 +118,8 @@ export class EmailService {
 
     let mailOptions = {
       envelope: {
-        from: from,
-        to: to,
+        from: parsedFrom,
+        to: parsedTo,
         cc: parsedCc ? [parsedCc] : [],
         bcc: parsedCc ? [parsedCc] : [],
       },
@@ -141,8 +142,8 @@ export class EmailService {
 
     if (withSource) {
       this.logger.debug(`Fetching sources of Emails`);
-      for (let email in emails) {
-        email['source'] = this.getEmailSource(email['id']);
+      for (let email of emails) {
+        email['source'] = await this.getEmailSource(email['id']);
       }
     }
 
@@ -151,6 +152,7 @@ export class EmailService {
 
   private async getEmailSource(emailId): Promise<string> {
     let sourceUrl = `${this.MAIL_CATCHER_MESSAGES_URL}/${emailId}.source`;
+
     return await axios
       .get(sourceUrl)
       .then((res) =>
@@ -160,7 +162,7 @@ export class EmailService {
       )
       .catch((err) =>
         this.logger.debug(
-          `Failed to fetch email source with id ${emailId}. Error: ${err}`,
+          `Failed to fetch email source with id ${emailId} via "${sourceUrl}". Error: ${err}`,
         ),
       );
   }

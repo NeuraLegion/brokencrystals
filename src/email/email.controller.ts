@@ -117,11 +117,12 @@ export class EmailController {
   @ApiQuery({
     name: 'withSource',
     example: 'true',
-    type: boolean,
     required: true,
   })
-  async getEmails(@Query('withSource') withSource: boolean) {
-    this.logger.log('Getting Emails');
+  async getEmails(@Query('withSource') withSource: any) {
+    withSource = withSource === 'true';
+    
+    this.logger.log(`Getting Emails (withSource=${withSource})`);
     return await this.emailService.getEmails(withSource);
   }
 
