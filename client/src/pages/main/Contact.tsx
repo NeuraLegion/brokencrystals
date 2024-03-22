@@ -12,10 +12,10 @@ export const Contact = (props: { mapTitle: string | null }) => {
   }, []);
 
   const sendSupportRequestEmailAction = () => {
-    const formName = document.getElementById('name')?.textContent;
-    const formEmail = document.getElementById('email')?.textContent;
-    const formSubject = document.getElementById('subject')?.textContent;
-    const formMessage = document.getElementById('message')?.textContent || '';
+    const formName = document.getElementById('name')?.value;
+    const formEmail = document.getElementById('email')?.value;
+    const formSubject = document.getElementById('subject')?.value;
+    const formMessage = document.getElementById('message')?.value || '';
 
     if (!(formName && formEmail && formSubject)) {
       return alert(
@@ -121,6 +121,7 @@ export const Contact = (props: { mapTitle: string | null }) => {
                 <textarea
                   className="form-control"
                   name="message"
+                  id="message"
                   rows={5}
                   data-rule="required"
                   data-msg="Please write something for us"
@@ -137,8 +138,8 @@ export const Contact = (props: { mapTitle: string | null }) => {
               </div>
               <div className="text-center">
                 <button
-                  id='send-email-button'
-                  className='Email Injection'
+                  id="send-email-button"
+                  className="Email Injection"
                   onClick={() => sendSupportRequestEmailAction()}
                   type="submit"
                 >
