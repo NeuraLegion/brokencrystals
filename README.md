@@ -164,5 +164,6 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
 * **Date Manipulation** - The `/api/products?date_from={df}&date_to={dt}` endpoint fetches all products that were created between the selected dates. There is no limit on the range of dates and when a user tries to query a range larger than 2 years querying takes a significant amount of time. This EP is used by the frontend in the `/marketplace` page.
 
 * **Email Injection** - The `/api/email/sendSupportEmail` is vulnerable to email injection by supplying tempred recipients.
-  To exploit the EP you can dispatch a request as such `TODOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO`
+  To exploit the EP you can dispatch a request as such `/api/email/sendSupportEmail?name=Bob&to=username%40email.com%0aCc:%20bob@domain.com&subject=Help%20Request&content=I%20would%20like%20to%20request%20help%20regarding`.
+  This will lead to the sending of a mail to both `username@email.com` and `bob@domain.com` (as the Cc).
   Note: This EP is also vulnerable to `Server side prototype pollution`, as mentioned in this README.
