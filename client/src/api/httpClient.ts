@@ -319,3 +319,15 @@ export function searchPartners(keyword: string): Promise<any> {
     method: 'get'
   });
 }
+
+export function sendSupportEmailRequest(
+  name: string,
+  to: string,
+  subject: string,
+  content: string
+): Promise<any> {
+  return makeApiRequest({
+    url: `${ApiUrl.Email}/sendSupportEmail?name=${name}&to=${to}&subject=${subject}&content=${content}`,
+    method: 'get'
+  });
+}

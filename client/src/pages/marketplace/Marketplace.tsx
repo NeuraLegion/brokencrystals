@@ -11,6 +11,7 @@ import Testimonials from './Testimonials/Testimonials';
 import ProductView from './ProductView';
 import DateRangePicker from './DatePicker';
 import Partners from './Partners/Partners';
+import splitUriIntoParamsPPVulnerable from '../../utils/url';
 
 interface Props {
   preview: boolean;
@@ -71,6 +72,47 @@ export const Marketplace: FC<Props> = (props: Props) => {
     }
   }, []);
 
+  const searchStringInProductNameOrDescription = (
+    searchString: string,
+    product: Product
+  ) => {
+    searchString = searchString.toLowerCase();
+    return !searchString ||
+      product.name.toLowerCase().includes(searchString) ||
+      product.description.toLowerCase().includes(searchString)
+      ? product
+      : null;
+  };
+
+  // Note: This function is vulnerable to Prototype Pollution
+  const currentUriParams: Record<string, any> = splitUriIntoParamsPPVulnerable(
+    document.location.search
+  );
+
+  const [portfolioQueryFilter, setPortfolioQueryFilter] = useState(
+    currentUriParams &&
+      currentUriParams.hasOwnProperty('portfolio_query_filter')
+      ? currentUriParams['portfolio_query_filter']
+      : ''
+  );
+
+  /*
+  If the 'prototypePollutionDomXss' key is present (which can stem from prototype pollution or just a regular URI parameter)
+  then a <script> element is created with the key's cooresponding value as a source
+  */
+  let scriptElementProrotypePollutionDomXSS;
+  if (currentUriParams.prototypePollutionDomXss) {
+    scriptElementProrotypePollutionDomXSS = document.createElement('script');
+
+    scriptElementProrotypePollutionDomXSS.id =
+      'prototype-pollution-dom-xss-script';
+    scriptElementProrotypePollutionDomXSS.src =
+      currentUriParams.prototypePollutionDomXss;
+    scriptElementProrotypePollutionDomXSS.async = true;
+
+    document.body.appendChild(scriptElementProrotypePollutionDomXSS);
+  }
+
   const handleDateChange = (dateFrom: Date, DateTo: Date) => {
     getProducts(dateFrom, DateTo).then((data) => setProducts(data));
   };
@@ -83,6 +125,16 @@ export const Marketplace: FC<Props> = (props: Props) => {
         <div className="container" data-aos="fade-up">
           <div className="section-title marketplaceTitle">
             <h2>Marketplace</h2>
+          </div>
+          <div className="section-title qmarketplaceTitle">
+            <h3>Gem Filter</h3>
+            <input
+              className="form-control marketplace-gem-filter-input"
+              id="portfolio-query-filter"
+              placeholder="Filter for gems easily"
+              defaultValue={portfolioQueryFilter || ''}
+              onChange={(e) => setPortfolioQueryFilter(e ? e.target.value : '')}
+            />
           </div>
           {props.preview || (
             <div className="row">
@@ -101,9 +153,16 @@ export const Marketplace: FC<Props> = (props: Props) => {
           )}
           <div className="row portfolio-container">
             {products &&
-              products.map((product, i) => (
-                <ProductView product={product} key={i} />
-              ))}
+              products.map((product, i) =>
+                searchStringInProductNameOrDescription(
+                  portfolioQueryFilter,
+                  product
+                ) ? (
+                  <ProductView product={product} key={i} />
+                ) : (
+                  <></>
+                )
+              )}
           </div>
         </div>
         {props.preview && (

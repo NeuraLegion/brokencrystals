@@ -17,6 +17,7 @@ import { AppService } from './app.service';
 import { UsersService } from './users/users.service';
 import { AppResolver } from './app.resolver';
 import { PartnersModule } from './partners/partners.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -37,6 +38,8 @@ import { PartnersModule } from './partners/partners.module';
       graphiql: true,
       autoSchemaFile: true,
     }),
+    PartnersModule,
+    EmailModule,
   ],
   controllers: [AppController],
   providers: [

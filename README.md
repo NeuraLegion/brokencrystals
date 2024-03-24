@@ -22,7 +22,7 @@ The full API documentation is available via swagger or GraphQL:
 npm ci && npm run build
 
 # build client
-npm ci --prefix public && npm run build --prefix public
+npm ci --prefix client && npm run build --prefix client
 
 #build and start dockers with Postgres DB, nginx and server
 docker-compose --file=docker-compose.local.yml up -d
@@ -151,4 +151,19 @@ Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, 
   3. The endpoint GET `/api/partners/query` is a raw XPATH injection endpoint. You can put whatever you like there. It is not referenced in the frontend, but it is an exposed API endpoint.
   4. Note: All endpoints are vulnerable to error based payloads.
 
+* **Prototype Pollution** - The `/marketplace` endpoint is vulnerable to prototype pollution using the following methods:
+  1. The EP GET `/marketplace?__proto__[Test]=Test` represents the client side vulnerabillity, by parsing the URI (for portfolio filtering) and converting
+  it's parmeters into an object. This means that a requests like `/marketplace?__proto__[TestKey]=TestValue` will lead to a creation of `Object.TestKey`.
+  One can test if an attack was successful by viewing the new property created in the console.
+  This EP also supports prototyp pollution based DOM XSS using a payload such as `__proto__[prototypePollutionDomXss]=data:,alert(1);`.
+  The "legitimate" code tries to use the `prototypePollutionDomXss` parameter as a source for a script tag, so if the exploit is not used via this key it won't work.
+  2. The EP GET `/api/email/sendSupportEmail` represents the server side vulnerabillity, by having a rookie URI parsing mistake (similiar to the client side).
+  This means that a request such as `/api/email/sendSupportEmail?name=Bob%20Dylan&__proto__[status]=222&to=username%40email.com&subject=Help%20Request&content=Help%20me..`
+  will lead to a creation of `uriParams.status`, which is a parameter used in the final JSON response.
+
 * **Date Manipulation** - The `/api/products?date_from={df}&date_to={dt}` endpoint fetches all products that were created between the selected dates. There is no limit on the range of dates and when a user tries to query a range larger than 2 years querying takes a significant amount of time. This EP is used by the frontend in the `/marketplace` page.
+
+* **Email Injection** - The `/api/email/sendSupportEmail` is vulnerable to email injection by supplying tempred recipients.
+  To exploit the EP you can dispatch a request as such `/api/email/sendSupportEmail?name=Bob&to=username%40email.com%0aCc:%20bob@domain.com&subject=Help%20Request&content=I%20would%20like%20to%20request%20help%20regarding`.
+  This will lead to the sending of a mail to both `username@email.com` and `bob@domain.com` (as the Cc).
+  Note: This EP is also vulnerable to `Server side prototype pollution`, as mentioned in this README.
