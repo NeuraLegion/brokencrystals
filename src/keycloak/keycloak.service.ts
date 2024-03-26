@@ -228,7 +228,7 @@ export class KeyCloakService implements OnModuleInit {
 
         if (count >= 10) {
           throw new Error(
-            `Cannot discover medata from ${this.clientAdmin.metadata_url}`,
+            `Cannot discover medata from ${this.clientAdmin.metadata_url}. Got error: ${err}`,
           );
         }
 
