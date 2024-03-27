@@ -175,7 +175,7 @@ spec:
             initialDelaySeconds: 120
             periodSeconds: 30
         
-        {{- if and .Values.includeRepeater (and .Values.repeaterID .Values.token .Values.cluster) }}
+        {{- if and .Values.repeaterID .Values.token .Values.cluster }}
         - name: repeater
           image: brightsec/cli{{ if ne .Values.repeaterImageTag "" }}:{{ .Values.repeaterImageTag }}{{ else }}:latest{{ end }}
           command: ["bright-cli", "repeater"]
