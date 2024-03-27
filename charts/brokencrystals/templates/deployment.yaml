@@ -25,6 +25,7 @@ spec:
             - "keycloak"
             - "nodejs"
             - "proxy"
+            - "repeater"
       containers:
         - name: postgres
           image: postgres
@@ -173,6 +174,30 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 120
             periodSeconds: 30
+        
+        {{- if and .Values.includeRepeater (and .Values.repeaterID .Values.token .Values.cluster) }}
+        - name: repeater
+          image: brightsec/cli{{ if ne .Values.repeaterImageTag "" }}:{{ .Values.repeaterImageTag }}{{ else }}:latest{{ end }}
+          command: ["bright-cli", "repeater"]
+          args:
+          - "--token=$(TOKEN)"
+          - "--id=$(REPEATER_ID)"
+          - "--cluster=$(CLUSTER)" 
+          - "--timeout=$(TIMEOUT)"         
+          resources:
+            requests:
+              cpu: 200m
+              memory: 100Mi
+          env:
+            - name: REPEATER_ID
+              value: "{{ .Values.repeaterID }}"
+            - name: TOKEN
+              value: "{{ .Values.token }}"
+            - name: CLUSTER
+              value: "{{ .Values.cluster }}"
+            - name: TIMEOUT
+              value: "{{ .Values.timeout | default "30000" }}"
+        {{- end }}
       restartPolicy: Always
 
       volumes:

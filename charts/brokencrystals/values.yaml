@@ -5,3 +5,9 @@ ingress:
 images: 
   main: experimental
   client: unstable
+includeRepeater: false
+repeaterImageTag: ""
+repeaterID: ""
+token: ""
+cluster: ""
+timeout: ""
