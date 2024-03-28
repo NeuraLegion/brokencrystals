@@ -30,6 +30,32 @@ docker-compose --file=docker-compose.local.yml up -d
 #rebuild dockers
 docker-compose --file=docker-compose.local.yml up -d --build
 ```
+## Running application with helm chart
+Helm command example:
+```bash
+helm upgrade --install --namespace distributor broken       \
+  --set repeaterID=5r9Kci7AKLx4bkN58yYCDz                   \
+  --set token=nptbmxr.nexp.kkaux80olef2mew3n3r3rw08tww3c4f5 \
+  --set cluster=hotel.playground.neuralegion.com            \
+  --set timeout=40000                                       \
+  --set repeaterImageTag=v11.5.0-next.4                     \
+  --set ingress.url=broken.k3s.brokencrystals.nexploit.app  \
+  --set ingress.cert=distributorwildcard                    \
+  --set ingress.authlevel=- . --wait
+```
+
+### Arguments info
+
+**repeaterID, token and cluster** - These argument values are required if you want to use repeater. In case you don't set any of these fields, repeater container won't be run. In that case this will be regular bc deployment. (Required arguments if repeater container is to be used).
+
+**timeout** - this is optional argument with default value 30000 if it is not set, it's only used in conjuction with main repeater options (optional argument).
+
+**repeaterImageTag** - this argument is optional with default value latest if field is not set. Notice these are docker tags and not repeater versions. They are similar but not the same. Dockerhub tags usually have "v" in front of repeater version. this argument is only used in conjuction with main repeater options (optional argument).
+
+**namespace** - kubernetes namespace where app will be spawned.
+
+**ingress.url** - Domain name that will be used to access app from Internet.
+
 
 ## Running tests by [SecTester](https://github.com/NeuraLegion/sectester-js/)
 
