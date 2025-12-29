@@ -1,0 +1,53 @@
+name: 'Configure BrightSec credentials'
+
+inputs:
+  BRIGHT_HOSTNAME:
+    description: 'Hostname for the BrightSec environment'
+    required: true
+  BRIGHT_PROJECT_ID:
+    description: 'Project ID for BrightSec'
+    required: true
+  BRIGHT_TOKEN:
+    description: 'Pre-configured token'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - id: configure_env_from_input
+      name: 'Set existing token in env'
+      shell: bash
+      if: ${{ inputs.BRIGHT_TOKEN != '' }}
+      env:
+        BRIGHT_TOKEN: ${{ inputs.BRIGHT_TOKEN }}
+      run: |
+        echo "BRIGHT_TOKEN=${BRIGHT_TOKEN}" >> $GITHUB_ENV
+
+    - id: configure_bright_credentials_through_oidc
+      name: 'Exchange OIDC credentials for Bright token'
+      shell: bash
+      if: ${{ inputs.BRIGHT_TOKEN == '' }}
+      env:
+        BRIGHT_HOSTNAME: ${{ inputs.BRIGHT_HOSTNAME }}
+        BRIGHT_PROJECT_ID: ${{ inputs.BRIGHT_PROJECT_ID }}
+      run: |
+        # Retrieve OIDC token from GitHub
+        OIDC_TOKEN=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+        "${ACTIONS_ID_TOKEN_REQUEST_URL}" | jq -r '.value')
+
+        # Post the token to BrightSec
+        RESPONSE=$(curl -s -X POST "https://${BRIGHT_HOSTNAME}/api/v1/projects/${BRIGHT_PROJECT_ID}/api-keys/oidc" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\": \"${OIDC_TOKEN}\"}")
+
+        if ! echo "$RESPONSE" | jq -e . > /dev/null 2>&1; then
+          echo "Error: $RESPONSE" 1>&2
+          exit 1
+        fi
+
+        # Extract the pureKey
+        PURE_KEY=$(echo "$RESPONSE" | jq -r '.pureKey')
+
+        # Mask and store in environment
+        echo "::add-mask::$PURE_KEY"
+        echo "BRIGHT_TOKEN=$PURE_KEY" >> $GITHUB_ENV
