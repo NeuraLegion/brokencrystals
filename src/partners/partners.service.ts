@@ -70,6 +70,10 @@ export class PartnersService {
     return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
+  getPartnerLogin(username: string, password: string) {
+    return this.getPartnersProperties(`//partners/partner[username/text()="${username}" and password/text()="${password}"]/*`);
+  }
+
   getPartnersProperties(xpathExpression: string): string {
     let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
