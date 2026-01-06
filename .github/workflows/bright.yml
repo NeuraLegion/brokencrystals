@@ -1,0 +1,56 @@
+name: Bright
+
+on:
+  pull_request:
+    branches:
+      - '**'
+
+permissions:
+  checks: write
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Start Application
+        env:
+          GRPC_WEB_PROXY_URL: ${{ secrets.GRPC_WEB_PROXY_URL }}
+        run: |
+          docker compose -f compose.local.yml up --wait
+
+      - name: Probe Application Readiness
+        run: |
+          for i in {1..30}; do nc -z 127.0.0.1 3000 && exit 0 || sleep 5; done; exit 1
+
+      - name: Install SecTesterJS Dependencies
+        run: |
+          npm i --save=false --prefix .brightsec @sectester/core@0.47.0 @sectester/repeater@0.47.0 @sectester/scan@0.47.0 @sectester/runner@0.47.0 @sectester/reporter@0.47.0
+
+      - name: Configure Bright Credentials
+        uses: ./.github/workflows/composite/configure-bright-credentials
+        with:
+          BRIGHT_HOSTNAME: development.playground.brightsec.com
+          BRIGHT_PROJECT_ID: uumon4m2jJzxKdDkUF1a2d
+          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+
+      - name: Run Security Tests
+        env:
+          BRIGHT_HOSTNAME: development.playground.brightsec.com
+          BRIGHT_PROJECT_ID: uumon4m2jJzxKdDkUF1a2d
+          BRIGHT_AUTH_ID: ${{ vars.BRIGHT_AUTH_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRIGHT_TOKEN: ${{ env.BRIGHT_TOKEN }}
+          BRIGHT_TARGET_URL: http://127.0.0.1:3000
+          SECTESTER_SCAN_POOL_SIZE: ${{ vars.SECTESTER_SCAN_POOL_SIZE }}
+        run: |
+          node --experimental-transform-types --experimental-strip-types --experimental-detect-module --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --test-force-exit --test-concurrency=4 --test .brightsec/tests/*.test.ts
