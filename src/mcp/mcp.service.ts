@@ -8,7 +8,10 @@ import {
   McpToolResult,
   CountToolInput,
   ConfigToolInput,
-  RenderToolInput
+  RenderToolInput,
+  isCountToolInput,
+  isConfigToolInput,
+  isRenderToolInput
 } from './api/mcp.types';
 
 @Injectable()
@@ -89,11 +92,44 @@ export class McpService {
 
     switch (name) {
       case 'count_tool':
-        return this.executeCountTool(args as unknown as CountToolInput);
+        if (!isCountToolInput(args)) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'Invalid arguments: count_tool requires a "query" string parameter'
+              }
+            ],
+            isError: true
+          };
+        }
+        return this.executeCountTool(args);
       case 'config_tool':
-        return this.executeConfigTool(args as unknown as ConfigToolInput);
+        if (!isConfigToolInput(args)) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'Invalid arguments: config_tool expects optional "include_sensitive" boolean parameter'
+              }
+            ],
+            isError: true
+          };
+        }
+        return this.executeConfigTool(args ?? {});
       case 'render_tool':
-        return this.executeRenderTool(args as unknown as RenderToolInput);
+        if (!isRenderToolInput(args)) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'Invalid arguments: render_tool requires a "numbers" array parameter'
+              }
+            ],
+            isError: true
+          };
+        }
+        return this.executeRenderTool(args);
       default:
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],

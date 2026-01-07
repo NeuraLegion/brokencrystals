@@ -77,3 +77,48 @@ export interface RenderToolInput {
   numbers: number[];
   template?: string;
 }
+
+// Type guards for runtime validation
+export function isCountToolInput(
+  args: Record<string, unknown> | undefined
+): args is CountToolInput {
+  return (
+    typeof args === 'object' && args !== null && typeof args.query === 'string'
+  );
+}
+
+export function isConfigToolInput(
+  args: Record<string, unknown> | undefined
+): args is ConfigToolInput {
+  if (args === undefined || args === null) {
+    return true; // All fields are optional
+  }
+  if (typeof args !== 'object') {
+    return false;
+  }
+  if (
+    'include_sensitive' in args &&
+    typeof args.include_sensitive !== 'boolean'
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function isRenderToolInput(
+  args: Record<string, unknown> | undefined
+): args is RenderToolInput {
+  if (typeof args !== 'object' || args === null) {
+    return false;
+  }
+  if (!Array.isArray(args.numbers)) {
+    return false;
+  }
+  if (!args.numbers.every((n) => typeof n === 'number')) {
+    return false;
+  }
+  if ('template' in args && typeof args.template !== 'string') {
+    return false;
+  }
+  return true;
+}
