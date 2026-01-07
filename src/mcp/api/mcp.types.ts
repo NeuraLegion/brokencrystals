@@ -1,0 +1,79 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+// JSON-RPC 2.0 base types for MCP
+export class McpRequest {
+  @ApiProperty({ example: '2.0' })
+  jsonrpc: string;
+
+  @ApiProperty({ example: 'tools/call' })
+  method: string;
+
+  @ApiPropertyOptional()
+  params?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ example: 1 })
+  id?: string | number;
+}
+
+export class McpError {
+  @ApiProperty()
+  code: number;
+
+  @ApiProperty()
+  message: string;
+
+  @ApiPropertyOptional()
+  data?: unknown;
+}
+
+export class McpResponse {
+  @ApiProperty({ example: '2.0' })
+  jsonrpc: string;
+
+  @ApiPropertyOptional()
+  result?: unknown;
+
+  @ApiPropertyOptional({ type: () => McpError })
+  error?: McpError;
+
+  @ApiPropertyOptional()
+  id?: string | number;
+}
+
+// Tool definitions
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: string;
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+export interface McpToolCallParams {
+  name: string;
+  arguments?: Record<string, unknown>;
+}
+
+export interface McpToolResult {
+  content: Array<{
+    type: string;
+    text: string;
+  }>;
+  isError?: boolean;
+}
+
+// Tool-specific input types
+export interface CountToolInput {
+  query: string;
+}
+
+export interface ConfigToolInput {
+  include_sensitive?: boolean;
+}
+
+export interface RenderToolInput {
+  numbers: number[];
+  template?: string;
+}

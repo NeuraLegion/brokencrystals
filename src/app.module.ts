@@ -20,6 +20,7 @@ import { PartnersModule } from './partners/partners.module';
 import { EmailModule } from './email/email.module';
 import { ChatModule } from './chat/chat.module';
 import { SafeFilesModule } from './safe-files/safe-files.module';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
@@ -42,7 +43,8 @@ import { SafeFilesModule } from './safe-files/safe-files.module';
     PartnersModule,
     EmailModule,
     ChatModule,
-    SafeFilesModule
+    SafeFilesModule,
+    McpModule
   ],
   controllers: [AppController],
   providers: [

