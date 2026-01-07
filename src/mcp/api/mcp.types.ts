@@ -79,17 +79,16 @@ export interface RenderToolInput {
 }
 
 // Type guards for runtime validation
-export function isCountToolInput(
-  args: Record<string, unknown> | undefined
-): args is CountToolInput {
+export function isCountToolInput(args: unknown): args is CountToolInput {
   return (
-    typeof args === 'object' && args !== null && typeof args.query === 'string'
+    typeof args === 'object' &&
+    args !== null &&
+    'query' in args &&
+    typeof (args as Record<string, unknown>).query === 'string'
   );
 }
 
-export function isConfigToolInput(
-  args: Record<string, unknown> | undefined
-): args is ConfigToolInput {
+export function isConfigToolInput(args: unknown): args is ConfigToolInput {
   if (args === undefined || args === null) {
     return true; // All fields are optional
   }
@@ -98,26 +97,25 @@ export function isConfigToolInput(
   }
   if (
     'include_sensitive' in args &&
-    typeof args.include_sensitive !== 'boolean'
+    typeof (args as Record<string, unknown>).include_sensitive !== 'boolean'
   ) {
     return false;
   }
   return true;
 }
 
-export function isRenderToolInput(
-  args: Record<string, unknown> | undefined
-): args is RenderToolInput {
+export function isRenderToolInput(args: unknown): args is RenderToolInput {
   if (typeof args !== 'object' || args === null) {
     return false;
   }
-  if (!Array.isArray(args.numbers)) {
+  const obj = args as Record<string, unknown>;
+  if (!Array.isArray(obj.numbers)) {
     return false;
   }
-  if (!args.numbers.every((n) => typeof n === 'number')) {
+  if (!obj.numbers.every((n: unknown) => typeof n === 'number')) {
     return false;
   }
-  if ('template' in args && typeof args.template !== 'string') {
+  if ('template' in obj && typeof obj.template !== 'string') {
     return false;
   }
   return true;
