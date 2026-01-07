@@ -55,7 +55,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
 ## Vulnerabilities Overview
 
 - **Broken JWT Authentication** - The application includes multiple endpoints that generate and validate several types of JWT tokens. The main login API, used by the UI, is utilizing one of the endpoints while others are available via direct call and described in Swagger.
-
   - **No Algorithm bypass** - Bypasses the JWT authentication by using the “None” algorithm (implemented in main login and API authorization code).
   - **RSA to HMAC** - Changes the algorithm to use a “HMAC” variation and signs with the public key of the application to bypass the authentication (implemented in main login and API authorization code).
   - **Invalid Signature** - Changes the signature of the JWT to something different and bypasses the authentication (implemented in main login and API authorization code).
@@ -120,7 +119,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
 - **Cookie Security** - Checks if the cookie has the “secure” and HTTP only flags. The application returns two cookies (session and bc-calls-counter cookie), both without secure and HttpOnly flags.
 
 - **Cross-Site Request Forgery (CSRF)**
-
   - Checks if a form holds anti-CSRF tokens, misconfigured “CORS” and misconfigured “Origin” header - the application returns "Access-Control-Allow-Origin: \*" header for all requests. The behavior can be configured in the /main.ts file.
   - The same form with both authenticated and unauthenticated user - the _Email subscription_ UI forms can be used for testing this vulnerability.
     <details>
@@ -133,9 +131,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - Different form for an authenticated and unauthenticated user - the _Add testimonial_ form can be used for testing. The forms are only available to authenticated users.
 
 - **Cross-Site Scripting (XSS)** -
-
   - **Reflective XSS** There are couple of endpoints that are vulnerable to reflective XSS:
-
     - Landing page with the _dummy_ query param that contains DOM content (including script), add the provided DOM will be injected into the page and script executed.
     - Landing page maptitle param that contains DOM content (including script), add the provided DOM will be injected into the page and script executed.
     - /api/testimonials/count page count param is vulnerable to reflective XSS.
@@ -146,14 +142,11 @@ Full configuration & usage examples can be found in our [demo project](https://g
       <summary>Reflective XSS Example Exploitation</summary>
 
     To demonstrate reflective XSS, you can use the following payloads:
-
     1. **Landing Page Dummy Query Parameter**:
-
        - URL: `https://brokencrystals.com/?__dummy=__<script>alert('XSS')</script>`
        - The `dummy` query parameter is directly injected into the DOM without sanitization, causing the script to execute.
 
     2. **Landing Page Map Title Parameter**:
-
        - URL: `https://brokencrystals.com/?maptitle=<script>alert('XSS')</script>`
        - The `maptitle` parameter is used in the DOM and allows script execution.
 
@@ -176,7 +169,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
       <summary>Persistent XSS Example Exploitation</summary>
 
     To demonstrate persistent XSS, you can use the following steps:
-
     1. Submit the following `curl` request to store the XSS payload:
 
        ```bash
@@ -354,7 +346,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
     <summary>Example Exploitation</summary>
 
   To demonstrate file disclosure, you can use the following `curl` commands:
-
   1.  Accessing the `/etc/hosts` File with GET /api/file/raw
 
       ```bash
@@ -606,7 +597,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
     <summary>Example Exploitation of Server-Side Request Forgery (SSRF)</summary>
 
   To demonstrate SSRF, you can use the following `curl` commands:
-
   1. **Triggering a Request to an External Resource**:
 
      ```bash
@@ -722,7 +712,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
     <summary>Version Control System Example Exploitation</summary>
 
   To demonstrate the exposure of version control system files, you can use the following `curl` commands:
-
   1. **Accessing Git Configuration**:
 
      ```bash
@@ -809,14 +798,12 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
   <details>
     <summary>Demo of Hidden Upload XSS</summary>
-
   - Go to `/hidden-upload`, set filename to `<img src=x onerror=alert(1)>`, and upload an SVG; the filename is injected as HTML and the SVG is returned as a data URL.
 
   </details>
 
   <details>
     <summary>Demo of Hidden Upload File Upload</summary>
-
   - Upload any image (including crafted SVG) to `/hidden-upload`; the backend stores it under `uploads/hidden` and returns a data URL without further validation of content.
 
   </details>
@@ -825,7 +812,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
   <details>
     <summary>Demo of Safe Files RFI</summary>
-
   - POST `{ "name": "test", "url": "https://filedealer.nexploit.app/rfi.md5.txt" }` to `/api/safe-files` to have the server fetch and return remote content.
 
   </details>
@@ -834,7 +820,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
   <details>
     <summary>Demo of Products SQL Injection</summary>
-
   - Call `/api/products/search?name=' OR 1=1 --` to dump all products due to unsanitized interpolation.
 
   </details>
@@ -843,7 +828,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
   <details>
     <summary>Demo of /api/users/me BOPLA</summary>
-
   - PUT to `/api/users/me` with `{ "password": "newpass", "isAdmin": true }` to overwrite sensitive fields for the authenticated user.
 
   </details>
@@ -939,12 +923,10 @@ Full configuration & usage examples can be found in our [demo project](https://g
   </details>
 
 - **ID Enumeration** - There are a few ID Enumeration vulnerabilities:
-
   1. The endpoint DELETE `/users/one/:id/photo?isAdmin=` which is used to delete a user's profile picture is vulnerable to ID Enumeration together with [Broken Function Level Authorization](#broken-function-level-authorization).
   2. The `/users/id/:id` endpoint returns user info by ID, it doesn't require neither authentication nor authorization.
 
 - **XPATH Injection** - The `/api/partners/*` endpoint contains the following XPATH injection vulnerabilities:
-
   1. The endpoint GET `/api/partners/partnerLogin` is supposed to log in with the user's credentials in order to obtain account info. It's vulnerable to an XPATH injection using boolean based payloads. When exploited it'll retrieve data about other users as well. You can use `' or '1'='1` in the password field to exploit the EP.
   2. The endpoint GET `/api/partners/searchPartners` is supposed to search partners' names by a given keyword. It's vulnerable to an XPATH injection using string detection payloads. When exploited, it can grant access to sensitive information like passwords and even lead to full data leak. You can use `')] | //password%00//` or `')] | //* | a[('` to exploit the EP.
   3. The endpoint GET `/api/partners/query` is a raw XPATH injection endpoint. You can put whatever you like there. It is not referenced in the frontend, but it is an exposed API endpoint.
@@ -998,7 +980,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
   </details>
 
 - **Prototype Pollution** - The `/marketplace` endpoint is vulnerable to prototype pollution using the following methods:
-
   1. The EP GET `/marketplace?__proto__[Test]=Test` represents the client side vulnerability, by parsing the URI (for portfolio filtering) and converting
      its parameters into an object. This means that a requests like `/marketplace?__proto__[TestKey]=TestValue` will lead to a creation of `Object.TestKey`.
      One can test if an attack was successful by viewing the new property created in the console.
@@ -1013,7 +994,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
     <summary>Example Exploitation of Date Manipulation</summary>
 
   To demonstrate the issue, you can use the following `curl` commands:
-
   1. **Querying a Short Date Range**:
 
      ```bash
@@ -1233,21 +1213,19 @@ Full configuration & usage examples can be found in our [demo project](https://g
   </details>
 
 - **MCP (Model Context Protocol) Vulnerabilities** - The application exposes an MCP HTTP endpoint at `/api/mcp` that implements the JSON-RPC 2.0 protocol for AI agent tool calling. This endpoint contains multiple vulnerabilities through its exposed tools:
-
   - **SQL Injection via count_tool** - The `count_tool` accepts a SQL query parameter and executes it directly against the database without sanitization, similar to the `/api/testimonials/count` endpoint.
   - **Sensitive Data Exposure via config_tool** - The `config_tool` returns application configuration including database credentials, API keys, and cloud storage URLs.
   - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
 
   <details>
     <summary>MCP Vulnerabilities Example Exploitation</summary>
-
   1. **Listing available tools**:
 
-     ```bash
-     curl 'https://brokencrystals.com/api/mcp' -X POST \
-       -H 'Content-Type: application/json' \
-       -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
-     ```
+  ```bash
+  curl 'https://brokencrystals.com/api/mcp' -X POST \
+    -H 'Content-Type: application/json' \
+    -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
+  ```
 
   2. **SQL Injection via count_tool**:
 
@@ -1301,10 +1279,12 @@ Full configuration & usage examples can be found in our [demo project](https://g
      {
        "jsonrpc": "2.0",
        "result": {
-         "content": [{
-           "type": "text",
-           "text": "{\n  \"awsBucket\": \"https://neuralegion-open-bucket.s3.amazonaws.com\",\n  \"sql\": \"postgres://bc:bc@db:5432/bc\",\n  \"googlemaps\": \"AIzaSyD2wIxpYCuNI0Zjt8kChs2hLTS5abVQfRQ\"\n}"
-         }]
+         "content": [
+           {
+             "type": "text",
+             "text": "{\n  \"awsBucket\": \"https://neuralegion-open-bucket.s3.amazonaws.com\",\n  \"sql\": \"postgres://bc:bc@db:5432/bc\",\n  \"googlemaps\": \"AIzaSyD2wIxpYCuNI0Zjt8kChs2hLTS5abVQfRQ\"\n}"
+           }
+         ]
        },
        "id": 3
      }

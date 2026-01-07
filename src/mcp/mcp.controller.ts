@@ -15,14 +15,8 @@ import {
   ApiConsumes
 } from '@nestjs/swagger';
 import { McpService } from './mcp.service';
-import {
-  McpRequest,
-  McpResponse,
-  McpToolCallParams
-} from './api/mcp.types';
-import {
-  API_DESC_MCP_ENDPOINT
-} from './mcp.controller.swagger.desc';
+import { McpRequest, McpResponse, McpToolCallParams } from './api/mcp.types';
+import { API_DESC_MCP_ENDPOINT } from './mcp.controller.swagger.desc';
 
 @Controller('/api/mcp')
 @ApiTags('MCP Controller')
@@ -132,10 +126,10 @@ export class McpController {
       switch (request.method) {
         case 'tools/list':
           return this.handleToolsList(request);
-        
+
         case 'tools/call':
           return await this.handleToolsCall(request);
-        
+
         case 'initialize':
           // Return a minimal initialization response for compatibility
           return {
@@ -178,7 +172,7 @@ export class McpController {
 
   private handleToolsList(request: McpRequest): McpResponse {
     const tools = this.mcpService.getTools();
-    
+
     return {
       jsonrpc: '2.0',
       result: {
@@ -190,7 +184,7 @@ export class McpController {
 
   private async handleToolsCall(request: McpRequest): Promise<McpResponse> {
     const params = request.params as unknown as McpToolCallParams;
-    
+
     if (!params?.name) {
       return {
         jsonrpc: '2.0',

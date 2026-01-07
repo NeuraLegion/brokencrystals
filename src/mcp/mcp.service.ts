@@ -62,7 +62,8 @@ export class McpService {
           },
           template: {
             type: 'string',
-            description: 'Custom template string. Use {{=it.sum}} to display the sum and {{=it.numbers}} for the numbers array'
+            description:
+              'Custom template string. Use {{=it.sum}} to display the sum and {{=it.numbers}} for the numbers array'
           }
         },
         required: ['numbers']
@@ -82,7 +83,9 @@ export class McpService {
   async callTool(params: McpToolCallParams): Promise<McpToolResult> {
     const { name, arguments: args } = params;
 
-    this.logger.debug(`Calling tool: ${name} with args: ${JSON.stringify(args)}`);
+    this.logger.debug(
+      `Calling tool: ${name} with args: ${JSON.stringify(args)}`
+    );
 
     switch (name) {
       case 'count_tool':
@@ -100,13 +103,15 @@ export class McpService {
   }
 
   // SQL Injection vulnerability - directly passes user input to SQL query
-  private async executeCountTool(input: CountToolInput): Promise<McpToolResult> {
+  private async executeCountTool(
+    input: CountToolInput
+  ): Promise<McpToolResult> {
     try {
       this.logger.debug(`Executing count query: ${input.query}`);
-      
+
       // Vulnerable: User-controlled SQL query passed directly to database
       const count = await this.testimonialsService.count(input.query);
-      
+
       return {
         content: [
           {
@@ -127,12 +132,12 @@ export class McpService {
   private executeConfigTool(input: ConfigToolInput): McpToolResult {
     try {
       this.logger.debug('Fetching application configuration');
-      
+
       // Vulnerable: Leaks sensitive configuration data including DB credentials
       const config = this.appService.getConfig();
-      
+
       const includeSensitive = input?.include_sensitive !== false;
-      
+
       if (includeSensitive) {
         return {
           content: [
@@ -163,22 +168,26 @@ export class McpService {
   // SSTI vulnerability - uses dot template engine with user input
   private executeRenderTool(input: RenderToolInput): McpToolResult {
     try {
-      this.logger.debug(`Rendering sum for numbers: ${JSON.stringify(input.numbers)}`);
-      
+      this.logger.debug(
+        `Rendering sum for numbers: ${JSON.stringify(input.numbers)}`
+      );
+
       // Calculate sum
       const numbers = input.numbers || [];
       const sum = numbers.reduce((acc, num) => acc + num, 0);
-      
+
       // Vulnerable: SSTI - User-controlled template string is directly compiled
       // Default template if not provided
-      const template = input.template || `The sum of [{{=it.numbers.join(', ')}}] is: {{=it.sum}}`;
-      
+      const template =
+        input.template ||
+        `The sum of [{{=it.numbers.join(', ')}}] is: {{=it.sum}}`;
+
       // Vulnerable: Using dot template engine which allows code execution
       // User can inject arbitrary code via the template parameter
       const rendered = dotT.compile(template)({ numbers, sum });
-      
+
       this.logger.debug(`Rendered result: ${rendered}`);
-      
+
       return {
         content: [
           {
