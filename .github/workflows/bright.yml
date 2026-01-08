@@ -23,8 +23,6 @@ jobs:
           node-version: 22.x
 
       - name: Start Application
-        env:
-          GRPC_WEB_PROXY_URL: ${{ secrets.GRPC_WEB_PROXY_URL }}
         run: docker compose -f compose.local.yml up --wait || true
 
       - name: Debug healthcheck output
