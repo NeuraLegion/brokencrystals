@@ -25,8 +25,14 @@ jobs:
       - name: Start Application
         env:
           GRPC_WEB_PROXY_URL: ${{ secrets.GRPC_WEB_PROXY_URL }}
-        run: |
-          docker compose -f compose.local.yml up --wait
+        run: docker compose -f compose.local.yml up --wait || true
+
+      - name: Debug healthcheck output
+        if: always()
+        run: docker compose -f compose.local.yml ps && docker inspect brokencrystals-nodejs-1 --format '{{json .Config.Healthcheck}}' && docker inspect brokencrystals-nodejs-1 --format '{{json .State.Health.Log}}' && docker logs brokencrystals-nodejs-1 --tail 200
+
+      - name: Fail if any container unhealthy
+        run: docker compose -f compose.local.yml ps --status=running --status=exited && docker compose -f compose.local.yml ps && exit 1
 
       - name: Probe Application Readiness
         run: |
