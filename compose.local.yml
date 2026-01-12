@@ -72,7 +72,7 @@ services:
       timeout: 30s
     environment:
       URL: http://localhost:3000
-      GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
+      GRPC_WEB_PROXY_URL: http://grpcwebproxy:8081
       CHAT_API_URL: http://ollama:11434/v1/chat/completions
       CHAT_API_MODEL: smollm:135m
       CHAT_API_TOKEN: ''
