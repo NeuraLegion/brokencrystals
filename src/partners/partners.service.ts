@@ -67,10 +67,19 @@ export class PartnersService {
   }
 
   private getFormattedXMLOutput(xmlNodes): string {
-    return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
+    return `${this.XML_HEADER}
+<root>
+${xmlNodes.join('\n')}
+</root>`;
   }
 
   getPartnersProperties(xpathExpression: string): string {
+    // Validate and sanitize the XPath expression
+    if (!this.isValidXPath(xpathExpression)) {
+      this.logger.error(`Invalid XPath expression: ${xpathExpression}`);
+      throw new Error('Invalid XPath expression');
+    }
+
     let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
     if (!Array.isArray(xmlNodes)) {
@@ -83,5 +92,26 @@ export class PartnersService {
     }
 
     return this.getFormattedXMLOutput(xmlNodes);
+  }
+
+  isValidXPath(xpathExpression: string): boolean {
+    // Basic validation to prevent XPath injection
+    const forbiddenPatterns = [
+      /\bor\b/i, // prevent logical OR injection
+      /\band\b/i, // prevent logical AND injection
+      /\bnot\b/i, // prevent logical NOT injection
+      /\|\|/g, // prevent double pipe
+      /\&\&/g, // prevent double ampersand
+      /\'\s*\]|\[\s*\'/g, // prevent unescaped single quotes
+      /"\s*\]|\[\s*"/g, // prevent unescaped double quotes
+    ];
+
+    for (const pattern of forbiddenPatterns) {
+      if (pattern.test(xpathExpression)) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }
