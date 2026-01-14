@@ -67,10 +67,7 @@ export class PartnersService {
   }
 
   private getFormattedXMLOutput(xmlNodes): string {
-    return `${this.XML_HEADER}
-<root>
-${xmlNodes.join('\n')}
-</root>`;
+    return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
   getPartnersProperties(xpathExpression: string): string {
@@ -94,7 +91,7 @@ ${xmlNodes.join('\n')}
     return this.getFormattedXMLOutput(xmlNodes);
   }
 
-  isValidXPath(xpathExpression: string): boolean {
+  private isValidXPath(xpathExpression: string): boolean {
     // Basic validation to prevent XPath injection
     const forbiddenPatterns = [
       /\bor\b/i, // prevent logical OR injection
@@ -102,11 +99,8 @@ ${xmlNodes.join('\n')}
       /\bnot\b/i, // prevent logical NOT injection
       /\|\|/g, // prevent double pipe
       /\&\&/g, // prevent double ampersand
-      /'\s*\]|\[\s*'/g, // prevent unescaped single quotes
+      /\'\s*\]|\[\s*\'/g, // prevent unescaped single quotes
       /"\s*\]|\[\s*"/g, // prevent unescaped double quotes
-      /\[\s*\]|\[\s*\]/g, // prevent empty brackets
-      /\*|\/|\+|-/g, // prevent arithmetic operators
-      /\bdiv\b|\bmod\b/i, // prevent division and modulus
     ];
 
     for (const pattern of forbiddenPatterns) {
