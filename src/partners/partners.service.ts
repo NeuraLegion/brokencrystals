@@ -102,8 +102,11 @@ ${xmlNodes.join('\n')}
       /\bnot\b/i, // prevent logical NOT injection
       /\|\|/g, // prevent double pipe
       /\&\&/g, // prevent double ampersand
-      /\'\s*\]|\[\s*\'/g, // prevent unescaped single quotes
+      /'\s*\]|\[\s*'/g, // prevent unescaped single quotes
       /"\s*\]|\[\s*"/g, // prevent unescaped double quotes
+      /\[\s*\]|\[\s*\]/g, // prevent empty brackets
+      /\*|\/|\+|-/g, // prevent arithmetic operators
+      /\bdiv\b|\bmod\b/i, // prevent division and modulus
     ];
 
     for (const pattern of forbiddenPatterns) {
