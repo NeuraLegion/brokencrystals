@@ -72,8 +72,7 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      // Use a safe template rendering approach
-      const res = dotT.template(text, { evaluate: false, interpolate: false, encode: false, use: false, define: false, varname: 'it' })({});
+      const res = dotT.compile(text)();
       this.logger.debug(`Rendered template: ${res}`);
       return res;
     }
