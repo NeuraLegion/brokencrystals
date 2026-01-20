@@ -42,7 +42,7 @@
     "@nestjs/graphql": "^12.2.1",
     "@nestjs/mercurius": "^12.2.1",
     "@nestjs/microservices": "^10.4.7",
-    "@nestjs/platform-fastify": "^10.4.7",
+    "@nestjs/platform-fastify": "^11.1.12",
     "@nestjs/swagger": "^8.0.5",
     "@xmldom/xmldom": "^0.9.2",
     "argon2": "^0.41.1",
