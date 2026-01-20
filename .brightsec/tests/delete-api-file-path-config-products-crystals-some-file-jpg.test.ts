@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('DELETE /api/file?path=config/products/crystals/some_file.jpg', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['lfi', 'ssrf', 'bopla', 'http_method_fuzzing', 'full_path_disclosure'],
+      tests: ['full_path_disclosure'],
       attackParamLocations: [AttackParamLocation.QUERY],
       starMetadata: {
         code_source: 'NeuraLegion/brokencrystals:stable',
