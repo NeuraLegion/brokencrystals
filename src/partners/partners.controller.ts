@@ -46,6 +46,10 @@ export class PartnersController {
     this.logger.debug(`Getting partners with xpath expression "${xpath}"`);
 
     try {
+      // Validate and sanitize the xpath input
+      if (!this.isValidXPath(xpath)) {
+        throw new Error('Invalid XPath expression');
+      }
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
       throw new HttpException(
@@ -85,7 +89,10 @@ export class PartnersController {
     );
 
     try {
-      const xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
+      // Escape user inputs to prevent XPath injection
+      const safeUsername = this.escapeXPathValue(username);
+      const safePassword = this.escapeXPathValue(password);
+      const xpath = `//partners/partner[username/text()='${safeUsername}' and password/text()='${safePassword}']/*`;
       const xmlStr = this.partnersService.getPartnersProperties(xpath);
 
       // Check if account's data contains any information - If not, the login failed!
@@ -128,7 +135,9 @@ export class PartnersController {
     this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
 
     try {
-      const xpath = `//partners/partner/name[contains(., '${keyword}')]`;
+      // Escape keyword to prevent XPath injection
+      const safeKeyword = this.escapeXPathValue(keyword);
+      const xpath = `//partners/partner/name[contains(., '${safeKeyword}')]`;
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
       const errStr = err.toString();
@@ -143,5 +152,16 @@ export class PartnersController {
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
+  }
+
+  // Helper function to escape XPath values
+  private escapeXPathValue(value: string): string {
+    return value.replace(/'/g, "''");
+  }
+
+  // Helper function to validate XPath expressions
+  private isValidXPath(xpath: string): boolean {
+    // Basic validation logic (can be expanded)
+    return !xpath.includes(' or ') && !xpath.includes(' and ');
   }
 }

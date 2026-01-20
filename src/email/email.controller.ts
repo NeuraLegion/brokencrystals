@@ -118,11 +118,20 @@ export class EmailController {
     example: 'true',
     required: true
   })
-  async getEmails(@Query('withSource') withSourceStr: string) {
+  async getEmails(@Query('withSource') withSourceStr: string, @Res() res: FastifyReply) {
     const withSource = withSourceStr === 'true';
 
     this.logger.log(`Getting Emails (withSource=${withSource})`);
-    return await this.emailService.getEmails(withSource);
+
+    // CSRF protection: Check the origin of the request
+    const origin = res.request.headers['origin'];
+    if (origin !== 'https://your-allowed-origin.com') {
+      res.status(HttpStatus.FORBIDDEN).send({ error: 'Invalid request origin' });
+      return;
+    }
+
+    const emails = await this.emailService.getEmails(withSource);
+    res.send(emails);
   }
 
   @Delete('/deleteEmails')
