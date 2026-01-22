@@ -67,9 +67,10 @@ services:
     restart: always
     healthcheck:
       interval: 10s
-      retries: 10
+      retries: 12
       test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/health']
       timeout: 45s
+      start_period: 30s
     environment:
       URL: http://localhost:3000
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
