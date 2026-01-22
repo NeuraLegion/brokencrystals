@@ -303,4 +303,15 @@ export class AppController {
 
     return JSON.stringify(jsonObj);
   }
+
+  @Get('health')
+  @ApiOperation({
+    description: 'Health check endpoint'
+  })
+  @ApiOkResponse({
+    description: 'Service is healthy'
+  })
+  async getHealth(): Promise<{ status: string }> {
+    return { status: 'ok' };
+  }
 }

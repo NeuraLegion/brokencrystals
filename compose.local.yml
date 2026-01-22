@@ -68,7 +68,7 @@ services:
     healthcheck:
       interval: 10s
       retries: 12
-      test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/health']
+      test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/api/health']
       timeout: 45s
       start_period: 30s
     environment:
