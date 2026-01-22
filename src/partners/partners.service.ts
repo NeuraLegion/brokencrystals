@@ -67,13 +67,16 @@ export class PartnersService {
   }
 
   private getFormattedXMLOutput(xmlNodes): string {
-    return `${this.XML_HEADER}
-<root>
-${xmlNodes.join('\n')}
-</root>`;
+    return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
-  getPartnersProperties(xpathExpression: string): string {
+  getPartnersProperties(keyword: string): string {
+    // Validate and sanitize the keyword to prevent XPath injection
+    if (!/^[a-zA-Z0-9 ]*$/.test(keyword)) {
+      throw new Error('Invalid input');
+    }
+
+    const xpathExpression = `//partners/partner[name[contains(., '${keyword}')]]`;
     let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
     if (!Array.isArray(xmlNodes)) {
@@ -85,19 +88,6 @@ ${xmlNodes.join('\n')}
       this.logger.debug(`Raw xpath xmlNodes value is: ${xmlNodes}`);
     }
 
-    return this.getFormattedXMLOutput(xmlNodes);
-  }
-
-  getPartnersPropertiesWithParams(xpathExpression: string, params: { [key: string]: string }): string {
-    const partnersXMLObj = this.getPartnersXMLObj();
-    const variables = Object.keys(params).reduce((acc, key) => {
-      acc[key] = params[key];
-      return acc;
-    }, {});
-    const select = xpath.useNamespaces({
-      '': 'http://www.w3.org/1999/xhtml'
-    });
-    const xmlNodes = select(xpathExpression, partnersXMLObj, variables);
     return this.getFormattedXMLOutput(xmlNodes);
   }
 }
