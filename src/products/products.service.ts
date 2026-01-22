@@ -46,6 +46,9 @@ export class ProductsService {
     this.logger.debug(`Find ${limit} latest products`);
     const maxLimit = 10; // Set a maximum limit to prevent abuse
     const effectiveLimit = Math.min(limit, maxLimit);
+    if (limit > maxLimit) {
+      throw new Error(`Limit cannot exceed ${maxLimit}`);
+    }
     return this.productsRepository.find(
       {},
       { limit: effectiveLimit, orderBy: { createdAt: 'desc' } }
