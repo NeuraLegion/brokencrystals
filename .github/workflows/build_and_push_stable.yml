@@ -1,0 +1,41 @@
+name: "Build and Push Docker Image (On Push to Stable)"
+
+on:
+  push:
+    branches:
+      - stable
+
+jobs:
+  docker-build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        run: |
+          docker login --username=${{ vars.DOCKERHUB_BRIGHT_USER }} --password=${{ secrets.DOCKERHUB_BRIGHT_TOKEN }}
+
+      - name: Generate timestamp
+        id: timestamp
+        run: echo "TIMESTAMP=$(date +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+
+      - name: Generate short SHA
+        id: sha
+        run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-6)" >> $GITHUB_ENV
+
+      - name: Build and tag Docker images
+        run: |
+          for TAG_PREFIX in stable unstable; do
+            docker build -t brightsec/brokencrystals:${TAG_PREFIX} .
+            docker tag brightsec/brokencrystals:${TAG_PREFIX} brightsec/brokencrystals:${TAG_PREFIX}-${{ env.SHORT_SHA }}
+            docker tag brightsec/brokencrystals:${TAG_PREFIX} brightsec/brokencrystals:${TAG_PREFIX}-${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
+          done
+
+      - name: Push Docker images
+        run: |
+          for TAG_PREFIX in stable unstable; do
+            docker push brightsec/brokencrystals:${TAG_PREFIX}
+            docker push brightsec/brokencrystals:${TAG_PREFIX}-${{ env.SHORT_SHA }}
+            docker push brightsec/brokencrystals:${TAG_PREFIX}-${{ env.SHORT_SHA }}-${{ env.TIMESTAMP }}
+          done
