@@ -66,10 +66,10 @@ services:
       dockerfile: Dockerfile
     restart: always
     healthcheck:
-      interval: 5s
+      interval: 10s
       retries: 10
-      test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/api/config']
-      timeout: 30s
+      test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/health']
+      timeout: 45s
     environment:
       URL: http://localhost:3000
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
