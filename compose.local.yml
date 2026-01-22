@@ -66,9 +66,9 @@ services:
       dockerfile: Dockerfile
     restart: always
     healthcheck:
-      interval: 5s
-      retries: 10
-      test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/api/config']
+      interval: 10s
+      retries: 15
+      test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/health']
       timeout: 30s
     environment:
       URL: http://localhost:3000
