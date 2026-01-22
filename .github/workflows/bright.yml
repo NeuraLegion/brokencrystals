@@ -54,7 +54,7 @@ jobs:
 
       - name: Probe application readiness
         run: |
-          for i in {1..30}; do nc -z 127.0.0.1 3000 && exit 0 || sleep 5; done; exit 1
+          for i in {1..30}; do curl -fsS http://127.0.0.1:3000 && exit 0 || sleep 5; done; exit 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
