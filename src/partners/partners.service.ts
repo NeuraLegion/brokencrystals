@@ -87,4 +87,17 @@ ${xmlNodes.join('\n')}
 
     return this.getFormattedXMLOutput(xmlNodes);
   }
+
+  getPartnersPropertiesWithParams(xpathExpression: string, params: { [key: string]: string }): string {
+    const partnersXMLObj = this.getPartnersXMLObj();
+    const variables = Object.keys(params).reduce((acc, key) => {
+      acc[key] = params[key];
+      return acc;
+    }, {});
+    const select = xpath.useNamespaces({
+      '': 'http://www.w3.org/1999/xhtml'
+    });
+    const xmlNodes = select(xpathExpression, partnersXMLObj, variables);
+    return this.getFormattedXMLOutput(xmlNodes);
+  }
 }
