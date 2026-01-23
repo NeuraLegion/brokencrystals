@@ -85,8 +85,8 @@ export class PartnersController {
     );
 
     try {
-      const xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
-      const xmlStr = this.partnersService.getPartnersProperties(xpath);
+      // Pass username and password directly to the service method
+      const xmlStr = this.partnersService.getPartnersProperties(username, password);
 
       // Check if account's data contains any information - If not, the login failed!
       if (
