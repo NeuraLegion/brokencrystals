@@ -30,7 +30,7 @@ export class ProductsController {
 
     if (limit) {
       const parsedLimit = parseInt(limit, 10);
-      if (isNaN(parsedLimit) || parsedLimit < 0) {
+      if (isNaN(parsedLimit) || parsedLimit <= 0) {
         throw new BadRequestException('Limit must be a positive number');
       }
       effectiveLimit = Math.min(parsedLimit, maxLimit);
