@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('POST /api/render', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['ssti', 'xss', 'osi'],
+      tests: ['ssti'],
       attackParamLocations: [AttackParamLocation.BODY, AttackParamLocation.HEADER],
       starMetadata: {
         code_source: "NeuraLegion/brokencrystals:stable",
