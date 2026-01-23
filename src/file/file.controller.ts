@@ -122,9 +122,6 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
-    if (!path.startsWith('/')) {
-      throw new BadRequestException('Invalid path format.');
-    }
     const file: Stream = await this.loadCPFile(
       CloudProvidersMetaData.GOOGLE,
       path
@@ -204,9 +201,6 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
-    if (!path.startsWith('/')) {
-      throw new BadRequestException('Invalid path format.');
-    }
     const file: Stream = await this.loadCPFile(
       CloudProvidersMetaData.AZURE,
       path
@@ -245,9 +239,6 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
-    if (!path.startsWith('/')) {
-      throw new BadRequestException('Invalid path format.');
-    }
     const file: Stream = await this.loadCPFile(
       CloudProvidersMetaData.DIGITAL_OCEAN,
       path
