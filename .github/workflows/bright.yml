@@ -23,7 +23,7 @@ jobs:
 
       - name: Probe application readiness
         run: |
-          for i in {1..30}; do curl -fsS http://127.0.0.1:1234 && exit 0 || sleep 5; done; exit 1
+          for i in {1..30}; do curl -sS -o /dev/null http://127.0.0.1:1234 && exit 0 || sleep 5; done; exit 1
 
       - name: Setup Node.js 22.x
         uses: actions/setup-node@v4
