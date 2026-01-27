@@ -1,0 +1,86 @@
+name: Bright
+
+on:
+  pull_request:
+    branches:
+      - '**'
+
+permissions:
+  checks: write
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Start Application
+        run: |
+          docker compose --file=compose.local.yml up -d
+        env:
+          AWS_BUCKET: https://neuralegion-open-bucket.s3.amazonaws.com
+          BRIGHT_CLUSTER: app.brightsec.com
+          CHAT_API_MAX_TOKENS: 200
+          CHAT_API_MODEL: smollm:135m
+          CHAT_API_URL: http://ollama:11434/v1/chat/completions
+          DATABASE_DEBUG: 'true'
+          DATABASE_HOST: db
+          DATABASE_PASSWORD: bc
+          DATABASE_PORT: '5432'
+          DATABASE_SCHEMA: bc
+          DATABASE_USER: bc
+          FASTIFY_LOGGER: 'true'
+          FASTIFY_LOG_LEVEL: warn
+          GOOGLE_MAPS_API: AIzaSyD2wIxpYCuNI0Zjt8kChs2hLTS5abVQfRQ
+          GRPC_WEB_PROXY_URL: http://grpcwebproxy:8081
+          JKU_URL: https://raw.githubusercontent.com/NeuraLegion/brokencrystals/stable/config/keys/jku.json
+          JWK_PRIVATE_KEY_LOCATION: config/keys/jwk.key.pem
+          JWK_PUBLIC_JSON: config/keys/jwk.pub.json
+          JWK_PUBLIC_KEY_LOCATION: config/keys/jwk.pub.key.pem
+          JWT_PRIVATE_KEY_LOCATION: config/keys/jwtRS256.key
+          JWT_PUBLIC_KEY_LOCATION: config/keys/jwtRS256.key.pub.pem
+          JWT_SECRET_KEY: '1234'
+          KEYCLOAK_ADMIN_CLIENT_ID: admin-cli
+          KEYCLOAK_ADMIN_CLIENT_SECRET: 3abff4a7-6649-4bae-a105-9bd1fb52a2cd
+          KEYCLOAK_PUBLIC_CLIENT_ID: brokencrystals-client
+          KEYCLOAK_PUBLIC_CLIENT_SECRET: 4bfb5df6-4647-46dd-bad1-c8b8ffd7caf4
+          KEYCLOAK_REALM: brokencrystals
+          KEYCLOAK_SERVER_URI: http://keycloak:8080
+          SEC_TESTER_TARGET: http://localhost:3000
+          URL: http://localhost:3000
+          X5U_URL: https://raw.githubusercontent.com/NeuraLegion/brokencrystals/stable/config/keys/x509.crt
+
+      - name: Probe Application Readiness
+        run: |
+          for i in {1..30}; do curl -sS -o /dev/null http://127.0.0.1:3000 && exit 0 || sleep 5; done; exit 1
+
+      - name: Install SecTesterJS Dependencies
+        run: |
+          npm i --save=false --prefix .brightsec @sectester/core@0.49.0 @sectester/repeater@0.49.0 @sectester/scan@0.49.0 @sectester/runner@0.49.0 @sectester/reporter@0.49.0
+
+      - name: Configure Bright Credentials
+        uses: ./.github/workflows/composite/configure-bright-credentials
+        with:
+          BRIGHT_HOSTNAME: development.playground.brightsec.com
+          BRIGHT_PROJECT_ID: dhSq9jPULmyZnndTYVtd6o
+          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+
+      - name: Run Security Tests
+        run: |
+          node --experimental-transform-types --experimental-strip-types --experimental-detect-module --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --test-force-exit --test-concurrency=4 --test .brightsec/tests/*.test.ts
+        env:
+          BRIGHT_HOSTNAME: development.playground.brightsec.com
+          BRIGHT_PROJECT_ID: dhSq9jPULmyZnndTYVtd6o
+          BRIGHT_AUTH_ID: ${{ vars.BRIGHT_AUTH_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRIGHT_TOKEN: ${{ env.BRIGHT_TOKEN }}
+          BRIGHT_TARGET_URL: http://127.0.0.1:3000
+          SECTESTER_SCAN_POOL_SIZE: ${{ vars.SECTESTER_SCAN_POOL_SIZE }}
