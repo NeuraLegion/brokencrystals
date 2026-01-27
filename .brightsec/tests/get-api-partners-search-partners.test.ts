@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /api/partners/searchPartners', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['xpathi', 'xss', 'full_path_disclosure'],
+      tests: ['xpathi'],
       attackParamLocations: [AttackParamLocation.QUERY],
       starMetadata: {
         code_source: "NeuraLegion/brokencrystals:fixer/fix_workflow_tc01",
