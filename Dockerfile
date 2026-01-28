@@ -56,4 +56,6 @@ COPY --chown=node:node --from=build /usr/src/app/dist ./dist
 COPY --chown=node:node --from=build /usr/src/app/client/dist ./client/dist
 COPY --chown=node:node --from=build /usr/src/app/client/vcs ./client/vcs
 
+RUN apk add --no-cache wget
+
 CMD ["npm", "run", "start:prod"]
