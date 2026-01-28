@@ -175,6 +175,11 @@ async function bootstrap() {
     }
   });
 
+  // Add /api/config route before Nest app is created
+  server.get('/api/config', async (req, reply) => {
+    reply.send({ status: 'ok' });
+  });
+
   const app: NestFastifyApplication = await NestFactory.create(
     AppModule,
     new FastifyAdapter(server),
