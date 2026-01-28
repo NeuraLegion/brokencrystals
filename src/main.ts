@@ -263,7 +263,7 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  await app.listen(1234, '0.0.0.0');
+  await app.listen(3000, '0.0.0.0');
 }
 
 if (cluster.isPrimary && process.env.NODE_ENV === 'production') {
