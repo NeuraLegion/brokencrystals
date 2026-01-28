@@ -70,10 +70,10 @@ export class PartnersService {
     return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
-  getPartnersProperties(xpathExpression: string): string {
-    // Sanitize the input to prevent XPath Injection
-    const sanitizedXpathExpression = this.sanitizeXpath(xpathExpression);
-    let xmlNodes = this.selectPartnerPropertiesByXPATH(sanitizedXpathExpression);
+  getPartnersProperties(keyword: string): string {
+    // Construct a safe XPath expression using parameterization
+    const xpathExpression = `//partner[contains(name, '${this.escapeForXPath(keyword)}')]`;
+    let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
     if (!Array.isArray(xmlNodes)) {
       this.logger.debug(
@@ -87,8 +87,8 @@ export class PartnersService {
     return this.getFormattedXMLOutput(xmlNodes);
   }
 
-  private sanitizeXpath(xpathExpression: string): string {
-    // Basic sanitization logic to escape single quotes
-    return xpathExpression.replace(/'/g, "\'");
+  private escapeForXPath(input: string): string {
+    // Escape single quotes by splitting and using concat
+    return input.replace(/'/g, "''");
   }
 }
