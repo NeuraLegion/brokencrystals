@@ -23,6 +23,12 @@ jobs:
 
       - name: Start Application
         env:
+          DATABASE_SCHEMA: brokencrystals
+          DATABASE_USER: brokencrystals
+          DATABASE_PASSWORD: password
+          POSTGRES_DB: brokencrystals
+          POSTGRES_PASSWORD: password
+          POSTGRES_USER: brokencrystals
           CHAT_API_MAX_TOKENS: ${{ env.CHAT_API_MAX_TOKENS }}
           CHAT_API_MODEL: ${{ env.CHAT_API_MODEL }}
           CHAT_API_TOKEN: ${{ env.CHAT_API_TOKEN }}
@@ -35,9 +41,6 @@ jobs:
           KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
           KC_DB_USERNAME: keycloak
           KC_HEALTH_ENABLED: true
-          POSTGRES_DB: ${{ env.DATABASE_SCHEMA }}
-          POSTGRES_PASSWORD: ${{ env.DATABASE_PASSWORD }}
-          POSTGRES_USER: ${{ env.DATABASE_USER }}
           URL: http://localhost:3000
         run: |
           docker compose -f compose.local.yml up --wait
