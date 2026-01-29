@@ -1,0 +1,57 @@
+name: "Nest Back-End CI checks"
+
+on:
+  pull_request:
+    branches:
+      - '**'
+
+  push:
+    branches:
+      - stable
+      - unstable
+
+    paths:
+      - '*'
+      - 'src/**'
+      - 'test/**'
+      - '.github/workflows/check.yml'
+
+env:
+  HUSKY: 0
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Disable prepare script (husky)
+        run: npm pkg delete scripts.prepare
+
+      - name: Install dependencies
+        run: npm ci --no-audit
+
+      - name: Check format
+        run: npm run format
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test
