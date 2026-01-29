@@ -77,6 +77,12 @@ services:
       CHAT_API_MODEL: ${CHAT_API_MODEL}
       CHAT_API_TOKEN: ${CHAT_API_TOKEN}
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+      DATABASE_HOST: db
+      DATABASE_SCHEMA: bc
+      DATABASE_USER: bc
+      DATABASE_PASSWORD: bc
+      DATABASE_PORT: 5432
+      DATABASE_DEBUG: true
     ports:
       - '3000:3000'
       - '5000:5000'
