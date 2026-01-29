@@ -38,9 +38,9 @@ jobs:
           KC_HEALTH_ENABLED: true
           KC_HOSTNAME_STRICT: false
           KC_HOSTNAME_STRICT_HTTPS: false
-          POSTGRES_DB: ${{ env.DATABASE_SCHEMA }}
-          POSTGRES_PASSWORD: ${{ env.DATABASE_PASSWORD }}
-          POSTGRES_USER: ${{ env.DATABASE_USER }}
+          POSTGRES_DB: bc
+          POSTGRES_PASSWORD: bc
+          POSTGRES_USER: bc
           URL: http://localhost:3000
         run: |
           docker compose -f compose.local.yml up --wait
