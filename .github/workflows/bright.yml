@@ -80,6 +80,6 @@ jobs:
           BRIGHT_PROJECT_ID: dhSq9jPULmyZnndTYVtd6o
           BRIGHT_AUTH_ID: ${{ vars.BRIGHT_AUTH_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRIGHT_TOKEN: ${{ env.BRIGHT_TOKEN }}
+          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
           BRIGHT_TARGET_URL: http://127.0.0.1:3000
           SECTESTER_SCAN_POOL_SIZE: ${{ vars.SECTESTER_SCAN_POOL_SIZE }}
