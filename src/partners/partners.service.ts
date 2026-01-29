@@ -63,7 +63,14 @@ export class PartnersService {
     xpathExpression: string
   ): SelectReturnType {
     const partnersXMLObj = this.getPartnersXMLObj();
-    return xpath.select(xpathExpression, partnersXMLObj);
+    // Sanitize the XPath expression to prevent injection
+    const sanitizedXpathExpression = this.sanitizeXpath(xpathExpression);
+    return xpath.select(sanitizedXpathExpression, partnersXMLObj);
+  }
+
+  private sanitizeXpath(xpathExpression: string): string {
+    // Basic sanitization: remove potentially dangerous characters
+    return xpathExpression.replace(/["'\[\]|]/g, '');
   }
 
   private getFormattedXMLOutput(xmlNodes): string {
@@ -82,6 +89,15 @@ export class PartnersService {
       this.logger.debug(`Raw xpath xmlNodes value is: ${xmlNodes}`);
     }
 
+    return this.getFormattedXMLOutput(xmlNodes);
+  }
+
+  getPartnersPropertiesWithParams(xpathExpression: string, params: { [key: string]: string }): string {
+    const partnersXMLObj = this.getPartnersXMLObj();
+    const variables = Object.keys(params).map(key => `declare variable $${key} as xs:string external;`).join(' ');
+    const expressionWithVariables = `${variables} ${xpathExpression}`;
+    const select = xpath.useNamespaces({ '': 'http://www.w3.org/1999/xhtml' });
+    const xmlNodes = select(expressionWithVariables, partnersXMLObj, null, params);
     return this.getFormattedXMLOutput(xmlNodes);
   }
 }
