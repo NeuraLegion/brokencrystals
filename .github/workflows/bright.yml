@@ -67,6 +67,8 @@ jobs:
 
       - name: Run security tests
         run: |
+          if [ -z "${{ secrets.BRIGHT_TOKEN }}" ]; then echo "BRIGHT_TOKEN secret is not set"; exit 1; fi
+          if [ -z "${{ vars.BRIGHT_AUTH_ID }}" ]; then echo "BRIGHT_AUTH_ID variable is not set"; exit 1; fi
           node --experimental-transform-types --experimental-strip-types --experimental-detect-module --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --test-force-exit --test-concurrency=4 --test .brightsec/tests/*.test.ts
         env:
           BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
