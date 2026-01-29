@@ -46,6 +46,10 @@ export class PartnersController {
     this.logger.debug(`Getting partners with xpath expression "${xpath}"`);
 
     try {
+      // Validate and sanitize the xpath input
+      if (!this.isValidXpath(xpath)) {
+        throw new Error('Invalid XPath expression');
+      }
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
       throw new HttpException(
@@ -85,7 +89,11 @@ export class PartnersController {
     );
 
     try {
-      const xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
+      // Validate and sanitize the username and password inputs
+      if (!this.isValidInput(username) || !this.isValidInput(password)) {
+        throw new Error('Invalid input');
+      }
+      const xpath = `//partners/partner[username/text()='${this.escapeForXPath(username)}' and password/text()='${this.escapeForXPath(password)}']/*`;
       const xmlStr = this.partnersService.getPartnersProperties(xpath);
 
       // Check if account's data contains any information - If not, the login failed!
@@ -128,7 +136,11 @@ export class PartnersController {
     this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
 
     try {
-      const xpath = `//partners/partner/name[contains(., '${keyword}')]`;
+      // Validate and sanitize the keyword input
+      if (!this.isValidInput(keyword)) {
+        throw new Error('Invalid input');
+      }
+      const xpath = `//partners/partner/name[contains(., '${this.escapeForXPath(keyword)}')]`;
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
       const errStr = err.toString();
@@ -143,5 +155,24 @@ export class PartnersController {
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
+  }
+
+  private isValidXpath(xpath: string): boolean {
+    // Implement a basic validation for XPath expressions
+    // This is a placeholder for a more robust validation logic
+    const xpathPattern = /^\/\w+(\/\w+)*$/;
+    return xpathPattern.test(xpath);
+  }
+
+  private isValidInput(input: string): boolean {
+    // Implement a basic validation for general inputs
+    // This is a placeholder for a more robust validation logic
+    const inputPattern = /^[a-zA-Z0-9_]+$/;
+    return inputPattern.test(input);
+  }
+
+  private escapeForXPath(input: string): string {
+    // Escape single quotes in the input for safe XPath usage
+    return input.replace(/'/g, "''");
   }
 }
