@@ -97,6 +97,10 @@ async function bootstrap() {
         : null
   });
 
+  server.get('/api/config', async (req, res) => {
+    res.send({});
+  });
+
   server.setDefaultRoute((req, res) => {
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
