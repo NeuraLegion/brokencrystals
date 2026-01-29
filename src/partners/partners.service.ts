@@ -71,6 +71,12 @@ export class PartnersService {
   }
 
   getPartnersProperties(xpathExpression: string): string {
+    // Sanitize the input to prevent XPath Injection
+    if (!this.isValidXPath(xpathExpression)) {
+      this.logger.warn(`Invalid XPath expression: ${xpathExpression}`);
+      throw new Error('Invalid XPath expression');
+    }
+
     let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
     if (!Array.isArray(xmlNodes)) {
@@ -83,5 +89,16 @@ export class PartnersService {
     }
 
     return this.getFormattedXMLOutput(xmlNodes);
+  }
+
+  private isValidXPath(xpathExpression: string): boolean {
+    // Basic validation to check for potentially dangerous characters
+    const forbiddenPatterns = [
+      /\bor\b/i, // Prevent logical OR injections
+      /\band\b/i, // Prevent logical AND injections
+      /['"\[\]]/ // Prevent use of quotes and brackets
+    ];
+
+    return !forbiddenPatterns.some((pattern) => pattern.test(xpathExpression));
   }
 }
