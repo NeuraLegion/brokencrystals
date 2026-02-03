@@ -16,7 +16,14 @@ export class LdapQueryHandler {
   public parseQuery(query: string): string {
     this.log.debug(`query: ${query}`);
 
-    const res = query.match(LdapQueryHandler.PARSER);
+    let res: RegExpMatchArray | null;
+
+    try {
+      res = decodeURIComponent(query).match(LdapQueryHandler.PARSER);
+    } catch (error) {
+      this.log.error(`Failed to decode ldap query: '${query}' error: ${error}`);
+      throw new Error(LdapQueryHandler.LDAP_ERROR_RESPONSE);
+    }
 
     if (!res || res.length != 2 || !res[1]) {
       throw new Error(LdapQueryHandler.LDAP_ERROR_RESPONSE);
