@@ -38,7 +38,13 @@ import { SafeFilesModule } from './safe-files/safe-files.module';
       driver: MercuriusDriver,
       graphiql: false, // Disable GraphiQL to prevent introspection
       autoSchemaFile: true,
-      introspection: false // Disable introspection to secure the schema
+      introspection: false, // Disable introspection to secure the schema
+      context: ({ request }) => {
+        if (request.body.query.includes('__schema')) {
+          throw new Error('Introspection is disabled');
+        }
+        return { request };
+      }
     }),
     PartnersModule,
     EmailModule,
