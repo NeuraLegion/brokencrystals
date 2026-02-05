@@ -70,7 +70,32 @@ export class PartnersService {
     return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
-  getPartnersProperties(xpathExpression: string): string {
+  getPartnersProperties(xpath: string): string {
+    // Validate and sanitize the XPath input
+    if (!/^[a-zA-Z0-9\/\[\]\(\)\@\=\'\s]+$/.test(xpath)) {
+      throw new Error('Invalid XPath expression');
+    }
+
+    let xmlNodes = this.selectPartnerPropertiesByXPATH(xpath);
+
+    if (!Array.isArray(xmlNodes)) {
+      this.logger.debug(
+        `xmlNodes's type wasn't 'Array', and it's value was: ${xmlNodes}`
+      );
+      xmlNodes = [];
+    } else {
+      this.logger.debug(`Raw xpath xmlNodes value is: ${xmlNodes}`);
+    }
+
+    return this.getFormattedXMLOutput(xmlNodes);
+  }
+
+  getPartnersPropertiesByCredentials(username: string, password: string): string {
+    // Sanitize inputs to prevent XPath Injection
+    const sanitizedUsername = username.replace(/'/g, "&apos;");
+    const sanitizedPassword = password.replace(/'/g, "&apos;");
+
+    const xpathExpression = `//partners/partner[username/text()='${sanitizedUsername}' and password/text()='${sanitizedPassword}']/*`;
     let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
     if (!Array.isArray(xmlNodes)) {

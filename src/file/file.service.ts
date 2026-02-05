@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CloudProvidersMetaData } from './cloud.providers.metadata';
 import { R_OK } from 'constants';
+import { URL } from 'url';
 
 @Injectable()
 export class FileService {
@@ -18,6 +19,25 @@ export class FileService {
 
       return fs.createReadStream(file);
     } else if (file.startsWith('http')) {
+      // Validate URL
+      let url;
+      try {
+        url = new URL(file);
+      } catch (err) {
+        throw new Error(`Invalid URL: ${file}`);
+      }
+
+      // Allow only specific hosts
+      const allowedHosts = ['example.com', 'another-allowed-host.com'];
+      if (!allowedHosts.includes(url.hostname)) {
+        throw new Error(`Host not allowed: ${url.hostname}`);
+      }
+
+      // Ensure the URL path is safe
+      if (url.pathname.includes('..')) {
+        throw new Error('Invalid path in URL');
+      }
+
       const content = await this.cloudProviders.get(file);
 
       if (content) {

@@ -27,8 +27,9 @@ export class ProductsResolver {
   @Query(() => [Product], {
     description: API_DESC_GET_LATEST_PRODUCTS
   })
-  async latestProducts(): Promise<Product[]> {
-    const products = await this.productsService.findLatest(3);
+  async latestProducts(@Args('limit', { type: () => Number, nullable: true }) limit: number = 10): Promise<Product[]> {
+    const maxLimit = 50; // Define a maximum limit
+    const products = await this.productsService.findLatest(Math.min(limit, maxLimit));
     return products.map((p: Product) => new ProductDto(p));
   }
 
@@ -39,8 +40,7 @@ export class ProductsResolver {
     @Args('productName') productName: string
   ): Promise<boolean> {
     try {
-      const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
-      await this.productsService.updateProduct(query);
+      await this.productsService.updateProduct(productName);
       return true;
     } catch (err) {
       throw new InternalServerErrorException({
