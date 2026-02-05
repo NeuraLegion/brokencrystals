@@ -40,7 +40,7 @@ import { SafeFilesModule } from './safe-files/safe-files.module';
       autoSchemaFile: true,
       introspection: false, // Disable introspection completely
       context: ({ request }) => {
-        if (process.env.NODE_ENV === 'production' && request.body.query.includes('__schema')) {
+        if (process.env.NODE_ENV === 'production' && request.body.query && request.body.query.includes('__schema')) {
           throw new Error('Introspection is disabled');
         }
         return {};
