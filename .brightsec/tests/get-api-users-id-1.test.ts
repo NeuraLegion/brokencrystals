@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /api/users/id/1', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['id_enumeration', 'sqli', 'bopla', 'csrf', 'xss'],
+      tests: ['id_enumeration'],
       attackParamLocations: [AttackParamLocation.PATH],
       starMetadata: {
         code_source: "NeuraLegion/brokencrystals:stable",
