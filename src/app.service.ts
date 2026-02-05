@@ -67,9 +67,7 @@ export class AppService {
         AppModuleConfigProperties.ENV_AWS_BUCKET
       ),
       sql: `postgres://${dbUser}:****@${dbHost}:${dbPort}/${dbSchema} `, // Masked password
-      googlemaps: this.configService.get<string>(
-        AppModuleConfigProperties.ENV_GOOGLE_MAPS
-      )
+      googlemaps: '****' // Masked API key
     };
   }
 
