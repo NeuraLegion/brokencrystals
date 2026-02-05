@@ -38,7 +38,7 @@ import { SafeFilesModule } from './safe-files/safe-files.module';
       driver: MercuriusDriver,
       graphiql: false, // Disable GraphiQL to prevent introspection
       autoSchemaFile: true,
-      introspection: process.env.NODE_ENV !== 'production' // Disable introspection in production
+      introspection: false // Disable introspection completely
     }),
     PartnersModule,
     EmailModule,
