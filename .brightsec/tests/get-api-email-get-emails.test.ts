@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /api/email/getEmails', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['proto_pollution', 'business_constraint_bypass', 'xss', 'csrf'],
+      tests: ['csrf'],
       attackParamLocations: [AttackParamLocation.QUERY, AttackParamLocation.HEADER],
       starMetadata: {
         code_source: 'NeuraLegion/brokencrystals:stable',

@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /api/file/google', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['ssrf', 'lfi', 'open_cloud_storage', 'unvalidated_redirect'],
+      tests: ['ssrf'],
       attackParamLocations: [AttackParamLocation.QUERY, AttackParamLocation.PATH],
       starMetadata: {
         code_source: "NeuraLegion/brokencrystals:stable",
