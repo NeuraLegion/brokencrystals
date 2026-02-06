@@ -52,9 +52,26 @@ jobs:
           URL: http://localhost:3000
           X5U_URL: https://raw.githubusercontent.com/NeuraLegion/brokencrystals/stable/config/keys/x509.crt
 
+      - name: Check Dependent Services Health
+        run: |
+          echo "Checking health of dependent services (db, mailcatcher, keycloak, ollama)..."
+          for i in {1..30}; do
+            unhealthy=$(docker compose --file=compose.local.yml ps --format json | jq -r '.[] | select(.Name=="db" or .Name=="mailcatcher" or .Name=="keycloak" or .Name=="ollama") | select(.Health != null and .Health.Status != "healthy") | .Name')
+            if [ -z "$unhealthy" ]; then
+              echo "All dependent services are healthy."
+              exit 0
+            else
+              echo "Waiting for services to be healthy: $unhealthy"
+              sleep 5
+            fi
+          done
+          echo "Timeout waiting for dependent services to be healthy."
+          docker compose --file=compose.local.yml ps
+          exit 1
+
       - name: Wait for Application to be Ready
         run: |
-          for i in {1..30}; do curl -sS -o /dev/null http://127.0.0.1:3000 && exit 0 || sleep 5; done; exit 1
+          for i in {1..60}; do curl -sS -o /dev/null http://127.0.0.1:3000 && exit 0 || sleep 5; done; exit 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
