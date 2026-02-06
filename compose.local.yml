@@ -68,7 +68,7 @@ services:
     healthcheck:
       interval: 5s
       retries: 10
-      test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/api/config']
+      test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/swagger']
       timeout: 30s
     environment:
       URL: http://localhost:3000
