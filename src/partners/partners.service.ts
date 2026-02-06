@@ -70,8 +70,14 @@ export class PartnersService {
     return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
-  getPartnersProperties(xpathExpression: string): string {
-    let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
+  getPartnersProperties(xpath: string): string {
+    // Validate and sanitize the XPath input
+    if (!/^[a-zA-Z0-9\/\[\]\(\)\@\=\'\s]+$/.test(xpath)) {
+      this.logger.error('Invalid characters in XPath expression');
+      throw new Error('Invalid XPath expression');
+    }
+
+    let xmlNodes = this.selectPartnerPropertiesByXPATH(xpath);
 
     if (!Array.isArray(xmlNodes)) {
       this.logger.debug(

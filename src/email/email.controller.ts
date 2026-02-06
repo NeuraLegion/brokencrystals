@@ -7,7 +7,8 @@ import {
   HttpStatus,
   Logger,
   Query,
-  Res
+  Res,
+  Req
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { EmailService } from './email.service';
@@ -17,6 +18,7 @@ import {
   SWAGGER_DESC_SEND_EMAIL
 } from './email.controller.swagger.desc';
 import splitUriIntoParamsPPVulnerable from '../utils/url';
+import { Request } from 'express';
 
 @Controller('/api/email')
 @ApiTags('Emails controller')
@@ -118,11 +120,20 @@ export class EmailController {
     example: 'true',
     required: true
   })
-  async getEmails(@Query('withSource') withSourceStr: string) {
+  async getEmails(@Query('withSource') withSourceStr: string, @Req() req: Request, @Res() res: FastifyReply) {
     const withSource = withSourceStr === 'true';
 
     this.logger.log(`Getting Emails (withSource=${withSource})`);
-    return await this.emailService.getEmails(withSource);
+
+    // CSRF protection: Check the origin of the request
+    const origin = req.headers.origin;
+    if (!origin || origin !== 'https://your-allowed-origin.com') {
+      res.status(HttpStatus.FORBIDDEN).send('Forbidden');
+      return;
+    }
+
+    const emails = await this.emailService.getEmails(withSource);
+    res.send(emails);
   }
 
   @Delete('/deleteEmails')
