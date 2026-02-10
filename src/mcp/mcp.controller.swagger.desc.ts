@@ -1,10 +1,21 @@
 export const API_DESC_MCP_ENDPOINT = `
 Model Context Protocol (MCP) HTTP endpoint. 
-This is a stateless HTTP-only MCP implementation that processes JSON-RPC 2.0 requests.
+This is an HTTP-only MCP implementation that processes JSON-RPC 2.0 requests.
+
+Authentication and session behavior is controlled via env vars:
+- MCP_AUTH_MODE=none|jwt|session (default: none)
+- MCP_JWT_PROCESSOR (default: RSA)
+- MCP_SESSION_TTL_MS (default: 1800000)
+
+Auth modes:
+- none: no auth required
+- jwt: every request must include Authorization: Bearer <jwt>
+- session: initialize (or any request) can authenticate via Authorization, then the server tracks an MCP session via cookie (connect.sid).
 
 Supported methods:
 - tools/list: List available tools
 - tools/call: Execute a tool with provided arguments
+ - initialize: Establish or refresh an MCP session
 
 Available tools:
 - count_tool: Count testimonials using SQL query

@@ -40,6 +40,29 @@ export class McpResponse {
   id?: string | number;
 }
 
+export interface McpServerInfo {
+  name: string;
+  version: string;
+}
+
+export interface McpSessionInfo {
+  mode: 'none' | 'jwt' | 'session';
+  ttlMs: number;
+  sessionId?: string;
+  cookieName?: string;
+  cookieValue?: string;
+  user?: string;
+}
+
+export interface McpInitializeResult {
+  protocolVersion: string;
+  capabilities: {
+    tools: Record<string, never>;
+  };
+  serverInfo: McpServerInfo;
+  session?: McpSessionInfo;
+}
+
 // Tool definitions
 export interface McpTool {
   name: string;

@@ -1232,9 +1232,18 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **SQL Injection via count_tool** - The `count_tool` accepts a SQL query parameter and executes it directly against the database without sanitization, similar to the `/api/testimonials/count` endpoint.
   - **Sensitive Data Exposure via config_tool** - The `config_tool` returns application configuration including database credentials, API keys, and cloud storage URLs.
   - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
+  - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking. Configure it via environment variables:
+    - `MCP_AUTH_MODE=none|jwt|session` (default: `none`, local `.env` uses `session`)
+    - `MCP_JWT_PROCESSOR` (default: `RSA`)
+    - `MCP_SESSION_TTL_MS` (default: `1800000`)
+    - In `jwt` mode, include `Authorization: Bearer <jwt>` on every request.
+    - In `session` mode, call `initialize` with `Authorization: Bearer <jwt>` to establish a session and reuse the `connect.sid` cookie for subsequent requests until it expires.
 
   <details>
     <summary>MCP Vulnerabilities Example Exploitation</summary>
+
+  _Note: If MCP auth is enabled (`MCP_AUTH_MODE=jwt|session`), you must authenticate before calling tools. In `session` mode, call `initialize` and send the `connect.sid` cookie on subsequent calls._
+
   1. **Listing available tools**:
 
   ```bash
