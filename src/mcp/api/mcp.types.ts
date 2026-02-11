@@ -46,11 +46,12 @@ export interface McpServerInfo {
 }
 
 export interface McpSessionInfo {
-  mode: 'none' | 'jwt' | 'session';
+  mcpSessionId: string;
+  initializedAt: number;
+  lastSeenAt: number;
+  authenticated: boolean;
+  role: 'guest' | 'user' | 'admin';
   ttlMs: number;
-  sessionId?: string;
-  cookieName?: string;
-  cookieValue?: string;
   user?: string;
 }
 
@@ -67,12 +68,15 @@ export interface McpInitializeResult {
 export interface McpTool {
   name: string;
   description: string;
+  accessLevel?: McpToolAccessLevel;
   inputSchema: {
     type: string;
     properties: Record<string, unknown>;
     required?: string[];
   };
 }
+
+export type McpToolAccessLevel = 'public' | 'authenticated' | 'admin';
 
 export interface McpToolCallParams {
   name: string;

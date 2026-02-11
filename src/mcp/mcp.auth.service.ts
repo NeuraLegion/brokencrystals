@@ -2,10 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FastifyRequest } from 'fastify';
 import { AuthService, JwtProcessorType } from '../auth/auth.service';
+import { UsersService } from '../users/users.service';
 
-export type McpAuthMode = 'none' | 'jwt' | 'session';
+export type McpSessionRole = 'guest' | 'user' | 'admin';
 
-type McpSessionState = NonNullable<FastifyRequest['session']['mcp']>;
+export interface McpAuthContext {
+  authenticated: boolean;
+  role: McpSessionRole;
+  user?: string;
+  authorizationHeader?: string;
+}
 
 @Injectable()
 export class McpAuthService {
@@ -13,36 +19,41 @@ export class McpAuthService {
   private static readonly BEARER_PREFIX = 'bearer';
 
   private readonly log = new Logger(McpAuthService.name);
-
-  private readonly authMode: McpAuthMode;
   private readonly jwtProcessor: JwtProcessorType;
-  private readonly sessionTtlMs: number;
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly authService: AuthService
+    private readonly authService: AuthService,
+    private readonly usersService: UsersService
   ) {
-    this.authMode = this.parseAuthMode(
-      this.configService.get<string>('MCP_AUTH_MODE')
-    );
     this.jwtProcessor = this.parseJwtProcessor(
       this.configService.get<string>('MCP_JWT_PROCESSOR')
     );
-    this.sessionTtlMs = this.parseTtlMs(
-      this.configService.get<string>('MCP_SESSION_TTL_MS')
-    );
 
     this.log.debug(
-      `MCP auth configured: mode=${this.authMode} jwtProcessor=${JwtProcessorType[this.jwtProcessor]} sessionTtlMs=${this.sessionTtlMs}`
+      `MCP auth configured: jwtProcessor=${JwtProcessorType[this.jwtProcessor]}`
     );
   }
 
-  mode(): McpAuthMode {
-    return this.authMode;
-  }
+  async resolveAuthContext(req: FastifyRequest): Promise<McpAuthContext> {
+    const token = this.extractBearerToken(req);
+    if (!token) {
+      return {
+        authenticated: false,
+        role: 'guest'
+      };
+    }
 
-  sessionTtlMsValue(): number {
-    return this.sessionTtlMs;
+    const payload = await this.validateJwt(token);
+    const user = this.extractUserId(payload);
+    const role = await this.resolveRole(user);
+
+    return {
+      authenticated: true,
+      role,
+      user,
+      authorizationHeader: `Bearer ${token}`
+    };
   }
 
   /**
@@ -70,6 +81,11 @@ export class McpAuthService {
       return username;
     }
 
+    const user = obj.user;
+    if (typeof user === 'string' && user.length) {
+      return user;
+    }
+
     return undefined;
   }
 
@@ -93,69 +109,22 @@ export class McpAuthService {
     return await this.authService.validateToken(token, this.jwtProcessor);
   }
 
-  getSessionState(req: FastifyRequest): McpSessionState | undefined {
-    return req.session?.mcp;
-  }
-
-  isSessionValid(req: FastifyRequest, nowMs: number = Date.now()): boolean {
-    const s = this.getSessionState(req);
-    if (!s) {
-      return false;
-    }
-    if (!Number.isFinite(s.initializedAt) || !Number.isFinite(s.lastSeenAt)) {
-      return false;
-    }
-    return nowMs - s.lastSeenAt <= this.sessionTtlMs;
-  }
-
-  async ensureSession(
-    req: FastifyRequest,
-    opts: { user?: string; nowMs?: number } = {}
-  ): Promise<void> {
-    const nowMs = opts.nowMs ?? Date.now();
-
-    if (!req.session) {
-      // Should never happen given @fastify/session registration, but avoid crashing.
-      return;
+  async resolveRole(user?: string): Promise<McpSessionRole> {
+    if (!user) {
+      return 'user';
     }
 
-    if (!req.session.mcp) {
-      req.session.mcp = {
-        initializedAt: nowMs,
-        lastSeenAt: nowMs,
-        user: opts.user
-      };
-      await req.session.save();
-      return;
+    try {
+      const found = await this.usersService.findByEmail(user);
+      return found.isAdmin ? 'admin' : 'user';
+    } catch {
+      // Keep authenticated session usable even if a DB user cannot be resolved.
+      return 'user';
     }
-
-    // Refresh TTL / activity timestamp.
-    req.session.mcp.lastSeenAt = nowMs;
-    if (opts.user) {
-      req.session.mcp.user = opts.user;
-    }
-    await req.session.save();
-  }
-
-  async clearSession(req: FastifyRequest): Promise<void> {
-    if (!req.session) {
-      return;
-    }
-    delete req.session.mcp;
-    await req.session.save();
   }
 
   private isBearer(value: string): boolean {
     return value.toLowerCase().startsWith(McpAuthService.BEARER_PREFIX);
-  }
-
-  private parseAuthMode(value: string | undefined): McpAuthMode {
-    const v = (value || 'none').toLowerCase().trim();
-    if (v === 'none' || v === 'jwt' || v === 'session') {
-      return v;
-    }
-    this.log.warn(`Unknown MCP_AUTH_MODE="${value}", defaulting to "none"`);
-    return 'none';
   }
 
   private parseJwtProcessor(value: string | undefined): JwtProcessorType {
@@ -177,20 +146,5 @@ export class McpAuthService {
 
     this.log.warn(`Unknown MCP_JWT_PROCESSOR="${value}", defaulting to RSA`);
     return JwtProcessorType.RSA;
-  }
-
-  private parseTtlMs(value: string | undefined): number {
-    const DEFAULT = 30 * 60 * 1000; // 30 minutes
-    if (!value?.trim()) {
-      return DEFAULT;
-    }
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      this.log.warn(
-        `Invalid MCP_SESSION_TTL_MS="${value}", defaulting to ${DEFAULT}`
-      );
-      return DEFAULT;
-    }
-    return parsed;
   }
 }
