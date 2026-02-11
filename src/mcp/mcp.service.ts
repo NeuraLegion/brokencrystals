@@ -11,10 +11,6 @@ import {
   McpToolExecutorService
 } from './mcp.tool-executor.service';
 
-interface McpToolCallContext {
-  authorizationHeader?: string;
-}
-
 @Injectable()
 export class McpService {
   private readonly logger = new Logger(McpService.name);
@@ -36,7 +32,7 @@ export class McpService {
 
   async callTool(
     params: McpToolCallParams,
-    context: McpToolCallContext = {}
+    context: McpToolExecutionContext = {}
   ): Promise<McpToolResult> {
     const { name, arguments: args } = params;
 
@@ -62,14 +58,7 @@ export class McpService {
     const normalizedArgs = registration.normalize
       ? registration.normalize(args)
       : args;
-    const executionContext: McpToolExecutionContext = {
-      authorizationHeader: context.authorizationHeader
-    };
 
-    return this.toolExecutor.executeTool(
-      name,
-      normalizedArgs,
-      executionContext
-    );
+    return this.toolExecutor.executeTool(name, normalizedArgs, context);
   }
 }
