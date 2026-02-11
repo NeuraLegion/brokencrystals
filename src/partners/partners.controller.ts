@@ -85,17 +85,7 @@ export class PartnersController {
     );
 
     try {
-      const xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
-      const xmlStr = this.partnersService.getPartnersProperties(xpath);
-
-      // Check if account's data contains any information - If not, the login failed!
-      if (
-        !(xmlStr && xmlStr.includes('password') && xmlStr.includes('wealth'))
-      ) {
-        throw new Error('Login attempt failed!');
-      }
-
-      return xmlStr;
+      return this.partnersService.getPartnersProperties(username, password);
     } catch (err) {
       const errStr = err.toString();
       const errorMessage = errStr.includes('Unterminated string literal')
