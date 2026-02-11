@@ -1,5 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
 import { FastifyRequest } from 'fastify';
 import { AuthService, JwtProcessorType } from '../auth/auth.service';
 import { UsersService } from '../users/users.service';
@@ -18,22 +17,10 @@ export class McpAuthService {
   private static readonly AUTH_HEADER = 'authorization';
   private static readonly BEARER_PREFIX = 'bearer';
 
-  private readonly log = new Logger(McpAuthService.name);
-  private readonly jwtProcessor: JwtProcessorType;
-
   constructor(
-    private readonly configService: ConfigService,
     private readonly authService: AuthService,
     private readonly usersService: UsersService
-  ) {
-    this.jwtProcessor = this.parseJwtProcessor(
-      this.configService.get<string>('MCP_JWT_PROCESSOR')
-    );
-
-    this.log.debug(
-      `MCP auth configured: jwtProcessor=${JwtProcessorType[this.jwtProcessor]}`
-    );
-  }
+  ) {}
 
   async resolveAuthContext(req: FastifyRequest): Promise<McpAuthContext> {
     const token = this.extractBearerToken(req);
@@ -106,7 +93,7 @@ export class McpAuthService {
   }
 
   async validateJwt(token: string): Promise<unknown> {
-    return await this.authService.validateToken(token, this.jwtProcessor);
+    return await this.authService.validateToken(token, JwtProcessorType.RSA);
   }
 
   async resolveRole(user?: string): Promise<McpSessionRole> {
@@ -125,26 +112,5 @@ export class McpAuthService {
 
   private isBearer(value: string): boolean {
     return value.toLowerCase().startsWith(McpAuthService.BEARER_PREFIX);
-  }
-
-  private parseJwtProcessor(value: string | undefined): JwtProcessorType {
-    const raw = (value || 'RSA').trim();
-    const upper = raw.toUpperCase();
-
-    // Allow either enum name ("RSA") or enum numeric string ("0").
-    const asNumber = Number(raw);
-    if (!Number.isNaN(asNumber) && JwtProcessorType[asNumber] !== undefined) {
-      return asNumber as JwtProcessorType;
-    }
-
-    const mapped = (JwtProcessorType as unknown as Record<string, unknown>)[
-      upper
-    ];
-    if (typeof mapped === 'number') {
-      return mapped as JwtProcessorType;
-    }
-
-    this.log.warn(`Unknown MCP_JWT_PROCESSOR="${value}", defaulting to RSA`);
-    return JwtProcessorType.RSA;
   }
 }

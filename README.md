@@ -1232,31 +1232,48 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **SQL Injection via count_tool** - The `count_tool` accepts a SQL query parameter and executes it directly against the database without sanitization, similar to the `/api/testimonials/count` endpoint.
   - **Sensitive Data Exposure via config_tool** - The `config_tool` returns application configuration including database credentials, API keys, and cloud storage URLs.
   - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
-  - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking. Configure it via environment variables:
-    - `MCP_AUTH_MODE=none|jwt|session` (default: `none`, local `.env` uses `session`)
-    - `MCP_JWT_PROCESSOR` (default: `RSA`)
+  - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
+    - MCP sessions are independent from the regular API authentication/authorization flow.
+    - `initialize` must be called first to establish an MCP session.
+    - `initialize` returns `Mcp-Session-Id`.
+    - Every non-initialize MCP request requires an active MCP session.
+    - Every non-initialize MCP request must send the same `Mcp-Session-Id` received from `initialize`.
+    - Missing `Mcp-Session-Id` on non-initialize requests returns HTTP `400`.
+    - Unknown/expired/terminated `Mcp-Session-Id` returns HTTP `404`.
+    - Clients can explicitly terminate sessions with `DELETE /api/mcp` + `Mcp-Session-Id`.
     - `MCP_SESSION_TTL_MS` (default: `1800000`)
-    - In `jwt` mode, include `Authorization: Bearer <jwt>` on every request.
-    - In `session` mode, call `initialize` with `Authorization: Bearer <jwt>` to establish a session and reuse the `connect.sid` cookie for subsequent requests until it expires.
+    - `initialize` works in both unauthenticated and authenticated flows.
+    - If `Authorization: Bearer <jwt>` is provided to `initialize`, the MCP session is marked authenticated.
+    - MCP permissions are role-based using the same user model as the HTTP server (`admin` vs regular user).
+    - Some tools require authenticated MCP sessions, while others are available without authentication.
+    - `config_tool` is admin-only.
 
   <details>
     <summary>MCP Vulnerabilities Example Exploitation</summary>
 
-  _Note: If MCP auth is enabled (`MCP_AUTH_MODE=jwt|session`), you must authenticate before calling tools. In `session` mode, call `initialize` and send the `connect.sid` cookie on subsequent calls._
+  _Note: Always call `initialize` first. After that, send `Mcp-Session-Id` on every MCP request. Authenticated and unauthenticated sessions are both supported._
 
-  1. **Listing available tools**:
+  1. **Initialize MCP session and list tools**:
 
   ```bash
-  curl 'https://brokencrystals.com/api/mcp' -X POST \
+  BASE='https://brokencrystals.com'
+  INIT=$(curl -i -s "${BASE}/api/mcp" -X POST \
     -H 'Content-Type: application/json' \
-    -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
+    -d '{"jsonrpc":"2.0","method":"initialize","id":1}')
+  MCP_SESSION_ID=$(echo "$INIT" | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}' | tr -d '\r')
+
+  curl "${BASE}/api/mcp" -X POST \
+    -H 'Content-Type: application/json' \
+    -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+    -d '{"jsonrpc":"2.0","method":"tools/list","id":2}'
   ```
 
   2. **SQL Injection via count_tool**:
 
      ```bash
-     curl 'https://brokencrystals.com/api/mcp' -X POST \
+     curl "${BASE}/api/mcp" -X POST \
        -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
        -d '{
          "jsonrpc": "2.0",
          "method": "tools/call",
@@ -1285,8 +1302,9 @@ Full configuration & usage examples can be found in our [demo project](https://g
   3. **Sensitive Data Exposure via config_tool**:
 
      ```bash
-     curl 'https://brokencrystals.com/api/mcp' -X POST \
+     curl "${BASE}/api/mcp" -X POST \
        -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
        -d '{
          "jsonrpc": "2.0",
          "method": "tools/call",

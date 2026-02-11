@@ -18,7 +18,6 @@ Authentication behavior:
 - MCP role is resolved from the existing user model (admin vs regular user).
 - Some tools require an authenticated MCP session while others are available to unauthenticated MCP sessions.
 - Some tools are admin-only.
-- MCP_JWT_PROCESSOR controls how JWT tokens are validated for initialize.
 
 Supported methods:
 - initialize: Establish a new MCP session
