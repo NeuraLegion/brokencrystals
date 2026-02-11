@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /graphql', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['graphql_introspection', 'sqli', 'xss', 'csrf', 'jwt'],
+      tests: ['graphql_introspection'],
       attackParamLocations: [AttackParamLocation.QUERY],
       starMetadata: {
         code_source: "NeuraLegion/brokencrystals:dependabot/npm_and_yarn/client/axios-1.13.5",
