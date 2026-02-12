@@ -13,7 +13,9 @@ export interface McpToolExecutionContext {
   authorizationHeader?: string;
 }
 
-const MCP_API_BASE_URL = 'http://localhost:3000/';
+// Use IPv4 loopback explicitly. In some environments `localhost` resolves to `::1`
+// while the server only listens on IPv4 (e.g. `0.0.0.0`), causing ECONNREFUSED.
+const MCP_API_BASE_URL = 'http://127.0.0.1:3000/';
 
 @Injectable()
 export class McpToolExecutorService {
