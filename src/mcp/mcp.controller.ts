@@ -167,7 +167,7 @@ export class McpController {
 
       const session = validation.session;
       if (!session) {
-        res.status(500);
+        res.status(400);
         return this.rpcError(
           request,
           -32603,

@@ -90,4 +90,4 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
 };
 
 export const isMcpToolName = (value: string): value is McpToolName =>
-  value in MCP_TOOL_REGISTRY;
+  Object.prototype.hasOwnProperty.call(MCP_TOOL_REGISTRY, value);
