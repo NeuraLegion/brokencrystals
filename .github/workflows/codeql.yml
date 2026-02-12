@@ -27,7 +27,9 @@ jobs:
     #   - https://gh.io/supported-runners-and-hardware-resources
     #   - https://gh.io/using-larger-runners (GitHub.com only)
     # Consider using larger runners or machines with greater resources for possible analysis time improvements.
-    runs-on: ${{ (matrix.language == 'javascript-typescript' && 'ubuntu-latest') }}
+    # Must always resolve to a valid runner label. The prior expression returned `false`
+    # for some matrix entries (e.g. language=actions), leaving jobs stuck "Waiting for a runner".
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
     permissions:
       # required for all workflows
       security-events: write
