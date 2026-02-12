@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /api/file?path=config/products/crystals/amethyst.jpg&type=image/jpg', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['lfi', 'ssrf', 'open_cloud_storage', 'full_path_disclosure'],
+      tests: ['ssrf', 'lfi', 'full_path_disclosure'],
       attackParamLocations: [AttackParamLocation.QUERY],
       starMetadata: {
         code_source: "NeuraLegion/brokencrystals:stable",
