@@ -78,24 +78,45 @@ export class PartnersService {
     return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
-  getPartnersProperties(username: string, password: string): string {
-    // Validate and sanitize inputs
-    if (!this.isValidInput(username) || !this.isValidInput(password)) {
-      throw new Error('Invalid input');
-    }
-
-    let xmlNodes = this.selectPartnerPropertiesByXPATH(username, password);
-
-    if (!Array.isArray(xmlNodes)) {
-      this.logger.debug(
-        `xmlNodes's type wasn't 'Array', and it's value was: ${xmlNodes}`
-      );
-      xmlNodes = [];
+  // Overload signatures
+  getPartnersProperties(xpath: string): string;
+  getPartnersProperties(username: string, password: string): string;
+  getPartnersProperties(arg1: string, arg2?: string): string {
+    if (typeof arg2 === 'undefined') {
+      // Single argument: treat as xpath string
+      const partnersXMLObj = this.getPartnersXMLObj();
+      let xmlNodes;
+      try {
+        xmlNodes = xpath.select(arg1, partnersXMLObj);
+      } catch (e) {
+        this.logger.error(`Invalid xpath expression: ${arg1}`);
+        xmlNodes = [];
+      }
+      if (!Array.isArray(xmlNodes)) {
+        this.logger.debug(
+          `xmlNodes's type wasn't 'Array', and it's value was: ${xmlNodes}`
+        );
+        xmlNodes = [];
+      } else {
+        this.logger.debug(`Raw xpath xmlNodes value is: ${xmlNodes}`);
+      }
+      return this.getFormattedXMLOutput(xmlNodes);
     } else {
-      this.logger.debug(`Raw xpath xmlNodes value is: ${xmlNodes}`);
+      // Two arguments: treat as username/password
+      if (!this.isValidInput(arg1) || !this.isValidInput(arg2)) {
+        throw new Error('Invalid input');
+      }
+      let xmlNodes = this.selectPartnerPropertiesByXPATH(arg1, arg2);
+      if (!Array.isArray(xmlNodes)) {
+        this.logger.debug(
+          `xmlNodes's type wasn't 'Array', and it's value was: ${xmlNodes}`
+        );
+        xmlNodes = [];
+      } else {
+        this.logger.debug(`Raw xpath xmlNodes value is: ${xmlNodes}`);
+      }
+      return this.getFormattedXMLOutput(xmlNodes);
     }
-
-    return this.getFormattedXMLOutput(xmlNodes);
   }
 
   private isValidInput(input: string): boolean {
