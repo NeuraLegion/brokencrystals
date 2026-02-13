@@ -7,7 +7,6 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build -c nest-cli.json",
-    "build:fast": "npm run build",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "start": "nest start",

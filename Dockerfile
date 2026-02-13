@@ -2,15 +2,14 @@
 # BUILD FOR LOCAL DEVELOPMENT
 ###################
 
-FROM node:18-alpine AS build
+FROM nodejs:18-alpine AS build
 
-WORKDIR /usr/src/app
+WORKDIR /usr/app
 
 # Copy and build NestJS server project
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node tsconfig.build.json ./
 COPY --chown=node:node tsconfig.json ./
-COPY --chown=node:node nest-cli.json ./
 # COPY --chown=node:node nest-cli.fast.json ./
 COPY --chown=node:node .env ./
 COPY --chown=node:node config ./config
