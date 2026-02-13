@@ -92,10 +92,12 @@ ${xmlNodes.join('\n')}
 
   getPartnersPropertiesWithParams(xpathExpression: string, params: { [key: string]: string }): string {
     const partnersXMLObj = this.getPartnersXMLObj();
-    const variables = Object.keys(params).map(key => `declare variable $${key} as xs:string external;`).join(' ');
-    const fullExpression = `${variables} ${xpathExpression}`;
-    const context = { variables: params };
-    const xmlNodes = xpath.evaluate(fullExpression, partnersXMLObj, null, xpath.XPathResult.ANY_TYPE, context);
+    // Manually substitute variables in the XPath expression if needed
+    let fullExpression = xpathExpression;
+    for (const [key, value] of Object.entries(params)) {
+      fullExpression = fullExpression.replace(new RegExp(`\\$${key}`, 'g'), `'${value}'`);
+    }
+    const xmlNodes = xpath.select(fullExpression, partnersXMLObj);
 
     if (!Array.isArray(xmlNodes)) {
       this.logger.debug(
