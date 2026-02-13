@@ -2,15 +2,15 @@
 # BUILD FOR LOCAL DEVELOPMENT
 ###################
 
-FROM node:18-alpine AS build
+FROM nodejs:18-alpine AS build
 
-WORKDIR /usr/src/app
+WORKDIR /usr/app
 
 # Copy and build NestJS server project
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node tsconfig.build.json ./
 COPY --chown=node:node tsconfig.json ./
-# COPY --chown=node:node nest-cli.fast.json ./
+COPY --chown=node:node nest-cli.fast.json ./
 COPY --chown=node:node .env ./
 COPY --chown=node:node config ./config
 COPY --chown=node:node keycloak ./keycloak
@@ -18,7 +18,7 @@ COPY --chown=node:node src ./src
 
 ENV NPM_CONFIG_LOGLEVEL=error
 RUN npm ci --no-audit
-RUN npm run build
+RUN npm run build:fast
 RUN npm prune --production
 
 # Copy and build client project
