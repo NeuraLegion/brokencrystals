@@ -19,9 +19,7 @@ jobs:
 
       - name: Start Application
         run: |
-          for i in {1..5}; do
-            docker compose --file=compose.local.yml up -d && break || sleep 10
-          done
+          docker compose --file=compose.local.yml up -d
         env:
           AWS_BUCKET: https://neuralegion-open-bucket.s3.amazonaws.com
           CHAT_API_MAX_TOKENS: 200
