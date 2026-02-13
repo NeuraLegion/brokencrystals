@@ -17,7 +17,7 @@ import fmp from '@fastify/multipart';
 import { randomBytes } from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
-fastify from 'fastify';
+import fastify from 'fastify';
 import { fastifyStatic, ListRender } from '@fastify/static';
 import { join, dirname } from 'path';
 import rawbody from 'raw-body';
