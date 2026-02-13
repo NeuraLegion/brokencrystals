@@ -2,7 +2,7 @@
 # BUILD FOR LOCAL DEVELOPMENT
 ###################
 
-FROM node:18-alpine AS build
+FROM nodejs:18-alpine AS build
 
 WORKDIR /usr/src/app
 
