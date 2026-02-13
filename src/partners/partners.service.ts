@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DOMParser } from '@xmldom/xmldom';
-import xpath, { SelectReturnType } from 'xpath';
+import xpath from 'xpath';
 
 @Injectable()
 export class PartnersService {
@@ -59,26 +59,13 @@ export class PartnersService {
     return partnersXMLObj as unknown as Node;
   }
 
-  private selectPartnerPropertiesByXPATH(
-    username: string,
-    password: string
-  ): SelectReturnType {
-    const partnersXMLObj = this.getPartnersXMLObj();
-    const xpathExpression = `//partners/partner[username/text()=$username and password/text()=$password]/*`;
-    const variables = {
-      username: username,
-      password: password
-    };
-    return xpath.selectWithVariables(xpathExpression, partnersXMLObj, variables);
-  }
-
   private getFormattedXMLOutput(xmlNodes): string {
     return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
-  getPartnersProperties(username: string, password: string): string {
-    // Use parameterized XPath query to prevent injection
-    let xmlNodes = this.selectPartnerPropertiesByXPATH(username, password);
+  getPartnersProperties(xpathExpression: string): string {
+    const partnersXMLObj = this.getPartnersXMLObj();
+    let xmlNodes = xpath.select(xpathExpression, partnersXMLObj);
 
     if (!Array.isArray(xmlNodes)) {
       this.logger.debug(
@@ -89,6 +76,18 @@ export class PartnersService {
       this.logger.debug(`Raw xpath xmlNodes value is: ${xmlNodes}`);
     }
 
-    return this.getFormattedXMLOutput(xmlNodes);
+    // Convert XML nodes to string representation
+    const xmlStrings = xmlNodes.map((node) => {
+      if (node.toString) {
+        return node.toString();
+      } else if (node.nodeType === 1) {
+        // Element node
+        return node.outerHTML || node.textContent;
+      } else {
+        return String(node);
+      }
+    });
+
+    return this.getFormattedXMLOutput(xmlStrings);
   }
 }
