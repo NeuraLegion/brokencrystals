@@ -85,7 +85,8 @@ export class PartnersController {
     );
 
     try {
-      const xmlStr = this.partnersService.getPartnersProperties(username, password);
+      const xpath = `//partners/partner[username='${username}' and password='${password}']`;
+      const xmlStr = this.partnersService.getPartnersProperties(xpath);
 
       // Check if account's data contains any information - If not, the login failed!
       if (
