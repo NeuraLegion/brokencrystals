@@ -92,7 +92,7 @@ ${xmlNodes.join('\n')}
 
   getPartnersPropertiesWithParams(username: string, password: string): string {
     const partnersXMLObj = this.getPartnersXMLObj();
-    const xpathExpression = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
+    const xpathExpression = `//partners/partner[username/text()='${this.escapeXPathValue(username)}' and password/text()='${this.escapeXPathValue(password)}']/*`;
     const xmlNodes = xpath.select(xpathExpression, partnersXMLObj);
 
     if (!Array.isArray(xmlNodes)) {
@@ -109,5 +109,10 @@ ${xmlNodes.join('\n')}
   private sanitizeXpath(xpathExpression: string): string {
     // Basic sanitization to remove potentially dangerous characters
     return xpathExpression.replace(/["'\[\]|]/g, '');
+  }
+
+  private escapeXPathValue(value: string): string {
+    // Escape single quotes in XPath values
+    return value.replace(/'/g, "''");
   }
 }
