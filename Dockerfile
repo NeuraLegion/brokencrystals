@@ -4,7 +4,7 @@
 
 FROM node:18-alpine AS build
 
-WORKDIR /usr/app
+WORKDIR /usr/src/app
 
 # Copy and build NestJS server project
 COPY --chown=node:node package*.json ./
