@@ -82,7 +82,7 @@ export class PartnersService {
         return node.toString();
       } else if (node.nodeType === 1) {
         // Element node
-        return node.outerHTML || node.textContent;
+        return node.textContent;
       } else {
         return String(node);
       }
