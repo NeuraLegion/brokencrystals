@@ -86,8 +86,7 @@ export class PartnersController {
 
     try {
       // Use parameterized XPath query to prevent injection
-      const xpath = `//partners/partner[username/text()=$username and password/text()=$password]/*`;
-      const xmlStr = this.partnersService.getPartnersPropertiesWithParams(xpath, { username, password });
+      const xmlStr = this.partnersService.getPartnersPropertiesWithParams(username, password);
 
       // Check if account's data contains any information - If not, the login failed!
       if (

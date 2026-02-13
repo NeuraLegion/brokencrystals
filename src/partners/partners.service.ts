@@ -90,14 +90,10 @@ ${xmlNodes.join('\n')}
     return this.getFormattedXMLOutput(xmlNodes);
   }
 
-  getPartnersPropertiesWithParams(xpathExpression: string, params: { [key: string]: string }): string {
+  getPartnersPropertiesWithParams(username: string, password: string): string {
     const partnersXMLObj = this.getPartnersXMLObj();
-    // Manually substitute variables in the XPath expression if needed
-    let fullExpression = xpathExpression;
-    for (const [key, value] of Object.entries(params)) {
-      fullExpression = fullExpression.replace(new RegExp(`\\$${key}`, 'g'), `'${value}'`);
-    }
-    const xmlNodes = xpath.select(fullExpression, partnersXMLObj);
+    const xpathExpression = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
+    const xmlNodes = xpath.select(xpathExpression, partnersXMLObj);
 
     if (!Array.isArray(xmlNodes)) {
       this.logger.debug(
