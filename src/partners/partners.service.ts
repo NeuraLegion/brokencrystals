@@ -59,13 +59,32 @@ export class PartnersService {
     return partnersXMLObj as unknown as Node;
   }
 
+  private selectPartnerPropertiesByXPATH(
+    username: string,
+    password: string
+  ): SelectReturnType {
+    const partnersXMLObj = this.getPartnersXMLObj();
+    const xpathExpression = `//partners/partner[username/text()=$username and password/text()=$password]/*`;
+    const variables = {
+      username: username,
+      password: password
+    };
+    return xpath.useNamespaces({
+      '': 'http://www.w3.org/1999/xhtml'
+    }).selectWithVariables(xpathExpression, partnersXMLObj, variables);
+  }
+
   private getFormattedXMLOutput(xmlNodes): string {
     return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
-  getPartnersProperties(xpathExpression: string): string {
-    const partnersXMLObj = this.getPartnersXMLObj();
-    let xmlNodes = xpath.select(xpathExpression, partnersXMLObj);
+  getPartnersProperties(username: string, password: string): string {
+    // Validate and sanitize inputs
+    if (!this.isValidInput(username) || !this.isValidInput(password)) {
+      throw new Error('Invalid input');
+    }
+
+    let xmlNodes = this.selectPartnerPropertiesByXPATH(username, password);
 
     if (!Array.isArray(xmlNodes)) {
       this.logger.debug(
