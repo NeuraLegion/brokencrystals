@@ -135,7 +135,8 @@ export class PartnersController {
       const xpath = `//partners/partner/name[contains(., '${keyword}')]`;
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
-      const errStr = err.toString();n      const errorMessage =
+      const errStr = err.toString();
+      const errorMessage =
         errStr.includes('XPath parse error') ||
         errStr.includes('Unterminated string literal')
           ? 'Error in XPath expression'
