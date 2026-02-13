@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build -c nest-cli.json",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "start": "nest start",
