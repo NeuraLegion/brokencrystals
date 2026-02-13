@@ -64,14 +64,8 @@ export class PartnersService {
     password: string
   ): SelectReturnType {
     const partnersXMLObj = this.getPartnersXMLObj();
-    const xpathExpression = `//partners/partner[username/text()=$username and password/text()=$password]/*`;
-    const variables = {
-      username: username,
-      password: password
-    };
-    return xpath.useNamespaces({
-      '': 'http://www.w3.org/1999/xhtml'
-    }).selectWithVariables(xpathExpression, partnersXMLObj, variables);
+    const xpathExpression = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
+    return xpath.select(xpathExpression, partnersXMLObj);
   }
 
   private getFormattedXMLOutput(xmlNodes): string {
