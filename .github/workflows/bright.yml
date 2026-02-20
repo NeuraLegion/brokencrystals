@@ -59,7 +59,7 @@ jobs:
 
       - name: Probe Application Readiness
         run: |
-          i=1; while [ "$i" -le 30 ]; do curl -sS -o /dev/null http://127.0.0.1:3000 && exit 0; sleep 5; i=$((i + 1)); done; exit 1
+          i=1; while [ "$i" -le 30 ]; do curl -sS -o /dev/null http://127.0.0.1:3000 && exit 0; sleep 0.5; i=$((i + 1)); done; exit 1
 
       - name: Install SecTesterJS Dependencies
         run: |
