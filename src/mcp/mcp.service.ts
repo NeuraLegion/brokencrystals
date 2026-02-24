@@ -1,11 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  McpResourceReadParams,
+  McpResourceReadResult,
   McpTool,
   McpToolAccessLevel,
   McpToolCallParams,
   McpToolResult
 } from './api/mcp.types';
 import { isMcpToolName, MCP_TOOL_REGISTRY } from './mcp.tool-registry';
+import { McpResourceExecutorService } from './mcp.resource-executor.service';
 import {
   McpToolExecutionContext,
   McpToolExecutorService
@@ -15,7 +18,10 @@ import {
 export class McpService {
   private readonly logger = new Logger(McpService.name);
 
-  constructor(private readonly toolExecutor: McpToolExecutorService) {}
+  constructor(
+    private readonly toolExecutor: McpToolExecutorService,
+    private readonly resourceExecutor: McpResourceExecutorService
+  ) {}
 
   getTools(): McpTool[] {
     return Object.values(MCP_TOOL_REGISTRY).map(
@@ -28,6 +34,10 @@ export class McpService {
       return undefined;
     }
     return MCP_TOOL_REGISTRY[toolName].definition.accessLevel;
+  }
+
+  getResources() {
+    return this.resourceExecutor.getResources();
   }
 
   async callTool(
@@ -60,5 +70,19 @@ export class McpService {
       : args;
 
     return this.toolExecutor.executeTool(name, normalizedArgs, context);
+  }
+
+  async readResource(
+    params: McpResourceReadParams,
+    context: McpToolExecutionContext = {}
+  ): Promise<McpResourceReadResult> {
+    const { uri } = params;
+
+    this.logger.debug(`Reading resource URI: ${uri}`);
+
+    return this.resourceExecutor.readLfiResource(
+      uri,
+      context.authorizationHeader
+    );
   }
 }

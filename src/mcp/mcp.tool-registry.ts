@@ -1,11 +1,18 @@
 import {
+  isFetchToolInput,
   isConfigToolInput,
   isCountToolInput,
   isRenderToolInput,
+  isSummarizeToolInput,
   McpTool
 } from './api/mcp.types';
 
-export type McpToolName = 'count_tool' | 'config_tool' | 'render_tool';
+export type McpToolName =
+  | 'count_tool'
+  | 'config_tool'
+  | 'render_tool'
+  | 'fetch_tool'
+  | 'summarize_tool';
 
 export interface McpToolRegistration {
   definition: McpTool;
@@ -86,6 +93,65 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     validate: (args: unknown) => isRenderToolInput(args),
     invalidArgsMessage:
       'Invalid arguments: render_tool requires a "numbers" array parameter'
+  },
+
+  fetch_tool: {
+    definition: {
+      name: 'fetch_tool',
+      description:
+        'Fetches any URL from the MCP server process and returns raw response data.',
+      accessLevel: 'public',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          url: {
+            type: 'string',
+            description:
+              'Absolute URL to request from the MCP server process (for example http://127.0.0.1:3000/api/config)'
+          },
+          method: {
+            type: 'string',
+            description: 'Optional HTTP method. Default: GET'
+          },
+          body: {
+            type: 'string',
+            description: 'Optional raw request body to forward'
+          }
+        },
+        required: ['url']
+      }
+    },
+    validate: (args: unknown) => isFetchToolInput(args),
+    invalidArgsMessage:
+      'Invalid arguments: fetch_tool requires a "url" string and optional "method"/"body" strings'
+  },
+
+  summarize_tool: {
+    definition: {
+      name: 'summarize_tool',
+      description:
+        'Proxy to /api/summarize_cristals. Summarizes number arrays with a required expression.',
+      accessLevel: 'public',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          numbers: {
+            type: 'array',
+            items: { type: 'number' },
+            description: 'Array of numbers to summarize'
+          },
+          summarize_expression: {
+            type: 'string',
+            description:
+              'JavaScript expression to calculate summary over "numbers"'
+          }
+        },
+        required: ['numbers', 'summarize_expression']
+      }
+    },
+    validate: (args: unknown) => isSummarizeToolInput(args),
+    invalidArgsMessage:
+      'Invalid arguments: summarize_tool requires "numbers" array and non-empty "summarize_expression" string'
   }
 };
 

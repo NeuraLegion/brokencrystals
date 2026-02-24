@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Delete,
-  Header,
   HttpCode,
   Logger,
   NotFoundException,
@@ -22,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import {
+  isMcpResourceReadParams,
   McpInitializeResult,
   McpRequest,
   McpResponse,
@@ -41,6 +41,7 @@ interface SessionValidationResult {
 @ApiTags('MCP Controller')
 export class McpController {
   private static readonly MCP_SESSION_ID_HEADER = 'Mcp-Session-Id';
+  private static readonly EVENT_STREAM_TOOLS = new Set<string>(['render_tool']);
 
   private readonly logger = new Logger(McpController.name);
 
@@ -53,7 +54,7 @@ export class McpController {
   @Post()
   @HttpCode(200)
   @ApiConsumes('application/json')
-  @ApiProduces('application/json')
+  @ApiProduces('application/json', 'text/event-stream')
   @ApiOperation({
     description: API_DESC_MCP_ENDPOINT
   })
@@ -132,6 +133,54 @@ export class McpController {
           },
           id: 5
         }
+      },
+      call_fetch_tool: {
+        summary: 'Call fetch_tool',
+        value: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'fetch_tool',
+            arguments: {
+              url: 'http://127.0.0.1:3000/api/config'
+            }
+          },
+          id: 6
+        }
+      },
+      list_resources: {
+        summary: 'List resources',
+        value: {
+          jsonrpc: '2.0',
+          method: 'resources/list',
+          id: 7
+        }
+      },
+      read_resource: {
+        summary: 'Read resource',
+        value: {
+          jsonrpc: '2.0',
+          method: 'resources/read',
+          params: {
+            uri: 'file:///etc/hosts'
+          },
+          id: 8
+        }
+      },
+      call_summarize_tool: {
+        summary: 'Call summarize_tool',
+        value: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'summarize_tool',
+            arguments: {
+              numbers: [1, 2, 3, 4],
+              summarize_expression: 'numbers.reduce((acc, num) => acc + num, 0)'
+            }
+          },
+          id: 9
+        }
       }
     }
   })
@@ -139,12 +188,11 @@ export class McpController {
     type: McpResponse,
     description: 'MCP JSON-RPC response'
   })
-  @Header('content-type', 'application/json')
   async handleMcpRequest(
     @Body() request: McpRequest,
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply
-  ): Promise<McpResponse> {
+  ): Promise<McpResponse | string> {
     this.logger.debug(`MCP Request: ${JSON.stringify(request)}`);
 
     if (request.jsonrpc !== '2.0') {
@@ -180,7 +228,13 @@ export class McpController {
           return this.handleToolsList(request);
 
         case 'tools/call':
-          return await this.handleToolsCall(request, session);
+          return await this.handleToolsCall(request, session, res);
+
+        case 'resources/list':
+          return this.handleResourcesList(request);
+
+        case 'resources/read':
+          return await this.handleResourcesRead(request, session);
 
         default:
           return this.rpcError(
@@ -240,10 +294,55 @@ export class McpController {
     };
   }
 
-  private async handleToolsCall(
+  private handleResourcesList(request: McpRequest): McpResponse {
+    const resources = this.mcpService.getResources();
+
+    return {
+      jsonrpc: '2.0',
+      result: {
+        resources
+      },
+      id: request.id
+    };
+  }
+
+  private async handleResourcesRead(
     request: McpRequest,
     session: McpSessionState
   ): Promise<McpResponse> {
+    const params = request.params;
+    if (!isMcpResourceReadParams(params)) {
+      return this.rpcError(
+        request,
+        -32602,
+        'Invalid params: resources/read requires a "uri" string parameter'
+      );
+    }
+
+    try {
+      const result = await this.mcpService.readResource(params, {
+        authorizationHeader: session.authorizationHeader
+      });
+
+      return {
+        jsonrpc: '2.0',
+        result,
+        id: request.id
+      };
+    } catch (error) {
+      return this.rpcError(
+        request,
+        -32603,
+        `Internal error: ${(error as Error).message}`
+      );
+    }
+  }
+
+  private async handleToolsCall(
+    request: McpRequest,
+    session: McpSessionState,
+    res: FastifyReply
+  ): Promise<McpResponse | string> {
     const params = request.params as unknown as McpToolCallParams;
 
     if (!params?.name) {
@@ -254,23 +353,31 @@ export class McpController {
       );
     }
 
+    const shouldStream = this.isEventStreamTool(params.name);
+
     if (!this.isToolAllowedForSession(params.name, session)) {
-      return this.rpcError(
+      const errorResponse = this.rpcError(
         request,
         -32001,
         this.buildToolAccessError(params.name, session)
       );
+
+      return shouldStream
+        ? this.toEventStreamMessage(res, errorResponse)
+        : errorResponse;
     }
 
     const result = await this.mcpService.callTool(params, {
       authorizationHeader: session.authorizationHeader
     });
 
-    return {
+    const response: McpResponse = {
       jsonrpc: '2.0',
       result,
       id: request.id
     };
+
+    return shouldStream ? this.toEventStreamMessage(res, response) : response;
   }
 
   private rpcError(
@@ -302,7 +409,8 @@ export class McpController {
       const result: McpInitializeResult = {
         protocolVersion: '2024-11-05',
         capabilities: {
-          tools: {}
+          tools: {},
+          resources: {}
         },
         serverInfo: {
           name: 'brokencrystals-mcp',
@@ -383,6 +491,20 @@ export class McpController {
     }
 
     return /^[\x21-\x7E]+$/.test(trimmed) ? trimmed : undefined;
+  }
+
+  private isEventStreamTool(toolName: string): boolean {
+    return McpController.EVENT_STREAM_TOOLS.has(toolName);
+  }
+
+  private toEventStreamMessage(
+    res: FastifyReply,
+    payload: McpResponse
+  ): string {
+    res.header('content-type', 'text/event-stream; charset=utf-8');
+    res.header('cache-control', 'no-cache');
+    res.header('connection', 'keep-alive');
+    return `event: message\ndata: ${JSON.stringify(payload)}\n\n`;
   }
 
   private isToolAllowedForSession(

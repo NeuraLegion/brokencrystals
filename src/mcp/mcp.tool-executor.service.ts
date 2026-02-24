@@ -4,21 +4,20 @@ import * as dotT from 'dot';
 import {
   ConfigToolInput,
   CountToolInput,
+  FetchToolInput,
   McpToolResult,
-  RenderToolInput
+  RenderToolInput,
+  SummarizeToolInput
 } from './api/mcp.types';
+import { McpProxySupport } from './mcp.proxy-support';
 import { McpToolName } from './mcp.tool-registry';
 
 export interface McpToolExecutionContext {
   authorizationHeader?: string;
 }
 
-// Use IPv4 loopback explicitly. In some environments `localhost` resolves to `::1`
-// while the server only listens on IPv4 (e.g. `0.0.0.0`), causing ECONNREFUSED.
-const MCP_API_BASE_URL = 'http://127.0.0.1:3000/';
-
 @Injectable()
-export class McpToolExecutorService {
+export class McpToolExecutorService extends McpProxySupport {
   private readonly logger = new Logger(McpToolExecutorService.name);
 
   async executeTool(
@@ -39,6 +38,16 @@ export class McpToolExecutorService {
         );
       case 'render_tool':
         return this.executeRenderTool(args as RenderToolInput);
+      case 'fetch_tool':
+        return this.executeFetchTool(
+          args as FetchToolInput,
+          context.authorizationHeader
+        );
+      case 'summarize_tool':
+        return this.executeSummarizeTool(
+          args as SummarizeToolInput,
+          context.authorizationHeader
+        );
     }
   }
 
@@ -49,7 +58,7 @@ export class McpToolExecutorService {
     try {
       this.logger.debug('Proxy count query via /api/testimonials/count');
 
-      const endpoint = new URL('/api/testimonials/count', MCP_API_BASE_URL);
+      const endpoint = new URL(this.endpoint('/api/testimonials/count'));
       endpoint.searchParams.set('query', input.query);
 
       const response = await axios.get(endpoint.toString(), {
@@ -158,35 +167,103 @@ export class McpToolExecutorService {
     }
   }
 
-  private endpoint(pathname: string): string {
-    return new URL(pathname, MCP_API_BASE_URL).toString();
+  private async executeFetchTool(
+    input: FetchToolInput,
+    authorizationHeader?: string
+  ): Promise<McpToolResult> {
+    try {
+      const method = (input.method || 'GET').toUpperCase();
+
+      this.logger.debug(`Fetching URL via MCP fetch_tool: ${input.url}`);
+
+      // Intentionally vulnerable for security testing:
+      // user-controlled URL is fetched directly from server-side context.
+      const response = await axios.request({
+        url: input.url,
+        method,
+        data: input.body,
+        headers: this.buildProxyHeaders(authorizationHeader),
+        responseType: 'text',
+        transformResponse: [(data: string) => data],
+        validateStatus: () => true
+      });
+
+      const body =
+        typeof response.data === 'string'
+          ? response.data
+          : JSON.stringify(response.data);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Fetch result: ${method} ${input.url}\nStatus: ${response.status}\nBody:\n${body}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
+        isError: true
+      };
+    }
   }
 
-  private buildProxyHeaders(
-    authorizationHeader?: string,
-    contentType?: string
-  ): Record<string, string> {
-    const headers: Record<string, string> = {};
-    if (authorizationHeader?.trim()) {
-      headers.authorization = authorizationHeader;
+  private async executeSummarizeTool(
+    input: SummarizeToolInput,
+    authorizationHeader?: string
+  ): Promise<McpToolResult> {
+    try {
+      this.logger.debug('Summarizing crystals via MCP summarize_tool');
+
+      const response = await axios.post(
+        this.endpoint('/api/summarize_cristals'),
+        {
+          numbers: input.numbers,
+          summarize_expression: input.summarize_expression
+        },
+        {
+          headers: this.buildProxyHeaders(
+            authorizationHeader,
+            'application/json'
+          ),
+          responseType: 'text',
+          transformResponse: [(data: string) => data],
+          validateStatus: () => true
+        }
+      );
+
+      if (response.status !== 200) {
+        return this.proxyError('summarize_tool', response);
+      }
+
+      const text =
+        typeof response.data === 'string'
+          ? response.data
+          : String(response.data);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `SSJI result: ${text}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
+        isError: true
+      };
     }
-    if (contentType) {
-      headers['content-type'] = contentType;
-    }
-    return headers;
   }
 
   private proxyError(toolName: string, response: AxiosResponse): McpToolResult {
-    const text =
-      typeof response.data === 'string'
-        ? response.data
-        : JSON.stringify(response.data);
-
     return {
       content: [
         {
           type: 'text',
-          text: `Proxy error in ${toolName}: HTTP ${response.status} ${text}`
+          text: `Proxy error in ${toolName}: HTTP ${response.status} ${this.responseToText(response.data)}`
         }
       ],
       isError: true

@@ -4,6 +4,7 @@ import { McpService } from './mcp.service';
 import { UsersModule } from '../users/users.module';
 import { AuthModule } from '../auth/auth.module';
 import { McpAuthService } from './mcp.auth.service';
+import { McpResourceExecutorService } from './mcp.resource-executor.service';
 import { McpSessionService } from './mcp.session.service';
 import { McpToolExecutorService } from './mcp.tool-executor.service';
 
@@ -14,7 +15,8 @@ import { McpToolExecutorService } from './mcp.tool-executor.service';
     McpService,
     McpAuthService,
     McpSessionService,
-    McpToolExecutorService
+    McpToolExecutorService,
+    McpResourceExecutorService
   ]
 })
 export class McpModule {}

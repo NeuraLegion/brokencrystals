@@ -23,10 +23,17 @@ Supported methods:
 - initialize: Establish a new MCP session
 - tools/list: List available tools
 - tools/call: Execute a tool with provided arguments
+- resources/list: List available resources
+- resources/read: Read resource contents by URI
 - DELETE /api/mcp: Explicitly terminate an MCP session
 
 Available tools:
 - count_tool: Count testimonials using SQL query
 - config_tool: Get application configuration (admin only)
-- render_tool: Sum numbers and render result
+- render_tool: Sum numbers and render result (response is text/event-stream)
+- fetch_tool: Fetch arbitrary URLs from the server side
+- summarize_tool: Summarize numbers via /api/summarize_cristals (requires numbers and summarize_expression)
+
+Available resources:
+- file:///: Read local server files via /api/file/raw proxy
 `;
