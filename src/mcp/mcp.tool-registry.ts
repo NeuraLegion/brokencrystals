@@ -2,8 +2,8 @@ import {
   isFetchToolInput,
   isConfigToolInput,
   isCountToolInput,
+  isProcessNumbersToolInput,
   isRenderToolInput,
-  isSummarizeToolInput,
   McpTool
 } from './api/mcp.types';
 
@@ -12,7 +12,7 @@ export type McpToolName =
   | 'config_tool'
   | 'render_tool'
   | 'fetch_tool'
-  | 'summarize_tool';
+  | 'process_numbers_tool';
 
 export interface McpToolRegistration {
   definition: McpTool;
@@ -126,11 +126,11 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
       'Invalid arguments: fetch_tool requires a "url" string and optional "method"/"body" strings'
   },
 
-  summarize_tool: {
+  process_numbers_tool: {
     definition: {
-      name: 'summarize_tool',
+      name: 'process_numbers_tool',
       description:
-        'Proxy to /api/summarize_cristals. Summarizes number arrays with a required expression.',
+        'Proxy to /api/process_numbers. Processes number arrays with a required expression.',
       accessLevel: 'public',
       inputSchema: {
         type: 'object',
@@ -138,20 +138,19 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
           numbers: {
             type: 'array',
             items: { type: 'number' },
-            description: 'Array of numbers to summarize'
+            description: 'Array of numbers to process'
           },
-          summarize_expression: {
+          processing_expression: {
             type: 'string',
-            description:
-              'JavaScript expression to calculate summary over "numbers"'
+            description: 'JavaScript expression to process "numbers"'
           }
         },
-        required: ['numbers', 'summarize_expression']
+        required: ['numbers', 'processing_expression']
       }
     },
-    validate: (args: unknown) => isSummarizeToolInput(args),
+    validate: (args: unknown) => isProcessNumbersToolInput(args),
     invalidArgsMessage:
-      'Invalid arguments: summarize_tool requires "numbers" array and non-empty "summarize_expression" string'
+      'Invalid arguments: process_numbers_tool requires "numbers" array and non-empty "processing_expression" string'
   }
 };
 

@@ -44,7 +44,7 @@ import {
   API_DESC_OPTIONS_REQUEST,
   API_DESC_REDIRECT_REQUEST,
   API_DESC_RENDER_REQUEST,
-  API_DESC_SUMMARIZE_CRISTALS_REQUEST,
+  API_DESC_PROCESS_NUMBERS_REQUEST,
   API_DESC_XML_METADATA,
   SWAGGER_DESC_SECRETS,
   SWAGGER_DESC_NESTED_JSON
@@ -164,7 +164,7 @@ export class AppController {
     }
   }
 
-  @Post('summarize_cristals')
+  @Post('process_numbers')
   @HttpCode(200)
   @ApiProduces('text/plain')
   @ApiConsumes('application/json')
@@ -177,16 +177,16 @@ export class AppController {
           items: { type: 'number' },
           example: [1, 2, 3, 4]
         },
-        summarize_expression: {
+        processing_expression: {
           type: 'string',
           example: 'numbers.reduce((acc, num) => acc + num, 0)'
         }
       },
-      required: ['numbers', 'summarize_expression']
+      required: ['numbers', 'processing_expression']
     }
   })
   @ApiOperation({
-    description: API_DESC_SUMMARIZE_CRISTALS_REQUEST
+    description: API_DESC_PROCESS_NUMBERS_REQUEST
   })
   @ApiOkResponse({
     type: String,
@@ -198,25 +198,25 @@ export class AppController {
       properties: { location: { type: 'string' } }
     }
   })
-  async summarizeCristals(
+  async processNumbers(
     @Body()
-    payload: { numbers: number[]; summarize_expression: string },
+    payload: { numbers: number[]; processing_expression: string },
     @Res() res: FastifyReply
   ): Promise<void> {
     const numbers = Array.isArray(payload?.numbers) ? payload.numbers : [];
-    const summarizeExpression =
-      typeof payload?.summarize_expression === 'string' &&
-      payload.summarize_expression.trim().length > 0
-        ? payload.summarize_expression
+    const processNumbersExpression =
+      typeof payload?.processing_expression === 'string' &&
+      payload.processing_expression.trim().length > 0
+        ? payload.processing_expression
         : 'numbers.reduce((acc, num) => acc + num, 0)';
 
     // expose both names used by exploiter payloads
     const response = res;
 
-    this.logger.debug(`Summarizing crystals with ${numbers.length} values`);
+    this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
     try {
-      const result = eval(summarizeExpression);
+      const result = eval(processNumbersExpression);
 
       // SSJI payload may already end the response
       if (response.sent || response.raw.writableEnded) {

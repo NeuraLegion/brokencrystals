@@ -6,8 +6,8 @@ import {
   CountToolInput,
   FetchToolInput,
   McpToolResult,
-  RenderToolInput,
-  SummarizeToolInput
+  ProcessNumbersToolInput,
+  RenderToolInput
 } from './api/mcp.types';
 import { McpProxySupport } from './mcp.proxy-support';
 import { McpToolName } from './mcp.tool-registry';
@@ -43,9 +43,9 @@ export class McpToolExecutorService extends McpProxySupport {
           args as FetchToolInput,
           context.authorizationHeader
         );
-      case 'summarize_tool':
-        return this.executeSummarizeTool(
-          args as SummarizeToolInput,
+      case 'process_numbers_tool':
+        return this.executeProcessNumbersTool(
+          args as ProcessNumbersToolInput,
           context.authorizationHeader
         );
     }
@@ -209,18 +209,18 @@ export class McpToolExecutorService extends McpProxySupport {
     }
   }
 
-  private async executeSummarizeTool(
-    input: SummarizeToolInput,
+  private async executeProcessNumbersTool(
+    input: ProcessNumbersToolInput,
     authorizationHeader?: string
   ): Promise<McpToolResult> {
     try {
-      this.logger.debug('Summarizing crystals via MCP summarize_tool');
+      this.logger.debug('Processing crystals via MCP process_numbers_tool');
 
       const response = await axios.post(
-        this.endpoint('/api/summarize_cristals'),
+        this.endpoint('/api/process_numbers'),
         {
           numbers: input.numbers,
-          summarize_expression: input.summarize_expression
+          processing_expression: input.processing_expression
         },
         {
           headers: this.buildProxyHeaders(
@@ -234,7 +234,7 @@ export class McpToolExecutorService extends McpProxySupport {
       );
 
       if (response.status !== 200) {
-        return this.proxyError('summarize_tool', response);
+        return this.proxyError('process_numbers_tool', response);
       }
 
       const text =

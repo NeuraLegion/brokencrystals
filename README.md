@@ -1234,7 +1234,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
   - **Server-Side Request Forgery via fetch_tool** - The `fetch_tool` accepts an arbitrary URL and performs a server-side HTTP request without host, IP range, or protocol restrictions.
   - **Local File Inclusion via MCP resources/read** - The `resources/read` method accepts `file://` URIs and proxies `/api/file/raw`, allowing arbitrary file reads such as `file:///etc/hosts`.
-  - **Server-Side JavaScript Injection via summarize_tool** - The `summarize_tool` proxies `/api/summarize_cristals` and executes arbitrary JavaScript in server context.
+  - **Server-Side JavaScript Injection via process_numbers_tool** - The `process_numbers_tool` proxies `/api/process_numbers` and executes arbitrary JavaScript from the `processing_expression` expression in server context.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
 
     - MCP sessions are independent from the regular API authentication/authorization flow.
@@ -1357,7 +1357,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          }'
        ```
 
-    5. `summarize_tool` (public)  
+    5. `process_numbers_tool` (public)  
        Vulnerability: **Server-Side JavaScript Injection (SSJI)** via dynamic code execution.  
        Example:
 
@@ -1369,10 +1369,10 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "jsonrpc": "2.0",
            "method": "tools/call",
            "params": {
-            "name": "summarize_tool",
+            "name": "process_numbers_tool",
             "arguments": {
               "numbers": [1, 2, 3],
-              "summarize_expression": "global.process.mainModule.require('\''os'\'').hostname()"
+              "processing_expression": "numbers.reduce((acc, num) => acc + num, 0)"
             }
           },
           "id": 7
@@ -1551,7 +1551,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
      This payload reads local server files through the `/api/file/raw` proxy using a `file://` URI.
 
-  6. **Server-Side JavaScript Injection via summarize_tool**:
+  6. **Server-Side JavaScript Injection via process_numbers_tool**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1561,10 +1561,10 @@ Full configuration & usage examples can be found in our [demo project](https://g
          "jsonrpc": "2.0",
          "method": "tools/call",
          "params": {
-           "name": "summarize_tool",
+           "name": "process_numbers_tool",
            "arguments": {
              "numbers": [1, 2, 3],
-             "summarize_expression": "global.process.mainModule.require('\''os'\'').hostname()"
+             "processing_expression": "numbers.reduce((acc, num) => acc + num, 0)"
            }
          },
          "id": 7

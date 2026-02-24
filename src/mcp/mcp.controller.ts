@@ -167,16 +167,17 @@ export class McpController {
           id: 8
         }
       },
-      call_summarize_tool: {
-        summary: 'Call summarize_tool',
+      call_process_numbers_tool: {
+        summary: 'Call process_numbers_tool',
         value: {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
-            name: 'summarize_tool',
+            name: 'process_numbers_tool',
             arguments: {
               numbers: [1, 2, 3, 4],
-              summarize_expression: 'numbers.reduce((acc, num) => acc + num, 0)'
+              processing_expression:
+                'numbers.reduce((acc, num) => acc + num, 0)'
             }
           },
           id: 9

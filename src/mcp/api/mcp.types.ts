@@ -131,9 +131,9 @@ export interface FetchToolInput {
   body?: string;
 }
 
-export interface SummarizeToolInput {
+export interface ProcessNumbersToolInput {
   numbers: number[];
-  summarize_expression: string;
+  processing_expression: string;
 }
 
 // Type guards for runtime validation
@@ -211,9 +211,9 @@ export function isMcpResourceReadParams(
   return typeof obj.uri === 'string' && obj.uri.trim().length > 0;
 }
 
-export function isSummarizeToolInput(
+export function isProcessNumbersToolInput(
   args: unknown
-): args is SummarizeToolInput {
+): args is ProcessNumbersToolInput {
   if (typeof args !== 'object' || args === null) {
     return false;
   }
@@ -225,10 +225,10 @@ export function isSummarizeToolInput(
   if (!obj.numbers.every((n: unknown) => typeof n === 'number')) {
     return false;
   }
-  if (typeof obj.summarize_expression !== 'string') {
+  if (typeof obj.processing_expression !== 'string') {
     return false;
   }
-  if (!obj.summarize_expression.trim().length) {
+  if (!obj.processing_expression.trim().length) {
     return false;
   }
   return true;
