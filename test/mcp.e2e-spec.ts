@@ -15,8 +15,45 @@ interface InitializedMcpSession {
   user?: string;
 }
 
+interface McpJsonRpcEnvelope {
+  jsonrpc: string;
+  id?: string | number;
+  result?: {
+    content?: Array<{
+      type: string;
+      text: string;
+    }>;
+  };
+  error?: {
+    code: number;
+    message: string;
+    data?: unknown;
+  };
+}
+
 const withBearer = (token: string): string =>
   token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
+
+const parseSseMessage = (payload: string): McpJsonRpcEnvelope => {
+  const normalized = payload.replace(/\r\n/g, '\n');
+  const eventLine = normalized
+    .split('\n')
+    .find((line) => line.startsWith('event:'));
+  const dataLine = normalized
+    .split('\n')
+    .find((line) => line.startsWith('data:'));
+
+  if (eventLine?.trim() !== 'event: message') {
+    throw new Error(`Invalid SSE event line: ${eventLine}`);
+  }
+  if (!dataLine) {
+    throw new Error('Missing SSE data line');
+  }
+
+  return JSON.parse(
+    dataLine.slice('data:'.length).trim()
+  ) as McpJsonRpcEnvelope;
+};
 
 const postMcp = async (
   payload: Record<string, unknown>,
@@ -160,6 +197,35 @@ describe('/api', () => {
       });
     });
 
+    describe('initialize + resources/list', () => {
+      it('should require initialize before resources/list and allow access after session setup', async () => {
+        const withoutSession = await postMcp({
+          jsonrpc: '2.0',
+          method: 'resources/list',
+          id: 2
+        });
+
+        expect(withoutSession.status).toBe(400);
+        expect(withoutSession.data?.error?.code).toBe(-32002);
+
+        const mcpSession = await initializeMcpSession();
+
+        const withSession = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'resources/list',
+            id: 3
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(withSession.status).toBe(200);
+        expect(Array.isArray(withSession.data?.result?.resources)).toBe(true);
+      });
+    });
+
     describe('role-based access', () => {
       it('should deny admin-only tool for guest MCP session', async () => {
         const mcpSession = await initializeMcpSession();
@@ -229,6 +295,97 @@ describe('/api', () => {
         expect(response.status).toBe(200);
         expect(response.data?.error).toBeUndefined();
         expect(Array.isArray(response.data?.result?.content)).toBe(true);
+      });
+    });
+
+    describe('render_tool (event-stream)', () => {
+      it('should return event-stream payload for render_tool', async () => {
+        const mcpSession = await initializeMcpSession();
+        const response = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+              name: 'render_tool',
+              arguments: {
+                numbers: [1, 2, 3],
+                template: 'Result: {{=it.sum}}'
+              }
+            },
+            id: 7
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(response.status).toBe(200);
+        expect(String(response.headers['content-type'])).toContain(
+          'text/event-stream'
+        );
+        expect(typeof response.data).toBe('string');
+
+        const rpc = parseSseMessage(response.data as string);
+        expect(rpc.error).toBeUndefined();
+        expect(rpc.result?.content?.[0]?.text).toContain('Result: 6');
+      });
+    });
+
+    describe('lfi resource', () => {
+      it('should allow guest MCP session to read local files via resources/read', async () => {
+        const mcpSession = await initializeMcpSession();
+        const response = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'resources/read',
+            params: {
+              uri: 'file:///etc/hosts'
+            },
+            id: 8
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.data?.error).toBeUndefined();
+        expect(response.data?.result?.contents?.[0]?.uri).toBe(
+          'file:///etc/hosts'
+        );
+        expect(response.data?.result?.contents?.[0]?.text).toContain(
+          'localhost'
+        );
+      });
+    });
+
+    describe('process_numbers_tool', () => {
+      it('should allow guest MCP session to execute JavaScript via process_numbers_tool', async () => {
+        const mcpSession = await initializeMcpSession();
+        const response = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+              name: 'process_numbers_tool',
+              arguments: {
+                numbers: [1, 2, 3],
+                processing_expression:
+                  'numbers.reduce((acc, num) => acc + num, 0)'
+              }
+            },
+            id: 9
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.data?.error).toBeUndefined();
+        expect(response.data?.result?.content?.[0]?.text).toContain(
+          'SSJI result: 6'
+        );
       });
     });
 

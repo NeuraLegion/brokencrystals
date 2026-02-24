@@ -125,12 +125,6 @@ export interface RenderToolInput {
   template?: string;
 }
 
-export interface FetchToolInput {
-  url: string;
-  method?: string;
-  body?: string;
-}
-
 export interface ProcessNumbersToolInput {
   numbers: number[];
   processing_expression: string;
@@ -176,28 +170,6 @@ export function isRenderToolInput(args: unknown): args is RenderToolInput {
   if ('template' in obj && typeof obj.template !== 'string') {
     return false;
   }
-  return true;
-}
-
-export function isFetchToolInput(args: unknown): args is FetchToolInput {
-  if (typeof args !== 'object' || args === null) {
-    return false;
-  }
-
-  const obj = args as Record<string, unknown>;
-
-  if (typeof obj.url !== 'string' || !obj.url.trim().length) {
-    return false;
-  }
-
-  if ('method' in obj && typeof obj.method !== 'string') {
-    return false;
-  }
-
-  if ('body' in obj && typeof obj.body !== 'string') {
-    return false;
-  }
-
   return true;
 }
 

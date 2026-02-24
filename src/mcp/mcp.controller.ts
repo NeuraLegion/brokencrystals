@@ -134,26 +134,12 @@ export class McpController {
           id: 5
         }
       },
-      call_fetch_tool: {
-        summary: 'Call fetch_tool',
-        value: {
-          jsonrpc: '2.0',
-          method: 'tools/call',
-          params: {
-            name: 'fetch_tool',
-            arguments: {
-              url: 'http://127.0.0.1:3000/api/config'
-            }
-          },
-          id: 6
-        }
-      },
       list_resources: {
         summary: 'List resources',
         value: {
           jsonrpc: '2.0',
           method: 'resources/list',
-          id: 7
+          id: 6
         }
       },
       read_resource: {
@@ -164,7 +150,7 @@ export class McpController {
           params: {
             uri: 'file:///etc/hosts'
           },
-          id: 8
+          id: 7
         }
       },
       call_process_numbers_tool: {
@@ -180,7 +166,7 @@ export class McpController {
                 'numbers.reduce((acc, num) => acc + num, 0)'
             }
           },
-          id: 9
+          id: 8
         }
       }
     }

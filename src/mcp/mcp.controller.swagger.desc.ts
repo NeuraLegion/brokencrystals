@@ -31,7 +31,6 @@ Available tools:
 - count_tool: Count testimonials using SQL query
 - config_tool: Get application configuration (admin only)
 - render_tool: Sum numbers and render result (response is text/event-stream)
-- fetch_tool: Fetch arbitrary URLs from the server side
 - process_numbers_tool: Process numbers via /api/process_numbers (requires numbers and processing_expression)
 
 Available resources:

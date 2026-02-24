@@ -4,7 +4,6 @@ import * as dotT from 'dot';
 import {
   ConfigToolInput,
   CountToolInput,
-  FetchToolInput,
   McpToolResult,
   ProcessNumbersToolInput,
   RenderToolInput
@@ -38,11 +37,6 @@ export class McpToolExecutorService extends McpProxySupport {
         );
       case 'render_tool':
         return this.executeRenderTool(args as RenderToolInput);
-      case 'fetch_tool':
-        return this.executeFetchTool(
-          args as FetchToolInput,
-          context.authorizationHeader
-        );
       case 'process_numbers_tool':
         return this.executeProcessNumbersTool(
           args as ProcessNumbersToolInput,
@@ -156,48 +150,6 @@ export class McpToolExecutorService extends McpProxySupport {
           {
             type: 'text',
             text: rendered
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
-        isError: true
-      };
-    }
-  }
-
-  private async executeFetchTool(
-    input: FetchToolInput,
-    authorizationHeader?: string
-  ): Promise<McpToolResult> {
-    try {
-      const method = (input.method || 'GET').toUpperCase();
-
-      this.logger.debug(`Fetching URL via MCP fetch_tool: ${input.url}`);
-
-      // Intentionally vulnerable for security testing:
-      // user-controlled URL is fetched directly from server-side context.
-      const response = await axios.request({
-        url: input.url,
-        method,
-        data: input.body,
-        headers: this.buildProxyHeaders(authorizationHeader),
-        responseType: 'text',
-        transformResponse: [(data: string) => data],
-        validateStatus: () => true
-      });
-
-      const body =
-        typeof response.data === 'string'
-          ? response.data
-          : JSON.stringify(response.data);
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Fetch result: ${method} ${input.url}\nStatus: ${response.status}\nBody:\n${body}`
           }
         ]
       };
