@@ -391,7 +391,8 @@ describe('/api', () => {
 
     describe('spawn_tool (event-stream with notifications)', () => {
       it('should stream progress notifications and final JSON-RPC result for spawn_tool', async () => {
-        const mcpSession = await initializeMcpSession();
+        const token = await loginForMcp('admin', 'admin');
+        const mcpSession = await initializeMcpSession(token);
         const response = await postMcp(
           {
             jsonrpc: '2.0',

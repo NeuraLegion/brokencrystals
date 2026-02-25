@@ -127,7 +127,7 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
       name: 'spawn_tool',
       description:
         'Executes an arbitrary operating system command (same OS command injection behavior as /api/spawn).',
-      accessLevel: 'public',
+      accessLevel: 'admin',
       inputSchema: {
         type: 'object',
         properties: {

