@@ -31,17 +31,45 @@ import { McpAuthService } from './mcp.auth.service';
 import { API_DESC_MCP_ENDPOINT } from './mcp.controller.swagger.desc';
 import { McpService } from './mcp.service';
 import { McpSessionService, McpSessionState } from './mcp.session.service';
+import { McpToolPartialOutput } from './mcp.tool-executor.service';
 
 interface SessionValidationResult {
   session?: McpSessionState;
   error?: McpResponse;
 }
 
+interface StreamedToolConfig {
+  heartbeatMs: number;
+  emitPartialOutput?: boolean;
+  getMetadata?: (params: McpToolCallParams) => Record<string, unknown>;
+}
+
+interface ResolvedStreamedTool {
+  name: string;
+  config: StreamedToolConfig;
+  metadata: Record<string, unknown>;
+}
+
 @Controller('/api/mcp')
 @ApiTags('MCP Controller')
 export class McpController {
   private static readonly MCP_SESSION_ID_HEADER = 'Mcp-Session-Id';
-  private static readonly EVENT_STREAM_TOOLS = new Set<string>(['render_tool']);
+  private static readonly STREAMED_TOOLS: Record<string, StreamedToolConfig> = {
+    spawn_tool: {
+      heartbeatMs: 5000,
+      emitPartialOutput: true,
+      getMetadata: (params) => ({
+        command:
+          typeof params.arguments?.command === 'string'
+            ? params.arguments.command
+            : undefined
+      })
+    }
+  };
+  private static readonly EVENT_STREAM_TOOLS = new Set<string>([
+    'render_tool',
+    ...Object.keys(McpController.STREAMED_TOOLS)
+  ]);
 
   private readonly logger = new Logger(McpController.name);
 
@@ -168,6 +196,20 @@ export class McpController {
           },
           id: 8
         }
+      },
+      call_spawn_tool: {
+        summary: 'Call spawn_tool',
+        value: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'spawn_tool',
+            arguments: {
+              command: 'uname -a'
+            }
+          },
+          id: 9
+        }
       }
     }
   })
@@ -179,7 +221,7 @@ export class McpController {
     @Body() request: McpRequest,
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply
-  ): Promise<McpResponse | string> {
+  ): Promise<McpResponse | string | undefined> {
     this.logger.debug(`MCP Request: ${JSON.stringify(request)}`);
 
     if (request.jsonrpc !== '2.0') {
@@ -329,7 +371,7 @@ export class McpController {
     request: McpRequest,
     session: McpSessionState,
     res: FastifyReply
-  ): Promise<McpResponse | string> {
+  ): Promise<McpResponse | string | undefined> {
     const params = request.params as unknown as McpToolCallParams;
 
     if (!params?.name) {
@@ -354,15 +396,13 @@ export class McpController {
         : errorResponse;
     }
 
-    const result = await this.mcpService.callTool(params, {
-      authorizationHeader: session.authorizationHeader
-    });
+    const streamedTool = this.resolveStreamedTool(params);
+    if (shouldStream && streamedTool) {
+      await this.streamToolCall(request, params, session, res, streamedTool);
+      return;
+    }
 
-    const response: McpResponse = {
-      jsonrpc: '2.0',
-      result,
-      id: request.id
-    };
+    const response = await this.toRpcToolResponse(request, params, session);
 
     return shouldStream ? this.toEventStreamMessage(res, response) : response;
   }
@@ -394,7 +434,7 @@ export class McpController {
       const sessionState = this.mcpSessionService.initializeSession(auth);
 
       const result: McpInitializeResult = {
-        protocolVersion: '2024-11-05',
+        protocolVersion: '2025-11-25',
         capabilities: {
           tools: {},
           resources: {}
@@ -492,6 +532,169 @@ export class McpController {
     res.header('cache-control', 'no-cache');
     res.header('connection', 'keep-alive');
     return `event: message\ndata: ${JSON.stringify(payload)}\n\n`;
+  }
+
+  private async streamToolCall(
+    request: McpRequest,
+    params: McpToolCallParams,
+    session: McpSessionState,
+    res: FastifyReply,
+    streamedTool: ResolvedStreamedTool
+  ): Promise<void> {
+    const startedAt = Date.now();
+
+    this.startEventStream(res);
+    this.sendProgressNotification(res, streamedTool, 'starting', startedAt);
+
+    const heartbeat = setInterval(() => {
+      this.sendProgressNotification(res, streamedTool, 'running', startedAt);
+    }, streamedTool.config.heartbeatMs);
+
+    heartbeat.unref?.();
+
+    try {
+      const onPartialOutput = streamedTool.config.emitPartialOutput
+        ? (chunk: McpToolPartialOutput) =>
+            this.sendPartialOutputNotification(
+              res,
+              streamedTool,
+              chunk,
+              startedAt
+            )
+        : undefined;
+
+      const response = await this.toRpcToolResponse(
+        request,
+        params,
+        session,
+        onPartialOutput
+      );
+      this.writeEventStreamEvent(res, 'message', response);
+    } finally {
+      clearInterval(heartbeat);
+      if (!res.raw.writableEnded) {
+        res.raw.end();
+      }
+    }
+  }
+
+  private async toRpcToolResponse(
+    request: McpRequest,
+    params: McpToolCallParams,
+    session: McpSessionState,
+    onPartialOutput?: (chunk: McpToolPartialOutput) => void
+  ): Promise<McpResponse> {
+    try {
+      const result = await this.mcpService.callTool(params, {
+        authorizationHeader: session.authorizationHeader,
+        onPartialOutput
+      });
+
+      return {
+        jsonrpc: '2.0',
+        result,
+        id: request.id
+      };
+    } catch (error) {
+      return this.rpcError(
+        request,
+        -32603,
+        `Internal error: ${(error as Error).message}`
+      );
+    }
+  }
+
+  private resolveStreamedTool(
+    params: McpToolCallParams
+  ): ResolvedStreamedTool | undefined {
+    const config = McpController.STREAMED_TOOLS[params.name];
+    if (!config) {
+      return undefined;
+    }
+
+    return {
+      name: params.name,
+      config,
+      metadata: config.getMetadata ? config.getMetadata(params) : {}
+    };
+  }
+
+  private sendProgressNotification(
+    res: FastifyReply,
+    streamedTool: ResolvedStreamedTool,
+    status: 'starting' | 'running',
+    startedAt: number
+  ): void {
+    const params =
+      status === 'starting'
+        ? {
+            tool: streamedTool.name,
+            ...streamedTool.metadata,
+            status,
+            startedAt
+          }
+        : {
+            tool: streamedTool.name,
+            ...streamedTool.metadata,
+            status,
+            elapsedMs: Date.now() - startedAt
+          };
+
+    this.writeNotification(res, 'notifications/progress', params);
+  }
+
+  private sendPartialOutputNotification(
+    res: FastifyReply,
+    streamedTool: ResolvedStreamedTool,
+    output: McpToolPartialOutput,
+    startedAt: number
+  ): void {
+    this.writeNotification(res, 'notifications/partial_output', {
+      tool: streamedTool.name,
+      ...streamedTool.metadata,
+      stream: output.source,
+      text: output.text,
+      elapsedMs: Date.now() - startedAt
+    });
+  }
+
+  private writeNotification(
+    res: FastifyReply,
+    method: string,
+    params: Record<string, unknown>
+  ): void {
+    this.writeEventStreamEvent(res, 'notification', {
+      jsonrpc: '2.0',
+      method,
+      params
+    });
+  }
+
+  private startEventStream(res: FastifyReply): void {
+    const hijackable = res as FastifyReply & { hijack?: () => void };
+    if (typeof hijackable.hijack === 'function') {
+      hijackable.hijack();
+    }
+
+    res.raw.statusCode = 200;
+    res.raw.setHeader('content-type', 'text/event-stream; charset=utf-8');
+    res.raw.setHeader('cache-control', 'no-cache');
+    res.raw.setHeader('connection', 'keep-alive');
+
+    if (typeof res.raw.flushHeaders === 'function') {
+      res.raw.flushHeaders();
+    }
+  }
+
+  private writeEventStreamEvent(
+    res: FastifyReply,
+    event: string,
+    payload: unknown
+  ): void {
+    if (res.raw.writableEnded) {
+      return;
+    }
+    res.raw.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
   }
 
   private isToolAllowedForSession(

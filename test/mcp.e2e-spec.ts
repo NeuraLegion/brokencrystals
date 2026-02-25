@@ -1,8 +1,10 @@
 import { SecRunner } from '@sectester/runner';
 import axios, { AxiosResponse } from 'axios';
 
-const mcpUrl = `${process.env.SEC_TESTER_TARGET}/api/mcp`;
-const authUrl = `${process.env.SEC_TESTER_TARGET}/api/auth/admin/login`;
+const secTesterTarget =
+  process.env.SEC_TESTER_TARGET?.trim() || 'http://127.0.0.1:3000';
+const mcpUrl = `${secTesterTarget}/api/mcp`;
+const authUrl = `${secTesterTarget}/api/auth/admin/login`;
 const hasSecTesterCreds =
   !!process.env.BRIGHT_TOKEN && !!process.env.BRIGHT_CLUSTER;
 
@@ -31,6 +33,16 @@ interface McpJsonRpcEnvelope {
   };
 }
 
+interface ParsedSseEvent {
+  event: string;
+  data: unknown;
+}
+
+interface ParsedStreamedToolResponse {
+  notifications: Array<Record<string, unknown>>;
+  finalRpc: McpJsonRpcEnvelope;
+}
+
 const withBearer = (token: string): string =>
   token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
 
@@ -53,6 +65,52 @@ const parseSseMessage = (payload: string): McpJsonRpcEnvelope => {
   return JSON.parse(
     dataLine.slice('data:'.length).trim()
   ) as McpJsonRpcEnvelope;
+};
+
+const parseSseEvents = (payload: string): ParsedSseEvent[] =>
+  payload
+    .replace(/\r\n/g, '\n')
+    .split('\n\n')
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 0)
+    .map((chunk) => {
+      const eventLine = chunk
+        .split('\n')
+        .find((line) => line.startsWith('event:'));
+      const dataLine = chunk
+        .split('\n')
+        .find((line) => line.startsWith('data:'));
+
+      if (!eventLine || !dataLine) {
+        throw new Error(`Invalid SSE payload chunk: ${chunk}`);
+      }
+
+      return {
+        event: eventLine.slice('event:'.length).trim(),
+        data: JSON.parse(dataLine.slice('data:'.length).trim())
+      };
+    });
+
+const parseStreamedToolResponse = (
+  payload: string
+): ParsedStreamedToolResponse => {
+  const events = parseSseEvents(payload);
+  const notifications = events
+    .filter((event) => event.event === 'notification')
+    .map((event) => event.data as Record<string, unknown>);
+
+  const messageEvent = [...events]
+    .reverse()
+    .find((event) => event.event === 'message');
+
+  if (!messageEvent) {
+    throw new Error('Missing final message event in SSE payload');
+  }
+
+  return {
+    notifications,
+    finalRpc: messageEvent.data as McpJsonRpcEnvelope
+  };
 };
 
 const postMcp = async (
@@ -328,6 +386,70 @@ describe('/api', () => {
         const rpc = parseSseMessage(response.data as string);
         expect(rpc.error).toBeUndefined();
         expect(rpc.result?.content?.[0]?.text).toContain('Result: 6');
+      });
+    });
+
+    describe('spawn_tool (event-stream with notifications)', () => {
+      it('should stream progress notifications and final JSON-RPC result for spawn_tool', async () => {
+        const mcpSession = await initializeMcpSession();
+        const response = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+              name: 'spawn_tool',
+              arguments: {
+                command: 'node -e console.log(process.version)'
+              }
+            },
+            id: 10
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(response.status).toBe(200);
+        expect(String(response.headers['content-type'])).toContain(
+          'text/event-stream'
+        );
+        expect(typeof response.data).toBe('string');
+
+        const { notifications, finalRpc } = parseStreamedToolResponse(
+          response.data as string
+        );
+
+        expect(notifications.length).toBeGreaterThan(0);
+        expect(notifications[0]?.jsonrpc).toBe('2.0');
+
+        const progressNotifications = notifications.filter(
+          (notification) => notification.method === 'notifications/progress'
+        );
+        expect(progressNotifications.length).toBeGreaterThan(0);
+
+        const progressParams = progressNotifications[0]?.params as
+          | Record<string, unknown>
+          | undefined;
+        expect(progressParams?.tool).toBe('spawn_tool');
+        expect(progressParams?.status).toBe('starting');
+
+        const partialOutputNotifications = notifications.filter(
+          (notification) =>
+            notification.method === 'notifications/partial_output'
+        );
+        expect(partialOutputNotifications.length).toBeGreaterThan(0);
+
+        const partialParams = partialOutputNotifications[0]?.params as
+          | Record<string, unknown>
+          | undefined;
+        expect(partialParams?.tool).toBe('spawn_tool');
+        expect(['stdout', 'stderr']).toContain(partialParams?.stream);
+        expect(typeof partialParams?.text).toBe('string');
+
+        expect(finalRpc.error).toBeUndefined();
+        expect(finalRpc.result?.content?.[0]?.text).toContain(
+          'OS command result:'
+        );
       });
     });
 

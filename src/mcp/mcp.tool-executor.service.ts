@@ -1,18 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
+import { spawn } from 'child_process';
 import * as dotT from 'dot';
 import {
   ConfigToolInput,
   CountToolInput,
   McpToolResult,
   ProcessNumbersToolInput,
-  RenderToolInput
+  RenderToolInput,
+  SpawnToolInput
 } from './api/mcp.types';
 import { McpProxySupport } from './mcp.proxy-support';
 import { McpToolName } from './mcp.tool-registry';
 
 export interface McpToolExecutionContext {
   authorizationHeader?: string;
+  onPartialOutput?: (chunk: McpToolPartialOutput) => void;
+}
+
+export interface McpToolPartialOutput {
+  source: 'stdout' | 'stderr';
+  text: string;
 }
 
 @Injectable()
@@ -42,6 +50,8 @@ export class McpToolExecutorService extends McpProxySupport {
           args as ProcessNumbersToolInput,
           context.authorizationHeader
         );
+      case 'spawn_tool':
+        return this.executeSpawnTool(args as SpawnToolInput, context);
     }
   }
 
@@ -199,6 +209,73 @@ export class McpToolExecutorService extends McpProxySupport {
           {
             type: 'text',
             text: `SSJI result: ${text}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
+        isError: true
+      };
+    }
+  }
+
+  private async executeSpawnTool(
+    input: SpawnToolInput,
+    context: McpToolExecutionContext = {}
+  ): Promise<McpToolResult> {
+    try {
+      this.logger.debug('Executing OS command via MCP spawn_tool');
+
+      const [exec, ...args] = input.command.split(' ');
+      if (!exec || !exec.trim().length) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Error: spawn_tool command is empty'
+            }
+          ],
+          isError: true
+        };
+      }
+
+      const text = await new Promise<string>((resolve, reject) => {
+        const process = spawn(exec, args);
+        let stdout = '';
+        let stderr = '';
+
+        process.stdout.on('data', (data: Buffer) => {
+          const text = data.toString('utf-8');
+          stdout += text;
+          context.onPartialOutput?.({ source: 'stdout', text });
+        });
+
+        process.stderr.on('data', (data: Buffer) => {
+          const text = data.toString('utf-8');
+          stderr += text;
+          context.onPartialOutput?.({ source: 'stderr', text });
+        });
+
+        process.on('error', (error) => reject(error));
+        process.on('close', (code) => {
+          const output = (stdout || stderr).trim();
+          if (output.length) {
+            resolve(output);
+            return;
+          }
+
+          resolve(
+            code === 0 ? '(no output)' : `process exited with code ${code}`
+          );
+        });
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `OS command result: ${text}`
           }
         ]
       };

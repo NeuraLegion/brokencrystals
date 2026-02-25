@@ -130,6 +130,10 @@ export interface ProcessNumbersToolInput {
   processing_expression: string;
 }
 
+export interface SpawnToolInput {
+  command: string;
+}
+
 // Type guards for runtime validation
 export function isCountToolInput(args: unknown): args is CountToolInput {
   return (
@@ -204,4 +208,19 @@ export function isProcessNumbersToolInput(
     return false;
   }
   return true;
+}
+
+export function isSpawnToolInput(args: unknown): args is SpawnToolInput {
+  const command =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>).command
+      : undefined;
+
+  return (
+    typeof args === 'object' &&
+    args !== null &&
+    'command' in args &&
+    typeof command === 'string' &&
+    command.trim().length > 0
+  );
 }

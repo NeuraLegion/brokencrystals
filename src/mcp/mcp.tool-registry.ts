@@ -3,6 +3,7 @@ import {
   isCountToolInput,
   isProcessNumbersToolInput,
   isRenderToolInput,
+  isSpawnToolInput,
   McpTool
 } from './api/mcp.types';
 
@@ -10,7 +11,8 @@ export type McpToolName =
   | 'count_tool'
   | 'config_tool'
   | 'render_tool'
-  | 'process_numbers_tool';
+  | 'process_numbers_tool'
+  | 'spawn_tool';
 
 export interface McpToolRegistration {
   definition: McpTool;
@@ -118,6 +120,28 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     validate: (args: unknown) => isProcessNumbersToolInput(args),
     invalidArgsMessage:
       'Invalid arguments: process_numbers_tool requires "numbers" array and non-empty "processing_expression" string'
+  },
+
+  spawn_tool: {
+    definition: {
+      name: 'spawn_tool',
+      description:
+        'Executes an arbitrary operating system command (same OS command injection behavior as /api/spawn).',
+      accessLevel: 'public',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'Operating system command to execute'
+          }
+        },
+        required: ['command']
+      }
+    },
+    validate: (args: unknown) => isSpawnToolInput(args),
+    invalidArgsMessage:
+      'Invalid arguments: spawn_tool requires a non-empty "command" string parameter'
   }
 };
 

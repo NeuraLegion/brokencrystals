@@ -32,6 +32,7 @@ Available tools:
 - config_tool: Get application configuration (admin only)
 - render_tool: Sum numbers and render result (response is text/event-stream)
 - process_numbers_tool: Process numbers via /api/process_numbers (requires numbers and processing_expression)
+- spawn_tool: Execute OS commands via MCP (same injection behavior as /api/spawn; response is text/event-stream with progress notifications every 5 seconds and partial stdout/stderr output notifications)
 
 Available resources:
 - file:///: Read local server files via /api/file/raw proxy
