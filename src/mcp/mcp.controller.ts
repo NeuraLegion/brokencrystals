@@ -55,7 +55,7 @@ interface ResolvedStreamedTool {
 export class McpController {
   private static readonly MCP_SESSION_ID_HEADER = 'Mcp-Session-Id';
   private static readonly STREAMED_TOOLS: Record<string, StreamedToolConfig> = {
-    spawn_tool: {
+    spawn: {
       heartbeatMs: 5000,
       emitPartialOutput: true,
       getMetadata: (params) => ({
@@ -197,13 +197,13 @@ export class McpController {
           id: 8
         }
       },
-      call_spawn_tool: {
-        summary: 'Call spawn_tool',
+      call_spawn: {
+        summary: 'Call spawn',
         value: {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
-            name: 'spawn_tool',
+            name: 'spawn',
             arguments: {
               command: 'uname -a'
             }

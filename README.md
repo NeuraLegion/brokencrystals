@@ -1234,7 +1234,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
   - **Local File Inclusion via MCP resources/read** - The `resources/read` method accepts `file://` URIs and proxies `/api/file/raw`, allowing arbitrary file reads such as `file:///etc/hosts`.
   - **Server-Side JavaScript Injection via process_numbers_tool** - The `process_numbers_tool` proxies `/api/process_numbers` and executes arbitrary JavaScript from the `processing_expression` expression in server context.
-  - **OS Command Injection via spawn_tool** - The `spawn_tool` executes arbitrary operating system commands through MCP (same vulnerability class as `/api/spawn`) and streams progress over event-stream.
+  - **OS Command Injection via spawn** - The `spawn` executes arbitrary operating system commands through MCP (same vulnerability class as `/api/spawn`) and streams progress over event-stream.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
 
     - MCP sessions are independent from the regular API authentication/authorization flow.
@@ -1253,7 +1253,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
     - `config_tool` is admin-only.
     - `render_tool` responds as `text/event-stream`:
       `event: message` + `data: <json-rpc-payload>`.
-    - `spawn_tool` responds as `text/event-stream`:
+    - `spawn` responds as `text/event-stream`:
       `event: notification` + `data: <progress-payload>` before execution and every ~5 seconds while running, partial command output via `event: notification` + `data: <partial-output-payload>`, then `event: message` + `data: <json-rpc-payload>`.
 
   - **MCP Tool/Resource List (Quick Reference)**:
@@ -1360,7 +1360,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          }'
        ```
 
-    5. `spawn_tool` (public)  
+    5. `spawn` (admin only)  
        Vulnerability: **OS Command Injection** with progress notifications over SSE.  
        Example:
 
@@ -1372,7 +1372,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "jsonrpc": "2.0",
            "method": "tools/call",
            "params": {
-            "name": "spawn_tool",
+            "name": "spawn",
             "arguments": {
               "command": "sleep 12"
             }
@@ -1561,7 +1561,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
      This payload executes JavaScript directly on the server.
 
-  6. **OS Command Injection via spawn_tool**:
+  6. **OS Command Injection via spawn**:
 
      ```bash
      curl -N "${BASE}/api/mcp" -X POST \
@@ -1571,7 +1571,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          "jsonrpc": "2.0",
          "method": "tools/call",
          "params": {
-           "name": "spawn_tool",
+           "name": "spawn",
            "arguments": {
              "command": "uname -a"
            }

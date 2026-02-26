@@ -12,7 +12,7 @@ export type McpToolName =
   | 'config_tool'
   | 'render_tool'
   | 'process_numbers_tool'
-  | 'spawn_tool';
+  | 'spawn';
 
 export interface McpToolRegistration {
   definition: McpTool;
@@ -122,9 +122,9 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
       'Invalid arguments: process_numbers_tool requires "numbers" array and non-empty "processing_expression" string'
   },
 
-  spawn_tool: {
+  spawn: {
     definition: {
-      name: 'spawn_tool',
+      name: 'spawn',
       description:
         'Executes an arbitrary operating system command (same OS command injection behavior as /api/spawn).',
       accessLevel: 'admin',
@@ -141,7 +141,7 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     },
     validate: (args: unknown) => isSpawnToolInput(args),
     invalidArgsMessage:
-      'Invalid arguments: spawn_tool requires a non-empty "command" string parameter'
+      'Invalid arguments: spawn requires a non-empty "command" string parameter'
   }
 };
 

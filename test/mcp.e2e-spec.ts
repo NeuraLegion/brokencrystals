@@ -389,8 +389,8 @@ describe('/api', () => {
       });
     });
 
-    describe('spawn_tool (event-stream with notifications)', () => {
-      it('should stream progress notifications and final JSON-RPC result for spawn_tool', async () => {
+    describe('spawn (event-stream with notifications)', () => {
+      it('should stream progress notifications and final JSON-RPC result for spawn', async () => {
         const token = await loginForMcp('admin', 'admin');
         const mcpSession = await initializeMcpSession(token);
         const response = await postMcp(
@@ -398,7 +398,7 @@ describe('/api', () => {
             jsonrpc: '2.0',
             method: 'tools/call',
             params: {
-              name: 'spawn_tool',
+              name: 'spawn',
               arguments: {
                 command: 'node -e console.log(process.version)'
               }
@@ -431,7 +431,7 @@ describe('/api', () => {
         const progressParams = progressNotifications[0]?.params as
           | Record<string, unknown>
           | undefined;
-        expect(progressParams?.tool).toBe('spawn_tool');
+        expect(progressParams?.tool).toBe('spawn');
         expect(progressParams?.status).toBe('starting');
 
         const partialOutputNotifications = notifications.filter(
@@ -443,7 +443,7 @@ describe('/api', () => {
         const partialParams = partialOutputNotifications[0]?.params as
           | Record<string, unknown>
           | undefined;
-        expect(partialParams?.tool).toBe('spawn_tool');
+        expect(partialParams?.tool).toBe('spawn');
         expect(['stdout', 'stderr']).toContain(partialParams?.stream);
         expect(typeof partialParams?.text).toBe('string');
 

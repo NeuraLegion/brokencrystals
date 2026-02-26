@@ -50,7 +50,7 @@ export class McpToolExecutorService extends McpProxySupport {
           args as ProcessNumbersToolInput,
           context.authorizationHeader
         );
-      case 'spawn_tool':
+      case 'spawn':
         return this.executeSpawnTool(args as SpawnToolInput, context);
     }
   }
@@ -225,7 +225,7 @@ export class McpToolExecutorService extends McpProxySupport {
     context: McpToolExecutionContext = {}
   ): Promise<McpToolResult> {
     try {
-      this.logger.debug('Executing OS command via MCP spawn_tool');
+      this.logger.debug('Executing OS command via MCP spawn');
 
       const [exec, ...args] = input.command.split(' ');
       if (!exec || !exec.trim().length) {
@@ -233,7 +233,7 @@ export class McpToolExecutorService extends McpProxySupport {
           content: [
             {
               type: 'text',
-              text: 'Error: spawn_tool command is empty'
+              text: 'Error: spawn command is empty'
             }
           ],
           isError: true
