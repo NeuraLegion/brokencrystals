@@ -1374,7 +1374,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "params": {
             "name": "spawn",
             "arguments": {
-              "command": "sleep 12"
+              "command": "ping -c 4 127.0.0.1"
             }
           },
           "id": 7
