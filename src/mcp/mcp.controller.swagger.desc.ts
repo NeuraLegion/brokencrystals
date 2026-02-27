@@ -28,11 +28,13 @@ Supported methods:
 - DELETE /api/mcp: Explicitly terminate an MCP session
 
 Available tools:
-- count_tool: Count testimonials using SQL query
-- config_tool: Get application configuration (admin only)
-- render_tool: Sum numbers and render result (response is text/event-stream)
-- process_numbers_tool: Process numbers via /api/process_numbers (requires numbers and processing_expression)
-- spawn: Execute OS commands via MCP (admin only; same injection behavior as /api/spawn; response is text/event-stream with progress notifications every 5 seconds and partial stdout/stderr output notifications)
+- get_count: Count testimonials using SQL query
+- get_config: Get application configuration (admin only)
+- render: Sum numbers and render result (response is text/event-stream)
+- process_numbers: Process numbers via /api/process_numbers (requires numbers and processing_expression)
+- get_metadata: Proxy /api/metadata XML payload processing (public; same XXE behavior as /api/metadata)
+- spawn_process: Execute OS commands via MCP (admin only; same injection behavior as /api/spawn; response is text/event-stream with progress notifications every 5 seconds and partial stdout/stderr output notifications)
+- search_users: Proxy /api/users/search/:name and return application/json payload (public)
 
 Available resources:
 - file:///: Read local server files via /api/file/raw proxy

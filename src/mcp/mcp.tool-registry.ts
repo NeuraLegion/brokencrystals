@@ -1,18 +1,22 @@
 import {
   isConfigToolInput,
   isCountToolInput,
+  isMetadataToolInput,
   isProcessNumbersToolInput,
   isRenderToolInput,
+  isSearchUsersToolInput,
   isSpawnToolInput,
   McpTool
 } from './api/mcp.types';
 
 export type McpToolName =
-  | 'count_tool'
-  | 'config_tool'
-  | 'render_tool'
-  | 'process_numbers_tool'
-  | 'spawn';
+  | 'get_count'
+  | 'get_config'
+  | 'render'
+  | 'process_numbers'
+  | 'spawn_process'
+  | 'get_metadata'
+  | 'search_users';
 
 export interface McpToolRegistration {
   definition: McpTool;
@@ -22,9 +26,9 @@ export interface McpToolRegistration {
 }
 
 export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
-  count_tool: {
+  get_count: {
     definition: {
-      name: 'count_tool',
+      name: 'get_count',
       description:
         'Proxy to /api/testimonials/count. Accepts a SQL query and returns count.',
       accessLevel: 'public',
@@ -42,12 +46,12 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     },
     validate: (args: unknown) => isCountToolInput(args),
     invalidArgsMessage:
-      'Invalid arguments: count_tool requires a "query" string parameter'
+      'Invalid arguments: get_count requires a "query" string parameter'
   },
 
-  config_tool: {
+  get_config: {
     definition: {
-      name: 'config_tool',
+      name: 'get_config',
       description:
         'Proxy to /api/config. Returns application configuration including database and cloud settings.',
       accessLevel: 'admin',
@@ -65,13 +69,13 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     },
     validate: (args: unknown) => isConfigToolInput(args),
     invalidArgsMessage:
-      'Invalid arguments: config_tool expects optional "include_sensitive" boolean parameter',
+      'Invalid arguments: get_config expects optional "include_sensitive" boolean parameter',
     normalize: (args: unknown) => args ?? {}
   },
 
-  render_tool: {
+  render: {
     definition: {
-      name: 'render_tool',
+      name: 'render',
       description: 'Adds numbers and renders output via doT template.',
       accessLevel: 'public',
       inputSchema: {
@@ -92,12 +96,12 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     },
     validate: (args: unknown) => isRenderToolInput(args),
     invalidArgsMessage:
-      'Invalid arguments: render_tool requires a "numbers" array parameter'
+      'Invalid arguments: render requires a "numbers" array parameter'
   },
 
-  process_numbers_tool: {
+  process_numbers: {
     definition: {
-      name: 'process_numbers_tool',
+      name: 'process_numbers',
       description:
         'Proxy to /api/process_numbers. Processes number arrays with a required expression.',
       accessLevel: 'public',
@@ -119,12 +123,12 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     },
     validate: (args: unknown) => isProcessNumbersToolInput(args),
     invalidArgsMessage:
-      'Invalid arguments: process_numbers_tool requires "numbers" array and non-empty "processing_expression" string'
+      'Invalid arguments: process_numbers requires "numbers" array and non-empty "processing_expression" string'
   },
 
-  spawn: {
+  spawn_process: {
     definition: {
-      name: 'spawn',
+      name: 'spawn_process',
       description:
         'Executes an arbitrary operating system command (same OS command injection behavior as /api/spawn).',
       accessLevel: 'admin',
@@ -141,7 +145,51 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     },
     validate: (args: unknown) => isSpawnToolInput(args),
     invalidArgsMessage:
-      'Invalid arguments: spawn requires a non-empty "command" string parameter'
+      'Invalid arguments: spawn_process requires a non-empty "command" string parameter'
+  },
+
+  get_metadata: {
+    definition: {
+      name: 'get_metadata',
+      description:
+        'Proxy to /api/metadata. Accepts XML payload and returns parsed XML output.',
+      accessLevel: 'public',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          xml: {
+            type: 'string',
+            description: 'XML payload forwarded to /api/metadata'
+          }
+        },
+        required: ['xml']
+      }
+    },
+    validate: (args: unknown) => isMetadataToolInput(args),
+    invalidArgsMessage:
+      'Invalid arguments: get_metadata requires a non-empty "xml" string parameter'
+  },
+
+  search_users: {
+    definition: {
+      name: 'search_users',
+      description:
+        'Proxy to /api/users/search/:name. Returns a JSON array of matching users.',
+      accessLevel: 'public',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: 'Prefix used to search users by first name'
+          }
+        },
+        required: ['name']
+      }
+    },
+    validate: (args: unknown) => isSearchUsersToolInput(args),
+    invalidArgsMessage:
+      'Invalid arguments: search_users requires a non-empty "name" string parameter'
   }
 };
 

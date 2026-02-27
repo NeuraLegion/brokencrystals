@@ -292,7 +292,7 @@ describe('/api', () => {
             jsonrpc: '2.0',
             method: 'tools/call',
             params: {
-              name: 'config_tool',
+              name: 'get_config',
               arguments: {}
             },
             id: 3
@@ -317,7 +317,7 @@ describe('/api', () => {
             jsonrpc: '2.0',
             method: 'tools/call',
             params: {
-              name: 'config_tool',
+              name: 'get_config',
               arguments: {}
             },
             id: 4
@@ -340,7 +340,7 @@ describe('/api', () => {
             jsonrpc: '2.0',
             method: 'tools/call',
             params: {
-              name: 'config_tool',
+              name: 'get_config',
               arguments: {}
             },
             id: 5
@@ -356,15 +356,15 @@ describe('/api', () => {
       });
     });
 
-    describe('render_tool (event-stream)', () => {
-      it('should return event-stream payload for render_tool', async () => {
+    describe('render (event-stream)', () => {
+      it('should return event-stream payload for render', async () => {
         const mcpSession = await initializeMcpSession();
         const response = await postMcp(
           {
             jsonrpc: '2.0',
             method: 'tools/call',
             params: {
-              name: 'render_tool',
+              name: 'render',
               arguments: {
                 numbers: [1, 2, 3],
                 template: 'Result: {{=it.sum}}'
@@ -389,8 +389,8 @@ describe('/api', () => {
       });
     });
 
-    describe('spawn (event-stream with notifications)', () => {
-      it('should stream progress notifications and final JSON-RPC result for spawn', async () => {
+    describe('spawn_process (event-stream with notifications)', () => {
+      it('should stream progress notifications and final JSON-RPC result for spawn_process', async () => {
         const token = await loginForMcp('admin', 'admin');
         const mcpSession = await initializeMcpSession(token);
         const response = await postMcp(
@@ -398,7 +398,7 @@ describe('/api', () => {
             jsonrpc: '2.0',
             method: 'tools/call',
             params: {
-              name: 'spawn',
+              name: 'spawn_process',
               arguments: {
                 command: 'node -e console.log(process.version)'
               }
@@ -431,7 +431,7 @@ describe('/api', () => {
         const progressParams = progressNotifications[0]?.params as
           | Record<string, unknown>
           | undefined;
-        expect(progressParams?.tool).toBe('spawn');
+        expect(progressParams?.tool).toBe('spawn_process');
         expect(progressParams?.status).toBe('starting');
 
         const partialOutputNotifications = notifications.filter(
@@ -443,7 +443,7 @@ describe('/api', () => {
         const partialParams = partialOutputNotifications[0]?.params as
           | Record<string, unknown>
           | undefined;
-        expect(partialParams?.tool).toBe('spawn');
+        expect(partialParams?.tool).toBe('spawn_process');
         expect(['stdout', 'stderr']).toContain(partialParams?.stream);
         expect(typeof partialParams?.text).toBe('string');
 
@@ -482,15 +482,15 @@ describe('/api', () => {
       });
     });
 
-    describe('process_numbers_tool', () => {
-      it('should allow guest MCP session to execute JavaScript via process_numbers_tool', async () => {
+    describe('process_numbers', () => {
+      it('should allow guest MCP session to execute JavaScript via process_numbers', async () => {
         const mcpSession = await initializeMcpSession();
         const response = await postMcp(
           {
             jsonrpc: '2.0',
             method: 'tools/call',
             params: {
-              name: 'process_numbers_tool',
+              name: 'process_numbers',
               arguments: {
                 numbers: [1, 2, 3],
                 processing_expression:
@@ -509,6 +509,65 @@ describe('/api', () => {
         expect(response.data?.result?.content?.[0]?.text).toContain(
           'SSJI result: 6'
         );
+      });
+    });
+
+    describe('get_metadata', () => {
+      it('should proxy XML payload to /api/metadata for guest MCP session', async () => {
+        const mcpSession = await initializeMcpSession();
+        const response = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+              name: 'get_metadata',
+              arguments: {
+                xml: '<root><username>John</username></root>'
+              }
+            },
+            id: 11
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.data?.error).toBeUndefined();
+        expect(response.data?.result?.content?.[0]?.text).toContain(
+          '<username>John</username>'
+        );
+      });
+    });
+
+    describe('search_users', () => {
+      it('should proxy /api/users/search/:name and return JSON text payload', async () => {
+        const mcpSession = await initializeMcpSession();
+        const response = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+              name: 'search_users',
+              arguments: {
+                name: 'a'
+              }
+            },
+            id: 12
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.data?.error).toBeUndefined();
+
+        const jsonText = response.data?.result?.content?.[0]?.text;
+        expect(typeof jsonText).toBe('string');
+
+        const parsed = JSON.parse(jsonText) as unknown;
+        expect(Array.isArray(parsed)).toBe(true);
       });
     });
 
@@ -554,8 +613,8 @@ describe('/api', () => {
 
     afterEach(() => runner.clear());
 
-    describe('count_tool', () => {
-      it('should not execute commands for SQL database via MCP count_tool', async () => {
+    describe('get_count', () => {
+      it('should not execute commands for SQL database via MCP get_count', async () => {
         const mcpSession = await initializeMcpSession();
 
         await runner
@@ -574,7 +633,7 @@ describe('/api', () => {
               jsonrpc: '2.0',
               method: 'tools/call',
               params: {
-                name: 'count_tool',
+                name: 'get_count',
                 arguments: {
                   query: 'select count(*) as count from testimonial'
                 }
@@ -586,8 +645,8 @@ describe('/api', () => {
       });
     });
 
-    describe('config_tool', () => {
-      it('should not contain secret tokens leak via MCP config_tool', async () => {
+    describe('get_config', () => {
+      it('should not contain secret tokens leak via MCP get_config', async () => {
         const token = await loginForMcp('admin', 'admin');
         const mcpSession = await initializeMcpSession(token);
 
@@ -607,7 +666,7 @@ describe('/api', () => {
               jsonrpc: '2.0',
               method: 'tools/call',
               params: {
-                name: 'config_tool',
+                name: 'get_config',
                 arguments: {}
               },
               id: 1
@@ -617,8 +676,8 @@ describe('/api', () => {
       });
     });
 
-    describe('render_tool', () => {
-      it('should not contain possibility to server-side code execution via MCP render_tool', async () => {
+    describe('render', () => {
+      it('should not contain possibility to server-side code execution via MCP render', async () => {
         const mcpSession = await initializeMcpSession();
 
         await runner
@@ -637,7 +696,7 @@ describe('/api', () => {
               jsonrpc: '2.0',
               method: 'tools/call',
               params: {
-                name: 'render_tool',
+                name: 'render',
                 arguments: {
                   numbers: [1, 2, 3],
                   template: 'Result: {{=it.sum}}'

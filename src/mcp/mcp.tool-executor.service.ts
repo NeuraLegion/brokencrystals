@@ -5,9 +5,11 @@ import * as dotT from 'dot';
 import {
   ConfigToolInput,
   CountToolInput,
+  MetadataToolInput,
   McpToolResult,
   ProcessNumbersToolInput,
   RenderToolInput,
+  SearchUsersToolInput,
   SpawnToolInput
 } from './api/mcp.types';
 import { McpProxySupport } from './mcp.proxy-support';
@@ -33,25 +35,35 @@ export class McpToolExecutorService extends McpProxySupport {
     context: McpToolExecutionContext = {}
   ): Promise<McpToolResult> {
     switch (toolName) {
-      case 'count_tool':
+      case 'get_count':
         return this.executeCountTool(
           args as CountToolInput,
           context.authorizationHeader
         );
-      case 'config_tool':
+      case 'get_config':
         return this.executeConfigTool(
           args as ConfigToolInput,
           context.authorizationHeader
         );
-      case 'render_tool':
+      case 'render':
         return this.executeRenderTool(args as RenderToolInput);
-      case 'process_numbers_tool':
+      case 'process_numbers':
         return this.executeProcessNumbersTool(
           args as ProcessNumbersToolInput,
           context.authorizationHeader
         );
-      case 'spawn':
+      case 'spawn_process':
         return this.executeSpawnTool(args as SpawnToolInput, context);
+      case 'get_metadata':
+        return this.executeMetadataTool(
+          args as MetadataToolInput,
+          context.authorizationHeader
+        );
+      case 'search_users':
+        return this.executeSearchUsersTool(
+          args as SearchUsersToolInput,
+          context.authorizationHeader
+        );
     }
   }
 
@@ -73,7 +85,7 @@ export class McpToolExecutorService extends McpProxySupport {
       });
 
       if (response.status !== 200) {
-        return this.proxyError('count_tool', response);
+        return this.proxyError('get_count', response);
       }
 
       const text =
@@ -110,7 +122,7 @@ export class McpToolExecutorService extends McpProxySupport {
       });
 
       if (response.status !== 200) {
-        return this.proxyError('config_tool', response);
+        return this.proxyError('get_config', response);
       }
 
       const config =
@@ -176,7 +188,7 @@ export class McpToolExecutorService extends McpProxySupport {
     authorizationHeader?: string
   ): Promise<McpToolResult> {
     try {
-      this.logger.debug('Processing crystals via MCP process_numbers_tool');
+      this.logger.debug('Processing crystals via MCP process_numbers');
 
       const response = await axios.post(
         this.endpoint('/api/process_numbers'),
@@ -196,7 +208,7 @@ export class McpToolExecutorService extends McpProxySupport {
       );
 
       if (response.status !== 200) {
-        return this.proxyError('process_numbers_tool', response);
+        return this.proxyError('process_numbers', response);
       }
 
       const text =
@@ -225,7 +237,7 @@ export class McpToolExecutorService extends McpProxySupport {
     context: McpToolExecutionContext = {}
   ): Promise<McpToolResult> {
     try {
-      this.logger.debug('Executing OS command via MCP spawn');
+      this.logger.debug('Executing OS command via MCP spawn_process');
 
       const [exec, ...args] = input.command.split(' ');
       if (!exec || !exec.trim().length) {
@@ -233,7 +245,7 @@ export class McpToolExecutorService extends McpProxySupport {
           content: [
             {
               type: 'text',
-              text: 'Error: spawn command is empty'
+              text: 'Error: spawn_process command is empty'
             }
           ],
           isError: true
@@ -276,6 +288,88 @@ export class McpToolExecutorService extends McpProxySupport {
           {
             type: 'text',
             text: `OS command result: ${text}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
+        isError: true
+      };
+    }
+  }
+
+  private async executeMetadataTool(
+    input: MetadataToolInput,
+    authorizationHeader?: string
+  ): Promise<McpToolResult> {
+    try {
+      this.logger.debug('Proxy metadata via /api/metadata');
+
+      const response = await axios.post(
+        this.endpoint('/api/metadata'),
+        input.xml,
+        {
+          headers: this.buildProxyHeaders(authorizationHeader, 'text/plain'),
+          responseType: 'text',
+          transformResponse: [(data: string) => data],
+          validateStatus: () => true
+        }
+      );
+
+      if (response.status < 200 || response.status >= 300) {
+        return this.proxyError('get_metadata', response);
+      }
+
+      const text =
+        typeof response.data === 'string'
+          ? response.data
+          : String(response.data);
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
+        isError: true
+      };
+    }
+  }
+
+  private async executeSearchUsersTool(
+    input: SearchUsersToolInput,
+    authorizationHeader?: string
+  ): Promise<McpToolResult> {
+    try {
+      this.logger.debug('Proxy users search via /api/users/search/:name');
+
+      const response = await axios.get(
+        this.endpoint(`/api/users/search/${encodeURIComponent(input.name)}`),
+        {
+          headers: {
+            ...this.buildProxyHeaders(authorizationHeader),
+            accept: 'application/json'
+          },
+          responseType: 'json',
+          validateStatus: () => true
+        }
+      );
+
+      if (response.status !== 200) {
+        return this.proxyError('search_users', response);
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(response.data, null, 2)
           }
         ]
       };

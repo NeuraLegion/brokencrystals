@@ -55,7 +55,7 @@ interface ResolvedStreamedTool {
 export class McpController {
   private static readonly MCP_SESSION_ID_HEADER = 'Mcp-Session-Id';
   private static readonly STREAMED_TOOLS: Record<string, StreamedToolConfig> = {
-    spawn: {
+    spawn_process: {
       heartbeatMs: 5000,
       emitPartialOutput: true,
       getMetadata: (params) => ({
@@ -67,7 +67,7 @@ export class McpController {
     }
   };
   private static readonly EVENT_STREAM_TOOLS = new Set<string>([
-    'render_tool',
+    'render',
     ...Object.keys(McpController.STREAMED_TOOLS)
   ]);
 
@@ -97,7 +97,7 @@ export class McpController {
           id: 0
         }
       },
-      list_tools: {
+      listTools: {
         summary: 'List available tools',
         value: {
           jsonrpc: '2.0',
@@ -105,13 +105,13 @@ export class McpController {
           id: 1
         }
       },
-      call_count_tool: {
-        summary: 'Call count_tool',
+      call_get_count: {
+        summary: 'Call get_count',
         value: {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
-            name: 'count_tool',
+            name: 'get_count',
             arguments: {
               query: 'select count(*) as count from testimonial'
             }
@@ -119,13 +119,13 @@ export class McpController {
           id: 2
         }
       },
-      call_config_tool: {
-        summary: 'Call config_tool',
+      call_get_config: {
+        summary: 'Call get_config',
         value: {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
-            name: 'config_tool',
+            name: 'get_config',
             arguments: {
               include_sensitive: true
             }
@@ -133,13 +133,13 @@ export class McpController {
           id: 3
         }
       },
-      call_render_tool: {
-        summary: 'Call render_tool',
+      call_render: {
+        summary: 'Call render',
         value: {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
-            name: 'render_tool',
+            name: 'render',
             arguments: {
               numbers: [1, 2, 3, 4, 5]
             }
@@ -147,13 +147,13 @@ export class McpController {
           id: 4
         }
       },
-      call_render_tool_with_template: {
-        summary: 'Call render_tool with custom template',
+      call_render_with_template: {
+        summary: 'Call render with custom template',
         value: {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
-            name: 'render_tool',
+            name: 'render',
             arguments: {
               numbers: [10, 20, 30],
               template: 'Result: {{=it.sum}}'
@@ -181,13 +181,13 @@ export class McpController {
           id: 7
         }
       },
-      call_process_numbers_tool: {
-        summary: 'Call process_numbers_tool',
+      call_process_numbers: {
+        summary: 'Call process_numbers',
         value: {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
-            name: 'process_numbers_tool',
+            name: 'process_numbers',
             arguments: {
               numbers: [1, 2, 3, 4],
               processing_expression:
@@ -197,18 +197,46 @@ export class McpController {
           id: 8
         }
       },
-      call_spawn: {
-        summary: 'Call spawn',
+      call_get_metadata: {
+        summary: 'Call get_metadata',
         value: {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
-            name: 'spawn',
+            name: 'get_metadata',
+            arguments: {
+              xml: '<root><username>John</username></root>'
+            }
+          },
+          id: 9
+        }
+      },
+      call_spawn_process: {
+        summary: 'Call spawn_process',
+        value: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'spawn_process',
             arguments: {
               command: 'uname -a'
             }
           },
-          id: 9
+          id: 10
+        }
+      },
+      call_search_users: {
+        summary: 'Call search_users',
+        value: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'search_users',
+            arguments: {
+              name: 'ad'
+            }
+          },
+          id: 11
         }
       }
     }

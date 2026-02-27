@@ -134,6 +134,14 @@ export interface SpawnToolInput {
   command: string;
 }
 
+export interface MetadataToolInput {
+  xml: string;
+}
+
+export interface SearchUsersToolInput {
+  name: string;
+}
+
 // Type guards for runtime validation
 export function isCountToolInput(args: unknown): args is CountToolInput {
   return (
@@ -222,5 +230,37 @@ export function isSpawnToolInput(args: unknown): args is SpawnToolInput {
     'command' in args &&
     typeof command === 'string' &&
     command.trim().length > 0
+  );
+}
+
+export function isMetadataToolInput(args: unknown): args is MetadataToolInput {
+  const xml =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>).xml
+      : undefined;
+
+  return (
+    typeof args === 'object' &&
+    args !== null &&
+    'xml' in args &&
+    typeof xml === 'string' &&
+    xml.trim().length > 0
+  );
+}
+
+export function isSearchUsersToolInput(
+  args: unknown
+): args is SearchUsersToolInput {
+  const name =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>).name
+      : undefined;
+
+  return (
+    typeof args === 'object' &&
+    args !== null &&
+    'name' in args &&
+    typeof name === 'string' &&
+    name.trim().length > 0
   );
 }

