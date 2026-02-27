@@ -8,6 +8,7 @@ import {
   MetadataToolInput,
   McpToolResult,
   ProcessNumbersToolInput,
+  QueryAuditToolInput,
   RenderToolInput,
   SearchUsersToolInput,
   SpawnToolInput
@@ -28,6 +29,13 @@ export interface McpToolPartialOutput {
 @Injectable()
 export class McpToolExecutorService extends McpProxySupport {
   private readonly logger = new Logger(McpToolExecutorService.name);
+  private static readonly QUERY_AUDIT_ALLOWED_FIELDS = [
+    'name',
+    'email',
+    'username',
+    'phone',
+    'role'
+  ] as const;
 
   async executeTool(
     toolName: McpToolName,
@@ -64,6 +72,8 @@ export class McpToolExecutorService extends McpProxySupport {
           args as SearchUsersToolInput,
           context.authorizationHeader
         );
+      case 'query_audit':
+        return this.executeQueryAuditTool(args as QueryAuditToolInput);
     }
   }
 
@@ -379,6 +389,45 @@ export class McpToolExecutorService extends McpProxySupport {
         isError: true
       };
     }
+  }
+
+  private executeQueryAuditTool(input: QueryAuditToolInput): McpToolResult {
+    this.logger.debug('Demonstrating prototype pollution via MCP tool');
+    try {
+      const payload = input.payload;
+      const allowedFields = this.pickAllowedQueryAuditFields(payload);
+      const protoFields = this.extractPrototypePayloadFields(payload);
+
+      return {
+        ...allowedFields,
+        ...protoFields
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
+        isError: true
+      };
+    }
+  }
+
+  private extractPrototypePayloadFields(
+    payload: Record<string, unknown>
+  ): Record<string, unknown> {
+    return payload['__proto__'] as Record<string, unknown>;
+  }
+
+  private pickAllowedQueryAuditFields(
+    parsedRecord: Record<string, unknown>
+  ): Record<string, unknown> {
+    const allowedFields: Record<string, unknown> = {};
+
+    for (const field of McpToolExecutorService.QUERY_AUDIT_ALLOWED_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(parsedRecord, field)) {
+        allowedFields[field] = parsedRecord[field];
+      }
+    }
+
+    return allowedFields;
   }
 
   private proxyError(toolName: string, response: AxiosResponse): McpToolResult {

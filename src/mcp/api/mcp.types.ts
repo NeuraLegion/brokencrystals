@@ -103,13 +103,15 @@ export interface McpResourceReadResult {
   }>;
 }
 
-export interface McpToolResult {
+export interface McpToolContentResult {
   content: Array<{
     type: string;
     text: string;
   }>;
   isError?: boolean;
 }
+
+export type McpToolResult = McpToolContentResult | Record<string, unknown>;
 
 // Tool-specific input types
 export interface CountToolInput {
@@ -140,6 +142,10 @@ export interface MetadataToolInput {
 
 export interface SearchUsersToolInput {
   name: string;
+}
+
+export interface QueryAuditToolInput {
+  payload: Record<string, unknown>;
 }
 
 // Type guards for runtime validation
@@ -262,5 +268,23 @@ export function isSearchUsersToolInput(
     'name' in args &&
     typeof name === 'string' &&
     name.trim().length > 0
+  );
+}
+
+export function isQueryAuditToolInput(
+  args: unknown
+): args is QueryAuditToolInput {
+  const payload =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>).payload
+      : undefined;
+
+  return (
+    typeof args === 'object' &&
+    args !== null &&
+    'payload' in args &&
+    typeof payload === 'object' &&
+    payload !== null &&
+    !Array.isArray(payload)
   );
 }

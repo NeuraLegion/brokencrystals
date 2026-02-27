@@ -238,6 +238,26 @@ export class McpController {
           },
           id: 11
         }
+      },
+      call_query_audit: {
+        summary: 'Call query_audit',
+        value: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'query_audit',
+            arguments: {
+              payload: {
+                name: 'Bob',
+                email: 'bob@example.com',
+                ['__proto__']: {
+                  role: 'admin'
+                }
+              }
+            }
+          },
+          id: 12
+        }
       }
     }
   })

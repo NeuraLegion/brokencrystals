@@ -114,7 +114,7 @@ const parseStreamedToolResponse = (
 };
 
 const postMcp = async (
-  payload: Record<string, unknown>,
+  payload: Record<string, unknown> | string,
   headers: Record<string, string> = {}
 ): Promise<AxiosResponse> =>
   axios.post(mcpUrl, payload, {
@@ -568,6 +568,26 @@ describe('/api', () => {
 
         const parsed = JSON.parse(jsonText) as unknown;
         expect(Array.isArray(parsed)).toBe(true);
+      });
+    });
+
+    describe('query_audit', () => {
+      it('should return allowed top-level fields plus __proto__ fields', async () => {
+        const mcpSession = await initializeMcpSession();
+        const requestBody =
+          '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"query_audit","arguments":{"payload":{"name":"Bob","email":"bob@example.com","__proto__":{"role":"admin"}}}},"id":13}';
+        const response = await postMcp(requestBody, {
+          'Mcp-Session-Id': mcpSession.sessionId
+        });
+
+        console.log('query_audit response.data:', response.data);
+        expect(response.status).toBe(200);
+        expect(response.data?.error).toBeUndefined();
+        expect(response.data?.result).toEqual({
+          email: 'bob@example.com',
+          name: 'Bob',
+          role: 'admin'
+        });
       });
     });
 

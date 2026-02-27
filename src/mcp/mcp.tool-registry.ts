@@ -3,6 +3,7 @@ import {
   isCountToolInput,
   isMetadataToolInput,
   isProcessNumbersToolInput,
+  isQueryAuditToolInput,
   isRenderToolInput,
   isSearchUsersToolInput,
   isSpawnToolInput,
@@ -16,7 +17,8 @@ export type McpToolName =
   | 'process_numbers'
   | 'spawn_process'
   | 'get_metadata'
-  | 'search_users';
+  | 'search_users'
+  | 'query_audit';
 
 export interface McpToolRegistration {
   definition: McpTool;
@@ -190,6 +192,29 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     validate: (args: unknown) => isSearchUsersToolInput(args),
     invalidArgsMessage:
       'Invalid arguments: search_users requires a non-empty "name" string parameter'
+  },
+
+  query_audit: {
+    definition: {
+      name: 'query_audit',
+      description:
+        'Return selected top-level fields from attacker-controlled JSON plus all fields under "__proto__" to demonstrate prototype pollution behavior.',
+      accessLevel: 'public',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          payload: {
+            type: 'object',
+            description:
+              'JSON body. Supports top-level name/email/username/phone and "__proto__" object fields.'
+          }
+        },
+        required: ['payload']
+      }
+    },
+    validate: (args: unknown) => isQueryAuditToolInput(args),
+    invalidArgsMessage:
+      'Invalid arguments: query_audit requires a non-empty "payload" object parameter'
   }
 };
 
