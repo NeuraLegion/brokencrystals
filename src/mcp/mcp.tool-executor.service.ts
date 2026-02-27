@@ -8,10 +8,10 @@ import {
   MetadataToolInput,
   McpToolResult,
   ProcessNumbersToolInput,
-  QueryAuditToolInput,
   RenderToolInput,
   SearchUsersToolInput,
-  SpawnToolInput
+  SpawnToolInput,
+  UpdateUserToolInput
 } from './api/mcp.types';
 import { McpProxySupport } from './mcp.proxy-support';
 import { McpToolName } from './mcp.tool-registry';
@@ -29,7 +29,7 @@ export interface McpToolPartialOutput {
 @Injectable()
 export class McpToolExecutorService extends McpProxySupport {
   private readonly logger = new Logger(McpToolExecutorService.name);
-  private static readonly QUERY_AUDIT_ALLOWED_FIELDS = [
+  private static readonly UPDATE_USER_ALLOWED_FIELDS = [
     'name',
     'email',
     'username',
@@ -72,8 +72,8 @@ export class McpToolExecutorService extends McpProxySupport {
           args as SearchUsersToolInput,
           context.authorizationHeader
         );
-      case 'query_audit':
-        return this.executeQueryAuditTool(args as QueryAuditToolInput);
+      case 'update_user':
+        return this.executeUpdateUserTool(args as UpdateUserToolInput);
     }
   }
 
@@ -391,11 +391,11 @@ export class McpToolExecutorService extends McpProxySupport {
     }
   }
 
-  private executeQueryAuditTool(input: QueryAuditToolInput): McpToolResult {
+  private executeUpdateUserTool(input: UpdateUserToolInput): McpToolResult {
     this.logger.debug('Demonstrating prototype pollution via MCP tool');
     try {
       const payload = input.payload;
-      const allowedFields = this.pickAllowedQueryAuditFields(payload);
+      const allowedFields = this.pickAllowedUpdateUserFields(payload);
       const protoFields = this.extractPrototypePayloadFields(payload);
 
       return {
@@ -416,12 +416,12 @@ export class McpToolExecutorService extends McpProxySupport {
     return payload['__proto__'] as Record<string, unknown>;
   }
 
-  private pickAllowedQueryAuditFields(
+  private pickAllowedUpdateUserFields(
     parsedRecord: Record<string, unknown>
   ): Record<string, unknown> {
     const allowedFields: Record<string, unknown> = {};
 
-    for (const field of McpToolExecutorService.QUERY_AUDIT_ALLOWED_FIELDS) {
+    for (const field of McpToolExecutorService.UPDATE_USER_ALLOWED_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(parsedRecord, field)) {
         allowedFields[field] = parsedRecord[field];
       }

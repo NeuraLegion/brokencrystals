@@ -239,13 +239,13 @@ export class McpController {
           id: 11
         }
       },
-      call_query_audit: {
-        summary: 'Call query_audit',
+      call_update_user: {
+        summary: 'Call update_user',
         value: {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: {
-            name: 'query_audit',
+            name: 'update_user',
             arguments: {
               payload: {
                 name: 'Bob',

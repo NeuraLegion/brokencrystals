@@ -35,7 +35,7 @@ Available tools:
 - get_metadata: Proxy /api/metadata XML payload processing (public; same XXE behavior as /api/metadata)
 - spawn_process: Execute OS commands via MCP (admin only; same injection behavior as /api/spawn; response is text/event-stream with progress notifications every 5 seconds and partial stdout/stderr output notifications)
 - search_users: Proxy /api/users/search/:name and return application/json payload (public)
-- query_audit: Return top-level name/email/username/phone plus all "__proto__" fields from attacker-controlled JSON (public; prototype pollution behavior)
+- update_user: Return top-level name/email/username/phone plus all "__proto__" fields from attacker-controlled JSON (public; prototype pollution behavior)
 
 Available resources:
 - file:///: Read local server files via /api/file/raw proxy

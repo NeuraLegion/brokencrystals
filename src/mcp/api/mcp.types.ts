@@ -144,7 +144,7 @@ export interface SearchUsersToolInput {
   name: string;
 }
 
-export interface QueryAuditToolInput {
+export interface UpdateUserToolInput {
   payload: Record<string, unknown>;
 }
 
@@ -271,9 +271,9 @@ export function isSearchUsersToolInput(
   );
 }
 
-export function isQueryAuditToolInput(
+export function isUpdateUserToolInput(
   args: unknown
-): args is QueryAuditToolInput {
+): args is UpdateUserToolInput {
   const payload =
     typeof args === 'object' && args !== null
       ? (args as Record<string, unknown>).payload

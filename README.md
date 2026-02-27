@@ -1236,7 +1236,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **Server-Side JavaScript Injection via process_numbers** - The `process_numbers` proxies `/api/process_numbers` and executes arbitrary JavaScript from the `processing_expression` expression in server context.
   - **XML External Entity via get_metadata** - The `get_metadata` proxies `/api/metadata` and processes attacker-controlled XML with external entities enabled (same vulnerability class as `/api/metadata`).
   - **Broken Access Control via search_users** - The `search_users` proxies `/api/users/search/:name` and returns `application/json` search results.
-  - **Prototype Pollution via query_audit** - The `query_audit` tool returns top-level `name`/`email`/`username`/`phone` fields plus everything inside attacker-controlled `__proto__` payload fields.
+  - **Prototype Pollution via update_user** - The `update_user` tool returns top-level `name`/`email`/`username`/`phone` fields plus everything inside attacker-controlled `__proto__` payload fields.
   - **OS Command Injection via spawn_process** - The `spawn_process` executes arbitrary operating system commands through MCP (same vulnerability class as `/api/spawn`) and streams progress over event-stream.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
 
@@ -1259,7 +1259,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
     - `spawn_process` responds as `text/event-stream`:
       `event: notification` + `data: <progress-payload>` before execution and every ~5 seconds while running, partial command output via `event: notification` + `data: <partial-output-payload>`, then `event: message` + `data: <json-rpc-payload>`.
     - `search_users` proxies `/api/users/search/:name` and returns `application/json` data.
-    - `query_audit` returns top-level `name`/`email`/`username`/`phone` plus all fields from `payload.__proto__` as JSON.
+    - `update_user` returns top-level `name`/`email`/`username`/`phone` plus all fields from `payload.__proto__` as JSON.
 
   - **MCP Tool/Resource List (Quick Reference)**:
 
@@ -1407,7 +1407,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          }'
        ```
 
-    7. `query_audit` (public)  
+    7. `update_user` (public)  
        Vulnerability: **Prototype Pollution** via attacker-controlled `__proto__` object fields.  
        Example:
 
@@ -1419,7 +1419,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
            "jsonrpc": "2.0",
            "method": "tools/call",
            "params": {
-            "name": "query_audit",
+            "name": "update_user",
             "arguments": {
               "payload": {
                 "name": "Bob",
@@ -1679,7 +1679,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
      This payload proxies `/api/users/search/:name` and returns JSON user search results.
 
-  8. **Prototype Pollution via query_audit**:
+  8. **Prototype Pollution via update_user**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1689,7 +1689,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
          "jsonrpc": "2.0",
          "method": "tools/call",
          "params": {
-           "name": "query_audit",
+           "name": "update_user",
            "arguments": {
              "payload": {
                "name": "Bob",
