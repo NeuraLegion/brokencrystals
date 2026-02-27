@@ -274,17 +274,12 @@ export function isSearchUsersToolInput(
 export function isUpdateUserToolInput(
   args: unknown
 ): args is UpdateUserToolInput {
-  const payload =
-    typeof args === 'object' && args !== null
-      ? (args as Record<string, unknown>).payload
-      : undefined;
+  if (typeof args !== 'object' || args === null) {
+    return false;
+  }
 
+  const { payload } = args as { payload?: unknown };
   return (
-    typeof args === 'object' &&
-    args !== null &&
-    'payload' in args &&
-    typeof payload === 'object' &&
-    payload !== null &&
-    !Array.isArray(payload)
+    typeof payload === 'object' && payload !== null && !Array.isArray(payload)
   );
 }
