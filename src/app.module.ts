@@ -37,9 +37,16 @@ import { McpModule } from './mcp/mcp.module';
     HttpClientModule,
     GraphQLModule.forRoot<MercuriusDriverConfig>({
       driver: MercuriusDriver,
-      graphiql: true,
+      graphiql: false, // Disable GraphiQL to prevent introspection via the UI
       autoSchemaFile: true,
-      introspection: false // Disable introspection to prevent schema exposure
+      introspection: false, // Ensure introspection is disabled
+      context: ({ request }) => {
+        // Example of adding additional security checks
+        if (!request.headers['x-api-key'] || request.headers['x-api-key'] !== 'expected-api-key') {
+          throw new Error('Unauthorized');
+        }
+        return { headers: request.headers };
+      }
     }),
     PartnersModule,
     EmailModule,
