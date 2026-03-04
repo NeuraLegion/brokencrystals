@@ -46,6 +46,10 @@ export class PartnersController {
     this.logger.debug(`Getting partners with xpath expression "${xpath}"`);
 
     try {
+      // Sanitize the xpath input to prevent injection
+      if (!this.isValidXPath(xpath)) {
+        throw new Error('Invalid XPath expression');
+      }
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
       throw new HttpException(
@@ -85,6 +89,11 @@ export class PartnersController {
     );
 
     try {
+      // Sanitize inputs to prevent XPath injection
+      if (!this.isValidInput(username) || !this.isValidInput(password)) {
+        throw new Error('Invalid input');
+      }
+
       const xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
       const xmlStr = this.partnersService.getPartnersProperties(xpath);
 
@@ -128,6 +137,11 @@ export class PartnersController {
     this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
 
     try {
+      // Sanitize the keyword input to prevent injection
+      if (!this.isValidInput(keyword)) {
+        throw new Error('Invalid input');
+      }
+
       const xpath = `//partners/partner/name[contains(., '${keyword}')]`;
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
@@ -143,5 +157,17 @@ export class PartnersController {
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
+  }
+
+  private isValidInput(input: string): boolean {
+    // Basic validation to ensure input does not contain disallowed characters
+    const disallowedChars = /['"&<>]/;
+    return !disallowedChars.test(input);
+  }
+
+  private isValidXPath(xpath: string): boolean {
+    // Basic validation to ensure xpath does not contain disallowed patterns
+    const disallowedPatterns = /['"&<>]|(or|and|=|!=|<|>)/;
+    return !disallowedPatterns.test(xpath);
   }
 }
