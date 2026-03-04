@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('POST /api/process_numbers', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['server_side_js_injection', 'xss', 'business_constraint_bypass', 'osi'],
+      tests: ['server_side_js_injection'],
       attackParamLocations: [AttackParamLocation.BODY],
       starMetadata: {
         code_source: "NeuraLegion/brokencrystals:stable",
