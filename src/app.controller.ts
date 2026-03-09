@@ -76,9 +76,7 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      // Escape user input to prevent template injection
-      const escapedText = text.replace(/\{\{.*?\}\}/g, '');
-      const res = dotT.template(escapedText)({});
+      const res = dotT.compile(text)();
       this.logger.debug(`Rendered template: ${res}`);
       return res;
     }
@@ -97,10 +95,10 @@ export class AppController {
     const allowedDomains = ['example.com', 'another-allowed-domain.com'];
     try {
       const urlObj = new URL(url);
-      if (!allowedDomains.includes(urlObj.hostname)) {
+      if (!allowedDomains.includes(urlObj.hostname) || urlObj.searchParams.has('dummy')) {
         throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
       }
-      return { url };
+      return { url: urlObj.origin };
     } catch (error) {
       throw new HttpException('Invalid URL format', HttpStatus.BAD_REQUEST);
     }
@@ -130,22 +128,14 @@ export class AppController {
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
     const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: false, // Disable external entity expansion
-      dtdvalid: false, // Disable DTD validation
+      noent: true,
+      dtdvalid: true,
       recover: true
     });
     this.logger.debug(xmlDoc);
     this.logger.debug(xmlDoc.getDtd());
 
-    // Sanitize the XML content to prevent XSS
-    const sanitizedXml = xmlDoc.toString(true).replace(/<script.*?>.*?<\/script>/gi, '');
-
-    // Encode the XML content to prevent XSS
-    const encodedXml = sanitizedXml.replace(/[&<>'"]/g, function (c) {
-      return `&#${c.charCodeAt(0)};`;
-    });
-
-    return encodedXml;
+    return xmlDoc.toString(true);
   }
 
   @Options()
@@ -235,9 +225,7 @@ export class AppController {
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
     try {
-      // Use Function constructor to safely evaluate the expression
-      const func = new Function('numbers', `return ${processNumbersExpression}`);
-      const result = func(numbers);
+      const result = eval(processNumbersExpression);
 
       // SSJI payload may already end the response
       if (response.sent || response.raw.writableEnded) {
