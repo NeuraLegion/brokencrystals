@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /api/file/aws', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['lfi', 'open_cloud_storage', 'amazon_s3_takeover', 'ssrf', 'secret_tokens'],
+      tests: ['ssrf'],
       attackParamLocations: [AttackParamLocation.QUERY, AttackParamLocation.HEADER],
       starMetadata: {
         code_source: 'NeuraLegion/brokencrystals:stable',

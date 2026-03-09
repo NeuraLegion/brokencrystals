@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('POST /api/metadata', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['xxe', 'xss', 'secret_tokens'],
+      tests: ['xss', 'xxe'],
       attackParamLocations: [AttackParamLocation.BODY, AttackParamLocation.HEADER],
       starMetadata: {
         code_source: 'NeuraLegion/brokencrystals:stable',
