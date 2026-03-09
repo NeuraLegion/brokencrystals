@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { Readable } from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -13,36 +13,46 @@ export class FileService {
   async getFile(file: string): Promise<Readable> {
     this.logger.log(`Reading file: ${file}`);
 
-    if (file.startsWith('/')) {
-      await fs.promises.access(file, R_OK);
+    try {
+      if (file.startsWith('/')) {
+        await fs.promises.access(file, R_OK);
 
-      return fs.createReadStream(file);
-    } else if (file.startsWith('http')) {
-      const content = await this.cloudProviders.get(file);
+        return fs.createReadStream(file);
+      } else if (file.startsWith('http')) {
+        const content = await this.cloudProviders.get(file);
 
-      if (content) {
-        return Readable.from(content);
+        if (content) {
+          return Readable.from(content);
+        } else {
+          throw new Error(`no such file or directory, access '${file}'`);
+        }
       } else {
-        throw new Error(`no such file or directory, access '${file}'`);
+        file = path.resolve(process.cwd(), file);
+
+        await fs.promises.access(file, R_OK);
+
+        return fs.createReadStream(file);
       }
-    } else {
-      file = path.resolve(process.cwd(), file);
-
-      await fs.promises.access(file, R_OK);
-
-      return fs.createReadStream(file);
+    } catch (err) {
+      this.logger.error(err.message);
+      throw new InternalServerErrorException('An error occurred while accessing the file.');
     }
   }
 
   async deleteFile(file: string): Promise<boolean> {
-    if (file.startsWith('/')) {
-      throw new Error('cannot delete file from this location');
-    } else if (file.startsWith('http')) {
-      throw new Error('cannot delete file from this location');
-    } else {
-      file = path.resolve(process.cwd(), file);
-      await fs.promises.unlink(file);
-      return true;
+    try {
+      if (file.startsWith('/')) {
+        throw new Error('cannot delete file from this location');
+      } else if (file.startsWith('http')) {
+        throw new Error('cannot delete file from this location');
+      } else {
+        file = path.resolve(process.cwd(), file);
+        await fs.promises.unlink(file);
+        return true;
+      }
+    } catch (err) {
+      this.logger.error(err.message);
+      throw new InternalServerErrorException('An error occurred while deleting the file.');
     }
   }
 }
