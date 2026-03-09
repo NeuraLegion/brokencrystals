@@ -76,8 +76,9 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      // Use a safe template rendering approach
-      const res = dotT.template(text)({});
+      // Escape user input to prevent template injection
+      const escapedText = text.replace(/\{\{.*?\}\}/g, '');
+      const res = dotT.template(escapedText)({});
       this.logger.debug(`Rendered template: ${res}`);
       return res;
     }
@@ -139,7 +140,12 @@ export class AppController {
     // Sanitize the XML content to prevent XSS
     const sanitizedXml = xmlDoc.toString(true).replace(/<script.*?>.*?<\/script>/gi, '');
 
-    return sanitizedXml;
+    // Encode the XML content to prevent XSS
+    const encodedXml = sanitizedXml.replace(/[&<>'"]/g, function (c) {
+      return `&#${c.charCodeAt(0)};`;
+    });
+
+    return encodedXml;
   }
 
   @Options()
