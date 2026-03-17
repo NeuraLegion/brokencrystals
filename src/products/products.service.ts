@@ -45,6 +45,10 @@ export class ProductsService {
   async findLatest(limit: number): Promise<Product[]> {
     this.logger.debug(`Find ${limit} latest products`);
     const maxLimit = 10; // Enforce maximum limit here as well
+    if (isNaN(limit) || limit <= 0) {
+      this.logger.warn(`Invalid limit provided: ${limit}. Defaulting to 3.`);
+      limit = 3;
+    }
     if (limit > maxLimit) {
       this.logger.warn(`Requested limit ${limit} exceeds maximum allowed limit of ${maxLimit}. Using max limit.`);
       limit = maxLimit;
