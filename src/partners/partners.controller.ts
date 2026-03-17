@@ -46,6 +46,10 @@ export class PartnersController {
     this.logger.debug(`Getting partners with xpath expression "${xpath}"`);
 
     try {
+      // Validate and sanitize the xpath input
+      if (!this.isValidXPath(xpath)) {
+        throw new Error('Invalid XPath expression');
+      }
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
       throw new HttpException(
@@ -85,6 +89,10 @@ export class PartnersController {
     );
 
     try {
+      // Sanitize inputs to prevent XPath injection
+      if (!this.isValidInput(username) || !this.isValidInput(password)) {
+        throw new Error('Invalid input');
+      }
       const xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
       const xmlStr = this.partnersService.getPartnersProperties(xpath);
 
@@ -128,6 +136,10 @@ export class PartnersController {
     this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
 
     try {
+      // Sanitize input to prevent XPath injection
+      if (!this.isValidInput(keyword)) {
+        throw new Error('Invalid input');
+      }
       const xpath = `//partners/partner/name[contains(., '${keyword}')]`;
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
@@ -143,5 +155,17 @@ export class PartnersController {
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
+  }
+
+  private isValidXPath(xpath: string): boolean {
+    // Implement a basic validation for XPath expressions
+    // This is a placeholder for actual validation logic
+    return /^[a-zA-Z0-9\/\[\]\@\=\'\s]+$/.test(xpath);
+  }
+
+  private isValidInput(input: string): boolean {
+    // Implement a basic validation for inputs
+    // This is a placeholder for actual validation logic
+    return /^[a-zA-Z0-9]+$/.test(input);
   }
 }

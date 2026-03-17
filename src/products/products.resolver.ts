@@ -39,8 +39,7 @@ export class ProductsResolver {
     @Args('productName') productName: string
   ): Promise<boolean> {
     try {
-      const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
-      await this.productsService.updateProduct(query);
+      await this.productsService.updateProduct(productName);
       return true;
     } catch (err) {
       throw new InternalServerErrorException({
