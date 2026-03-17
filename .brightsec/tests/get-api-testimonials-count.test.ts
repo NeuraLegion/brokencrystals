@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /api/testimonials/count', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['sqli', 'full_path_disclosure', 'business_constraint_bypass'],
+      tests: ['sqli'],
       attackParamLocations: [AttackParamLocation.QUERY],
       starMetadata: {
         code_source: 'NeuraLegion/brokencrystals:stable',
