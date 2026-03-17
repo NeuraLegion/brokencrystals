@@ -39,7 +39,19 @@ import { McpModule } from './mcp/mcp.module';
       driver: MercuriusDriver,
       graphiql: false, // Disable GraphiQL to prevent introspection
       autoSchemaFile: true,
-      introspection: process.env.NODE_ENV !== 'production' // Disable introspection in production
+      introspection: false, // Ensure introspection is disabled
+      context: ({ request }) => {
+        // Example of adding custom logic to context
+        const user = request.headers['x-user'];
+        return { user };
+      },
+      formatError: (error) => {
+        // Custom error formatting
+        return {
+          message: error.message,
+          code: error.extensions?.code || 'INTERNAL_SERVER_ERROR',
+        };
+      },
     }),
     PartnersModule,
     EmailModule,
