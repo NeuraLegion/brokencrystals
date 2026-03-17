@@ -39,7 +39,7 @@ import { McpModule } from './mcp/mcp.module';
       driver: MercuriusDriver,
       graphiql: false, // Disable GraphiQL to prevent introspection
       autoSchemaFile: true,
-      introspection: false // Disable introspection to secure the schema
+      introspection: process.env.NODE_ENV !== 'production' // Disable introspection in production
     }),
     PartnersModule,
     EmailModule,
