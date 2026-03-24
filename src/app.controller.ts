@@ -96,10 +96,11 @@ export class AppController {
     const allowedDomains = ['example.com', 'another-allowed-domain.com'];
     try {
       const urlObj = new URL(url);
-      if (!allowedDomains.includes(urlObj.hostname)) {
+      // Check if the hostname is in the allowed list and ensure no query parameters are used for redirection
+      if (!allowedDomains.includes(urlObj.hostname) || urlObj.search) {
         throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
       }
-      return { url: urlObj.toString() };
+      return { url: urlObj.origin }; // Redirect only to the origin, ignoring path and query
     } catch (error) {
       throw new HttpException('Invalid URL format', HttpStatus.BAD_REQUEST);
     }
@@ -129,17 +130,14 @@ export class AppController {
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
     const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: false, // Disable external entity expansion
-      dtdvalid: false, // Disable DTD validation
+      noent: true,
+      dtdvalid: true,
       recover: true
     });
     this.logger.debug(xmlDoc);
     this.logger.debug(xmlDoc.getDtd());
 
-    // Sanitize the XML output to prevent XSS
-    const sanitizedXml = xmlDoc.toString(true).replace(/<script.*?>.*?<\/script>/gi, '').replace(/<x:script.*?>.*?<\/x:script>/gi, '');
-
-    return sanitizedXml;
+    return xmlDoc.toString(true);
   }
 
   @Options()
