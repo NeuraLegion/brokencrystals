@@ -1,0 +1,23 @@
+name: 'Configure Bright Credentials'
+description: 'Retrieves OIDC token, exchanges for BrightSec API key, and exports as BRIGHT_TOKEN.'
+runs:
+  using: 'composite'
+  steps:
+    - name: Get OIDC token
+      id: oidc-token
+      shell: bash
+      run: |
+        echo "::add-mask::${{ secrets.BRIGHT_CLIENT_ID }}"
+        echo "::add-mask::${{ secrets.BRIGHT_CLIENT_SECRET }}"
+        export OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL")
+        echo "OIDC_TOKEN=$OIDC_TOKEN" >> $GITHUB_ENV
+    - name: Exchange OIDC token for BrightSec API key
+      id: bright-token
+      shell: bash
+      run: |
+        BRIGHT_RESPONSE=$(curl -s -X POST https://auth.brightsec.com/oidc/token \
+          -H "Content-Type: application/json" \
+          -d '{"clientId": "${{ secrets.BRIGHT_CLIENT_ID }}", "clientSecret": "${{ secrets.BRIGHT_CLIENT_SECRET }}", "oidcToken": '"$OIDC_TOKEN"'}')
+        BRIGHT_TOKEN=$(echo "$BRIGHT_RESPONSE" | grep -o '"pureKey":"[^"]*"' | cut -d '"' -f4)
+        echo "::add-mask::$BRIGHT_TOKEN"
+        echo "BRIGHT_TOKEN=$BRIGHT_TOKEN" >> $GITHUB_ENV
