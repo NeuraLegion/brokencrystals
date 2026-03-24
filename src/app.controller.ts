@@ -93,7 +93,16 @@ export class AppController {
   })
   @Redirect()
   async redirect(@Query('url') url: string) {
-    return { url };
+    const allowedDomains = ['example.com', 'another-allowed-domain.com'];
+    try {
+      const urlObj = new URL(url);
+      if (!allowedDomains.includes(urlObj.hostname)) {
+        throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+      }
+      return { url: urlObj.toString() };
+    } catch (error) {
+      throw new HttpException('Invalid URL format', HttpStatus.BAD_REQUEST);
+    }
   }
 
   @Post('metadata')
@@ -120,14 +129,17 @@ export class AppController {
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
     const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
+      noent: false, // Disable external entity expansion
+      dtdvalid: false, // Disable DTD validation
       recover: true
     });
     this.logger.debug(xmlDoc);
     this.logger.debug(xmlDoc.getDtd());
 
-    return xmlDoc.toString(true);
+    // Sanitize the XML output to prevent XSS
+    const sanitizedXml = xmlDoc.toString(true).replace(/<script.*?>.*?<\/script>/gi, '');
+
+    return sanitizedXml;
   }
 
   @Options()

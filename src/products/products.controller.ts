@@ -141,7 +141,7 @@ export class ProductsController {
       return products.map((p: Product) => new ProductDto(p));
     } catch (err) {
       throw new HttpException(
-        { statusCode: HttpStatus.OK, error: err.message },
+        { statusCode: HttpStatus.OK, error: 'An error occurred while searching for products.' },
         HttpStatus.OK
       );
     }
@@ -169,10 +169,8 @@ export class ProductsController {
       const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
       return await this.productsService.updateProduct(query);
     } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message,
-        location: __filename
-      });
+      this.logger.error(`Error updating product views: ${err.message}`);
+      throw new InternalServerErrorException('An error occurred while updating product views.');
     }
   }
 
