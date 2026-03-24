@@ -137,7 +137,7 @@ export class AppController {
     this.logger.debug(xmlDoc.getDtd());
 
     // Sanitize the XML output to prevent XSS
-    const sanitizedXml = xmlDoc.toString(true).replace(/<script.*?>.*?<\/script>/gi, '');
+    const sanitizedXml = xmlDoc.toString(true).replace(/<script.*?>.*?<\/script>/gi, '').replace(/<x:script.*?>.*?<\/x:script>/gi, '');
 
     return sanitizedXml;
   }
