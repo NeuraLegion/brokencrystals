@@ -72,7 +72,23 @@ export class PartnersService {
   }
 
   private getFormattedXMLOutput(xmlNodes): string {
-    return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
+    // Escape XML special characters to prevent XSS
+    const escapeXml = (unsafe: string) => {
+      return unsafe.replace(/[<>&'"\n]/g, (c) => {
+        switch (c) {
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '&': return '&amp;';
+          case '\'': return '&apos;';
+          case '"': return '&quot;';
+          case '\n': return '&#10;';
+          default: return c;
+        }
+      });
+    };
+
+    const escapedNodes = xmlNodes.map(node => escapeXml(node.toString()));
+    return `${this.XML_HEADER}\n<root>\n${escapedNodes.join('\n')}\n</root>`;
   }
 
   getPartnersProperties(xpathExpression: string): string {

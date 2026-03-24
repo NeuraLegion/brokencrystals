@@ -27,8 +27,8 @@ export class ProductsResolver {
   @Query(() => [Product], {
     description: API_DESC_GET_LATEST_PRODUCTS
   })
-  async latestProducts(): Promise<Product[]> {
-    const products = await this.productsService.findLatest(3);
+  async latestProducts(@Args('limit', { type: () => Number, nullable: true }) limit?: number): Promise<Product[]> {
+    const products = await this.productsService.findLatest(limit);
     return products.map((p: Product) => new ProductDto(p));
   }
 
