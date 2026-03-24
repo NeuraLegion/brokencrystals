@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /api/products/views', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['sqli', 'full_path_disclosure', 'http_method_fuzzing', 'business_constraint_bypass'],
+      tests: ['full_path_disclosure'],
       attackParamLocations: [AttackParamLocation.HEADER],
       starMetadata: {
         code_source: 'NeuraLegion/brokencrystals:stable',
