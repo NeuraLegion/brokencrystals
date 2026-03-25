@@ -1,0 +1,36 @@
+name: 'Configure Bright Credentials'
+description: 'Retrieves OIDC token, posts to BrightSec, and exports BRIGHT_TOKEN.'
+runs:
+  using: 'composite'
+  steps:
+    - name: Retrieve OIDC token and exchange for Bright token
+      id: get-bright-token
+      shell: bash
+      env:
+        BRIGHT_HOSTNAME: ${{ inputs.BRIGHT_HOSTNAME }}
+        BRIGHT_PROJECT_ID: ${{ inputs.BRIGHT_PROJECT_ID }}
+      run: |
+        set -e
+        echo "::group::Requesting OIDC token from GitHub"
+        export OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=bright")
+        echo "OIDC_TOKEN: $OIDC_TOKEN"
+        echo "::endgroup::"
+        echo "::group::Posting OIDC token to BrightSec"
+        RESPONSE=$(curl -s -X POST "https://$BRIGHT_HOSTNAME/api/v1/oidc/token" \
+          -H "Content-Type: application/json" \
+          -d '{"oidcToken":'"$OIDC_TOKEN"', "projectId": "'$BRIGHT_PROJECT_ID'"}')
+        echo "BrightSec response: $RESPONSE"
+        echo "::endgroup::"
+        PURE_KEY=$(echo "$RESPONSE" | grep -o '"pureKey":"[^"]*"' | cut -d':' -f2 | tr -d '"')
+        if [ -z "$PURE_KEY" ]; then
+          echo "Failed to retrieve pureKey from BrightSec response" >&2
+          exit 1
+        fi
+        echo "BRIGHT_TOKEN=$PURE_KEY" >> $GITHUB_ENV
+inputs:
+  BRIGHT_HOSTNAME:
+    description: 'BrightSec hostname'
+    required: true
+  BRIGHT_PROJECT_ID:
+    description: 'BrightSec project ID'
+    required: true
