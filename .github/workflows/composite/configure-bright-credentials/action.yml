@@ -1,0 +1,39 @@
+name: 'Configure Bright Credentials'
+description: 'Authenticate with BrightSec and configure credentials for subsequent steps.'
+runs:
+  using: 'composite'
+  steps:
+    - name: Retrieve OIDC Token
+      id: oidc-token
+      shell: bash
+      run: |
+        echo "::set-output name=token::$(curl -s -H \"Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN\" \"$ACTIONS_ID_TOKEN_REQUEST_URL&audience=brightsec.com\" | jq -r .value)"
+    - name: Exchange OIDC Token for BrightSec API Key
+      id: exchange-api-key
+      shell: bash
+      env:
+        BRIGHT_HOSTNAME: ${{ inputs.BRIGHT_HOSTNAME }}
+        BRIGHT_PROJECT_ID: ${{ inputs.BRIGHT_PROJECT_ID }}
+        BRIGHT_TOKEN: ${{ inputs.BRIGHT_TOKEN }}
+        OIDC_TOKEN: ${{ steps.oidc-token.outputs.token }}
+      run: |
+        RESPONSE=$(curl -s -X POST "https://${BRIGHT_HOSTNAME}/api/auth/oidc/token" \
+          -H "Content-Type: application/json" \
+          -d '{"projectId": "'${BRIGHT_PROJECT_ID}'", "oidcToken": "'${OIDC_TOKEN}'"}')
+        API_KEY=$(echo "$RESPONSE" | jq -r .apiKey)
+        if [ "$API_KEY" = "null" ] || [ -z "$API_KEY" ]; then
+          echo "Failed to retrieve BrightSec API key: $RESPONSE"
+          exit 1
+        fi
+        echo "::add-mask::$API_KEY"
+        echo "API_KEY=$API_KEY" >> $GITHUB_ENV
+inputs:
+  BRIGHT_HOSTNAME:
+    description: 'BrightSec hostname (e.g., app.brightsec.com)'
+    required: true
+  BRIGHT_PROJECT_ID:
+    description: 'BrightSec Project ID'
+    required: true
+  BRIGHT_TOKEN:
+    description: 'BrightSec Token (if required)'
+    required: false
