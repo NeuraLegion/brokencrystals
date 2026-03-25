@@ -66,11 +66,11 @@ jobs:
           CI_AGENT_STEP_NAME: Install SecTesterJS Dependencies
           CI_AGENT_STEP_INDEX: "5"
       - name: Authenticate with Bright
-        uses: ./.github/workflows/composite/configure-bright-credentials
+        uses: brightsec/github-action@v1
         with:
-          BRIGHT_HOSTNAME: development.playground.brightsec.com
-          BRIGHT_PROJECT_ID: bSLRUwVyZ9aMHv4S9BrwaW
-          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+          hostname: development.playground.brightsec.com
+          project-id: bSLRUwVyZ9aMHv4S9BrwaW
+          token: ${{ secrets.BRIGHT_TOKEN }}
       - name: Run Security Tests
         env:
           CI_AGENT_STEP_NAME: Run Security Tests
