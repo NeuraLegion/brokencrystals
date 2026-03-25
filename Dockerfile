@@ -2,7 +2,7 @@
 # BUILD FOR LOCAL DEVELOPMENT
 ###################
 
-FROM nodejs:18-alpine AS build
+FROM node:18-alpine AS build
 
 WORKDIR /usr/app
 
@@ -10,7 +10,7 @@ WORKDIR /usr/app
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node tsconfig.build.json ./
 COPY --chown=node:node tsconfig.json ./
-# COPY --chown=node:node nest-cli.fast.json ./
+COPY --chown=node:node nest-cli.json ./
 COPY --chown=node:node .env ./
 COPY --chown=node:node config ./config
 COPY --chown=node:node keycloak ./keycloak
@@ -18,7 +18,7 @@ COPY --chown=node:node src ./src
 
 ENV NPM_CONFIG_LOGLEVEL=error
 RUN npm ci --no-audit
-RUN npm run build:fast
+RUN npm run build
 RUN npm prune --production
 
 # Copy and build client project
@@ -49,11 +49,11 @@ COPY --chown=node:node .env ./
 COPY --chown=node:node config ./config
 COPY --chown=node:node keycloak ./keycloak
 
-COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
-COPY --chown=node:node --from=build /usr/src/app/package*.json ./
-COPY --chown=node:node --from=build /usr/src/app/dist ./dist
+COPY --chown=node:node --from=build /usr/app/node_modules ./node_modules
+COPY --chown=node:node --from=build /usr/app/package*.json ./
+COPY --chown=node:node --from=build /usr/app/dist ./dist
 
-COPY --chown=node:node --from=build /usr/src/app/client/dist ./client/dist
-COPY --chown=node:node --from=build /usr/src/app/client/vcs ./client/vcs
+COPY --chown=node:node --from=build /usr/app/client/dist ./client/dist
+COPY --chown=node:node --from=build /usr/app/client/vcs ./client/vcs
 
 CMD ["npm", "run", "start:prod"]
