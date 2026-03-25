@@ -63,9 +63,17 @@ export class PartnersService {
     xpathExpression: string
   ): SelectReturnType {
     const partnersXMLObj = this.getPartnersXMLObj();
-    // Sanitize the input to prevent XPATH Injection
-    const sanitizedXpathExpression = this.sanitizeXpath(xpathExpression);
-    return xpath.select(sanitizedXpathExpression, partnersXMLObj);
+    // Use a predefined set of allowed queries to prevent XPATH Injection
+    const allowedQueries = [
+      "//partner[name='Walter White']",
+      "//partner[name='Jesse Pinkman']",
+      "//partner[name='Michael Ehrmantraut']",
+      "//partner[name='Gus Fring']"
+    ];
+    if (!allowedQueries.includes(xpathExpression)) {
+      throw new Error('Invalid XPath expression');
+    }
+    return xpath.select(xpathExpression, partnersXMLObj);
   }
 
   private getFormattedXMLOutput(xmlNodes): string {
@@ -85,10 +93,5 @@ export class PartnersService {
     }
 
     return this.getFormattedXMLOutput(xmlNodes);
-  }
-
-  private sanitizeXpath(xpathExpression: string): string {
-    // Basic sanitization to escape single quotes
-    return xpathExpression.replace(/'/g, "\'");
   }
 }
