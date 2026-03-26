@@ -63,7 +63,7 @@ export class PartnersService {
     xpathExpression: string
   ): SelectReturnType {
     const partnersXMLObj = this.getPartnersXMLObj();
-    // Sanitize the input to prevent XPATH Injection
+    // Use a more robust method to handle XPath expressions
     const sanitizedXpathExpression = this.sanitizeXpath(xpathExpression);
     return xpath.select(sanitizedXpathExpression, partnersXMLObj);
   }
@@ -88,7 +88,12 @@ export class PartnersService {
   }
 
   private sanitizeXpath(xpathExpression: string): string {
-    // Basic sanitization logic to escape single quotes
-    return xpathExpression.replace(/'/g, "\'");
+    // Implement a whitelist approach to only allow certain characters
+    // This is a basic example, adjust the regex to fit your needs
+    const allowedCharacters = /^[a-zA-Z0-9_\-\/\[\]\(\)\*\@\:\.\s]+$/;
+    if (!allowedCharacters.test(xpathExpression)) {
+      throw new Error('Invalid characters in XPath expression');
+    }
+    return xpathExpression;
   }
 }
