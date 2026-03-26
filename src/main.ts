@@ -263,7 +263,11 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  await app.listen(1234, '0.0.0.0');
+
+  // Align the HTTP listener port with the workflow/compose expectation (3000)
+  // while still allowing overrides via PORT.
+  const port = Number.parseInt(process.env.PORT || '3000', 10);
+  await app.listen(port, '0.0.0.0');
 }
 
 if (cluster.isPrimary && process.env.NODE_ENV === 'production') {
