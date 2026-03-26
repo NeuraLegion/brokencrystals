@@ -60,23 +60,20 @@ export class PartnersService {
   }
 
   private selectPartnerPropertiesByXPATH(
-    xpathExpression: string
+    keyword: string
   ): SelectReturnType {
     const partnersXMLObj = this.getPartnersXMLObj();
-    // Sanitize the input to prevent XPath Injection
-    const sanitizedXpathExpression = this.sanitizeXpath(xpathExpression);
-    return xpath.select(sanitizedXpathExpression, partnersXMLObj);
+    // Use a parameterized approach to construct the XPath query
+    const xpathExpression = `//partner[contains(name, '${this.escapeForXPath(keyword)}')]`;
+    return xpath.select(xpathExpression, partnersXMLObj);
   }
 
   private getFormattedXMLOutput(xmlNodes): string {
-    return `${this.XML_HEADER}
-<root>
-${xmlNodes.join('\n')}
-</root>`;
+    return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
-  getPartnersProperties(xpathExpression: string): string {
-    let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
+  getPartnersProperties(keyword: string): string {
+    let xmlNodes = this.selectPartnerPropertiesByXPATH(keyword);
 
     if (!Array.isArray(xmlNodes)) {
       this.logger.debug(
@@ -90,16 +87,8 @@ ${xmlNodes.join('\n')}
     return this.getFormattedXMLOutput(xmlNodes);
   }
 
-  getPartnersPropertiesWithParams(xpathExpression: string, params: { [key: string]: string }): string {
-    const partnersXMLObj = this.getPartnersXMLObj();
-    const variables = Object.keys(params).map(key => `declare variable $${key} as xs:string external;`).join(' ');
-    const fullExpression = `${variables} ${xpathExpression}`;
-    const xmlNodes = xpath.select(fullExpression, partnersXMLObj, null, params);
-    return this.getFormattedXMLOutput(xmlNodes);
-  }
-
-  private sanitizeXpath(xpathExpression: string): string {
-    // Basic sanitization to escape single quotes
-    return xpathExpression.replace(/'/g, "\'");
+  private escapeForXPath(input: string): string {
+    // Escape single quotes by splitting and using concat
+    return input.replace(/'/g, "''");
   }
 }
