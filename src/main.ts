@@ -263,7 +263,11 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  await app.listen(1234, '0.0.0.0');
+
+  // The docker-compose workflow and readiness probe expect HTTP on port 3000.
+  // Binding to 1234 causes connection resets/empty replies on :3000.
+  const port = Number(process.env.PORT || 3000);
+  await app.listen(port, '0.0.0.0');
 }
 
 if (cluster.isPrimary && process.env.NODE_ENV === 'production') {
