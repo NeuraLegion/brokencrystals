@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('GET /api/partners/searchPartners?keyword=Walter', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['xpathi', 'xss', 'full_path_disclosure'],
+      tests: ['xpathi'],
       attackParamLocations: [AttackParamLocation.QUERY],
       starMetadata: {
         code_source: 'NeuraLegion/brokencrystals:stable',

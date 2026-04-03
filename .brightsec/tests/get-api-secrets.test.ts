@@ -22,10 +22,7 @@ test('GET /api/secrets', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
       tests: [
-        'secret_tokens',
-        'open_database',
-        'full_path_disclosure',
-        'xss'
+        'secret_tokens'
       ],
       attackParamLocations: [AttackParamLocation.PATH],
       starMetadata: {

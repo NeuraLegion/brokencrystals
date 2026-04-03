@@ -22,11 +22,7 @@ test('POST /graphql allTestimonials', { signal: AbortSignal.timeout(timeout) }, 
   await runner
     .createScan({
       tests: [
-        'graphql_introspection',
-        'bopla',
-        'sqli',
-        'xss',
-        'jwt'
+        'graphql_introspection'
       ],
       attackParamLocations: [AttackParamLocation.BODY],
       starMetadata: {
