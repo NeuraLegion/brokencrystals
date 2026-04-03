@@ -271,22 +271,5 @@ async function bootstrap() {
   });
 }
 
-if (cluster.isPrimary && process.env.NODE_ENV === 'production') {
-  console.log(`Primary ${process.pid} is running`);
-
-  const numCPUs = os.cpus().length;
-  for (let i = 0; i < numCPUs; i++) {
-    cluster.fork();
-  }
-
-  cluster.on('exit', (worker, code, signal) => {
-    console.log(
-      `Worker ${worker.process.pid} died with code ${code} and signal ${signal}`
-    );
-    console.log('Starting a new worker');
-    cluster.fork();
-  });
-} else {
-  bootstrap();
-  console.log(`Worker ${process.pid} started`);
-}
+// Cluster mode disabled for containerized environments to ensure readiness for healthchecks
+bootstrap();
