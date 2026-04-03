@@ -71,6 +71,7 @@ services:
       test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3000/api/config']
       timeout: 30s
     environment:
+      NODE_ENV: production
       URL: http://localhost:3000
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
