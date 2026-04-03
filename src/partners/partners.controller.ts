@@ -46,7 +46,9 @@ export class PartnersController {
     this.logger.debug(`Getting partners with xpath expression "${xpath}"`);
 
     try {
-      return this.partnersService.getPartnersProperties(xpath);
+      // Sanitize the xpath input to prevent injection
+      const sanitizedXpath = xpath.replace(/['"\[\]\|]/g, '');
+      return this.partnersService.getPartnersProperties(sanitizedXpath);
     } catch (err) {
       throw new HttpException(
         `Failed to load XML using XPATH. Details: ${err}`,
@@ -85,7 +87,11 @@ export class PartnersController {
     );
 
     try {
-      const xpath = `//partners/partner[username/text()='${username}' and password/text()='${password}']/*`;
+      // Sanitize inputs to prevent XPath Injection
+      const sanitizedUsername = username.replace(/'/g, "&apos;");
+      const sanitizedPassword = password.replace(/'/g, "&apos;");
+
+      const xpath = `//partners/partner[username/text()='${sanitizedUsername}' and password/text()='${sanitizedPassword}']/*`;
       const xmlStr = this.partnersService.getPartnersProperties(xpath);
 
       // Check if account's data contains any information - If not, the login failed!
@@ -128,7 +134,8 @@ export class PartnersController {
     this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
 
     try {
-      const xpath = `//partners/partner/name[contains(., '${keyword}')]`;
+      const sanitizedKeyword = keyword.replace(/['"\[\]\|]/g, '');
+      const xpath = `//partners/partner/name[contains(., '${sanitizedKeyword}')]`;
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
       const errStr = err.toString();
