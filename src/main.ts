@@ -102,36 +102,6 @@ async function bootstrap() {
     reply.send({});
   });
 
-  server.setDefaultRoute((req, res) => {
-    if (req.url && req.url.startsWith('/api')) {
-      res.statusCode = 404;
-      return res.end(
-        JSON.stringify({
-          success: false,
-          error: {
-            kind: 'user_input',
-            message: 'Not Found'
-          }
-        })
-      );
-    }
-
-    readFile(
-      join(__dirname, '..', 'client', 'dist', 'index.html'),
-      'utf8',
-      (err, data) => {
-        if (err) {
-          res.statusCode = 500;
-          res.end('Internal Server Error');
-          return;
-        }
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'text/html');
-        res.end(data);
-      }
-    );
-  });
-
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist'),
     prefix: `/`,
@@ -269,6 +239,36 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   await app.listen(3000, '0.0.0.0');
+
+  server.setDefaultRoute((req, res) => {
+    if (req.url && req.url.startsWith('/api')) {
+      res.statusCode = 404;
+      return res.end(
+        JSON.stringify({
+          success: false,
+          error: {
+            kind: 'user_input',
+            message: 'Not Found'
+          }
+        })
+      );
+    }
+
+    readFile(
+      join(__dirname, '..', 'client', 'dist', 'index.html'),
+      'utf8',
+      (err, data) => {
+        if (err) {
+          res.statusCode = 500;
+          res.end('Internal Server Error');
+          return;
+        }
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/html');
+        res.end(data);
+      }
+    );
+  });
 }
 
 if (cluster.isPrimary && process.env.NODE_ENV === 'production') {
