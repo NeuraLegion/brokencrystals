@@ -83,13 +83,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       projectId,
       baseUrl,
       repeater.repeaterId,
+      config.brightToken,
+      config.brightHostname,
     );
-    const authCount = Object.keys(authResult.endpointAuthMap).length;
     await progress.phaseDetail(
       "auth",
       "auth_result",
       authResult.hasAuth
-        ? `Auth configured for ${authCount} endpoints`
+        ? `Auth configured: ${authResult.authObjectId}`
         : "No auth required",
     );
 
@@ -101,7 +102,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       endpoints,
       baseUrl,
       repeater.repeaterId,
-      authResult.endpointAuthMap,
+      authResult.authObjectId,
     );
     await progress.phaseDetail(
       "entrypoints",
@@ -150,6 +151,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             repeater.repeaterId,
             group.tests,
             `Engine Pass ${iteration + 1} — Group ${gi + 1}`,
+            authResult.authObjectId,
           );
           scanIds.push(scanId);
         } catch (err) {

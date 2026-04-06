@@ -10,19 +10,17 @@ export async function registerEntrypoints(
   endpoints: DiscoveredEndpoint[],
   baseUrl: string,
   repeaterId: string,
-  endpointAuthMap: Record<string, string>,
+  authObjectId?: string,
 ): Promise<string[]> {
   const entrypointIds: string[] = [];
 
   for (const ep of endpoints) {
     const path = resolvePath(ep.path);
     const fullUrl = `${baseUrl}${path}`;
-    const key = `${ep.method} ${ep.path}`;
-    const authObjectId = endpointAuthMap[key];
 
     console.log(
       `[Entrypoints] Adding ${ep.method} ${fullUrl}` +
-        (authObjectId ? ` [auth: ${authObjectId}]` : " [public]"),
+        (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]"),
     );
 
     // Build request object with all available data
