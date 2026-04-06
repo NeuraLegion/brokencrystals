@@ -34,7 +34,6 @@ import {
   ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
-import * as dotT from 'dot';
 import { FastifyReply } from 'fastify';
 import { parseXml } from 'libxmljs';
 import { AppConfig } from './app.config.api';
@@ -55,6 +54,7 @@ import { JwtProcessorType } from './auth/auth.service';
 import { AppService } from './app.service';
 import { BASIC_USER_INFO, UserDto } from './users/api/UserDto';
 import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
+import { compile } from 'handlebars'; // safer template engine
 
 @Controller('/api')
 @ApiTags('App controller')
@@ -77,14 +77,16 @@ export class AppController {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
 
-      // Allowlist approach or escaping to prevent SSTI
-      if (/\{\{.*?\}\}/.test(text)) {
+      // Additional validation and sanitization
+      if (!/^[\w\s,.!?-]+$/.test(text)) { // allow only specific characters
         throw new HttpException('Invalid template content.', HttpStatus.BAD_REQUEST);
       }
-
+      
       try {
-        const compiledTemplate = dotT.template(text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
-        const res = compiledTemplate({});
+        // Using Handlebars for secure templating
+        const template = compile("<p>{{safeContent}}</p>");
+        const data = { safeContent: text.replace(/[{}]/g, '') }; // additional sanitization
+        const res = template(data);
         this.logger.debug(`Rendered template: ${res}`);
         return res;
       } catch (e) {
