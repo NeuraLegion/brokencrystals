@@ -8,7 +8,6 @@ export async function runSecurityScan(
   repeaterId: string,
   testTags: string[],
   scanName?: string,
-  authObjectId?: string,
 ): Promise<string> {
   console.log(`[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests`);
 
@@ -19,10 +18,6 @@ export async function runSecurityScan(
     tests: testTags,
     name: scanName ?? `Engine Scan ${new Date().toISOString()}`,
   };
-
-  if (authObjectId) {
-    args.authObjectId = authObjectId;
-  }
 
   const response = await bright.callMcpToolRaw("runScan", args);
 

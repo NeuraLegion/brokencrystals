@@ -55864,22 +55864,46 @@ function buildTokenRegex(fieldPath) {
   return `"${escaped}"\\s*:\\s*"([^"]*)"`;
 }
 async function testAuthObject(brightToken, brightHostname, authObjectId) {
-  const url3 = `https://${brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}/test`;
+  const baseUrl = `https://${brightHostname}`;
+  const headers = {
+    Authorization: `Api-Key ${brightToken}`,
+    Accept: "application/json",
+    "Content-Type": "application/json"
+  };
   try {
-    const res = await fetch(url3, {
-      method: "GET",
-      headers: {
-        Authorization: `Api-Key ${brightToken}`,
-        Accept: "application/json"
-      }
+    const createRes = await fetch(`${baseUrl}/api/v3/auth-objects/tests`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ authObjectId })
     });
-    if (!res.ok) {
-      console.warn(`[Auth] Test auth failed: HTTP ${res.status} ${res.statusText}`);
+    if (!createRes.ok) {
+      console.warn(`[Auth] Failed to start auth test: HTTP ${createRes.status} ${createRes.statusText}`);
       return false;
     }
-    const results = await res.json();
-    const allPassed = results.every((r) => r.status === "success");
-    for (const r of results) {
+    const testView = await createRes.json();
+    console.log(`[Auth] Auth test started: ${testView.id}`);
+    const maxWaitMs = 6e4;
+    const pollIntervalMs = 3e3;
+    const start = Date.now();
+    let latest = testView;
+    while (!latest.finishedAt && Date.now() - start < maxWaitMs) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+      const pollRes = await fetch(
+        `${baseUrl}/api/v3/auth-objects/tests/${encodeURIComponent(latest.id)}`,
+        { method: "GET", headers }
+      );
+      if (!pollRes.ok) {
+        console.warn(`[Auth] Poll auth test failed: HTTP ${pollRes.status}`);
+        return false;
+      }
+      latest = await pollRes.json();
+    }
+    if (!latest.finishedAt) {
+      console.warn("[Auth] Auth test timed out after 60 s \u2014 proceeding anyway");
+      return true;
+    }
+    const allPassed = latest.results.every((r) => r.status === "success");
+    for (const r of latest.results) {
       console.log(`[Auth] Test stage=${r.stage} status=${r.status}${r.message ? ` \u2014 ${r.message}` : ""}`);
     }
     if (!allPassed) {
@@ -56192,7 +56216,7 @@ function consolidateGroups(groups, maxGroups) {
 }
 
 // src/phases/scan.ts
-async function runSecurityScan(bright, projectId, entrypointIds, repeaterId, testTags, scanName, authObjectId) {
+async function runSecurityScan(bright, projectId, entrypointIds, repeaterId, testTags, scanName) {
   console.log(`[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests`);
   const args = {
     projectId,
@@ -56201,9 +56225,6 @@ async function runSecurityScan(bright, projectId, entrypointIds, repeaterId, tes
     tests: testTags,
     name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`
   };
-  if (authObjectId) {
-    args.authObjectId = authObjectId;
-  }
   const response = await bright.callMcpToolRaw("runScan", args);
   if (response.startsWith("Error")) {
     throw new Error(`runScan failed: ${response}`);
@@ -56596,8 +56617,7 @@ async function runOrchestrator(ctx) {
             group.entrypointIds,
             repeater.repeaterId,
             group.tests,
-            `Engine Pass ${iteration + 1} \u2014 Group ${gi + 1}`,
-            authResult.authObjectId
+            `Engine Pass ${iteration + 1} \u2014 Group ${gi + 1}`
           );
           scanIds.push(scanId);
         } catch (err) {

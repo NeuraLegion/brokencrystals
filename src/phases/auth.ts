@@ -371,25 +371,65 @@ async function testAuthObject(
   brightHostname: string,
   authObjectId: string,
 ): Promise<boolean> {
-  const url = `https://${brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}/test`;
+  const baseUrl = `https://${brightHostname}`;
+  const headers = {
+    Authorization: `Api-Key ${brightToken}`,
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+
   try {
-    const res = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Api-Key ${brightToken}`,
-        Accept: "application/json",
-      },
+    // Start an async auth object test
+    const createRes = await fetch(`${baseUrl}/api/v3/auth-objects/tests`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ authObjectId }),
     });
 
-    if (!res.ok) {
-      console.warn(`[Auth] Test auth failed: HTTP ${res.status} ${res.statusText}`);
+    if (!createRes.ok) {
+      console.warn(`[Auth] Failed to start auth test: HTTP ${createRes.status} ${createRes.statusText}`);
       return false;
     }
 
-    const results = (await res.json()) as Array<{ stage: string; status: string; message?: string }>;
-    const allPassed = results.every((r) => r.status === "success");
+    const testView = (await createRes.json()) as {
+      id: string;
+      results: Array<{ stage: string; status: string; message?: string }>;
+      finishedAt: string | null;
+    };
 
-    for (const r of results) {
+    console.log(`[Auth] Auth test started: ${testView.id}`);
+
+    // Poll for results until finishedAt is set
+    const maxWaitMs = 60_000;
+    const pollIntervalMs = 3_000;
+    const start = Date.now();
+
+    let latest = testView;
+
+    while (!latest.finishedAt && Date.now() - start < maxWaitMs) {
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+
+      const pollRes = await fetch(
+        `${baseUrl}/api/v3/auth-objects/tests/${encodeURIComponent(latest.id)}`,
+        { method: "GET", headers },
+      );
+
+      if (!pollRes.ok) {
+        console.warn(`[Auth] Poll auth test failed: HTTP ${pollRes.status}`);
+        return false;
+      }
+
+      latest = (await pollRes.json()) as typeof testView;
+    }
+
+    if (!latest.finishedAt) {
+      console.warn("[Auth] Auth test timed out after 60 s — proceeding anyway");
+      return true;
+    }
+
+    const allPassed = latest.results.every((r) => r.status === "success");
+
+    for (const r of latest.results) {
       console.log(`[Auth] Test stage=${r.stage} status=${r.status}${r.message ? ` — ${r.message}` : ""}`);
     }
 

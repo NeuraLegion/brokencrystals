@@ -151,7 +151,6 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             repeater.repeaterId,
             group.tests,
             `Engine Pass ${iteration + 1} — Group ${gi + 1}`,
-            authResult.authObjectId,
           );
           scanIds.push(scanId);
         } catch (err) {
