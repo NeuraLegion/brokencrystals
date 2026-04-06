@@ -9,7 +9,7 @@ This engine integrates with:
 - **Bright MCP Server** for security scanning capabilities
 - **OpenAI/Claude API** for LLM-driven code analysis and fix generation
 
-The workflow follows an 8-step scan-fix-validate loop, repeating up to 5 passes until vulnerabilities are resolved or max iterations reached.
+The workflow follows a multi-phase scan-fix-validate loop, repeating up to 5 passes until vulnerabilities are resolved or max iterations reached.
 
 ## Architecture
 
@@ -31,11 +31,12 @@ src/
 │   ├── analyze.ts          # 1. Tech stack & endpoint discovery
 │   ├── startup.ts          # 2. Start application locally
 │   ├── repeater.ts         # 3. Bright Repeater setup
-│   ├── auth.ts             # 4. Auth detection & configuration
+│   ├── auth.ts             # 4. Auth detection & configuration (multistep)
 │   ├── entrypoints.ts      # 5. Register endpoints with Bright
-│   ├── scan.ts             # 6. Run security scan
-│   ├── findings.ts         # 7. Fetch vulnerability findings
-│   └── fix.ts              # 8. Generate & apply fixes
+│   ├── test-selection.ts   # 6. Per-endpoint security test selection
+│   ├── scan.ts             # 7. Run security scans (programmatic)
+│   ├── findings.ts         # 8. Fetch vulnerability findings
+│   └── fix.ts              # 9. Generate, apply & validate fixes
 │
 └── prompts/                # LLM prompts & schemas
     ├── detect-tech-stack.ts
@@ -47,7 +48,7 @@ src/
 
 ## Workflow
 
-The orchestrator executes the following 8-step workflow, repeating steps 6–8 up to 5 times:
+The orchestrator executes the following workflow, repeating the scan-fix loop up to 5 times:
 
 ### Phase 1: Analyze Repository
 - **Component**: `phases/analyze.ts`
@@ -73,39 +74,57 @@ The orchestrator executes the following 8-step workflow, repeating steps 6–8 u
 - **Component**: `phases/auth.ts`
 - Analyzes codebase for auth mechanisms (JWT, API keys, sessions, OAuth)
 - Determines login endpoints and token extraction logic
-- Registers auth configuration with Bright (multistep or header-based)
-- **Output**: Auth object ID for use in scans
+- Registers auth configuration with Bright — prefers **multistep** type for login-based auth (performs login, extracts token via NexTemplate interpolation, injects into scan requests)
+- Uses correct Bright NexTemplate syntax: `{{ auth_object.stages.<step>.response.body | match: /regex/ }}`
+- Maps individual endpoints to their auth objects
+- **Output**: Per-endpoint auth mapping (`endpointAuthMap`)
 
 ### Phase 5: Register Entrypoints
 - **Component**: `phases/entrypoints.ts`
-- Registers discovered endpoints with Bright project
-- Associates repeater and auth (if applicable) with each entrypoint
+- Programmatically registers discovered endpoints with Bright project
+- Associates repeater and per-endpoint auth objects with each entrypoint
+- Handles conflict responses by reusing existing entrypoints
 - **Output**: List of entrypoint IDs ready for scanning
 
-### Phase 6: Run Security Scan
-- **Component**: `phases/scan.ts`
-- Initiates Bright scan with 18+ security tests (SQL injection, XSS, CSRF, etc.)
-- Polls scan status until completion (up to 30 minutes)
-- **Output**: Completed scan with vulnerabilities identified
+### Phase 6: Select Security Tests
+- **Component**: `phases/test-selection.ts`
+- LLM selects relevant security tests for each endpoint based on its technology, parameters, and auth
+- Groups endpoints that share the same test set into scan groups for efficiency
+- Auth-dependent tests (BAC, BOLA, brute force, etc.) are excluded when auth is not configured
+- **Output**: `ScanGroup[]` — each with entrypoint IDs and test tags
 
-### Phase 7: Fetch Findings
+### Phase 7: Run Security Scans
+- **Component**: `phases/scan.ts`
+- Programmatically launches one Bright scan per scan group (no LLM involved)
+- Polls scan status until completion (up to 30 minutes per scan)
+- Failed scan group launches don't crash the pipeline — only successful scans are tracked
+- **Output**: Completed scans with vulnerabilities identified
+
+### Phase 8: Fetch Findings
 - **Component**: `phases/findings.ts`
-- Retrieves critical/high/medium severity issues from completed scan
+- Retrieves critical/high/medium severity issues from completed scans
 - Normalizes issue data for fix generation
 - **Output**: List of `Finding` objects with vulnerability details
 
-### Phase 8: Generate & Apply Fixes
+### Phase 9: Generate, Apply & Validate Fixes
 - **Component**: `phases/fix.ts`
 - For each finding, performs taint analysis to identify vulnerable code paths
 - Generates fixes using LLM with context of affected files
 - Applies fixes to repository and commits changes
 - Restarts application for re-validation
+- **If the fix breaks the app**: captures Docker container logs, lets the LLM diagnose and repair the broken code (up to 2 repair attempts), or reverts the fix commit as a fallback
+
+### Cleanup
+- Kills application and repeater processes
+- Deletes the repeater from Bright to avoid stale entries
+- Closes MCP connection
 
 ### Loop Strategy
-- **Iterations**: Up to 5 passes (phases 6-8)
+- **Iterations**: Up to 5 passes (phases 7-9)
 - **Early exit**:
   - No vulnerabilities found → exit successfully
-  - Scan fails → exit with error
+  - All scan launches fail → exit with error
+  - Fix breaks app and can't be repaired → revert and report
   - Max iterations reached → exit with remaining vulnerabilities reported
 
 ## Prerequisites
@@ -124,7 +143,9 @@ export GITHUB_INFERENCE_TOKEN=<inference-token>  # Optional
 
 # Bright (required)
 export BRIGHT_TOKEN=<api-key-from-app.brightsec.com>
-export BRIGHT_HOSTNAME=app.brightsec.com         # Optional, defaults to app.brightsec.com
+export BRIGHT_MCP_URL=https://app.brightsec.com/mcp  # MCP server URL
+export BRIGHT_PROJECT_ID=<project-id>                # Optional, auto-detected if omitted
+export BRIGHT_HOSTNAME=app.brightsec.com              # Optional, derived from BRIGHT_MCP_URL
 ```
 
 ### System Requirements
@@ -190,17 +211,20 @@ The agent connects to Bright via Model Context Protocol (MCP) to:
 - Run DAST security scans with 18+ vulnerability tests
 - Retrieve scan results and findings
 
-## Default Security Tests
+## Security Tests
 
-The engine runs the following Bright tests by default:
+Tests are selected **per-endpoint** by the LLM based on the endpoint's technology, parameters, and purpose. Available tests include:
 
 ```
-sqli, xss, stored_xss, ssrf, osi, lfi, ssti, xxe,
-open_redirect, nosql, header_security, cookie_security,
-csrf, jwt, proto_pollution, secret_tokens, directory_listing, insecure_tls
+sqli, xss, stored_xss, ssrf, osi, lfi, ssti, xxe, open_redirect, nosql,
+header_security, cookie_security, csrf, jwt, proto_pollution, secret_tokens,
+directory_listing, insecure_tls, prompt_injection, bola, bopla, mass_assignment,
+brute_force_login, broken_access_control, excessive_data_exposure, and more
 ```
 
-See `phases/scan.ts` for the full list.
+Auth-dependent tests (BAC, BOLA, brute force, etc.) are automatically excluded when no auth is configured.
+
+See `phases/test-selection.ts` for the selection logic.
 
 ## Example Output
 
@@ -249,13 +273,20 @@ cd copilot-engine-sdk/cli
 go build ./cmd/engine-cli
 
 # 3. Run the engine against a target repo
-./engine-cli run "node /path/to/bright-agent/dist/index.js" \
+cd /path/to/bright-agent
+
+GITHUB_TOKEN="your-github-pat" \
+BRIGHT_TOKEN="your-bright-api-token" \
+BRIGHT_MCP_URL="https://app.brightsec.com/mcp" \
+GITHUB_INFERENCE_URL="https://api.openai.com/v1" \
+OPENAI_API_KEY="your-openai-key" \
+./path/to/engine-cli run "node dist/index.js" \
   --repo https://github.com/owner/target-repo \
   --problem-statement "Run a security scan and fix vulnerabilities" \
   --action fix \
-  --timeout 30m \
-  --env BRIGHT_TOKEN=your-bright-api-token \
-  --env BRIGHT_HOSTNAME=app.brightsec.com
+  --timeout 120m \
+  --engine-logs \
+  --verbose
 ```
 
 The CLI will:
@@ -276,11 +307,13 @@ Run `./engine-cli run --help` for all available options.
 ## Key Features
 
 ✅ **Automated Discovery** — Finds HTTP endpoints via code analysis
-✅ **Auth Detection** — Auto-detects JWT, API keys, sessions, OAuth
+✅ **Auth Detection** — Auto-detects JWT, API keys, sessions, OAuth with multistep login flows
+✅ **Per-Endpoint Test Selection** — LLM selects relevant security tests per endpoint
 ✅ **Local Execution** — Starts your app locally for realistic scanning
-✅ **Repeater Integration** — Supports private/internal networks
+✅ **Repeater Integration** — Supports private/internal networks, auto-cleanup on exit
 ✅ **Multi-pass Validation** — Up to 5 iterations of scan → fix → validate
-✅ **LLM-Driven Fixes** — Claude/GPT-4 generates contextual patches
+✅ **Fix Recovery** — Detects when fixes break the app, repairs or reverts automatically
+✅ **LLM-Driven Fixes** — GPT-4o generates contextual patches with taint analysis
 ✅ **GitHub Integration** — Reports progress via Copilot Engine API
 
 ## Troubleshooting
@@ -294,10 +327,15 @@ Check Bright dashboard at [app.brightsec.com](https://app.brightsec.com). The 30
 Ensure prerequisites run correctly:
 - Check `startup.ts` LLM output for detected startup command
 - Manually verify `npm start` or equivalent works in the cloned repo
+- If the app breaks after a fix is applied, the engine will capture Docker container logs, attempt a repair, or revert the fix commit automatically
 
 ### Auth Detection Failed
 
-If the LLM can't detect auth, you can manually configure it in Bright dashboard before running the scan.
+If the LLM can't detect auth, you can manually configure it in Bright dashboard before running the scan. The engine uses Bright's **multistep** auth type with NexTemplate interpolation — avoid the simpler "header" type for login-based auth.
+
+### Entrypoint Conflicts
+
+When re-running against the same project, existing entrypoints are detected and reused (conflict handling). No manual cleanup needed.
 
 ### No HTTP Endpoints Found
 
