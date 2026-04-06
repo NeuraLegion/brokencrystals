@@ -74,25 +74,27 @@ export class AppController {
     description: 'Rendered result'
   })
   async renderTemplate(@Body() raw): Promise<string> {
-    if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
-      const text = raw.toString().trim();
+    if (typeof raw !== 'string' && !Buffer.isBuffer(raw)) {
+      throw new HttpException('Invalid input type.', HttpStatus.BAD_REQUEST);
+    }
 
-      // Additional validation and sanitization
-      if (!/^[\w\s,.!?-]+$/.test(text)) { // allow only specific characters
-        throw new HttpException('Invalid template content.', HttpStatus.BAD_REQUEST);
-      }
-      
-      try {
-        // Using Handlebars for secure templating
-        const template = compile("<p>{{safeContent}}</p>");
-        const data = { safeContent: text.replace(/[{}]/g, '') }; // additional sanitization
-        const res = template(data);
-        this.logger.debug(`Rendered template: ${res}`);
-        return res;
-      } catch (e) {
-        this.logger.error('Template rendering failed.', e);
-        throw new InternalServerErrorException('Error rendering the template.');
-      }
+    const text = raw.toString().trim();
+
+    // Strict allowlist validation
+    if (!/^[\w\s,.!?-]+$/.test(text)) {
+      throw new HttpException('Invalid template content.', HttpStatus.BAD_REQUEST);
+    }
+
+    try {
+      // Use Handlebars with strict content limitation
+      const template = compile("<p>{{{safeContent}}}</p>", { noEscape: false });
+      const data = { safeContent: text }; // secure context
+      const res = template(data);
+      this.logger.debug(`Rendered template: ${res}`);
+      return res;
+    } catch (e) {
+      this.logger.error('Template rendering failed.', e);
+      throw new InternalServerErrorException('Error rendering the template.');
     }
   }
 
