@@ -76,9 +76,21 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
-      this.logger.debug(`Rendered template: ${res}`);
-      return res;
+
+      // Allowlist approach or escaping to prevent SSTI
+      if (/\{\{.*?\}\}/.test(text)) {
+        throw new HttpException('Invalid template content.', HttpStatus.BAD_REQUEST);
+      }
+
+      try {
+        const compiledTemplate = dotT.template(text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
+        const res = compiledTemplate({});
+        this.logger.debug(`Rendered template: ${res}`);
+        return res;
+      } catch (e) {
+        this.logger.error('Template rendering failed.', e);
+        throw new InternalServerErrorException('Error rendering the template.');
+      }
     }
   }
 

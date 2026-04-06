@@ -27,6 +27,10 @@ export class ChatController {
   })
   async query(@Body() messages: ChatMessage[]): Promise<string> {
     try {
+      // Validate message contents
+      if (!this.validateMessages(messages)) {
+        throw new HttpException('Invalid message format.', HttpStatus.BAD_REQUEST);
+      }
       return await this.chatService.query(messages);
     } catch (err) {
       throw new HttpException(
@@ -34,5 +38,12 @@ export class ChatController {
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
+  }
+
+  private validateMessages(messages: ChatMessage[]): boolean {
+    // Add specific validation logic here, e.g., regex checks, content length restrictions
+    return messages.every(message => {
+      return typeof message.content === 'string' && message.content.length > 0 && message.content.length <= 500;
+    });
   }
 }

@@ -37,9 +37,11 @@ export class ChatService {
       );
     }
 
+    const sanitizedMessages = this.sanitizeMessages(messages);
+
     const chatRequest: ChatRequest = {
       model: process.env.CHAT_API_MODEL,
-      messages,
+      messages: sanitizedMessages,
       max_tokens:
         +process.env.CHAT_API_MAX_TOKENS || DEFAULT_CHAT_API_MAX_TOKENS,
       stream: false,
@@ -59,5 +61,23 @@ export class ChatService {
     );
 
     return res?.choices?.[0]?.message?.content;
+  }
+
+  private sanitizeMessages(messages: ChatMessage[]): ChatMessage[] {
+    return messages.map(message => {
+      const sanitizedContent = this.sanitizeContent(message.content);
+      return { ...message, content: sanitizedContent };
+    });
+  }
+
+  private sanitizeContent(content: string): string {
+    // Basic sanitization logic, can be enhanced as needed
+    const disallowedPatterns = [
+      // Add regex patterns or strings to block specific prompt injections
+    ];
+    disallowedPatterns.forEach(pattern => {
+      content = content.replace(pattern, '');
+    });
+    return content;
   }
 }
