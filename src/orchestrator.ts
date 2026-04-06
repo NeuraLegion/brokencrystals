@@ -25,6 +25,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
   let appProcess: ChildProcess | undefined;
   let repeater: RepeaterHandle | undefined;
+  const allScanIds: string[] = [];
 
   try {
     // ----- Phase 1: Analyze codebase -----
@@ -153,6 +154,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             `Engine Pass ${iteration + 1} — Group ${gi + 1}`,
           );
           scanIds.push(scanId);
+          allScanIds.push(scanId);
         } catch (err) {
           console.error(`[Scan] Failed to start scan for group ${gi + 1}: ${err}`);
         }
@@ -359,15 +361,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     await killProcess(appProcess);
     await killProcess(repeater?.process);
 
+    // Stop any scans that are still running
+    await stopRunningScans(config.brightToken, config.brightHostname, allScanIds);
+
     // Delete the repeater from Bright to avoid stale entries
     if (repeater?.repeaterId) {
-      try {
-        console.log(`[Cleanup] Deleting repeater ${repeater.repeaterId}`);
-        await bright.callMcpToolRaw("deleteRepeater", { repeaterId: repeater.repeaterId });
-        console.log("[Cleanup] Repeater deleted");
-      } catch (err) {
-        console.error(`[Cleanup] Failed to delete repeater: ${err}`);
-      }
+      await deleteRepeater(config.brightToken, config.brightHostname, repeater.repeaterId);
     }
 
     try {
@@ -386,6 +385,79 @@ function killProcess(proc: ChildProcess | undefined): Promise<void> {
     }
     treeKill(proc.pid, "SIGTERM", () => resolve());
   });
+}
+
+async function stopRunningScans(
+  brightToken: string,
+  brightHostname: string,
+  scanIds: string[],
+): Promise<void> {
+  if (scanIds.length === 0) return;
+
+  const headers = {
+    Authorization: `Api-Key ${brightToken}`,
+    "Content-Type": "application/json",
+  };
+
+  const results = await Promise.allSettled(
+    scanIds.map(async (scanId) => {
+      // Check current status first
+      const statusRes = await fetch(
+        `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`,
+        { headers },
+      );
+      if (!statusRes.ok) return;
+
+      const scan = (await statusRes.json()) as { status?: string };
+      const active = ["pending", "running", "queued", "scheduled"];
+      if (!scan.status || !active.includes(scan.status)) return;
+
+      console.log(`[Cleanup] Stopping scan ${scanId} (status: ${scan.status})`);
+      const stopRes = await fetch(
+        `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/lifecycle`,
+        {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ action: "stop" }),
+        },
+      );
+
+      if (stopRes.ok) {
+        console.log(`[Cleanup] Scan ${scanId} stopped`);
+      } else {
+        console.warn(`[Cleanup] Failed to stop scan ${scanId}: ${stopRes.status}`);
+      }
+    }),
+  );
+
+  const failed = results.filter((r) => r.status === "rejected");
+  if (failed.length > 0) {
+    console.warn(`[Cleanup] ${failed.length} scan stop request(s) failed`);
+  }
+}
+
+async function deleteRepeater(
+  brightToken: string,
+  brightHostname: string,
+  repeaterId: string,
+): Promise<void> {
+  try {
+    console.log(`[Cleanup] Deleting repeater ${repeaterId}`);
+    const res = await fetch(
+      `https://${brightHostname}/api/v1/repeaters/${encodeURIComponent(repeaterId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Api-Key ${brightToken}` },
+      },
+    );
+    if (res.ok || res.status === 204) {
+      console.log("[Cleanup] Repeater deleted");
+    } else {
+      console.warn(`[Cleanup] Failed to delete repeater: ${res.status} ${res.statusText}`);
+    }
+  } catch (err) {
+    console.error(`[Cleanup] Failed to delete repeater: ${err}`);
+  }
 }
 
 async function diagnoseAndRepairBrokenFix(
