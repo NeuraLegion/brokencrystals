@@ -1,9 +1,4 @@
-import type OpenAI from "openai";
 import { spawn, type ChildProcess } from "child_process";
-import type { BrightMcpClient } from "../mcp-client.js";
-import { chatWithTools } from "../inference.js";
-import { convertMcpToolsToOpenAI, createMcpToolHandler } from "../tools.js";
-import { extractJson } from "../utils.js";
 
 export interface RepeaterHandle {
   repeaterId: string;
@@ -11,47 +6,34 @@ export interface RepeaterHandle {
 }
 
 export async function setupRepeater(
-  llm: OpenAI,
-  bright: BrightMcpClient,
+  _llm: unknown,
+  _bright: unknown,
   projectId: string,
   brightToken: string,
   brightHostname: string,
 ): Promise<RepeaterHandle> {
-  const mcpSchemas = await bright.getMcpToolSchemas(["createRepeater"]);
-  const tools = convertMcpToolsToOpenAI(mcpSchemas);
-  const handler = createMcpToolHandler(bright);
-
   const name = `engine-${Date.now()}`;
 
-  const messages: Parameters<typeof chatWithTools>[1] = [
-    {
-      role: "system",
-      content: `You are setting up a Bright security repeater for DAST scanning.
-Use the provided tools to create a repeater in the specified project.
-If you get an error, examine it and retry with corrected parameters.
-Do NOT poll or check connection status — just create the repeater and return the ID.`,
+  // Create repeater via REST API — no LLM needed
+  const res = await fetch(`https://${brightHostname}/api/v1/repeaters`, {
+    method: "POST",
+    headers: {
+      Authorization: `Api-Key ${brightToken}`,
+      "Content-Type": "application/json",
     },
-    {
-      role: "user",
-      content: `Create a Bright repeater named "${name}" in project "${projectId}".
+    body: JSON.stringify({ name, projectIds: [projectId] }),
+  });
 
-When done, respond with ONLY a JSON object: {"repeaterId": "<the-repeater-id>"}
-Do NOT call listRepeaters or check the repeater status.`,
-    },
-  ];
-
-  const response = await chatWithTools(llm, messages, tools, handler);
-
-  let repeaterId: string;
-  try {
-    const parsed = JSON.parse(extractJson(response));
-    repeaterId = parsed.repeaterId;
-  } catch {
-    throw new Error(`Failed to parse repeater ID from LLM response: ${response.slice(0, 300)}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Failed to create repeater: ${res.status} ${body}`);
   }
 
+  const data = (await res.json()) as { id: string };
+  const repeaterId = data.id;
+
   if (!repeaterId) {
-    throw new Error("LLM did not return a repeater ID");
+    throw new Error("Repeater creation returned no ID");
   }
 
   console.log(`[Repeater] Created repeater: ${repeaterId}`);

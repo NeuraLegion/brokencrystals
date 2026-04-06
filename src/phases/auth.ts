@@ -8,8 +8,10 @@ import { formatTechStack, extractJson } from "../utils.js";
 export interface AuthResult {
   /** Single auth object ID for the whole app, or undefined if no auth. */
   authObjectId: string | undefined;
-  /** True if auth was configured. */
+  /** True if auth was successfully configured. */
   hasAuth: boolean;
+  /** True if auth was detected as required but could not be configured. */
+  authFailed: boolean;
 }
 
 /**
@@ -28,12 +30,14 @@ export async function detectAndConfigureAuth(
   brightToken: string,
   brightHostname: string,
 ): Promise<AuthResult> {
+  const MAX_AUTH_ATTEMPTS = 3;
+
   // Step 1: Detect auth from source code using the LLM
-  const detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl);
+  let detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl);
 
   if (!detection.requiresAuth) {
     console.log("[Auth] No auth required");
-    return { authObjectId: undefined, hasAuth: false };
+    return { authObjectId: undefined, hasAuth: false, authFailed: false };
   }
 
   console.log(`[Auth] Detected auth: ${detection.authType} — ${detection.notes}`);
@@ -42,28 +46,47 @@ export async function detectAndConfigureAuth(
   const existingAuth = await findExistingAuth(bright, projectId, detection);
   if (existingAuth) {
     console.log(`[Auth] Reusing existing auth object: ${existingAuth}`);
-    return { authObjectId: existingAuth, hasAuth: true };
+    return { authObjectId: existingAuth, hasAuth: true, authFailed: false };
   }
 
-  // Step 3: Create a new auth object programmatically
-  const authObjectId = await createAuthObject(
-    bright, projectId, baseUrl, repeaterId, detection,
-  );
+  // Step 3-4: Create and test — retry on failure
+  for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
+    console.log(`[Auth] Attempt ${attempt}/${MAX_AUTH_ATTEMPTS}`);
 
-  if (!authObjectId) {
-    console.warn("[Auth] Failed to create auth object — proceeding without auth");
-    return { authObjectId: undefined, hasAuth: false };
+    const authObjectId = await createAuthObject(
+      brightToken, brightHostname, projectId, baseUrl, repeaterId, detection,
+    );
+
+    if (!authObjectId) {
+      console.error(`[Auth] Attempt ${attempt}: Failed to create auth object`);
+      if (attempt < MAX_AUTH_ATTEMPTS) {
+        detection = await retryDetection(llm, repoPath, techStack, endpoints, baseUrl, detection, "Auth object creation failed. The API rejected the configuration.");
+        continue;
+      }
+      return { authObjectId: undefined, hasAuth: false, authFailed: true };
+    }
+
+    console.log(`[Auth] Created auth object: ${authObjectId}`);
+
+    const testResult = await testAuthObject(brightToken, brightHostname, authObjectId);
+    if (testResult.passed) {
+      return { authObjectId, hasAuth: true, authFailed: false };
+    }
+
+    console.warn(`[Auth] Attempt ${attempt}: Auth test failed — ${testResult.summary}`);
+
+    if (attempt < MAX_AUTH_ATTEMPTS) {
+      // Delete the broken auth object before retrying
+      await deleteAuthObject(brightToken, brightHostname, authObjectId);
+      detection = await retryDetection(
+        llm, repoPath, techStack, endpoints, baseUrl, detection,
+        `Auth object test failed. Test results:\n${testResult.summary}\n\nThe credentials or configuration are likely wrong. Re-examine the codebase for correct values.`,
+      );
+    }
   }
 
-  console.log(`[Auth] Created auth object: ${authObjectId}`);
-
-  // Step 4: Test the auth object to verify it works
-  const testOk = await testAuthObject(brightToken, brightHostname, authObjectId);
-  if (!testOk) {
-    console.warn("[Auth] Auth object test failed — it may not work during scans");
-  }
-
-  return { authObjectId, hasAuth: true };
+  console.error("[Auth] All auth attempts failed — cannot proceed");
+  return { authObjectId: undefined, hasAuth: false, authFailed: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -104,13 +127,29 @@ async function detectAuthFromCode(
 
 You have codebase tools (read_file, list_files, search_files) to analyze source code.
 
-Look for:
-- Auth middleware (passport, jwt, express-jwt, @nestjs/passport, Spring Security, auth guards, etc.)
-- Login/signup endpoints and their request/response shapes
-- How tokens are extracted from responses (JSON field names)
-- How tokens are injected into requests (header name, prefix like "Bearer ")
-- Default/seed credentials (test users, admin accounts)
-- Session/cookie-based auth patterns
+STEP 1 — Find the login endpoint:
+- Search for auth controllers, login routes, sign-in handlers
+- Read the login handler to find the exact request body field names (e.g. "user", "email", "username")
+- Read the login handler to find the exact response body field names (e.g. "token", "accessToken", "data.token")
+
+STEP 2 — Find REAL credentials (THIS IS CRITICAL):
+You MUST actually read these files to find credentials. Do NOT skip this step:
+1. search_files for "password" in docker-compose*.yml, .env*, seed*, fixture*, init*
+2. Read docker-compose.yml — look for environment variables with DEFAULT_USER, ADMIN_PASSWORD, etc.
+3. Read .env, .env.example, .env.local, .env.development — look for user/password values
+4. search_files for "createUser", "insert.*user", "seed", "admin" in *.ts, *.js, *.sql files
+5. Read any seed/migration/fixture files you find
+6. Read README.md — look for default credentials section
+7. search_files for "password" or "credentials" in config files
+
+If you cannot find credentials after reading ALL of the above, set loginBody to null.
+NEVER invent credentials. NEVER use "admin@example.com", "correctpassword", "admin123", "password123", or any other made-up value.
+Only use credentials you found by reading actual files in the codebase.
+
+STEP 3 — Find the exact JSON field names for the login request body:
+- Read the DTO/schema/validation for the login endpoint
+- The field names might be "user", "email", "username", "login" — use EXACTLY what the code expects
+- The password field might be "password", "pass", "passwd" — use EXACTLY what the code expects
 
 Base URL: ${baseUrl}`,
     },
@@ -121,7 +160,7 @@ Base URL: ${baseUrl}`,
 Known endpoints:
 ${endpointSummary}
 
-Search the codebase thoroughly. Read auth middleware, login handlers, and seed data files.
+You MUST search the codebase and READ files before answering. Do NOT guess — actually look at the code.
 
 Return ONLY a JSON object with these exact fields:
 {
@@ -129,19 +168,20 @@ Return ONLY a JSON object with these exact fields:
   "authType": "jwt" | "session" | "api_key" | "basic" | "oauth" | "none",
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
-  "loginBody": "{\\"email\\":\\"admin@example.com\\",\\"password\\":\\"admin123\\"}" or null,
+  "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
   "tokenFieldPath": "token" or "data.accessToken" or null,
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
   "protectedEndpointPath": "/api/users" or null,
-  "notes": "brief description of the auth mechanism"
+  "notes": "brief description including where you found the credentials"
 }
 
-IMPORTANT:
-- "tokenFieldPath" is the dot-path to the token in the JSON login response (e.g. "token", "data.accessToken", "access_token")
-- "headerPrefix" is what comes before the token value (e.g. "Bearer " with trailing space, or "" for none)
-- "protectedEndpointPath" is a known protected endpoint for testing auth validity
-- "loginBody" must be a valid JSON string with real credentials found in seed data, env vars, or code`,
+CRITICAL RULES:
+- "loginBody" field names MUST match what the login endpoint handler expects (read the code!)
+- "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
+- If you cannot find real credentials, set "loginBody" to null — do NOT invent values
+- "tokenFieldPath" is the dot-path to the token in the JSON login response
+- "protectedEndpointPath" should be a known endpoint that requires authentication`,
     },
   ];
 
@@ -214,7 +254,8 @@ async function findExistingAuth(
 // ---------------------------------------------------------------------------
 
 async function createAuthObject(
-  bright: BrightMcpClient,
+  brightToken: string,
+  brightHostname: string,
   projectId: string,
   baseUrl: string,
   repeaterId: string,
@@ -231,8 +272,9 @@ async function createAuthObject(
     : `${baseUrl}/`;
 
   if (authType === "api_key" || authType === "basic") {
-    // Static header auth — extract credentials from the login body or notes
-    return createHeaderAuth(bright, projectId, repeaterId, testUrl, detection);
+    return createHeaderAuth(
+      brightToken, brightHostname, projectId, repeaterId, testUrl, detection,
+    );
   }
 
   // For jwt/session/oauth — use multistep with login flow
@@ -245,17 +287,14 @@ async function createAuthObject(
 
   // Build the NexTemplate regex for token extraction
   const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
-  const template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
+  const template = `${headerPrefix ?? "Bearer "}{{ stages.login.response.body | match: /${tokenRegex}/ }}`;
 
-  const authArgs: Record<string, unknown> = {
+  const body = {
     name: `Engine Auth — ${authType}`,
     projectId,
     type: "multistep",
     test: {
-      request: {
-        method: "GET",
-        url: testUrl,
-      },
+      request: { method: "GET", url: testUrl },
       repeaterId,
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
@@ -268,49 +307,42 @@ async function createAuthObject(
             request: {
               url: loginUrl,
               method: loginMethod ?? "POST",
-              headers: [{ name: "Content-Type", value: "application/json" }],
+              headers: [{ name: "Content-Type", value: "application/json", type: "clear_text" }],
               body: loginBody,
+              bodyType: "clear_text",
             },
             successResponseDetection: [{ type: "status", statuses: [200, 201] }],
           },
         ],
         embedders: [
           {
-            type: "header",
+            type: "header" as const,
             name: headerName ?? "Authorization",
             template,
+            templateType: "clear_text",
+            mergeStrategy: "replace",
           },
         ],
       },
     },
   };
 
-  try {
-    const result = await bright.callMcpToolRaw("addAuth", authArgs);
+  console.log(`[Auth] Creating multistep auth object via REST API`);
+  console.log(`[Auth] Embedder template: ${template}`);
 
-    if (result.startsWith("Error")) {
-      console.error(`[Auth] addAuth failed: ${result.slice(0, 300)}`);
-      return undefined;
-    }
-
-    const parsed = JSON.parse(result);
-    return (parsed.authObjectId ?? parsed.id) as string | undefined;
-  } catch (err) {
-    console.error(`[Auth] Failed to create auth object: ${err}`);
-    return undefined;
-  }
+  return createAuthViaRest(brightToken, brightHostname, body);
 }
 
 async function createHeaderAuth(
-  bright: BrightMcpClient,
+  brightToken: string,
+  brightHostname: string,
   projectId: string,
   repeaterId: string,
   testUrl: string,
   detection: AuthDetection,
 ): Promise<string | undefined> {
-  // For static header / basic auth, create a "header" type auth object
   const headerValue = detection.loginBody ?? "";
-  const authArgs: Record<string, unknown> = {
+  const body = {
     name: `Engine Auth — ${detection.authType}`,
     projectId,
     type: "header",
@@ -321,27 +353,53 @@ async function createHeaderAuth(
     successResponseDetection: [{ type: "status", statuses: [200] }],
     reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }],
     config: {
-      header: {
+      request: {
+        url: testUrl,
+        method: "GET",
         headers: [
           {
             name: detection.headerName ?? "Authorization",
             value: headerValue,
+            type: "clear_text",
           },
         ],
       },
     },
   };
 
+  console.log(`[Auth] Creating header auth object via REST API`);
+  return createAuthViaRest(brightToken, brightHostname, body);
+}
+
+async function createAuthViaRest(
+  brightToken: string,
+  brightHostname: string,
+  body: Record<string, unknown>,
+): Promise<string | undefined> {
   try {
-    const result = await bright.callMcpToolRaw("addAuth", authArgs);
-    if (result.startsWith("Error")) {
-      console.error(`[Auth] addAuth (header) failed: ${result.slice(0, 300)}`);
+    const res = await fetch(
+      `https://${brightHostname}/api/v3/auth-objects`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Api-Key ${brightToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`[Auth] REST create auth failed: HTTP ${res.status} — ${text.slice(0, 400)}`);
       return undefined;
     }
-    const parsed = JSON.parse(result);
-    return (parsed.authObjectId ?? parsed.id) as string | undefined;
+
+    const data = (await res.json()) as { id?: string; authObjectId?: string };
+    return data.id ?? data.authObjectId;
   } catch (err) {
-    console.error(`[Auth] Failed to create header auth: ${err}`);
+    console.error(`[Auth] Failed to create auth object: ${err}`);
     return undefined;
   }
 }
@@ -366,12 +424,17 @@ function buildTokenRegex(fieldPath: string): string {
 // Step 4: Test the auth object
 // ---------------------------------------------------------------------------
 
+interface AuthTestResult {
+  passed: boolean;
+  summary: string;
+}
+
 async function testAuthObject(
   brightToken: string,
   brightHostname: string,
   authObjectId: string,
-): Promise<boolean> {
-  const baseUrl = `https://${brightHostname}`;
+): Promise<AuthTestResult> {
+  const base = `https://${brightHostname}`;
   const headers = {
     Authorization: `Api-Key ${brightToken}`,
     Accept: "application/json",
@@ -380,15 +443,15 @@ async function testAuthObject(
 
   try {
     // Start an async auth object test
-    const createRes = await fetch(`${baseUrl}/api/v3/auth-objects/tests`, {
+    const createRes = await fetch(`${base}/api/v3/auth-objects/tests`, {
       method: "POST",
       headers,
       body: JSON.stringify({ authObjectId }),
     });
 
     if (!createRes.ok) {
-      console.warn(`[Auth] Failed to start auth test: HTTP ${createRes.status} ${createRes.statusText}`);
-      return false;
+      const body = await createRes.text().catch(() => "");
+      return { passed: false, summary: `Failed to start auth test: HTTP ${createRes.status} — ${body.slice(0, 300)}` };
     }
 
     const testView = (await createRes.json()) as {
@@ -400,7 +463,7 @@ async function testAuthObject(
     console.log(`[Auth] Auth test started: ${testView.id}`);
 
     // Poll for results until finishedAt is set
-    const maxWaitMs = 60_000;
+    const maxWaitMs = 90_000;
     const pollIntervalMs = 3_000;
     const start = Date.now();
 
@@ -410,36 +473,146 @@ async function testAuthObject(
       await new Promise((r) => setTimeout(r, pollIntervalMs));
 
       const pollRes = await fetch(
-        `${baseUrl}/api/v3/auth-objects/tests/${encodeURIComponent(latest.id)}`,
+        `${base}/api/v3/auth-objects/tests/${encodeURIComponent(latest.id)}`,
         { method: "GET", headers },
       );
 
       if (!pollRes.ok) {
-        console.warn(`[Auth] Poll auth test failed: HTTP ${pollRes.status}`);
-        return false;
+        return { passed: false, summary: `Poll auth test failed: HTTP ${pollRes.status}` };
       }
 
       latest = (await pollRes.json()) as typeof testView;
     }
 
     if (!latest.finishedAt) {
-      console.warn("[Auth] Auth test timed out after 60 s — proceeding anyway");
-      return true;
+      return { passed: false, summary: "Auth test timed out after 90s" };
+    }
+
+    const lines: string[] = [];
+    for (const r of latest.results) {
+      const line = `stage=${r.stage} status=${r.status}${r.message ? ` — ${r.message}` : ""}`;
+      console.log(`[Auth] Test ${line}`);
+      lines.push(line);
     }
 
     const allPassed = latest.results.every((r) => r.status === "success");
-
-    for (const r of latest.results) {
-      console.log(`[Auth] Test stage=${r.stage} status=${r.status}${r.message ? ` — ${r.message}` : ""}`);
-    }
-
-    if (!allPassed) {
-      console.warn("[Auth] One or more auth test stages failed");
-    }
-
-    return allPassed;
+    return { passed: allPassed, summary: lines.join("\n") };
   } catch (err) {
-    console.log(`[Auth] Auth test request failed: ${err}`);
-    return true; // Optimistically proceed
+    return { passed: false, summary: `Auth test request failed: ${err}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Retry detection with feedback from the failed attempt
+// ---------------------------------------------------------------------------
+
+async function retryDetection(
+  llm: OpenAI,
+  repoPath: string,
+  techStack: TechStack,
+  endpoints: DiscoveredEndpoint[],
+  baseUrl: string,
+  previousDetection: AuthDetection,
+  failureReason: string,
+): Promise<AuthDetection> {
+  console.log(`[Auth] Re-detecting auth after failure: ${failureReason.slice(0, 200)}`);
+
+  const stackStr = formatTechStack(techStack);
+  const endpointSummary = endpoints
+    .map((ep) => `${ep.method} ${ep.path} (${ep.filePath})`)
+    .join("\n");
+
+  const handler = createToolHandler(repoPath);
+
+  const messages: Parameters<typeof chatWithTools>[1] = [
+    {
+      role: "system",
+      content: `You are a security analyst examining a ${stackStr} application.
+Your previous auth detection attempt FAILED. You MUST find the correct credentials this time.
+
+Base URL: ${baseUrl}
+
+PREVIOUS (FAILED) DETECTION:
+${JSON.stringify(previousDetection, null, 2)}
+
+FAILURE REASON:
+${failureReason}
+
+INSTRUCTIONS:
+- Search the codebase again MORE THOROUGHLY for the correct credentials
+- Check .env, .env.example, docker-compose.yml, seed files, README, test fixtures
+- Look for user creation code, default passwords, hardcoded credentials
+- The previous loginBody was likely WRONG — find the real one
+- Pay special attention to the exact field names in the login request body`,
+    },
+    {
+      role: "user",
+      content: `The previous auth configuration failed. Re-examine the codebase and find the CORRECT credentials.
+
+Known endpoints:
+${endpointSummary}
+
+Return ONLY a JSON object with these exact fields:
+{
+  "requiresAuth": true/false,
+  "authType": "jwt" | "session" | "api_key" | "basic" | "oauth" | "none",
+  "loginEndpoint": "/api/auth/login" or null,
+  "loginMethod": "POST" or null,
+  "loginBody": "{\\"email\\":\\"admin@example.com\\",\\"password\\":\\"correctpassword\\"}" or null,
+  "tokenFieldPath": "token" or "data.accessToken" or null,
+  "headerName": "Authorization" or "X-API-Key" or null,
+  "headerPrefix": "Bearer " or "" or null,
+  "protectedEndpointPath": "/api/users" or null,
+  "notes": "brief description"
+}`,
+    },
+  ];
+
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 20);
+
+  try {
+    const parsed = JSON.parse(extractJson(response));
+    return {
+      requiresAuth: parsed.requiresAuth ?? previousDetection.requiresAuth,
+      authType: parsed.authType ?? previousDetection.authType,
+      loginEndpoint: parsed.loginEndpoint ?? previousDetection.loginEndpoint,
+      loginMethod: parsed.loginMethod ?? previousDetection.loginMethod,
+      loginBody: parsed.loginBody ?? previousDetection.loginBody,
+      tokenFieldPath: parsed.tokenFieldPath ?? previousDetection.tokenFieldPath,
+      headerName: parsed.headerName ?? previousDetection.headerName,
+      headerPrefix: parsed.headerPrefix ?? previousDetection.headerPrefix,
+      protectedEndpointPath: parsed.protectedEndpointPath ?? previousDetection.protectedEndpointPath,
+      notes: parsed.notes ?? previousDetection.notes,
+    };
+  } catch {
+    console.warn("[Auth] Could not parse retry detection response — using previous detection");
+    return previousDetection;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Delete a broken auth object before retrying
+// ---------------------------------------------------------------------------
+
+async function deleteAuthObject(
+  brightToken: string,
+  brightHostname: string,
+  authObjectId: string,
+): Promise<void> {
+  try {
+    const res = await fetch(
+      `https://${brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Api-Key ${brightToken}` },
+      },
+    );
+    if (res.ok || res.status === 204) {
+      console.log(`[Auth] Deleted failed auth object ${authObjectId}`);
+    } else {
+      console.warn(`[Auth] Failed to delete auth object: ${res.status}`);
+    }
+  } catch (err) {
+    console.warn(`[Auth] Failed to delete auth object: ${err}`);
   }
 }

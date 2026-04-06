@@ -95,6 +95,15 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         : "No auth required",
     );
 
+    // If auth was detected but failed to configure, abort — scans without auth are useless
+    if (authResult.authFailed) {
+      await progress.phaseStart(
+        "done",
+        "Authentication is required but could not be configured. Cannot run meaningful scans without working auth.",
+      );
+      return;
+    }
+
     // ----- Phase 5: Register entrypoints -----
     await progress.phaseStart("entrypoints", "Registering API endpoints for scanning");
     const entrypointIds = await registerEntrypoints(
