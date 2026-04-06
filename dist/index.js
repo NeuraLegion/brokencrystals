@@ -56096,11 +56096,30 @@ Return a JSON object with an array of entries, one per endpoint index.`
   for (const [testsKey, epIds] of groupMap) {
     groups.push({ tests: testsKey.split(","), entrypointIds: epIds });
   }
-  console.log(`[Tests] Created ${groups.length} scan group(s) from ${endpoints.length} endpoints`);
-  for (const [i, g] of groups.entries()) {
+  const MAX_GROUPS = 10;
+  const consolidated = consolidateGroups(groups, MAX_GROUPS);
+  console.log(`[Tests] Created ${consolidated.length} scan group(s) from ${endpoints.length} endpoints`);
+  for (const [i, g] of consolidated.entries()) {
     console.log(`[Tests]   Group ${i + 1}: ${g.entrypointIds.length} endpoints, ${g.tests.length} tests`);
   }
-  return groups;
+  return consolidated;
+}
+function consolidateGroups(groups, maxGroups) {
+  if (groups.length <= maxGroups) return groups;
+  const sorted = [...groups].sort((a, b) => a.entrypointIds.length - b.entrypointIds.length);
+  while (sorted.length > maxGroups) {
+    const a = sorted.shift();
+    const b = sorted.shift();
+    const mergedTests = [.../* @__PURE__ */ new Set([...a.tests, ...b.tests])];
+    const merged = {
+      tests: mergedTests,
+      entrypointIds: [...a.entrypointIds, ...b.entrypointIds]
+    };
+    const insertIdx = sorted.findIndex((g) => g.entrypointIds.length >= merged.entrypointIds.length);
+    if (insertIdx === -1) sorted.push(merged);
+    else sorted.splice(insertIdx, 0, merged);
+  }
+  return sorted;
 }
 
 // src/phases/scan.ts
@@ -56130,7 +56149,7 @@ async function runSecurityScan(bright, projectId, entrypointIds, repeaterId, tes
   console.log(`[Scan] Scan started: ${scanId}`);
   return scanId;
 }
-async function waitForScanCompletion(bright, scanId, onProgress, timeoutMs = 30 * 60 * 1e3) {
+async function waitForScanCompletion(bright, scanId, onProgress, timeoutMs = 15 * 60 * 1e3) {
   const start = Date.now();
   const pollInterval = 3e4;
   await sleep2(pollInterval);
@@ -56492,16 +56511,21 @@ async function runOrchestrator(ctx) {
         await progress.phaseStart("scan_error", "All scan launches failed. Check MCP logs.");
         break;
       }
-      let anyFailed = false;
-      for (const [si, scanId] of scanIds.entries()) {
-        console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
-        try {
+      const scanResults = await Promise.allSettled(
+        scanIds.map(async (scanId, si) => {
+          console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
           const finalStatus = await waitForScanCompletion(bright, scanId, (status, issues) => {
             progress.phaseDetail("scan", "poll", `Scan ${si + 1}: ${status} \u2014 ${issues} issues`);
           });
-          if (finalStatus === "failed") anyFailed = true;
-        } catch (err) {
-          console.error(`[Scan] Error waiting for scan ${scanId}: ${err}`);
+          return finalStatus;
+        })
+      );
+      let anyFailed = false;
+      for (const [si, result] of scanResults.entries()) {
+        if (result.status === "rejected") {
+          console.error(`[Scan] Error waiting for scan ${scanIds[si]}: ${result.reason}`);
+          anyFailed = true;
+        } else if (result.value === "failed") {
           anyFailed = true;
         }
       }

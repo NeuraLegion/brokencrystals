@@ -162,17 +162,23 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         break;
       }
 
-      // Wait for all scans to complete
-      let anyFailed = false;
-      for (const [si, scanId] of scanIds.entries()) {
-        console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
-        try {
+      // Wait for all scans to complete (in parallel)
+      const scanResults = await Promise.allSettled(
+        scanIds.map(async (scanId, si) => {
+          console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
           const finalStatus = await waitForScanCompletion(bright, scanId, (status, issues) => {
             progress.phaseDetail("scan", "poll", `Scan ${si + 1}: ${status} — ${issues} issues`);
           });
-          if (finalStatus === "failed") anyFailed = true;
-        } catch (err) {
-          console.error(`[Scan] Error waiting for scan ${scanId}: ${err}`);
+          return finalStatus;
+        }),
+      );
+
+      let anyFailed = false;
+      for (const [si, result] of scanResults.entries()) {
+        if (result.status === "rejected") {
+          console.error(`[Scan] Error waiting for scan ${scanIds[si]}: ${result.reason}`);
+          anyFailed = true;
+        } else if (result.value === "failed") {
           anyFailed = true;
         }
       }

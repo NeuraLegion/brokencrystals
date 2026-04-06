@@ -129,10 +129,42 @@ Return a JSON object with an array of entries, one per endpoint index.`,
     groups.push({ tests: testsKey.split(","), entrypointIds: epIds });
   }
 
-  console.log(`[Tests] Created ${groups.length} scan group(s) from ${endpoints.length} endpoints`);
-  for (const [i, g] of groups.entries()) {
+  // Cap the number of scan groups to avoid excessive parallel scans
+  const MAX_GROUPS = 10;
+  const consolidated = consolidateGroups(groups, MAX_GROUPS);
+
+  console.log(`[Tests] Created ${consolidated.length} scan group(s) from ${endpoints.length} endpoints`);
+  for (const [i, g] of consolidated.entries()) {
     console.log(`[Tests]   Group ${i + 1}: ${g.entrypointIds.length} endpoints, ${g.tests.length} tests`);
   }
 
-  return groups;
+  return consolidated;
+}
+
+/**
+ * If there are more groups than maxGroups, merge the smallest groups
+ * (by entrypoint count) into larger ones by taking the union of their tests.
+ */
+function consolidateGroups(groups: ScanGroup[], maxGroups: number): ScanGroup[] {
+  if (groups.length <= maxGroups) return groups;
+
+  // Sort by entrypoint count ascending — merge smallest first
+  const sorted = [...groups].sort((a, b) => a.entrypointIds.length - b.entrypointIds.length);
+
+  while (sorted.length > maxGroups) {
+    // Take the two smallest groups and merge them
+    const a = sorted.shift()!;
+    const b = sorted.shift()!;
+    const mergedTests = [...new Set([...a.tests, ...b.tests])];
+    const merged: ScanGroup = {
+      tests: mergedTests,
+      entrypointIds: [...a.entrypointIds, ...b.entrypointIds],
+    };
+    // Re-insert in sorted position
+    const insertIdx = sorted.findIndex((g) => g.entrypointIds.length >= merged.entrypointIds.length);
+    if (insertIdx === -1) sorted.push(merged);
+    else sorted.splice(insertIdx, 0, merged);
+  }
+
+  return sorted;
 }

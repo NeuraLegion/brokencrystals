@@ -45,7 +45,7 @@ export async function waitForScanCompletion(
   bright: BrightMcpClient,
   scanId: string,
   onProgress?: (status: string, issuesFound: number) => void,
-  timeoutMs = 30 * 60 * 1000,
+  timeoutMs = 15 * 60 * 1000,
 ): Promise<string> {
   const start = Date.now();
   const pollInterval = 30_000;
