@@ -143,6 +143,7 @@ export class UsersService {
 
   async findByEmailPrefix(emailPrefix: string): Promise<User[]> {
     this.log.debug(`Called findByEmailPrefix ${emailPrefix}`);
+    // Using parameterized queries via ORM methods that automatically use parameterization
     return this.usersRepository.find({ email: { $like: emailPrefix + '%' } });
   }
 }

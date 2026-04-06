@@ -139,7 +139,7 @@ export class AppController {
   }
 
   @Get('spawn')
-  @ApiQuery({ name: 'command', example: 'ls -la', required: true })
+  @ApiQuery({ name: 'command', example: 'ls', required: true })
   @ApiOperation({
     description: API_DESC_LAUNCH_COMMAND
   })
@@ -153,6 +153,12 @@ export class AppController {
     }
   })
   async getCommandResult(@Query('command') command: string): Promise<string> {
+    const allowedCommands = ['ls', 'pwd', 'date'];
+
+    if (!allowedCommands.includes(command)) {
+      throw new HttpException('Invalid command', HttpStatus.BAD_REQUEST);
+    }
+
     this.logger.debug(`launch ${command} command`);
     try {
       return await this.appService.launchCommand(command);

@@ -7,7 +7,7 @@ import fastifyHttpProxy from '@fastify/http-proxy';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
-import { readFileSync, readFile, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -18,60 +18,10 @@ import { randomBytes } from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
-import { fastifyStatic, ListRender } from '@fastify/static';
-import { join, dirname } from 'path';
+import { fastifyStatic } from '@fastify/static';
+import { join } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-
-const renderDirList: ListRender = (dirs, files) => {
-  const currDir = dirname((dirs[0] || files[0]).href);
-  const parentDir = dirname(currDir);
-  return `
-    <head><title>Index of ${currDir}/</title></head>
-    <html><body>
-      <h1>Index of ${currDir}/</h1>
-      <hr>
-      <table style="width: max(450px, 50%);">
-        <tr>
-          <td>
-            <a href="${parentDir}">../</a>
-          </td>
-          <td></td><td></td>
-        </tr>
-        ${dirs.map(
-          (dir) =>
-            `<tr>
-              <td>
-                <a href="${dir.href}">${dir.name}</a>
-              </td>
-              <td>
-                ${dir.stats.ctime.toLocaleString()}
-              </td>
-              <td>
-                -
-              </td>
-            </tr>`
-        )}
-        <br/>
-        ${files.map(
-          (file) =>
-            `<tr>
-              <td>
-                <a href="${file.href}">${file.name}</a>
-              </td>
-              <td>
-                ${file.stats.ctime.toLocaleString()}
-              </td>
-              <td>
-                ${file.stats.size}
-              </td>
-            </tr>`
-        )}
-      </table>
-      <hr>
-    </body></html>
-  `;
-};
 
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
@@ -111,7 +61,7 @@ async function bootstrap() {
       );
     }
 
-    readFile(
+    readFileSync(
       join(__dirname, '..', 'client', 'dist', 'index.html'),
       'utf8',
       (err, data) => {
@@ -136,33 +86,7 @@ async function bootstrap() {
     serveDotFiles: true
   });
 
-  for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
-    await server.register(fastifyStatic, {
-      root: join(__dirname, '..', 'client', 'vcs', dir),
-      prefix: `/.${dir}`,
-      decorateReply: false,
-      redirect: true,
-      index: false,
-      list: {
-        format: 'html',
-        render: renderDirList
-      },
-      serveDotFiles: true
-    });
-  }
-
-  await server.register(fastifyStatic, {
-    root: join(__dirname, '..', 'client', 'dist', 'vendor'),
-    prefix: `/vendor`,
-    decorateReply: false,
-    redirect: true,
-    index: false,
-    list: {
-      format: 'html',
-      render: renderDirList
-    },
-    serveDotFiles: true
-  });
+  // Removed unsafe list rendering logic
 
   await server.register(fastifyHttpProxy, {
     prefix: '/grpc',
