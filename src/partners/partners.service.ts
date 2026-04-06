@@ -70,7 +70,18 @@ export class PartnersService {
     return `${this.XML_HEADER}\n<root>\n${xmlNodes.join('\n')}\n</root>`;
   }
 
+  private isValidXpathExpression(xpathExpression: string): boolean {
+    const validPatterns = [/^\/partners\/partner\/(name|username|age)$/]; // Define safe queries here
+
+    return validPatterns.some((pattern) => pattern.test(xpathExpression));
+  }
+
   getPartnersProperties(xpathExpression: string): string {
+    if (!this.isValidXpathExpression(xpathExpression)) {
+      this.logger.warn(`Rejected unsafe XPath expression: ${xpathExpression}`);
+      throw new Error('Invalid XPath query provided.');
+    }
+
     let xmlNodes = this.selectPartnerPropertiesByXPATH(xpathExpression);
 
     if (!Array.isArray(xmlNodes)) {

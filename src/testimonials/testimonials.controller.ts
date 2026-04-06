@@ -6,7 +6,8 @@ import {
   Logger,
   Post,
   Query,
-  UseGuards
+  UseGuards,
+  BadRequestException
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import {
@@ -28,6 +29,7 @@ import {
   API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
 } from './testimonials.controller.api.desc';
 import { TestimonialsService } from './testimonials.service';
+import { isSelectQuery } from '../utils/query-validator';
 
 @Controller('/api/testimonials')
 @ApiTags('Testimonials controller')
@@ -101,6 +103,9 @@ export class TestimonialsController {
   })
   async getCount(@Query('query') query: string): Promise<number> {
     this.logger.debug('Get count of testimonials.');
+    if (!isSelectQuery(query)) {
+      throw new BadRequestException('Invalid query');
+    }
     return await this.testimonialsService.count(query);
   }
 
@@ -108,6 +113,9 @@ export class TestimonialsController {
   async testimonialsCountGrpc(data: {
     query: string;
   }): Promise<{ count: number }> {
+    if (!isSelectQuery(data.query)) {
+      throw new BadRequestException('Invalid query');
+    }
     const count = await this.testimonialsService.count(data.query);
     return { count };
   }

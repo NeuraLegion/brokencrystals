@@ -30,7 +30,7 @@ export class TestimonialsService {
 
     const connection = this.em.getConnection();
     const legacyTestimonials: Testimonial[] = await connection.execute(
-      `select * from testimonial where id is not null order by created_at`
+      `SELECT * FROM testimonial WHERE id IS NOT NULL ORDER BY created_at`
     );
 
     if (legacyTestimonials?.length >= this.MAX_LIMIT) {
@@ -38,7 +38,8 @@ export class TestimonialsService {
         .splice(-1 * (this.MAX_LIMIT - 1))
         .map((x: Testimonial) => x.id);
 
-      await connection.execute('delete from testimonial where id not in(?)', [
+      // Using parameterized query to prevent SQL Injection
+      await connection.execute('DELETE FROM testimonial WHERE id NOT IN (?)', [
         ids
       ]);
     }
@@ -54,14 +55,16 @@ export class TestimonialsService {
     return t;
   }
 
-  async count(query: string): Promise<number> {
+  async count(safeQuery: { sql: string, parameters: any[] }): Promise<number> {
     try {
-      this.logger.debug(`Saved new testimonial`);
-
-      return (await this.em.getConnection().execute(query))[0].count as number;
+      this.logger.debug(`Executing count query`);
+      // Using parameterized query structure
+      return (
+        (await this.em.getConnection().execute(safeQuery.sql, safeQuery.parameters))[0].count as number
+      );
     } catch (err) {
       this.logger.warn(`Failed to execute query. Error: ${err.message}`);
-      return err.message;
+      throw err;
     }
   }
 }

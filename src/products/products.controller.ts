@@ -164,9 +164,11 @@ export class ProductsController {
   async viewProduct(
     @Headers('x-product-name') productName: string
   ): Promise<void> {
+    if (!productName) {
+      throw new BadRequestException('Product name header is required');
+    }
     try {
-      const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
-      return await this.productsService.updateProduct(query);
+      return await this.productsService.incrementViewCount(productName);
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
@@ -179,8 +181,10 @@ export class ProductsController {
   async viewProductGrpc(data: {
     productName: string;
   }): Promise<{ success: boolean }> {
-    const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${data.productName}'`;
-    await this.productsService.updateProduct(query);
+    if (!data.productName) {
+      throw new BadRequestException('Product name is required');
+    }
+    await this.productsService.incrementViewCount(data.productName);
     return { success: true };
   }
 }
