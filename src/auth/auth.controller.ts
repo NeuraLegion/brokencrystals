@@ -60,10 +60,8 @@ import { CsrfGuard } from './csrf.guard';
 import { ClientType, KeyCloakService } from '../keycloak/keycloak.service';
 import { LoginJwtResponse } from './api/LoginJwtResponse';
 
-interface LoginData {
-  email: string;
-  ldapProfileLink: string;
-  token: string;
+function sanitizeInput(input: string): string {
+  return input.replace(/[^a-zA-Z0-9-_.]/g, ''); // Allow alphanumeric and specific safe characters
 }
 
 @Controller('/api/auth')
@@ -188,12 +186,16 @@ export class AuthController {
   ): Promise<string> {
     this.logger.debug('Call getDomCsrfToken');
 
-    const fp = request.headers['fingerprint'] as string;
+    let fp = request.headers['fingerprint'] as string;
 
     if (!fp) {
-      throw new BadRequestException('Fingerprint  header is required');
+      throw new BadRequestException('Fingerprint header is required');
     }
-    const token = createHash('md5').update(fp).digest('hex');
+
+    fp = sanitizeInput(fp);
+
+    const salt = randomBytes(16).toString('hex'); // Add randomness to make the hash unique
+    const token = createHash('sha256').update(fp + salt).digest('hex');
 
     res.setCookie(this.CSRF_COOKIE_HEADER, token, {
       httpOnly: true,
