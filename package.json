@@ -1,0 +1,30 @@
+{
+  "name": "bright-security-engine",
+  "version": "0.1.0",
+  "description": "Copilot coding agent engine for Bright DAST security scanning and auto-remediation",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@github/copilot-engine-sdk": "github:github/copilot-engine-sdk#main",
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "openai": "^4.86.0",
+    "glob": "^11.0.0",
+    "tree-kill": "^1.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}

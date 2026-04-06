@@ -1,0 +1,410 @@
+import { createRequire } from 'module';const require = createRequire(import.meta.url);
+
+// node_modules/@github/copilot-engine-sdk/dist/events.js
+function createModelCallFailureEvent(options) {
+  const { turn, callId, error, durationMs = 0 } = options;
+  return {
+    kind: "model_call_failure",
+    turn,
+    callId,
+    modelCallDurationMs: durationMs,
+    modelCall: {
+      error
+    }
+  };
+}
+function createAssistantMessageEvent(options) {
+  const { turn, callId, content, toolCalls, reasoningText } = options;
+  const formattedToolCalls = toolCalls?.map((tc, index) => ({
+    id: tc.id,
+    type: "function",
+    index,
+    function: {
+      name: tc.name,
+      arguments: tc.arguments
+    }
+  }));
+  return {
+    kind: "message",
+    turn,
+    callId,
+    message: {
+      role: "assistant",
+      content,
+      tool_calls: formattedToolCalls,
+      reasoning_text: reasoningText
+    }
+  };
+}
+function createToolMessageEvent(options) {
+  const { turn, callId, toolCallId, toolName, content } = options;
+  return {
+    kind: "message",
+    turn,
+    callId,
+    toolName,
+    message: {
+      role: "tool",
+      tool_call_id: toolCallId,
+      content
+    }
+  };
+}
+function createToolExecutionEvent(options) {
+  const { turn, callId, toolCallId, toolName, result, success, durationMs = 0 } = options;
+  return {
+    kind: "tool_execution",
+    turn,
+    callId,
+    toolCallId,
+    toolName,
+    toolResult: {
+      textResultForLlm: result,
+      resultType: success ? "success" : "failure",
+      toolTelemetry: {}
+    },
+    durationMs
+  };
+}
+function createTruncationEvent(options) {
+  const { turn, performedBy, tokenLimit, preTruncationTokens, preTruncationMessages, postTruncationTokens, postTruncationMessages, tokensRemoved, messagesRemoved } = options;
+  return {
+    kind: "history_truncated",
+    turn,
+    performedBy,
+    truncateResult: {
+      tokenLimit,
+      preTruncationTokensInMessages: preTruncationTokens,
+      preTruncationMessagesLength: preTruncationMessages,
+      postTruncationTokensInMessages: postTruncationTokens,
+      postTruncationMessagesLength: postTruncationMessages,
+      tokensRemovedDuringTruncation: tokensRemoved ?? preTruncationTokens - postTruncationTokens,
+      messagesRemovedDuringTruncation: messagesRemoved ?? preTruncationMessages - postTruncationMessages
+    }
+  };
+}
+function createResponseEvent(options) {
+  const { turn, callId, content } = options;
+  return {
+    kind: "response",
+    turn,
+    callId,
+    response: {
+      role: "assistant",
+      content,
+      refusal: null
+    }
+  };
+}
+
+// node_modules/@github/copilot-engine-sdk/dist/client.js
+var PlatformClient = class {
+  baseUrl;
+  _jobId;
+  _apiUrl;
+  _token;
+  _nonce;
+  headers;
+  namespace;
+  // Tracks assistant message context by tool call ID so tool_execution
+  // events can be enriched with the original call context before sending.
+  toolCallContext = /* @__PURE__ */ new Map();
+  constructor(config) {
+    this._apiUrl = config.apiUrl;
+    this._token = config.token;
+    this._jobId = config.jobId;
+    this._nonce = config.nonce;
+    let apiUrl = config.apiUrl;
+    if (!apiUrl.endsWith("/")) {
+      apiUrl += "/";
+    }
+    this.baseUrl = new URL(apiUrl);
+    this.namespace = config.namespace ?? "sessions-v2";
+    this.headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.token}`
+    };
+    if (config.nonce) {
+      this.headers["X-GitHub-Job-Nonce"] = config.nonce;
+    }
+    if (config.traceParent) {
+      this.headers["X-Copilot-Traceparent"] = config.traceParent;
+    }
+  }
+  /** Get the API URL */
+  get apiUrl() {
+    return this._apiUrl;
+  }
+  /** Get the API token */
+  get token() {
+    return this._token;
+  }
+  /** Get the job ID */
+  get jobId() {
+    return this._jobId;
+  }
+  /** Get the job nonce */
+  get nonce() {
+    return this._nonce;
+  }
+  // =========================================================================
+  // Core Methods
+  // =========================================================================
+  /**
+   * Sends a progress event to the platform API.
+   * Enriches tool_execution events with context from the originating
+   * assistant message so the event carries complete tool-call context.
+   *
+   * @param event - The event to send
+   * @returns Result containing success status and optional response
+   */
+  async sendProgress(event) {
+    const url = new URL(`jobs/${this._jobId}/progress`, this.baseUrl);
+    if (event.kind === "message" && event.message.role === "assistant") {
+      const assistantEvent = event;
+      if (assistantEvent.message.tool_calls) {
+        for (const tc of assistantEvent.message.tool_calls) {
+          this.toolCallContext.set(tc.id, {
+            callId: assistantEvent.callId || "",
+            model: assistantEvent.modelCall?.model || "unknown",
+            toolCall: tc
+          });
+        }
+      }
+    }
+    let enrichedEvent = event;
+    if (event.kind === "tool_execution") {
+      const execEvent = event;
+      const ctx = this.toolCallContext.get(execEvent.toolCallId);
+      if (ctx) {
+        enrichedEvent = { ...execEvent, originalCall: ctx };
+        this.toolCallContext.delete(execEvent.toolCallId);
+      }
+    }
+    const payload = {
+      namespace: this.namespace,
+      kind: "log",
+      version: 0,
+      content: JSON.stringify(enrichedEvent)
+    };
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        return {
+          success: false,
+          error: new Error(`HTTP ${response.status}: ${response.statusText}`)
+        };
+      }
+      const text = await response.text();
+      let parsed;
+      try {
+        parsed = text.trim() ? JSON.parse(text) : void 0;
+      } catch {
+      }
+      return {
+        success: true,
+        response: parsed
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err : new Error(String(err))
+      };
+    }
+  }
+  // =========================================================================
+  // Convenience Methods
+  // =========================================================================
+  /**
+   * Creates and sends a model call failure event.
+   */
+  async sendModelCallFailure(options) {
+    return this.sendProgress(createModelCallFailureEvent(options));
+  }
+  /**
+   * Creates and sends an assistant message event.
+   */
+  async sendAssistantMessage(options) {
+    return this.sendProgress(createAssistantMessageEvent(options));
+  }
+  /**
+   * Creates and sends a tool message event.
+   */
+  async sendToolMessage(options) {
+    return this.sendProgress(createToolMessageEvent(options));
+  }
+  /**
+   * Creates and sends a tool execution event.
+   */
+  async sendToolExecution(options) {
+    return this.sendProgress(createToolExecutionEvent(options));
+  }
+  /**
+   * Creates and sends a truncation event.
+   */
+  async sendTruncation(options) {
+    return this.sendProgress(createTruncationEvent(options));
+  }
+  /**
+   * Creates and sends a response event.
+   */
+  async sendResponse(options) {
+    return this.sendProgress(createResponseEvent(options));
+  }
+  /**
+   * Sends a report_progress event to update the PR title and/or description.
+   * This triggers the platform to update the pull request associated with the job.
+   */
+  async sendReportProgress(options) {
+    const url = new URL(`jobs/${this._jobId}/progress`, this.baseUrl);
+    const contentObj = {};
+    if (options.prTitle !== void 0) {
+      contentObj.pr_title = options.prTitle;
+    }
+    if (options.prDescription !== void 0) {
+      contentObj.pr_description = options.prDescription;
+    }
+    const payload = {
+      namespace: this.namespace,
+      kind: "report_progress",
+      version: 0,
+      content: JSON.stringify(contentObj)
+    };
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        return {
+          success: false,
+          error: new Error(`HTTP ${response.status}: ${response.statusText}`)
+        };
+      }
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err : new Error(String(err))
+      };
+    }
+  }
+  /**
+   * Sends a comment_reply event to post a reply to a PR comment.
+   * Used for fix-pr-comment actions to respond to reviewer feedback.
+   */
+  async sendCommentReply(options) {
+    const url = new URL(`jobs/${this._jobId}/progress`, this.baseUrl);
+    const payload = {
+      namespace: this.namespace,
+      kind: "comment_reply",
+      version: 0,
+      content: JSON.stringify({
+        comment_id: options.commentId,
+        message: options.message
+      })
+    };
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        return {
+          success: false,
+          error: new Error(`HTTP ${response.status}: ${response.statusText}`)
+        };
+      }
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err : new Error(String(err))
+      };
+    }
+  }
+  // =========================================================================
+  // Generic Progress API
+  // =========================================================================
+  /**
+   * Sends one or more raw progress payloads to the platform.
+   * Use this for custom namespaces/kinds not covered by the convenience methods.
+   */
+  async sendRawProgress(payloads) {
+    const url = new URL(`jobs/${this._jobId}/progress`, this.baseUrl);
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify(payloads)
+      });
+      if (!response.ok) {
+        return {
+          success: false,
+          error: new Error(`HTTP ${response.status}: ${response.statusText}`)
+        };
+      }
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err : new Error(String(err))
+      };
+    }
+  }
+  /**
+   * Fetches progress records from the platform, optionally filtered by
+   * namespace and including history from previous jobs.
+   */
+  async fetchProgress(options) {
+    const url = new URL(`jobs/${this._jobId}/progress`, this.baseUrl);
+    if (options?.namespace) {
+      url.searchParams.set("namespace", options.namespace);
+    }
+    if (options?.history) {
+      url.searchParams.set("history", "true");
+    }
+    try {
+      const response = await fetch(url.toString(), {
+        headers: this.headers
+      });
+      if (!response.ok) {
+        return null;
+      }
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+  /**
+   * Fetches job details from the platform API.
+   *
+   * @returns Job details including problem statement, repository info, and branch
+   */
+  async fetchJobDetails() {
+    const url = new URL(`jobs/${this._jobId}`, this.baseUrl);
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: this.headers
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch job details: HTTP ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    if (!data.problem_statement?.content) {
+      throw new Error("Job details missing required field: problem_statement.content");
+    }
+    return data;
+  }
+};
+
+export {
+  PlatformClient
+};
+//# sourceMappingURL=chunk-KSSBRLWY.js.map
