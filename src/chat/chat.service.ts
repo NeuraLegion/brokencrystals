@@ -54,7 +54,7 @@ export class ChatService {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${process.env.CHAT_API_TOKEN}`
         },
-        timeout: 300000 // 5 minutes timeout for ollama service
+        timeout: 300000 // 5 minutes timeout for Ollama service
       }
     );
 

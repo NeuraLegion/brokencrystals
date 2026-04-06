@@ -9,6 +9,7 @@ import { ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { API_DESC_CHAT_QUESTION } from './chat.controller.api.desc';
 import { ChatMessage } from './api/ChatMessage';
+import { sanitizeChatMessage } from './utils/sanitization';
 
 @Controller('/api/chat')
 @ApiTags('Chat controller')
@@ -26,8 +27,13 @@ export class ChatController {
     type: String
   })
   async query(@Body() messages: ChatMessage[]): Promise<string> {
+    // Validate and sanitize input messages
+    const sanitizedMessages = messages.map(message => {
+      return { ...message, content: sanitizeChatMessage(message.content) };
+    });
+
     try {
-      return await this.chatService.query(messages);
+      return await this.chatService.query(sanitizedMessages);
     } catch (err) {
       throw new HttpException(
         `Chat API response error: ${err}`,
