@@ -192,7 +192,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
 
       // --- Fetch findings ---
-      const findings = await fetchFindings(bright, projectId);
+      const findings = await fetchFindings(config.brightToken, config.brightHostname, scanIds);
       await progress.phaseDetail(
         "scan",
         "findings",
