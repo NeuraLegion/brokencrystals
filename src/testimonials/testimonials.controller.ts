@@ -101,14 +101,20 @@ export class TestimonialsController {
   })
   async getCount(@Query('query') query: string): Promise<number> {
     this.logger.debug('Get count of testimonials.');
-    return await this.testimonialsService.count(query);
+
+    // Validate the query format
+    if(query.toLowerCase() !== 'select count(*) as count from testimonial') {
+      throw new Error('Invalid query format');
+    }
+
+    return await this.testimonialsService.count();
   }
 
   @GrpcMethod('TestimonialsService', 'TestimonialsCount')
   async testimonialsCountGrpc(data: {
     query: string;
   }): Promise<{ count: number }> {
-    const count = await this.testimonialsService.count(data.query);
+    const count = await this.testimonialsService.count();
     return { count };
   }
 }

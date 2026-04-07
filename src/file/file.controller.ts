@@ -49,12 +49,21 @@ export class FileController {
     }
   }
 
-  private async loadCPFile(cpBaseUrl: string, path: string) {
-    if (!path.startsWith(cpBaseUrl)) {
-      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
+  // Define an allowed path prefix whitelist
+  private static readonly ALLOWED_PATH_PREFIXES: string[] = [
+    'config/products/crystals/',
+  ];
+
+  private isPathAllowed(path: string): boolean {
+    return FileController.ALLOWED_PATH_PREFIXES.some(prefix => path.startsWith(prefix));
+  }
+
+  private async loadCPFile(cpBaseUrl: string, filePath: string) {
+    if (!filePath.startsWith(cpBaseUrl) || !this.isPathAllowed(filePath)) {
+      throw new BadRequestException(`Invalid parameter 'path': ${filePath}`);
     }
 
-    const file: Stream = await this.fileService.getFile(path);
+    const file: Stream = await this.fileService.getFile(filePath);
 
     return file;
   }

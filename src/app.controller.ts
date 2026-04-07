@@ -83,7 +83,7 @@ export class AppController {
   }
 
   @Get('goto')
-  @ApiQuery({ name: 'url', example: 'https://google.com', required: true })
+  @ApiQuery({ name: 'url', example: 'https://example.com/page1', required: true })
   @ApiOperation({
     description: API_DESC_REDIRECT_REQUEST
   })
@@ -92,7 +92,16 @@ export class AppController {
   })
   @Redirect()
   async redirect(@Query('url') url: string) {
-    return { url };
+    const allowedDomains = ['example.com', 'mysite.com'];
+    try {
+      const parsedUrl = new URL(url);
+      if (!allowedDomains.includes(parsedUrl.hostname)) {
+        throw new Error('Disallowed domain');
+      }
+      return { url: parsedUrl.toString() };
+    } catch (error) {
+      throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+    }
   }
 
   @Post('metadata')
