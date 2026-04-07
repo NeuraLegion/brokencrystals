@@ -1,43 +1,68 @@
 import type { BrightMcpClient } from "../mcp-client.js";
 import { sleep } from "../utils.js";
 
+const DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
+const PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
+
 export async function runSecurityScan(
-  bright: BrightMcpClient,
   projectId: string,
   entrypointIds: string[],
   repeaterId: string,
   testTags: string[],
+  brightToken: string,
+  brightHostname: string,
+  scanName?: string,
+  hasPathParams = false,
+): Promise<string> {
+  const locations = hasPathParams ? PATH_ATTACK_LOCATIONS : DEFAULT_ATTACK_LOCATIONS;
+  console.log(`[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests, attack locations: ${locations.join(", ")}`);
+
+  return runScanViaRest(
+    brightToken, brightHostname, projectId, entrypointIds,
+    repeaterId, testTags, locations, scanName,
+  );
+}
+
+async function runScanViaRest(
+  brightToken: string,
+  brightHostname: string,
+  projectId: string,
+  entrypointIds: string[],
+  repeaterId: string,
+  testTags: string[],
+  attackParamLocations: string[],
   scanName?: string,
 ): Promise<string> {
-  console.log(`[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests`);
-
-  const args: Record<string, unknown> = {
+  const body = {
     projectId,
     entrypointIds,
     repeaters: [repeaterId],
     tests: testTags,
+    attackParamLocations,
     name: scanName ?? `Engine Scan ${new Date().toISOString()}`,
   };
 
-  const response = await bright.callMcpToolRaw("runScan", args);
+  const res = await fetch(`https://${brightHostname}/api/v1/scans`, {
+    method: "POST",
+    headers: {
+      Authorization: `Api-Key ${brightToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
 
-  if (response.startsWith("Error")) {
-    throw new Error(`runScan failed: ${response}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
   }
 
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(response);
-  } catch {
-    throw new Error(`Failed to parse runScan response: ${response.slice(0, 500)}`);
-  }
-
-  const scanId = (parsed.scanId ?? parsed.id ?? parsed.scan_id) as string | undefined;
+  const data = (await res.json()) as Record<string, unknown>;
+  const scanId = (data.id ?? data.scanId) as string | undefined;
   if (!scanId) {
-    throw new Error(`runScan returned no scanId: ${response.slice(0, 500)}`);
+    throw new Error(`runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`);
   }
 
-  console.log(`[Scan] Scan started: ${scanId}`);
+  console.log(`[Scan] Scan started (REST): ${scanId}`);
   return scanId;
 }
 

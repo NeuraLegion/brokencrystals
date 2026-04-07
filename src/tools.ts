@@ -118,6 +118,7 @@ export function createToolHandler(repoPath: string): ToolHandler {
         try {
           const grepArgs = [
             "-rn",
+            "--binary-files=without-match",
             "--include",
             fileGlob ?? "*",
             "--exclude-dir=node_modules",

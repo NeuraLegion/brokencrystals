@@ -68,10 +68,26 @@ export async function detectAndConfigureAuth(
     }
 
     console.log(`[Auth] Created auth object: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false };
+
+    // Test the auth object
+    const testResult = await testAuthObject(brightToken, brightHostname, authObjectId);
+    if (testResult.passed) {
+      console.log(`[Auth] Auth test passed: ${testResult.summary}`);
+      return { authObjectId, hasAuth: true, authFailed: false };
+    }
+
+    console.warn(`[Auth] Attempt ${attempt}: Auth test failed — ${testResult.summary}`);
+
+    if (attempt < MAX_AUTH_ATTEMPTS) {
+      await deleteAuthObject(brightToken, brightHostname, authObjectId);
+      detection = await retryDetection(
+        llm, repoPath, techStack, endpoints, baseUrl, detection,
+        `Auth object test failed. Test results:\n${testResult.summary}\n\nThe credentials or configuration are likely wrong. Re-examine the codebase for correct values.`,
+      );
+    }
   }
 
-  console.error("[Auth] All auth creation attempts failed — cannot proceed");
+  console.error("[Auth] All auth attempts failed — cannot proceed");
   return { authObjectId: undefined, hasAuth: false, authFailed: true };
 }
 
@@ -176,9 +192,10 @@ CRITICAL RULES:
 - "tokenFieldPath": if tokenLocation is "body", this is the dot-path to the token field (e.g. "token", "data.accessToken"). If tokenLocation is "header", this is the header name in lowercase (e.g. "authorization")
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
   1. Pick a candidate from the Known endpoints list above
-  2. Read its route definition and handler code
-  3. Confirm it has auth middleware/guard applied (e.g. @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
-  4. If the route has NO auth guard or the guard is optional, pick a DIFFERENT endpoint
+  2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) — e.g. /api/users/me is better than /api/users/:id
+  3. Read its route definition and handler code
+  4. Confirm it has auth middleware/guard applied (e.g. @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
+  5. If the route has NO auth guard or the guard is optional, pick a DIFFERENT endpoint
   5. Do NOT pick endpoints that return 200 for unauthenticated requests (e.g. public pages, public APIs)
   6. Do NOT invent endpoints — pick from the list above`,
     },
@@ -268,9 +285,11 @@ async function createAuthObject(
   } = detection;
 
   // Build the test request for a known protected endpoint
-  const testUrl = protectedEndpointPath
-    ? `${baseUrl}${protectedEndpointPath}`
-    : `${baseUrl}/`;
+  // Replace path params like :email, :id with dummy values
+  const resolvedPath = protectedEndpointPath
+    ? protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1")
+    : "/";
+  const testUrl = `${baseUrl}${resolvedPath}`;
 
   if (authType === "api_key" || authType === "basic") {
     return createHeaderAuth(
@@ -412,6 +431,86 @@ async function createAuthViaRest(
     console.error(`[Auth] Failed to create auth object: ${err}`);
     return undefined;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Step 4: Test the auth object (sync GET with retry)
+// ---------------------------------------------------------------------------
+
+interface AuthTestResult {
+  passed: boolean;
+  summary: string;
+}
+
+async function testAuthObject(
+  brightToken: string,
+  brightHostname: string,
+  authObjectId: string,
+): Promise<AuthTestResult> {
+  const base = `https://${brightHostname}`;
+  const url = `${base}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}/test`;
+  const headers: Record<string, string> = {
+    Authorization: `Api-Key ${brightToken}`,
+    Accept: "application/json",
+  };
+
+  const maxRetries = 5;
+  const retryDelayMs = 5_000;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`[Auth] Testing auth object (attempt ${attempt}/${maxRetries})`);
+
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(120_000),
+      });
+
+      if (res.status === 503) {
+        const body = await res.text().catch(() => "");
+        console.warn(`[Auth] Test returned 503: ${body.slice(0, 200)}`);
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, retryDelayMs));
+          continue;
+        }
+        return { passed: false, summary: `503 after ${maxRetries} retries — ${body.slice(0, 300)}` };
+      }
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        return { passed: false, summary: `HTTP ${res.status} — ${body.slice(0, 400)}` };
+      }
+
+      const results = (await res.json()) as Array<{
+        stage: string;
+        status: string;
+        message?: string;
+      }>;
+
+      if (results.length === 0) {
+        return { passed: false, summary: "No results returned" };
+      }
+
+      const lines = results.map(
+        (r) => `stage=${r.stage} status=${r.status}${r.message ? ` — ${r.message}` : ""}`,
+      );
+      for (const l of lines) console.log(`[Auth] Test: ${l}`);
+
+      const allPassed = results.every((r) => r.status === "success");
+      return { passed: allPassed, summary: lines.join("\n") };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+        continue;
+      }
+      return { passed: false, summary: `Test failed: ${msg}` };
+    }
+  }
+
+  return { passed: false, summary: "Exhausted retries" };
 }
 
 /**

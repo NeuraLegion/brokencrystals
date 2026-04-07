@@ -11,9 +11,14 @@ export function createInferenceClient(
   return new OpenAI({ baseURL: inferenceUrl, apiKey: token });
 }
 
+/** Strip control characters and null bytes that break JSON serialization */
+function sanitizeForJson(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+}
+
 export type ToolHandler = (
-  name: string,
-  args: Record<string, unknown>,
+  name: string,  args: Record<string, unknown>,
 ) => Promise<string>;
 
 /**
@@ -59,7 +64,7 @@ export async function chatWithTools(
       conversation.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: result,
+        content: sanitizeForJson(result),
       });
     }
   }

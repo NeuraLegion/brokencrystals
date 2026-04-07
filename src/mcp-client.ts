@@ -158,24 +158,28 @@ export async function createBrightMcpClient(
 ): Promise<BrightMcpClient> {
   const mcpUrl = config.brightMcpUrl ?? `https://${config.brightHostname}/api/v1/mcp/sse`;
 
-  const client = new Client({ name: "bright-engine", version: "0.1.0" });
-
   const headers = { Authorization: `Api-Key ${config.brightToken}` };
 
-  // Try Streamable HTTP first, fall back to SSE
-  let connected = false;
-  try {
-    const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
-      requestInit: { headers },
-    });
-    await client.connect(transport);
-    connected = true;
-    console.log("[MCP] Connected via Streamable HTTP");
-  } catch {
-    console.log("[MCP] Streamable HTTP failed, falling back to SSE");
-  }
+  let client = new Client({ name: "bright-engine", version: "0.1.0" });
+  let transportType: "streamable" | "sse" = "streamable";
 
-  if (!connected) {
+  async function connect(): Promise<void> {
+    client = new Client({ name: "bright-engine", version: "0.1.0" });
+
+    if (transportType === "streamable") {
+      try {
+        const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
+          requestInit: { headers },
+        });
+        await client.connect(transport);
+        console.log("[MCP] Connected via Streamable HTTP");
+        return;
+      } catch {
+        console.log("[MCP] Streamable HTTP failed, falling back to SSE");
+        transportType = "sse";
+      }
+    }
+
     const transport = new SSEClientTransport(new URL(mcpUrl), {
       requestInit: { headers },
     });
@@ -183,14 +187,56 @@ export async function createBrightMcpClient(
     console.log("[MCP] Connected via SSE");
   }
 
+  await connect();
+
   let cachedSchemas: McpToolSchema[] | null = null;
+
+  function isSessionError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return (
+      msg.includes("Session not found") ||
+      msg.includes("session expired") ||
+      msg.includes("Connection closed")
+    );
+  }
+
+  let reconnectPromise: Promise<void> | null = null;
+
+  async function reconnect(): Promise<void> {
+    // If a reconnect is already in progress, piggyback on it
+    if (reconnectPromise) {
+      return reconnectPromise;
+    }
+    reconnectPromise = (async () => {
+      console.log("[MCP] Session lost, reconnecting...");
+      try { await client.close(); } catch { /* already dead */ }
+      cachedSchemas = null;
+      await connect();
+      console.log("[MCP] Reconnected successfully");
+    })();
+    try {
+      await reconnectPromise;
+    } finally {
+      reconnectPromise = null;
+    }
+  }
 
   async function callTool<T = unknown>(
     name: string,
     args: Record<string, unknown>,
+    isRetry = false,
   ): Promise<T> {
     console.log(`[MCP] Calling ${name} with args:`, JSON.stringify(args).slice(0, 500));
-    const result = await client.callTool({ name, arguments: args });
+    let result;
+    try {
+      result = await client.callTool({ name, arguments: args });
+    } catch (err) {
+      if (!isRetry && isSessionError(err)) {
+        await reconnect();
+        return callTool(name, args, true);
+      }
+      throw err;
+    }
     const contentArr = Array.isArray(result.content) ? result.content : [];
     const text = contentArr
       .filter(
@@ -203,6 +249,10 @@ export async function createBrightMcpClient(
     console.log(`[MCP] ${name} response:`, text.slice(0, 500));
 
     if (result.isError) {
+      if (!isRetry && isSessionError(text)) {
+        await reconnect();
+        return callTool(name, args, true);
+      }
       throw new Error(`Bright MCP tool ${name} failed: ${text}`);
     }
 
@@ -211,6 +261,43 @@ export async function createBrightMcpClient(
     } catch {
       return text as unknown as T;
     }
+  }
+
+  async function callMcpToolRawImpl(
+    name: string,
+    args: Record<string, unknown>,
+    isRetry = false,
+  ): Promise<string> {
+    console.log(`[MCP] Calling ${name} with args:`, JSON.stringify(args).slice(0, 500));
+    let result;
+    try {
+      result = await client.callTool({ name, arguments: args });
+    } catch (err) {
+      if (!isRetry && isSessionError(err)) {
+        await reconnect();
+        return callMcpToolRawImpl(name, args, true);
+      }
+      return `Error from Bright API: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    const contentArr = Array.isArray(result.content) ? result.content : [];
+    const text = contentArr
+      .filter(
+        (c: unknown): c is { type: "text"; text: string } =>
+          typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text",
+      )
+      .map((c) => c.text)
+      .join("");
+
+    console.log(`[MCP] ${name} response:`, text.slice(0, 500));
+
+    if (result.isError) {
+      if (!isRetry && isSessionError(text)) {
+        await reconnect();
+        return callMcpToolRawImpl(name, args, true);
+      }
+      return `Error from Bright API: ${text}`;
+    }
+    return text || "Success (empty response)";
   }
 
   function unwrapList<T>(result: unknown): T[] {
@@ -239,23 +326,7 @@ export async function createBrightMcpClient(
     },
 
     async callMcpToolRaw(name, args) {
-      console.log(`[MCP] Calling ${name} with args:`, JSON.stringify(args).slice(0, 500));
-      const result = await client.callTool({ name, arguments: args });
-      const contentArr = Array.isArray(result.content) ? result.content : [];
-      const text = contentArr
-        .filter(
-          (c: unknown): c is { type: "text"; text: string } =>
-            typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text",
-        )
-        .map((c) => c.text)
-        .join("");
-
-      console.log(`[MCP] ${name} response:`, text.slice(0, 500));
-
-      if (result.isError) {
-        return `Error from Bright API: ${text}`;
-      }
-      return text || "Success (empty response)";
+      return callMcpToolRawImpl(name, args);
     },
 
     async listProjects(opts) {

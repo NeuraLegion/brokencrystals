@@ -45988,6 +45988,9 @@ var openai_default = OpenAI;
 function createInferenceClient(inferenceUrl, token) {
   return new openai_default({ baseURL: inferenceUrl, apiKey: token });
 }
+function sanitizeForJson(s) {
+  return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+}
 async function chatWithTools(client, messages, tools, handleToolCall, model = "gpt-4o", maxTurns = 25) {
   const conversation = [...messages];
   for (let turn = 0; turn < maxTurns; turn++) {
@@ -46014,7 +46017,7 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = "g
       conversation.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: result
+        content: sanitizeForJson(result)
       });
     }
   }
@@ -48625,36 +48628,79 @@ var StreamableHTTPClientTransport = class {
 // src/mcp-client.ts
 async function createBrightMcpClient(config3) {
   const mcpUrl = config3.brightMcpUrl ?? `https://${config3.brightHostname}/api/v1/mcp/sse`;
-  const client = new Client({ name: "bright-engine", version: "0.1.0" });
   const headers = { Authorization: `Api-Key ${config3.brightToken}` };
-  let connected = false;
-  try {
-    const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
-      requestInit: { headers }
-    });
-    await client.connect(transport);
-    connected = true;
-    console.log("[MCP] Connected via Streamable HTTP");
-  } catch {
-    console.log("[MCP] Streamable HTTP failed, falling back to SSE");
-  }
-  if (!connected) {
+  let client = new Client({ name: "bright-engine", version: "0.1.0" });
+  let transportType = "streamable";
+  async function connect() {
+    client = new Client({ name: "bright-engine", version: "0.1.0" });
+    if (transportType === "streamable") {
+      try {
+        const transport2 = new StreamableHTTPClientTransport(new URL(mcpUrl), {
+          requestInit: { headers }
+        });
+        await client.connect(transport2);
+        console.log("[MCP] Connected via Streamable HTTP");
+        return;
+      } catch {
+        console.log("[MCP] Streamable HTTP failed, falling back to SSE");
+        transportType = "sse";
+      }
+    }
     const transport = new SSEClientTransport(new URL(mcpUrl), {
       requestInit: { headers }
     });
     await client.connect(transport);
     console.log("[MCP] Connected via SSE");
   }
+  await connect();
   let cachedSchemas = null;
-  async function callTool(name, args) {
+  function isSessionError(err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return msg.includes("Session not found") || msg.includes("session expired") || msg.includes("Connection closed");
+  }
+  let reconnectPromise = null;
+  async function reconnect() {
+    if (reconnectPromise) {
+      return reconnectPromise;
+    }
+    reconnectPromise = (async () => {
+      console.log("[MCP] Session lost, reconnecting...");
+      try {
+        await client.close();
+      } catch {
+      }
+      cachedSchemas = null;
+      await connect();
+      console.log("[MCP] Reconnected successfully");
+    })();
+    try {
+      await reconnectPromise;
+    } finally {
+      reconnectPromise = null;
+    }
+  }
+  async function callTool(name, args, isRetry = false) {
     console.log(`[MCP] Calling ${name} with args:`, JSON.stringify(args).slice(0, 500));
-    const result = await client.callTool({ name, arguments: args });
+    let result;
+    try {
+      result = await client.callTool({ name, arguments: args });
+    } catch (err) {
+      if (!isRetry && isSessionError(err)) {
+        await reconnect();
+        return callTool(name, args, true);
+      }
+      throw err;
+    }
     const contentArr = Array.isArray(result.content) ? result.content : [];
     const text = contentArr.filter(
       (c3) => typeof c3 === "object" && c3 !== null && c3.type === "text"
     ).map((c3) => c3.text).join("");
     console.log(`[MCP] ${name} response:`, text.slice(0, 500));
     if (result.isError) {
+      if (!isRetry && isSessionError(text)) {
+        await reconnect();
+        return callTool(name, args, true);
+      }
       throw new Error(`Bright MCP tool ${name} failed: ${text}`);
     }
     try {
@@ -48662,6 +48708,32 @@ async function createBrightMcpClient(config3) {
     } catch {
       return text;
     }
+  }
+  async function callMcpToolRawImpl(name, args, isRetry = false) {
+    console.log(`[MCP] Calling ${name} with args:`, JSON.stringify(args).slice(0, 500));
+    let result;
+    try {
+      result = await client.callTool({ name, arguments: args });
+    } catch (err) {
+      if (!isRetry && isSessionError(err)) {
+        await reconnect();
+        return callMcpToolRawImpl(name, args, true);
+      }
+      return `Error from Bright API: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    const contentArr = Array.isArray(result.content) ? result.content : [];
+    const text = contentArr.filter(
+      (c3) => typeof c3 === "object" && c3 !== null && c3.type === "text"
+    ).map((c3) => c3.text).join("");
+    console.log(`[MCP] ${name} response:`, text.slice(0, 500));
+    if (result.isError) {
+      if (!isRetry && isSessionError(text)) {
+        await reconnect();
+        return callMcpToolRawImpl(name, args, true);
+      }
+      return `Error from Bright API: ${text}`;
+    }
+    return text || "Success (empty response)";
   }
   function unwrapList(result) {
     if (Array.isArray(result)) return result;
@@ -48687,17 +48759,7 @@ async function createBrightMcpClient(config3) {
       return cachedSchemas;
     },
     async callMcpToolRaw(name, args) {
-      console.log(`[MCP] Calling ${name} with args:`, JSON.stringify(args).slice(0, 500));
-      const result = await client.callTool({ name, arguments: args });
-      const contentArr = Array.isArray(result.content) ? result.content : [];
-      const text = contentArr.filter(
-        (c3) => typeof c3 === "object" && c3 !== null && c3.type === "text"
-      ).map((c3) => c3.text).join("");
-      console.log(`[MCP] ${name} response:`, text.slice(0, 500));
-      if (result.isError) {
-        return `Error from Bright API: ${text}`;
-      }
-      return text || "Success (empty response)";
+      return callMcpToolRawImpl(name, args);
     },
     async listProjects(opts) {
       return callTool("listProjects", opts ?? {}).then(unwrapList);
@@ -54963,6 +55025,7 @@ function createToolHandler(repoPath) {
         try {
           const grepArgs = [
             "-rn",
+            "--binary-files=without-match",
             "--include",
             fileGlob ?? "*",
             "--exclude-dir=node_modules",
@@ -55691,9 +55754,29 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
       return { authObjectId: void 0, hasAuth: false, authFailed: true };
     }
     console.log(`[Auth] Created auth object: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false };
+    const testResult = await testAuthObject(brightToken, brightHostname, authObjectId);
+    if (testResult.passed) {
+      console.log(`[Auth] Auth test passed: ${testResult.summary}`);
+      return { authObjectId, hasAuth: true, authFailed: false };
+    }
+    console.warn(`[Auth] Attempt ${attempt}: Auth test failed \u2014 ${testResult.summary}`);
+    if (attempt < MAX_AUTH_ATTEMPTS) {
+      await deleteAuthObject(brightToken, brightHostname, authObjectId);
+      detection = await retryDetection(
+        llm,
+        repoPath,
+        techStack,
+        endpoints,
+        baseUrl,
+        detection,
+        `Auth object test failed. Test results:
+${testResult.summary}
+
+The credentials or configuration are likely wrong. Re-examine the codebase for correct values.`
+      );
+    }
   }
-  console.error("[Auth] All auth creation attempts failed \u2014 cannot proceed");
+  console.error("[Auth] All auth attempts failed \u2014 cannot proceed");
   return { authObjectId: void 0, hasAuth: false, authFailed: true };
 }
 async function detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl) {
@@ -55769,9 +55852,10 @@ CRITICAL RULES:
 - "tokenFieldPath": if tokenLocation is "body", this is the dot-path to the token field (e.g. "token", "data.accessToken"). If tokenLocation is "header", this is the header name in lowercase (e.g. "authorization")
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
   1. Pick a candidate from the Known endpoints list above
-  2. Read its route definition and handler code
-  3. Confirm it has auth middleware/guard applied (e.g. @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
-  4. If the route has NO auth guard or the guard is optional, pick a DIFFERENT endpoint
+  2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) \u2014 e.g. /api/users/me is better than /api/users/:id
+  3. Read its route definition and handler code
+  4. Confirm it has auth middleware/guard applied (e.g. @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
+  5. If the route has NO auth guard or the guard is optional, pick a DIFFERENT endpoint
   5. Do NOT pick endpoints that return 200 for unauthenticated requests (e.g. public pages, public APIs)
   6. Do NOT invent endpoints \u2014 pick from the list above`
     }
@@ -55840,7 +55924,8 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
     headerPrefix,
     protectedEndpointPath
   } = detection;
-  const testUrl = protectedEndpointPath ? `${baseUrl}${protectedEndpointPath}` : `${baseUrl}/`;
+  const resolvedPath = protectedEndpointPath ? protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1") : "/";
+  const testUrl = `${baseUrl}${resolvedPath}`;
   if (authType === "api_key" || authType === "basic") {
     return createHeaderAuth(
       brightToken,
@@ -55869,7 +55954,7 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
     projectId,
     type: "multistep",
     test: {
-      request: { method: "GET", url: testUrl },
+      request: { method: "GET", url: testUrl, protocol: "http" },
       repeaterId
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
@@ -55879,10 +55964,10 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
         steps: [
           {
             name: "login",
-            protocol: "http",
             request: {
               url: loginUrl,
               method: loginMethod ?? "POST",
+              protocol: "http",
               headers: [{ name: "Content-Type", value: "application/json", type: "clear_text" }],
               body: loginBody,
               bodyType: "clear_text"
@@ -55960,6 +56045,58 @@ async function createAuthViaRest(brightToken, brightHostname, body) {
     console.error(`[Auth] Failed to create auth object: ${err}`);
     return void 0;
   }
+}
+async function testAuthObject(brightToken, brightHostname, authObjectId) {
+  const base = `https://${brightHostname}`;
+  const url3 = `${base}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}/test`;
+  const headers = {
+    Authorization: `Api-Key ${brightToken}`,
+    Accept: "application/json"
+  };
+  const maxRetries = 5;
+  const retryDelayMs = 5e3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`[Auth] Testing auth object (attempt ${attempt}/${maxRetries})`);
+    try {
+      const res = await fetch(url3, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(12e4)
+      });
+      if (res.status === 503) {
+        const body = await res.text().catch(() => "");
+        console.warn(`[Auth] Test returned 503: ${body.slice(0, 200)}`);
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, retryDelayMs));
+          continue;
+        }
+        return { passed: false, summary: `503 after ${maxRetries} retries \u2014 ${body.slice(0, 300)}` };
+      }
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        return { passed: false, summary: `HTTP ${res.status} \u2014 ${body.slice(0, 400)}` };
+      }
+      const results = await res.json();
+      if (results.length === 0) {
+        return { passed: false, summary: "No results returned" };
+      }
+      const lines = results.map(
+        (r) => `stage=${r.stage} status=${r.status}${r.message ? ` \u2014 ${r.message}` : ""}`
+      );
+      for (const l of lines) console.log(`[Auth] Test: ${l}`);
+      const allPassed = results.every((r) => r.status === "success");
+      return { passed: allPassed, summary: lines.join("\n") };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+        continue;
+      }
+      return { passed: false, summary: `Test failed: ${msg}` };
+    }
+  }
+  return { passed: false, summary: "Exhausted retries" };
 }
 function buildTokenRegex(fieldPath) {
   const lastSegment = fieldPath.includes(".") ? fieldPath.split(".").pop() : fieldPath;
@@ -56040,6 +56177,24 @@ CRITICAL RULES:
   } catch {
     console.warn("[Auth] Could not parse retry detection response \u2014 using previous detection");
     return previousDetection;
+  }
+}
+async function deleteAuthObject(brightToken, brightHostname, authObjectId) {
+  try {
+    const res = await fetch(
+      `https://${brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Api-Key ${brightToken}` }
+      }
+    );
+    if (res.ok || res.status === 204) {
+      console.log(`[Auth] Deleted failed auth object ${authObjectId}`);
+    } else {
+      console.warn(`[Auth] Failed to delete auth object: ${res.status}`);
+    }
+  } catch (err) {
+    console.warn(`[Auth] Failed to delete auth object: ${err}`);
   }
 }
 
@@ -56141,6 +56296,51 @@ async function verifyEntrypointAuth(bright, projectId, entrypointId) {
     const msg = toErrorMessage(err);
     console.warn(`[Entrypoints] Failed to verify entrypoint auth: ${msg}`);
     return { ok: true, detail: `Could not verify: ${msg}` };
+  }
+}
+async function pruneDeadEntrypoints(bright, projectId, entrypointIds, brightToken, brightHostname) {
+  const alive = [];
+  const dead = [];
+  for (const epId of entrypointIds) {
+    try {
+      const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId: epId });
+      const data = JSON.parse(raw);
+      const status = data.response?.status ?? data.status;
+      if (status === 404) {
+        const url3 = data.request?.url ?? data.url ?? epId;
+        console.log(`[Entrypoints] \u2717 Removing 404 entrypoint: ${url3}`);
+        dead.push(epId);
+      } else {
+        alive.push(epId);
+      }
+    } catch {
+      alive.push(epId);
+    }
+  }
+  await Promise.allSettled(
+    dead.map((epId) => deleteEntrypoint(brightToken, brightHostname, projectId, epId))
+  );
+  if (dead.length > 0) {
+    console.log(`[Entrypoints] Pruned ${dead.length} dead (404) entrypoint(s), ${alive.length} remaining`);
+  }
+  return alive;
+}
+async function deleteEntrypoint(brightToken, brightHostname, projectId, entrypointId) {
+  try {
+    const res = await fetch(
+      `https://${brightHostname}/api/v1/projects/${encodeURIComponent(projectId)}/entrypoints/${encodeURIComponent(entrypointId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Api-Key ${brightToken}` }
+      }
+    );
+    if (res.ok || res.status === 204) {
+      console.log(`[Entrypoints] Deleted entrypoint ${entrypointId}`);
+    } else {
+      console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${res.status}`);
+    }
+  } catch (err) {
+    console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${err}`);
   }
 }
 
@@ -56309,16 +56509,19 @@ Return a JSON object with an array of entries, one per endpoint index.`
     const valid = raw.filter((t) => validTags.has(t));
     return valid.length > 0 ? valid : ["header_security", "cookie_security"].filter((t) => validTags.has(t));
   });
+  const PATH_PARAM_RE = /[:{}]/;
   const groupMap = /* @__PURE__ */ new Map();
   for (let i = 0; i < endpoints.length; i++) {
     if (i >= entrypointIds.length) break;
     const key = [...perEndpoint[i]].sort().join(",");
-    if (!groupMap.has(key)) groupMap.set(key, []);
-    groupMap.get(key).push(entrypointIds[i]);
+    if (!groupMap.has(key)) groupMap.set(key, { epIds: [], hasPathParams: false });
+    const g = groupMap.get(key);
+    g.epIds.push(entrypointIds[i]);
+    if (PATH_PARAM_RE.test(endpoints[i].path)) g.hasPathParams = true;
   }
   const groups = [];
-  for (const [testsKey, epIds] of groupMap) {
-    groups.push({ tests: testsKey.split(","), entrypointIds: epIds });
+  for (const [testsKey, { epIds, hasPathParams }] of groupMap) {
+    groups.push({ tests: testsKey.split(","), entrypointIds: epIds, hasPathParams });
   }
   const MAX_GROUPS = 10;
   const consolidated = consolidateGroups(groups, MAX_GROUPS);
@@ -56337,7 +56540,8 @@ function consolidateGroups(groups, maxGroups) {
     const mergedTests = [.../* @__PURE__ */ new Set([...a.tests, ...b.tests])];
     const merged = {
       tests: mergedTests,
-      entrypointIds: [...a.entrypointIds, ...b.entrypointIds]
+      entrypointIds: [...a.entrypointIds, ...b.entrypointIds],
+      hasPathParams: a.hasPathParams || b.hasPathParams
     };
     const insertIdx = sorted.findIndex((g) => g.entrypointIds.length >= merged.entrypointIds.length);
     if (insertIdx === -1) sorted.push(merged);
@@ -56347,30 +56551,49 @@ function consolidateGroups(groups, maxGroups) {
 }
 
 // src/phases/scan.ts
-async function runSecurityScan(bright, projectId, entrypointIds, repeaterId, testTags, scanName) {
-  console.log(`[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests`);
-  const args = {
+var DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
+var PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
+async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, brightToken, brightHostname, scanName, hasPathParams = false) {
+  const locations = hasPathParams ? PATH_ATTACK_LOCATIONS : DEFAULT_ATTACK_LOCATIONS;
+  console.log(`[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests, attack locations: ${locations.join(", ")}`);
+  return runScanViaRest(
+    brightToken,
+    brightHostname,
+    projectId,
+    entrypointIds,
+    repeaterId,
+    testTags,
+    locations,
+    scanName
+  );
+}
+async function runScanViaRest(brightToken, brightHostname, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName) {
+  const body = {
     projectId,
     entrypointIds,
     repeaters: [repeaterId],
     tests: testTags,
+    attackParamLocations,
     name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`
   };
-  const response = await bright.callMcpToolRaw("runScan", args);
-  if (response.startsWith("Error")) {
-    throw new Error(`runScan failed: ${response}`);
+  const res = await fetch(`https://${brightHostname}/api/v1/scans`, {
+    method: "POST",
+    headers: {
+      Authorization: `Api-Key ${brightToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
   }
-  let parsed;
-  try {
-    parsed = JSON.parse(response);
-  } catch {
-    throw new Error(`Failed to parse runScan response: ${response.slice(0, 500)}`);
-  }
-  const scanId = parsed.scanId ?? parsed.id ?? parsed.scan_id;
+  const data = await res.json();
+  const scanId = data.id ?? data.scanId;
   if (!scanId) {
-    throw new Error(`runScan returned no scanId: ${response.slice(0, 500)}`);
+    throw new Error(`runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`);
   }
-  console.log(`[Scan] Scan started: ${scanId}`);
+  console.log(`[Scan] Scan started (REST): ${scanId}`);
   return scanId;
 }
 async function waitForScanCompletion(bright, scanId, onProgress, timeoutMs = 40 * 60 * 1e3) {
@@ -56710,7 +56933,7 @@ async function runOrchestrator(ctx) {
       return;
     }
     await progress.phaseStart("entrypoints", "Registering API endpoints for scanning");
-    const entrypointIds = await registerEntrypoints(
+    let entrypointIds = await registerEntrypoints(
       bright,
       projectId,
       endpoints,
@@ -56731,6 +56954,20 @@ async function runOrchestrator(ctx) {
       } else {
         console.warn(`[Entrypoints] \u2717 Auth verification failed \u2014 ${check3.detail}`);
       }
+    }
+    if (entrypointIds.length > 0) {
+      entrypointIds = await pruneDeadEntrypoints(
+        bright,
+        projectId,
+        entrypointIds,
+        config3.brightToken,
+        config3.brightHostname
+      );
+      await progress.phaseDetail(
+        "entrypoints",
+        "pruned",
+        `${entrypointIds.length} live entrypoints after pruning 404s`
+      );
     }
     if (entrypointIds.length === 0) {
       await progress.phaseStart(
@@ -56764,12 +57001,14 @@ async function runOrchestrator(ctx) {
       for (const [gi, group] of scanGroups.entries()) {
         try {
           const scanId = await runSecurityScan(
-            bright,
             projectId,
             group.entrypointIds,
             repeater.repeaterId,
             group.tests,
-            `Engine Pass ${iteration + 1} \u2014 Group ${gi + 1}`
+            config3.brightToken,
+            config3.brightHostname,
+            `Engine Pass ${iteration + 1} \u2014 Group ${gi + 1}`,
+            group.hasPathParams
           );
           scanIds.push(scanId);
           allScanIds.push(scanId);

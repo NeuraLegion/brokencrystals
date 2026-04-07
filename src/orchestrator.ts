@@ -7,7 +7,7 @@ import { formatTechStack } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import { startApplicationWithRetries, captureDockerLogs, type StartupResult } from "./phases/startup.js";
 import { detectAndConfigureAuth, type AuthResult } from "./phases/auth.js";
-import { registerEntrypoints, verifyEntrypointAuth } from "./phases/entrypoints.js";
+import { registerEntrypoints, verifyEntrypointAuth, pruneDeadEntrypoints } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
 import { selectTestsPerEndpoint, type ScanGroup } from "./phases/test-selection.js";
 import { runSecurityScan, waitForScanCompletion } from "./phases/scan.js";
@@ -110,7 +110,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // ----- Phase 5: Register entrypoints -----
     await progress.phaseStart("entrypoints", "Registering API endpoints for scanning");
-    const entrypointIds = await registerEntrypoints(
+    let entrypointIds = await registerEntrypoints(
       bright,
       projectId,
       endpoints,
@@ -133,6 +133,22 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       } else {
         console.warn(`[Entrypoints] ✗ Auth verification failed — ${check.detail}`);
       }
+    }
+
+    // Prune entrypoints that returned 404 — they waste scan time
+    if (entrypointIds.length > 0) {
+      entrypointIds = await pruneDeadEntrypoints(
+        bright,
+        projectId,
+        entrypointIds,
+        config.brightToken,
+        config.brightHostname,
+      );
+      await progress.phaseDetail(
+        "entrypoints",
+        "pruned",
+        `${entrypointIds.length} live entrypoints after pruning 404s`,
+      );
     }
 
     // ----- Phase 6–8: Scan → Fix → Validate loop -----
@@ -170,12 +186,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       for (const [gi, group] of scanGroups.entries()) {
         try {
           const scanId = await runSecurityScan(
-            bright,
             projectId,
             group.entrypointIds,
             repeater.repeaterId,
             group.tests,
+            config.brightToken,
+            config.brightHostname,
             `Engine Pass ${iteration + 1} — Group ${gi + 1}`,
+            group.hasPathParams,
           );
           scanIds.push(scanId);
           allScanIds.push(scanId);

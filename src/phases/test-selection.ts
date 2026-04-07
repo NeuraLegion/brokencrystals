@@ -17,6 +17,7 @@ const AUTH_DEPENDENT_TESTS = new Set([
 export interface ScanGroup {
   tests: string[];
   entrypointIds: string[];
+  hasPathParams: boolean;
 }
 
 /**
@@ -115,18 +116,22 @@ Return a JSON object with an array of entries, one per endpoint index.`,
     return valid.length > 0 ? valid : ["header_security", "cookie_security"].filter((t) => validTags.has(t));
   });
 
+  const PATH_PARAM_RE = /[:{}]/;
+
   // Group endpoints that share the exact same test set
-  const groupMap = new Map<string, string[]>();
+  const groupMap = new Map<string, { epIds: string[]; hasPathParams: boolean }>();
   for (let i = 0; i < endpoints.length; i++) {
     if (i >= entrypointIds.length) break;
     const key = [...perEndpoint[i]].sort().join(",");
-    if (!groupMap.has(key)) groupMap.set(key, []);
-    groupMap.get(key)!.push(entrypointIds[i]);
+    if (!groupMap.has(key)) groupMap.set(key, { epIds: [], hasPathParams: false });
+    const g = groupMap.get(key)!;
+    g.epIds.push(entrypointIds[i]);
+    if (PATH_PARAM_RE.test(endpoints[i].path)) g.hasPathParams = true;
   }
 
   const groups: ScanGroup[] = [];
-  for (const [testsKey, epIds] of groupMap) {
-    groups.push({ tests: testsKey.split(","), entrypointIds: epIds });
+  for (const [testsKey, { epIds, hasPathParams }] of groupMap) {
+    groups.push({ tests: testsKey.split(","), entrypointIds: epIds, hasPathParams });
   }
 
   // Cap the number of scan groups to avoid excessive parallel scans
@@ -159,6 +164,7 @@ function consolidateGroups(groups: ScanGroup[], maxGroups: number): ScanGroup[] 
     const merged: ScanGroup = {
       tests: mergedTests,
       entrypointIds: [...a.entrypointIds, ...b.entrypointIds],
+      hasPathParams: a.hasPathParams || b.hasPathParams,
     };
     // Re-insert in sorted position
     const insertIdx = sorted.findIndex((g) => g.entrypointIds.length >= merged.entrypointIds.length);

@@ -150,3 +150,72 @@ export async function verifyEntrypointAuth(
     return { ok: true, detail: `Could not verify: ${msg}` };
   }
 }
+
+/**
+ * Check each registered entrypoint's response status and remove any that
+ * return 404 — these waste scan time and produce no useful results.
+ */
+export async function pruneDeadEntrypoints(
+  bright: BrightMcpClient,
+  projectId: string,
+  entrypointIds: string[],
+  brightToken: string,
+  brightHostname: string,
+): Promise<string[]> {
+  const alive: string[] = [];
+  const dead: string[] = [];
+
+  for (const epId of entrypointIds) {
+    try {
+      const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId: epId });
+      const data = JSON.parse(raw);
+      const status = data.response?.status ?? data.status;
+
+      if (status === 404) {
+        const url = data.request?.url ?? data.url ?? epId;
+        console.log(`[Entrypoints] ✗ Removing 404 entrypoint: ${url}`);
+        dead.push(epId);
+      } else {
+        alive.push(epId);
+      }
+    } catch {
+      // If we can't check it, keep it — don't drop potentially valid EPs
+      alive.push(epId);
+    }
+  }
+
+  // Delete the dead entrypoints in parallel
+  await Promise.allSettled(
+    dead.map((epId) => deleteEntrypoint(brightToken, brightHostname, projectId, epId)),
+  );
+
+  if (dead.length > 0) {
+    console.log(`[Entrypoints] Pruned ${dead.length} dead (404) entrypoint(s), ${alive.length} remaining`);
+  }
+
+  return alive;
+}
+
+async function deleteEntrypoint(
+  brightToken: string,
+  brightHostname: string,
+  projectId: string,
+  entrypointId: string,
+): Promise<void> {
+  try {
+    const res = await fetch(
+      `https://${brightHostname}/api/v1/projects/${encodeURIComponent(projectId)}/entrypoints/${encodeURIComponent(entrypointId)}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Api-Key ${brightToken}` },
+      },
+    );
+    if (res.ok || res.status === 204) {
+      console.log(`[Entrypoints] Deleted entrypoint ${entrypointId}`);
+    } else {
+      console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${res.status}`);
+    }
+  } catch (err) {
+    console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${err}`);
+  }
+}
