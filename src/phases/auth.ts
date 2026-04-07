@@ -30,7 +30,7 @@ export async function detectAndConfigureAuth(
   brightToken: string,
   brightHostname: string,
 ): Promise<AuthResult> {
-  const MAX_AUTH_ATTEMPTS = 3;
+  const MAX_AUTH_ATTEMPTS = 10;
 
   // Step 1: Detect auth from source code using the LLM
   let detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl);
@@ -67,25 +67,10 @@ export async function detectAndConfigureAuth(
     }
 
     console.log(`[Auth] Created auth object: ${authObjectId}`);
-
-    const testResult = await testAuthObject(brightToken, brightHostname, authObjectId);
-    if (testResult.passed) {
-      return { authObjectId, hasAuth: true, authFailed: false };
-    }
-
-    console.warn(`[Auth] Attempt ${attempt}: Auth test failed — ${testResult.summary}`);
-
-    if (attempt < MAX_AUTH_ATTEMPTS) {
-      // Delete the broken auth object before retrying
-      await deleteAuthObject(brightToken, brightHostname, authObjectId);
-      detection = await retryDetection(
-        llm, repoPath, techStack, endpoints, baseUrl, detection,
-        `Auth object test failed. Test results:\n${testResult.summary}\n\nThe credentials or configuration are likely wrong. Re-examine the codebase for correct values.`,
-      );
-    }
+    return { authObjectId, hasAuth: true, authFailed: false };
   }
 
-  console.error("[Auth] All auth attempts failed — cannot proceed");
+  console.error("[Auth] All auth creation attempts failed — cannot proceed");
   return { authObjectId: undefined, hasAuth: false, authFailed: true };
 }
 
@@ -157,7 +142,7 @@ Base URL: ${baseUrl}`,
       role: "user",
       content: `Analyze the authentication for this app.
 
-Known endpoints:
+Known endpoints (these are REAL endpoints that exist in the app):
 ${endpointSummary}
 
 You MUST search the codebase and READ files before answering. Do NOT guess — actually look at the code.
@@ -172,7 +157,7 @@ Return ONLY a JSON object with these exact fields:
   "tokenFieldPath": "token" or "data.accessToken" or null,
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
-  "protectedEndpointPath": "/api/users" or null,
+  "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description including where you found the credentials"
 }
 
@@ -181,7 +166,13 @@ CRITICAL RULES:
 - "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
 - If you cannot find real credentials, set "loginBody" to null — do NOT invent values
 - "tokenFieldPath" is the dot-path to the token in the JSON login response
-- "protectedEndpointPath" should be a known endpoint that requires authentication`,
+- "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
+  1. Pick a candidate from the Known endpoints list above
+  2. Read its route definition and handler code
+  3. Confirm it has auth middleware/guard applied (e.g. @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
+  4. If the route has NO auth guard or the guard is optional, pick a DIFFERENT endpoint
+  5. Do NOT pick endpoints that return 200 for unauthenticated requests (e.g. public pages, public APIs)
+  6. Do NOT invent endpoints — pick from the list above`,
     },
   ];
 
@@ -287,7 +278,7 @@ async function createAuthObject(
 
   // Build the NexTemplate regex for token extraction
   const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
-  const template = `${headerPrefix ?? "Bearer "}{{ stages.login.response.body | match: /${tokenRegex}/ }}`;
+  const template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
 
   const body = {
     name: `Engine Auth — ${authType}`,
@@ -421,88 +412,6 @@ function buildTokenRegex(fieldPath: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Step 4: Test the auth object
-// ---------------------------------------------------------------------------
-
-interface AuthTestResult {
-  passed: boolean;
-  summary: string;
-}
-
-async function testAuthObject(
-  brightToken: string,
-  brightHostname: string,
-  authObjectId: string,
-): Promise<AuthTestResult> {
-  const base = `https://${brightHostname}`;
-  const headers = {
-    Authorization: `Api-Key ${brightToken}`,
-    Accept: "application/json",
-    "Content-Type": "application/json",
-  };
-
-  try {
-    // Start an async auth object test
-    const createRes = await fetch(`${base}/api/v3/auth-objects/tests`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ authObjectId }),
-    });
-
-    if (!createRes.ok) {
-      const body = await createRes.text().catch(() => "");
-      return { passed: false, summary: `Failed to start auth test: HTTP ${createRes.status} — ${body.slice(0, 300)}` };
-    }
-
-    const testView = (await createRes.json()) as {
-      id: string;
-      results: Array<{ stage: string; status: string; message?: string }>;
-      finishedAt: string | null;
-    };
-
-    console.log(`[Auth] Auth test started: ${testView.id}`);
-
-    // Poll for results until finishedAt is set
-    const maxWaitMs = 90_000;
-    const pollIntervalMs = 3_000;
-    const start = Date.now();
-
-    let latest = testView;
-
-    while (!latest.finishedAt && Date.now() - start < maxWaitMs) {
-      await new Promise((r) => setTimeout(r, pollIntervalMs));
-
-      const pollRes = await fetch(
-        `${base}/api/v3/auth-objects/tests/${encodeURIComponent(latest.id)}`,
-        { method: "GET", headers },
-      );
-
-      if (!pollRes.ok) {
-        return { passed: false, summary: `Poll auth test failed: HTTP ${pollRes.status}` };
-      }
-
-      latest = (await pollRes.json()) as typeof testView;
-    }
-
-    if (!latest.finishedAt) {
-      return { passed: false, summary: "Auth test timed out after 90s" };
-    }
-
-    const lines: string[] = [];
-    for (const r of latest.results) {
-      const line = `stage=${r.stage} status=${r.status}${r.message ? ` — ${r.message}` : ""}`;
-      console.log(`[Auth] Test ${line}`);
-      lines.push(line);
-    }
-
-    const allPassed = latest.results.every((r) => r.status === "success");
-    return { passed: allPassed, summary: lines.join("\n") };
-  } catch (err) {
-    return { passed: false, summary: `Auth test request failed: ${err}` };
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Retry detection with feedback from the failed attempt
 // ---------------------------------------------------------------------------
 
@@ -549,7 +458,7 @@ INSTRUCTIONS:
       role: "user",
       content: `The previous auth configuration failed. Re-examine the codebase and find the CORRECT credentials.
 
-Known endpoints:
+Known endpoints (these are REAL endpoints that exist in the app):
 ${endpointSummary}
 
 Return ONLY a JSON object with these exact fields:
@@ -558,13 +467,18 @@ Return ONLY a JSON object with these exact fields:
   "authType": "jwt" | "session" | "api_key" | "basic" | "oauth" | "none",
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
-  "loginBody": "{\\"email\\":\\"admin@example.com\\",\\"password\\":\\"correctpassword\\"}" or null,
+  "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
   "tokenFieldPath": "token" or "data.accessToken" or null,
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
-  "protectedEndpointPath": "/api/users" or null,
+  "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description"
-}`,
+}
+
+CRITICAL RULES:
+- "loginBody" values MUST come from actual files you read (seed data, env vars, docker-compose, README)
+- Do NOT invent credentials like "admin@example.com" or "correctpassword"
+- "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT auth. Read the route handler code to confirm it has an auth guard/middleware. Do NOT pick endpoints that return 200 without auth.`,
     },
   ];
 

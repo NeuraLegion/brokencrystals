@@ -123,3 +123,29 @@ function resolvePath(path: string): string {
     .replace(/:(\w+)/g, "1")
     .replace(/\{(\w+)\}/g, "1");
 }
+
+/**
+ * After registering entrypoints with auth, fetch one back via getEntrypoint
+ * and log the response to verify if auth is working.
+ */
+export async function verifyEntrypointAuth(
+  bright: BrightMcpClient,
+  entrypointId: string,
+): Promise<{ ok: boolean; detail: string }> {
+  try {
+    console.log(`[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`);
+    const raw = await bright.callMcpToolRaw("getEntrypoint", { entrypointId });
+    console.log(`[Entrypoints] getEntrypoint response: ${raw.slice(0, 1000)}`);
+
+    const data = JSON.parse(raw);
+    const status = data.response?.status ?? data.status;
+    if (status && (status === 401 || status === 403)) {
+      return { ok: false, detail: `Entrypoint returned HTTP ${status} — auth likely not working` };
+    }
+    return { ok: true, detail: `Entrypoint response: ${JSON.stringify(data.response ?? {}).slice(0, 300)}` };
+  } catch (err) {
+    const msg = toErrorMessage(err);
+    console.warn(`[Entrypoints] Failed to verify entrypoint auth: ${msg}`);
+    return { ok: true, detail: `Could not verify: ${msg}` };
+  }
+}

@@ -55456,10 +55456,14 @@ async function startApplication(repoPath, config3) {
     });
   }
   const env = { ...process.env, ...config3.envVars };
-  const parts = config3.command.split(/\s+/);
+  let command = config3.command;
+  if (config3.docker && /docker\s+compose/.test(command) && command.includes("-d") && !command.includes("--wait")) {
+    command = command.replace("-d", "-d --wait");
+  }
+  const parts = command.split(/\s+/);
   const bin = parts[0];
   const args = parts.slice(1);
-  console.log(`[Startup] Starting application: ${config3.command} (port ${config3.port})`);
+  console.log(`[Startup] Starting application: ${command} (port ${config3.port})`);
   const child = spawn(bin, args, {
     cwd: repoPath,
     env,
@@ -55496,18 +55500,61 @@ ${outputLines.slice(-30).join("\n")}`
       reject(new Error(`Failed to spawn process: ${err.message}`));
     });
   });
-  try {
-    await Promise.race([
-      waitForPort(config3.port, 9e4),
-      earlyExitPromise
-    ]);
-  } catch (err) {
-    if (child.exitCode === null) {
-      child.kill("SIGTERM");
+  if (config3.docker && command.includes("--wait")) {
+    const composeExitPromise = new Promise((resolve4, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error("docker compose --wait timed out after 300s"));
+      }, 3e5);
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve4();
+        else reject(new Error(`docker compose exited with code ${code}. Output:
+${outputLines.slice(-30).join("\n")}`));
+      });
+    });
+    try {
+      await Promise.race([composeExitPromise, earlyExitPromise]);
+    } catch (err) {
+      logDockerFailure(repoPath);
+      throw err;
     }
-    throw err;
+    console.log("[Startup] Docker Compose services healthy, checking port...");
+    await waitForPort(config3.port, 3e4);
+  } else {
+    const portTimeoutMs = config3.docker ? 18e4 : 9e4;
+    try {
+      await Promise.race([
+        waitForPort(config3.port, portTimeoutMs),
+        earlyExitPromise
+      ]);
+    } catch (err) {
+      if (config3.docker) logDockerFailure(repoPath);
+      if (child.exitCode === null) {
+        child.kill("SIGTERM");
+      }
+      throw err;
+    }
   }
   return child;
+}
+function logDockerFailure(repoPath) {
+  try {
+    const ps = execSync("docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true", {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 1e4
+    }).trim();
+    if (ps) console.log(`[Startup] Docker container status:
+${ps}`);
+    const logs = execSync("docker compose logs --tail=40 2>/dev/null || true", {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 15e3
+    }).trim();
+    if (logs) console.log(`[Startup] Docker logs (last 40 lines):
+${logs.slice(-3e3)}`);
+  } catch {
+  }
 }
 async function waitForPort(port, timeoutMs) {
   const start = Date.now();
@@ -55605,7 +55652,7 @@ ${containerLog.trim()}`);
 
 // src/phases/auth.ts
 async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoints, projectId, baseUrl, repeaterId, brightToken, brightHostname) {
-  const MAX_AUTH_ATTEMPTS = 3;
+  const MAX_AUTH_ATTEMPTS = 10;
   let detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl);
   if (!detection.requiresAuth) {
     console.log("[Auth] No auth required");
@@ -55636,28 +55683,9 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
       return { authObjectId: void 0, hasAuth: false, authFailed: true };
     }
     console.log(`[Auth] Created auth object: ${authObjectId}`);
-    const testResult = await testAuthObject(brightToken, brightHostname, authObjectId);
-    if (testResult.passed) {
-      return { authObjectId, hasAuth: true, authFailed: false };
-    }
-    console.warn(`[Auth] Attempt ${attempt}: Auth test failed \u2014 ${testResult.summary}`);
-    if (attempt < MAX_AUTH_ATTEMPTS) {
-      await deleteAuthObject(brightToken, brightHostname, authObjectId);
-      detection = await retryDetection(
-        llm,
-        repoPath,
-        techStack,
-        endpoints,
-        baseUrl,
-        detection,
-        `Auth object test failed. Test results:
-${testResult.summary}
-
-The credentials or configuration are likely wrong. Re-examine the codebase for correct values.`
-      );
-    }
+    return { authObjectId, hasAuth: true, authFailed: false };
   }
-  console.error("[Auth] All auth attempts failed \u2014 cannot proceed");
+  console.error("[Auth] All auth creation attempts failed \u2014 cannot proceed");
   return { authObjectId: void 0, hasAuth: false, authFailed: true };
 }
 async function detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl) {
@@ -55701,7 +55729,7 @@ Base URL: ${baseUrl}`
       role: "user",
       content: `Analyze the authentication for this app.
 
-Known endpoints:
+Known endpoints (these are REAL endpoints that exist in the app):
 ${endpointSummary}
 
 You MUST search the codebase and READ files before answering. Do NOT guess \u2014 actually look at the code.
@@ -55716,7 +55744,7 @@ Return ONLY a JSON object with these exact fields:
   "tokenFieldPath": "token" or "data.accessToken" or null,
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
-  "protectedEndpointPath": "/api/users" or null,
+  "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description including where you found the credentials"
 }
 
@@ -55725,7 +55753,13 @@ CRITICAL RULES:
 - "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
 - If you cannot find real credentials, set "loginBody" to null \u2014 do NOT invent values
 - "tokenFieldPath" is the dot-path to the token in the JSON login response
-- "protectedEndpointPath" should be a known endpoint that requires authentication`
+- "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
+  1. Pick a candidate from the Known endpoints list above
+  2. Read its route definition and handler code
+  3. Confirm it has auth middleware/guard applied (e.g. @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
+  4. If the route has NO auth guard or the guard is optional, pick a DIFFERENT endpoint
+  5. Do NOT pick endpoints that return 200 for unauthenticated requests (e.g. public pages, public APIs)
+  6. Do NOT invent endpoints \u2014 pick from the list above`
     }
   ];
   const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 20);
@@ -55806,7 +55840,7 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
   }
   const loginUrl = `${baseUrl}${loginEndpoint}`;
   const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
-  const template = `${headerPrefix ?? "Bearer "}{{ stages.login.response.body | match: /${tokenRegex}/ }}`;
+  const template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
   const body = {
     name: `Engine Auth \u2014 ${authType}`,
     projectId,
@@ -55908,55 +55942,6 @@ function buildTokenRegex(fieldPath) {
   const escaped = lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return `"${escaped}"\\s*:\\s*"([^"]*)"`;
 }
-async function testAuthObject(brightToken, brightHostname, authObjectId) {
-  const base = `https://${brightHostname}`;
-  const headers = {
-    Authorization: `Api-Key ${brightToken}`,
-    Accept: "application/json",
-    "Content-Type": "application/json"
-  };
-  try {
-    const createRes = await fetch(`${base}/api/v3/auth-objects/tests`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ authObjectId })
-    });
-    if (!createRes.ok) {
-      const body = await createRes.text().catch(() => "");
-      return { passed: false, summary: `Failed to start auth test: HTTP ${createRes.status} \u2014 ${body.slice(0, 300)}` };
-    }
-    const testView = await createRes.json();
-    console.log(`[Auth] Auth test started: ${testView.id}`);
-    const maxWaitMs = 9e4;
-    const pollIntervalMs = 3e3;
-    const start = Date.now();
-    let latest = testView;
-    while (!latest.finishedAt && Date.now() - start < maxWaitMs) {
-      await new Promise((r) => setTimeout(r, pollIntervalMs));
-      const pollRes = await fetch(
-        `${base}/api/v3/auth-objects/tests/${encodeURIComponent(latest.id)}`,
-        { method: "GET", headers }
-      );
-      if (!pollRes.ok) {
-        return { passed: false, summary: `Poll auth test failed: HTTP ${pollRes.status}` };
-      }
-      latest = await pollRes.json();
-    }
-    if (!latest.finishedAt) {
-      return { passed: false, summary: "Auth test timed out after 90s" };
-    }
-    const lines = [];
-    for (const r of latest.results) {
-      const line = `stage=${r.stage} status=${r.status}${r.message ? ` \u2014 ${r.message}` : ""}`;
-      console.log(`[Auth] Test ${line}`);
-      lines.push(line);
-    }
-    const allPassed = latest.results.every((r) => r.status === "success");
-    return { passed: allPassed, summary: lines.join("\n") };
-  } catch (err) {
-    return { passed: false, summary: `Auth test request failed: ${err}` };
-  }
-}
 async function retryDetection(llm, repoPath, techStack, endpoints, baseUrl, previousDetection, failureReason) {
   console.log(`[Auth] Re-detecting auth after failure: ${failureReason.slice(0, 200)}`);
   const stackStr = formatTechStack(techStack);
@@ -55987,7 +55972,7 @@ INSTRUCTIONS:
       role: "user",
       content: `The previous auth configuration failed. Re-examine the codebase and find the CORRECT credentials.
 
-Known endpoints:
+Known endpoints (these are REAL endpoints that exist in the app):
 ${endpointSummary}
 
 Return ONLY a JSON object with these exact fields:
@@ -55996,13 +55981,18 @@ Return ONLY a JSON object with these exact fields:
   "authType": "jwt" | "session" | "api_key" | "basic" | "oauth" | "none",
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
-  "loginBody": "{\\"email\\":\\"admin@example.com\\",\\"password\\":\\"correctpassword\\"}" or null,
+  "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
   "tokenFieldPath": "token" or "data.accessToken" or null,
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
-  "protectedEndpointPath": "/api/users" or null,
+  "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description"
-}`
+}
+
+CRITICAL RULES:
+- "loginBody" values MUST come from actual files you read (seed data, env vars, docker-compose, README)
+- Do NOT invent credentials like "admin@example.com" or "correctpassword"
+- "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT auth. Read the route handler code to confirm it has an auth guard/middleware. Do NOT pick endpoints that return 200 without auth.`
     }
   ];
   const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 20);
@@ -56023,24 +56013,6 @@ Return ONLY a JSON object with these exact fields:
   } catch {
     console.warn("[Auth] Could not parse retry detection response \u2014 using previous detection");
     return previousDetection;
-  }
-}
-async function deleteAuthObject(brightToken, brightHostname, authObjectId) {
-  try {
-    const res = await fetch(
-      `https://${brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Api-Key ${brightToken}` }
-      }
-    );
-    if (res.ok || res.status === 204) {
-      console.log(`[Auth] Deleted failed auth object ${authObjectId}`);
-    } else {
-      console.warn(`[Auth] Failed to delete auth object: ${res.status}`);
-    }
-  } catch (err) {
-    console.warn(`[Auth] Failed to delete auth object: ${err}`);
   }
 }
 
@@ -56127,6 +56099,23 @@ async function findExistingEntrypoint(bright, projectId, url3, method) {
 function resolvePath(path2) {
   return path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1");
 }
+async function verifyEntrypointAuth(bright, entrypointId) {
+  try {
+    console.log(`[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`);
+    const raw = await bright.callMcpToolRaw("getEntrypoint", { entrypointId });
+    console.log(`[Entrypoints] getEntrypoint response: ${raw.slice(0, 1e3)}`);
+    const data = JSON.parse(raw);
+    const status = data.response?.status ?? data.status;
+    if (status && (status === 401 || status === 403)) {
+      return { ok: false, detail: `Entrypoint returned HTTP ${status} \u2014 auth likely not working` };
+    }
+    return { ok: true, detail: `Entrypoint response: ${JSON.stringify(data.response ?? {}).slice(0, 300)}` };
+  } catch (err) {
+    const msg = toErrorMessage(err);
+    console.warn(`[Entrypoints] Failed to verify entrypoint auth: ${msg}`);
+    return { ok: true, detail: `Could not verify: ${msg}` };
+  }
+}
 
 // src/phases/repeater.ts
 import { spawn as spawn2 } from "child_process";
@@ -56197,7 +56186,7 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
     }
     function onData(d) {
       const text = d.toString();
-      if (/connect(ed|ion established)/i.test(text)) {
+      if (/connect(ed|ion established)|started/i.test(text)) {
         cleanup();
         resolve4();
       }
@@ -56637,6 +56626,10 @@ async function runOrchestrator(ctx) {
       `Tech stack: ${formatTechStack(techStack)}`
     );
     const endpoints = await discoverEndpoints(llm, repoPath, techStack);
+    console.log(`[Analyze] Discovered ${endpoints.length} HTTP endpoints`);
+    for (const ep of endpoints) {
+      console.log(`[Analyze]   ${ep.method} ${ep.path}`);
+    }
     await progress.phaseDetail(
       "analyze",
       "endpoints",
@@ -56703,6 +56696,15 @@ async function runOrchestrator(ctx) {
       "registered",
       `Registered ${entrypointIds.length} entrypoints`
     );
+    if (authResult.hasAuth && entrypointIds.length > 0) {
+      console.log(`[Entrypoints] Verifying auth on ${entrypointIds.length} registered entrypoint(s)...`);
+      const check3 = await verifyEntrypointAuth(bright, entrypointIds[0]);
+      if (check3.ok) {
+        console.log(`[Entrypoints] \u2713 Auth verification passed \u2014 ${check3.detail}`);
+      } else {
+        console.warn(`[Entrypoints] \u2717 Auth verification failed \u2014 ${check3.detail}`);
+      }
+    }
     if (entrypointIds.length === 0) {
       await progress.phaseStart(
         "done",
@@ -57066,6 +57068,12 @@ Respond with a JSON array of file fixes:
 
 // src/index.ts
 async function main2() {
+  const origLog = console.log.bind(console);
+  const origWarn = console.warn.bind(console);
+  const origError = console.error.bind(console);
+  console.log = (...args) => origLog((/* @__PURE__ */ new Date()).toISOString(), ...args);
+  console.warn = (...args) => origWarn((/* @__PURE__ */ new Date()).toISOString(), ...args);
+  console.error = (...args) => origError((/* @__PURE__ */ new Date()).toISOString(), ...args);
   console.log("[Engine] Bright Security Copilot Engine starting...");
   const config3 = loadConfig();
   const platform = new PlatformClient({

@@ -153,12 +153,18 @@ async function startApplication(
   // Build environment
   const env = { ...process.env, ...config.envVars };
 
+  // For docker compose commands, add --wait to wait for healthchecks
+  let command = config.command;
+  if (config.docker && /docker\s+compose/.test(command) && command.includes("-d") && !command.includes("--wait")) {
+    command = command.replace("-d", "-d --wait");
+  }
+
   // Parse command into parts
-  const parts = config.command.split(/\s+/);
+  const parts = command.split(/\s+/);
   const bin = parts[0];
   const args = parts.slice(1);
 
-  console.log(`[Startup] Starting application: ${config.command} (port ${config.port})`);
+  console.log(`[Startup] Starting application: ${command} (port ${config.port})`);
 
   const child = spawn(bin, args, {
     cwd: repoPath,
@@ -201,21 +207,67 @@ async function startApplication(
     });
   });
 
-  // Wait for port to be available, or process to die
-  try {
-    await Promise.race([
-      waitForPort(config.port, 90_000),
-      earlyExitPromise,
-    ]);
-  } catch (err) {
-    // If the process is still running but port isn't available, kill it
-    if (child.exitCode === null) {
-      child.kill("SIGTERM");
+  if (config.docker && command.includes("--wait")) {
+    // With --wait, docker compose blocks until services are healthy then exits
+    // Wait for compose to finish (up to 5 min), then briefly check the port
+    const composeExitPromise = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error("docker compose --wait timed out after 300s"));
+      }, 300_000);
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else reject(new Error(`docker compose exited with code ${code}. Output:\n${outputLines.slice(-30).join("\n")}`));
+      });
+    });
+
+    try {
+      await Promise.race([composeExitPromise, earlyExitPromise]);
+    } catch (err) {
+      // Capture docker logs for debugging
+      logDockerFailure(repoPath);
+      throw err;
     }
-    throw err;
+
+    // Compose exited successfully — services should be healthy, give port a short check
+    console.log("[Startup] Docker Compose services healthy, checking port...");
+    await waitForPort(config.port, 30_000);
+  } else {
+    // Non-docker or docker without --wait
+    const portTimeoutMs = config.docker ? 180_000 : 90_000;
+    try {
+      await Promise.race([
+        waitForPort(config.port, portTimeoutMs),
+        earlyExitPromise,
+      ]);
+    } catch (err) {
+      if (config.docker) logDockerFailure(repoPath);
+      if (child.exitCode === null) {
+        child.kill("SIGTERM");
+      }
+      throw err;
+    }
   }
 
   return child;
+}
+
+function logDockerFailure(repoPath: string): void {
+  try {
+    const ps = execSync("docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true", {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 10_000,
+    }).trim();
+    if (ps) console.log(`[Startup] Docker container status:\n${ps}`);
+
+    const logs = execSync("docker compose logs --tail=40 2>/dev/null || true", {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 15_000,
+    }).trim();
+    if (logs) console.log(`[Startup] Docker logs (last 40 lines):\n${logs.slice(-3000)}`);
+  } catch { /* ignore */ }
 }
 
 async function waitForPort(port: number, timeoutMs: number): Promise<void> {

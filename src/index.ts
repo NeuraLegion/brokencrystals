@@ -11,6 +11,14 @@ import { runOrchestrator } from "./orchestrator.js";
 import type { OrchestratorContext } from "./types.js";
 
 async function main(): Promise<void> {
+  // Patch console methods to prepend ISO timestamps
+  const origLog = console.log.bind(console);
+  const origWarn = console.warn.bind(console);
+  const origError = console.error.bind(console);
+  console.log = (...args: unknown[]) => origLog(new Date().toISOString(), ...args);
+  console.warn = (...args: unknown[]) => origWarn(new Date().toISOString(), ...args);
+  console.error = (...args: unknown[]) => origError(new Date().toISOString(), ...args);
+
   console.log("[Engine] Bright Security Copilot Engine starting...");
 
   // 1. Load configuration from environment

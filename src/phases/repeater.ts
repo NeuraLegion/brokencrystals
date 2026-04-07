@@ -94,8 +94,8 @@ async function waitForRepeaterReady(
 
     function onData(d: Buffer) {
       const text = d.toString();
-      // bright-cli prints "connected to " or "Event:connected" when ready
-      if (/connect(ed|ion established)/i.test(text)) {
+      // bright-cli prints "The Repeater ... started" or "connected" when ready
+      if (/connect(ed|ion established)|started/i.test(text)) {
         cleanup();
         resolve();
       }

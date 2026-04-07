@@ -7,7 +7,7 @@ import { formatTechStack } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import { startApplicationWithRetries, captureDockerLogs, type StartupResult } from "./phases/startup.js";
 import { detectAndConfigureAuth, type AuthResult } from "./phases/auth.js";
-import { registerEntrypoints } from "./phases/entrypoints.js";
+import { registerEntrypoints, verifyEntrypointAuth } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
 import { selectTestsPerEndpoint, type ScanGroup } from "./phases/test-selection.js";
 import { runSecurityScan, waitForScanCompletion } from "./phases/scan.js";
@@ -38,6 +38,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     );
 
     const endpoints = await discoverEndpoints(llm, repoPath, techStack);
+    console.log(`[Analyze] Discovered ${endpoints.length} HTTP endpoints`);
+    for (const ep of endpoints) {
+      console.log(`[Analyze]   ${ep.method} ${ep.path}`);
+    }
     await progress.phaseDetail(
       "analyze",
       "endpoints",
@@ -119,6 +123,17 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       "registered",
       `Registered ${entrypointIds.length} entrypoints`,
     );
+
+    // Verify auth is working by checking entrypoint responses
+    if (authResult.hasAuth && entrypointIds.length > 0) {
+      console.log(`[Entrypoints] Verifying auth on ${entrypointIds.length} registered entrypoint(s)...`);
+      const check = await verifyEntrypointAuth(bright, entrypointIds[0]);
+      if (check.ok) {
+        console.log(`[Entrypoints] ✓ Auth verification passed — ${check.detail}`);
+      } else {
+        console.warn(`[Entrypoints] ✗ Auth verification failed — ${check.detail}`);
+      }
+    }
 
     // ----- Phase 6–8: Scan → Fix → Validate loop -----
     if (entrypointIds.length === 0) {
