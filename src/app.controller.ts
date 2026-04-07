@@ -76,9 +76,19 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
-      this.logger.debug(`Rendered template: ${res}`);
-      return res;
+      const safeTemplates = {
+        "hello": "Hello, {{=it.name}}!"
+      };
+
+      if (safeTemplates[text]) {
+        const compiledTemplate = dotT.template(safeTemplates[text]);
+        const data = { name: "User" }; // Example data, should come from a safe source
+        const res = compiledTemplate(data);
+        this.logger.debug(`Rendered template: ${res}`);
+        return res;
+      } else {
+        throw new HttpException('Invalid template selection', HttpStatus.BAD_REQUEST);
+      }
     }
   }
 
@@ -210,7 +220,6 @@ export class AppController {
         ? payload.processing_expression
         : 'numbers.reduce((acc, num) => acc + num, 0)';
 
-    // expose both names used by exploiter payloads
     const response = res;
 
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
@@ -218,7 +227,6 @@ export class AppController {
     try {
       const result = eval(processNumbersExpression);
 
-      // SSJI payload may already end the response
       if (response.sent || response.raw.writableEnded) {
         return;
       }
