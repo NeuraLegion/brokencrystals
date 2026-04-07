@@ -33,7 +33,6 @@ import {
   SWAGGER_DESC_SAVE_RAW_CONTENT
 } from './file.controller.swagger.desc';
 import { CloudProvidersMetaData } from './cloud.providers.metadata';
-import * as validator from 'validator';
 
 @Controller('/api/file')
 @ApiTags('Files controller')
@@ -55,26 +54,51 @@ export class FileController {
     'config/products/crystals/',
   ];
 
-  private static readonly ALLOWED_URL_PREFIXES: string[] = [
-    'https://storage.googleapis.com/',
-    'https://azure.blob.core.windows.net/',
-    'https://s3.amazonaws.com/'
-  ];
-
-  private isPathAllowed(filePath: string): boolean {
-    return FileController.ALLOWED_PATH_PREFIXES.some(prefix => path.normalize(filePath).startsWith(prefix));
-  }
-
-  private isCpBaseUrlAllowed(cpBaseUrl: string): boolean {
-    return FileController.ALLOWED_URL_PREFIXES.some(prefix => cpBaseUrl.startsWith(prefix));
+  private isPathAllowed(path: string): boolean {
+    return FileController.ALLOWED_PATH_PREFIXES.some(prefix => path.startsWith(prefix));
   }
 
   private async loadCPFile(cpBaseUrl: string, filePath: string) {
-    if (!this.isCpBaseUrlAllowed(cpBaseUrl) || !this.isPathAllowed(filePath)) {
+    if (!filePath.startsWith(cpBaseUrl) || !this.isPathAllowed(filePath)) {
       throw new BadRequestException(`Invalid parameter 'path': ${filePath}`);
     }
 
     const file: Stream = await this.fileService.getFile(filePath);
+
+    return file;
+  }
+
+  @Get()
+  @ApiQuery({
+    name: 'path',
+    example: 'config/products/crystals/amethyst.jpg',
+    required: true
+  })
+  @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
+  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
+  @ApiOkResponse({
+    description: 'File read successfully'
+  })
+  @ApiInternalServerErrorResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' }
+      }
+    }
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_READ_FILE
+  })
+  async loadFile(
+    @Query('path') path: string,
+    @Query('type') contentType: string,
+    @Res({ passthrough: true }) res: FastifyReply
+  ) {
+    const file: Stream = await this.fileService.getFile(path);
+    const type = this.getContentType(contentType);
+    res.type(type);
 
     return file;
   }
@@ -183,10 +207,6 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
-    // Validate the path is a safe URL
-    if (!validator.isURL(path, { protocols: ['http', 'https'], require_protocol: true })) {
-      throw new BadRequestException(`Invalid URL parameter 'path': ${path}`);
-    }
     const file: Stream = await this.loadCPFile(
       CloudProvidersMetaData.AZURE,
       path

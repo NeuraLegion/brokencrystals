@@ -92,14 +92,14 @@ export class TestimonialsController {
     example: 'select count(*) as count from testimonial',
     required: true
   })
-  @Header('content-type', 'application/json')
+  @Header('content-type', 'text/html')
   @ApiOperation({
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
   })
   @ApiOkResponse({
     type: String
   })
-  async getCount(@Query('query') query: string): Promise<{ count: number }> {
+  async getCount(@Query('query') query: string): Promise<number> {
     this.logger.debug('Get count of testimonials.');
 
     // Validate the query format
@@ -107,8 +107,7 @@ export class TestimonialsController {
       throw new Error('Invalid query format');
     }
 
-    const count = await this.testimonialsService.count();
-    return { count };
+    return await this.testimonialsService.count();
   }
 
   @GrpcMethod('TestimonialsService', 'TestimonialsCount')
