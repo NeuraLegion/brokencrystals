@@ -64,7 +64,15 @@ export async function chatWithTools(
     }
   }
 
-  throw new Error("chatWithTools: exceeded maximum tool-calling turns");
+  // Exhausted turns — return the last assistant content if available
+  console.warn(`[Inference] chatWithTools: exhausted ${maxTurns} tool-calling turns, returning last response`);
+  for (let i = conversation.length - 1; i >= 0; i--) {
+    const m = conversation[i];
+    if (m.role === "assistant" && "content" in m && m.content) {
+      return typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+    }
+  }
+  throw new Error("chatWithTools: exceeded maximum tool-calling turns with no assistant response");
 }
 
 /**

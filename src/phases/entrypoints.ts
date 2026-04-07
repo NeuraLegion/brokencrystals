@@ -130,11 +130,12 @@ function resolvePath(path: string): string {
  */
 export async function verifyEntrypointAuth(
   bright: BrightMcpClient,
+  projectId: string,
   entrypointId: string,
 ): Promise<{ ok: boolean; detail: string }> {
   try {
     console.log(`[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`);
-    const raw = await bright.callMcpToolRaw("getEntrypoint", { entrypointId });
+    const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId });
     console.log(`[Entrypoints] getEntrypoint response: ${raw.slice(0, 1000)}`);
 
     const data = JSON.parse(raw);

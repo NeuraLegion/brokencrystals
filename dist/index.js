@@ -46018,7 +46018,14 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = "g
       });
     }
   }
-  throw new Error("chatWithTools: exceeded maximum tool-calling turns");
+  console.warn(`[Inference] chatWithTools: exhausted ${maxTurns} tool-calling turns, returning last response`);
+  for (let i = conversation.length - 1; i >= 0; i--) {
+    const m = conversation[i];
+    if (m.role === "assistant" && "content" in m && m.content) {
+      return typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+    }
+  }
+  throw new Error("chatWithTools: exceeded maximum tool-calling turns with no assistant response");
 }
 async function chatWithSchema(client, messages, schemaName, schema, model = "gpt-4o") {
   const response = await client.chat.completions.create({
@@ -55659,6 +55666,7 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
     return { authObjectId: void 0, hasAuth: false, authFailed: false };
   }
   console.log(`[Auth] Detected auth: ${detection.authType} \u2014 ${detection.notes}`);
+  console.log(`[Auth] tokenLocation=${detection.tokenLocation}, tokenFieldPath=${detection.tokenFieldPath}, loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`);
   const existingAuth = await findExistingAuth(bright, projectId, detection);
   if (existingAuth) {
     console.log(`[Auth] Reusing existing auth object: ${existingAuth}`);
@@ -55702,7 +55710,11 @@ You have codebase tools (read_file, list_files, search_files) to analyze source 
 STEP 1 \u2014 Find the login endpoint:
 - Search for auth controllers, login routes, sign-in handlers
 - Read the login handler to find the exact request body field names (e.g. "user", "email", "username")
-- Read the login handler to find the exact response body field names (e.g. "token", "accessToken", "data.token")
+- IMPORTANT: Read the login CONTROLLER/HANDLER code (not just the service) and check HOW the token is returned:
+  a) Does the handler call res.set(), res.header(), response.header(), or set a header like "authorization"? \u2192 tokenLocation = "header", tokenFieldPath = the header name in lowercase (e.g. "authorization")
+  b) Does the handler return a JSON body containing a token field (e.g. { token: jwt })? \u2192 tokenLocation = "body", tokenFieldPath = the field name
+  c) If the handler calls something like res.header('authorization', token) or response.set('authorization', ...), that means tokenLocation = "header", NOT "body"
+- You MUST search for "res.header", "res.set", "response.header", "setHeader" in the auth controller to check this
 
 STEP 2 \u2014 Find REAL credentials (THIS IS CRITICAL):
 You MUST actually read these files to find credentials. Do NOT skip this step:
@@ -55741,7 +55753,8 @@ Return ONLY a JSON object with these exact fields:
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
   "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "tokenFieldPath": "token" or "data.accessToken" or null,
+  "tokenLocation": "body" or "header",
+  "tokenFieldPath": "token" or "authorization" or null,
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
@@ -55752,7 +55765,8 @@ CRITICAL RULES:
 - "loginBody" field names MUST match what the login endpoint handler expects (read the code!)
 - "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
 - If you cannot find real credentials, set "loginBody" to null \u2014 do NOT invent values
-- "tokenFieldPath" is the dot-path to the token in the JSON login response
+- "tokenLocation": set to "body" if the token is in the JSON response body, or "header" if the token is returned as a response header (e.g. authorization header). READ THE LOGIN HANDLER CODE to determine this!
+- "tokenFieldPath": if tokenLocation is "body", this is the dot-path to the token field (e.g. "token", "data.accessToken"). If tokenLocation is "header", this is the header name in lowercase (e.g. "authorization")
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
   1. Pick a candidate from the Known endpoints list above
   2. Read its route definition and handler code
@@ -55762,7 +55776,7 @@ CRITICAL RULES:
   6. Do NOT invent endpoints \u2014 pick from the list above`
     }
   ];
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 20);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 40);
   try {
     const parsed = JSON.parse(extractJson(response));
     return {
@@ -55771,6 +55785,7 @@ CRITICAL RULES:
       loginEndpoint: parsed.loginEndpoint ?? null,
       loginMethod: parsed.loginMethod ?? "POST",
       loginBody: parsed.loginBody ?? null,
+      tokenLocation: parsed.tokenLocation ?? "body",
       tokenFieldPath: parsed.tokenFieldPath ?? null,
       headerName: parsed.headerName ?? "Authorization",
       headerPrefix: parsed.headerPrefix ?? "Bearer ",
@@ -55785,6 +55800,7 @@ CRITICAL RULES:
       loginEndpoint: null,
       loginMethod: null,
       loginBody: null,
+      tokenLocation: "body",
       tokenFieldPath: null,
       headerName: null,
       headerPrefix: null,
@@ -55818,6 +55834,7 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
     loginEndpoint,
     loginMethod,
     loginBody,
+    tokenLocation,
     tokenFieldPath,
     headerName,
     headerPrefix,
@@ -55839,8 +55856,14 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
     return void 0;
   }
   const loginUrl = `${baseUrl}${loginEndpoint}`;
-  const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
-  const template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
+  let template;
+  if (tokenLocation === "header") {
+    const headerKey = (tokenFieldPath ?? "authorization").toLowerCase();
+    template = `{{ auth_object.stages.login.response.headers | get: '/${headerKey}' }}`;
+  } else {
+    const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
+    template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
+  }
   const body = {
     name: `Engine Auth \u2014 ${authType}`,
     projectId,
@@ -55856,6 +55879,7 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
         steps: [
           {
             name: "login",
+            protocol: "http",
             request: {
               url: loginUrl,
               method: loginMethod ?? "POST",
@@ -55982,7 +56006,8 @@ Return ONLY a JSON object with these exact fields:
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
   "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "tokenFieldPath": "token" or "data.accessToken" or null,
+  "tokenLocation": "body" or "header",
+  "tokenFieldPath": "token" or "authorization" or null,
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
@@ -55992,10 +56017,11 @@ Return ONLY a JSON object with these exact fields:
 CRITICAL RULES:
 - "loginBody" values MUST come from actual files you read (seed data, env vars, docker-compose, README)
 - Do NOT invent credentials like "admin@example.com" or "correctpassword"
+- "tokenLocation": "body" if token is in JSON response body, "header" if token is in a response header. Read the login handler code!
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT auth. Read the route handler code to confirm it has an auth guard/middleware. Do NOT pick endpoints that return 200 without auth.`
     }
   ];
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 20);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 30);
   try {
     const parsed = JSON.parse(extractJson(response));
     return {
@@ -56004,6 +56030,7 @@ CRITICAL RULES:
       loginEndpoint: parsed.loginEndpoint ?? previousDetection.loginEndpoint,
       loginMethod: parsed.loginMethod ?? previousDetection.loginMethod,
       loginBody: parsed.loginBody ?? previousDetection.loginBody,
+      tokenLocation: parsed.tokenLocation ?? previousDetection.tokenLocation,
       tokenFieldPath: parsed.tokenFieldPath ?? previousDetection.tokenFieldPath,
       headerName: parsed.headerName ?? previousDetection.headerName,
       headerPrefix: parsed.headerPrefix ?? previousDetection.headerPrefix,
@@ -56099,10 +56126,10 @@ async function findExistingEntrypoint(bright, projectId, url3, method) {
 function resolvePath(path2) {
   return path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1");
 }
-async function verifyEntrypointAuth(bright, entrypointId) {
+async function verifyEntrypointAuth(bright, projectId, entrypointId) {
   try {
     console.log(`[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`);
-    const raw = await bright.callMcpToolRaw("getEntrypoint", { entrypointId });
+    const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId });
     console.log(`[Entrypoints] getEntrypoint response: ${raw.slice(0, 1e3)}`);
     const data = JSON.parse(raw);
     const status = data.response?.status ?? data.status;
@@ -56698,7 +56725,7 @@ async function runOrchestrator(ctx) {
     );
     if (authResult.hasAuth && entrypointIds.length > 0) {
       console.log(`[Entrypoints] Verifying auth on ${entrypointIds.length} registered entrypoint(s)...`);
-      const check3 = await verifyEntrypointAuth(bright, entrypointIds[0]);
+      const check3 = await verifyEntrypointAuth(bright, projectId, entrypointIds[0]);
       if (check3.ok) {
         console.log(`[Entrypoints] \u2713 Auth verification passed \u2014 ${check3.detail}`);
       } else {

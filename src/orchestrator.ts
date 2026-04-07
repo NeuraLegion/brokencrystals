@@ -127,7 +127,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // Verify auth is working by checking entrypoint responses
     if (authResult.hasAuth && entrypointIds.length > 0) {
       console.log(`[Entrypoints] Verifying auth on ${entrypointIds.length} registered entrypoint(s)...`);
-      const check = await verifyEntrypointAuth(bright, entrypointIds[0]);
+      const check = await verifyEntrypointAuth(bright, projectId, entrypointIds[0]);
       if (check.ok) {
         console.log(`[Entrypoints] ✓ Auth verification passed — ${check.detail}`);
       } else {

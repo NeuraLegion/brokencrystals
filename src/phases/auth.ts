@@ -41,6 +41,7 @@ export async function detectAndConfigureAuth(
   }
 
   console.log(`[Auth] Detected auth: ${detection.authType} — ${detection.notes}`);
+  console.log(`[Auth] tokenLocation=${detection.tokenLocation}, tokenFieldPath=${detection.tokenFieldPath}, loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`);
 
   // Step 2: Check for existing auth objects we can reuse
   const existingAuth = await findExistingAuth(bright, projectId, detection);
@@ -84,6 +85,7 @@ interface AuthDetection {
   loginEndpoint: string | null;
   loginMethod: string | null;
   loginBody: string | null;
+  tokenLocation: "body" | "header";
   tokenFieldPath: string | null;
   headerName: string | null;
   headerPrefix: string | null;
@@ -115,7 +117,11 @@ You have codebase tools (read_file, list_files, search_files) to analyze source 
 STEP 1 — Find the login endpoint:
 - Search for auth controllers, login routes, sign-in handlers
 - Read the login handler to find the exact request body field names (e.g. "user", "email", "username")
-- Read the login handler to find the exact response body field names (e.g. "token", "accessToken", "data.token")
+- IMPORTANT: Read the login CONTROLLER/HANDLER code (not just the service) and check HOW the token is returned:
+  a) Does the handler call res.set(), res.header(), response.header(), or set a header like "authorization"? → tokenLocation = "header", tokenFieldPath = the header name in lowercase (e.g. "authorization")
+  b) Does the handler return a JSON body containing a token field (e.g. { token: jwt })? → tokenLocation = "body", tokenFieldPath = the field name
+  c) If the handler calls something like res.header('authorization', token) or response.set('authorization', ...), that means tokenLocation = "header", NOT "body"
+- You MUST search for "res.header", "res.set", "response.header", "setHeader" in the auth controller to check this
 
 STEP 2 — Find REAL credentials (THIS IS CRITICAL):
 You MUST actually read these files to find credentials. Do NOT skip this step:
@@ -154,7 +160,8 @@ Return ONLY a JSON object with these exact fields:
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
   "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "tokenFieldPath": "token" or "data.accessToken" or null,
+  "tokenLocation": "body" or "header",
+  "tokenFieldPath": "token" or "authorization" or null,
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
@@ -165,7 +172,8 @@ CRITICAL RULES:
 - "loginBody" field names MUST match what the login endpoint handler expects (read the code!)
 - "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
 - If you cannot find real credentials, set "loginBody" to null — do NOT invent values
-- "tokenFieldPath" is the dot-path to the token in the JSON login response
+- "tokenLocation": set to "body" if the token is in the JSON response body, or "header" if the token is returned as a response header (e.g. authorization header). READ THE LOGIN HANDLER CODE to determine this!
+- "tokenFieldPath": if tokenLocation is "body", this is the dot-path to the token field (e.g. "token", "data.accessToken"). If tokenLocation is "header", this is the header name in lowercase (e.g. "authorization")
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
   1. Pick a candidate from the Known endpoints list above
   2. Read its route definition and handler code
@@ -176,7 +184,7 @@ CRITICAL RULES:
     },
   ];
 
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 20);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 40);
 
   try {
     const parsed = JSON.parse(extractJson(response));
@@ -186,6 +194,7 @@ CRITICAL RULES:
       loginEndpoint: parsed.loginEndpoint ?? null,
       loginMethod: parsed.loginMethod ?? "POST",
       loginBody: parsed.loginBody ?? null,
+      tokenLocation: parsed.tokenLocation ?? "body",
       tokenFieldPath: parsed.tokenFieldPath ?? null,
       headerName: parsed.headerName ?? "Authorization",
       headerPrefix: parsed.headerPrefix ?? "Bearer ",
@@ -200,6 +209,7 @@ CRITICAL RULES:
       loginEndpoint: null,
       loginMethod: null,
       loginBody: null,
+      tokenLocation: "body",
       tokenFieldPath: null,
       headerName: null,
       headerPrefix: null,
@@ -254,7 +264,7 @@ async function createAuthObject(
 ): Promise<string | undefined> {
   const {
     authType, loginEndpoint, loginMethod, loginBody,
-    tokenFieldPath, headerName, headerPrefix, protectedEndpointPath,
+    tokenLocation, tokenFieldPath, headerName, headerPrefix, protectedEndpointPath,
   } = detection;
 
   // Build the test request for a known protected endpoint
@@ -276,16 +286,24 @@ async function createAuthObject(
 
   const loginUrl = `${baseUrl}${loginEndpoint}`;
 
-  // Build the NexTemplate regex for token extraction
-  const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
-  const template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
+  // Build the NexTemplate for token extraction
+  let template: string;
+  if (tokenLocation === "header") {
+    // Token is in a response header (e.g. authorization)
+    const headerKey = (tokenFieldPath ?? "authorization").toLowerCase();
+    template = `{{ auth_object.stages.login.response.headers | get: '/${headerKey}' }}`;
+  } else {
+    // Token is in the JSON response body
+    const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
+    template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
+  }
 
   const body = {
     name: `Engine Auth — ${authType}`,
     projectId,
     type: "multistep",
     test: {
-      request: { method: "GET", url: testUrl },
+      request: { method: "GET", url: testUrl, protocol: "http" },
       repeaterId,
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
@@ -298,6 +316,7 @@ async function createAuthObject(
             request: {
               url: loginUrl,
               method: loginMethod ?? "POST",
+              protocol: "http",
               headers: [{ name: "Content-Type", value: "application/json", type: "clear_text" }],
               body: loginBody,
               bodyType: "clear_text",
@@ -468,7 +487,8 @@ Return ONLY a JSON object with these exact fields:
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
   "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "tokenFieldPath": "token" or "data.accessToken" or null,
+  "tokenLocation": "body" or "header",
+  "tokenFieldPath": "token" or "authorization" or null,
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
@@ -478,11 +498,12 @@ Return ONLY a JSON object with these exact fields:
 CRITICAL RULES:
 - "loginBody" values MUST come from actual files you read (seed data, env vars, docker-compose, README)
 - Do NOT invent credentials like "admin@example.com" or "correctpassword"
+- "tokenLocation": "body" if token is in JSON response body, "header" if token is in a response header. Read the login handler code!
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT auth. Read the route handler code to confirm it has an auth guard/middleware. Do NOT pick endpoints that return 200 without auth.`,
     },
   ];
 
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 20);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 30);
 
   try {
     const parsed = JSON.parse(extractJson(response));
@@ -492,6 +513,7 @@ CRITICAL RULES:
       loginEndpoint: parsed.loginEndpoint ?? previousDetection.loginEndpoint,
       loginMethod: parsed.loginMethod ?? previousDetection.loginMethod,
       loginBody: parsed.loginBody ?? previousDetection.loginBody,
+      tokenLocation: parsed.tokenLocation ?? previousDetection.tokenLocation,
       tokenFieldPath: parsed.tokenFieldPath ?? previousDetection.tokenFieldPath,
       headerName: parsed.headerName ?? previousDetection.headerName,
       headerPrefix: parsed.headerPrefix ?? previousDetection.headerPrefix,
