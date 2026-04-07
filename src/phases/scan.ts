@@ -34,12 +34,16 @@ async function runScanViaRest(
   scanName?: string,
 ): Promise<string> {
   const body = {
+    name: scanName ?? `Engine Scan ${new Date().toISOString()}`,
     projectId,
-    entrypointIds,
+    module: "dast",
+    entryPointIds: entrypointIds,
     repeaters: [repeaterId],
     tests: testTags,
     attackParamLocations,
-    name: scanName ?? `Engine Scan ${new Date().toISOString()}`,
+    smart: true,
+    skipStaticParams: true,
+    poolSize: 10,
   };
 
   const res = await fetch(`https://${brightHostname}/api/v1/scans`, {

@@ -56204,7 +56204,13 @@ async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeat
   const entrypointIds = [];
   for (const ep of endpoints) {
     const path2 = resolvePath(ep.path);
-    const fullUrl = `${baseUrl}${path2}`;
+    let fullUrl = `${baseUrl}${path2}`;
+    if (ep.queryParams && ep.queryParams.length > 0) {
+      const params = new URLSearchParams(
+        ep.queryParams.map((p) => [p.name, p.value])
+      );
+      fullUrl += `?${params.toString()}`;
+    }
     console.log(
       `[Entrypoints] Adding ${ep.method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
     );
@@ -56569,12 +56575,16 @@ async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, b
 }
 async function runScanViaRest(brightToken, brightHostname, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName) {
   const body = {
+    name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`,
     projectId,
-    entrypointIds,
+    module: "dast",
+    entryPointIds: entrypointIds,
     repeaters: [repeaterId],
     tests: testTags,
     attackParamLocations,
-    name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`
+    smart: true,
+    skipStaticParams: true,
+    poolSize: 10
   };
   const res = await fetch(`https://${brightHostname}/api/v1/scans`, {
     method: "POST",

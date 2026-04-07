@@ -16,7 +16,15 @@ export async function registerEntrypoints(
 
   for (const ep of endpoints) {
     const path = resolvePath(ep.path);
-    const fullUrl = `${baseUrl}${path}`;
+    let fullUrl = `${baseUrl}${path}`;
+
+    // Append query params to the URL if present
+    if (ep.queryParams && ep.queryParams.length > 0) {
+      const params = new URLSearchParams(
+        ep.queryParams.map((p) => [p.name, p.value]),
+      );
+      fullUrl += `?${params.toString()}`;
+    }
 
     console.log(
       `[Entrypoints] Adding ${ep.method} ${fullUrl}` +
