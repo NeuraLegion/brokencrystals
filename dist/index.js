@@ -55382,7 +55382,14 @@ Determine:
 2. The startup command
 3. The port the application listens on
 4. Whether it uses Docker
-5. Required environment variables (provide sensible defaults for local dev)`
+5. Required environment variables (provide sensible defaults for local dev)
+
+CRITICAL: "prerequisites" and "command" MUST be executable shell commands \u2014 NOT descriptions or explanations. They will be run directly via /bin/sh.
+  WRONG: "Ensure Docker and Docker Compose are installed"
+  RIGHT: "docker compose build"
+  WRONG: "Create a .env file with the required variables"
+  RIGHT: "cp .env.example .env"
+If Docker is used and the compose file handles everything, set prerequisites to an empty array [].`
     },
     {
       role: "user",
@@ -55421,7 +55428,12 @@ Consider the deployment method from the previous config and adapt accordingly:
 **Makefile**: Check for a "build" or "rebuild" target
 **Helm/K8s**: Not applicable for local restarts \u2014 fall back to Docker or native
 
-IMPORTANT: Keep the same port and environment variables from the previous config unless you have a specific reason to change them.`
+IMPORTANT: Keep the same port and environment variables from the previous config unless you have a specific reason to change them.
+
+CRITICAL: "prerequisites" and "command" MUST be executable shell commands \u2014 NOT descriptions or explanations. They will be run directly via /bin/sh.
+  WRONG: "Rebuild the Docker images"
+  RIGHT: "docker compose -f compose.local.yml build"
+If Docker Compose with --build handles everything, set prerequisites to an empty array [].`
     },
     {
       role: "user",
@@ -55456,7 +55468,12 @@ Analyze the error and determine an alternative way to start the application. Com
 - If missing environment variables, check .env.example or README for required values
 - If build failed, check if there's a pre-built option or different build command
 
-IMPORTANT: Do NOT repeat the same approach that already failed. Try a fundamentally different strategy.`
+IMPORTANT: Do NOT repeat the same approach that already failed. Try a fundamentally different strategy.
+
+CRITICAL: "prerequisites" and "command" MUST be executable shell commands \u2014 NOT descriptions or explanations. They will be run directly via /bin/sh.
+  WRONG: "Use the local compose file instead"
+  RIGHT: "docker compose -f compose.local.yml build"
+If Docker Compose handles everything, set prerequisites to an empty array [].`
     },
     {
       role: "user",
@@ -55561,10 +55578,13 @@ function parseStartupConfig(response) {
   try {
     const jsonStr = extractJson2(response);
     const parsed = JSON.parse(jsonStr);
+    const prerequisites = (parsed.prerequisites ?? []).filter(
+      (cmd) => typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd)
+    );
     return {
       command: parsed.command ?? "npm start",
       port: parsed.port ?? 3e3,
-      prerequisites: parsed.prerequisites ?? [],
+      prerequisites,
       envVars: parsed.envVars ?? {},
       docker: parsed.docker ?? false
     };
@@ -55577,6 +55597,16 @@ function parseStartupConfig(response) {
       docker: false
     };
   }
+}
+function looksLikeCommand(s) {
+  const trimmed = s.trim();
+  if (/^(npm|npx|yarn|pnpm|docker|make|pip|python|go|gradle|mvn|java|cargo|gem|bundle|cp|mv|mkdir|cat|echo|sh|bash|chmod|curl|wget|git|apt|brew|sed|awk|tee|touch|ln|export|cd|source|\.|\/)/.test(trimmed)) {
+    return true;
+  }
+  if (/^[A-Z][a-z]+\s/.test(trimmed)) {
+    return false;
+  }
+  return true;
 }
 async function startApplication(repoPath, config3) {
   for (const cmd of config3.prerequisites) {
@@ -57158,10 +57188,30 @@ async function runOrchestrator(ctx) {
       return;
     }
     await progress.phaseStart("entrypoints", "Registering API endpoints for scanning");
+    const safeEndpoints = endpoints.filter((ep) => {
+      const method = ep.method.toUpperCase();
+      const pathLower = ep.path.toLowerCase();
+      if (method === "DELETE") {
+        console.log(`[Entrypoints] Skipping destructive endpoint: ${ep.method} ${ep.path}`);
+        return false;
+      }
+      if ((method === "PUT" || method === "PATCH") && isUserMutationPath(pathLower)) {
+        console.log(`[Entrypoints] Skipping user-mutation endpoint: ${ep.method} ${ep.path}`);
+        return false;
+      }
+      if (ep.body && hasCredentialFields(ep.body)) {
+        console.log(`[Entrypoints] Skipping credential-mutating endpoint: ${ep.method} ${ep.path}`);
+        return false;
+      }
+      return true;
+    });
+    if (safeEndpoints.length < endpoints.length) {
+      console.log(`[Entrypoints] Excluded ${endpoints.length - safeEndpoints.length} risky endpoint(s)`);
+    }
     let entrypointIds = await registerEntrypoints(
       bright,
       projectId,
-      endpoints,
+      safeEndpoints,
       baseUrl,
       repeater.repeaterId,
       authResult.authObjectId
@@ -57205,7 +57255,7 @@ async function runOrchestrator(ctx) {
     const scanGroups = await selectTestsPerEndpoint(
       llm,
       bright,
-      endpoints,
+      safeEndpoints,
       entrypointIds,
       techStack,
       authResult.hasAuth
@@ -57259,7 +57309,8 @@ async function runOrchestrator(ctx) {
         if (result.status === "rejected") {
           console.error(`[Scan] Error waiting for scan ${scanIds[si]}: ${result.reason}`);
           anyFailed = true;
-        } else if (result.value === "failed") {
+        } else if (result.value === "failed" || result.value === "disrupted") {
+          console.error(`[Scan] Scan ${scanIds[si]} ended with status: ${result.value}`);
           anyFailed = true;
         }
       }
@@ -57555,6 +57606,29 @@ Respond with a JSON array of file fixes:
     console.error("[Fix] Could not parse repair response");
     return [];
   }
+}
+var USER_MUTATION_PATTERNS = [
+  /\/users?\/me\b/,
+  /\/users?\/profile\b/,
+  /\/users?\/account\b/,
+  /\/profile\b/,
+  /\/account\b/,
+  /\/settings\/password\b/,
+  /\/change[_-]?password\b/,
+  /\/reset[_-]?password\b/,
+  /\/update[_-]?password\b/,
+  /\/update[_-]?email\b/,
+  /\/update[_-]?profile\b/,
+  /\/users?\/\d+$/,
+  // PUT /users/1
+  /\/users?\/[^/]+\/password\b/
+];
+function isUserMutationPath(pathLower) {
+  return USER_MUTATION_PATTERNS.some((re) => re.test(pathLower));
+}
+var CREDENTIAL_FIELD_RE = /\b(password|passwd|new_password|newPassword|currentPassword|current_password|oldPassword|old_password)\b/i;
+function hasCredentialFields(body) {
+  return CREDENTIAL_FIELD_RE.test(body);
 }
 
 // src/index.ts

@@ -134,10 +134,14 @@ function parseStartupConfig(response: string): StartupConfig {
   try {
     const jsonStr = extractJson(response);
     const parsed = JSON.parse(jsonStr);
+    // Filter out natural language "prerequisites" that aren't real commands
+    const prerequisites = (parsed.prerequisites ?? []).filter(
+      (cmd: unknown) => typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd),
+    );
     return {
       command: parsed.command ?? "npm start",
       port: parsed.port ?? 3000,
-      prerequisites: parsed.prerequisites ?? [],
+      prerequisites,
       envVars: parsed.envVars ?? {},
       docker: parsed.docker ?? false,
     };
@@ -150,6 +154,25 @@ function parseStartupConfig(response: string): StartupConfig {
       docker: false,
     };
   }
+}
+
+/**
+ * Heuristic: a real shell command starts with a known CLI tool or path,
+ * not an English sentence.
+ */
+function looksLikeCommand(s: string): boolean {
+  const trimmed = s.trim();
+  // Common command prefixes
+  if (/^(npm|npx|yarn|pnpm|docker|make|pip|python|go|gradle|mvn|java|cargo|gem|bundle|cp|mv|mkdir|cat|echo|sh|bash|chmod|curl|wget|git|apt|brew|sed|awk|tee|touch|ln|export|cd|source|\.|\/)/.test(trimmed)) {
+    return true;
+  }
+  // Reject if it starts with a capitalized English word followed by a space
+  // (e.g. "Ensure Docker...", "Create a .env...", "Use the local...")
+  if (/^[A-Z][a-z]+\s/.test(trimmed)) {
+    return false;
+  }
+  // Allow anything else (could be a custom binary)
+  return true;
 }
 
 async function startApplication(

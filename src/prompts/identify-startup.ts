@@ -29,7 +29,14 @@ Determine:
 2. The startup command
 3. The port the application listens on
 4. Whether it uses Docker
-5. Required environment variables (provide sensible defaults for local dev)`,
+5. Required environment variables (provide sensible defaults for local dev)
+
+CRITICAL: "prerequisites" and "command" MUST be executable shell commands — NOT descriptions or explanations. They will be run directly via /bin/sh.
+  WRONG: "Ensure Docker and Docker Compose are installed"
+  RIGHT: "docker compose build"
+  WRONG: "Create a .env file with the required variables"
+  RIGHT: "cp .env.example .env"
+If Docker is used and the compose file handles everything, set prerequisites to an empty array [].`,
     },
     {
       role: "user",
@@ -72,7 +79,12 @@ Consider the deployment method from the previous config and adapt accordingly:
 **Makefile**: Check for a "build" or "rebuild" target
 **Helm/K8s**: Not applicable for local restarts — fall back to Docker or native
 
-IMPORTANT: Keep the same port and environment variables from the previous config unless you have a specific reason to change them.`,
+IMPORTANT: Keep the same port and environment variables from the previous config unless you have a specific reason to change them.
+
+CRITICAL: "prerequisites" and "command" MUST be executable shell commands — NOT descriptions or explanations. They will be run directly via /bin/sh.
+  WRONG: "Rebuild the Docker images"
+  RIGHT: "docker compose -f compose.local.yml build"
+If Docker Compose with --build handles everything, set prerequisites to an empty array [].`,
     },
     {
       role: "user",
@@ -113,7 +125,12 @@ Analyze the error and determine an alternative way to start the application. Com
 - If missing environment variables, check .env.example or README for required values
 - If build failed, check if there's a pre-built option or different build command
 
-IMPORTANT: Do NOT repeat the same approach that already failed. Try a fundamentally different strategy.`,
+IMPORTANT: Do NOT repeat the same approach that already failed. Try a fundamentally different strategy.
+
+CRITICAL: "prerequisites" and "command" MUST be executable shell commands — NOT descriptions or explanations. They will be run directly via /bin/sh.
+  WRONG: "Use the local compose file instead"
+  RIGHT: "docker compose -f compose.local.yml build"
+If Docker Compose handles everything, set prerequisites to an empty array [].`,
     },
     {
       role: "user",

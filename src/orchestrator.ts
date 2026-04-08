@@ -110,10 +110,44 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // ----- Phase 5: Register entrypoints -----
     await progress.phaseStart("entrypoints", "Registering API endpoints for scanning");
+
+    // Filter out endpoints that could corrupt application state or break auth.
+    // DELETE: can remove users/data. PUT/PATCH on user/account paths: fuzzing
+    // email/password fields changes the authenticated user's credentials,
+    // which disrupts every scan that relies on that auth object.
+    const safeEndpoints = endpoints.filter((ep) => {
+      const method = ep.method.toUpperCase();
+      const pathLower = ep.path.toLowerCase();
+
+      // Always skip DELETE — too destructive
+      if (method === "DELETE") {
+        console.log(`[Entrypoints] Skipping destructive endpoint: ${ep.method} ${ep.path}`);
+        return false;
+      }
+
+      // Skip PUT/PATCH on user/account/profile mutation endpoints
+      if ((method === "PUT" || method === "PATCH") && isUserMutationPath(pathLower)) {
+        console.log(`[Entrypoints] Skipping user-mutation endpoint: ${ep.method} ${ep.path}`);
+        return false;
+      }
+
+      // Skip any endpoint whose body contains password/credential fields
+      // (regardless of method) — fuzzing these breaks auth
+      if (ep.body && hasCredentialFields(ep.body)) {
+        console.log(`[Entrypoints] Skipping credential-mutating endpoint: ${ep.method} ${ep.path}`);
+        return false;
+      }
+
+      return true;
+    });
+    if (safeEndpoints.length < endpoints.length) {
+      console.log(`[Entrypoints] Excluded ${endpoints.length - safeEndpoints.length} risky endpoint(s)`);
+    }
+
     let entrypointIds = await registerEntrypoints(
       bright,
       projectId,
-      endpoints,
+      safeEndpoints,
       baseUrl,
       repeater.repeaterId,
       authResult.authObjectId,
@@ -163,7 +197,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // ----- Phase 6: Select relevant tests per endpoint -----
     await progress.phaseStart("test_selection", "Selecting relevant security tests per endpoint");
     const scanGroups = await selectTestsPerEndpoint(
-      llm, bright, endpoints, entrypointIds, techStack, authResult.hasAuth,
+      llm, bright, safeEndpoints, entrypointIds, techStack, authResult.hasAuth,
     );
     await progress.phaseDetail(
       "test_selection",
@@ -223,7 +257,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         if (result.status === "rejected") {
           console.error(`[Scan] Error waiting for scan ${scanIds[si]}: ${result.reason}`);
           anyFailed = true;
-        } else if (result.value === "failed") {
+        } else if (result.value === "failed" || result.value === "disrupted") {
+          console.error(`[Scan] Scan ${scanIds[si]} ended with status: ${result.value}`);
           anyFailed = true;
         }
       }
@@ -586,4 +621,35 @@ Respond with a JSON array of file fixes:
     console.error("[Fix] Could not parse repair response");
     return [];
   }
+}
+
+// Patterns for paths that modify user identity / credentials.
+// Fuzzing these endpoints changes the authenticated user's email/password,
+// which breaks the auth object and disrupts all subsequent scans.
+const USER_MUTATION_PATTERNS = [
+  /\/users?\/me\b/,
+  /\/users?\/profile\b/,
+  /\/users?\/account\b/,
+  /\/profile\b/,
+  /\/account\b/,
+  /\/settings\/password\b/,
+  /\/change[_-]?password\b/,
+  /\/reset[_-]?password\b/,
+  /\/update[_-]?password\b/,
+  /\/update[_-]?email\b/,
+  /\/update[_-]?profile\b/,
+  /\/users?\/\d+$/, // PUT /users/1
+  /\/users?\/[^/]+\/password\b/,
+];
+
+function isUserMutationPath(pathLower: string): boolean {
+  return USER_MUTATION_PATTERNS.some((re) => re.test(pathLower));
+}
+
+// Body field names that indicate credential mutation.
+// If the scanner fuzzes these, auth breaks.
+const CREDENTIAL_FIELD_RE = /\b(password|passwd|new_password|newPassword|currentPassword|current_password|oldPassword|old_password)\b/i;
+
+function hasCredentialFields(body: string): boolean {
+  return CREDENTIAL_FIELD_RE.test(body);
 }
