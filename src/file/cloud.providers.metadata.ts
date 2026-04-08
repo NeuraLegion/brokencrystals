@@ -59,8 +59,7 @@ export class CloudProvidersMetaData {
               },
               "mac":"04:01:2a:0f:2a:01",
               "type":"public"}
-          ]
-        },
+          ],
         "floating_ip": {
           "ipv4": {
             "active": false

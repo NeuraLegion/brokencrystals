@@ -6,7 +6,7 @@ import {
 import { AuthGuard } from '../auth/auth.guard';
 import { JwtProcessorType } from '../auth/auth.service';
 import { JwtType } from '../auth/jwt/jwt.type.decorator';
-import { Query, Mutation, Resolver, Args, Int } from '@nestjs/graphql';
+import { Query, Mutation, Resolver, Int } from '@nestjs/graphql';
 import { Testimonial } from './api/testimonial.model';
 import { TestimonialDto } from './api/TestimonialDto';
 import { TestimonialsService } from './testimonials.service';
@@ -36,9 +36,9 @@ export class TestimonialsResolver {
   @Query(() => Int, {
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
   })
-  testimonialsCount(@Args('query') query: string): Promise<number> {
+  testimonialsCount(): Promise<number> {
     this.logger.debug('Get count of testimonials');
-    return this.testimonialsService.count(query);
+    return this.testimonialsService.count();
   }
 
   @Mutation(() => Testimonial, {
@@ -47,7 +47,7 @@ export class TestimonialsResolver {
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
   async createTestimonial(
-    @Args('testimonialRequest') testimonialRequest: CreateTestimonialRequest
+    @Query('testimonialRequest') testimonialRequest: CreateTestimonialRequest
   ) {
     this.logger.debug('Create testimonial');
     try {

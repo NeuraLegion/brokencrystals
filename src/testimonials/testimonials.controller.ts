@@ -4,7 +4,6 @@ import {
   Get,
   Logger,
   Post,
-  Query,
   UseGuards
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
@@ -13,7 +12,6 @@ import {
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
@@ -86,11 +84,6 @@ export class TestimonialsController {
   }
 
   @Get('count')
-  @ApiQuery({
-    name: 'query',
-    example: 'select count(*) as count from testimonial',
-    required: false
-  })
   @ApiOperation({
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
   })
@@ -102,7 +95,7 @@ export class TestimonialsController {
       }
     }
   })
-  async getCount(@Query('query') _query?: string): Promise<{ count: number }> {
+  async getCount(): Promise<{ count: number }> {
     this.logger.debug('Get count of testimonials.');
     return { count: await this.testimonialsService.count() };
   }

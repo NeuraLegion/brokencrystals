@@ -13,6 +13,7 @@ import {
   NotFoundException,
   Options,
   Param,
+  ParseIntPipe,
   Post,
   Put,
   Query,
@@ -152,25 +153,38 @@ export class UsersController {
     }
   })
   async getById(
-    @Param('id') id: number,
+    @Param('id', ParseIntPipe) id: number,
     @Req() req: FastifyRequest
   ): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by id: ${id}`);
+
       const requestingEmail = this.originEmail(req);
       const requestingUser = await this.usersService.findByEmail(requestingEmail);
+      const targetId = Number(id);
 
-      if (!requestingUser.isAdmin && requestingUser.id !== Number(id)) {
-        throw new ForbiddenException();
+      if (!requestingUser.isAdmin && requestingUser.id !== targetId) {
+        throw new NotFoundException('User not found');
       }
 
-      return new UserDto(await this.usersService.findById(id));
+      const user = await this.usersService.findById(targetId);
+      return new UserDto(user);
     } catch (err) {
       if (err instanceof ForbiddenException) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (err instanceof NotFoundException) {
         throw err;
       }
 
-      throw new HttpException(err.message, err.status);
+      if (err instanceof HttpException) {
+        throw new HttpException(err.message, err.status);
+      }
+
+      throw new InternalServerErrorException({
+        error: 'Internal server error'
+      });
     }
   }
 
@@ -285,7 +299,7 @@ export class UsersController {
     description: 'Returns when isAdmin is false'
   })
   async deleteUserPhotoById(
-    @Param('id') id: number,
+    @Param('id', ParseIntPipe) id: number,
     @Query('isAdmin') isAdminParam: string
   ) {
     isAdminParam = isAdminParam.toLowerCase();

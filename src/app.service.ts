@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from './users/users.service';
 import { AppModuleConfigProperties } from './app.module.config.properties';
+import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 import { AppConfig } from './app.config.api';
 import { UserDto } from './users/api/UserDto';
 
@@ -10,34 +11,64 @@ import { UserDto } from './users/api/UserDto';
 export class AppService {
   private readonly logger = new Logger(AppService.name);
 
+  private readonly allowedCommands: Record<
+    string,
+    { command: string; args: string[] }
+  > = {
+    list: { command: 'ls', args: ['-la'] },
+    date: { command: 'date', args: [] },
+    whoami: { command: 'whoami', args: [] }
+  };
+
   constructor(
     private readonly configService: ConfigService,
     private readonly userService: UsersService
   ) {}
 
+  isAllowedCommand(command: string): boolean {
+    return Object.prototype.hasOwnProperty.call(this.allowedCommands, command);
+  }
+
   async launchCommand(command: string): Promise<string> {
+    const allowedCommand = this.allowedCommands[command];
+    if (!allowedCommand) {
+      throw new Error('Invalid command');
+    }
+
     this.logger.debug(`launch ${command} command`);
 
     return new Promise((res, rej) => {
       try {
-        const [exec, ...args] = command.split(' ');
-        const ps = spawn(exec, args);
+        const ps = spawn(allowedCommand.command, allowedCommand.args, {
+          shell: false,
+          windowsHide: true,
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        let output = '';
 
         ps.stdout.on('data', (data: Buffer) => {
+          const text = data.toString('ascii');
+          output += text;
           this.logger.debug(`stdout: ${data}`);
-          res(data.toString('ascii'));
         });
 
         ps.stderr.on('data', (data: Buffer) => {
+          const text = data.toString('ascii');
+          output += text;
           this.logger.debug(`stderr: ${data}`);
-          res(data.toString('ascii'));
         });
 
         ps.on('error', (err) => rej(err.message));
 
-        ps.on('close', (code) =>
-          this.logger.debug(`child process exited with code ${code}`)
-        );
+        ps.on('close', (code) => {
+          this.logger.debug(`child process exited with code ${code}`);
+          if (code === 0) {
+            res(output);
+            return;
+          }
+          rej(`Command failed with exit code ${code}`);
+        });
       } catch (err) {
         rej(err.message);
       }
@@ -45,10 +76,27 @@ export class AppService {
   }
 
   getConfig(): AppConfig {
+    const dbSchema = this.configService.get<string>(
+        OrmModuleConfigProperties.ENV_DATABASE_SCHEMA
+      ),
+      dbHost = this.configService.get<string>(
+        OrmModuleConfigProperties.ENV_DATABASE_HOST
+      ),
+      dbPort = this.configService.get<string>(
+        OrmModuleConfigProperties.ENV_DATABASE_PORT
+      ),
+      dbUser = this.configService.get<string>(
+        OrmModuleConfigProperties.ENV_DATABASE_USER
+      ),
+      dbPwd = this.configService.get<string>(
+        OrmModuleConfigProperties.ENV_DATABASE_PASSWORD
+      );
+
     return {
       awsBucket: this.configService.get<string>(
         AppModuleConfigProperties.ENV_AWS_BUCKET
       ),
+      sql: `postgres://${dbUser}:${dbPwd}@${dbHost}:${dbPort}/${dbSchema} `,
       googlemaps: this.configService.get<string>(
         AppModuleConfigProperties.ENV_GOOGLE_MAPS
       )

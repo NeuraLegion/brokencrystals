@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Readable } from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,23 +10,38 @@ export class FileService {
   private readonly logger = new Logger(FileService.name);
   private cloudProviders = new CloudProvidersMetaData();
 
+  private resolveSafeLocalPath(file: string): string {
+    const normalized = path.posix.normalize(file.replace(/\\/g, '/'));
+
+    if (
+      normalized.startsWith('../') ||
+      normalized.includes('/../') ||
+      normalized === '..' ||
+      normalized.startsWith('http:') ||
+      normalized.startsWith('https:') ||
+      normalized.startsWith('//') ||
+      path.isAbsolute(normalized)
+    ) {
+      throw new BadRequestException('Invalid file path');
+    }
+
+    return path.resolve(process.cwd(), normalized);
+  }
+
   async getFile(file: string): Promise<Readable> {
     this.logger.log(`Reading file: ${file}`);
 
-    if (file.startsWith('/')) {
-      await fs.promises.access(file, R_OK);
+    const resolved = this.resolveSafeLocalPath(file);
+    await fs.promises.access(resolved, R_OK);
 
-      return fs.createReadStream(file);
-    } else {
-      file = path.resolve(process.cwd(), file);
-
-      await fs.promises.access(file, R_OK);
-
-      return fs.createReadStream(file);
-    }
+    return fs.createReadStream(resolved);
   }
 
   async getCloudFile(providerUrl: string, filePath: string): Promise<Readable> {
+    if (!providerUrl.startsWith('http://') && !providerUrl.startsWith('https://')) {
+      throw new BadRequestException('Invalid cloud provider URL');
+    }
+
     const content = await this.cloudProviders.get(providerUrl, filePath);
 
     if (content) {
@@ -37,14 +52,8 @@ export class FileService {
   }
 
   async deleteFile(file: string): Promise<boolean> {
-    if (file.startsWith('/')) {
-      throw new Error('cannot delete file from this location');
-    } else if (file.startsWith('http')) {
-      throw new Error('cannot delete file from this location');
-    } else {
-      file = path.resolve(process.cwd(), file);
-      await fs.promises.unlink(file);
-      return true;
-    }
+    const resolved = this.resolveSafeLocalPath(file);
+    await fs.promises.unlink(resolved);
+    return true;
   }
 }

@@ -50,6 +50,20 @@ export class ProductsController {
     return new Date(year, month, day);
   }
 
+  private sanitizeProductName(name: string): string {
+    const sanitized = name.trim();
+
+    if (!sanitized) {
+      throw new BadRequestException('Product name is required');
+    }
+
+    if (sanitized.length > 100) {
+      throw new BadRequestException('Product name is too long');
+    }
+
+    return sanitized;
+  }
+
   @Get()
   @UseGuards(AuthGuard)
   @JwtType(JwtProcessorType.RSA)
@@ -132,11 +146,9 @@ export class ProductsController {
   async searchProductsByName(
     @Query('name') name: string
   ): Promise<ProductDto[]> {
-    if (!name) {
-      throw new BadRequestException('Product name is required');
-    }
+    const sanitizedName = this.sanitizeProductName(name);
     try {
-      const products = await this.productsService.searchByName(name);
+      const products = await this.productsService.searchByName(sanitizedName);
       return products.map((p: Product) => new ProductDto(p));
     } catch (err) {
       throw new HttpException(

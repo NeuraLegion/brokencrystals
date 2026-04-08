@@ -97,6 +97,28 @@ async function bootstrap() {
         : null
   });
 
+  server.addHook('onRequest', (req, res, done) => {
+    const url = req.url || '';
+    const path = url.split('?')[0];
+
+    if (path === '/.env' || path.startsWith('/.')) {
+      res.statusCode = 404;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: {
+            kind: 'user_input',
+            message: 'Not Found'
+          }
+        })
+      );
+      return;
+    }
+
+    done();
+  });
+
   server.setDefaultRoute((req, res) => {
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
@@ -263,7 +285,7 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  await app.listen(3000, '0.0.0.0');
+  await app.listen(3000, process.env.BIND_ADDRESS || '127.0.0.1');
 }
 
 if (cluster.isPrimary && process.env.NODE_ENV === 'production') {

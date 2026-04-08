@@ -63,6 +63,8 @@ const ALLOWED_REDIRECT_HOSTS = new Set([
   'www.example.com'
 ]);
 
+const ALLOWED_INTERNAL_REDIRECT_PATHS = new Set(['/', '/home', '/dashboard']);
+
 @Controller('/api')
 @ApiTags('App controller')
 export class AppController {
@@ -103,23 +105,39 @@ export class AppController {
       throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
     }
 
+    const input = url.trim();
+
+    if (input.startsWith('//')) {
+      throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+    }
+
+    if (input.startsWith('/')) {
+      if (!ALLOWED_INTERNAL_REDIRECT_PATHS.has(input.split('?')[0].split('#')[0])) {
+        throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+      }
+
+      let target: URL;
+      try {
+        target = new URL(input, 'https://example.com');
+      } catch {
+        throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+      }
+
+      if (target.protocol !== 'https:') {
+        throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+      }
+
+      return { url: target.pathname + target.search + target.hash };
+    }
+
     let target: URL;
     try {
-      target = new URL(url, 'https://example.com');
+      target = new URL(input);
     } catch {
       throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
     }
 
-    if (target.protocol !== 'https:') {
-      throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
-    }
-
-    const isRelativePath = !/^https?:$/i.test(url) && url.startsWith('/');
-    if (isRelativePath) {
-      return { url: target.pathname + target.search + target.hash };
-    }
-
-    if (!ALLOWED_REDIRECT_HOSTS.has(target.hostname)) {
+    if (target.protocol !== 'https:' || !ALLOWED_REDIRECT_HOSTS.has(target.hostname)) {
       throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
     }
 

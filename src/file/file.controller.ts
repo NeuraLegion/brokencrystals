@@ -49,14 +49,26 @@ export class FileController {
     }
   }
 
-  private validateCloudPath(provider: string, filePath: string): string {
+  private rejectUrlLikeInput(filePath: string): void {
     if (!filePath || typeof filePath !== 'string') {
       throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
     }
 
-    if (filePath.includes('://') || filePath.startsWith('/')) {
+    const normalized = filePath.trim();
+    if (
+      normalized.includes('://') ||
+      normalized.startsWith('http:') ||
+      normalized.startsWith('https:') ||
+      normalized.startsWith('file:') ||
+      normalized.startsWith('//') ||
+      normalized.startsWith('\\\\')
+    ) {
       throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
     }
+  }
+
+  private validateCloudPath(provider: string, filePath: string): string {
+    this.rejectUrlLikeInput(filePath);
 
     const allowedPaths = new Set<string>();
 
@@ -123,6 +135,22 @@ export class FileController {
     return filePath;
   }
 
+  private validateLocalFilePath(filePath: string): string {
+    this.rejectUrlLikeInput(filePath);
+
+    const normalized = path.posix.normalize(filePath.replace(/\\/g, '/'));
+    if (
+      normalized.startsWith('../') ||
+      normalized.includes('/../') ||
+      normalized === '..' ||
+      path.isAbsolute(normalized)
+    ) {
+      throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
+    }
+
+    return normalized;
+  }
+
   private async loadCPFile(cpBaseUrl: string, filePath: string) {
     const validatedPath = this.validateCloudPath(cpBaseUrl, filePath);
     const file: Stream = await this.fileService.getCloudFile(
@@ -161,7 +189,8 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
-    const file: Stream = await this.fileService.getFile(path);
+    const validatedPath = this.validateLocalFilePath(path);
+    const file: Stream = await this.fileService.getFile(validatedPath);
     const type = this.getContentType(contentType);
     res.type(type);
 
@@ -244,7 +273,7 @@ export class FileController {
   @Get('/azure')
   @ApiQuery({
     name: 'path',
-    example: 'config/products/crystals/amethyst.jpg',
+    example: 'compute',
     required: true
   })
   @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
@@ -282,7 +311,7 @@ export class FileController {
   @Get('/digital_ocean')
   @ApiQuery({
     name: 'path',
-    example: 'config/products/crystals/amethyst.jpg',
+    example: 'id',
     required: true
   })
   @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
@@ -339,7 +368,8 @@ export class FileController {
     description: 'File deleted successfully'
   })
   async deleteFile(@Query('path') path: string): Promise<void> {
-    await this.fileService.deleteFile(path);
+    const validatedPath = this.validateLocalFilePath(path);
+    await this.fileService.deleteFile(validatedPath);
   }
 
   @Put('raw')
@@ -357,10 +387,11 @@ export class FileController {
     @Body() raw: string
   ): Promise<string> {
     try {
+      const validatedFile = this.validateLocalFilePath(file);
       if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
-        await fs.promises.access(path.dirname(file), W_OK);
-        await fs.promises.writeFile(file, raw);
-        return `File uploaded successfully at ${file}`;
+        await fs.promises.access(path.dirname(validatedFile), W_OK);
+        await fs.promises.writeFile(validatedFile, raw);
+        return `File uploaded successfully at ${validatedFile}`;
       }
     } catch (err) {
       this.logger.error(err.message);
@@ -388,7 +419,8 @@ export class FileController {
     @Res({ passthrough: true }) res: FastifyReply
   ) {
     try {
-      const stream = await this.fileService.getFile(file);
+      const validatedFile = this.validateLocalFilePath(file);
+      const stream = await this.fileService.getFile(validatedFile);
       res.type('application/octet-stream');
 
       return stream;
@@ -400,7 +432,8 @@ export class FileController {
 
   @GrpcMethod('FileService', 'ReadFile')
   async readFileGrpc(data: { path: string }): Promise<{ content: string }> {
-    const stream = await this.fileService.getFile(data.path);
+    const validatedFile = this.validateLocalFilePath(data.path);
+    const stream = await this.fileService.getFile(validatedFile);
     const chunks = [];
     for await (const chunk of stream) {
       chunks.push(Buffer.from(chunk));

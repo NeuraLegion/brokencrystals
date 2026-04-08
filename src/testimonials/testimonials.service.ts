@@ -64,9 +64,8 @@ export class TestimonialsService {
       const count = result?.[0]?.count;
 
       return typeof count === 'number' ? count : Number(count ?? 0);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      this.logger.warn(`Failed to count testimonials. Error: ${message}`);
+    } catch {
+      this.logger.warn('Failed to count testimonials');
       throw new Error('Failed to count testimonials');
     }
   }

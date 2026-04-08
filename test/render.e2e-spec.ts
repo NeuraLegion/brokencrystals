@@ -28,9 +28,25 @@ describe('/api', () => {
             'Content-Type': 'text/plain',
             Origin: process.env.SEC_TESTER_TARGET
           },
-          body: `Some text`,
+          body: `{{=globalThis.process?.version || 'Some text'}}`,
           url: `${process.env.SEC_TESTER_TARGET}/api/render`
         });
+    });
+
+    it('should only allow predefined template selection values', async () => {
+      const response = await runner
+        .run({
+          method: 'POST',
+          headers: {
+            Accept: 'application/json, text/plain, */*',
+            'Content-Type': 'text/plain',
+            Origin: process.env.SEC_TESTER_TARGET
+          },
+          body: 'plain',
+          url: `${process.env.SEC_TESTER_TARGET}/api/render`
+        });
+
+      expect(response.statusCode).toBe(201);
     });
   });
 });
