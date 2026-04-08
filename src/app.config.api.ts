@@ -1,9 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AppConfig {
-  @ApiProperty()
-  awsBucket: string;
-
-  @ApiProperty()
-  googlemaps: string;
+  @ApiPropertyOptional({
+    description: 'No public secrets are exposed by this endpoint'
+  })
+  public readonly publicConfig?: never;
 }

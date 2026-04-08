@@ -7,7 +7,16 @@ interface InnerHtmlProps {
   allowRerender?: boolean;
 }
 
-// based on https://github.com/christo-pr/dangerously-set-html-content
+const escapeHtml = (value: string): string => {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+// Renders untrusted content as text to prevent XSS.
 export const InnerHtml: FC<InnerHtmlProps> = ({
   html,
   tagName,
@@ -18,21 +27,19 @@ export const InnerHtml: FC<InnerHtmlProps> = ({
   const isFirstRender = useRef<boolean>(true);
 
   useEffect(() => {
-    if (!html || !elementRef.current) {
-      throw new Error("InnerHtml `html` prop can't be null");
+    if (!elementRef.current) {
+      return;
     }
-    if (!isFirstRender.current) {
+
+    const safeHtml = escapeHtml((html ?? '').toString());
+
+    if (!isFirstRender.current && !allowRerender) {
       return;
     }
     isFirstRender.current = Boolean(allowRerender);
 
-    // Create a 'tiny' document and parse the html string
-    const slotHtml = document.createRange().createContextualFragment(html);
-    // Clear the container
-    elementRef.current.innerHTML = '';
-    // Append the new content
-    elementRef.current.appendChild(slotHtml);
-  }, [html, elementRef]);
+    elementRef.current.innerHTML = safeHtml;
+  }, [html, allowRerender]);
 
   return createElement(tagName ?? 'div', { ...rest, ref: elementRef });
 };

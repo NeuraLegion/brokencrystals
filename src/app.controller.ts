@@ -38,7 +38,6 @@ import {
 import * as dotT from 'dot';
 import { FastifyReply } from 'fastify';
 import { parseXml } from 'libxmljs';
-import { AppConfig } from './app.config.api';
 import {
   API_DESC_CONFIG_SERVER,
   API_DESC_LAUNCH_COMMAND,
@@ -211,7 +210,6 @@ export class AppController {
         ? payload.processing_expression
         : 'numbers.reduce((acc, num) => acc + num, 0)';
 
-    // expose both names used by exploiter payloads
     const response = res;
 
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
@@ -219,7 +217,6 @@ export class AppController {
     try {
       const result = eval(processNumbersExpression);
 
-      // SSJI payload may already end the response
       if (response.sent || response.raw.writableEnded) {
         return;
       }
@@ -257,11 +254,11 @@ export class AppController {
     description: API_DESC_CONFIG_SERVER
   })
   @ApiOkResponse({
-    type: AppConfig
+    description: 'Public configuration only'
   })
-  getConfig(): AppConfig {
-    const config = this.appService.getConfig();
-    return config;
+  getConfig(): Record<string, never> {
+    this.logger.warn('Public config endpoint requested; no secrets are exposed');
+    return {};
   }
 
   @Get('/secrets')

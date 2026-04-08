@@ -73,6 +73,19 @@ const renderDirList: ListRender = (dirs, files) => {
   `;
 };
 
+function isDotfileRequest(url?: string): boolean {
+  if (!url) {
+    return false;
+  }
+
+  const pathname = url.split('?')[0].split('#')[0];
+  if (!pathname.startsWith('/.')) {
+    return false;
+  }
+
+  return pathname !== '/.well-known' && !pathname.startsWith('/.well-known/');
+}
+
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
@@ -95,6 +108,23 @@ async function bootstrap() {
             )
           }
         : null
+  });
+
+  server.addHook('onRequest', (req, res, done) => {
+    if (isDotfileRequest(req.url)) {
+      res.code(404);
+      res.header('Content-Type', 'application/json; charset=utf-8');
+      res.send({
+        success: false,
+        error: {
+          kind: 'user_input',
+          message: 'Not Found'
+        }
+      });
+      return;
+    }
+
+    done();
   });
 
   server.setDefaultRoute((req, res) => {
@@ -133,7 +163,8 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: false
+    serveDotFiles: false,
+    dotfiles: 'deny'
   });
 
   for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
@@ -147,7 +178,8 @@ async function bootstrap() {
         format: 'html',
         render: renderDirList
       },
-      serveDotFiles: false
+      serveDotFiles: false,
+      dotfiles: 'deny'
     });
   }
 
@@ -161,7 +193,8 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: false
+    serveDotFiles: false,
+    dotfiles: 'deny'
   });
 
   await server.register(fastifyHttpProxy, {

@@ -24,8 +24,12 @@ export class TestimonialsService {
     name: string,
     title: string
   ): Promise<Testimonial> {
+    const safeMessage = (message ?? '').trim();
+    const safeName = (name ?? '').trim();
+    const safeTitle = (title ?? '').trim();
+
     this.logger.debug(
-      `Create a testimonial. Name: ${message}, title: ${title}, message: ${message}`
+      `Create a testimonial. Name: ${safeName}, title: ${safeTitle}, message: ${safeMessage}`
     );
 
     const connection = this.em.getConnection();
@@ -44,9 +48,9 @@ export class TestimonialsService {
     }
 
     const t = new Testimonial();
-    t.message = message;
-    t.name = name;
-    t.title = title;
+    t.message = safeMessage;
+    t.name = safeName;
+    t.title = safeTitle;
 
     await this.em.persistAndFlush(t);
     this.logger.debug(`Saved new testimonial`);

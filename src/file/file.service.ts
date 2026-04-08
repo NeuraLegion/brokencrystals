@@ -9,34 +9,44 @@ import { R_OK } from 'constants';
 export class FileService {
   private readonly logger = new Logger(FileService.name);
   private cloudProviders = new CloudProvidersMetaData();
+  private readonly safeBaseDir = path.resolve(process.cwd());
+
+  private resolveSafePath(file: string): string {
+    if (!file || typeof file !== 'string') {
+      throw new Error('invalid file path');
+    }
+
+    if (file.includes('://') || file.startsWith('http')) {
+      throw new Error('remote file access is not allowed');
+    }
+
+    const normalizedInput = file.replace(/\\/g, '/');
+    const resolved = path.resolve(this.safeBaseDir, normalizedInput);
+    const relative = path.relative(this.safeBaseDir, resolved);
+
+    if (
+      relative.startsWith('..') ||
+      path.isAbsolute(relative) ||
+      normalizedInput.includes('\0')
+    ) {
+      throw new Error('invalid file path');
+    }
+
+    return resolved;
+  }
 
   async getFile(file: string): Promise<Readable> {
     this.logger.log(`Reading file: ${file}`);
 
-    if (file.startsWith('/')) {
-      await fs.promises.access(file, R_OK);
+    const safePath = this.resolveSafePath(file);
+    await fs.promises.access(safePath, R_OK);
 
-      return fs.createReadStream(file);
-    } else if (file.startsWith('http')) {
-      throw new Error('remote file access is not allowed');
-    } else {
-      file = path.resolve(process.cwd(), file);
-
-      await fs.promises.access(file, R_OK);
-
-      return fs.createReadStream(file);
-    }
+    return fs.createReadStream(safePath);
   }
 
   async deleteFile(file: string): Promise<boolean> {
-    if (file.startsWith('/')) {
-      throw new Error('cannot delete file from this location');
-    } else if (file.startsWith('http')) {
-      throw new Error('cannot delete file from this location');
-    } else {
-      file = path.resolve(process.cwd(), file);
-      await fs.promises.unlink(file);
-      return true;
-    }
+    const safePath = this.resolveSafePath(file);
+    await fs.promises.unlink(safePath);
+    return true;
   }
 }

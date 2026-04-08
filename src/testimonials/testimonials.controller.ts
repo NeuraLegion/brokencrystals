@@ -99,14 +99,16 @@ export class TestimonialsController {
   })
   async getCount(@Query('query') query?: string): Promise<number> {
     this.logger.debug('Get count of testimonials.');
-    return await this.testimonialsService.count(query);
+    const normalizedQuery = typeof query === 'string' ? query.trim() : undefined;
+    return await this.testimonialsService.count(normalizedQuery || undefined);
   }
 
   @GrpcMethod('TestimonialsService', 'TestimonialsCount')
   async testimonialsCountGrpc(data: {
     query?: string;
   }): Promise<{ count: number }> {
-    const count = await this.testimonialsService.count(data.query);
+    const normalizedQuery = typeof data.query === 'string' ? data.query.trim() : undefined;
+    const count = await this.testimonialsService.count(normalizedQuery || undefined);
     return { count };
   }
 }

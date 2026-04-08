@@ -1,13 +1,6 @@
-// This file was previously exposed from the public web root and contained
-// sensitive environment-derived configuration. It has been intentionally
-// stripped of secrets so it can no longer leak credentials via direct HTTP
-// access to /config.js.
+// Intentionally empty placeholder.
 //
-// Server-only configuration should live outside the publicly served directory.
+// This file must not expose configuration through the public web root.
+// Access to /config.js is denied by the Vite server middleware.
 
-module.exports = {
-  development: {},
-  test: {},
-  production: {},
-  email: null
-};
+export {};
