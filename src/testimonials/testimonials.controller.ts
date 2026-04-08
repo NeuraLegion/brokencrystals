@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Header,
   Logger,
   Post,
   Query,
@@ -89,24 +88,23 @@ export class TestimonialsController {
   @Get('count')
   @ApiQuery({
     name: 'query',
-    example: 'select count(*) as count from testimonial',
-    required: true
+    example: 'testimonial',
+    required: false
   })
-  @Header('content-type', 'text/html')
   @ApiOperation({
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
   })
   @ApiOkResponse({
-    type: String
+    type: Number
   })
-  async getCount(@Query('query') query: string): Promise<number> {
+  async getCount(@Query('query') query?: string): Promise<number> {
     this.logger.debug('Get count of testimonials.');
     return await this.testimonialsService.count(query);
   }
 
   @GrpcMethod('TestimonialsService', 'TestimonialsCount')
   async testimonialsCountGrpc(data: {
-    query: string;
+    query?: string;
   }): Promise<{ count: number }> {
     const count = await this.testimonialsService.count(data.query);
     return { count };
