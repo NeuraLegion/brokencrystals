@@ -48636,17 +48636,12 @@ async function createBrightMcpClient(config3) {
   async function connect() {
     client = new Client({ name: "bright-engine", version: "0.1.0" });
     if (transportType === "streamable") {
-      try {
-        const transport2 = new StreamableHTTPClientTransport(new URL(mcpUrl), {
-          requestInit: { headers }
-        });
-        await client.connect(transport2);
-        console.log("[MCP] Connected via Streamable HTTP");
-        return;
-      } catch {
-        console.log("[MCP] Streamable HTTP failed, falling back to SSE");
-        transportType = "sse";
-      }
+      const transport2 = new StreamableHTTPClientTransport(new URL(mcpUrl), {
+        requestInit: { headers }
+      });
+      await client.connect(transport2);
+      console.log("[MCP] Connected via Streamable HTTP");
+      return;
     }
     const transport = new SSEClientTransport(new URL(mcpUrl), {
       requestInit: { headers }
@@ -48654,7 +48649,13 @@ async function createBrightMcpClient(config3) {
     await client.connect(transport);
     console.log("[MCP] Connected via SSE");
   }
-  await connect();
+  try {
+    await connect();
+  } catch {
+    console.log("[MCP] Streamable HTTP failed on initial connect, falling back to SSE");
+    transportType = "sse";
+    await connect();
+  }
   let cachedSchemas = null;
   function isSessionError(err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -48672,8 +48673,19 @@ async function createBrightMcpClient(config3) {
       } catch {
       }
       cachedSchemas = null;
-      await connect();
-      console.log("[MCP] Reconnected successfully");
+      let lastErr;
+      for (let i = 0; i < 3; i++) {
+        try {
+          await connect();
+          console.log("[MCP] Reconnected successfully");
+          return;
+        } catch (err) {
+          lastErr = err;
+          console.warn(`[MCP] Reconnect attempt ${i + 1}/3 failed: ${err instanceof Error ? err.message : String(err)}`);
+          if (i < 2) await new Promise((r) => setTimeout(r, 2e3 * (i + 1)));
+        }
+      }
+      throw lastErr;
     })();
     try {
       await reconnectPromise;

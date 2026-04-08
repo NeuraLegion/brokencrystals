@@ -167,17 +167,12 @@ export async function createBrightMcpClient(
     client = new Client({ name: "bright-engine", version: "0.1.0" });
 
     if (transportType === "streamable") {
-      try {
-        const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
-          requestInit: { headers },
-        });
-        await client.connect(transport);
-        console.log("[MCP] Connected via Streamable HTTP");
-        return;
-      } catch {
-        console.log("[MCP] Streamable HTTP failed, falling back to SSE");
-        transportType = "sse";
-      }
+      const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
+        requestInit: { headers },
+      });
+      await client.connect(transport);
+      console.log("[MCP] Connected via Streamable HTTP");
+      return;
     }
 
     const transport = new SSEClientTransport(new URL(mcpUrl), {
@@ -187,7 +182,14 @@ export async function createBrightMcpClient(
     console.log("[MCP] Connected via SSE");
   }
 
-  await connect();
+  // Initial connection: try Streamable HTTP first, fall back to SSE
+  try {
+    await connect();
+  } catch {
+    console.log("[MCP] Streamable HTTP failed on initial connect, falling back to SSE");
+    transportType = "sse";
+    await connect();
+  }
 
   let cachedSchemas: McpToolSchema[] | null = null;
 
@@ -212,8 +214,21 @@ export async function createBrightMcpClient(
       console.log("[MCP] Session lost, reconnecting...");
       try { await client.close(); } catch { /* already dead */ }
       cachedSchemas = null;
-      await connect();
-      console.log("[MCP] Reconnected successfully");
+
+      // Retry connection up to 3 times with backoff
+      let lastErr: unknown;
+      for (let i = 0; i < 3; i++) {
+        try {
+          await connect();
+          console.log("[MCP] Reconnected successfully");
+          return;
+        } catch (err) {
+          lastErr = err;
+          console.warn(`[MCP] Reconnect attempt ${i + 1}/3 failed: ${err instanceof Error ? err.message : String(err)}`);
+          if (i < 2) await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+        }
+      }
+      throw lastErr;
     })();
     try {
       await reconnectPromise;
