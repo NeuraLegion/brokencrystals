@@ -49,12 +49,86 @@ export class FileController {
     }
   }
 
-  private async loadCPFile(cpBaseUrl: string, path: string) {
-    if (!path.startsWith(cpBaseUrl)) {
-      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
+  private validateCloudPath(provider: string, filePath: string): string {
+    if (!filePath || typeof filePath !== 'string') {
+      throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
     }
 
-    const file: Stream = await this.fileService.getFile(path);
+    if (filePath.includes('://') || filePath.startsWith('/')) {
+      throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
+    }
+
+    const allowedPaths = new Set<string>();
+
+    if (provider === CloudProvidersMetaData.AWS) {
+      [
+        'ami-id',
+        'ami-launch-index',
+        'ami-manifest-path',
+        'block-device-mapping/',
+        'events/',
+        'hostname',
+        'iam/',
+        'instance-action',
+        'instance-id',
+        'instance-life-cycle',
+        'instance-type',
+        'local-hostname',
+        'local-ipv4',
+        'mac',
+        'metrics/',
+        'network/',
+        'placement/',
+        'profile',
+        'public-hostname',
+        'public-ipv4',
+        'public-keys/',
+        'reservation-id',
+        'security-groups',
+        'services/'
+      ].forEach((value) => allowedPaths.add(value));
+    } else if (provider === CloudProvidersMetaData.GOOGLE) {
+      ['instance/', 'oslogin/', 'project/'].forEach((value) =>
+        allowedPaths.add(value)
+      );
+    } else if (provider === CloudProvidersMetaData.AZURE) {
+      ['compute', 'network'].forEach((value) => allowedPaths.add(value));
+    } else if (provider === CloudProvidersMetaData.DIGITAL_OCEAN) {
+      [
+        'id',
+        'hostname',
+        'user-data',
+        'vendor-data',
+        'public-keys',
+        'region',
+        'interfaces/',
+        'dns/',
+        'floating_ip/',
+        'reserved_ip/',
+        'tags/',
+        'features/'
+      ].forEach((value) => allowedPaths.add(value));
+    }
+
+    const isAllowed = Array.from(allowedPaths).some((allowedPath) => {
+      return allowedPath.endsWith('/')
+        ? filePath.startsWith(allowedPath)
+        : filePath === allowedPath;
+    });
+
+    if (!isAllowed) {
+      throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
+    }
+
+    return filePath;
+  }
+
+  private async loadCPFile(cpBaseUrl: string, filePath: string) {
+    const validatedPath = this.validateCloudPath(cpBaseUrl, filePath);
+    const file: Stream = await this.fileService.getCloudFile(
+      cpBaseUrl,
+      validatedPath
+    );
 
     return file;
   }
@@ -135,7 +209,7 @@ export class FileController {
   @Get('/aws')
   @ApiQuery({
     name: 'path',
-    example: 'config/products/crystals/amethyst.jpg',
+    example: 'ami-id',
     required: true
   })
   @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
@@ -160,10 +234,7 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
-    const file: Stream = await this.loadCPFile(
-      CloudProvidersMetaData.AWS,
-      path
-    );
+    const file: Stream = await this.loadCPFile(CloudProvidersMetaData.AWS, path);
     const type = this.getContentType(contentType);
     res.type(type);
 

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import axios from 'axios';
 
 @Injectable()
 export class CloudProvidersMetaData {
@@ -251,7 +250,7 @@ export class CloudProvidersMetaData {
     );
   }
 
-  async get(providerUrl: string): Promise<string> {
+  async get(providerUrl: string, filePath: string): Promise<string> {
     if (providerUrl.startsWith(CloudProvidersMetaData.GOOGLE)) {
       return this.providers.get(CloudProvidersMetaData.GOOGLE);
     } else if (providerUrl.startsWith(CloudProvidersMetaData.DIGITAL_OCEAN)) {
@@ -260,12 +259,8 @@ export class CloudProvidersMetaData {
       return this.providers.get(CloudProvidersMetaData.AWS);
     } else if (providerUrl.startsWith(CloudProvidersMetaData.AZURE)) {
       return this.providers.get(CloudProvidersMetaData.AZURE);
-    } else {
-      const { data } = await axios(providerUrl, {
-        timeout: 5000,
-        responseType: 'text'
-      });
-      return data;
     }
+
+    throw new Error(`Unsupported cloud provider path '${filePath}'`);
   }
 }

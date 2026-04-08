@@ -56,6 +56,13 @@ import { AppService } from './app.service';
 import { BASIC_USER_INFO, UserDto } from './users/api/UserDto';
 import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
 
+const ALLOWED_REDIRECT_HOSTS = new Set([
+  'google.com',
+  'www.google.com',
+  'example.com',
+  'www.example.com'
+]);
+
 @Controller('/api')
 @ApiTags('App controller')
 export class AppController {
@@ -92,7 +99,31 @@ export class AppController {
   })
   @Redirect()
   async redirect(@Query('url') url: string) {
-    return { url };
+    if (typeof url !== 'string' || url.trim().length === 0) {
+      throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+    }
+
+    let target: URL;
+    try {
+      target = new URL(url, 'https://example.com');
+    } catch {
+      throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+    }
+
+    if (target.protocol !== 'https:') {
+      throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+    }
+
+    const isRelativePath = !/^https?:$/i.test(url) && url.startsWith('/');
+    if (isRelativePath) {
+      return { url: target.pathname + target.search + target.hash };
+    }
+
+    if (!ALLOWED_REDIRECT_HOSTS.has(target.hostname)) {
+      throw new HttpException('Invalid redirect URL', HttpStatus.BAD_REQUEST);
+    }
+
+    return { url: target.toString() };
   }
 
   @Post('metadata')

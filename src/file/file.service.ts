@@ -17,14 +17,6 @@ export class FileService {
       await fs.promises.access(file, R_OK);
 
       return fs.createReadStream(file);
-    } else if (file.startsWith('http')) {
-      const content = await this.cloudProviders.get(file);
-
-      if (content) {
-        return Readable.from(content);
-      } else {
-        throw new Error(`no such file or directory, access '${file}'`);
-      }
     } else {
       file = path.resolve(process.cwd(), file);
 
@@ -32,6 +24,16 @@ export class FileService {
 
       return fs.createReadStream(file);
     }
+  }
+
+  async getCloudFile(providerUrl: string, filePath: string): Promise<Readable> {
+    const content = await this.cloudProviders.get(providerUrl, filePath);
+
+    if (content) {
+      return Readable.from(content);
+    }
+
+    throw new Error(`no such file or directory, access '${filePath}'`);
   }
 
   async deleteFile(file: string): Promise<boolean> {
