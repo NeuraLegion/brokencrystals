@@ -110,6 +110,8 @@ interface AuthDetection {
   headerPrefix: string | null;
   cookieName: string | null;
   queryParamName: string | null;
+  reauthIndicator: "status" | "redirect" | "body";
+  reauthBodyPattern: string | null;
   protectedEndpointPath: string | null;
   notes: string;
 }
@@ -189,6 +191,8 @@ Return ONLY a JSON object with these exact fields:
   "headerPrefix": "Bearer " or "" or null,
   "cookieName": "session" or "JSESSIONID" or null,
   "queryParamName": "token" or "api_key" or null,
+  "reauthIndicator": "status" | "redirect" | "body",
+  "reauthBodyPattern": "regex pattern" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description including where you found the credentials"
 }
@@ -203,6 +207,11 @@ CRITICAL RULES:
 - "tokenEmbedLocation": "header" for Authorization/Bearer, "cookie" if the app reads auth from cookies, "query" if token goes in URL query params
 - "cookieName": set this if tokenEmbedLocation is "cookie" — the cookie name the app expects
 - "queryParamName": set this if tokenEmbedLocation is "query" — the query param name
+- "reauthIndicator": How the app signals an expired/invalid session:
+  - "status" → returns 401/403 status codes (most common for APIs)
+  - "redirect" → returns 301/302 redirect to a login page (common for web apps with server-side rendering)
+  - "body" → returns 200 OK but with an error message in the response body (common for GraphQL or apps that don't use proper HTTP status codes)
+- "reauthBodyPattern": Only set when reauthIndicator is "body". A regex pattern that matches the body content indicating auth failure (e.g. "session.expired|login.required|unauthorized"). Set to null for "status" or "redirect".
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
   1. Pick a candidate from the Known endpoints list above
   2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) — e.g. /api/users/me is better than /api/users/:id
@@ -232,6 +241,8 @@ CRITICAL RULES:
       headerPrefix: parsed.headerPrefix ?? "Bearer ",
       cookieName: parsed.cookieName ?? null,
       queryParamName: parsed.queryParamName ?? null,
+      reauthIndicator: parsed.reauthIndicator ?? "status",
+      reauthBodyPattern: parsed.reauthBodyPattern ?? null,
       protectedEndpointPath: parsed.protectedEndpointPath ?? null,
       notes: parsed.notes ?? "",
     };
@@ -251,6 +262,8 @@ CRITICAL RULES:
       headerPrefix: null,
       cookieName: null,
       queryParamName: null,
+      reauthIndicator: "status",
+      reauthBodyPattern: null,
       protectedEndpointPath: null,
       notes: "Detection failed",
     };
@@ -387,7 +400,7 @@ async function createAuthObject(
       repeaterId,
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
-    reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }],
+    reauthTriggers: buildReauthTriggers(detection),
     config: {
       multistep: {
         steps: [
@@ -434,7 +447,7 @@ async function createHeaderAuth(
       repeaterId,
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
-    reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }],
+    reauthTriggers: buildReauthTriggers(detection),
     config: {
       request: {
         url: testUrl,
@@ -583,6 +596,35 @@ function buildTokenRegex(fieldPath: string): string {
   return `"${escaped}"\\s*:\\s*"([^"]*)"`;
 }
 
+/**
+ * Build reauth triggers based on what the LLM detected about how the app
+ * signals an expired/invalid session.
+ */
+function buildReauthTriggers(detection: AuthDetection): unknown[] {
+  const triggers: unknown[] = [];
+
+  // Always include 401/403 status triggers
+  triggers.push({ type: "TRIGGER", location: "status", statuses: [401, 403] });
+
+  const indicator = detection.reauthIndicator ?? "status";
+
+  if (indicator === "redirect") {
+    // App redirects to login page on auth failure (e.g. 301/302 to /login)
+    triggers.push({ type: "TRIGGER", location: "status", statuses: [301, 302] });
+  }
+
+  if (indicator === "body" && detection.reauthBodyPattern) {
+    // App returns 200 but body contains an auth-failure message
+    triggers.push({
+      type: "TRIGGER",
+      location: "body",
+      pattern: detection.reauthBodyPattern,
+    });
+  }
+
+  return triggers;
+}
+
 // ---------------------------------------------------------------------------
 // Retry detection with feedback from the failed attempt
 // ---------------------------------------------------------------------------
@@ -648,6 +690,8 @@ Return ONLY a JSON object with these exact fields:
   "headerPrefix": "Bearer " or "" or null,
   "cookieName": "session" or null,
   "queryParamName": "token" or null,
+  "reauthIndicator": "status" | "redirect" | "body",
+  "reauthBodyPattern": "regex pattern" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description"
 }
@@ -658,6 +702,8 @@ CRITICAL RULES:
 - "loginContentType": "json" for JSON APIs, "form" for HTML form login, "xml" for SOAP
 - "tokenLocation": "body" if token is in JSON response body, "header" if in response header, "cookie" if set via Set-Cookie
 - "tokenEmbedLocation": "header" for Authorization, "cookie" if app reads auth from cookies, "query" if token goes in URL
+- "reauthIndicator": "status" for 401/403 responses, "redirect" for 301/302 to login page, "body" for 200 OK with error message in body
+- "reauthBodyPattern": Only when reauthIndicator is "body" — regex matching the auth failure message. null otherwise.
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT auth. Read the route handler code to confirm it has an auth guard/middleware. Do NOT pick endpoints that return 200 without auth.`,
     },
   ];
@@ -680,6 +726,8 @@ CRITICAL RULES:
       headerPrefix: parsed.headerPrefix ?? previousDetection.headerPrefix,
       cookieName: parsed.cookieName ?? previousDetection.cookieName,
       queryParamName: parsed.queryParamName ?? previousDetection.queryParamName,
+      reauthIndicator: parsed.reauthIndicator ?? previousDetection.reauthIndicator,
+      reauthBodyPattern: parsed.reauthBodyPattern ?? previousDetection.reauthBodyPattern,
       protectedEndpointPath: parsed.protectedEndpointPath ?? previousDetection.protectedEndpointPath,
       notes: parsed.notes ?? previousDetection.notes,
     };

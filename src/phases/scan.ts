@@ -33,41 +33,120 @@ async function runScanViaRest(
   attackParamLocations: string[],
   scanName?: string,
 ): Promise<string> {
-  const body = {
-    name: scanName ?? `Engine Scan ${new Date().toISOString()}`,
-    projectId,
-    module: "dast",
-    entryPointIds: entrypointIds,
-    repeaters: [repeaterId],
-    tests: testTags,
-    attackParamLocations,
-    smart: true,
-    skipStaticParams: true,
-    poolSize: 10,
-  };
+  let tests = [...testTags];
+  const maxRetries = 3;
 
-  const res = await fetch(`https://${brightHostname}/api/v1/scans`, {
-    method: "POST",
-    headers: {
-      Authorization: `Api-Key ${brightToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const body = {
+      name: scanName ?? `Engine Scan ${new Date().toISOString()}`,
+      projectId,
+      module: "dast",
+      entryPointIds: entrypointIds,
+      repeaters: [repeaterId],
+      tests,
+      attackParamLocations,
+      smart: true,
+      skipStaticParams: true,
+      poolSize: 10,
+    };
 
-  if (!res.ok) {
+    let res: Response;
+    try {
+      res = await fetch(`https://${brightHostname}/api/v1/scans`, {
+        method: "POST",
+        headers: {
+          Authorization: `Api-Key ${brightToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      // TCP/network error — retry
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`);
+      if (attempt < maxRetries) {
+        await sleep(5_000 * attempt);
+        continue;
+      }
+      throw new Error(`runScan failed after ${maxRetries} attempts: ${msg}`);
+    }
+
+    if (res.ok) {
+      const data = (await res.json()) as Record<string, unknown>;
+      const scanId = (data.id ?? data.scanId) as string | undefined;
+      if (!scanId) {
+        throw new Error(`runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`);
+      }
+      console.log(`[Scan] Scan started (REST): ${scanId}`);
+      return scanId;
+    }
+
     const text = await res.text();
+
+    // Rate limit — back off and retry
+    if (res.status === 429) {
+      console.warn(`[Scan] Rate limited (attempt ${attempt}/${maxRetries}), backing off...`);
+      if (attempt < maxRetries) {
+        await sleep(10_000 * attempt);
+        continue;
+      }
+      throw new Error(`runScan rate limited after ${maxRetries} attempts`);
+    }
+
+    // Server error — retry
+    if (res.status >= 500) {
+      console.warn(`[Scan] Server error ${res.status} (attempt ${attempt}/${maxRetries}): ${text.slice(0, 200)}`);
+      if (attempt < maxRetries) {
+        await sleep(5_000 * attempt);
+        continue;
+      }
+      throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
+    }
+
+    // 400 config error — try to auto-fix by removing problematic tests
+    if (res.status === 400) {
+      const fixed = tryFixScanConfig(text, tests);
+      if (fixed && attempt < maxRetries) {
+        tests = fixed;
+        console.log(`[Scan] Retrying with ${tests.length} tests after removing incompatible ones`);
+        continue;
+      }
+    }
+
     throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
   }
 
-  const data = (await res.json()) as Record<string, unknown>;
-  const scanId = (data.id ?? data.scanId) as string | undefined;
-  if (!scanId) {
-    throw new Error(`runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`);
+  throw new Error("runScan: exhausted retries");
+}
+
+/**
+ * Try to fix scan config by parsing the error and removing offending tests.
+ * Returns the fixed test list, or null if the error isn't fixable.
+ */
+function tryFixScanConfig(errorText: string, tests: string[]): string[] | null {
+  const lower = errorText.toLowerCase();
+
+  // "X test is mutually exclusive with other tests"
+  if (lower.includes("mutually exclusive")) {
+    // Try to identify which test from the error message
+    const exclusiveTests = ["lrrl"];
+    const filtered = tests.filter((t) => !exclusiveTests.some((ex) => lower.includes(ex) || t === ex));
+    if (filtered.length < tests.length && filtered.length > 0) {
+      console.log(`[Scan] Removed mutually exclusive test(s), ${tests.length} → ${filtered.length}`);
+      return filtered;
+    }
   }
 
-  console.log(`[Scan] Scan started (REST): ${scanId}`);
-  return scanId;
+  // "multiple auth attack tests" — remove broken_access_control
+  if (lower.includes("multiple auth attack tests") || lower.includes("custom auth objects")) {
+    const filtered = tests.filter((t) => t !== "broken_access_control");
+    if (filtered.length < tests.length && filtered.length > 0) {
+      console.log(`[Scan] Removed multi-auth test(s), ${tests.length} → ${filtered.length}`);
+      return filtered;
+    }
+  }
+
+  return null;
 }
 
 export async function waitForScanCompletion(

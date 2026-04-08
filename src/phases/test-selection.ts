@@ -5,10 +5,14 @@ import { chatWithSchema } from "../inference.js";
 import { formatTechStack } from "../utils.js";
 
 // Tests that require multiple auth objects (different user roles) at the scan level.
-// We only create a single auth object, so these always fail with
-// "Scan configuration contains multiple auth attack tests. But custom auth objects were not defined."
 const MULTI_AUTH_TESTS = new Set([
   "broken_access_control",
+]);
+
+// Tests that are mutually exclusive with other tests and must run alone,
+// or are destructive / counterproductive for automated scanning.
+const EXCLUDED_TESTS = new Set([
+  "lrrl",
 ]);
 
 export interface ScanGroup {
@@ -31,8 +35,9 @@ export async function selectTestsPerEndpoint(
 ): Promise<ScanGroup[]> {
   const availableTests = await bright.listTests();
 
-  // Always filter out multi-auth tests — we only create a single auth object
-  const eligibleTests = availableTests.filter((t) => !MULTI_AUTH_TESTS.has(t.tag));
+  const eligibleTests = availableTests.filter(
+    (t) => !MULTI_AUTH_TESTS.has(t.tag) && !EXCLUDED_TESTS.has(t.tag),
+  );
 
   const stackStr = formatTechStack(techStack);
   const testCatalog = eligibleTests

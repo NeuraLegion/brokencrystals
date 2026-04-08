@@ -55847,6 +55847,8 @@ Return ONLY a JSON object with these exact fields:
   "headerPrefix": "Bearer " or "" or null,
   "cookieName": "session" or "JSESSIONID" or null,
   "queryParamName": "token" or "api_key" or null,
+  "reauthIndicator": "status" | "redirect" | "body",
+  "reauthBodyPattern": "regex pattern" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description including where you found the credentials"
 }
@@ -55861,6 +55863,11 @@ CRITICAL RULES:
 - "tokenEmbedLocation": "header" for Authorization/Bearer, "cookie" if the app reads auth from cookies, "query" if token goes in URL query params
 - "cookieName": set this if tokenEmbedLocation is "cookie" \u2014 the cookie name the app expects
 - "queryParamName": set this if tokenEmbedLocation is "query" \u2014 the query param name
+- "reauthIndicator": How the app signals an expired/invalid session:
+  - "status" \u2192 returns 401/403 status codes (most common for APIs)
+  - "redirect" \u2192 returns 301/302 redirect to a login page (common for web apps with server-side rendering)
+  - "body" \u2192 returns 200 OK but with an error message in the response body (common for GraphQL or apps that don't use proper HTTP status codes)
+- "reauthBodyPattern": Only set when reauthIndicator is "body". A regex pattern that matches the body content indicating auth failure (e.g. "session.expired|login.required|unauthorized"). Set to null for "status" or "redirect".
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
   1. Pick a candidate from the Known endpoints list above
   2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) \u2014 e.g. /api/users/me is better than /api/users/:id
@@ -55888,6 +55895,8 @@ CRITICAL RULES:
       headerPrefix: parsed.headerPrefix ?? "Bearer ",
       cookieName: parsed.cookieName ?? null,
       queryParamName: parsed.queryParamName ?? null,
+      reauthIndicator: parsed.reauthIndicator ?? "status",
+      reauthBodyPattern: parsed.reauthBodyPattern ?? null,
       protectedEndpointPath: parsed.protectedEndpointPath ?? null,
       notes: parsed.notes ?? ""
     };
@@ -55907,6 +55916,8 @@ CRITICAL RULES:
       headerPrefix: null,
       cookieName: null,
       queryParamName: null,
+      reauthIndicator: "status",
+      reauthBodyPattern: null,
       protectedEndpointPath: null,
       notes: "Detection failed"
     };
@@ -56017,7 +56028,7 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
       repeaterId
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
-    reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }],
+    reauthTriggers: buildReauthTriggers(detection),
     config: {
       multistep: {
         steps: [
@@ -56054,7 +56065,7 @@ async function createHeaderAuth(brightToken, brightHostname, projectId, repeater
       repeaterId
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
-    reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }],
+    reauthTriggers: buildReauthTriggers(detection),
     config: {
       request: {
         url: testUrl,
@@ -56155,6 +56166,22 @@ function buildTokenRegex(fieldPath) {
   const escaped = lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return `"${escaped}"\\s*:\\s*"([^"]*)"`;
 }
+function buildReauthTriggers(detection) {
+  const triggers = [];
+  triggers.push({ type: "TRIGGER", location: "status", statuses: [401, 403] });
+  const indicator = detection.reauthIndicator ?? "status";
+  if (indicator === "redirect") {
+    triggers.push({ type: "TRIGGER", location: "status", statuses: [301, 302] });
+  }
+  if (indicator === "body" && detection.reauthBodyPattern) {
+    triggers.push({
+      type: "TRIGGER",
+      location: "body",
+      pattern: detection.reauthBodyPattern
+    });
+  }
+  return triggers;
+}
 async function retryDetection(llm, repoPath, techStack, endpoints, baseUrl, previousDetection, failureReason) {
   console.log(`[Auth] Re-detecting auth after failure: ${failureReason.slice(0, 200)}`);
   const stackStr = formatTechStack(techStack);
@@ -56203,6 +56230,8 @@ Return ONLY a JSON object with these exact fields:
   "headerPrefix": "Bearer " or "" or null,
   "cookieName": "session" or null,
   "queryParamName": "token" or null,
+  "reauthIndicator": "status" | "redirect" | "body",
+  "reauthBodyPattern": "regex pattern" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description"
 }
@@ -56213,6 +56242,8 @@ CRITICAL RULES:
 - "loginContentType": "json" for JSON APIs, "form" for HTML form login, "xml" for SOAP
 - "tokenLocation": "body" if token is in JSON response body, "header" if in response header, "cookie" if set via Set-Cookie
 - "tokenEmbedLocation": "header" for Authorization, "cookie" if app reads auth from cookies, "query" if token goes in URL
+- "reauthIndicator": "status" for 401/403 responses, "redirect" for 301/302 to login page, "body" for 200 OK with error message in body
+- "reauthBodyPattern": Only when reauthIndicator is "body" \u2014 regex matching the auth failure message. null otherwise.
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT auth. Read the route handler code to confirm it has an auth guard/middleware. Do NOT pick endpoints that return 200 without auth.`
     }
   ];
@@ -56233,6 +56264,8 @@ CRITICAL RULES:
       headerPrefix: parsed.headerPrefix ?? previousDetection.headerPrefix,
       cookieName: parsed.cookieName ?? previousDetection.cookieName,
       queryParamName: parsed.queryParamName ?? previousDetection.queryParamName,
+      reauthIndicator: parsed.reauthIndicator ?? previousDetection.reauthIndicator,
+      reauthBodyPattern: parsed.reauthBodyPattern ?? previousDetection.reauthBodyPattern,
       protectedEndpointPath: parsed.protectedEndpointPath ?? previousDetection.protectedEndpointPath,
       notes: parsed.notes ?? previousDetection.notes
     };
@@ -56505,9 +56538,14 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
 var MULTI_AUTH_TESTS = /* @__PURE__ */ new Set([
   "broken_access_control"
 ]);
+var EXCLUDED_TESTS = /* @__PURE__ */ new Set([
+  "lrrl"
+]);
 async function selectTestsPerEndpoint(llm, bright, endpoints, entrypointIds, techStack, hasAuth) {
   const availableTests = await bright.listTests();
-  const eligibleTests = availableTests.filter((t) => !MULTI_AUTH_TESTS.has(t.tag));
+  const eligibleTests = availableTests.filter(
+    (t) => !MULTI_AUTH_TESTS.has(t.tag) && !EXCLUDED_TESTS.has(t.tag)
+  );
   const stackStr = formatTechStack(techStack);
   const testCatalog = eligibleTests.map((t) => `- ${t.tag}: ${t.name}`).join("\n");
   const endpointList = endpoints.map((ep, i) => `[${i}] ${ep.method} ${ep.path} (${ep.filePath})`).join("\n");
@@ -56631,37 +56669,96 @@ async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, b
   );
 }
 async function runScanViaRest(brightToken, brightHostname, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName) {
-  const body = {
-    name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`,
-    projectId,
-    module: "dast",
-    entryPointIds: entrypointIds,
-    repeaters: [repeaterId],
-    tests: testTags,
-    attackParamLocations,
-    smart: true,
-    skipStaticParams: true,
-    poolSize: 10
-  };
-  const res = await fetch(`https://${brightHostname}/api/v1/scans`, {
-    method: "POST",
-    headers: {
-      Authorization: `Api-Key ${brightToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
+  let tests = [...testTags];
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const body = {
+      name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      projectId,
+      module: "dast",
+      entryPointIds: entrypointIds,
+      repeaters: [repeaterId],
+      tests,
+      attackParamLocations,
+      smart: true,
+      skipStaticParams: true,
+      poolSize: 10
+    };
+    let res;
+    try {
+      res = await fetch(`https://${brightHostname}/api/v1/scans`, {
+        method: "POST",
+        headers: {
+          Authorization: `Api-Key ${brightToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`);
+      if (attempt < maxRetries) {
+        await sleep2(5e3 * attempt);
+        continue;
+      }
+      throw new Error(`runScan failed after ${maxRetries} attempts: ${msg}`);
+    }
+    if (res.ok) {
+      const data = await res.json();
+      const scanId = data.id ?? data.scanId;
+      if (!scanId) {
+        throw new Error(`runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`);
+      }
+      console.log(`[Scan] Scan started (REST): ${scanId}`);
+      return scanId;
+    }
     const text = await res.text();
+    if (res.status === 429) {
+      console.warn(`[Scan] Rate limited (attempt ${attempt}/${maxRetries}), backing off...`);
+      if (attempt < maxRetries) {
+        await sleep2(1e4 * attempt);
+        continue;
+      }
+      throw new Error(`runScan rate limited after ${maxRetries} attempts`);
+    }
+    if (res.status >= 500) {
+      console.warn(`[Scan] Server error ${res.status} (attempt ${attempt}/${maxRetries}): ${text.slice(0, 200)}`);
+      if (attempt < maxRetries) {
+        await sleep2(5e3 * attempt);
+        continue;
+      }
+      throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
+    }
+    if (res.status === 400) {
+      const fixed = tryFixScanConfig(text, tests);
+      if (fixed && attempt < maxRetries) {
+        tests = fixed;
+        console.log(`[Scan] Retrying with ${tests.length} tests after removing incompatible ones`);
+        continue;
+      }
+    }
     throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
   }
-  const data = await res.json();
-  const scanId = data.id ?? data.scanId;
-  if (!scanId) {
-    throw new Error(`runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`);
+  throw new Error("runScan: exhausted retries");
+}
+function tryFixScanConfig(errorText, tests) {
+  const lower = errorText.toLowerCase();
+  if (lower.includes("mutually exclusive")) {
+    const exclusiveTests = ["lrrl"];
+    const filtered = tests.filter((t) => !exclusiveTests.some((ex) => lower.includes(ex) || t === ex));
+    if (filtered.length < tests.length && filtered.length > 0) {
+      console.log(`[Scan] Removed mutually exclusive test(s), ${tests.length} \u2192 ${filtered.length}`);
+      return filtered;
+    }
   }
-  console.log(`[Scan] Scan started (REST): ${scanId}`);
-  return scanId;
+  if (lower.includes("multiple auth attack tests") || lower.includes("custom auth objects")) {
+    const filtered = tests.filter((t) => t !== "broken_access_control");
+    if (filtered.length < tests.length && filtered.length > 0) {
+      console.log(`[Scan] Removed multi-auth test(s), ${tests.length} \u2192 ${filtered.length}`);
+      return filtered;
+    }
+  }
+  return null;
 }
 async function waitForScanCompletion(bright, scanId, onProgress, timeoutMs = 40 * 60 * 1e3) {
   const start = Date.now();
