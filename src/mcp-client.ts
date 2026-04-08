@@ -196,7 +196,8 @@ export async function createBrightMcpClient(
     return (
       msg.includes("Session not found") ||
       msg.includes("session expired") ||
-      msg.includes("Connection closed")
+      msg.includes("Connection closed") ||
+      msg.includes("Not connected")
     );
   }
 

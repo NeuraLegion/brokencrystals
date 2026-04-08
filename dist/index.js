@@ -48658,7 +48658,7 @@ async function createBrightMcpClient(config3) {
   let cachedSchemas = null;
   function isSessionError(err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return msg.includes("Session not found") || msg.includes("session expired") || msg.includes("Connection closed");
+    return msg.includes("Session not found") || msg.includes("session expired") || msg.includes("Connection closed") || msg.includes("Not connected");
   }
   let reconnectPromise = null;
   async function reconnect() {
