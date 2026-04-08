@@ -56414,7 +56414,7 @@ async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeat
       request.headers = headers;
     }
     if (needsBody) {
-      request.body = ep.body ?? "{}";
+      request.body = sanitizeBody(ep.body ?? "{}");
     }
     const args = { projectId, request, repeaterId };
     if (authObjectId) {
@@ -56533,6 +56533,14 @@ async function deleteEntrypoint(brightToken, brightHostname, projectId, entrypoi
     }
   } catch (err) {
     console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${err}`);
+  }
+}
+function sanitizeBody(body) {
+  try {
+    const parsed = JSON.parse(body);
+    return JSON.stringify(parsed);
+  } catch {
+    return body.replace(/\n\s*/g, " ").trim();
   }
 }
 

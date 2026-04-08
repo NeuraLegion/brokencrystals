@@ -51,7 +51,7 @@ export async function registerEntrypoints(
 
     // Add body for methods that expect one
     if (needsBody) {
-      request.body = ep.body ?? "{}";
+      request.body = sanitizeBody(ep.body ?? "{}");
     }
 
     // Build the full addEntrypoint args
@@ -225,5 +225,23 @@ async function deleteEntrypoint(
     }
   } catch (err) {
     console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${err}`);
+  }
+}
+
+/**
+ * Ensure the body string is valid, compact JSON.
+ * The LLM sometimes generates multi-line JSON (especially for GraphQL queries)
+ * with literal newlines inside string values, which breaks JSON parsing on the
+ * receiving end ("Unexpected token \\n in JSON at position …").
+ */
+function sanitizeBody(body: string): string {
+  try {
+    // Parse and re-serialize → collapses formatting and properly escapes
+    // any characters that need escaping inside string values.
+    const parsed = JSON.parse(body);
+    return JSON.stringify(parsed);
+  } catch {
+    // If it's not valid JSON at all, compact whitespace as a best-effort fix
+    return body.replace(/\n\s*/g, " ").trim();
   }
 }
