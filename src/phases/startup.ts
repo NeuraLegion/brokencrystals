@@ -7,6 +7,7 @@ import { codebaseTools, createToolHandler } from "../tools.js";
 import { sleep, formatTechStack, toErrorMessage } from "../utils.js";
 import {
   identifyStartupPrompt,
+  rebuildStartupPrompt,
   retryStartupPrompt,
 } from "../prompts/identify-startup.js";
 
@@ -21,6 +22,7 @@ export async function startApplicationWithRetries(
   llm: OpenAI,
   repoPath: string,
   techStack: TechStack,
+  previousStartup?: StartupConfig,
 ): Promise<StartupResult> {
   // Clean up any running Docker containers to avoid port conflicts
   cleanupDocker(repoPath);
@@ -32,7 +34,10 @@ export async function startApplicationWithRetries(
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
     let config: StartupConfig;
 
-    if (attempt === 1) {
+    if (attempt === 1 && previousStartup) {
+      // Source code changed — ask LLM to rebuild with the right strategy
+      config = await rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousStartup);
+    } else if (attempt === 1) {
       config = await identifyStartupConfig(llm, repoPath, stackStr, handleTool);
     } else {
       const prev = attemptErrors[attemptErrors.length - 1];
@@ -90,6 +95,18 @@ async function identifyStartupConfig(
   handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
 ): Promise<StartupConfig> {
   const messages = identifyStartupPrompt(stackStr);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  return parseStartupConfig(response);
+}
+
+async function rebuildStartupConfig(
+  llm: OpenAI,
+  repoPath: string,
+  stackStr: string,
+  handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
+  previousConfig: StartupConfig,
+): Promise<StartupConfig> {
+  const messages = rebuildStartupPrompt(stackStr, JSON.stringify(previousConfig, null, 2));
   const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
   return parseStartupConfig(response);
 }

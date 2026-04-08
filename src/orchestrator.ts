@@ -311,7 +311,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       let restarted = false;
 
       try {
-        const restart = await startApplicationWithRetries(llm, repoPath, techStack);
+        const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
         appProcess = restart.process;
         restarted = true;
       } catch (startupErr) {
@@ -355,7 +355,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             }
 
             // Try restart again
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
             restarted = true;
             console.log(`[Fix] Repair succeeded on attempt ${repair + 1}`);
@@ -384,7 +384,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           }
 
           try {
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
             restarted = true;
           } catch {

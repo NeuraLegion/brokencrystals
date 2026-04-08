@@ -55389,6 +55389,48 @@ Return a JSON object:
     }
   ];
 }
+function rebuildStartupPrompt(techStack, previousConfig) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer restarting a ${techStack} application after source code was modified (security fixes were applied). The application was previously running with a known config. You have tools to read files and list directories.
+
+Your job is to determine the REBUILD + RESTART procedure that ensures the running application reflects the new source code. This is critical \u2014 if you skip the rebuild step, the app will run stale code and the fixes won't take effect.
+
+Consider the deployment method from the previous config and adapt accordingly:
+
+**Docker Compose**: Use --build flag to force image rebuild (e.g. "docker compose -f <file> up --build -d"). Without --build, Docker will reuse cached images with the OLD code.
+**Dockerfile (standalone)**: Rebuild the image with "docker build" then re-run. Include --no-cache only if the Dockerfile copies source code in early layers.
+**Native Node.js/Python/Go/etc.**: Run the appropriate build step as a prerequisite:
+  - Node.js: "npm run build" or "npx tsc" if there's a build step, then "npm start"
+  - Python: usually no build needed, just restart
+  - Go: "go build" before running
+  - Java/Kotlin: "mvn package" or "gradle build"
+**Makefile**: Check for a "build" or "rebuild" target
+**Helm/K8s**: Not applicable for local restarts \u2014 fall back to Docker or native
+
+IMPORTANT: Keep the same port and environment variables from the previous config unless you have a specific reason to change them.`
+    },
+    {
+      role: "user",
+      content: `Source code was modified. Rebuild and restart the application.
+
+Previous startup config that worked:
+${previousConfig}
+
+Determine what rebuild steps are needed for the modified source code and return the updated config. Use the tools to inspect build configuration if needed.
+
+Return a JSON object:
+{
+  "command": "docker compose up --build -d",
+  "port": 3000,
+  "prerequisites": [],
+  "envVars": {},
+  "docker": true
+}`
+    }
+  ];
+}
 function retryStartupPrompt(techStack, previousConfig, errorOutput, attempt) {
   return [
     {
@@ -55430,14 +55472,16 @@ Return a JSON object with the new approach:
 
 // src/phases/startup.ts
 var MAX_STARTUP_ATTEMPTS = 5;
-async function startApplicationWithRetries(llm, repoPath, techStack) {
+async function startApplicationWithRetries(llm, repoPath, techStack, previousStartup) {
   cleanupDocker(repoPath);
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
   const attemptErrors = [];
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
     let config3;
-    if (attempt === 1) {
+    if (attempt === 1 && previousStartup) {
+      config3 = await rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousStartup);
+    } else if (attempt === 1) {
       config3 = await identifyStartupConfig(llm, repoPath, stackStr, handleTool);
     } else {
       const prev = attemptErrors[attemptErrors.length - 1];
@@ -55483,6 +55527,11 @@ ${summary}`
 }
 async function identifyStartupConfig(llm, repoPath, stackStr, handleTool) {
   const messages = identifyStartupPrompt(stackStr);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  return parseStartupConfig(response);
+}
+async function rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig) {
+  const messages = rebuildStartupPrompt(stackStr, JSON.stringify(previousConfig, null, 2));
   const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
   return parseStartupConfig(response);
 }
@@ -57267,7 +57316,7 @@ async function runOrchestrator(ctx) {
       await killProcess(appProcess);
       let restarted = false;
       try {
-        const restart = await startApplicationWithRetries(llm, repoPath, techStack);
+        const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
         appProcess = restart.process;
         restarted = true;
       } catch (startupErr) {
@@ -57307,7 +57356,7 @@ ${containerLogs.slice(0, 2e3)}`);
                 }
               }
             }
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
             restarted = true;
             console.log(`[Fix] Repair succeeded on attempt ${repair + 1}`);
@@ -57333,7 +57382,7 @@ ${containerLogs.slice(0, 2e3)}`);
             }
           }
           try {
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
             restarted = true;
           } catch {

@@ -49,6 +49,52 @@ Return a JSON object:
   ];
 }
 
+export function rebuildStartupPrompt(
+  techStack: string,
+  previousConfig: string,
+): ChatCompletionMessageParam[] {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer restarting a ${techStack} application after source code was modified (security fixes were applied). The application was previously running with a known config. You have tools to read files and list directories.
+
+Your job is to determine the REBUILD + RESTART procedure that ensures the running application reflects the new source code. This is critical — if you skip the rebuild step, the app will run stale code and the fixes won't take effect.
+
+Consider the deployment method from the previous config and adapt accordingly:
+
+**Docker Compose**: Use --build flag to force image rebuild (e.g. "docker compose -f <file> up --build -d"). Without --build, Docker will reuse cached images with the OLD code.
+**Dockerfile (standalone)**: Rebuild the image with "docker build" then re-run. Include --no-cache only if the Dockerfile copies source code in early layers.
+**Native Node.js/Python/Go/etc.**: Run the appropriate build step as a prerequisite:
+  - Node.js: "npm run build" or "npx tsc" if there's a build step, then "npm start"
+  - Python: usually no build needed, just restart
+  - Go: "go build" before running
+  - Java/Kotlin: "mvn package" or "gradle build"
+**Makefile**: Check for a "build" or "rebuild" target
+**Helm/K8s**: Not applicable for local restarts — fall back to Docker or native
+
+IMPORTANT: Keep the same port and environment variables from the previous config unless you have a specific reason to change them.`,
+    },
+    {
+      role: "user",
+      content: `Source code was modified. Rebuild and restart the application.
+
+Previous startup config that worked:
+${previousConfig}
+
+Determine what rebuild steps are needed for the modified source code and return the updated config. Use the tools to inspect build configuration if needed.
+
+Return a JSON object:
+{
+  "command": "docker compose up --build -d",
+  "port": 3000,
+  "prerequisites": [],
+  "envVars": {},
+  "docker": true
+}`,
+    },
+  ];
+}
+
 export function retryStartupPrompt(
   techStack: string,
   previousConfig: string,
