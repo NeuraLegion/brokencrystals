@@ -38168,7 +38168,8 @@ function loadConfig() {
   const brightMcpUrl = process.env.BRIGHT_MCP_URL;
   const brightHostname = process.env.BRIGHT_HOSTNAME ?? (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
-  return { jobId, apiToken, apiUrl, nonce, brightToken, brightHostname, brightMcpUrl, brightProjectId };
+  const inferenceModel = process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
+  return { jobId, apiToken, apiUrl, nonce, brightToken, brightHostname, brightMcpUrl, brightProjectId, inferenceModel };
 }
 function requireEnv(name) {
   const value = process.env[name];
@@ -45991,7 +45992,8 @@ function createInferenceClient(inferenceUrl, token) {
 function sanitizeForJson(s) {
   return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }
-async function chatWithTools(client, messages, tools, handleToolCall, model = "gpt-4o", maxTurns = 25) {
+var DEFAULT_MODEL = "gpt-5.4-mini";
+async function chatWithTools(client, messages, tools, handleToolCall, model = DEFAULT_MODEL, maxTurns = 25) {
   const conversation = [...messages];
   for (let turn = 0; turn < maxTurns; turn++) {
     const response = await client.chat.completions.create({
@@ -46030,7 +46032,7 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = "g
   }
   throw new Error("chatWithTools: exceeded maximum tool-calling turns with no assistant response");
 }
-async function chatWithSchema(client, messages, schemaName, schema, model = "gpt-4o") {
+async function chatWithSchema(client, messages, schemaName, schema, model = DEFAULT_MODEL) {
   const response = await client.chat.completions.create({
     model,
     messages,
@@ -55730,6 +55732,7 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
   }
   console.log(`[Auth] Detected auth: ${detection.authType} \u2014 ${detection.notes}`);
   console.log(`[Auth] tokenLocation=${detection.tokenLocation}, tokenFieldPath=${detection.tokenFieldPath}, loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`);
+  console.log(`[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}, cookieName=${detection.cookieName}, queryParam=${detection.queryParamName}`);
   const existingAuth = await findExistingAuth(bright, projectId, detection);
   if (existingAuth) {
     console.log(`[Auth] Reusing existing auth object: ${existingAuth}`);
@@ -55836,10 +55839,14 @@ Return ONLY a JSON object with these exact fields:
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
   "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "tokenLocation": "body" or "header",
-  "tokenFieldPath": "token" or "authorization" or null,
+  "loginContentType": "json" | "form" | "xml",
+  "tokenLocation": "body" | "header" | "cookie",
+  "tokenFieldPath": "token" or "authorization" or "session_id" or null,
+  "tokenEmbedLocation": "header" | "cookie" | "query",
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
+  "cookieName": "session" or "JSESSIONID" or null,
+  "queryParamName": "token" or "api_key" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description including where you found the credentials"
 }
@@ -55848,8 +55855,12 @@ CRITICAL RULES:
 - "loginBody" field names MUST match what the login endpoint handler expects (read the code!)
 - "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
 - If you cannot find real credentials, set "loginBody" to null \u2014 do NOT invent values
-- "tokenLocation": set to "body" if the token is in the JSON response body, or "header" if the token is returned as a response header (e.g. authorization header). READ THE LOGIN HANDLER CODE to determine this!
-- "tokenFieldPath": if tokenLocation is "body", this is the dot-path to the token field (e.g. "token", "data.accessToken"). If tokenLocation is "header", this is the header name in lowercase (e.g. "authorization")
+- "loginContentType": "json" for JSON APIs, "form" for HTML form login (application/x-www-form-urlencoded), "xml" for SOAP/XML auth
+- "tokenLocation": "body" if token is in JSON response body, "header" if in a response header, "cookie" if set via Set-Cookie. READ THE LOGIN HANDLER CODE!
+- "tokenFieldPath": for body \u2192 dot-path to the token field. For header \u2192 header name in lowercase. For cookie \u2192 cookie name.
+- "tokenEmbedLocation": "header" for Authorization/Bearer, "cookie" if the app reads auth from cookies, "query" if token goes in URL query params
+- "cookieName": set this if tokenEmbedLocation is "cookie" \u2014 the cookie name the app expects
+- "queryParamName": set this if tokenEmbedLocation is "query" \u2014 the query param name
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
   1. Pick a candidate from the Known endpoints list above
   2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) \u2014 e.g. /api/users/me is better than /api/users/:id
@@ -55860,7 +55871,7 @@ CRITICAL RULES:
   6. Do NOT invent endpoints \u2014 pick from the list above`
     }
   ];
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 40);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, void 0, 40);
   try {
     const parsed = JSON.parse(extractJson(response));
     return {
@@ -55869,10 +55880,14 @@ CRITICAL RULES:
       loginEndpoint: parsed.loginEndpoint ?? null,
       loginMethod: parsed.loginMethod ?? "POST",
       loginBody: parsed.loginBody ?? null,
+      loginContentType: parsed.loginContentType ?? "json",
       tokenLocation: parsed.tokenLocation ?? "body",
       tokenFieldPath: parsed.tokenFieldPath ?? null,
+      tokenEmbedLocation: parsed.tokenEmbedLocation ?? "header",
       headerName: parsed.headerName ?? "Authorization",
       headerPrefix: parsed.headerPrefix ?? "Bearer ",
+      cookieName: parsed.cookieName ?? null,
+      queryParamName: parsed.queryParamName ?? null,
       protectedEndpointPath: parsed.protectedEndpointPath ?? null,
       notes: parsed.notes ?? ""
     };
@@ -55884,10 +55899,14 @@ CRITICAL RULES:
       loginEndpoint: null,
       loginMethod: null,
       loginBody: null,
+      loginContentType: "json",
       tokenLocation: "body",
       tokenFieldPath: null,
+      tokenEmbedLocation: "header",
       headerName: null,
       headerPrefix: null,
+      cookieName: null,
+      queryParamName: null,
       protectedEndpointPath: null,
       notes: "Detection failed"
     };
@@ -55918,10 +55937,14 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
     loginEndpoint,
     loginMethod,
     loginBody,
+    loginContentType,
     tokenLocation,
     tokenFieldPath,
+    tokenEmbedLocation,
     headerName,
     headerPrefix,
+    cookieName,
+    queryParamName,
     protectedEndpointPath
   } = detection;
   const resolvedPath = protectedEndpointPath ? protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1") : "/";
@@ -55945,9 +55968,45 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
   if (tokenLocation === "header") {
     const headerKey = (tokenFieldPath ?? "authorization").toLowerCase();
     template = `{{ auth_object.stages.login.response.headers | get: '/${headerKey}' }}`;
+  } else if (tokenLocation === "cookie") {
+    const cName = tokenFieldPath ?? cookieName ?? "session";
+    template = `{{ auth_object.stages.login.response.headers | get: '/set-cookie' | match: /${cName}=([^;]*)/ }}`;
   } else {
     const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
     template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
+  }
+  const contentTypeMap = {
+    json: "application/json",
+    form: "application/x-www-form-urlencoded",
+    xml: "application/xml"
+  };
+  const loginCT = contentTypeMap[loginContentType] ?? "application/json";
+  const embedLocation = tokenEmbedLocation ?? "header";
+  let embedder;
+  if (embedLocation === "cookie") {
+    embedder = {
+      type: "cookie",
+      name: cookieName ?? "session",
+      template,
+      templateType: "clear_text",
+      mergeStrategy: "replace"
+    };
+  } else if (embedLocation === "query") {
+    embedder = {
+      type: "query",
+      name: queryParamName ?? "token",
+      template,
+      templateType: "clear_text",
+      mergeStrategy: "replace"
+    };
+  } else {
+    embedder = {
+      type: "header",
+      name: headerName ?? "Authorization",
+      template,
+      templateType: "clear_text",
+      mergeStrategy: "replace"
+    };
   }
   const body = {
     name: `Engine Auth \u2014 ${authType}`,
@@ -55968,26 +56027,19 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
               url: loginUrl,
               method: loginMethod ?? "POST",
               protocol: "http",
-              headers: [{ name: "Content-Type", value: "application/json", type: "clear_text" }],
+              headers: [{ name: "Content-Type", value: loginCT, type: "clear_text" }],
               body: loginBody,
               bodyType: "clear_text"
             },
             successResponseDetection: [{ type: "status", statuses: [200, 201] }]
           }
         ],
-        embedders: [
-          {
-            type: "header",
-            name: headerName ?? "Authorization",
-            template,
-            templateType: "clear_text",
-            mergeStrategy: "replace"
-          }
-        ]
+        embedders: [embedder]
       }
     }
   };
   console.log(`[Auth] Creating multistep auth object via REST API`);
+  console.log(`[Auth] Login content type: ${loginCT}, embed: ${embedLocation}`);
   console.log(`[Auth] Embedder template: ${template}`);
   return createAuthViaRest(brightToken, brightHostname, body);
 }
@@ -56143,10 +56195,14 @@ Return ONLY a JSON object with these exact fields:
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
   "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "tokenLocation": "body" or "header",
-  "tokenFieldPath": "token" or "authorization" or null,
+  "loginContentType": "json" | "form" | "xml",
+  "tokenLocation": "body" | "header" | "cookie",
+  "tokenFieldPath": "token" or "authorization" or "session_id" or null,
+  "tokenEmbedLocation": "header" | "cookie" | "query",
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
+  "cookieName": "session" or null,
+  "queryParamName": "token" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description"
 }
@@ -56154,11 +56210,13 @@ Return ONLY a JSON object with these exact fields:
 CRITICAL RULES:
 - "loginBody" values MUST come from actual files you read (seed data, env vars, docker-compose, README)
 - Do NOT invent credentials like "admin@example.com" or "correctpassword"
-- "tokenLocation": "body" if token is in JSON response body, "header" if token is in a response header. Read the login handler code!
+- "loginContentType": "json" for JSON APIs, "form" for HTML form login, "xml" for SOAP
+- "tokenLocation": "body" if token is in JSON response body, "header" if in response header, "cookie" if set via Set-Cookie
+- "tokenEmbedLocation": "header" for Authorization, "cookie" if app reads auth from cookies, "query" if token goes in URL
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT auth. Read the route handler code to confirm it has an auth guard/middleware. Do NOT pick endpoints that return 200 without auth.`
     }
   ];
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 30);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, void 0, 30);
   try {
     const parsed = JSON.parse(extractJson(response));
     return {
@@ -56167,10 +56225,14 @@ CRITICAL RULES:
       loginEndpoint: parsed.loginEndpoint ?? previousDetection.loginEndpoint,
       loginMethod: parsed.loginMethod ?? previousDetection.loginMethod,
       loginBody: parsed.loginBody ?? previousDetection.loginBody,
+      loginContentType: parsed.loginContentType ?? previousDetection.loginContentType,
       tokenLocation: parsed.tokenLocation ?? previousDetection.tokenLocation,
       tokenFieldPath: parsed.tokenFieldPath ?? previousDetection.tokenFieldPath,
+      tokenEmbedLocation: parsed.tokenEmbedLocation ?? previousDetection.tokenEmbedLocation,
       headerName: parsed.headerName ?? previousDetection.headerName,
       headerPrefix: parsed.headerPrefix ?? previousDetection.headerPrefix,
+      cookieName: parsed.cookieName ?? previousDetection.cookieName,
+      queryParamName: parsed.queryParamName ?? previousDetection.queryParamName,
       protectedEndpointPath: parsed.protectedEndpointPath ?? previousDetection.protectedEndpointPath,
       notes: parsed.notes ?? previousDetection.notes
     };
@@ -56440,17 +56502,12 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
 }
 
 // src/phases/test-selection.ts
-var AUTH_DEPENDENT_TESTS = /* @__PURE__ */ new Set([
-  "broken_access_control",
-  "bola",
-  "bopla",
-  "brute_force_login",
-  "excessive_data_exposure",
-  "mass_assignment"
+var MULTI_AUTH_TESTS = /* @__PURE__ */ new Set([
+  "broken_access_control"
 ]);
 async function selectTestsPerEndpoint(llm, bright, endpoints, entrypointIds, techStack, hasAuth) {
   const availableTests = await bright.listTests();
-  const eligibleTests = hasAuth ? availableTests : availableTests.filter((t) => !AUTH_DEPENDENT_TESTS.has(t.tag));
+  const eligibleTests = availableTests.filter((t) => !MULTI_AUTH_TESTS.has(t.tag));
   const stackStr = formatTechStack(techStack);
   const testCatalog = eligibleTests.map((t) => `- ${t.tag}: ${t.name}`).join("\n");
   const endpointList = endpoints.map((ep, i) => `[${i}] ${ep.method} ${ep.path} (${ep.filePath})`).join("\n");

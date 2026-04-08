@@ -4,14 +4,11 @@ import type { BrightMcpClient, BrightTest } from "../mcp-client.js";
 import { chatWithSchema } from "../inference.js";
 import { formatTechStack } from "../utils.js";
 
-// Tests that require multiple auth objects configured at the scan level
-const AUTH_DEPENDENT_TESTS = new Set([
+// Tests that require multiple auth objects (different user roles) at the scan level.
+// We only create a single auth object, so these always fail with
+// "Scan configuration contains multiple auth attack tests. But custom auth objects were not defined."
+const MULTI_AUTH_TESTS = new Set([
   "broken_access_control",
-  "bola",
-  "bopla",
-  "brute_force_login",
-  "excessive_data_exposure",
-  "mass_assignment",
 ]);
 
 export interface ScanGroup {
@@ -34,9 +31,8 @@ export async function selectTestsPerEndpoint(
 ): Promise<ScanGroup[]> {
   const availableTests = await bright.listTests();
 
-  const eligibleTests = hasAuth
-    ? availableTests
-    : availableTests.filter((t) => !AUTH_DEPENDENT_TESTS.has(t.tag));
+  // Always filter out multi-auth tests — we only create a single auth object
+  const eligibleTests = availableTests.filter((t) => !MULTI_AUTH_TESTS.has(t.tag));
 
   const stackStr = formatTechStack(techStack);
   const testCatalog = eligibleTests

@@ -15,6 +15,7 @@ export interface EngineConfig {
   brightHostname: string;
   brightMcpUrl?: string;
   brightProjectId?: string;
+  inferenceModel: string;
 }
 
 // ---------------------------------------------------------------------------

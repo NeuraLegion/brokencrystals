@@ -25,12 +25,14 @@ export type ToolHandler = (
  * Multi-turn chat loop that processes tool calls until the LLM returns
  * a final text response (no more tool_calls).
  */
+export const DEFAULT_MODEL = "gpt-5.4-mini";
+
 export async function chatWithTools(
   client: OpenAI,
   messages: ChatCompletionMessageParam[],
   tools: ChatCompletionTool[],
   handleToolCall: ToolHandler,
-  model = "gpt-4o",
+  model = DEFAULT_MODEL,
   maxTurns = 25,
 ): Promise<string> {
   const conversation = [...messages];
@@ -88,7 +90,7 @@ export async function chatWithSchema<T>(
   messages: ChatCompletionMessageParam[],
   schemaName: string,
   schema: Record<string, unknown>,
-  model = "gpt-4o",
+  model = DEFAULT_MODEL,
 ): Promise<T> {
   const response = await client.chat.completions.create({
     model,

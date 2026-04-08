@@ -42,6 +42,7 @@ export async function detectAndConfigureAuth(
 
   console.log(`[Auth] Detected auth: ${detection.authType} — ${detection.notes}`);
   console.log(`[Auth] tokenLocation=${detection.tokenLocation}, tokenFieldPath=${detection.tokenFieldPath}, loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`);
+  console.log(`[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}, cookieName=${detection.cookieName}, queryParam=${detection.queryParamName}`);
 
   // Step 2: Check for existing auth objects we can reuse
   const existingAuth = await findExistingAuth(bright, projectId, detection);
@@ -101,10 +102,14 @@ interface AuthDetection {
   loginEndpoint: string | null;
   loginMethod: string | null;
   loginBody: string | null;
-  tokenLocation: "body" | "header";
+  loginContentType: "json" | "form" | "xml";
+  tokenLocation: "body" | "header" | "cookie";
   tokenFieldPath: string | null;
+  tokenEmbedLocation: "header" | "cookie" | "query";
   headerName: string | null;
   headerPrefix: string | null;
+  cookieName: string | null;
+  queryParamName: string | null;
   protectedEndpointPath: string | null;
   notes: string;
 }
@@ -176,10 +181,14 @@ Return ONLY a JSON object with these exact fields:
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
   "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "tokenLocation": "body" or "header",
-  "tokenFieldPath": "token" or "authorization" or null,
+  "loginContentType": "json" | "form" | "xml",
+  "tokenLocation": "body" | "header" | "cookie",
+  "tokenFieldPath": "token" or "authorization" or "session_id" or null,
+  "tokenEmbedLocation": "header" | "cookie" | "query",
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
+  "cookieName": "session" or "JSESSIONID" or null,
+  "queryParamName": "token" or "api_key" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description including where you found the credentials"
 }
@@ -188,8 +197,12 @@ CRITICAL RULES:
 - "loginBody" field names MUST match what the login endpoint handler expects (read the code!)
 - "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
 - If you cannot find real credentials, set "loginBody" to null — do NOT invent values
-- "tokenLocation": set to "body" if the token is in the JSON response body, or "header" if the token is returned as a response header (e.g. authorization header). READ THE LOGIN HANDLER CODE to determine this!
-- "tokenFieldPath": if tokenLocation is "body", this is the dot-path to the token field (e.g. "token", "data.accessToken"). If tokenLocation is "header", this is the header name in lowercase (e.g. "authorization")
+- "loginContentType": "json" for JSON APIs, "form" for HTML form login (application/x-www-form-urlencoded), "xml" for SOAP/XML auth
+- "tokenLocation": "body" if token is in JSON response body, "header" if in a response header, "cookie" if set via Set-Cookie. READ THE LOGIN HANDLER CODE!
+- "tokenFieldPath": for body → dot-path to the token field. For header → header name in lowercase. For cookie → cookie name.
+- "tokenEmbedLocation": "header" for Authorization/Bearer, "cookie" if the app reads auth from cookies, "query" if token goes in URL query params
+- "cookieName": set this if tokenEmbedLocation is "cookie" — the cookie name the app expects
+- "queryParamName": set this if tokenEmbedLocation is "query" — the query param name
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
   1. Pick a candidate from the Known endpoints list above
   2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) — e.g. /api/users/me is better than /api/users/:id
@@ -201,7 +214,7 @@ CRITICAL RULES:
     },
   ];
 
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 40);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, undefined, 40);
 
   try {
     const parsed = JSON.parse(extractJson(response));
@@ -211,10 +224,14 @@ CRITICAL RULES:
       loginEndpoint: parsed.loginEndpoint ?? null,
       loginMethod: parsed.loginMethod ?? "POST",
       loginBody: parsed.loginBody ?? null,
+      loginContentType: parsed.loginContentType ?? "json",
       tokenLocation: parsed.tokenLocation ?? "body",
       tokenFieldPath: parsed.tokenFieldPath ?? null,
+      tokenEmbedLocation: parsed.tokenEmbedLocation ?? "header",
       headerName: parsed.headerName ?? "Authorization",
       headerPrefix: parsed.headerPrefix ?? "Bearer ",
+      cookieName: parsed.cookieName ?? null,
+      queryParamName: parsed.queryParamName ?? null,
       protectedEndpointPath: parsed.protectedEndpointPath ?? null,
       notes: parsed.notes ?? "",
     };
@@ -226,10 +243,14 @@ CRITICAL RULES:
       loginEndpoint: null,
       loginMethod: null,
       loginBody: null,
+      loginContentType: "json",
       tokenLocation: "body",
       tokenFieldPath: null,
+      tokenEmbedLocation: "header",
       headerName: null,
       headerPrefix: null,
+      cookieName: null,
+      queryParamName: null,
       protectedEndpointPath: null,
       notes: "Detection failed",
     };
@@ -280,8 +301,9 @@ async function createAuthObject(
   detection: AuthDetection,
 ): Promise<string | undefined> {
   const {
-    authType, loginEndpoint, loginMethod, loginBody,
-    tokenLocation, tokenFieldPath, headerName, headerPrefix, protectedEndpointPath,
+    authType, loginEndpoint, loginMethod, loginBody, loginContentType,
+    tokenLocation, tokenFieldPath, tokenEmbedLocation,
+    headerName, headerPrefix, cookieName, queryParamName, protectedEndpointPath,
   } = detection;
 
   // Build the test request for a known protected endpoint
@@ -305,16 +327,55 @@ async function createAuthObject(
 
   const loginUrl = `${baseUrl}${loginEndpoint}`;
 
-  // Build the NexTemplate for token extraction
+  // Build the NexTemplate for token extraction based on tokenLocation
   let template: string;
   if (tokenLocation === "header") {
-    // Token is in a response header (e.g. authorization)
     const headerKey = (tokenFieldPath ?? "authorization").toLowerCase();
     template = `{{ auth_object.stages.login.response.headers | get: '/${headerKey}' }}`;
+  } else if (tokenLocation === "cookie") {
+    const cName = tokenFieldPath ?? cookieName ?? "session";
+    template = `{{ auth_object.stages.login.response.headers | get: '/set-cookie' | match: /${cName}=([^;]*)/ }}`;
   } else {
-    // Token is in the JSON response body
+    // body
     const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
     template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
+  }
+
+  // Determine Content-Type header for the login request
+  const contentTypeMap: Record<string, string> = {
+    json: "application/json",
+    form: "application/x-www-form-urlencoded",
+    xml: "application/xml",
+  };
+  const loginCT = contentTypeMap[loginContentType] ?? "application/json";
+
+  // Build the embedder based on tokenEmbedLocation
+  const embedLocation = tokenEmbedLocation ?? "header";
+  let embedder: Record<string, unknown>;
+  if (embedLocation === "cookie") {
+    embedder = {
+      type: "cookie" as const,
+      name: cookieName ?? "session",
+      template,
+      templateType: "clear_text",
+      mergeStrategy: "replace",
+    };
+  } else if (embedLocation === "query") {
+    embedder = {
+      type: "query" as const,
+      name: queryParamName ?? "token",
+      template,
+      templateType: "clear_text",
+      mergeStrategy: "replace",
+    };
+  } else {
+    embedder = {
+      type: "header" as const,
+      name: headerName ?? "Authorization",
+      template,
+      templateType: "clear_text",
+      mergeStrategy: "replace",
+    };
   }
 
   const body = {
@@ -336,27 +397,20 @@ async function createAuthObject(
               url: loginUrl,
               method: loginMethod ?? "POST",
               protocol: "http",
-              headers: [{ name: "Content-Type", value: "application/json", type: "clear_text" }],
+              headers: [{ name: "Content-Type", value: loginCT, type: "clear_text" }],
               body: loginBody,
               bodyType: "clear_text",
             },
             successResponseDetection: [{ type: "status", statuses: [200, 201] }],
           },
         ],
-        embedders: [
-          {
-            type: "header" as const,
-            name: headerName ?? "Authorization",
-            template,
-            templateType: "clear_text",
-            mergeStrategy: "replace",
-          },
-        ],
+        embedders: [embedder],
       },
     },
   };
 
   console.log(`[Auth] Creating multistep auth object via REST API`);
+  console.log(`[Auth] Login content type: ${loginCT}, embed: ${embedLocation}`);
   console.log(`[Auth] Embedder template: ${template}`);
 
   return createAuthViaRest(brightToken, brightHostname, body);
@@ -586,10 +640,14 @@ Return ONLY a JSON object with these exact fields:
   "loginEndpoint": "/api/auth/login" or null,
   "loginMethod": "POST" or null,
   "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "tokenLocation": "body" or "header",
-  "tokenFieldPath": "token" or "authorization" or null,
+  "loginContentType": "json" | "form" | "xml",
+  "tokenLocation": "body" | "header" | "cookie",
+  "tokenFieldPath": "token" or "authorization" or "session_id" or null,
+  "tokenEmbedLocation": "header" | "cookie" | "query",
   "headerName": "Authorization" or "X-API-Key" or null,
   "headerPrefix": "Bearer " or "" or null,
+  "cookieName": "session" or null,
+  "queryParamName": "token" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
   "notes": "brief description"
 }
@@ -597,12 +655,14 @@ Return ONLY a JSON object with these exact fields:
 CRITICAL RULES:
 - "loginBody" values MUST come from actual files you read (seed data, env vars, docker-compose, README)
 - Do NOT invent credentials like "admin@example.com" or "correctpassword"
-- "tokenLocation": "body" if token is in JSON response body, "header" if token is in a response header. Read the login handler code!
+- "loginContentType": "json" for JSON APIs, "form" for HTML form login, "xml" for SOAP
+- "tokenLocation": "body" if token is in JSON response body, "header" if in response header, "cookie" if set via Set-Cookie
+- "tokenEmbedLocation": "header" for Authorization, "cookie" if app reads auth from cookies, "query" if token goes in URL
 - "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT auth. Read the route handler code to confirm it has an auth guard/middleware. Do NOT pick endpoints that return 200 without auth.`,
     },
   ];
 
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, "gpt-4o", 30);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, undefined, 30);
 
   try {
     const parsed = JSON.parse(extractJson(response));
@@ -612,10 +672,14 @@ CRITICAL RULES:
       loginEndpoint: parsed.loginEndpoint ?? previousDetection.loginEndpoint,
       loginMethod: parsed.loginMethod ?? previousDetection.loginMethod,
       loginBody: parsed.loginBody ?? previousDetection.loginBody,
+      loginContentType: parsed.loginContentType ?? previousDetection.loginContentType,
       tokenLocation: parsed.tokenLocation ?? previousDetection.tokenLocation,
       tokenFieldPath: parsed.tokenFieldPath ?? previousDetection.tokenFieldPath,
+      tokenEmbedLocation: parsed.tokenEmbedLocation ?? previousDetection.tokenEmbedLocation,
       headerName: parsed.headerName ?? previousDetection.headerName,
       headerPrefix: parsed.headerPrefix ?? previousDetection.headerPrefix,
+      cookieName: parsed.cookieName ?? previousDetection.cookieName,
+      queryParamName: parsed.queryParamName ?? previousDetection.queryParamName,
       protectedEndpointPath: parsed.protectedEndpointPath ?? previousDetection.protectedEndpointPath,
       notes: parsed.notes ?? previousDetection.notes,
     };
