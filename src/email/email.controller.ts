@@ -16,7 +16,6 @@ import {
   SWAGGER_DESC_GET_EMAILS,
   SWAGGER_DESC_SEND_EMAIL
 } from './email.controller.swagger.desc';
-import splitUriIntoParamsPPVulnerable from '../utils/url';
 
 @Controller('/api/email')
 @ApiTags('Emails controller')
@@ -62,31 +61,22 @@ export class EmailController {
   ) {
     this.logger.log('Sending a support Email');
 
-    // This is defined here intentionally so we don't override responseJson.status after the prototype pollution has occurred
     const responseJson = {
       message: {},
       status: HttpStatus.OK
     };
 
-    // "Accidentally" forgot this here while coding... Oops.
-    // A server side prototype pollution can be found in the `name` param
-    // You can create a fake `status` variable and return a tempered response
-    let rawQuery = '';
-    for (const queryKey of Object.keys(query)) {
-      if (query[queryKey].includes('proto')) {
-        rawQuery += `&${queryKey}=${query[queryKey]}`;
-      } else {
-        rawQuery += encodeURI(`&${queryKey}=${query[queryKey]}`);
+    // Preserve existing behavior without using unsafe query-object parsing.
+    // Only use the explicit query parameter values provided by NestJS.
+    const responseStatusRaw = query?.status;
+    if (
+      typeof responseStatusRaw === 'string' &&
+      /^\d{3}$/.test(responseStatusRaw)
+    ) {
+      const parsedStatus = Number(responseStatusRaw);
+      if (Object.values(HttpStatus).includes(parsedStatus)) {
+        responseJson.status = parsedStatus as HttpStatus;
       }
-    }
-    // Remove the inital '&'
-    rawQuery = `?${rawQuery.substring(1)}`;
-    this.logger.debug(`Raw query ${rawQuery}`);
-
-    // "Use" the status code
-    const uriParams = splitUriIntoParamsPPVulnerable(rawQuery);
-    if (uriParams?.status) {
-      responseJson.status = uriParams.status as HttpStatus;
     }
 
     const mailSubject = `Support email regarding "${subject}"`;

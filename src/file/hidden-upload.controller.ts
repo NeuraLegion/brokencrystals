@@ -95,7 +95,7 @@ export class HiddenUploadController {
   ): string {
     if (ext === '.svg') {
       const text = buffer.toString('utf8');
-      return `data:${contentType};charset=utf-8,${encodeURIComponent(text)}`;
+      return `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`;
     }
 
     return `data:${contentType};base64,${buffer.toString('base64')}`;

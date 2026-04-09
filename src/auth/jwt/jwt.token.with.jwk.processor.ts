@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import * as jose from 'jose';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
@@ -15,20 +15,21 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
     const [header, payload] = this.parse(token);
 
     if (!header.jwk) {
-      throw new Error('Unsupported token. JWK is not set');
+      throw new UnauthorizedException('Unsupported token');
     }
 
     if (!header.jwk.kty) {
       return payload;
     }
-    const keyLike = await jose.importJWK(header.jwk);
 
-    const res = await jose.jwtVerify(token, keyLike);
-
-    if (res) {
+    try {
+      const keyLike = await jose.importJWK(header.jwk);
+      await jose.jwtVerify(token, keyLike);
       return payload;
+    } catch (err) {
+      this.log.warn(`JWK token validation failed: ${(err as Error).message}`);
+      throw new UnauthorizedException('Could not validate token');
     }
-    throw new Error('Could not validate token');
   }
 
   async createToken(payload: jose.JWTPayload): Promise<string> {

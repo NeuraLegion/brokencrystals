@@ -49,14 +49,45 @@ export class FileController {
     }
   }
 
-  private async loadCPFile(cpBaseUrl: string, path: string) {
-    if (!path.startsWith(cpBaseUrl)) {
-      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
+  private loadCPFile(cpBaseUrl: string, filePath: string) {
+    const normalizedPath = filePath?.trim();
+
+    if (!normalizedPath) {
+      throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
     }
 
-    const file: Stream = await this.fileService.getFile(path);
+    if (normalizedPath.startsWith('http://') || normalizedPath.startsWith('https://')) {
+      throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
+    }
 
-    return file;
+    if (normalizedPath.startsWith('/')) {
+      throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
+    }
+
+    if (normalizedPath.includes('..') || normalizedPath.includes('\\')) {
+      throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
+    }
+
+    if (cpBaseUrl === CloudProvidersMetaData.AWS) {
+      return this.fileService.getCloudProviderFile(CloudProvidersMetaData.AWS, normalizedPath);
+    }
+
+    if (cpBaseUrl === CloudProvidersMetaData.GOOGLE) {
+      return this.fileService.getCloudProviderFile(CloudProvidersMetaData.GOOGLE, normalizedPath);
+    }
+
+    if (cpBaseUrl === CloudProvidersMetaData.AZURE) {
+      return this.fileService.getCloudProviderFile(CloudProvidersMetaData.AZURE, normalizedPath);
+    }
+
+    if (cpBaseUrl === CloudProvidersMetaData.DIGITAL_OCEAN) {
+      return this.fileService.getCloudProviderFile(
+        CloudProvidersMetaData.DIGITAL_OCEAN,
+        normalizedPath
+      );
+    }
+
+    throw new BadRequestException(`Invalid paramater 'path' ${filePath}`);
   }
 
   @Get()
@@ -135,7 +166,7 @@ export class FileController {
   @Get('/aws')
   @ApiQuery({
     name: 'path',
-    example: 'config/products/crystals/amethyst.jpg',
+    example: 'ami-id',
     required: true
   })
   @ApiQuery({ name: 'type', example: 'image/jpg', required: true })

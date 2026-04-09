@@ -6,18 +6,27 @@ export class HttpClientService {
   private readonly log: Logger = new Logger(HttpClientService.name);
 
   async loadJSON<T = unknown>(url: string): Promise<T> {
-    const resp = await axios.get<T>(url, {
-      responseType: 'json'
-    });
-    if (resp.status != 200) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+    try {
+      const resp = await axios.get<T>(url, {
+        responseType: 'json'
+      });
+      if (resp.status != 200) {
+        this.log.warn(`Unexpected status while loading JSON: ${resp.status}`);
+        throw new Error('Failed to load JSON');
+      }
+      this.log.debug(
+        `Loaded: ${
+          typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data)
+        }`
+      );
+      return resp.data;
+    } catch (err) {
+      this.log.warn(
+        `Failed to load JSON from remote endpoint`,
+        err instanceof Error ? err.stack : undefined
+      );
+      throw new Error('Failed to load JSON');
     }
-    this.log.debug(
-      `Loaded: ${
-        typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data)
-      }`
-    );
-    return resp.data;
   }
 
   async post<T = unknown>(
@@ -27,7 +36,7 @@ export class HttpClientService {
   ): Promise<T> {
     const resp = await axios.post<T>(url, data, config);
     if (![200, 201].includes(+resp.status)) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load data');
     }
     this.log.debug(`Loaded: ${resp.data}`);
     return resp.data;
@@ -36,7 +45,7 @@ export class HttpClientService {
   async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const resp = await axios.get(url, config);
     if (![200, 201].includes(+resp.status)) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load data');
     }
     this.log.debug(`Loaded: ${resp.data}`);
     return resp.data;
@@ -48,7 +57,7 @@ export class HttpClientService {
     });
 
     if (resp.status != 200) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load plain content');
     }
 
     const buffer = Buffer.from(resp.data);
@@ -66,7 +75,7 @@ export class HttpClientService {
     });
 
     if (resp.status != 200) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load content');
     }
 
     const buffer = Buffer.from(resp.data);
