@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 
 @Injectable()
 export class HttpClientService {
@@ -21,9 +21,12 @@ export class HttpClientService {
       );
       return resp.data;
     } catch (err) {
+      const status =
+        axios.isAxiosError(err) && err.response ? err.response.status : undefined;
       this.log.warn(
-        `Failed to load JSON from remote endpoint`,
-        err instanceof Error ? err.stack : undefined
+        `Failed to load JSON from remote endpoint${
+          status ? ` (status: ${status})` : ''
+        }`
       );
       throw new Error('Failed to load JSON');
     }

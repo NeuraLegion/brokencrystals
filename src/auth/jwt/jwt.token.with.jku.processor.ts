@@ -17,7 +17,11 @@ export class JwtTokenWithJKUProcessor extends JwtTokenProcessor {
     const [header, payload] = this.parse(token);
 
     const url = header.jku;
-    this.log.debug(`Calling jwk url: ${url}`);
+    if (!url) {
+      throw new Error('Could not validate');
+    }
+
+    this.log.debug('Calling jwk url');
     const jwkRes: jose.JWK = await this.httpClient.loadJSON(url);
     const keyLike = await jose.importJWK(jwkRes);
     const verifyRes = await jose.jwtVerify(token, keyLike);

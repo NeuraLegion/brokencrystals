@@ -677,6 +677,11 @@ export class AuthController {
         token: `${token_type} ${access_token}`
       };
     } catch (err) {
+      this.logger.error(
+        `OIDC login failed for ${req.user}: ${err?.message ?? err}`,
+        err?.stack
+      );
+
       if (err.response?.status === 401) {
         throw new UnauthorizedException({
           error: 'Invalid credentials'
@@ -684,7 +689,7 @@ export class AuthController {
       }
 
       throw new InternalServerErrorException({
-        error: err.message
+        error: 'Internal server error'
       });
     }
   }
@@ -695,8 +700,13 @@ export class AuthController {
     try {
       user = await this.usersService.findByEmail(req.user);
     } catch (err) {
+      this.logger.error(
+        `Basic login failed while looking up user ${req.user}: ${err?.message ?? err}`,
+        err?.stack
+      );
+
       throw new InternalServerErrorException({
-        error: err.message
+        error: 'Internal server error'
       });
     }
 

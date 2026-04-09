@@ -1,20 +1,20 @@
-import { forwardRef, Module } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { AuthController } from './auth.controller';
-import { UsersModule } from '../users/users.module';
-import { OrmModule } from '../orm/orm.module';
-import { HttpClientModule } from '../httpclient/httpclient.module';
-import { KeyCloakModule } from '../keycloak/keycloak.module';
+import { AuthService } from './auth.service';
+import { AuthGuard } from './auth.guard';
+import { GlobalExceptionFilter } from '../common/global-exception.filter';
 
 @Module({
-  imports: [
-    forwardRef(() => UsersModule),
-    OrmModule,
-    KeyCloakModule,
-    HttpClientModule
-  ],
-  providers: [AuthService],
   controllers: [AuthController],
-  exports: [AuthService]
+  providers: [
+    AuthService,
+    AuthGuard,
+    {
+      provide: APP_FILTER,
+      useClass: GlobalExceptionFilter
+    }
+  ],
+  exports: [AuthService, AuthGuard]
 })
 export class AuthModule {}

@@ -26,8 +26,8 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
       const keyLike = await jose.importJWK(header.jwk);
       await jose.jwtVerify(token, keyLike);
       return payload;
-    } catch (err) {
-      this.log.warn(`JWK token validation failed: ${(err as Error).message}`);
+    } catch {
+      this.log.warn('JWK token validation failed');
       throw new UnauthorizedException('Could not validate token');
     }
   }

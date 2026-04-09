@@ -36,6 +36,12 @@ export class McpToolExecutorService extends McpProxySupport {
     'phone',
     'role'
   ] as const;
+  private static readonly SPAWN_ALLOWED_COMMANDS = new Map<string, string>([
+    ['ls', '/bin/ls'],
+    ['pwd', '/bin/pwd'],
+    ['whoami', '/usr/bin/whoami'],
+    ['date', '/bin/date']
+  ]);
 
   async executeTool(
     toolName: McpToolName,
@@ -249,8 +255,15 @@ export class McpToolExecutorService extends McpProxySupport {
     try {
       this.logger.debug('Executing OS command via MCP spawn_process');
 
-      const [exec, ...args] = input.command.split(' ');
-      if (!exec || !exec.trim().length) {
+      if (typeof input?.command !== 'string') {
+        return {
+          content: [{ type: 'text', text: 'Error: invalid spawn_process input' }],
+          isError: true
+        };
+      }
+
+      const trimmedCommand = input.command.trim();
+      if (!trimmedCommand) {
         return {
           content: [
             {
@@ -262,8 +275,40 @@ export class McpToolExecutorService extends McpProxySupport {
         };
       }
 
+      if (/[^\w\s\-./]/.test(trimmedCommand)) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Error: spawn_process command contains invalid characters'
+            }
+          ],
+          isError: true
+        };
+      }
+
+      const [requestedCommand, ...args] = trimmedCommand.split(/\s+/);
+      const exec = McpToolExecutorService.SPAWN_ALLOWED_COMMANDS.get(
+        requestedCommand
+      );
+
+      if (!exec) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Error: spawn_process command is not allowed'
+            }
+          ],
+          isError: true
+        };
+      }
+
       const text = await new Promise<string>((resolve, reject) => {
-        const process = spawn(exec, args);
+        const process = spawn(exec, args, {
+          shell: false,
+          windowsHide: true
+        });
         let stdout = '';
         let stderr = '';
 

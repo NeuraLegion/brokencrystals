@@ -1,5 +1,7 @@
 /*
- * This file was removed from the public asset pipeline to prevent exposure via /config.js.
- * Keep server-side configuration outside of client/public.
+ * Intentionally left empty and kept outside of the public asset pipeline.
+ * The web server is configured to deny access to /config.js.
  */
-module.exports = {};
+(function () {
+  'use strict';
+})();

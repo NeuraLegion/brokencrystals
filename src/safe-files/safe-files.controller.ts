@@ -13,6 +13,7 @@ import { SafeFilesService, SafeFileResponse } from './safe-files.service';
 @ApiExcludeController()
 export class SafeFilesController {
   constructor(private readonly service: SafeFilesService) {}
+
   @Post()
   @ApiOperation({ description: 'Store a new file URL if its host is allowed' })
   @ApiOkResponse({
@@ -30,7 +31,7 @@ export class SafeFilesController {
       }
     }
   })
-  @ApiBadRequestResponse({ description: 'Untrusted host' })
+  @ApiBadRequestResponse({ description: 'Invalid or untrusted url' })
   create(
     @Body('name') name: string,
     @Body('url') url: string
@@ -43,6 +44,6 @@ export class SafeFilesController {
       throw new BadRequestException('Invalid url');
     }
 
-    return this.service.add(name, url);
+    return this.service.add(name.trim(), url.trim());
   }
 }

@@ -4,6 +4,14 @@ import Header from '../main/Header/Header';
 import { postHiddenUpload } from '../../api/httpClient';
 import type { HiddenUploadResponse } from '../../interfaces/HiddenUploadResponse';
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const HiddenUpload: FC = () => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,10 +135,7 @@ const HiddenUpload: FC = () => {
               disabled={uploading}
             />
             {fileName && (
-              <div
-                style={{ marginTop: 8 }}
-                dangerouslySetInnerHTML={{ __html: fileName }}
-              />
+              <div style={{ marginTop: 8 }}>{escapeHtml(fileName)}</div>
             )}
             <label
               className="form-label"
@@ -167,10 +172,17 @@ const HiddenUpload: FC = () => {
                     }}
                   >
                     {preview.isSvg ? (
-                      <div
-                        style={{ maxWidth: '100%' }}
-                        dangerouslySetInnerHTML={{ __html: preview.content }}
-                      />
+                      <pre
+                        style={{
+                          maxWidth: '100%',
+                          overflowX: 'auto',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          margin: 0
+                        }}
+                      >
+                        {preview.content}
+                      </pre>
                     ) : (
                       <img
                         src={preview.content}

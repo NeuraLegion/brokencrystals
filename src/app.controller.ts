@@ -19,7 +19,8 @@ import {
   UseInterceptors,
   ParseIntPipe,
   DefaultValuePipe,
-  HttpStatus
+  HttpStatus,
+  BadRequestException
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import {
@@ -60,6 +61,11 @@ import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
 @ApiTags('App controller')
 export class AppController {
   private readonly logger = new Logger(AppController.name);
+  private readonly allowedRedirectOrigins = new Set([
+    'https://google.com',
+    'https://www.google.com',
+    'https://example.com'
+  ]);
 
   constructor(private readonly appService: AppService) {}
 
@@ -83,7 +89,7 @@ export class AppController {
   }
 
   @Get('goto')
-  @ApiQuery({ name: 'url', example: 'https://google.com', required: true })
+  @ApiQuery({ name: 'url', example: '/dashboard', required: true })
   @ApiOperation({
     description: API_DESC_REDIRECT_REQUEST
   })
@@ -92,7 +98,61 @@ export class AppController {
   })
   @Redirect()
   async redirect(@Query('url') url: string) {
-    return { url };
+    const safeUrl = this.resolveSafeRedirectUrl(url);
+    return { url: safeUrl };
+  }
+
+  private resolveSafeRedirectUrl(url: string): string {
+    if (typeof url !== 'string') {
+      throw new BadRequestException('Invalid redirect URL');
+    }
+
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) {
+      throw new BadRequestException('Invalid redirect URL');
+    }
+
+    // Allow only safe same-origin relative paths by default.
+    if (trimmedUrl.startsWith('/')) {
+      if (trimmedUrl.startsWith('//')) {
+        throw new BadRequestException('Invalid redirect URL');
+      }
+
+      // Normalize and reject path traversal or control characters.
+      const normalizedPath = trimmedUrl.split('?')[0].split('#')[0];
+      if (
+        normalizedPath.includes('..') ||
+        /[\r\n\t]/.test(normalizedPath) ||
+        !/^\/[A-Za-z0-9/_\-\.]*$/.test(normalizedPath)
+      ) {
+        throw new BadRequestException('Invalid redirect URL');
+      }
+
+      return trimmedUrl;
+    }
+
+    // Allow only explicit allowlisted absolute URLs.
+    try {
+      const parsed = new URL(trimmedUrl);
+      const origin = `${parsed.protocol}//${parsed.host}`;
+      const candidate = `${origin}${parsed.pathname}`;
+
+      if (!this.allowedRedirectOrigins.has(origin)) {
+        throw new BadRequestException('Invalid redirect URL');
+      }
+
+      if (parsed.protocol !== 'https:') {
+        throw new BadRequestException('Invalid redirect URL');
+      }
+
+      if (/[\r\n\t]/.test(trimmedUrl)) {
+        throw new BadRequestException('Invalid redirect URL');
+      }
+
+      return candidate + parsed.search + parsed.hash;
+    } catch {
+      throw new BadRequestException('Invalid redirect URL');
+    }
   }
 
   @Post('metadata')

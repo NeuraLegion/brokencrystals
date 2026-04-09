@@ -1,5 +1,5 @@
 import { EntityManager } from '@mikro-orm/core';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import { KeyCloakService } from '../keycloak/keycloak.service';
@@ -32,6 +32,7 @@ export enum JwtProcessorType {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private processors: Map<JwtProcessorType, JwtTokenProcessor>;
 
   constructor(
@@ -40,32 +41,26 @@ export class AuthService {
     private readonly httpClient: HttpClientService,
     private readonly keyCloakService: KeyCloakService
   ) {
-    const privateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
+    const privateKeyPath = this.requireConfig(
+      AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
     );
-    const publicKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
-      ),
-      'utf8'
+    const publicKeyPath = this.requireConfig(
+      AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
     );
-    const jwkPrivateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
+    const jwkPrivateKeyPath = this.requireConfig(
+      AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
     );
-    const jwkPublicJson = JSON.parse(
-      fs.readFileSync(
-        this.configService.get<string>(
-          AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
-        ),
-        'utf8'
-      )
+    const jwkPublicJsonPath = this.requireConfig(
+      AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
     );
+
+    const privateKey = this.readTextFile(privateKeyPath, 'JWT private key');
+    const publicKey = this.readTextFile(publicKeyPath, 'JWT public key');
+    const jwkPrivateKey = this.readTextFile(
+      jwkPrivateKeyPath,
+      'JWK private key'
+    );
+    const jwkPublicJson = this.readJsonFile(jwkPublicJsonPath, 'JWK public JSON');
     const jkuUrl = this.configService.get<string>(
       AuthModuleConfigProperties.ENV_JKU_URL
     );
@@ -127,5 +122,38 @@ export class AuthService {
 
   createToken(payload: unknown, processor: JwtProcessorType): Promise<string> {
     return this.processors.get(processor).createToken(payload);
+  }
+
+  private requireConfig(key: string): string {
+    const value = this.configService.get<string>(key);
+    if (!value) {
+      throw new InternalServerErrorException({
+        error: 'Server configuration error.'
+      });
+    }
+
+    return value;
+  }
+
+  private readTextFile(filePath: string, label: string): string {
+    try {
+      return fs.readFileSync(filePath, 'utf8');
+    } catch (err) {
+      this.logger.error(`Failed to load ${label}`);
+      throw new InternalServerErrorException({
+        error: `Failed to initialize ${label}.`
+      });
+    }
+  }
+
+  private readJsonFile(filePath: string, label: string): unknown {
+    try {
+      return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch (err) {
+      this.logger.error(`Failed to load ${label}`);
+      throw new InternalServerErrorException({
+        error: `Failed to initialize ${label}.`
+      });
+    }
   }
 }

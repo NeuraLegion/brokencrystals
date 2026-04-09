@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react-swc';
 // https://vitejs.dev/config/
 export default defineConfig({
   base: '/',
+  // Keep only intentionally public static assets in the public directory.
+  // Sensitive configuration files must not be placed here because Vite serves
+  // this directory at the web root during development and copies it into the build output.
   publicDir: './public',
   plugins: [react()],
   server: {

@@ -1,5 +1,6 @@
 import { FastifyReply } from 'fastify';
 import {
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -7,7 +8,8 @@ import {
   HttpStatus,
   Logger,
   Query,
-  Res
+  Res,
+  ParseBoolPipe
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { EmailService } from './email.service';
@@ -106,11 +108,14 @@ export class EmailController {
   @ApiQuery({
     name: 'withSource',
     example: 'true',
-    required: true
+    required: true,
+    schema: {
+      type: 'boolean'
+    }
   })
-  async getEmails(@Query('withSource') withSourceStr: string) {
-    const withSource = withSourceStr === 'true';
-
+  async getEmails(
+    @Query('withSource', ParseBoolPipe) withSource: boolean
+  ) {
     this.logger.log(`Getting Emails (withSource=${withSource})`);
     return await this.emailService.getEmails(withSource);
   }
