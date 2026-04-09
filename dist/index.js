@@ -9888,8 +9888,8 @@ function cloneRepository(opts) {
   } catch {
     execFileSync("git", ["checkout", "-b", opts.branchName], { cwd: dest, stdio: "pipe" });
   }
-  execFileSync("git", ["config", "user.name", opts.commitLogin || "bright-agent"], { cwd: dest, stdio: "pipe" });
-  execFileSync("git", ["config", "user.email", opts.commitEmail || "bright-agent@users.noreply.github.com"], { cwd: dest, stdio: "pipe" });
+  execFileSync("git", ["config", "user.name", opts.commitLogin || "BrightSec"], { cwd: dest, stdio: "pipe" });
+  execFileSync("git", ["config", "user.email", opts.commitEmail || "bot@brightsec.com"], { cwd: dest, stdio: "pipe" });
   return dest;
 }
 function gitCommitAndPush(repoPath, message) {
@@ -10061,8 +10061,8 @@ async function createPlatform() {
     repository: repo,
     serverUrl: process.env.GITHUB_SERVER_URL ?? "https://github.com",
     branchName: process.env.GITHUB_BRANCH ?? `bright-scan-${Date.now()}`,
-    commitLogin: process.env.GIT_AUTHOR_NAME ?? "bright-agent",
-    commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bright-agent@users.noreply.github.com",
+    commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",
+    commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bot@brightsec.com",
     problemStatement: process.env.PROBLEM_STATEMENT ?? "Run a security scan and fix vulnerabilities",
     action: process.env.ACTION ?? "fix"
   };
@@ -27331,7 +27331,7 @@ var ProgressReporter = class {
     for (const step of this.steps) {
       if (step.status === "working") step.status = "done";
     }
-    this.steps.push({ title: description, status: "working", details: [] });
+    this.steps.push({ title: description, status: "working", details: [], keyedDetails: /* @__PURE__ */ new Map() });
     await this.platform.reportPhase(phase, description, this.turn++);
     await this.updatePrDescription();
   }
@@ -27341,6 +27341,18 @@ var ProgressReporter = class {
       current.details.push(detail);
     }
     await this.platform.reportDetail(phase, toolName, detail, this.turn);
+    await this.updatePrDescription();
+  }
+  /**
+   * Update a keyed detail in-place. If a detail with the same key exists,
+   * it is replaced rather than appended. Use this for poll-style updates
+   * (e.g. scan status) that would otherwise flood the PR description.
+   */
+  async phaseUpdateDetail(phase, key, detail) {
+    const current = [...this.steps].reverse().find((s) => s.status === "working");
+    if (current) {
+      current.keyedDetails.set(key, detail);
+    }
     await this.updatePrDescription();
   }
   async phaseError(phase, error2) {
@@ -27356,6 +27368,9 @@ var ProgressReporter = class {
       const icon = s.status === "done" ? "\u2705" : s.status === "working" ? "\u{1F504}" : "\u2B1C";
       lines.push(`${icon} **${s.title}**`);
       for (const d of s.details) {
+        lines.push(`   - ${d}`);
+      }
+      for (const d of s.keyedDetails.values()) {
         lines.push(`   - ${d}`);
       }
     }
@@ -34873,6 +34888,7 @@ async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeat
   for (const ep of endpoints) {
     const path2 = resolvePath(ep.path);
     let fullUrl = `${baseUrl}${path2}`;
+    const method = normalizeMethod(ep.method);
     if (ep.queryParams && ep.queryParams.length > 0) {
       const params = new URLSearchParams(
         ep.queryParams.map((p) => [p.name, p.value])
@@ -34880,13 +34896,13 @@ async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeat
       fullUrl += `?${params.toString()}`;
     }
     console.log(
-      `[Entrypoints] Adding ${ep.method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
+      `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
     );
     const request = {
-      method: ep.method,
+      method,
       url: fullUrl
     };
-    const needsBody = ["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase());
+    const needsBody = ["POST", "PUT", "PATCH"].includes(method);
     const contentType = ep.contentType ?? (needsBody ? "application/json" : void 0);
     if (ep.headers || contentType) {
       const headers = { ...ep.headers ?? {} };
@@ -34913,20 +34929,20 @@ async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeat
       if (epId) {
         registered.push({ endpoint: ep, entrypointId: epId });
       } else if (result.includes(CONFLICT_MSG)) {
-        const existingId = await findExistingEntrypoint(bright, projectId, fullUrl, ep.method);
+        const existingId = await findExistingEntrypoint(bright, projectId, fullUrl, method);
         if (existingId) {
-          console.log(`[Entrypoints] Reusing existing EP ${existingId} for ${ep.method} ${fullUrl}`);
+          console.log(`[Entrypoints] Reusing existing EP ${existingId} for ${method} ${fullUrl}`);
           registered.push({ endpoint: ep, entrypointId: existingId });
         } else {
-          console.warn(`[Entrypoints] Conflict but could not find existing EP for ${ep.method} ${fullUrl}`);
+          console.warn(`[Entrypoints] Conflict but could not find existing EP for ${method} ${fullUrl}`);
         }
       } else if (result.startsWith("Error")) {
-        console.error(`[Entrypoints] Failed ${ep.method} ${fullUrl}: ${result.slice(0, 300)}`);
+        console.error(`[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`);
       } else {
-        console.warn(`[Entrypoints] Unexpected response for ${ep.method} ${fullUrl}: ${result.slice(0, 200)}`);
+        console.warn(`[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`);
       }
     } catch (err) {
-      console.error(`[Entrypoints] Failed ${ep.method} ${fullUrl}: ${toErrorMessage(err)}`);
+      console.error(`[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`);
     }
   }
   console.log(`[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints`);
@@ -35025,6 +35041,24 @@ function sanitizeBody(body) {
   } catch {
     return body.replace(/\n\s*/g, " ").trim();
   }
+}
+var VALID_HTTP_METHODS = /* @__PURE__ */ new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "DELETE",
+  "CONNECT",
+  "OPTIONS",
+  "TRACE",
+  "PATCH"
+]);
+function normalizeMethod(method) {
+  const upper = method.toUpperCase();
+  if (VALID_HTTP_METHODS.has(upper)) return upper;
+  if (upper.startsWith("GRAPHQL")) return "POST";
+  console.warn(`[Entrypoints] Unknown method "${method}", defaulting to GET`);
+  return "GET";
 }
 
 // src/phases/repeater.ts
@@ -35763,7 +35797,7 @@ async function runOrchestrator(ctx) {
       const iterLabel = `${iteration + 1}/${MAX_ITERATIONS}`;
       await progress.phaseStart(
         "scan",
-        `Running security scans (pass ${iterLabel} \u2014 ${scanGroups.length} group(s))`
+        `Running scans \u2014 round ${iteration + 1}`
       );
       const scanIds = [];
       for (const [gi, group] of scanGroups.entries()) {
@@ -35788,16 +35822,11 @@ async function runOrchestrator(ctx) {
         await progress.phaseStart("scan_error", "All scan launches failed. Check MCP logs.");
         break;
       }
-      await progress.phaseDetail(
-        "scan",
-        "launched",
-        `Launched ${scanIds.length} scan(s) \u2014 waiting for results...`
-      );
       const scanResults = await Promise.allSettled(
         scanIds.map(async (scanId, si) => {
           console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
           const finalStatus = await waitForScanCompletion(bright, scanId, (status, issues) => {
-            progress.phaseDetail("scan", "poll", `Scan ${si + 1}: ${status} \u2014 ${issues} issues`);
+            console.log(`[Scan] Scan ${si + 1}/${scanIds.length}: ${status} \u2014 ${issues} issue(s)`);
           });
           return finalStatus;
         })
@@ -35815,7 +35844,7 @@ async function runOrchestrator(ctx) {
       if (anyFailed) {
         await progress.phaseStart(
           "scan_error",
-          `One or more scans failed on pass ${iterLabel}. Check Bright dashboard.`
+          `One or more scans failed on round ${iteration + 1}. Check Bright dashboard.`
         );
         break;
       }
@@ -35828,23 +35857,23 @@ async function runOrchestrator(ctx) {
       await progress.phaseDetail(
         "scan",
         "findings",
-        findings.length > 0 ? `Found ${findings.length} vulnerabilities (${sevSummary})` : "No vulnerabilities found"
+        findings.length > 0 ? `Round ${iteration + 1} complete \u2014 ${findings.length} vulnerabilities found (${sevSummary})` : `Round ${iteration + 1} complete \u2014 no vulnerabilities found`
       );
       if (findings.length === 0) {
-        const msg = iteration === 0 ? "No vulnerabilities found \u2014 application appears secure." : `All vulnerabilities resolved after ${iteration + 1} pass(es). ${allFixes.length} total fixes applied.`;
+        const msg = iteration === 0 ? "No vulnerabilities found \u2014 application appears secure." : `All vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied.`;
         await progress.phaseStart("done", msg);
         return;
       }
       if (iteration === MAX_ITERATIONS - 1) {
         await progress.phaseStart(
           "done",
-          `Reached ${MAX_ITERATIONS} passes. ${findings.length} vulnerabilities remain. ${allFixes.length} fixes were applied.`
+          `Reached ${MAX_ITERATIONS} rounds. ${findings.length} vulnerabilities remain. ${allFixes.length} fixes were applied.`
         );
         return;
       }
       await progress.phaseStart(
         "fix",
-        `Generating fixes for ${findings.length} vulnerabilities (pass ${iterLabel})`
+        `Fixing ${findings.length} vulnerabilities \u2014 round ${iteration + 1}`
       );
       const fixes = await generateFixes(
         llm,
