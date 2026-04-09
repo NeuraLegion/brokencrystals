@@ -97,6 +97,8 @@ async function bootstrap() {
         : null
   });
 
+  // Defense in depth: block direct requests for config.js before any static file
+  // handling can serve it from the client build or public asset tree.
   server.addHook('onRequest', (req, reply, done) => {
     if (req.raw.url && req.raw.url.split('?')[0] === '/config.js') {
       reply.code(404).send();
@@ -143,6 +145,8 @@ async function bootstrap() {
     redirect: false,
     wildcard: false,
     serveDotFiles: false,
+    // Extra guard for deployments that keep unexpected files in the static root.
+    // If a config.js somehow lands in the served tree, deny it explicitly.
     setHeaders: (res, pathName) => {
       if (pathName.endsWith('/config.js') || pathName.endsWith('config.js')) {
         res.statusCode = 404;
