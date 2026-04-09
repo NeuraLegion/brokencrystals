@@ -22,7 +22,7 @@ export abstract class JwtTokenProcessor {
     const header: JwtHeader = JSON.parse(headerStr);
 
     const payloadStr = Buffer.from(parts[1], 'base64').toString('ascii');
-    this.log.debug(`Jwt token (None alg) payload is ${payloadStr}`);
+    this.log.debug('Jwt token payload parsed');
     const payload = JSON.parse(payloadStr);
 
     return [header, payload];

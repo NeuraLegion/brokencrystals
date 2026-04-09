@@ -1,4 +1,4 @@
-import { FastifyReply } from 'fastify';
+import { FastifyReply, FastifyRequest } from 'fastify';
 import {
   Controller,
   Delete,
@@ -7,7 +7,10 @@ import {
   HttpStatus,
   Logger,
   Query,
-  Res
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards
 } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { EmailService } from './email.service';
@@ -17,6 +20,7 @@ import {
   SWAGGER_DESC_SEND_EMAIL
 } from './email.controller.swagger.desc';
 import splitUriIntoParamsPPVulnerable from '../utils/url';
+import { CsrfGuard } from '../auth/csrf.guard';
 
 @Controller('/api/email')
 @ApiTags('Emails controller')
@@ -110,6 +114,7 @@ export class EmailController {
   }
 
   @Get('/getEmails')
+  @UseGuards(CsrfGuard)
   @ApiOperation({
     description: SWAGGER_DESC_GET_EMAILS
   })
@@ -118,7 +123,12 @@ export class EmailController {
     example: 'true',
     required: true
   })
-  async getEmails(@Query('withSource') withSourceStr: string) {
+  async getEmails(
+    @Query('withSource') withSourceStr: string,
+    @Req() request: FastifyRequest
+  ) {
+    this.validateSameOriginRequest(request);
+
     const withSource = withSourceStr === 'true';
 
     this.logger.log(`Getting Emails (withSource=${withSource})`);
@@ -126,11 +136,30 @@ export class EmailController {
   }
 
   @Delete('/deleteEmails')
+  @UseGuards(CsrfGuard)
   @ApiOperation({
     description: SWAGGER_DESC_DELTE_EMAILS
   })
-  async deleteEmails() {
+  async deleteEmails(@Req() request: FastifyRequest) {
+    this.validateSameOriginRequest(request);
+
     this.logger.log('Deleting Emails');
     return await this.emailService.deleteEmails();
+  }
+
+  private validateSameOriginRequest(request: FastifyRequest) {
+    const origin = (request.headers.origin as string | undefined) || '';
+    const referer = (request.headers.referer as string | undefined) || '';
+    const expectedOrigin = process.env.URL || 'http://localhost:3000';
+
+    const isValidOrigin = origin === expectedOrigin;
+    const isValidReferer = referer.startsWith(expectedOrigin);
+
+    if (!isValidOrigin && !isValidReferer) {
+      throw new UnauthorizedException({
+        error: 'Invalid origin',
+        location: __filename
+      });
+    }
   }
 }

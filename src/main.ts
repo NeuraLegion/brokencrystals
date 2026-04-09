@@ -192,8 +192,9 @@ async function bootstrap() {
     secret: randomBytes(32).toString('hex').slice(0, 32),
     cookieName: 'connect.sid',
     cookie: {
-      secure: false,
-      httpOnly: false
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      sameSite: 'strict'
     }
   });
   server.addContentTypeParser('*', (req) => rawbody(req.raw));

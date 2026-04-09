@@ -177,6 +177,8 @@ export class UsersController {
   }
 
   @Get('/search/:name')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
   @ApiQuery({ name: 'name', example: 'john', required: true })
   @SerializeOptions({ groups: [FULL_USER_INFO] })
   @ApiOperation({
@@ -185,6 +187,17 @@ export class UsersController {
   @ApiOkResponse({
     type: UserDto,
     description: SWAGGER_DESC_FIND_USERS
+  })
+  @ApiForbiddenResponse({
+    description: 'invalid credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' }
+      }
+    }
   })
   async searchByName(@Param('name') name: string): Promise<UserDto[]> {
     try {

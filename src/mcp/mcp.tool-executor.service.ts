@@ -98,8 +98,9 @@ export class McpToolExecutorService extends McpProxySupport {
         return this.proxyError('get_count', response);
       }
 
-      const text =
-        typeof response.data === 'string'
+      const text:
+        | string
+        = typeof response.data === 'string'
           ? response.data.trim()
           : String(response.data);
 
@@ -357,6 +358,18 @@ export class McpToolExecutorService extends McpProxySupport {
     authorizationHeader?: string
   ): Promise<McpToolResult> {
     try {
+      if (!authorizationHeader) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Unauthorized: search_users requires an authenticated session'
+            }
+          ],
+          isError: true
+        };
+      }
+
       this.logger.debug('Proxy users search via /api/users/search/:name');
 
       const response = await axios.get(

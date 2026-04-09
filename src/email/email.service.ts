@@ -124,7 +124,7 @@ export class EmailService {
     return mailOptions;
   }
 
-  async getEmails(withSource): Promise<unknown> {
+  async getEmails(withSource: boolean): Promise<unknown> {
     this.logger.debug(`Fetching all emails from MailCatcher`);
 
     const emails = await axios
@@ -137,7 +137,7 @@ export class EmailService {
 
     if (withSource) {
       this.logger.debug(`Fetching sources of Emails`);
-      for (const email of emails) {
+      for (const email of emails as Array<{ id: string; source?: unknown }>) {
         email['source'] = await this.getEmailSource(email['id']);
       }
     }
@@ -145,8 +145,8 @@ export class EmailService {
     return emails;
   }
 
-  private async getEmailSource(emailId): Promise<string> {
-    const sourceUrl = `${this.MAIL_CATCHER_MESSAGES_URL}/${emailId}.source`;
+  private async getEmailSource(emailId: string): Promise<string> {
+    const sourceUrl = `${this.MAIL_CATCHER_MESSAGES_URL}/${encodeURIComponent(emailId)}.source`;
 
     return await axios
       .get(sourceUrl)

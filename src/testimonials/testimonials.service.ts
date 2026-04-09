@@ -56,12 +56,28 @@ export class TestimonialsService {
 
   async count(query: string): Promise<number> {
     try {
-      this.logger.debug(`Saved new testimonial`);
+      this.logger.debug(`Count testimonials using allowlisted input`);
 
-      return (await this.em.getConnection().execute(query))[0].count as number;
+      const allowedQueries = new Map<string, string>([
+        ['testimonial', 'select count(*) as count from testimonial'],
+        ['all', 'select count(*) as count from testimonial']
+      ]);
+
+      const normalizedQuery = (query ?? '').trim().toLowerCase();
+      const sql = allowedQueries.get(normalizedQuery);
+
+      if (!sql) {
+        throw new Error('Invalid count query');
+      }
+
+      const result = await this.em.getConnection().execute(sql);
+      const countValue = result?.[0]?.count;
+
+      return typeof countValue === 'number' ? countValue : Number(countValue) || 0;
     } catch (err) {
-      this.logger.warn(`Failed to execute query. Error: ${err.message}`);
-      return err.message;
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      this.logger.warn(`Failed to count testimonials. Error: ${message}`);
+      throw new Error('Failed to count testimonials');
     }
   }
 }

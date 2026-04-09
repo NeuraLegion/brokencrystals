@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Header,
   Logger,
   Post,
   Query,
@@ -89,10 +88,9 @@ export class TestimonialsController {
   @Get('count')
   @ApiQuery({
     name: 'query',
-    example: 'select count(*) as count from testimonial',
+    example: 'testimonial',
     required: true
   })
-  @Header('content-type', 'text/html')
   @ApiOperation({
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
   })
