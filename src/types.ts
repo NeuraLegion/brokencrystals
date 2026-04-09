@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import type { PlatformClient } from "@github/copilot-engine-sdk";
+import type { Platform } from "./platform.js";
 import type { BrightMcpClient } from "./mcp-client.js";
 
 // ---------------------------------------------------------------------------
@@ -7,10 +7,6 @@ import type { BrightMcpClient } from "./mcp-client.js";
 // ---------------------------------------------------------------------------
 
 export interface EngineConfig {
-  jobId: string;
-  apiToken: string;
-  apiUrl: string;
-  nonce?: string;
   brightToken: string;
   brightHostname: string;
   brightMcpUrl?: string;
@@ -85,7 +81,7 @@ export interface SecurityFix {
 
 export interface OrchestratorContext {
   repoPath: string;
-  platform: PlatformClient;
+  platform: Platform;
   llm: OpenAI;
   bright: BrightMcpClient;
   config: EngineConfig;

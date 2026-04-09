@@ -264,7 +264,20 @@ async function startApplication(
     try {
       await Promise.race([composeExitPromise, earlyExitPromise]);
     } catch (err) {
-      // Capture docker logs for debugging
+      // --wait fails if ANY container is unhealthy (e.g. watchtower, sidecars).
+      // The app container itself may be fine — fall back to port check.
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("unhealthy") || errMsg.includes("exited with code")) {
+        console.warn(`[Startup] docker compose --wait failed (${errMsg.slice(0, 200)}), falling back to port check...`);
+        logDockerFailure(repoPath);
+        try {
+          await waitForPort(config.port, 60_000);
+          console.log(`[Startup] Port ${config.port} is reachable despite --wait failure`);
+          return child;
+        } catch {
+          throw new Error(`docker compose --wait failed and port ${config.port} is not reachable. Original error: ${errMsg.slice(0, 300)}`);
+        }
+      }
       logDockerFailure(repoPath);
       throw err;
     }

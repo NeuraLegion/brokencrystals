@@ -1,10 +1,6 @@
 import type { EngineConfig } from "./types.js";
 
 export function loadConfig(): EngineConfig {
-  const jobId = requireEnv("GITHUB_JOB_ID");
-  const apiToken = requireEnv("GITHUB_PLATFORM_API_TOKEN");
-  const apiUrl = requireEnv("GITHUB_PLATFORM_API_URL");
-  const nonce = process.env.GITHUB_JOB_NONCE;
   const brightToken = requireEnv("BRIGHT_TOKEN");
   const brightMcpUrl = process.env.BRIGHT_MCP_URL;
   const brightHostname = process.env.BRIGHT_HOSTNAME
@@ -12,7 +8,7 @@ export function loadConfig(): EngineConfig {
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
   const inferenceModel = process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
 
-  return { jobId, apiToken, apiUrl, nonce, brightToken, brightHostname, brightMcpUrl, brightProjectId, inferenceModel };
+  return { brightToken, brightHostname, brightMcpUrl, brightProjectId, inferenceModel };
 }
 
 function requireEnv(name: string): string {

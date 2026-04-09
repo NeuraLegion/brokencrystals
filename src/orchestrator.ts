@@ -1,4 +1,4 @@
-import { commitAndPush } from "@github/copilot-engine-sdk";
+import { gitCommitAndPush } from "./platform.js";
 import { execFileSync, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
 import type { OrchestratorContext, SecurityFix, Finding } from "./types.js";
@@ -320,23 +320,13 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       // Commit & push
       console.log(`[Fix] Committing ${fixes.length} fixes for ${fixes.map((f) => f.files.map((ff) => ff.path)).flat().join(", ")}`);
       try {
-        commitAndPush(
+        gitCommitAndPush(
           repoPath,
           `fix: remediate ${fixes.length} security vulnerabilities (pass ${iteration + 1})`,
         );
         console.log(`[Fix] Committed and pushed ${fixes.length} fixes`);
       } catch (err) {
-        console.error(`[Fix] commitAndPush failed:`, err);
-        // Try manual git commit as fallback
-        const { execFileSync } = await import("child_process");
-        try {
-          execFileSync("git", ["add", "-A"], { cwd: repoPath });
-          execFileSync("git", ["commit", "-m", `fix: remediate ${fixes.length} security vulnerabilities (pass ${iteration + 1})`], { cwd: repoPath });
-          execFileSync("git", ["push"], { cwd: repoPath });
-          console.log("[Fix] Committed and pushed via git fallback");
-        } catch (gitErr) {
-          console.error("[Fix] Git fallback also failed:", gitErr);
-        }
+        console.error(`[Fix] git commit and push failed:`, err);
       }
 
       await progress.phaseDetail(
@@ -380,16 +370,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
               // Commit the repair
               try {
-                commitAndPush(
+                gitCommitAndPush(
                   repoPath,
                   `fix: repair broken security fix (pass ${iteration + 1}, repair ${repair + 1})`,
                 );
               } catch {
-                try {
-                  execFileSync("git", ["add", "-A"], { cwd: repoPath });
-                  execFileSync("git", ["commit", "-m", `fix: repair broken security fix (pass ${iteration + 1}, repair ${repair + 1})`], { cwd: repoPath });
-                  execFileSync("git", ["push"], { cwd: repoPath });
-                } catch { /* ignore */ }
+                console.error("[Fix] Repair commit failed");
               }
             }
 

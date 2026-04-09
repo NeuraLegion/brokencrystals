@@ -1,8 +1,4 @@
-import {
-  PlatformClient,
-  cloneRepo,
-  finalizeChanges,
-} from "@github/copilot-engine-sdk";
+import { createPlatform, cloneRepository, gitFinalizeChanges } from "./platform.js";
 import { loadConfig } from "./config.js";
 import { createInferenceClient } from "./inference.js";
 import { toErrorMessage } from "./utils.js";
@@ -24,47 +20,36 @@ async function main(): Promise<void> {
   // 1. Load configuration from environment
   const config = loadConfig();
 
-  // 2. Initialize platform client
-  const platform = new PlatformClient({
-    apiUrl: config.apiUrl,
-    jobId: config.jobId,
-    token: config.apiToken,
-    nonce: config.nonce,
-  });
-
-  // 3. Fetch job details
-  const job = await platform.fetchJobDetails();
-  console.log(`[Engine] Job: ${job.ID}, action: ${job.action}`);
+  // 2. Initialize platform (GitHub SDK or standalone)
+  const { platform, job } = await createPlatform();
+  console.log(`[Engine] Job: ${job.id}, action: ${job.action}`);
   console.log(`[Engine] Repository: ${job.repository}`);
-  console.log(`[Engine] Problem: ${job.problem_statement.content.slice(0, 200)}`);
+  console.log(`[Engine] Problem: ${job.problemStatement.slice(0, 200)}`);
 
-  // 4. Clone the repository
-  const repoPath = cloneRepo({
-    serverUrl: job.server_url,
+  // 3. Clone the repository
+  const repoPath = cloneRepository({
+    serverUrl: job.serverUrl,
     repository: job.repository,
-    gitToken: process.env.GITHUB_GIT_TOKEN ?? "",
-    branchName: job.branch_name,
-    commitLogin: job.commit_login,
-    commitEmail: job.commit_email,
+    gitToken: process.env.GITHUB_GIT_TOKEN ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN ?? "",
+    branchName: job.branchName,
+    commitLogin: job.commitLogin,
+    commitEmail: job.commitEmail,
   });
   console.log(`[Engine] Cloned to: ${repoPath}`);
 
-  // 5. Initialize inference client (OpenAI-compatible)
-  // OPENAI_API_KEY takes precedence for local testing, since
-  // engine-cli overrides GITHUB_INFERENCE_TOKEN with the GitHub PAT.
+  // 4. Initialize inference client (OpenAI-compatible)
   const inferenceUrl =
-    process.env.GITHUB_INFERENCE_URL ?? config.apiUrl;
+    process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceToken =
     process.env.OPENAI_API_KEY ??
-    process.env.GITHUB_INFERENCE_TOKEN ??
-    config.apiToken;
+    process.env.GITHUB_INFERENCE_TOKEN ?? "";
   const llm = createInferenceClient(inferenceUrl, inferenceToken);
 
-  // 6. Connect to Bright MCP
+  // 5. Connect to Bright MCP
   const bright = await createBrightMcpClient(config);
   console.log("[Engine] Connected to Bright MCP server");
 
-  // 7. Run the orchestrator
+  // 6. Run the orchestrator
   const ctx: OrchestratorContext = {
     repoPath,
     platform,
@@ -79,16 +64,11 @@ async function main(): Promise<void> {
     const msg = toErrorMessage(err);
     console.error(`[Engine] Orchestrator failed: ${msg}`);
 
-    await platform.sendAssistantMessage({
-      turn: 999,
-      callId: "error",
-      content: `Security scan failed: ${msg}`,
-      toolCalls: [],
-    });
+    await platform.reportError(`Security scan failed: ${msg}`);
   }
 
-  // 8. Finalize - commit and push any remaining changes
-  finalizeChanges(repoPath, "fix: Bright security scan remediations");
+  // 7. Finalize - commit and push any remaining changes
+  gitFinalizeChanges(repoPath, "fix: Bright security scan remediations");
   console.log("[Engine] Done.");
 }
 
