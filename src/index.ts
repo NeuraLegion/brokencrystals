@@ -37,6 +37,9 @@ async function main(): Promise<void> {
   });
   console.log(`[Engine] Cloned to: ${repoPath}`);
 
+  // 3b. Push branch and create PR for progress updates
+  await platform.initPr(repoPath);
+
   // 4. Initialize inference client (OpenAI-compatible)
   const inferenceUrl =
     process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";

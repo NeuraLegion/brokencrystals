@@ -22,6 +22,7 @@ export interface JobDetails {
 
 export interface Platform {
   fetchJobDetails(): Promise<JobDetails>;
+  initPr(repoPath: string): Promise<void>;
   reportPhase(phase: string, description: string, turn: number): Promise<void>;
   reportDetail(phase: string, toolName: string, detail: string, turn: number): Promise<void>;
   reportError(message: string): Promise<void>;
@@ -67,8 +68,8 @@ export function cloneRepository(opts: {
   }
 
   // Configure git author
-  execFileSync("git", ["config", "user.name", opts.commitLogin || "bright-agent"], { cwd: dest, stdio: "pipe" });
-  execFileSync("git", ["config", "user.email", opts.commitEmail || "bright-agent@users.noreply.github.com"], { cwd: dest, stdio: "pipe" });
+  execFileSync("git", ["config", "user.name", opts.commitLogin || "BrightSec"], { cwd: dest, stdio: "pipe" });
+  execFileSync("git", ["config", "user.email", opts.commitEmail || "bot@brightsec.com"], { cwd: dest, stdio: "pipe" });
 
   return dest;
 }
@@ -122,6 +123,40 @@ async function findPullRequestNumber(
   }
 }
 
+async function createPullRequest(
+  apiBase: string,
+  token: string,
+  owner: string,
+  repo: string,
+  head: string,
+  base: string,
+  title: string,
+  body: string,
+): Promise<number | null> {
+  const url = `${apiBase}/repos/${owner}/${repo}/pulls`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title, body, head, base }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.warn(`[Platform] Failed to create PR: ${res.status} ${text}`);
+      return null;
+    }
+    const pr = (await res.json()) as { number: number };
+    return pr.number;
+  } catch (err) {
+    console.warn(`[Platform] Error creating PR: ${err}`);
+    return null;
+  }
+}
+
 async function updatePullRequestBody(
   apiBase: string,
   token: string,
@@ -163,6 +198,63 @@ export class DefaultPlatform implements Platform {
       : `${job.serverUrl.replace(/\/$/, "")}/api/v3`;
   }
 
+  /**
+   * Push the branch and create a PR so progress updates have somewhere to go.
+   * Call this after cloneRepository() and before the orchestrator starts.
+   */
+  async initPr(repoPath: string): Promise<void> {
+    if (!this.gitToken) return;
+
+    const [owner, repo] = this.job.repository.split("/");
+    if (!owner || !repo) return;
+
+    // Push the branch to origin — create an initial commit so the PR has a diff
+    try {
+      execFileSync("git", ["commit", "--allow-empty", "-m", "chore: initialize Bright security scan"], {
+        cwd: repoPath, stdio: "pipe",
+      });
+      execFileSync("git", ["push", "-u", "origin", this.job.branchName], {
+        cwd: repoPath, stdio: "pipe",
+      });
+      console.log(`[Platform] Pushed branch ${this.job.branchName}`);
+    } catch (err) {
+      console.warn(`[Platform] Failed to push branch: ${err}`);
+      return;
+    }
+
+    // Check if a PR already exists for this branch
+    this.prNumber = await findPullRequestNumber(
+      this.apiBase, this.gitToken, owner, repo, this.job.branchName,
+    );
+
+    if (!this.prNumber) {
+      // Detect default branch for the base
+      let baseBranch = "main";
+      try {
+        const repoRes = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
+          headers: { Authorization: `token ${this.gitToken}`, Accept: "application/vnd.github+json" },
+        });
+        if (repoRes.ok) {
+          const repoData = (await repoRes.json()) as { default_branch: string };
+          baseBranch = repoData.default_branch;
+        }
+      } catch { /* fallback to main */ }
+
+      this.prNumber = await createPullRequest(
+        this.apiBase, this.gitToken, owner, repo,
+        this.job.branchName, baseBranch,
+        `🛡️ Bright Security Scan`,
+        `## 🛡️ Bright Security Scan\n\n🔄 **Initializing...**`,
+      );
+    }
+
+    if (this.prNumber) {
+      console.log(`[Platform] PR #${this.prNumber} ready for progress updates`);
+    } else {
+      console.warn(`[Platform] Could not create PR — progress will only appear in logs`);
+    }
+  }
+
   async fetchJobDetails(): Promise<JobDetails> {
     return this.job;
   }
@@ -180,24 +272,10 @@ export class DefaultPlatform implements Platform {
   }
 
   async reportPrDescription(description: string): Promise<void> {
-    if (!this.gitToken) return;
+    if (!this.gitToken || !this.prNumber) return;
 
     const [owner, repo] = this.job.repository.split("/");
     if (!owner || !repo) return;
-
-    // Lazy-lookup the PR number on first call
-    if (this.prNumber === undefined) {
-      this.prNumber = await findPullRequestNumber(
-        this.apiBase, this.gitToken, owner, repo, this.job.branchName,
-      );
-      if (this.prNumber) {
-        console.log(`[Platform] Found PR #${this.prNumber} for branch ${this.job.branchName}`);
-      } else {
-        console.log(`[Platform] No open PR found for branch ${this.job.branchName}, skipping PR updates`);
-      }
-    }
-
-    if (!this.prNumber) return;
 
     await updatePullRequestBody(this.apiBase, this.gitToken, owner, repo, this.prNumber, description);
   }
@@ -217,8 +295,8 @@ export async function createPlatform(): Promise<{ platform: Platform; job: JobDe
     repository: repo,
     serverUrl: process.env.GITHUB_SERVER_URL ?? "https://github.com",
     branchName: process.env.GITHUB_BRANCH ?? `bright-scan-${Date.now()}`,
-    commitLogin: process.env.GIT_AUTHOR_NAME ?? "bright-agent",
-    commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bright-agent@users.noreply.github.com",
+    commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",
+    commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bot@brightsec.com",
     problemStatement: process.env.PROBLEM_STATEMENT ?? "Run a security scan and fix vulnerabilities",
     action: process.env.ACTION ?? "fix",
   };

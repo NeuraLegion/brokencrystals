@@ -9922,6 +9922,30 @@ async function findPullRequestNumber(apiBase, token, owner, repo, branch) {
     return null;
   }
 }
+async function createPullRequest(apiBase, token, owner, repo, head, base, title, body) {
+  const url2 = `${apiBase}/repos/${owner}/${repo}/pulls`;
+  try {
+    const res = await fetch(url2, {
+      method: "POST",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ title, body, head, base })
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.warn(`[Platform] Failed to create PR: ${res.status} ${text}`);
+      return null;
+    }
+    const pr = await res.json();
+    return pr.number;
+  } catch (err) {
+    console.warn(`[Platform] Error creating PR: ${err}`);
+    return null;
+  }
+}
 async function updatePullRequestBody(apiBase, token, owner, repo, prNumber, body) {
   const url2 = `${apiBase}/repos/${owner}/${repo}/pulls/${prNumber}`;
   const res = await fetch(url2, {
@@ -9948,6 +9972,66 @@ var DefaultPlatform = class {
     this.gitToken = process.env.GITHUB_GIT_TOKEN ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN;
     this.apiBase = job.serverUrl.replace(/\/$/, "").includes("github.com") ? "https://api.github.com" : `${job.serverUrl.replace(/\/$/, "")}/api/v3`;
   }
+  /**
+   * Push the branch and create a PR so progress updates have somewhere to go.
+   * Call this after cloneRepository() and before the orchestrator starts.
+   */
+  async initPr(repoPath) {
+    if (!this.gitToken) return;
+    const [owner, repo] = this.job.repository.split("/");
+    if (!owner || !repo) return;
+    try {
+      execFileSync("git", ["commit", "--allow-empty", "-m", "chore: initialize Bright security scan"], {
+        cwd: repoPath,
+        stdio: "pipe"
+      });
+      execFileSync("git", ["push", "-u", "origin", this.job.branchName], {
+        cwd: repoPath,
+        stdio: "pipe"
+      });
+      console.log(`[Platform] Pushed branch ${this.job.branchName}`);
+    } catch (err) {
+      console.warn(`[Platform] Failed to push branch: ${err}`);
+      return;
+    }
+    this.prNumber = await findPullRequestNumber(
+      this.apiBase,
+      this.gitToken,
+      owner,
+      repo,
+      this.job.branchName
+    );
+    if (!this.prNumber) {
+      let baseBranch = "main";
+      try {
+        const repoRes = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
+          headers: { Authorization: `token ${this.gitToken}`, Accept: "application/vnd.github+json" }
+        });
+        if (repoRes.ok) {
+          const repoData = await repoRes.json();
+          baseBranch = repoData.default_branch;
+        }
+      } catch {
+      }
+      this.prNumber = await createPullRequest(
+        this.apiBase,
+        this.gitToken,
+        owner,
+        repo,
+        this.job.branchName,
+        baseBranch,
+        `\u{1F6E1}\uFE0F Bright Security Scan`,
+        `## \u{1F6E1}\uFE0F Bright Security Scan
+
+\u{1F504} **Initializing...**`
+      );
+    }
+    if (this.prNumber) {
+      console.log(`[Platform] PR #${this.prNumber} ready for progress updates`);
+    } else {
+      console.warn(`[Platform] Could not create PR \u2014 progress will only appear in logs`);
+    }
+  }
   async fetchJobDetails() {
     return this.job;
   }
@@ -9961,24 +10045,9 @@ var DefaultPlatform = class {
     console.error(`[Error] ${message}`);
   }
   async reportPrDescription(description) {
-    if (!this.gitToken) return;
+    if (!this.gitToken || !this.prNumber) return;
     const [owner, repo] = this.job.repository.split("/");
     if (!owner || !repo) return;
-    if (this.prNumber === void 0) {
-      this.prNumber = await findPullRequestNumber(
-        this.apiBase,
-        this.gitToken,
-        owner,
-        repo,
-        this.job.branchName
-      );
-      if (this.prNumber) {
-        console.log(`[Platform] Found PR #${this.prNumber} for branch ${this.job.branchName}`);
-      } else {
-        console.log(`[Platform] No open PR found for branch ${this.job.branchName}, skipping PR updates`);
-      }
-    }
-    if (!this.prNumber) return;
     await updatePullRequestBody(this.apiBase, this.gitToken, owner, repo, this.prNumber, description);
   }
 };
@@ -27262,28 +27331,38 @@ var ProgressReporter = class {
     for (const step of this.steps) {
       if (step.status === "working") step.status = "done";
     }
-    this.steps.push({ title: description, status: "working" });
+    this.steps.push({ title: description, status: "working", details: [] });
     await this.platform.reportPhase(phase, description, this.turn++);
     await this.updatePrDescription();
   }
   async phaseDetail(phase, toolName, detail) {
+    const current = [...this.steps].reverse().find((s) => s.status === "working");
+    if (current) {
+      current.details.push(detail);
+    }
     await this.platform.reportDetail(phase, toolName, detail, this.turn);
+    await this.updatePrDescription();
   }
   async phaseError(phase, error2) {
     for (const step of this.steps) {
       if (step.status === "working") step.status = "done";
     }
     await this.platform.reportError(`Error in ${phase}: ${error2}`);
+    await this.updatePrDescription();
   }
   async updatePrDescription() {
-    const checklist = this.steps.map((s) => {
-      const icon = s.status === "done" ? "[x]" : s.status === "working" ? "[-]" : "[ ]";
-      return `- ${icon} ${s.title}`;
-    }).join("\n");
+    const lines = [];
+    for (const s of this.steps) {
+      const icon = s.status === "done" ? "\u2705" : s.status === "working" ? "\u{1F504}" : "\u2B1C";
+      lines.push(`${icon} **${s.title}**`);
+      for (const d of s.details) {
+        lines.push(`   - ${d}`);
+      }
+    }
     await this.platform.reportPrDescription(
-      `## Bright Security Scan Progress
+      `## \u{1F6E1}\uFE0F Bright Security Scan
 
-${checklist}`
+${lines.join("\n")}`
     );
   }
 };
@@ -35709,6 +35788,11 @@ async function runOrchestrator(ctx) {
         await progress.phaseStart("scan_error", "All scan launches failed. Check MCP logs.");
         break;
       }
+      await progress.phaseDetail(
+        "scan",
+        "launched",
+        `Launched ${scanIds.length} scan(s) \u2014 waiting for results...`
+      );
       const scanResults = await Promise.allSettled(
         scanIds.map(async (scanId, si) => {
           console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
@@ -35736,10 +35820,15 @@ async function runOrchestrator(ctx) {
         break;
       }
       const findings = await fetchFindings(config2.brightToken, config2.brightHostname, scanIds);
+      const bySev = {};
+      for (const f of findings) {
+        bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
+      }
+      const sevSummary = Object.entries(bySev).sort(([a], [b]) => ["Critical", "High", "Medium", "Low"].indexOf(a) - ["Critical", "High", "Medium", "Low"].indexOf(b)).map(([sev, count]) => `${count} ${sev}`).join(", ");
       await progress.phaseDetail(
         "scan",
         "findings",
-        `Found ${findings.length} vulnerabilities`
+        findings.length > 0 ? `Found ${findings.length} vulnerabilities (${sevSummary})` : "No vulnerabilities found"
       );
       if (findings.length === 0) {
         const msg = iteration === 0 ? "No vulnerabilities found \u2014 application appears secure." : `All vulnerabilities resolved after ${iteration + 1} pass(es). ${allFixes.length} total fixes applied.`;
@@ -35776,11 +35865,19 @@ async function runOrchestrator(ctx) {
       } catch (err) {
         console.error(`[Fix] git commit and push failed:`, err);
       }
+      const fixedFiles = fixes.flatMap((f) => f.files.map((ff) => ff.path));
       await progress.phaseDetail(
         "fix",
         "applied",
-        `Applied ${fixes.length} fixes, restarting for validation...`
+        `Applied ${fixes.length} fix(es) across ${fixedFiles.length} file(s), restarting for validation...`
       );
+      for (const fix of fixes) {
+        await progress.phaseDetail(
+          "fix",
+          "detail",
+          `${fix.vulnerability.severity} \u2014 ${fix.vulnerability.name}: ${fix.summary}`
+        );
+      }
       await killProcess(appProcess);
       let restarted = false;
       try {
@@ -36054,6 +36151,7 @@ async function main() {
     commitEmail: job.commitEmail
   });
   console.log(`[Engine] Cloned to: ${repoPath}`);
+  await platform.initPr(repoPath);
   const inferenceUrl = process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceToken = process.env.OPENAI_API_KEY ?? process.env.GITHUB_INFERENCE_TOKEN ?? "";
   const llm = createInferenceClient(inferenceUrl, inferenceToken);

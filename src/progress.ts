@@ -1,8 +1,16 @@
 import type { Platform } from "./platform.js";
 
+interface Step {
+  title: string;
+  status: "done" | "working" | "pending";
+  details: string[];
+  /** Keyed details that update in-place instead of appending (key → detail text). */
+  keyedDetails: Map<string, string>;
+}
+
 export class ProgressReporter {
   private turn = 0;
-  private steps: Array<{ title: string; status: "done" | "working" | "pending" }> = [];
+  private steps: Step[] = [];
   private platform: Platform;
 
   constructor(platform: Platform) {
@@ -14,14 +22,34 @@ export class ProgressReporter {
     for (const step of this.steps) {
       if (step.status === "working") step.status = "done";
     }
-    this.steps.push({ title: description, status: "working" });
+    this.steps.push({ title: description, status: "working", details: [], keyedDetails: new Map() });
 
     await this.platform.reportPhase(phase, description, this.turn++);
     await this.updatePrDescription();
   }
 
   async phaseDetail(phase: string, toolName: string, detail: string): Promise<void> {
+    // Append detail to the current working step
+    const current = [...this.steps].reverse().find((s) => s.status === "working");
+    if (current) {
+      current.details.push(detail);
+    }
+
     await this.platform.reportDetail(phase, toolName, detail, this.turn);
+    await this.updatePrDescription();
+  }
+
+  /**
+   * Update a keyed detail in-place. If a detail with the same key exists,
+   * it is replaced rather than appended. Use this for poll-style updates
+   * (e.g. scan status) that would otherwise flood the PR description.
+   */
+  async phaseUpdateDetail(phase: string, key: string, detail: string): Promise<void> {
+    const current = [...this.steps].reverse().find((s) => s.status === "working");
+    if (current) {
+      current.keyedDetails.set(key, detail);
+    }
+    await this.updatePrDescription();
   }
 
   async phaseError(phase: string, error: string): Promise<void> {
@@ -29,18 +57,25 @@ export class ProgressReporter {
       if (step.status === "working") step.status = "done";
     }
     await this.platform.reportError(`Error in ${phase}: ${error}`);
+    await this.updatePrDescription();
   }
 
   private async updatePrDescription(): Promise<void> {
-    const checklist = this.steps
-      .map((s) => {
-        const icon = s.status === "done" ? "[x]" : s.status === "working" ? "[-]" : "[ ]";
-        return `- ${icon} ${s.title}`;
-      })
-      .join("\n");
+    const lines: string[] = [];
+
+    for (const s of this.steps) {
+      const icon = s.status === "done" ? "✅" : s.status === "working" ? "🔄" : "⬜";
+      lines.push(`${icon} **${s.title}**`);
+      for (const d of s.details) {
+        lines.push(`   - ${d}`);
+      }
+      for (const d of s.keyedDetails.values()) {
+        lines.push(`   - ${d}`);
+      }
+    }
 
     await this.platform.reportPrDescription(
-      `## Bright Security Scan Progress\n\n${checklist}`,
+      `## 🛡️ Bright Security Scan\n\n${lines.join("\n")}`,
     );
   }
 }

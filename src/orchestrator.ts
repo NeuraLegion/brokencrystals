@@ -217,7 +217,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       // --- Scan all groups ---
       await progress.phaseStart(
         "scan",
-        `Running security scans (pass ${iterLabel} — ${scanGroups.length} group(s))`,
+        `Running scans — round ${iteration + 1}`,
       );
 
       const scanIds: string[] = [];
@@ -245,12 +245,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         break;
       }
 
-      // Wait for all scans to complete (in parallel)
+      // Wait for all scans to complete (in parallel) — log only, no PR spam
       const scanResults = await Promise.allSettled(
         scanIds.map(async (scanId, si) => {
           console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
           const finalStatus = await waitForScanCompletion(bright, scanId, (status, issues) => {
-            progress.phaseDetail("scan", "poll", `Scan ${si + 1}: ${status} — ${issues} issues`);
+            console.log(`[Scan] Scan ${si + 1}/${scanIds.length}: ${status} — ${issues} issue(s)`);
           });
           return finalStatus;
         }),
@@ -270,24 +270,37 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       if (anyFailed) {
         await progress.phaseStart(
           "scan_error",
-          `One or more scans failed on pass ${iterLabel}. Check Bright dashboard.`,
+          `One or more scans failed on round ${iteration + 1}. Check Bright dashboard.`,
         );
         break;
       }
 
       // --- Fetch findings ---
       const findings = await fetchFindings(config.brightToken, config.brightHostname, scanIds);
+
+      // Build severity breakdown for the PR
+      const bySev: Record<string, number> = {};
+      for (const f of findings) {
+        bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
+      }
+      const sevSummary = Object.entries(bySev)
+        .sort(([a], [b]) => ["Critical", "High", "Medium", "Low"].indexOf(a) - ["Critical", "High", "Medium", "Low"].indexOf(b))
+        .map(([sev, count]) => `${count} ${sev}`)
+        .join(", ");
+
       await progress.phaseDetail(
         "scan",
         "findings",
-        `Found ${findings.length} vulnerabilities`,
+        findings.length > 0
+          ? `Round ${iteration + 1} complete — ${findings.length} vulnerabilities found (${sevSummary})`
+          : `Round ${iteration + 1} complete — no vulnerabilities found`,
       );
 
       if (findings.length === 0) {
         const msg =
           iteration === 0
             ? "No vulnerabilities found — application appears secure."
-            : `All vulnerabilities resolved after ${iteration + 1} pass(es). ${allFixes.length} total fixes applied.`;
+            : `All vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied.`;
         await progress.phaseStart("done", msg);
         return;
       }
@@ -296,7 +309,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       if (iteration === MAX_ITERATIONS - 1) {
         await progress.phaseStart(
           "done",
-          `Reached ${MAX_ITERATIONS} passes. ${findings.length} vulnerabilities remain. ${allFixes.length} fixes were applied.`,
+          `Reached ${MAX_ITERATIONS} rounds. ${findings.length} vulnerabilities remain. ${allFixes.length} fixes were applied.`,
         );
         return;
       }
@@ -304,7 +317,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       // --- Fix ---
       await progress.phaseStart(
         "fix",
-        `Generating fixes for ${findings.length} vulnerabilities (pass ${iterLabel})`,
+        `Fixing ${findings.length} vulnerabilities — round ${iteration + 1}`,
       );
 
       const fixes = await generateFixes(
@@ -329,11 +342,19 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         console.error(`[Fix] git commit and push failed:`, err);
       }
 
+      const fixedFiles = fixes.flatMap((f) => f.files.map((ff) => ff.path));
       await progress.phaseDetail(
         "fix",
         "applied",
-        `Applied ${fixes.length} fixes, restarting for validation...`,
+        `Applied ${fixes.length} fix(es) across ${fixedFiles.length} file(s), restarting for validation...`,
       );
+      for (const fix of fixes) {
+        await progress.phaseDetail(
+          "fix",
+          "detail",
+          `${fix.vulnerability.severity} — ${fix.vulnerability.name}: ${fix.summary}`,
+        );
+      }
 
       // Restart application with fixed code — if it fails, diagnose and repair
       await killProcess(appProcess);

@@ -23,6 +23,9 @@ export async function registerEntrypoints(
     const path = resolvePath(ep.path);
     let fullUrl = `${baseUrl}${path}`;
 
+    // Normalize non-standard HTTP methods (e.g. GRAPHQL_QUERY → POST)
+    const method = normalizeMethod(ep.method);
+
     // Append query params to the URL if present
     if (ep.queryParams && ep.queryParams.length > 0) {
       const params = new URLSearchParams(
@@ -32,18 +35,18 @@ export async function registerEntrypoints(
     }
 
     console.log(
-      `[Entrypoints] Adding ${ep.method} ${fullUrl}` +
+      `[Entrypoints] Adding ${method} ${fullUrl}` +
         (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]"),
     );
 
     // Build request object with all available data
     const request: Record<string, unknown> = {
-      method: ep.method,
+      method,
       url: fullUrl,
     };
 
     // Add headers — ensure Content-Type for POST/PUT/PATCH
-    const needsBody = ["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase());
+    const needsBody = ["POST", "PUT", "PATCH"].includes(method);
     const contentType = ep.contentType ?? (needsBody ? "application/json" : undefined);
 
     if (ep.headers || contentType) {
@@ -81,20 +84,20 @@ export async function registerEntrypoints(
         registered.push({ endpoint: ep, entrypointId: epId });
       } else if (result.includes(CONFLICT_MSG)) {
         // EP already exists — look up the existing ID
-        const existingId = await findExistingEntrypoint(bright, projectId, fullUrl, ep.method);
+        const existingId = await findExistingEntrypoint(bright, projectId, fullUrl, method);
         if (existingId) {
-          console.log(`[Entrypoints] Reusing existing EP ${existingId} for ${ep.method} ${fullUrl}`);
+          console.log(`[Entrypoints] Reusing existing EP ${existingId} for ${method} ${fullUrl}`);
           registered.push({ endpoint: ep, entrypointId: existingId });
         } else {
-          console.warn(`[Entrypoints] Conflict but could not find existing EP for ${ep.method} ${fullUrl}`);
+          console.warn(`[Entrypoints] Conflict but could not find existing EP for ${method} ${fullUrl}`);
         }
       } else if (result.startsWith("Error")) {
-        console.error(`[Entrypoints] Failed ${ep.method} ${fullUrl}: ${result.slice(0, 300)}`);
+        console.error(`[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`);
       } else {
-        console.warn(`[Entrypoints] Unexpected response for ${ep.method} ${fullUrl}: ${result.slice(0, 200)}`);
+        console.warn(`[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`);
       }
     } catch (err) {
-      console.error(`[Entrypoints] Failed ${ep.method} ${fullUrl}: ${toErrorMessage(err)}`);
+      console.error(`[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`);
     }
   }
 
@@ -251,4 +254,24 @@ function sanitizeBody(body: string): string {
     // If it's not valid JSON at all, compact whitespace as a best-effort fix
     return body.replace(/\n\s*/g, " ").trim();
   }
+}
+
+const VALID_HTTP_METHODS = new Set([
+  "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH",
+]);
+
+/**
+ * Normalize non-standard method names (e.g. GRAPHQL_QUERY, GRAPHQL_MUTATION)
+ * into valid HTTP methods that the Bright API accepts.
+ */
+function normalizeMethod(method: string): string {
+  const upper = method.toUpperCase();
+  if (VALID_HTTP_METHODS.has(upper)) return upper;
+
+  // GraphQL operations are always POST
+  if (upper.startsWith("GRAPHQL")) return "POST";
+
+  // Fallback: default to GET for unknown values
+  console.warn(`[Entrypoints] Unknown method "${method}", defaulting to GET`);
+  return "GET";
 }
