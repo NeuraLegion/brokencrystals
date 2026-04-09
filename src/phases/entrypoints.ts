@@ -4,6 +4,11 @@ import { toErrorMessage } from "../utils.js";
 
 const CONFLICT_MSG = "already exists";
 
+export interface RegisteredEntrypoint {
+  endpoint: DiscoveredEndpoint;
+  entrypointId: string;
+}
+
 export async function registerEntrypoints(
   bright: BrightMcpClient,
   projectId: string,
@@ -11,8 +16,8 @@ export async function registerEntrypoints(
   baseUrl: string,
   repeaterId: string,
   authObjectId?: string,
-): Promise<string[]> {
-  const entrypointIds: string[] = [];
+): Promise<RegisteredEntrypoint[]> {
+  const registered: RegisteredEntrypoint[] = [];
 
   for (const ep of endpoints) {
     const path = resolvePath(ep.path);
@@ -73,13 +78,13 @@ export async function registerEntrypoints(
       }
 
       if (epId) {
-        entrypointIds.push(epId);
+        registered.push({ endpoint: ep, entrypointId: epId });
       } else if (result.includes(CONFLICT_MSG)) {
         // EP already exists — look up the existing ID
         const existingId = await findExistingEntrypoint(bright, projectId, fullUrl, ep.method);
         if (existingId) {
           console.log(`[Entrypoints] Reusing existing EP ${existingId} for ${ep.method} ${fullUrl}`);
-          entrypointIds.push(existingId);
+          registered.push({ endpoint: ep, entrypointId: existingId });
         } else {
           console.warn(`[Entrypoints] Conflict but could not find existing EP for ${ep.method} ${fullUrl}`);
         }
@@ -93,8 +98,8 @@ export async function registerEntrypoints(
     }
   }
 
-  console.log(`[Entrypoints] Registered ${entrypointIds.length}/${endpoints.length} entrypoints`);
-  return entrypointIds;
+  console.log(`[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints`);
+  return registered;
 }
 
 async function findExistingEntrypoint(
@@ -166,29 +171,29 @@ export async function verifyEntrypointAuth(
 export async function pruneDeadEntrypoints(
   bright: BrightMcpClient,
   projectId: string,
-  entrypointIds: string[],
+  entries: RegisteredEntrypoint[],
   brightToken: string,
   brightHostname: string,
-): Promise<string[]> {
-  const alive: string[] = [];
+): Promise<RegisteredEntrypoint[]> {
+  const alive: RegisteredEntrypoint[] = [];
   const dead: string[] = [];
 
-  for (const epId of entrypointIds) {
+  for (const entry of entries) {
     try {
-      const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId: epId });
+      const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId: entry.entrypointId });
       const data = JSON.parse(raw);
       const status = data.response?.status ?? data.status;
 
       if (status === 404) {
-        const url = data.request?.url ?? data.url ?? epId;
+        const url = data.request?.url ?? data.url ?? entry.entrypointId;
         console.log(`[Entrypoints] ✗ Removing 404 entrypoint: ${url}`);
-        dead.push(epId);
+        dead.push(entry.entrypointId);
       } else {
-        alive.push(epId);
+        alive.push(entry);
       }
     } catch {
       // If we can't check it, keep it — don't drop potentially valid EPs
-      alive.push(epId);
+      alive.push(entry);
     }
   }
 
@@ -212,7 +217,7 @@ async function deleteEntrypoint(
 ): Promise<void> {
   try {
     const res = await fetch(
-      `https://${brightHostname}/api/v1/projects/${encodeURIComponent(projectId)}/entrypoints/${encodeURIComponent(entrypointId)}`,
+      `https://${brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`,
       {
         method: "DELETE",
         headers: { Authorization: `Api-Key ${brightToken}` },
@@ -220,6 +225,8 @@ async function deleteEntrypoint(
     );
     if (res.ok || res.status === 204) {
       console.log(`[Entrypoints] Deleted entrypoint ${entrypointId}`);
+    } else if (res.status === 404) {
+      // Already gone — not a problem
     } else {
       console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${res.status}`);
     }

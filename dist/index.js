@@ -56387,7 +56387,7 @@ async function deleteAuthObject(brightToken, brightHostname, authObjectId) {
 // src/phases/entrypoints.ts
 var CONFLICT_MSG = "already exists";
 async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeaterId, authObjectId) {
-  const entrypointIds = [];
+  const registered = [];
   for (const ep of endpoints) {
     const path2 = resolvePath(ep.path);
     let fullUrl = `${baseUrl}${path2}`;
@@ -56429,12 +56429,12 @@ async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeat
       } catch {
       }
       if (epId) {
-        entrypointIds.push(epId);
+        registered.push({ endpoint: ep, entrypointId: epId });
       } else if (result.includes(CONFLICT_MSG)) {
         const existingId = await findExistingEntrypoint(bright, projectId, fullUrl, ep.method);
         if (existingId) {
           console.log(`[Entrypoints] Reusing existing EP ${existingId} for ${ep.method} ${fullUrl}`);
-          entrypointIds.push(existingId);
+          registered.push({ endpoint: ep, entrypointId: existingId });
         } else {
           console.warn(`[Entrypoints] Conflict but could not find existing EP for ${ep.method} ${fullUrl}`);
         }
@@ -56447,8 +56447,8 @@ async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeat
       console.error(`[Entrypoints] Failed ${ep.method} ${fullUrl}: ${toErrorMessage(err)}`);
     }
   }
-  console.log(`[Entrypoints] Registered ${entrypointIds.length}/${endpoints.length} entrypoints`);
-  return entrypointIds;
+  console.log(`[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints`);
+  return registered;
 }
 async function findExistingEntrypoint(bright, projectId, url3, method) {
   try {
@@ -56490,23 +56490,23 @@ async function verifyEntrypointAuth(bright, projectId, entrypointId) {
     return { ok: true, detail: `Could not verify: ${msg}` };
   }
 }
-async function pruneDeadEntrypoints(bright, projectId, entrypointIds, brightToken, brightHostname) {
+async function pruneDeadEntrypoints(bright, projectId, entries, brightToken, brightHostname) {
   const alive = [];
   const dead = [];
-  for (const epId of entrypointIds) {
+  for (const entry of entries) {
     try {
-      const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId: epId });
+      const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId: entry.entrypointId });
       const data = JSON.parse(raw);
       const status = data.response?.status ?? data.status;
       if (status === 404) {
-        const url3 = data.request?.url ?? data.url ?? epId;
+        const url3 = data.request?.url ?? data.url ?? entry.entrypointId;
         console.log(`[Entrypoints] \u2717 Removing 404 entrypoint: ${url3}`);
-        dead.push(epId);
+        dead.push(entry.entrypointId);
       } else {
-        alive.push(epId);
+        alive.push(entry);
       }
     } catch {
-      alive.push(epId);
+      alive.push(entry);
     }
   }
   await Promise.allSettled(
@@ -56520,7 +56520,7 @@ async function pruneDeadEntrypoints(bright, projectId, entrypointIds, brightToke
 async function deleteEntrypoint(brightToken, brightHostname, projectId, entrypointId) {
   try {
     const res = await fetch(
-      `https://${brightHostname}/api/v1/projects/${encodeURIComponent(projectId)}/entrypoints/${encodeURIComponent(entrypointId)}`,
+      `https://${brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`,
       {
         method: "DELETE",
         headers: { Authorization: `Api-Key ${brightToken}` }
@@ -56528,6 +56528,7 @@ async function deleteEntrypoint(brightToken, brightHostname, projectId, entrypoi
     );
     if (res.ok || res.status === 204) {
       console.log(`[Entrypoints] Deleted entrypoint ${entrypointId}`);
+    } else if (res.status === 404) {
     } else {
       console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${res.status}`);
     }
@@ -57216,7 +57217,7 @@ async function runOrchestrator(ctx) {
     if (safeEndpoints.length < endpoints.length) {
       console.log(`[Entrypoints] Excluded ${endpoints.length - safeEndpoints.length} risky endpoint(s)`);
     }
-    let entrypointIds = await registerEntrypoints(
+    let registered = await registerEntrypoints(
       bright,
       projectId,
       safeEndpoints,
@@ -57227,43 +57228,45 @@ async function runOrchestrator(ctx) {
     await progress.phaseDetail(
       "entrypoints",
       "registered",
-      `Registered ${entrypointIds.length} entrypoints`
+      `Registered ${registered.length} entrypoints`
     );
-    if (authResult.hasAuth && entrypointIds.length > 0) {
-      console.log(`[Entrypoints] Verifying auth on ${entrypointIds.length} registered entrypoint(s)...`);
-      const check3 = await verifyEntrypointAuth(bright, projectId, entrypointIds[0]);
+    if (authResult.hasAuth && registered.length > 0) {
+      console.log(`[Entrypoints] Verifying auth on ${registered.length} registered entrypoint(s)...`);
+      const check3 = await verifyEntrypointAuth(bright, projectId, registered[0].entrypointId);
       if (check3.ok) {
         console.log(`[Entrypoints] \u2713 Auth verification passed \u2014 ${check3.detail}`);
       } else {
         console.warn(`[Entrypoints] \u2717 Auth verification failed \u2014 ${check3.detail}`);
       }
     }
-    if (entrypointIds.length > 0) {
-      entrypointIds = await pruneDeadEntrypoints(
+    if (registered.length > 0) {
+      registered = await pruneDeadEntrypoints(
         bright,
         projectId,
-        entrypointIds,
+        registered,
         config3.brightToken,
         config3.brightHostname
       );
       await progress.phaseDetail(
         "entrypoints",
         "pruned",
-        `${entrypointIds.length} live entrypoints after pruning 404s`
+        `${registered.length} live entrypoints after pruning 404s`
       );
     }
-    if (entrypointIds.length === 0) {
+    if (registered.length === 0) {
       await progress.phaseStart(
         "done",
         "No entrypoints could be registered with Bright. Check MCP logs for validation errors."
       );
       return;
     }
+    const liveEndpoints = registered.map((r) => r.endpoint);
+    const entrypointIds = registered.map((r) => r.entrypointId);
     await progress.phaseStart("test_selection", "Selecting relevant security tests per endpoint");
     const scanGroups = await selectTestsPerEndpoint(
       llm,
       bright,
-      safeEndpoints,
+      liveEndpoints,
       entrypointIds,
       techStack,
       authResult.hasAuth

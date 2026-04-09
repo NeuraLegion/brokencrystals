@@ -7,7 +7,7 @@ import { formatTechStack } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import { startApplicationWithRetries, captureDockerLogs, type StartupResult } from "./phases/startup.js";
 import { detectAndConfigureAuth, type AuthResult } from "./phases/auth.js";
-import { registerEntrypoints, verifyEntrypointAuth, pruneDeadEntrypoints } from "./phases/entrypoints.js";
+import { registerEntrypoints, verifyEntrypointAuth, pruneDeadEntrypoints, type RegisteredEntrypoint } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
 import { selectTestsPerEndpoint, type ScanGroup } from "./phases/test-selection.js";
 import { runSecurityScan, waitForScanCompletion } from "./phases/scan.js";
@@ -144,7 +144,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       console.log(`[Entrypoints] Excluded ${endpoints.length - safeEndpoints.length} risky endpoint(s)`);
     }
 
-    let entrypointIds = await registerEntrypoints(
+    let registered = await registerEntrypoints(
       bright,
       projectId,
       safeEndpoints,
@@ -155,13 +155,13 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     await progress.phaseDetail(
       "entrypoints",
       "registered",
-      `Registered ${entrypointIds.length} entrypoints`,
+      `Registered ${registered.length} entrypoints`,
     );
 
     // Verify auth is working by checking entrypoint responses
-    if (authResult.hasAuth && entrypointIds.length > 0) {
-      console.log(`[Entrypoints] Verifying auth on ${entrypointIds.length} registered entrypoint(s)...`);
-      const check = await verifyEntrypointAuth(bright, projectId, entrypointIds[0]);
+    if (authResult.hasAuth && registered.length > 0) {
+      console.log(`[Entrypoints] Verifying auth on ${registered.length} registered entrypoint(s)...`);
+      const check = await verifyEntrypointAuth(bright, projectId, registered[0].entrypointId);
       if (check.ok) {
         console.log(`[Entrypoints] ✓ Auth verification passed — ${check.detail}`);
       } else {
@@ -170,23 +170,23 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     }
 
     // Prune entrypoints that returned 404 — they waste scan time
-    if (entrypointIds.length > 0) {
-      entrypointIds = await pruneDeadEntrypoints(
+    if (registered.length > 0) {
+      registered = await pruneDeadEntrypoints(
         bright,
         projectId,
-        entrypointIds,
+        registered,
         config.brightToken,
         config.brightHostname,
       );
       await progress.phaseDetail(
         "entrypoints",
         "pruned",
-        `${entrypointIds.length} live entrypoints after pruning 404s`,
+        `${registered.length} live entrypoints after pruning 404s`,
       );
     }
 
     // ----- Phase 6–8: Scan → Fix → Validate loop -----
-    if (entrypointIds.length === 0) {
+    if (registered.length === 0) {
       await progress.phaseStart(
         "done",
         "No entrypoints could be registered with Bright. Check MCP logs for validation errors.",
@@ -194,10 +194,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       return;
     }
 
+    // Extract paired arrays — now guaranteed to be in sync
+    const liveEndpoints = registered.map((r) => r.endpoint);
+    const entrypointIds = registered.map((r) => r.entrypointId);
+
     // ----- Phase 6: Select relevant tests per endpoint -----
     await progress.phaseStart("test_selection", "Selecting relevant security tests per endpoint");
     const scanGroups = await selectTestsPerEndpoint(
-      llm, bright, safeEndpoints, entrypointIds, techStack, authResult.hasAuth,
+      llm, bright, liveEndpoints, entrypointIds, techStack, authResult.hasAuth,
     );
     await progress.phaseDetail(
       "test_selection",
