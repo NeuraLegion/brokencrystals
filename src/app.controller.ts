@@ -252,6 +252,8 @@ export class AppController {
   }
 
   @Get('/config')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
     description: API_DESC_CONFIG_SERVER
   })
@@ -263,6 +265,8 @@ export class AppController {
   }
 
   @Get('/secrets')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
   @ApiOperation({
     description: SWAGGER_DESC_SECRETS
   })

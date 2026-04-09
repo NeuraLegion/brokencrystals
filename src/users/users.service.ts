@@ -125,9 +125,15 @@ export class UsersService {
 
   async searchByName(query: string, limit?: number): Promise<User[]> {
     this.log.debug(`Called searchUsersByName`);
+
+    const normalizedQuery = typeof query === 'string' ? query.trim() : '';
+    if (!normalizedQuery.length) {
+      return [];
+    }
+
     return this.usersRepository.find(
       {
-        firstName: { $like: query + '%' }
+        firstName: { $like: normalizedQuery }
       },
       limit ? { limit } : {}
     );

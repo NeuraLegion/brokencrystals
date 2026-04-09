@@ -398,7 +398,9 @@ export class McpController {
 
     try {
       const result = await this.mcpService.readResource(params, {
-        authorizationHeader: session.authorizationHeader
+        authorizationHeader: session.authorizationHeader,
+        role: session.role,
+        authenticated: session.authenticated
       });
 
       return {
@@ -635,7 +637,9 @@ export class McpController {
     try {
       const result = await this.mcpService.callTool(params, {
         authorizationHeader: session.authorizationHeader,
-        onPartialOutput
+        onPartialOutput,
+        role: session.role,
+        authenticated: session.authenticated
       });
 
       return {

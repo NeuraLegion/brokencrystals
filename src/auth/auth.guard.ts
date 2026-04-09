@@ -49,11 +49,28 @@ export class AuthGuard implements CanActivate {
       token = request.cookies[AuthGuard.AUTH_HEADER];
     }
 
+    if (typeof token !== 'string') {
+      return undefined;
+    }
+
     if (this.checkIsBearer(token)) {
       token = token.substring(AuthGuard.BEARER_PREFIX.length).trim();
     }
 
+    if (!this.isWellFormedJwt(token)) {
+      return undefined;
+    }
+
     return token?.length ? token : undefined;
+  }
+
+  private isWellFormedJwt(token: string): boolean {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return false;
+    }
+
+    return parts.every((part) => part.length > 0);
   }
 
   private getRequest(context: ExecutionContext): FastifyRequest {
@@ -70,6 +87,10 @@ export class AuthGuard implements CanActivate {
       JwTypeMetadataField,
       context.getHandler()
     );
+
+    if (!processorType) {
+      return false;
+    }
 
     try {
       return !!(await this.authService.validateToken(token, processorType));

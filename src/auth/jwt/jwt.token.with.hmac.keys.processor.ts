@@ -1,8 +1,10 @@
 import { Logger } from '@nestjs/common';
+import * as jwt from 'jsonwebtoken';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
-import { encode, decode } from 'jwt-simple';
 
 export class JwtTokenWithHMACKeysProcessor extends JwtTokenProcessor {
+  private static readonly EXPECTED_ALG = 'HS256';
+
   constructor(private privateKey: string) {
     super(new Logger(JwtTokenWithHMACKeysProcessor.name));
   }
@@ -12,17 +14,40 @@ export class JwtTokenWithHMACKeysProcessor extends JwtTokenProcessor {
 
     const [header] = this.parse(token);
 
-    if (header.alg !== 'HS256') {
+    if (!header || header.alg !== JwtTokenWithHMACKeysProcessor.EXPECTED_ALG) {
       throw new Error('Invalid JWT algorithm');
     }
 
-    return decode(token, this.privateKey, false, 'HS256');
+    return new Promise((resolve, reject) => {
+      jwt.verify(
+        token,
+        this.privateKey,
+        {
+          algorithms: [JwtTokenWithHMACKeysProcessor.EXPECTED_ALG],
+          complete: false,
+          clockTolerance: 0
+        },
+        (err, decoded) => {
+          if (err) {
+            return reject(new Error('Invalid JWT signature'));
+          }
+
+          if (!decoded || typeof decoded !== 'object') {
+            return reject(new Error('Invalid JWT payload'));
+          }
+
+          resolve(decoded);
+        }
+      );
+    });
   }
 
   async createToken(payload: unknown): Promise<string> {
     this.log.debug('Call createToken');
 
-    const token = encode(payload, this.privateKey, 'HS256');
-    return token;
+    return jwt.sign(payload as jwt.JwtPayload, this.privateKey, {
+      algorithm: JwtTokenWithHMACKeysProcessor.EXPECTED_ALG,
+      noTimestamp: true
+    });
   }
 }

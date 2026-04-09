@@ -119,6 +119,8 @@ export class UsersController {
   }
 
   @Get('/id/:id')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
   @ApiQuery({ name: 'id', example: 1, required: true })
   @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
@@ -126,7 +128,18 @@ export class UsersController {
   })
   @ApiOkResponse({
     type: UserDto,
-    description: 'Returns basic user info if it exists'
+    description: 'Returns basic user info if authorized'
+  })
+  @ApiForbiddenResponse({
+    description: 'invalid credentials',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' },
+        error: { type: 'string' }
+      }
+    }
   })
   @ApiNotFoundResponse({
     description: 'User not found',
@@ -138,10 +151,25 @@ export class UsersController {
       }
     }
   })
-  async getById(@Param('id') id: number): Promise<UserDto> {
+  async getById(
+    @Param('id') id: string,
+    @Req() req: FastifyRequest
+  ): Promise<UserDto> {
     try {
-      this.logger.debug(`Find a user by id: ${id}`);
-      return new UserDto(await this.usersService.findById(id));
+      const requestedId = Number(id);
+      if (!Number.isInteger(requestedId) || requestedId <= 0) {
+        throw new NotFoundException('User not found');
+      }
+
+      const email = this.originEmail(req);
+      const currentUser = await this.usersService.findByEmail(email);
+
+      if (currentUser.id !== requestedId) {
+        throw new ForbiddenException();
+      }
+
+      this.logger.debug(`Find a user by id: ${requestedId}`);
+      return new UserDto(currentUser);
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }

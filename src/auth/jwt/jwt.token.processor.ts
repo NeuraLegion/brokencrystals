@@ -14,16 +14,35 @@ export abstract class JwtTokenProcessor {
     this.log.debug('Call parse');
 
     const parts = token.split('.');
-    if (parts.length != 3 || !parts[0]) {
-      throw new Error('Failed to parse jwt token header');
+    if (parts.length != 3 || !parts[0] || !parts[1] || !parts[2]) {
+      throw new Error('Failed to parse jwt token');
     }
-    const headerStr = Buffer.from(parts[0], 'base64').toString('ascii');
-    this.log.debug(`Jwt token header is ${headerStr}`);
-    const header: JwtHeader = JSON.parse(headerStr);
 
-    const payloadStr = Buffer.from(parts[1], 'base64').toString('ascii');
-    this.log.debug('Jwt token payload parsed');
-    const payload = JSON.parse(payloadStr);
+    let headerStr: string;
+    let payloadStr: string;
+
+    try {
+      headerStr = Buffer.from(parts[0], 'base64url').toString('utf8');
+      payloadStr = Buffer.from(parts[1], 'base64url').toString('utf8');
+    } catch {
+      throw new Error('Failed to parse jwt token');
+    }
+
+    this.log.debug(`Jwt token header is ${headerStr}`);
+
+    let header: JwtHeader;
+    let payload: unknown;
+
+    try {
+      header = JSON.parse(headerStr);
+      payload = JSON.parse(payloadStr);
+    } catch {
+      throw new Error('Failed to parse jwt token');
+    }
+
+    if (!header || typeof header !== 'object') {
+      throw new Error('Failed to parse jwt token');
+    }
 
     return [header, payload];
   }
