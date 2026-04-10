@@ -67,7 +67,12 @@ export async function setupRepeater(
   });
 
   // Wait for the repeater process to report connection or fail
-  await waitForRepeaterReady(proc, 60_000);
+  try {
+    await waitForRepeaterReady(proc, 60_000);
+  } catch (err) {
+    proc.kill("SIGTERM");
+    throw err;
+  }
 
   console.log(`[Repeater] Connected: ${repeaterId}`);
   return { repeaterId, process: proc };

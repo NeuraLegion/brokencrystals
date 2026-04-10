@@ -10,7 +10,7 @@ import { detectAndConfigureAuth, testAuthObject, type AuthResult } from "./phase
 import { registerEntrypoints, verifyEntrypointAuth, pruneDeadEntrypoints, type RegisteredEntrypoint } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
 import { selectTestsPerEndpoint, type ScanGroup } from "./phases/test-selection.js";
-import { runSecurityScan, waitForScanCompletion } from "./phases/scan.js";
+import { runSecurityScan, waitForScanCompletion, isFailureStatus } from "./phases/scan.js";
 import { fetchFindings } from "./phases/findings.js";
 import { generateFixes, applyFixes } from "./phases/fix.js";
 import { chatWithTools } from "./inference.js";
@@ -288,7 +288,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       const scanResults = await Promise.allSettled(
         scanIds.map(async (scanId, si) => {
           console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
-          const finalStatus = await waitForScanCompletion(bright, scanId, (status, issues) => {
+          const finalStatus = await waitForScanCompletion(config.brightToken, config.brightHostname, scanId, (status, issues) => {
             console.log(`[Scan] Scan ${si + 1}/${scanIds.length}: ${status} — ${issues} issue(s)`);
           });
           return finalStatus;
@@ -300,7 +300,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         if (result.status === "rejected") {
           console.error(`[Scan] Error waiting for scan ${scanIds[si]}: ${result.reason}`);
           anyFailed = true;
-        } else if (result.value === "failed" || result.value === "disrupted") {
+        } else if (isFailureStatus(result.value)) {
           console.error(`[Scan] Scan ${scanIds[si]} ended with status: ${result.value}`);
           anyFailed = true;
         }
@@ -378,7 +378,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         return;
       }
 
-      // --- Fix findings one at a time ---
+      // --- Fix findings one at a time (commit each, restart once after all) ---
       await progress.phaseStart(
         "fix",
         `Fixing ${findings.length} vulnerabilities — round ${iteration + 1}`,
@@ -386,6 +386,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       let fixedCount = 0;
       let skippedCount = 0;
+      const fixCommitCount = { value: 0 }; // track commits for bisect
 
       for (const [fi, finding] of findings.entries()) {
         console.log(`[Fix] [${fi + 1}/${findings.length}] Fixing: ${finding.severity} — ${finding.name} at ${finding.url}`);
@@ -409,18 +410,23 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         applyFixes(repoPath, fixes);
         allFixes.push(...fixes);
 
-        // Commit this single fix
+        // Commit this single fix (no restart yet)
         try {
           gitCommitAndPush(
             repoPath,
             `fix: ${finding.severity.toLowerCase()} — ${finding.name}`,
           );
+          fixCommitCount.value++;
           console.log(`[Fix] Committed fix for ${finding.name}`);
         } catch (err) {
           console.error(`[Fix] Commit failed for ${finding.name}: ${err}`);
         }
 
-        // Restart and verify the app is still healthy
+        fixedCount++;
+      }
+
+      // --- Single restart after all fixes applied ---
+      if (fixCommitCount.value > 0) {
         await killProcess(appProcess);
         let healthy = false;
 
@@ -429,54 +435,32 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           appProcess = restart.process;
           healthy = true;
         } catch (startupErr) {
-          console.error(`[Fix] App broken after fixing ${finding.name}: ${startupErr}`);
+          console.error(`[Fix] App broken after applying ${fixCommitCount.value} fix(es): ${startupErr}`);
 
-          // Try diagnosing + repairing
+          // Bisect to find the breaking commit
           const containerLogs = captureDockerLogs(repoPath);
-          for (let repair = 0; repair < MAX_FIX_REPAIR_ATTEMPTS; repair++) {
+          healthy = await bisectAndRevertBrokenFixes(
+            llm, repoPath, techStack, startupConfig, containerLogs,
+            fixCommitCount.value, allFixes,
+          );
+          if (healthy) {
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            appProcess = restart.process;
+          } else {
+            // Last resort: revert ALL fix commits from this round
+            console.log(`[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`);
             try {
-              const repairFixes = await diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, fixes);
-              if (repairFixes.length > 0) {
-                applyFixes(repoPath, repairFixes);
-                allFixes.push(...repairFixes);
-                try { gitCommitAndPush(repoPath, `fix: repair ${finding.name} (repair ${repair + 1})`); } catch { /* ignore */ }
-              }
-              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
-              appProcess = restart.process;
-              healthy = true;
-              console.log(`[Fix] Repaired after ${repair + 1} attempt(s)`);
-              break;
-            } catch {
-              console.error(`[Fix] Repair attempt ${repair + 1} failed`);
-            }
-          }
-
-          // If still broken, revert this fix and move on
-          if (!healthy) {
-            console.log(`[Fix] Reverting fix for ${finding.name}`);
-            try {
-              execFileSync("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
+              execFileSync("git", ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`], { cwd: repoPath, stdio: "pipe" });
               execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-            } catch {
-              try {
-                execFileSync("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
-                execFileSync("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
-              } catch { /* give up reverting */ }
-            }
-
-            try {
               const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
               appProcess = restart.process;
             } catch {
-              console.error("[Fix] App won't start even after revert — aborting fix round");
-              break;
+              console.error("[Fix] Could not recover — aborting fix round");
             }
-            skippedCount++;
-            continue;
           }
         }
 
-        // Verify auth is still working after this fix
+        // Verify auth after restart
         if (healthy && authResult.hasAuth && authResult.authObjectId) {
           const authOk = await verifyAndRepairAuth(
             llm, repoPath, techStack,
@@ -485,32 +469,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             allFixes,
           );
           if (!authOk) {
-            console.warn(`[Fix] Auth broke after fixing ${finding.name} — reverting`);
-            try {
-              execFileSync("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
-              execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-            } catch {
-              try {
-                execFileSync("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
-                execFileSync("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
-              } catch { /* give up */ }
-            }
-
-            // Restart after revert
-            await killProcess(appProcess);
-            try {
-              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
-              appProcess = restart.process;
-            } catch {
-              console.error("[Fix] App won't start after auth-revert — aborting fix round");
-              break;
-            }
-            skippedCount++;
-            continue;
+            console.warn("[Fix] Auth broken after fixes — will attempt repair on next round");
           }
         }
-
-        fixedCount++;
       }
 
       await progress.phaseDetail(
@@ -777,6 +738,70 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
   }
 
   console.error("[Auth] Could not repair auth after all attempts");
+  return false;
+}
+
+/**
+ * Binary-search the last N fix commits to find which one broke the app.
+ * Reverts the breaking commit(s) and returns true if the app is recoverable.
+ */
+async function bisectAndRevertBrokenFixes(
+  llm: Parameters<typeof chatWithTools>[0],
+  repoPath: string,
+  techStack: import("./types.js").TechStack,
+  startupConfig: StartupResult["config"],
+  containerLogs: string,
+  commitCount: number,
+  allFixes: SecurityFix[],
+): Promise<boolean> {
+  if (commitCount <= 0) return false;
+
+  // Simple approach: first try diagnosing + repairing
+  for (let repair = 0; repair < MAX_FIX_REPAIR_ATTEMPTS; repair++) {
+    try {
+      const repairFixes = await diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, allFixes);
+      if (repairFixes.length > 0) {
+        applyFixes(repoPath, repairFixes);
+        allFixes.push(...repairFixes);
+        try { gitCommitAndPush(repoPath, `fix: repair broken fix (attempt ${repair + 1})`); } catch { /* ignore */ }
+      }
+      // Test if app starts now
+      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+      await killProcess(restart.process);
+      console.log(`[Fix] Repaired after ${repair + 1} attempt(s)`);
+      return true;
+    } catch {
+      console.error(`[Fix] Repair attempt ${repair + 1} failed`);
+    }
+  }
+
+  // Repair failed — bisect by reverting commits one at a time from newest to oldest
+  console.log(`[Fix] Bisecting ${commitCount} fix commits to find the breaker`);
+  for (let i = 0; i < commitCount; i++) {
+    try {
+      execFileSync("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
+      execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
+    } catch {
+      // Abort the failed revert to clean up the repo state
+      try { execFileSync("git", ["revert", "--abort"], { cwd: repoPath, stdio: "pipe" }); } catch { /* no revert in progress */ }
+      try {
+        execFileSync("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
+        execFileSync("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
+      } catch {
+        return false;
+      }
+    }
+
+    try {
+      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+      await killProcess(restart.process);
+      console.log(`[Fix] App recovered after reverting ${i + 1} commit(s)`);
+      return true;
+    } catch {
+      console.log(`[Fix] Still broken after reverting ${i + 1} commit(s), continuing bisect...`);
+    }
+  }
+
   return false;
 }
 

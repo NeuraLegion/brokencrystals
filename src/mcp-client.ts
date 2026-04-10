@@ -212,7 +212,7 @@ export async function createBrightMcpClient(
     }
     reconnectPromise = (async () => {
       console.log("[MCP] Session lost, reconnecting...");
-      try { await client.close(); } catch { /* already dead */ }
+      try { await client.close(); } catch (err) { console.warn(`[MCP] Error closing old client: ${err instanceof Error ? err.message : String(err)}`); }
       cachedSchemas = null;
 
       // Retry connection up to 3 times with backoff

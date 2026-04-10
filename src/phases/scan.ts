@@ -1,4 +1,3 @@
-import type { BrightMcpClient } from "../mcp-client.js";
 import { sleep } from "../utils.js";
 
 const DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
@@ -149,8 +148,22 @@ function tryFixScanConfig(errorText: string, tests: string[]): string[] | null {
   return null;
 }
 
+const TERMINAL_STATUSES = new Set(["done", "completed", "stopped", "failed", "disrupted"]);
+
+function isTerminalStatus(status: string): boolean {
+  return TERMINAL_STATUSES.has(status.toLowerCase());
+}
+
+function isFailureStatus(status: string): boolean {
+  const s = status.toLowerCase();
+  return s === "failed" || s === "disrupted" || s === "timeout";
+}
+
+export { isFailureStatus };
+
 export async function waitForScanCompletion(
-  bright: BrightMcpClient,
+  brightToken: string,
+  brightHostname: string,
   scanId: string,
   onProgress?: (status: string, issuesFound: number) => void,
   timeoutMs = 40 * 60 * 1000,
@@ -162,21 +175,44 @@ export async function waitForScanCompletion(
   await sleep(pollInterval);
 
   while (Date.now() - start < timeoutMs) {
-    const status = await bright.getScanStatus(scanId);
-    const issues = status.issuesFound ?? 0;
+    const scanStatus = await getScanStatusViaRest(brightToken, brightHostname, scanId);
+    const issues = scanStatus.issuesFound;
 
-    onProgress?.(status.status, issues);
+    onProgress?.(scanStatus.status, issues);
 
-    const terminal = ["done", "stopped", "failed", "disrupted"];
-    if (terminal.includes(status.status)) {
-      console.log(`[Scan] Completed: ${status.status} (${issues} issues)`);
-      return status.status;
+    if (isTerminalStatus(scanStatus.status)) {
+      console.log(`[Scan] Completed: ${scanStatus.status} (${issues} issues)`);
+      return scanStatus.status.toLowerCase();
     }
 
-    console.log(`[Scan] Status: ${status.status} (${issues} issues found so far)`);
+    console.log(`[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`);
     await sleep(pollInterval);
   }
 
   console.warn(`[Scan] Timed out after ${timeoutMs / 1000}s`);
   return "timeout";
+}
+
+async function getScanStatusViaRest(
+  brightToken: string,
+  brightHostname: string,
+  scanId: string,
+): Promise<{ status: string; issuesFound: number }> {
+  const url = `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Api-Key ${brightToken}` },
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`getScanStatus failed (${res.status}): ${text.slice(0, 300)}`);
+  }
+
+  const data = (await res.json()) as Record<string, unknown>;
+  return {
+    status: (data.status as string) ?? "unknown",
+    issuesFound: (data.issuesBySeverity
+      ? Object.values(data.issuesBySeverity as Record<string, number>).reduce((a, b) => a + b, 0)
+      : (data.issuesFound as number) ?? 0),
+  };
 }

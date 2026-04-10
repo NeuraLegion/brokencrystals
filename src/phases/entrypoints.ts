@@ -163,7 +163,7 @@ export async function verifyEntrypointAuth(
   } catch (err) {
     const msg = toErrorMessage(err);
     console.warn(`[Entrypoints] Failed to verify entrypoint auth: ${msg}`);
-    return { ok: true, detail: `Could not verify: ${msg}` };
+    return { ok: false, detail: `Could not verify: ${msg}` };
   }
 }
 

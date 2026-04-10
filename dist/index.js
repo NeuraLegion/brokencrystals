@@ -27147,7 +27147,8 @@ async function createBrightMcpClient(config2) {
       console.log("[MCP] Session lost, reconnecting...");
       try {
         await client.close();
-      } catch {
+      } catch (err) {
+        console.warn(`[MCP] Error closing old client: ${err instanceof Error ? err.message : String(err)}`);
       }
       cachedSchemas = null;
       let lastErr;
@@ -35004,7 +35005,7 @@ async function verifyEntrypointAuth(bright, projectId, entrypointId) {
   } catch (err) {
     const msg = toErrorMessage(err);
     console.warn(`[Entrypoints] Failed to verify entrypoint auth: ${msg}`);
-    return { ok: true, detail: `Could not verify: ${msg}` };
+    return { ok: false, detail: `Could not verify: ${msg}` };
   }
 }
 async function pruneDeadEntrypoints(bright, projectId, entries, brightToken, brightHostname) {
@@ -35130,7 +35131,12 @@ async function setupRepeater(_llm, _bright, projectId, brightToken, brightHostna
   proc2.on("error", (err) => {
     console.error(`[Repeater] Process error: ${err.message}`);
   });
-  await waitForRepeaterReady(proc2, 6e4);
+  try {
+    await waitForRepeaterReady(proc2, 6e4);
+  } catch (err) {
+    proc2.kill("SIGTERM");
+    throw err;
+  }
   console.log(`[Repeater] Connected: ${repeaterId}`);
   return { repeaterId, process: proc2 };
 }
@@ -35395,24 +35401,46 @@ function tryFixScanConfig(errorText, tests) {
   }
   return null;
 }
-async function waitForScanCompletion(bright, scanId, onProgress, timeoutMs = 40 * 60 * 1e3) {
+var TERMINAL_STATUSES = /* @__PURE__ */ new Set(["done", "completed", "stopped", "failed", "disrupted"]);
+function isTerminalStatus(status) {
+  return TERMINAL_STATUSES.has(status.toLowerCase());
+}
+function isFailureStatus(status) {
+  const s = status.toLowerCase();
+  return s === "failed" || s === "disrupted" || s === "timeout";
+}
+async function waitForScanCompletion(brightToken, brightHostname, scanId, onProgress, timeoutMs = 40 * 60 * 1e3) {
   const start = Date.now();
   const pollInterval = 3e4;
   await sleep2(pollInterval);
   while (Date.now() - start < timeoutMs) {
-    const status = await bright.getScanStatus(scanId);
-    const issues = status.issuesFound ?? 0;
-    onProgress?.(status.status, issues);
-    const terminal = ["done", "stopped", "failed", "disrupted"];
-    if (terminal.includes(status.status)) {
-      console.log(`[Scan] Completed: ${status.status} (${issues} issues)`);
-      return status.status;
+    const scanStatus = await getScanStatusViaRest(brightToken, brightHostname, scanId);
+    const issues = scanStatus.issuesFound;
+    onProgress?.(scanStatus.status, issues);
+    if (isTerminalStatus(scanStatus.status)) {
+      console.log(`[Scan] Completed: ${scanStatus.status} (${issues} issues)`);
+      return scanStatus.status.toLowerCase();
     }
-    console.log(`[Scan] Status: ${status.status} (${issues} issues found so far)`);
+    console.log(`[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`);
     await sleep2(pollInterval);
   }
   console.warn(`[Scan] Timed out after ${timeoutMs / 1e3}s`);
   return "timeout";
+}
+async function getScanStatusViaRest(brightToken, brightHostname, scanId) {
+  const url2 = `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
+  const res = await fetch(url2, {
+    headers: { Authorization: `Api-Key ${brightToken}` }
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`getScanStatus failed (${res.status}): ${text.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  return {
+    status: data.status ?? "unknown",
+    issuesFound: data.issuesBySeverity ? Object.values(data.issuesBySeverity).reduce((a, b) => a + b, 0) : data.issuesFound ?? 0
+  };
 }
 
 // src/phases/findings.ts
@@ -35884,7 +35912,7 @@ async function runOrchestrator(ctx) {
       const scanResults = await Promise.allSettled(
         scanIds.map(async (scanId, si) => {
           console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
-          const finalStatus = await waitForScanCompletion(bright, scanId, (status, issues) => {
+          const finalStatus = await waitForScanCompletion(config2.brightToken, config2.brightHostname, scanId, (status, issues) => {
             console.log(`[Scan] Scan ${si + 1}/${scanIds.length}: ${status} \u2014 ${issues} issue(s)`);
           });
           return finalStatus;
@@ -35895,7 +35923,7 @@ async function runOrchestrator(ctx) {
         if (result.status === "rejected") {
           console.error(`[Scan] Error waiting for scan ${scanIds[si]}: ${result.reason}`);
           anyFailed = true;
-        } else if (result.value === "failed" || result.value === "disrupted") {
+        } else if (isFailureStatus(result.value)) {
           console.error(`[Scan] Scan ${scanIds[si]} ended with status: ${result.value}`);
           anyFailed = true;
         }
@@ -35958,6 +35986,7 @@ async function runOrchestrator(ctx) {
       );
       let fixedCount = 0;
       let skippedCount = 0;
+      const fixCommitCount = { value: 0 };
       for (const [fi, finding] of findings.entries()) {
         console.log(`[Fix] [${fi + 1}/${findings.length}] Fixing: ${finding.severity} \u2014 ${finding.name} at ${finding.url}`);
         let fixes;
@@ -35980,10 +36009,14 @@ async function runOrchestrator(ctx) {
             repoPath,
             `fix: ${finding.severity.toLowerCase()} \u2014 ${finding.name}`
           );
+          fixCommitCount.value++;
           console.log(`[Fix] Committed fix for ${finding.name}`);
         } catch (err) {
           console.error(`[Fix] Commit failed for ${finding.name}: ${err}`);
         }
+        fixedCount++;
+      }
+      if (fixCommitCount.value > 0) {
         await killProcess(appProcess);
         let healthy = false;
         try {
@@ -35991,49 +36024,30 @@ async function runOrchestrator(ctx) {
           appProcess = restart.process;
           healthy = true;
         } catch (startupErr) {
-          console.error(`[Fix] App broken after fixing ${finding.name}: ${startupErr}`);
+          console.error(`[Fix] App broken after applying ${fixCommitCount.value} fix(es): ${startupErr}`);
           const containerLogs = captureDockerLogs(repoPath);
-          for (let repair = 0; repair < MAX_FIX_REPAIR_ATTEMPTS; repair++) {
+          healthy = await bisectAndRevertBrokenFixes(
+            llm,
+            repoPath,
+            techStack,
+            startupConfig,
+            containerLogs,
+            fixCommitCount.value,
+            allFixes
+          );
+          if (healthy) {
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            appProcess = restart.process;
+          } else {
+            console.log(`[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`);
             try {
-              const repairFixes = await diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, fixes);
-              if (repairFixes.length > 0) {
-                applyFixes(repoPath, repairFixes);
-                allFixes.push(...repairFixes);
-                try {
-                  gitCommitAndPush(repoPath, `fix: repair ${finding.name} (repair ${repair + 1})`);
-                } catch {
-                }
-              }
-              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
-              appProcess = restart.process;
-              healthy = true;
-              console.log(`[Fix] Repaired after ${repair + 1} attempt(s)`);
-              break;
-            } catch {
-              console.error(`[Fix] Repair attempt ${repair + 1} failed`);
-            }
-          }
-          if (!healthy) {
-            console.log(`[Fix] Reverting fix for ${finding.name}`);
-            try {
-              execFileSync4("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
+              execFileSync4("git", ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`], { cwd: repoPath, stdio: "pipe" });
               execFileSync4("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-            } catch {
-              try {
-                execFileSync4("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
-                execFileSync4("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
-              } catch {
-              }
-            }
-            try {
               const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
               appProcess = restart.process;
             } catch {
-              console.error("[Fix] App won't start even after revert \u2014 aborting fix round");
-              break;
+              console.error("[Fix] Could not recover \u2014 aborting fix round");
             }
-            skippedCount++;
-            continue;
           }
         }
         if (healthy && authResult.hasAuth && authResult.authObjectId) {
@@ -36047,30 +36061,9 @@ async function runOrchestrator(ctx) {
             allFixes
           );
           if (!authOk) {
-            console.warn(`[Fix] Auth broke after fixing ${finding.name} \u2014 reverting`);
-            try {
-              execFileSync4("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
-              execFileSync4("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-            } catch {
-              try {
-                execFileSync4("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
-                execFileSync4("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
-              } catch {
-              }
-            }
-            await killProcess(appProcess);
-            try {
-              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
-              appProcess = restart.process;
-            } catch {
-              console.error("[Fix] App won't start after auth-revert \u2014 aborting fix round");
-              break;
-            }
-            skippedCount++;
-            continue;
+            console.warn("[Fix] Auth broken after fixes \u2014 will attempt repair on next round");
           }
         }
-        fixedCount++;
       }
       await progress.phaseDetail(
         "fix",
@@ -36275,6 +36268,55 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
     }
   }
   console.error("[Auth] Could not repair auth after all attempts");
+  return false;
+}
+async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfig, containerLogs, commitCount, allFixes) {
+  if (commitCount <= 0) return false;
+  for (let repair = 0; repair < MAX_FIX_REPAIR_ATTEMPTS; repair++) {
+    try {
+      const repairFixes = await diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, allFixes);
+      if (repairFixes.length > 0) {
+        applyFixes(repoPath, repairFixes);
+        allFixes.push(...repairFixes);
+        try {
+          gitCommitAndPush(repoPath, `fix: repair broken fix (attempt ${repair + 1})`);
+        } catch {
+        }
+      }
+      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+      await killProcess(restart.process);
+      console.log(`[Fix] Repaired after ${repair + 1} attempt(s)`);
+      return true;
+    } catch {
+      console.error(`[Fix] Repair attempt ${repair + 1} failed`);
+    }
+  }
+  console.log(`[Fix] Bisecting ${commitCount} fix commits to find the breaker`);
+  for (let i = 0; i < commitCount; i++) {
+    try {
+      execFileSync4("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
+      execFileSync4("git", ["push"], { cwd: repoPath, stdio: "pipe" });
+    } catch {
+      try {
+        execFileSync4("git", ["revert", "--abort"], { cwd: repoPath, stdio: "pipe" });
+      } catch {
+      }
+      try {
+        execFileSync4("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
+        execFileSync4("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
+      } catch {
+        return false;
+      }
+    }
+    try {
+      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+      await killProcess(restart.process);
+      console.log(`[Fix] App recovered after reverting ${i + 1} commit(s)`);
+      return true;
+    } catch {
+      console.log(`[Fix] Still broken after reverting ${i + 1} commit(s), continuing bisect...`);
+    }
+  }
   return false;
 }
 async function diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, appliedFixes) {
