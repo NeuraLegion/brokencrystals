@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { decode, encode } from 'jwt-simple';
+import { readFileSync } from 'fs';
+import { JwtPayload, SignOptions, VerifyOptions, sign, verify } from 'jsonwebtoken';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithRSASignatureKeysProcessor extends JwtTokenProcessor {
@@ -13,13 +14,20 @@ export class JwtTokenWithRSASignatureKeysProcessor extends JwtTokenProcessor {
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
 
-    return decode(token, this.publicKey, true, 'RS256');
+    const verifyOptions: VerifyOptions = {
+      algorithms: ['RS256']
+    };
+
+    return verify(token, this.publicKey, verifyOptions);
   }
 
   async createToken(payload: unknown): Promise<string> {
     this.log.debug('Call createToken');
 
-    const token = encode(payload, this.privateKey, 'RS256');
-    return token;
+    const signOptions: SignOptions = {
+      algorithm: 'RS256'
+    };
+
+    return sign(payload as JwtPayload | string | Buffer, this.privateKey, signOptions);
   }
 }
