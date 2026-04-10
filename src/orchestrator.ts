@@ -2,11 +2,11 @@ import { gitCommitAndPush } from "./platform.js";
 import { execFileSync, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
 import type { OrchestratorContext, SecurityFix, Finding } from "./types.js";
-import { ProgressReporter } from "./progress.js";
+import { ProgressReporter, type FindingSummary } from "./progress.js";
 import { formatTechStack } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import { startApplicationWithRetries, captureDockerLogs, type StartupResult } from "./phases/startup.js";
-import { detectAndConfigureAuth, type AuthResult } from "./phases/auth.js";
+import { detectAndConfigureAuth, testAuthObject, type AuthResult } from "./phases/auth.js";
 import { registerEntrypoints, verifyEntrypointAuth, pruneDeadEntrypoints, type RegisteredEntrypoint } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
 import { selectTestsPerEndpoint, type ScanGroup } from "./phases/test-selection.js";
@@ -26,6 +26,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   let appProcess: ChildProcess | undefined;
   let repeater: RepeaterHandle | undefined;
   const allScanIds: string[] = [];
+  const allFindings = new Map<string, FindingSummary>(); // issueId → summary
+  const fixedIssueIds = new Set<string>();
 
   try {
     // ----- Phase 1: Analyze codebase -----
@@ -214,6 +216,43 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
       const iterLabel = `${iteration + 1}/${MAX_ITERATIONS}`;
 
+      // --- Verify auth before each scan round (after fixes) ---
+      if (iteration > 0 && authResult.hasAuth && authResult.authObjectId) {
+        console.log(`[Auth] Verifying auth before round ${iteration + 1}...`);
+        const authOk = await verifyAndRepairAuth(
+          llm, repoPath, techStack,
+          authResult.authObjectId,
+          config.brightToken, config.brightHostname,
+          allFixes,
+        );
+        if (!authOk) {
+          // Auth is broken and couldn't be repaired — need to restart the app
+          // in case a code repair was applied, then retry
+          await killProcess(appProcess);
+          try {
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            appProcess = restart.process;
+            // Retest after restart
+            const retryOk = await verifyAndRepairAuth(
+              llm, repoPath, techStack,
+              authResult.authObjectId,
+              config.brightToken, config.brightHostname,
+              allFixes,
+            );
+            if (!retryOk) {
+              await progress.phaseDetail("scan", "auth_broken", "Auth broken after fixes — cannot continue scanning");
+              buildSummaryTable(progress, allFindings, fixedIssueIds);
+              await progress.phaseStart("done", `Authentication broke after round ${iteration} fixes and could not be repaired. ${allFixes.length} fixes were applied.`);
+              return;
+            }
+          } catch {
+            buildSummaryTable(progress, allFindings, fixedIssueIds);
+            await progress.phaseStart("done", `App failed to restart for auth repair. ${allFixes.length} fixes were applied.`);
+            return;
+          }
+        }
+      }
+
       // --- Scan all groups ---
       await progress.phaseStart(
         "scan",
@@ -296,7 +335,31 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           : `Round ${iteration + 1} complete — no vulnerabilities found`,
       );
 
+      // Track all findings — mark previously-seen ones as fixed if they didn't reappear
+      if (iteration > 0) {
+        const currentIssueIds = new Set(findings.map((f) => f.issueId));
+        for (const [issueId] of allFindings) {
+          if (!currentIssueIds.has(issueId)) {
+            fixedIssueIds.add(issueId);
+          }
+        }
+      }
+      for (const f of findings) {
+        if (!allFindings.has(f.issueId)) {
+          allFindings.set(f.issueId, {
+            name: f.name,
+            severity: f.severity,
+            url: f.url,
+            method: f.method,
+            status: "Open",
+          });
+        }
+      }
+
       if (findings.length === 0) {
+        // Mark everything as fixed
+        for (const [, s] of allFindings) s.status = "Fixed";
+        buildSummaryTable(progress, allFindings, fixedIssueIds);
         const msg =
           iteration === 0
             ? "No vulnerabilities found — application appears secure."
@@ -307,6 +370,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       // Last iteration is validation-only
       if (iteration === MAX_ITERATIONS - 1) {
+        buildSummaryTable(progress, allFindings, fixedIssueIds);
         await progress.phaseStart(
           "done",
           `Reached ${MAX_ITERATIONS} rounds. ${findings.length} vulnerabilities remain. ${allFixes.length} fixes were applied.`,
@@ -342,19 +406,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         console.error(`[Fix] git commit and push failed:`, err);
       }
 
-      const fixedFiles = fixes.flatMap((f) => f.files.map((ff) => ff.path));
       await progress.phaseDetail(
         "fix",
         "applied",
-        `Applied ${fixes.length} fix(es) across ${fixedFiles.length} file(s), restarting for validation...`,
+        `Applied ${fixes.length} fix(es), restarting for validation...`,
       );
-      for (const fix of fixes) {
-        await progress.phaseDetail(
-          "fix",
-          "detail",
-          `${fix.vulnerability.severity} — ${fix.vulnerability.name}: ${fix.summary}`,
-        );
-      }
 
       // Restart application with fixed code — if it fails, diagnose and repair
       await killProcess(appProcess);
@@ -435,6 +491,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             restarted = true;
           } catch {
             console.error("[Fix] App still won't start even after revert — aborting");
+            buildSummaryTable(progress, allFindings, fixedIssueIds);
             await progress.phaseStart(
               "done",
               `Applied fixes broke the application and could not be repaired. ${allFixes.length} fixes were attempted.`,
@@ -445,6 +502,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
     }
   } finally {
+    // Always publish the summary table — ensures ROI even on failure
+    buildSummaryTable(progress, allFindings, fixedIssueIds);
+    await progress.updatePrDescription();
+
     // Cleanup
     await killProcess(appProcess);
     await killProcess(repeater?.process);
@@ -463,6 +524,30 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       // Ignore
     }
   }
+}
+
+function buildSummaryTable(
+  progress: ProgressReporter,
+  allFindings: Map<string, FindingSummary>,
+  fixedIssueIds: Set<string>,
+): void {
+  const summaries: FindingSummary[] = [];
+  for (const [issueId, finding] of allFindings) {
+    summaries.push({
+      ...finding,
+      status: fixedIssueIds.has(issueId) ? "Fixed" : finding.status,
+    });
+  }
+  // Sort: Critical first, then High, Medium, Low; Fixed last within each severity
+  const sevOrder: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+  summaries.sort((a, b) => {
+    const sa = sevOrder[a.severity] ?? 4;
+    const sb = sevOrder[b.severity] ?? 4;
+    if (sa !== sb) return sa - sb;
+    if (a.status !== b.status) return a.status === "Open" ? -1 : 1;
+    return 0;
+  });
+  progress.setFindingsSummary(summaries);
 }
 
 function killProcess(proc: ChildProcess | undefined): Promise<void> {
@@ -546,6 +631,140 @@ async function deleteRepeater(
   } catch (err) {
     console.error(`[Cleanup] Failed to delete repeater: ${err}`);
   }
+}
+
+const MAX_AUTH_REPAIR_ATTEMPTS = 3;
+
+/**
+ * Verify the auth object still works. If a code fix broke the auth endpoint
+ * (e.g. /api/users/me now returns 403), prompt the LLM to diagnose and repair.
+ * Returns true if auth is working, false if it could not be repaired.
+ */
+async function verifyAndRepairAuth(
+  llm: Parameters<typeof chatWithTools>[0],
+  repoPath: string,
+  techStack: import("./types.js").TechStack,
+  authObjectId: string,
+  brightToken: string,
+  brightHostname: string,
+  allFixes: SecurityFix[],
+): Promise<boolean> {
+  // First, test the auth object directly via Bright API
+  const testResult = await testAuthObject(brightToken, brightHostname, authObjectId);
+  if (testResult.passed) {
+    console.log("[Auth] Pre-scan auth verification passed");
+    return true;
+  }
+
+  console.warn(`[Auth] Pre-scan auth verification FAILED: ${testResult.summary}`);
+
+  const handleTool = createToolHandler(repoPath);
+  const stackStr = formatTechStack(techStack);
+
+  const recentFixes = allFixes.slice(-10)
+    .map((f) => `- ${f.vulnerability.name}: ${f.summary}\n  Files: ${f.files.map((ff) => ff.path).join(", ")}`)
+    .join("\n");
+
+  for (let attempt = 1; attempt <= MAX_AUTH_REPAIR_ATTEMPTS; attempt++) {
+    console.log(`[Auth] Repair attempt ${attempt}/${MAX_AUTH_REPAIR_ATTEMPTS}`);
+
+    const messages: Parameters<typeof chatWithTools>[1] = [
+      {
+        role: "system",
+        content: `You are a senior developer debugging an authentication failure in a ${stackStr} application.
+
+The application had a working authentication system that passed all tests. After security fixes were applied, the auth object test is now FAILING. Something in the recent code changes broke the authentication flow.
+
+The auth object ID is: ${authObjectId}
+You can fetch its full configuration using the Bright MCP tools if needed.
+
+Your job:
+1. Look at the recent fixes that were applied (listed below)
+2. Use codebase tools to read the affected files and auth-related code
+3. Identify what change broke authentication (e.g. a middleware change that now blocks the login or protected endpoint)
+4. Fix the code so that:
+   - The auth endpoint works correctly again (login succeeds, protected endpoints return 200 with valid token)
+   - The security fix is preserved where possible — but auth MUST work
+
+Common causes:
+- A security fix added overly aggressive input validation that blocks valid login requests
+- A fix changed response headers or removed the token from the response
+- A fix added CORS/CSP headers that block the auth cookie
+- A fix changed route middleware ordering so auth middleware runs before the route
+- A fix sanitized the request body in a way that corrupts the login payload`,
+      },
+      {
+        role: "user",
+        content: `The auth object test just FAILED with these results:
+
+${testResult.summary}
+
+Recent security fixes that were applied:
+${recentFixes}
+
+Please:
+1. Read the files modified by recent fixes, especially anything related to auth, login, middleware, or the protected endpoint
+2. Identify what broke the authentication
+3. Fix it
+
+Respond with a JSON array of corrected files:
+\`\`\`json
+[
+  {
+    "path": "src/example.ts",
+    "content": "...full corrected file content..."
+  }
+]
+\`\`\`
+
+If no code change is needed (e.g. the issue is transient), respond with an empty array: \`[]\``,
+      },
+    ];
+
+    const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+
+    try {
+      const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
+      const parsed = JSON.parse(jsonStr);
+      const files = Array.isArray(parsed) ? parsed : [];
+
+      if (files.length > 0) {
+        // Apply the repair
+        const patches = files.map((f: { path: string; content: string }) => ({
+          path: f.path,
+          content: f.content,
+        }));
+        applyFixes(repoPath, [{
+          vulnerability: { id: "auth-repair", name: "Auth repair", severity: "High", url: "", method: "", details: "", remedy: "", issueId: "auth-repair" },
+          summary: `Repaired broken auth (attempt ${attempt})`,
+          verified: false,
+          files: patches,
+        }]);
+
+        try {
+          gitCommitAndPush(repoPath, `fix: repair broken authentication (attempt ${attempt})`);
+        } catch { /* ignore commit failure */ }
+
+        // Need to restart app for the fix to take effect
+        // The caller handles restart — just retest
+        // Wait a moment for the app to pick up changes (if using hot reload) or the caller will restart
+        await new Promise((r) => setTimeout(r, 3_000));
+      }
+
+      // Retest
+      const retest = await testAuthObject(brightToken, brightHostname, authObjectId);
+      if (retest.passed) {
+        console.log(`[Auth] Auth repaired on attempt ${attempt}`);
+        return true;
+      }
+      console.warn(`[Auth] Auth still failing after repair attempt ${attempt}: ${retest.summary}`);
+    } catch {
+      console.error(`[Auth] Could not parse auth repair response (attempt ${attempt})`);
+    }
+  }
+
+  console.error("[Auth] Could not repair auth after all attempts");
+  return false;
 }
 
 async function diagnoseAndRepairBrokenFix(

@@ -8,10 +8,19 @@ interface Step {
   keyedDetails: Map<string, string>;
 }
 
+export interface FindingSummary {
+  name: string;
+  severity: string;
+  url: string;
+  method: string;
+  status: "Fixed" | "Open";
+}
+
 export class ProgressReporter {
   private turn = 0;
   private steps: Step[] = [];
   private platform: Platform;
+  private findingsSummary: FindingSummary[] = [];
 
   constructor(platform: Platform) {
     this.platform = platform;
@@ -60,7 +69,15 @@ export class ProgressReporter {
     await this.updatePrDescription();
   }
 
-  private async updatePrDescription(): Promise<void> {
+  /**
+   * Set the final findings summary table. Call this before the final "done"
+   * phase so the table appears at the bottom of the PR.
+   */
+  setFindingsSummary(findings: FindingSummary[]): void {
+    this.findingsSummary = findings;
+  }
+
+  async updatePrDescription(): Promise<void> {
     const lines: string[] = [];
 
     for (const s of this.steps) {
@@ -71,6 +88,19 @@ export class ProgressReporter {
       }
       for (const d of s.keyedDetails.values()) {
         lines.push(`   - ${d}`);
+      }
+    }
+
+    // Append findings table if available
+    if (this.findingsSummary.length > 0) {
+      lines.push("");
+      lines.push("### Findings");
+      lines.push("");
+      lines.push("| Severity | Vulnerability | Endpoint | Status |");
+      lines.push("|----------|--------------|----------|--------|");
+      for (const f of this.findingsSummary) {
+        const icon = f.status === "Fixed" ? "✅" : "🔴";
+        lines.push(`| ${f.severity} | ${f.name} | \`${f.method} ${f.url}\` | ${icon} ${f.status} |`);
       }
     }
 

@@ -504,12 +504,12 @@ async function createAuthViaRest(
 // Step 4: Test the auth object (sync GET with retry)
 // ---------------------------------------------------------------------------
 
-interface AuthTestResult {
+export interface AuthTestResult {
   passed: boolean;
   summary: string;
 }
 
-async function testAuthObject(
+export async function testAuthObject(
   brightToken: string,
   brightHostname: string,
   authObjectId: string,
