@@ -2,10 +2,8 @@ import {
   Body,
   Controller,
   Get,
-  Header,
   Logger,
   Post,
-  Query,
   UseGuards
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
@@ -14,7 +12,6 @@ import {
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
 import { AuthGuard } from '../auth/auth.guard';
@@ -87,28 +84,20 @@ export class TestimonialsController {
   }
 
   @Get('count')
-  @ApiQuery({
-    name: 'query',
-    example: 'select count(*) as count from testimonial',
-    required: true
-  })
-  @Header('content-type', 'text/html')
   @ApiOperation({
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
   })
   @ApiOkResponse({
-    type: String
+    type: Number
   })
-  async getCount(@Query('query') query: string): Promise<number> {
+  async getCount(): Promise<number> {
     this.logger.debug('Get count of testimonials.');
-    return await this.testimonialsService.count(query);
+    return await this.testimonialsService.count();
   }
 
   @GrpcMethod('TestimonialsService', 'TestimonialsCount')
-  async testimonialsCountGrpc(data: {
-    query: string;
-  }): Promise<{ count: number }> {
-    const count = await this.testimonialsService.count(data.query);
+  async testimonialsCountGrpc(): Promise<{ count: number }> {
+    const count = await this.testimonialsService.count();
     return { count };
   }
 }

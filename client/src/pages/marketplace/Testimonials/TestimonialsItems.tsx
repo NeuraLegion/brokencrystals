@@ -1,5 +1,4 @@
 import type { FC } from 'react';
-import { InnerHtml } from '../../../components';
 import type { Testimonial } from '../../../interfaces/Testimonial';
 
 interface Props {
@@ -14,9 +13,7 @@ export const TestimonialsItems: FC<Props> = (props: Props) => {
         <div className="testimonial-item" key={item.name + index}>
           <p>
             <i className="bx bxs-quote-alt-left quote-icon-left" />
-            <span className="dangerous-html">
-              <InnerHtml tagName="span" html={item.message || 'N/A'} />
-            </span>
+            <span className="dangerous-html">{item.message || 'N/A'}</span>
             <i className="bx bxs-quote-alt-right quote-icon-right" />
           </p>
           <img
@@ -24,12 +21,8 @@ export const TestimonialsItems: FC<Props> = (props: Props) => {
             className="testimonial-img"
             alt=""
           />
-          <h3 className="dangerous-html">
-            <InnerHtml html={item.name || 'N/A'} />
-          </h3>
-          <h4 className="dangerous-html">
-            <InnerHtml html={item.title || 'N/A'} />
-          </h4>
+          <h3 className="dangerous-html">{item.name || 'N/A'}</h3>
+          <h4 className="dangerous-html">{item.title || 'N/A'}</h4>
         </div>
       ))}
     </>

@@ -119,6 +119,8 @@ export class UsersController {
   }
 
   @Get('/id/:id')
+  @UseGuards(AuthGuard)
+  @JwtType(JwtProcessorType.RSA)
   @ApiQuery({ name: 'id', example: 1, required: true })
   @SerializeOptions({ groups: [BASIC_USER_INFO] })
   @ApiOperation({
@@ -126,7 +128,10 @@ export class UsersController {
   })
   @ApiOkResponse({
     type: UserDto,
-    description: 'Returns basic user info if it exists'
+    description: 'Returns basic user info if authorized'
+  })
+  @ApiForbiddenResponse({
+    description: 'Returns when user is not authorized to access the record'
   })
   @ApiNotFoundResponse({
     description: 'User not found',
@@ -138,12 +143,26 @@ export class UsersController {
       }
     }
   })
-  async getById(@Param('id') id: number): Promise<UserDto> {
+  async getById(
+    @Param('id') id: number,
+    @Req() req: FastifyRequest
+  ): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by id: ${id}`);
-      return new UserDto(await this.usersService.findById(id));
+      const requesterEmail = this.originEmail(req);
+      const requester = await this.usersService.findByEmail(requesterEmail);
+      const targetUser = await this.usersService.findById(id);
+
+      if (requester.id !== targetUser.id && !requester.isAdmin) {
+        throw new ForbiddenException();
+      }
+
+      return new UserDto(targetUser);
     } catch (err) {
-      throw new HttpException(err.message, err.status);
+      throw new HttpException(
+        err.message || 'Internal server error',
+        err.status || HttpStatus.INTERNAL_SERVER_ERROR
+      );
     }
   }
 

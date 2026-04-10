@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
 import { spawn } from 'child_process';
 import * as dotT from 'dot';
@@ -36,6 +36,12 @@ export class McpToolExecutorService extends McpProxySupport {
     'phone',
     'role'
   ] as const;
+  private static readonly ALLOWED_COMMANDS: ReadonlyMap<string, readonly string[]> = new Map([
+    ['ls', ['-la']],
+    ['pwd', []],
+    ['whoami', []],
+    ['date', []]
+  ]);
 
   async executeTool(
     toolName: McpToolName,
@@ -249,13 +255,13 @@ export class McpToolExecutorService extends McpProxySupport {
     try {
       this.logger.debug('Executing OS command via MCP spawn_process');
 
-      const [exec, ...args] = input.command.split(' ');
-      if (!exec || !exec.trim().length) {
+      const parsed = this.parseAndValidateCommand(input.command);
+      if (!parsed) {
         return {
           content: [
             {
               type: 'text',
-              text: 'Error: spawn_process command is empty'
+              text: 'Error: unsupported or invalid spawn_process command'
             }
           ],
           isError: true
@@ -263,7 +269,7 @@ export class McpToolExecutorService extends McpProxySupport {
       }
 
       const text = await new Promise<string>((resolve, reject) => {
-        const process = spawn(exec, args);
+        const process = spawn(parsed.exec, parsed.args);
         let stdout = '';
         let stderr = '';
 
@@ -307,6 +313,39 @@ export class McpToolExecutorService extends McpProxySupport {
         isError: true
       };
     }
+  }
+
+  private parseAndValidateCommand(
+    command: string
+  ): { exec: string; args: string[] } | null {
+    if (typeof command !== 'string') {
+      return null;
+    }
+
+    const normalized = command.trim();
+    if (!normalized.length || /[;&|`$<>\n\r]/.test(normalized)) {
+      return null;
+    }
+
+    const parts = normalized.split(/\s+/);
+    const exec = parts[0];
+    const allowedArgs = McpToolExecutorService.ALLOWED_COMMANDS.get(exec);
+    if (!allowedArgs) {
+      return null;
+    }
+
+    const args = parts.slice(1);
+    if (allowedArgs.length !== args.length) {
+      return null;
+    }
+
+    for (let i = 0; i < allowedArgs.length; i++) {
+      if (allowedArgs[i] !== args[i]) {
+        return null;
+      }
+    }
+
+    return { exec, args };
   }
 
   private async executeMetadataTool(
