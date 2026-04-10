@@ -19,7 +19,8 @@ import {
   UseInterceptors,
   ParseIntPipe,
   DefaultValuePipe,
-  HttpStatus
+  HttpStatus,
+  BadRequestException
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import {
@@ -51,7 +52,7 @@ import {
 } from './app.controller.swagger.desc';
 import { AuthGuard } from './auth/auth.guard';
 import { JwtType } from './auth/jwt/jwt.type.decorator';
-import { JwtProcessorType } from './auth/auth.service';
+import { JwtProcessorType } from './auth/jwt/jwt.type.decorator';
 import { AppService } from './app.service';
 import { BASIC_USER_INFO, UserDto } from './users/api/UserDto';
 import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
@@ -60,6 +61,9 @@ import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
 @ApiTags('App controller')
 export class AppController {
   private readonly logger = new Logger(AppController.name);
+  private readonly renderTemplates: Record<string, string> = {
+    plain: 'Rendered content: {{=it.text}}'
+  };
 
   constructor(private readonly appService: AppService) {}
 
@@ -69,17 +73,70 @@ export class AppController {
   @ApiOperation({
     description: API_DESC_RENDER_REQUEST
   })
-  @ApiBody({ description: 'Write your text here' })
+  @ApiBody({
+    description: 'Render a predefined template by name with a text value',
+    schema: {
+      type: 'object',
+      properties: {
+        template: {
+          type: 'string',
+          enum: ['plain'],
+          example: 'plain'
+        },
+        text: {
+          type: 'string',
+          example: 'Hello world'
+        }
+      },
+      required: ['template', 'text']
+    }
+  })
   @ApiCreatedResponse({
     description: 'Rendered result'
   })
-  async renderTemplate(@Body() raw): Promise<string> {
+  async renderTemplate(
+    @Body()
+    raw: { template?: string; text?: string } | string | Buffer
+  ): Promise<string> {
+    const payload = this.normalizeRenderPayload(raw);
+    const templateName = payload.template;
+    const text = payload.text;
+
+    const templateSource = this.renderTemplates[templateName];
+    if (!templateSource) {
+      throw new BadRequestException('Invalid template selection');
+    }
+
+    const safeText = this.escapeTemplateValue(text);
+    const res = dotT.compile(templateSource)({ text: safeText });
+    this.logger.debug(`Rendered template: ${res}`);
+    return res;
+  }
+
+  private normalizeRenderPayload(
+    raw: { template?: string; text?: string } | string | Buffer
+  ): { template: string; text: string } {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
-      this.logger.debug(`Rendered template: ${res}`);
-      return res;
+      return { template: 'plain', text };
     }
+
+    const template =
+      typeof raw?.template === 'string' && raw.template.trim().length > 0
+        ? raw.template.trim()
+        : 'plain';
+    const text = typeof raw?.text === 'string' ? raw.text : '';
+
+    return { template, text };
+  }
+
+  private escapeTemplateValue(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   @Get('goto')
