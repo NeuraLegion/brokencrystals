@@ -378,128 +378,146 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         return;
       }
 
-      // --- Fix ---
+      // --- Fix findings one at a time ---
       await progress.phaseStart(
         "fix",
         `Fixing ${findings.length} vulnerabilities — round ${iteration + 1}`,
       );
 
-      const fixes = await generateFixes(
-        llm,
-        repoPath,
-        techStack,
-        findings,
-        allFixes,
-      );
-      applyFixes(repoPath, fixes);
-      allFixes.push(...fixes);
+      let fixedCount = 0;
+      let skippedCount = 0;
 
-      // Commit & push
-      console.log(`[Fix] Committing ${fixes.length} fixes for ${fixes.map((f) => f.files.map((ff) => ff.path)).flat().join(", ")}`);
-      try {
-        gitCommitAndPush(
-          repoPath,
-          `fix: remediate ${fixes.length} security vulnerabilities (pass ${iteration + 1})`,
-        );
-        console.log(`[Fix] Committed and pushed ${fixes.length} fixes`);
-      } catch (err) {
-        console.error(`[Fix] git commit and push failed:`, err);
+      for (const [fi, finding] of findings.entries()) {
+        console.log(`[Fix] [${fi + 1}/${findings.length}] Fixing: ${finding.severity} — ${finding.name} at ${finding.url}`);
+
+        // Generate fix for this single finding
+        let fixes: SecurityFix[];
+        try {
+          fixes = await generateFixes(llm, repoPath, techStack, [finding], allFixes);
+        } catch (err) {
+          console.error(`[Fix] Failed to generate fix for ${finding.name}: ${err}`);
+          skippedCount++;
+          continue;
+        }
+
+        if (fixes.length === 0) {
+          console.log(`[Fix] No fix generated for ${finding.name}`);
+          skippedCount++;
+          continue;
+        }
+
+        applyFixes(repoPath, fixes);
+        allFixes.push(...fixes);
+
+        // Commit this single fix
+        try {
+          gitCommitAndPush(
+            repoPath,
+            `fix: ${finding.severity.toLowerCase()} — ${finding.name}`,
+          );
+          console.log(`[Fix] Committed fix for ${finding.name}`);
+        } catch (err) {
+          console.error(`[Fix] Commit failed for ${finding.name}: ${err}`);
+        }
+
+        // Restart and verify the app is still healthy
+        await killProcess(appProcess);
+        let healthy = false;
+
+        try {
+          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+          appProcess = restart.process;
+          healthy = true;
+        } catch (startupErr) {
+          console.error(`[Fix] App broken after fixing ${finding.name}: ${startupErr}`);
+
+          // Try diagnosing + repairing
+          const containerLogs = captureDockerLogs(repoPath);
+          for (let repair = 0; repair < MAX_FIX_REPAIR_ATTEMPTS; repair++) {
+            try {
+              const repairFixes = await diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, fixes);
+              if (repairFixes.length > 0) {
+                applyFixes(repoPath, repairFixes);
+                allFixes.push(...repairFixes);
+                try { gitCommitAndPush(repoPath, `fix: repair ${finding.name} (repair ${repair + 1})`); } catch { /* ignore */ }
+              }
+              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+              appProcess = restart.process;
+              healthy = true;
+              console.log(`[Fix] Repaired after ${repair + 1} attempt(s)`);
+              break;
+            } catch {
+              console.error(`[Fix] Repair attempt ${repair + 1} failed`);
+            }
+          }
+
+          // If still broken, revert this fix and move on
+          if (!healthy) {
+            console.log(`[Fix] Reverting fix for ${finding.name}`);
+            try {
+              execFileSync("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
+              execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
+            } catch {
+              try {
+                execFileSync("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
+                execFileSync("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
+              } catch { /* give up reverting */ }
+            }
+
+            try {
+              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+              appProcess = restart.process;
+            } catch {
+              console.error("[Fix] App won't start even after revert — aborting fix round");
+              break;
+            }
+            skippedCount++;
+            continue;
+          }
+        }
+
+        // Verify auth is still working after this fix
+        if (healthy && authResult.hasAuth && authResult.authObjectId) {
+          const authOk = await verifyAndRepairAuth(
+            llm, repoPath, techStack,
+            authResult.authObjectId,
+            config.brightToken, config.brightHostname,
+            allFixes,
+          );
+          if (!authOk) {
+            console.warn(`[Fix] Auth broke after fixing ${finding.name} — reverting`);
+            try {
+              execFileSync("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
+              execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
+            } catch {
+              try {
+                execFileSync("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
+                execFileSync("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
+              } catch { /* give up */ }
+            }
+
+            // Restart after revert
+            await killProcess(appProcess);
+            try {
+              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+              appProcess = restart.process;
+            } catch {
+              console.error("[Fix] App won't start after auth-revert — aborting fix round");
+              break;
+            }
+            skippedCount++;
+            continue;
+          }
+        }
+
+        fixedCount++;
       }
 
       await progress.phaseDetail(
         "fix",
-        "applied",
-        `Applied ${fixes.length} fix(es), restarting for validation...`,
+        "summary",
+        `Round ${iteration + 1}: fixed ${fixedCount}, skipped ${skippedCount}`,
       );
-
-      // Restart application with fixed code — if it fails, diagnose and repair
-      await killProcess(appProcess);
-      let restarted = false;
-
-      try {
-        const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
-        appProcess = restart.process;
-        restarted = true;
-      } catch (startupErr) {
-        console.error(`[Fix] Application failed to start after fixes: ${startupErr}`);
-
-        // Capture container logs to understand what broke
-        const containerLogs = captureDockerLogs(repoPath);
-        console.log(`[Fix] Container logs:\n${containerLogs.slice(0, 2000)}`);
-
-        // Try to let the LLM diagnose and fix the broken fix
-        for (let repair = 0; repair < MAX_FIX_REPAIR_ATTEMPTS; repair++) {
-          console.log(`[Fix] Repair attempt ${repair + 1}/${MAX_FIX_REPAIR_ATTEMPTS}`);
-          await progress.phaseDetail(
-            "fix",
-            "repair",
-            `Fix broke the app — repair attempt ${repair + 1}`,
-          );
-
-          try {
-            const repairFixes = await diagnoseAndRepairBrokenFix(
-              llm, repoPath, techStack, containerLogs, fixes,
-            );
-
-            if (repairFixes.length > 0) {
-              applyFixes(repoPath, repairFixes);
-              allFixes.push(...repairFixes);
-
-              // Commit the repair
-              try {
-                gitCommitAndPush(
-                  repoPath,
-                  `fix: repair broken security fix (pass ${iteration + 1}, repair ${repair + 1})`,
-                );
-              } catch {
-                console.error("[Fix] Repair commit failed");
-              }
-            }
-
-            // Try restart again
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
-            appProcess = restart.process;
-            restarted = true;
-            console.log(`[Fix] Repair succeeded on attempt ${repair + 1}`);
-            break;
-          } catch (repairErr) {
-            console.error(`[Fix] Repair attempt ${repair + 1} failed: ${repairErr}`);
-          }
-        }
-
-        // If all repairs failed, revert the fix commit and try to restart with clean code
-        if (!restarted) {
-          console.log("[Fix] All repairs failed — reverting fix commit");
-          await progress.phaseDetail("fix", "revert", "Reverting broken fix to restore app");
-          try {
-            execFileSync("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath });
-            execFileSync("git", ["push"], { cwd: repoPath });
-            console.log("[Fix] Reverted fix commit");
-          } catch (revertErr) {
-            console.error(`[Fix] Revert failed: ${revertErr}`);
-            // Hard reset as last resort
-            try {
-              execFileSync("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath });
-              execFileSync("git", ["push", "--force-with-lease"], { cwd: repoPath });
-              console.log("[Fix] Hard-reset to before fix");
-            } catch { /* give up */ }
-          }
-
-          try {
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
-            appProcess = restart.process;
-            restarted = true;
-          } catch {
-            console.error("[Fix] App still won't start even after revert — aborting");
-            buildSummaryTable(progress, allFindings, fixedIssueIds);
-            await progress.phaseStart(
-              "done",
-              `Applied fixes broke the application and could not be repaired. ${allFixes.length} fixes were attempted.`,
-            );
-            return;
-          }
-        }
-      }
     }
   } finally {
     // Always publish the summary table — ensures ROI even on failure
