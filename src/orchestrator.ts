@@ -668,10 +668,11 @@ async function verifyAndRepairAuth(
   for (let attempt = 1; attempt <= MAX_AUTH_REPAIR_ATTEMPTS; attempt++) {
     console.log(`[Auth] Repair attempt ${attempt}/${MAX_AUTH_REPAIR_ATTEMPTS}`);
 
-    const messages: Parameters<typeof chatWithTools>[1] = [
-      {
-        role: "system",
-        content: `You are a senior developer debugging an authentication failure in a ${stackStr} application.
+    try {
+      const messages: Parameters<typeof chatWithTools>[1] = [
+        {
+          role: "system",
+          content: `You are a senior developer debugging an authentication failure in a ${stackStr} application.
 
 The application had a working authentication system that passed all tests. After security fixes were applied, the auth object test is now FAILING. Something in the recent code changes broke the authentication flow.
 
@@ -692,10 +693,10 @@ Common causes:
 - A fix added CORS/CSP headers that block the auth cookie
 - A fix changed route middleware ordering so auth middleware runs before the route
 - A fix sanitized the request body in a way that corrupts the login payload`,
-      },
-      {
-        role: "user",
-        content: `The auth object test just FAILED with these results:
+        },
+        {
+          role: "user",
+          content: `The auth object test just FAILED with these results:
 
 ${testResult.summary}
 
@@ -718,18 +719,15 @@ Respond with a JSON array of corrected files:
 \`\`\`
 
 If no code change is needed (e.g. the issue is transient), respond with an empty array: \`[]\``,
-      },
-    ];
+        },
+      ];
 
-    const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
-
-    try {
+      const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
       const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
       const parsed = JSON.parse(jsonStr);
       const files = Array.isArray(parsed) ? parsed : [];
 
       if (files.length > 0) {
-        // Apply the repair
         const patches = files.map((f: { path: string; content: string }) => ({
           path: f.path,
           content: f.content,
@@ -745,9 +743,6 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
           gitCommitAndPush(repoPath, `fix: repair broken authentication (attempt ${attempt})`);
         } catch { /* ignore commit failure */ }
 
-        // Need to restart app for the fix to take effect
-        // The caller handles restart — just retest
-        // Wait a moment for the app to pick up changes (if using hot reload) or the caller will restart
         await new Promise((r) => setTimeout(r, 3_000));
       }
 
@@ -758,8 +753,8 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
         return true;
       }
       console.warn(`[Auth] Auth still failing after repair attempt ${attempt}: ${retest.summary}`);
-    } catch {
-      console.error(`[Auth] Could not parse auth repair response (attempt ${attempt})`);
+    } catch (err) {
+      console.error(`[Auth] Auth repair attempt ${attempt} failed: ${err}`);
     }
   }
 
