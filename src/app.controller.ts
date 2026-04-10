@@ -69,7 +69,7 @@ export class AppController {
 
   @Post('render')
   @ApiProduces('text/plain')
-  @ApiConsumes('text/plain')
+  @ApiConsumes('application/json')
   @ApiOperation({
     description: API_DESC_RENDER_REQUEST
   })
@@ -107,8 +107,7 @@ export class AppController {
       throw new BadRequestException('Invalid template selection');
     }
 
-    const safeText = this.escapeTemplateValue(text);
-    const res = dotT.compile(templateSource)({ text: safeText });
+    const res = dotT.compile(templateSource)({ text });
     this.logger.debug(`Rendered template: ${res}`);
     return res;
   }
@@ -128,15 +127,6 @@ export class AppController {
     const text = typeof raw?.text === 'string' ? raw.text : '';
 
     return { template, text };
-  }
-
-  private escapeTemplateValue(value: string): string {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 
   @Get('goto')
