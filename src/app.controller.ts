@@ -34,7 +34,6 @@ import {
   ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
-import * as dotT from 'dot';
 import { FastifyReply } from 'fastify';
 import { parseXml } from 'libxmljs';
 import { AppConfig } from './app.config.api';
@@ -51,7 +50,7 @@ import {
 } from './app.controller.swagger.desc';
 import { AuthGuard } from './auth/auth.guard';
 import { JwtType } from './auth/jwt/jwt.type.decorator';
-import { JwtProcessorType } from './auth/auth.service';
+import { JwtProcessorType } from './auth/jwt/jwt.type.decorator';
 import { AppService } from './app.service';
 import { BASIC_USER_INFO, UserDto } from './users/api/UserDto';
 import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
@@ -76,10 +75,14 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
-      this.logger.debug(`Rendered template: ${res}`);
-      return res;
+
+      // Treat request body as untrusted data and return it as plain text.
+      // Do not compile or execute user input as a template.
+      this.logger.debug(`Rendered template: ${text}`);
+      return text;
     }
+
+    return '';
   }
 
   @Get('goto')
