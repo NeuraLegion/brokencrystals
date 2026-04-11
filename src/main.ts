@@ -19,7 +19,7 @@ import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
 import { fastifyStatic, ListRender } from '@fastify/static';
-import { join, dirname } from 'path';
+import { join, dirname, basename } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
@@ -71,6 +71,17 @@ const renderDirList: ListRender = (dirs, files) => {
       <hr>
     </body></html>
   `;
+};
+
+const isSensitiveStaticFile = (path: string) => {
+  const fileName = basename(path).toLowerCase();
+  return (
+    fileName === 'config.js' ||
+    fileName === 'nginx.conf' ||
+    fileName.endsWith('.env') ||
+    fileName.endsWith('.pem') ||
+    fileName.endsWith('.key')
+  );
 };
 
 async function bootstrap() {
@@ -135,13 +146,13 @@ async function bootstrap() {
     wildcard: false,
     serveDotFiles: false,
     // Prevent accidental exposure of sensitive build artifacts such as config.js
-    // while continuing to serve the frontend application normally.
-    // The file should not be publicly accessible from the static web root.
+    // or nginx.conf while continuing to serve the frontend application normally.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     schemaHide: true as any,
     setHeaders(res, path) {
-      if (path.endsWith('/config.js')) {
+      if (isSensitiveStaticFile(path)) {
         res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       }
     }
   });
