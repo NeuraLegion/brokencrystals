@@ -19,7 +19,8 @@ import {
   UseInterceptors,
   ParseIntPipe,
   DefaultValuePipe,
-  HttpStatus
+  HttpStatus,
+  BadRequestException
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import {
@@ -62,6 +63,40 @@ export class AppController {
 
   constructor(private readonly appService: AppService) {}
 
+  private sanitizePlainTextInput(raw: unknown): string {
+    if (typeof raw !== 'string') {
+      throw new BadRequestException('Request body must be plain text');
+    }
+
+    // Allowlist: printable text only. Reject any template delimiters or control
+    // characters that could be repurposed by a templating engine in the future.
+    // This keeps the endpoint as a safe text echo and prevents SSTI-style payloads.
+    const text = raw.trim();
+    const allowedText = /^[\t\n\r\x20-\x7E]*$/;
+    if (!allowedText.test(text)) {
+      throw new BadRequestException('Invalid characters in request body');
+    }
+
+    const forbiddenTokens = [
+      '{{',
+      '}}',
+      '{%',
+      '%}',
+      '<%',
+      '%>',
+      '${',
+      '#{',
+      '[[',
+      ']]'
+    ];
+
+    if (forbiddenTokens.some((token) => text.includes(token))) {
+      throw new BadRequestException('Template syntax is not allowed');
+    }
+
+    return text;
+  }
+
   @Post('render')
   @ApiProduces('text/plain')
   @ApiConsumes('text/plain')
@@ -73,16 +108,12 @@ export class AppController {
     description: 'Rendered result'
   })
   async renderTemplate(@Body() raw): Promise<string> {
-    if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
-      const text = raw.toString().trim();
+    const text = this.sanitizePlainTextInput(raw);
 
-      // Treat request body as untrusted data and return it as plain text.
-      // Do not compile or execute user input as a template.
-      this.logger.debug(`Rendered template: ${text}`);
-      return text;
-    }
-
-    return '';
+    // Never evaluate, compile, interpolate, or render user input as a template.
+    // Return the validated text verbatim so the route remains a safe echo API.
+    this.logger.debug('Received render request');
+    return text;
   }
 
   @Get('goto')
