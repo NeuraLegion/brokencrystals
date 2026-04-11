@@ -35409,11 +35409,10 @@ function isFailureStatus(status) {
   const s = status.toLowerCase();
   return s === "failed" || s === "disrupted" || s === "timeout";
 }
-async function waitForScanCompletion(brightToken, brightHostname, scanId, onProgress, timeoutMs = 40 * 60 * 1e3) {
-  const start = Date.now();
+async function waitForScanCompletion(brightToken, brightHostname, scanId, onProgress) {
   const pollInterval = 3e4;
   await sleep2(pollInterval);
-  while (Date.now() - start < timeoutMs) {
+  while (true) {
     const scanStatus = await getScanStatusViaRest(brightToken, brightHostname, scanId);
     const issues = scanStatus.issuesFound;
     onProgress?.(scanStatus.status, issues);
@@ -35424,8 +35423,6 @@ async function waitForScanCompletion(brightToken, brightHostname, scanId, onProg
     console.log(`[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`);
     await sleep2(pollInterval);
   }
-  console.warn(`[Scan] Timed out after ${timeoutMs / 1e3}s`);
-  return "timeout";
 }
 async function getScanStatusViaRest(brightToken, brightHostname, scanId) {
   const url2 = `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
@@ -35437,9 +35434,21 @@ async function getScanStatusViaRest(brightToken, brightHostname, scanId) {
     throw new Error(`getScanStatus failed (${res.status}): ${text.slice(0, 300)}`);
   }
   const data = await res.json();
+  let issuesFound = 0;
+  if (data.issuesBySeverity && typeof data.issuesBySeverity === "object") {
+    for (const val of Object.values(data.issuesBySeverity)) {
+      if (typeof val === "number") {
+        issuesFound += val;
+      } else if (typeof val === "object" && val !== null && "total" in val) {
+        issuesFound += Number(val.total) || 0;
+      }
+    }
+  } else if (typeof data.issuesFound === "number") {
+    issuesFound = data.issuesFound;
+  }
   return {
     status: data.status ?? "unknown",
-    issuesFound: data.issuesBySeverity ? Object.values(data.issuesBySeverity).reduce((a, b) => a + b, 0) : data.issuesFound ?? 0
+    issuesFound
   };
 }
 

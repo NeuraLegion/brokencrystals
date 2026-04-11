@@ -166,15 +166,13 @@ export async function waitForScanCompletion(
   brightHostname: string,
   scanId: string,
   onProgress?: (status: string, issuesFound: number) => void,
-  timeoutMs = 40 * 60 * 1000,
 ): Promise<string> {
-  const start = Date.now();
   const pollInterval = 30_000;
 
   // Initial wait before first poll
   await sleep(pollInterval);
 
-  while (Date.now() - start < timeoutMs) {
+  while (true) {
     const scanStatus = await getScanStatusViaRest(brightToken, brightHostname, scanId);
     const issues = scanStatus.issuesFound;
 
@@ -188,9 +186,6 @@ export async function waitForScanCompletion(
     console.log(`[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`);
     await sleep(pollInterval);
   }
-
-  console.warn(`[Scan] Timed out after ${timeoutMs / 1000}s`);
-  return "timeout";
 }
 
 async function getScanStatusViaRest(
@@ -209,10 +204,22 @@ async function getScanStatusViaRest(
   }
 
   const data = (await res.json()) as Record<string, unknown>;
+
+  let issuesFound = 0;
+  if (data.issuesBySeverity && typeof data.issuesBySeverity === "object") {
+    for (const val of Object.values(data.issuesBySeverity as Record<string, unknown>)) {
+      if (typeof val === "number") {
+        issuesFound += val;
+      } else if (typeof val === "object" && val !== null && "total" in val) {
+        issuesFound += Number((val as Record<string, unknown>).total) || 0;
+      }
+    }
+  } else if (typeof data.issuesFound === "number") {
+    issuesFound = data.issuesFound;
+  }
+
   return {
     status: (data.status as string) ?? "unknown",
-    issuesFound: (data.issuesBySeverity
-      ? Object.values(data.issuesBySeverity as Record<string, number>).reduce((a, b) => a + b, 0)
-      : (data.issuesFound as number) ?? 0),
+    issuesFound,
   };
 }
