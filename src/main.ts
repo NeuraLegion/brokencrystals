@@ -78,6 +78,7 @@ const isSensitiveStaticFile = (path: string) => {
   return (
     fileName === 'config.js' ||
     fileName === 'nginx.conf' ||
+    fileName === '.htaccess' ||
     fileName.endsWith('.env') ||
     fileName.endsWith('.pem') ||
     fileName.endsWith('.key')
@@ -168,7 +169,13 @@ async function bootstrap() {
         format: 'html',
         render: renderDirList
       },
-      serveDotFiles: true
+      serveDotFiles: false,
+      setHeaders(res, path) {
+        if (isSensitiveStaticFile(path)) {
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        }
+      }
     });
   }
 
@@ -182,7 +189,13 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: true
+    serveDotFiles: false,
+    setHeaders(res, path) {
+      if (isSensitiveStaticFile(path)) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      }
+    }
   });
 
   await server.register(fastifyHttpProxy, {
