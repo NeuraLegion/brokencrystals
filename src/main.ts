@@ -19,7 +19,7 @@ import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
 import { fastifyStatic, ListRender } from '@fastify/static';
-import { join, dirname, basename } from 'path';
+import { join, dirname, basename, normalize } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
@@ -79,10 +79,22 @@ const isSensitiveStaticFile = (path: string) => {
     fileName === 'config.js' ||
     fileName === 'nginx.conf' ||
     fileName === '.htaccess' ||
+    fileName === '.env' ||
     fileName.endsWith('.env') ||
     fileName.endsWith('.pem') ||
     fileName.endsWith('.key')
   );
+};
+
+const isForbiddenStaticPath = (url: string) => {
+  const pathname = normalize(url.split('?')[0].split('#')[0]);
+  const segments = pathname.split(/[/\\]+/).filter(Boolean);
+
+  if (segments.some((segment) => segment.startsWith('.'))) {
+    return true;
+  }
+
+  return isSensitiveStaticFile(pathname);
 };
 
 async function bootstrap() {
@@ -107,6 +119,16 @@ async function bootstrap() {
             )
           }
         : null
+  });
+
+  server.addHook('onRequest', (req, res, done) => {
+    if (req.url && isForbiddenStaticPath(req.url)) {
+      res.statusCode = 404;
+      res.header('Content-Type', 'text/plain; charset=utf-8');
+      return res.send('Not Found');
+    }
+
+    return done();
   });
 
   server.setDefaultRoute((req, res) => {
