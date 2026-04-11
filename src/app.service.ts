@@ -45,6 +45,9 @@ export class AppService {
   }
 
   getConfig(): AppConfig {
+    // Explicit allowlist: only return non-sensitive public configuration.
+    // Never enumerate config keys or return raw config objects, because that
+    // can unintentionally expose secrets added in the future.
     return {
       awsBucket: this.configService.get<string>(
         AppModuleConfigProperties.ENV_AWS_BUCKET

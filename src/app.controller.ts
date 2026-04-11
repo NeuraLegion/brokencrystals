@@ -68,9 +68,6 @@ export class AppController {
       throw new BadRequestException('Request body must be plain text');
     }
 
-    // Allowlist: printable text only. Reject any template delimiters or control
-    // characters that could be repurposed by a templating engine in the future.
-    // This keeps the endpoint as a safe text echo and prevents SSTI-style payloads.
     const text = raw.trim();
     const allowedText = /^[\t\n\r\x20-\x7E]*$/;
     if (!allowedText.test(text)) {
@@ -110,8 +107,6 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     const text = this.sanitizePlainTextInput(raw);
 
-    // Never evaluate, compile, interpolate, or render user input as a template.
-    // Return the validated text verbatim so the route remains a safe echo API.
     this.logger.debug('Received render request');
     return text;
   }
@@ -244,7 +239,6 @@ export class AppController {
         ? payload.processing_expression
         : 'numbers.reduce((acc, num) => acc + num, 0)';
 
-    // expose both names used by exploiter payloads
     const response = res;
 
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
@@ -252,7 +246,6 @@ export class AppController {
     try {
       const result = eval(processNumbersExpression);
 
-      // SSJI payload may already end the response
       if (response.sent || response.raw.writableEnded) {
         return;
       }
@@ -290,11 +283,14 @@ export class AppController {
     description: API_DESC_CONFIG_SERVER
   })
   @ApiOkResponse({
-    type: AppConfig
+    type: AppConfig,
+    description: 'Returns only public, non-sensitive configuration values'
   })
   getConfig(): AppConfig {
     const config = this.appService.getConfig();
-    return config;
+    return {
+      awsBucket: config.awsBucket
+    };
   }
 
   @Get('/secrets')
