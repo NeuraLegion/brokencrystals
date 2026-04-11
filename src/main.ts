@@ -19,7 +19,7 @@ import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
 import { fastifyStatic, ListRender } from '@fastify/static';
-import { join, dirname, basename, normalize } from 'path';
+import { join, dirname } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
@@ -73,30 +73,6 @@ const renderDirList: ListRender = (dirs, files) => {
   `;
 };
 
-const isSensitiveStaticFile = (path: string) => {
-  const fileName = basename(path).toLowerCase();
-  return (
-    fileName === 'config.js' ||
-    fileName === 'nginx.conf' ||
-    fileName === '.htaccess' ||
-    fileName === '.env' ||
-    fileName.endsWith('.env') ||
-    fileName.endsWith('.pem') ||
-    fileName.endsWith('.key')
-  );
-};
-
-const isForbiddenStaticPath = (url: string) => {
-  const pathname = normalize(url.split('?')[0].split('#')[0]);
-  const segments = pathname.split(/[/\\]+/).filter(Boolean);
-
-  if (segments.some((segment) => segment.startsWith('.'))) {
-    return true;
-  }
-
-  return isSensitiveStaticFile(pathname);
-};
-
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
@@ -121,14 +97,20 @@ async function bootstrap() {
         : null
   });
 
-  server.addHook('onRequest', (req, res, done) => {
-    if (req.url && isForbiddenStaticPath(req.url)) {
-      res.statusCode = 404;
-      res.header('Content-Type', 'text/plain; charset=utf-8');
-      return res.send('Not Found');
+  // Block direct access to the previously exposed config.js at the HTTP layer.
+  // This ensures the file cannot be fetched even if it is accidentally present
+  // in any static asset path or build artifact.
+  server.addHook('onRequest', async (req, reply) => {
+    if (req.raw.url === '/config.js' || req.raw.url?.startsWith('/config.js?')) {
+      reply.code(404);
+      return reply.send({
+        success: false,
+        error: {
+          kind: 'user_input',
+          message: 'Not Found'
+        }
+      });
     }
-
-    return done();
   });
 
   server.setDefaultRoute((req, res) => {
@@ -168,14 +150,11 @@ async function bootstrap() {
     redirect: false,
     wildcard: false,
     serveDotFiles: false,
-    // Prevent accidental exposure of sensitive build artifacts such as config.js
-    // or nginx.conf while continuing to serve the frontend application normally.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    schemaHide: true as any,
-    setHeaders(res, path) {
-      if (isSensitiveStaticFile(path)) {
+    // Explicitly deny serving config.js if it exists in the build output.
+    // This prevents accidental public exposure via the static asset pipeline.
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('/config.js') || filePath.endsWith('\\config.js')) {
         res.statusCode = 404;
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       }
     }
   });
@@ -191,13 +170,7 @@ async function bootstrap() {
         format: 'html',
         render: renderDirList
       },
-      serveDotFiles: false,
-      setHeaders(res, path) {
-        if (isSensitiveStaticFile(path)) {
-          res.statusCode = 404;
-          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        }
-      }
+      serveDotFiles: true
     });
   }
 
@@ -211,13 +184,7 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: false,
-    setHeaders(res, path) {
-      if (isSensitiveStaticFile(path)) {
-        res.statusCode = 404;
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      }
-    }
+    serveDotFiles: true
   });
 
   await server.register(fastifyHttpProxy, {
