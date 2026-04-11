@@ -133,7 +133,17 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: true
+    serveDotFiles: false,
+    // Prevent accidental exposure of sensitive build artifacts such as config.js
+    // while continuing to serve the frontend application normally.
+    // The file should not be publicly accessible from the static web root.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    schemaHide: true as any,
+    setHeaders(res, path) {
+      if (path.endsWith('/config.js')) {
+        res.statusCode = 404;
+      }
+    }
   });
 
   for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
