@@ -17,15 +17,25 @@ export abstract class JwtTokenProcessor {
     if (parts.length != 3 || !parts[0]) {
       throw new Error('Failed to parse jwt token header');
     }
-    const headerStr = Buffer.from(parts[0], 'base64').toString('ascii');
+
+    const headerStr = this.decodeBase64Url(parts[0]);
     this.log.debug(`Jwt token header is ${headerStr}`);
     const header: JwtHeader = JSON.parse(headerStr);
 
-    const payloadStr = Buffer.from(parts[1], 'base64').toString('ascii');
-    this.log.debug(`Jwt token (None alg) payload is ${payloadStr}`);
+    if (!header?.alg || header.alg === 'none') {
+      throw new Error('Invalid JWT algorithm');
+    }
+
+    const payloadStr = this.decodeBase64Url(parts[1]);
     const payload = JSON.parse(payloadStr);
 
     return [header, payload];
+  }
+
+  private decodeBase64Url(value: string): string {
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return Buffer.from(padded, 'base64').toString('utf8');
   }
 
   protected parseCRTChain(chainText: string): string {

@@ -122,10 +122,20 @@ export class AuthService {
   }
 
   validateToken(token: string, processor: JwtProcessorType): Promise<unknown> {
-    return this.processors.get(processor).validateToken(token);
+    const handler = this.processors.get(processor);
+    if (!handler) {
+      throw new Error('Unsupported JWT processor');
+    }
+
+    return handler.validateToken(token);
   }
 
   createToken(payload: unknown, processor: JwtProcessorType): Promise<string> {
-    return this.processors.get(processor).createToken(payload);
+    const handler = this.processors.get(processor);
+    if (!handler) {
+      throw new Error('Unsupported JWT processor');
+    }
+
+    return handler.createToken(payload);
   }
 }
