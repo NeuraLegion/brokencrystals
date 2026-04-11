@@ -1,14 +1,23 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/client/dist /usr/share/nginx/html
-# Ensure the runtime image does not contain a web-accessible .htaccess file.
-RUN rm -f /usr/share/nginx/html/.htaccess /usr/share/nginx/html/**/.htaccess || true
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+FROM node:22-alpine AS prod
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/client ./client
+COPY --from=build /app/tsconfig*.json ./
+COPY --from=build /app/nest-cli.json ./
+COPY --from=build /app/ormconfig.* ./
+# Ensure no .env file is present in the runtime image.
+RUN rm -f .env .env.local .env.production .env.development .env.test || true
+RUN addgroup -S node && adduser -S node -G node
+USER node
+EXPOSE 3000
+CMD ["node", "dist/main.js"]

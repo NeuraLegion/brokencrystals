@@ -19,7 +19,7 @@ import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
 import { fastifyStatic, ListRender } from '@fastify/static';
-import { join, dirname } from 'path';
+import { join, dirname, basename, posix } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
@@ -73,6 +73,59 @@ const renderDirList: ListRender = (dirs, files) => {
   `;
 };
 
+const forbiddenFileNames = new Set([
+  '.env',
+  '.env.local',
+  '.env.development',
+  '.env.production',
+  '.env.test',
+  '.git',
+  '.gitignore',
+  '.gitmodules',
+  '.htaccess',
+  'nginx.conf',
+  'config.js'
+]);
+
+const isForbiddenPath = (requestUrl: string) => {
+  const rawPath = requestUrl.split('?')[0].split('#')[0] || '/';
+  const decodedPath = (() => {
+    try {
+      return decodeURIComponent(rawPath);
+    } catch {
+      return rawPath;
+    }
+  })();
+
+  const normalized = posix.normalize(decodedPath.replace(/\\/g, '/'));
+  const segments = normalized.split('/').filter(Boolean);
+
+  if (segments.length === 0) {
+    return false;
+  }
+
+  if (segments.some((segment) => segment.startsWith('.'))) {
+    return true;
+  }
+
+  const last = segments[segments.length - 1]?.toLowerCase();
+  if (last && forbiddenFileNames.has(last)) {
+    return true;
+  }
+
+  return segments.some((segment) => {
+    const lower = segment.toLowerCase();
+    return (
+      lower === '.env' ||
+      lower.startsWith('.env.') ||
+      lower === '.git' ||
+      lower === '.htaccess' ||
+      lower === 'nginx.conf' ||
+      lower === 'config.js'
+    );
+  });
+};
+
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
@@ -97,11 +150,10 @@ async function bootstrap() {
         : null
   });
 
-  // Block direct access to the previously exposed config.js at the HTTP layer.
-  // This ensures the file cannot be fetched even if it is accidentally present
-  // in any static asset path or build artifact.
+  // Block access to dotfiles and sensitive filenames before any route or static
+  // handler can process the request. This is the primary fix for exposed .env.
   server.addHook('onRequest', async (req, reply) => {
-    if (req.raw.url === '/config.js' || req.raw.url?.startsWith('/config.js?')) {
+    if (req.raw?.url && isForbiddenPath(req.raw.url)) {
       reply.code(404);
       return reply.send({
         success: false,
@@ -149,12 +201,14 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
+    index: false,
     serveDotFiles: false,
-    // Explicitly deny serving config.js if it exists in the build output.
-    // This prevents accidental public exposure via the static asset pipeline.
+    maxAge: '0',
+    etag: false,
     setHeaders(res, filePath) {
-      if (filePath.endsWith('/config.js') || filePath.endsWith('\\config.js')) {
+      if (isForbiddenPath(filePath)) {
         res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       }
     }
   });
@@ -170,7 +224,13 @@ async function bootstrap() {
         format: 'html',
         render: renderDirList
       },
-      serveDotFiles: true
+      serveDotFiles: false,
+      setHeaders(res, filePath) {
+        if (isForbiddenPath(filePath)) {
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        }
+      }
     });
   }
 
@@ -184,7 +244,13 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: true
+    serveDotFiles: false,
+    setHeaders(res, filePath) {
+      if (isForbiddenPath(filePath)) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      }
+    }
   });
 
   await server.register(fastifyHttpProxy, {
