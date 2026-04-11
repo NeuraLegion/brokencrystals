@@ -238,7 +238,6 @@ export class AuthController {
 
     return {
       clientId: client.client_id,
-      clientSecret: client.client_secret,
       metadataUrl: client.metadata_url
     };
   }
@@ -368,14 +367,14 @@ export class AuthController {
     type: LoginJwtResponse
   })
   @ApiUnauthorizedResponse({
-    description: 'invalid credentials',
     schema: {
       type: 'object',
       properties: {
         error: { type: 'string' },
         location: { type: 'string' }
       }
-    }
+    },
+    description: 'invalid credentials'
   })
   @ApiOperation({
     description: SWAGGER_DESC_LOGIN_WITH_JKU_JWT

@@ -12,6 +12,6 @@ export const API_DESC_PROCESS_NUMBERS_REQUEST = `Processes crystal numbers provi
 
 export const API_DESC_CONFIG_SERVER = `Returns server configuration to the client`;
 
-export const SWAGGER_DESC_SECRETS = `Returns redacted secret metadata; secret values are not exposed`;
+export const SWAGGER_DESC_SECRETS = `Returns redacted secret metadata; secret values are never exposed by this endpoint`;
 
 export const SWAGGER_DESC_NESTED_JSON = `Returns a nested JSON response with configurable depth`;
