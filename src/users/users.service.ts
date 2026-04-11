@@ -5,7 +5,12 @@ import {
   wrap
 } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException
+} from '@nestjs/common';
 import { PermissionDto } from './api/PermissionDto';
 import { hashPassword } from '../auth/credentials.utils';
 import { User } from '../model/user.entity';
@@ -64,7 +69,7 @@ export class UsersService {
 
   async deletePhoto(id: number): Promise<User> {
     this.log.debug(`deletePhoto for user with id ${id}`);
-    const user = await this.findById(id);
+    const user = await this.findByIdForAuthorizedRequest(id, true);
     if (!user) {
       throw new NotFoundError('Could not find user');
     }
@@ -116,6 +121,23 @@ export class UsersService {
 
   async findById(id: number): Promise<User> {
     this.log.debug(`Called findById ${id}`);
+    const user = await this.usersRepository.findOne({ id });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
+  }
+
+  async findByIdForAuthorizedRequest(
+    id: number,
+    allowed: boolean
+  ): Promise<User> {
+    this.log.debug(`Called findByIdForAuthorizedRequest ${id}`);
+
+    if (!allowed) {
+      throw new ForbiddenException();
+    }
+
     const user = await this.usersRepository.findOne({ id });
     if (!user) {
       throw new NotFoundException('User not found');
