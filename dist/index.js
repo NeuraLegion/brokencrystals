@@ -35434,22 +35434,41 @@ async function getScanStatusViaRest(brightToken, brightHostname, scanId) {
     throw new Error(`getScanStatus failed (${res.status}): ${text.slice(0, 300)}`);
   }
   const data = await res.json();
-  let issuesFound = 0;
-  if (data.issuesBySeverity && typeof data.issuesBySeverity === "object") {
-    for (const val of Object.values(data.issuesBySeverity)) {
-      if (typeof val === "number") {
-        issuesFound += val;
-      } else if (typeof val === "object" && val !== null && "total" in val) {
-        issuesFound += Number(val.total) || 0;
-      }
-    }
-  } else if (typeof data.issuesFound === "number") {
-    issuesFound = data.issuesFound;
+  const issuesFound = extractIssueCount(data);
+  if (issuesFound === 0 && data.issuesBySeverity) {
+    console.debug(`[Scan] issuesBySeverity shape: ${JSON.stringify(data.issuesBySeverity).slice(0, 500)}`);
   }
   return {
     status: data.status ?? "unknown",
     issuesFound
   };
+}
+function extractIssueCount(data) {
+  const severityFields = [
+    "numberOfCriticalSeverityIssues",
+    "numberOfHighSeverityIssues",
+    "numberOfMediumSeverityIssues",
+    "numberOfLowSeverityIssues"
+  ];
+  let total = 0;
+  let hasSeverityFields = false;
+  for (const field of severityFields) {
+    if (typeof data[field] === "number") {
+      total += data[field];
+      hasSeverityFields = true;
+    }
+  }
+  if (hasSeverityFields) return total;
+  if (typeof data.issuesLength === "number") return data.issuesLength;
+  if (Array.isArray(data.issuesBySeverity)) {
+    for (const item of data.issuesBySeverity) {
+      if (typeof item === "object" && item !== null && typeof item.number === "number") {
+        total += item.number;
+      }
+    }
+    return total;
+  }
+  return 0;
 }
 
 // src/phases/findings.ts
@@ -35463,7 +35482,6 @@ async function fetchFindings(brightToken, brightHostname, scanIds) {
       if (seen.has(key)) continue;
       seen.add(key);
       const severity = normalizeSeverity(issue2.severity);
-      if (severity === "Low") continue;
       findings.push({
         id: issue2.id,
         name: issue2.name,

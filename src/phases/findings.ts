@@ -23,7 +23,6 @@ export async function fetchFindings(
       seen.add(key);
 
       const severity = normalizeSeverity(issue.severity);
-      if (severity === "Low") continue; // skip low-severity noise
 
       findings.push({
         id: issue.id,
