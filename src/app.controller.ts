@@ -69,22 +69,25 @@ export class AppController {
     }
 
     const text = raw.trim();
-    const allowedText = /^[\t\n\r\x20-\x7E]*$/;
+
+    // Strict boundary validation: allow only printable ASCII plus common whitespace.
+    // This prevents template delimiters and other control/special characters from
+    // ever reaching any downstream formatter or logger sink.
+    const allowedText = /^[A-Za-z0-9\s.,:;!?@#&()\-+_=\/\\]*$/;
     if (!allowedText.test(text)) {
       throw new BadRequestException('Invalid characters in request body');
     }
 
+    // Explicitly reject common template delimiters even if future changes expand the allowlist.
     const forbiddenTokens = [
-      '{{',
-      '}}',
-      '{%',
-      '%}',
-      '<%',
-      '%>',
-      '${',
-      '#{',
-      '[[',
-      ']]'
+      '{{', '}}',
+      '{%', '%}',
+      '<%', '%>',
+      '${', '#{',
+      '[[', ']]',
+      '<script', '</script',
+      '<', '>',
+      '`'
     ];
 
     if (forbiddenTokens.some((token) => text.includes(token))) {
@@ -107,6 +110,8 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     const text = this.sanitizePlainTextInput(raw);
 
+    // Never compile or evaluate user input as a template.
+    // Return the validated string as-is.
     this.logger.debug('Received render request');
     return text;
   }
