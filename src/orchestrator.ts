@@ -26,8 +26,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   let appProcess: ChildProcess | undefined;
   let repeater: RepeaterHandle | undefined;
   const allScanIds: string[] = [];
-  const allFindings = new Map<string, FindingSummary>(); // issueId → summary
-  const fixedIssueIds = new Set<string>();
+  const allFindings = new Map<string, FindingSummary>(); // dedupKey → summary
+  const fixedKeys = new Set<string>();
 
   try {
     // ----- Phase 1: Analyze codebase -----
@@ -241,12 +241,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             );
             if (!retryOk) {
               await progress.phaseDetail("scan", "auth_broken", "Auth broken after fixes — cannot continue scanning");
-              buildSummaryTable(progress, allFindings, fixedIssueIds);
+              buildSummaryTable(progress, allFindings, fixedKeys);
               await progress.phaseStart("done", `Authentication broke after round ${iteration} fixes and could not be repaired. ${allFixes.length} fixes were applied.`);
               return;
             }
           } catch {
-            buildSummaryTable(progress, allFindings, fixedIssueIds);
+            buildSummaryTable(progress, allFindings, fixedKeys);
             await progress.phaseStart("done", `App failed to restart for auth repair. ${allFixes.length} fixes were applied.`);
             return;
           }
@@ -336,17 +336,21 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
 
       // Track all findings — mark previously-seen ones as fixed if they didn't reappear
+      const findingKey = (f: { name: string; method: string; url: string }) =>
+        `${f.name}::${f.method}::${f.url}`;
+
       if (iteration > 0) {
-        const currentIssueIds = new Set(findings.map((f) => f.issueId));
-        for (const [issueId] of allFindings) {
-          if (!currentIssueIds.has(issueId)) {
-            fixedIssueIds.add(issueId);
+        const currentKeys = new Set(findings.map(findingKey));
+        for (const key of allFindings.keys()) {
+          if (!currentKeys.has(key)) {
+            fixedKeys.add(key);
           }
         }
       }
       for (const f of findings) {
-        if (!allFindings.has(f.issueId)) {
-          allFindings.set(f.issueId, {
+        const key = findingKey(f);
+        if (!allFindings.has(key)) {
+          allFindings.set(key, {
             name: f.name,
             severity: f.severity,
             url: f.url,
@@ -359,7 +363,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       if (findings.length === 0) {
         // Mark everything as fixed
         for (const [, s] of allFindings) s.status = "Fixed";
-        buildSummaryTable(progress, allFindings, fixedIssueIds);
+        buildSummaryTable(progress, allFindings, fixedKeys);
         const msg =
           iteration === 0
             ? "No vulnerabilities found — application appears secure."
@@ -370,7 +374,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       // Last iteration is validation-only
       if (iteration === MAX_ITERATIONS - 1) {
-        buildSummaryTable(progress, allFindings, fixedIssueIds);
+        buildSummaryTable(progress, allFindings, fixedKeys);
         await progress.phaseStart(
           "done",
           `Reached ${MAX_ITERATIONS} rounds. ${findings.length} vulnerabilities remain. ${allFixes.length} fixes were applied.`,
@@ -482,7 +486,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     }
   } finally {
     // Always publish the summary table — ensures ROI even on failure
-    buildSummaryTable(progress, allFindings, fixedIssueIds);
+    buildSummaryTable(progress, allFindings, fixedKeys);
     await progress.updatePrDescription();
 
     // Cleanup
@@ -508,13 +512,13 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 function buildSummaryTable(
   progress: ProgressReporter,
   allFindings: Map<string, FindingSummary>,
-  fixedIssueIds: Set<string>,
+  fixedKeys: Set<string>,
 ): void {
   const summaries: FindingSummary[] = [];
-  for (const [issueId, finding] of allFindings) {
+  for (const [key, finding] of allFindings) {
     summaries.push({
       ...finding,
-      status: fixedIssueIds.has(issueId) ? "Fixed" : finding.status,
+      status: fixedKeys.has(key) ? "Fixed" : finding.status,
     });
   }
   // Sort: Critical first, then High, Medium, Low; Fixed last within each severity

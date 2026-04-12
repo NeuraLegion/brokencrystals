@@ -35722,7 +35722,7 @@ async function runOrchestrator(ctx) {
   let repeater;
   const allScanIds = [];
   const allFindings = /* @__PURE__ */ new Map();
-  const fixedIssueIds = /* @__PURE__ */ new Set();
+  const fixedKeys = /* @__PURE__ */ new Set();
   try {
     await progress.phaseStart("analyze", "Analyzing repository for tech stack and HTTP endpoints");
     const techStack = await detectTechStack(llm, repoPath);
@@ -35898,12 +35898,12 @@ async function runOrchestrator(ctx) {
             );
             if (!retryOk) {
               await progress.phaseDetail("scan", "auth_broken", "Auth broken after fixes \u2014 cannot continue scanning");
-              buildSummaryTable(progress, allFindings, fixedIssueIds);
+              buildSummaryTable(progress, allFindings, fixedKeys);
               await progress.phaseStart("done", `Authentication broke after round ${iteration} fixes and could not be repaired. ${allFixes.length} fixes were applied.`);
               return;
             }
           } catch {
-            buildSummaryTable(progress, allFindings, fixedIssueIds);
+            buildSummaryTable(progress, allFindings, fixedKeys);
             await progress.phaseStart("done", `App failed to restart for auth repair. ${allFixes.length} fixes were applied.`);
             return;
           }
@@ -35973,17 +35973,19 @@ async function runOrchestrator(ctx) {
         "findings",
         findings.length > 0 ? `Round ${iteration + 1} complete \u2014 ${findings.length} vulnerabilities found (${sevSummary})` : `Round ${iteration + 1} complete \u2014 no vulnerabilities found`
       );
+      const findingKey = (f) => `${f.name}::${f.method}::${f.url}`;
       if (iteration > 0) {
-        const currentIssueIds = new Set(findings.map((f) => f.issueId));
-        for (const [issueId] of allFindings) {
-          if (!currentIssueIds.has(issueId)) {
-            fixedIssueIds.add(issueId);
+        const currentKeys = new Set(findings.map(findingKey));
+        for (const key of allFindings.keys()) {
+          if (!currentKeys.has(key)) {
+            fixedKeys.add(key);
           }
         }
       }
       for (const f of findings) {
-        if (!allFindings.has(f.issueId)) {
-          allFindings.set(f.issueId, {
+        const key = findingKey(f);
+        if (!allFindings.has(key)) {
+          allFindings.set(key, {
             name: f.name,
             severity: f.severity,
             url: f.url,
@@ -35994,13 +35996,13 @@ async function runOrchestrator(ctx) {
       }
       if (findings.length === 0) {
         for (const [, s] of allFindings) s.status = "Fixed";
-        buildSummaryTable(progress, allFindings, fixedIssueIds);
+        buildSummaryTable(progress, allFindings, fixedKeys);
         const msg = iteration === 0 ? "No vulnerabilities found \u2014 application appears secure." : `All vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied.`;
         await progress.phaseStart("done", msg);
         return;
       }
       if (iteration === MAX_ITERATIONS - 1) {
-        buildSummaryTable(progress, allFindings, fixedIssueIds);
+        buildSummaryTable(progress, allFindings, fixedKeys);
         await progress.phaseStart(
           "done",
           `Reached ${MAX_ITERATIONS} rounds. ${findings.length} vulnerabilities remain. ${allFixes.length} fixes were applied.`
@@ -36099,7 +36101,7 @@ async function runOrchestrator(ctx) {
       );
     }
   } finally {
-    buildSummaryTable(progress, allFindings, fixedIssueIds);
+    buildSummaryTable(progress, allFindings, fixedKeys);
     await progress.updatePrDescription();
     await killProcess(appProcess);
     await killProcess(repeater?.process);
@@ -36113,12 +36115,12 @@ async function runOrchestrator(ctx) {
     }
   }
 }
-function buildSummaryTable(progress, allFindings, fixedIssueIds) {
+function buildSummaryTable(progress, allFindings, fixedKeys) {
   const summaries = [];
-  for (const [issueId, finding] of allFindings) {
+  for (const [key, finding] of allFindings) {
     summaries.push({
       ...finding,
-      status: fixedIssueIds.has(issueId) ? "Fixed" : finding.status
+      status: fixedKeys.has(key) ? "Fixed" : finding.status
     });
   }
   const sevOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
