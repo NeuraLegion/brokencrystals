@@ -71,14 +71,11 @@ export class AppController {
     const text = raw.trim();
 
     // Strict boundary validation: allow only printable ASCII plus common whitespace.
-    // This prevents template delimiters and other control/special characters from
-    // ever reaching any downstream formatter or logger sink.
     const allowedText = /^[A-Za-z0-9\s.,:;!?@#&()\-+_=\/\\]*$/;
     if (!allowedText.test(text)) {
       throw new BadRequestException('Invalid characters in request body');
     }
 
-    // Explicitly reject common template delimiters even if future changes expand the allowlist.
     const forbiddenTokens = [
       '{{', '}}',
       '{%', '%}',
@@ -303,13 +300,25 @@ export class AppController {
     description: SWAGGER_DESC_SECRETS
   })
   @ApiOkResponse({
-    type: Object
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        status: { type: 'string', example: 'redacted' },
+        message: {
+          type: 'string',
+          example: 'Secret values are not exposed by this endpoint.'
+        }
+      }
+    }
   })
   getSecrets(): Record<string, string> {
-    return {
+    // Never read from configuration, environment variables, process state,
+    // or any secret store here. This endpoint is intentionally inert.
+    return Object.freeze({
       status: 'redacted',
       message: 'Secret values are not exposed by this endpoint.'
-    };
+    });
   }
 
   @Get('/v1/userinfo/:email')
