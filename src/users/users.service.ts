@@ -135,13 +135,12 @@ export class UsersService {
   ): Promise<User> {
     this.log.debug(`Called findAuthorizedUserByIdOrDeny ${id}`);
 
-    const user = await this.usersRepository.findOne({ id });
-
-    if (!user) {
+    if (!isAdmin && requesterId !== id) {
       throw new ForbiddenException();
     }
 
-    if (!isAdmin && requesterId !== id) {
+    const user = await this.usersRepository.findOne({ id });
+    if (!user) {
       throw new ForbiddenException();
     }
 

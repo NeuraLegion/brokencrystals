@@ -152,22 +152,23 @@ export class UsersController {
       this.logger.debug(`Find a user by id: ${id}`);
       const requesterEmail = this.originEmail(req);
       const requester = await this.usersService.findByEmail(requesterEmail);
-      const isAuthorized = requester.isAdmin || requester.id === id;
 
-      if (!isAuthorized) {
-        throw new ForbiddenException();
-      }
-
-      const user = await this.usersService.findAuthorizedUserByIdOrDeny(
-        id,
-        requester.id,
-        requester.isAdmin
+      return new UserDto(
+        await this.usersService.findAuthorizedUserByIdOrDeny(
+          id,
+          requester.id,
+          requester.isAdmin
+        )
       );
-      return new UserDto(user);
     } catch (err) {
-      if (err instanceof ForbiddenException || err instanceof NotFoundException) {
+      if (err instanceof ForbiddenException) {
         throw new ForbiddenException();
       }
+
+      if (err instanceof NotFoundException) {
+        throw new ForbiddenException();
+      }
+
       throw new HttpException(
         err.message || 'Internal server error',
         err.status || HttpStatus.INTERNAL_SERVER_ERROR
