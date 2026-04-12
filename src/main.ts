@@ -35,7 +35,7 @@ const escapeHtmlAttribute = (value: string) =>
   escapeHtml(value).replace(/`/g, '&#96;');
 
 const sanitizeHref = (value: string) => {
-  const normalized = posix.normalize(value).replace(/\/g, '/');
+  const normalized = posix.normalize(value).replace(/\\/g, '/');
   if (!normalized.startsWith('/')) {
     return `/${normalized}`;
   }
@@ -172,6 +172,24 @@ const denyForbiddenResponse = (reply: FastifyReply) => {
   });
 };
 
+const denyForbiddenRawResponse = (res: {
+  statusCode: number;
+  setHeader: (name: string, value: string) => void;
+  end: (data?: string) => void;
+}) => {
+  res.statusCode = 404;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(
+    JSON.stringify({
+      success: false,
+      error: {
+        kind: 'user_input',
+        message: 'Not Found'
+      }
+    })
+  );
+};
+
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
@@ -196,14 +214,20 @@ async function bootstrap() {
         : null
   });
 
-  // Block sensitive paths before routing, static serving, or proxying.
+  // Block sensitive paths at the raw HTTP layer before any routing, plugins,
+  // static file serving, or proxying can resolve them.
+  server.server.prependListener('request', (req, res) => {
+    if (req.url && isForbiddenRequestPath(req.url)) {
+      denyForbiddenRawResponse(res);
+    }
+  });
+
   server.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.raw?.url && isForbiddenRequestPath(req.raw.url)) {
       return denyForbiddenResponse(reply);
     }
   });
 
-  // Also block after payload parsing so encoded/path-normalized variants are still denied.
   server.addHook('preParsing', async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.raw?.url && isForbiddenRequestPath(req.raw.url)) {
       return denyForbiddenResponse(reply);
