@@ -118,8 +118,19 @@ const forbiddenFileNames = new Set([
   '.gitmodules',
   '.htaccess',
   'nginx.conf',
-  'config.js'
+  'config.js',
+  'secrets',
+  'secret',
+  'credentials',
+  'credential',
+  'token',
+  'tokens'
 ]);
+
+const forbiddenPathPatterns = [
+  /(^|\/)(?:\.env(?:\..*)?|config\.js|secrets?(?:\..*)?|credentials?(?:\..*)?|token(?:s)?(?:\..*)?)$/i,
+  /(^|\/)(?:[^/]*\.)?(?:env|ini|cfg|conf)$/i
+];
 
 const decodePathname = (value: string) => {
   let current = value;
@@ -147,22 +158,29 @@ const isForbiddenRequestPath = (requestUrl: string) => {
     return false;
   }
 
-  return segments.some((segment) => {
-    const lower = segment.toLowerCase();
-    return (
-      segment.startsWith('.') ||
-      forbiddenFileNames.has(lower) ||
-      lower.startsWith('.env.') ||
-      lower.endsWith('.env') ||
-      lower.endsWith('.ini') ||
-      lower.endsWith('.cfg') ||
-      lower.endsWith('.conf')
-    );
-  });
+  if (
+    normalized === '/api/secrets' ||
+    normalized.startsWith('/api/secrets/') ||
+    normalized.includes('/api/secrets?')
+  ) {
+    return true;
+  }
+
+  if (segments.some((segment) => segment.startsWith('.'))) {
+    return true;
+  }
+
+  if (segments.some((segment) => forbiddenFileNames.has(segment.toLowerCase()))) {
+    return true;
+  }
+
+  return forbiddenPathPatterns.some((pattern) => pattern.test(normalized));
 };
 
 const denyForbiddenResponse = (reply: FastifyReply) => {
   reply.code(404);
+  reply.header('cache-control', 'no-store, max-age=0');
+  reply.header('content-type', 'application/json; charset=utf-8');
   return reply.send({
     success: false,
     error: {
@@ -178,6 +196,7 @@ const denyForbiddenRawResponse = (res: {
   end: (data?: string) => void;
 }) => {
   res.statusCode = 404;
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(
     JSON.stringify({
@@ -214,8 +233,9 @@ async function bootstrap() {
         : null
   });
 
-  // Block sensitive paths at the raw HTTP layer before any routing, plugins,
-  // static file serving, or proxying can resolve them.
+  // Block sensitive paths before routing, static file serving, proxying, or
+  // any plugin can resolve them. This also prevents static fallthrough from
+  // exposing /api/secrets or source-controlled config files.
   server.server.prependListener('request', (req, res) => {
     if (req.url && isForbiddenRequestPath(req.url)) {
       denyForbiddenRawResponse(res);
@@ -243,6 +263,7 @@ async function bootstrap() {
   server.setDefaultRoute((req, res) => {
     if (req.url && isForbiddenRequestPath(req.url)) {
       res.statusCode = 404;
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       return res.end(
         JSON.stringify({
@@ -257,6 +278,8 @@ async function bootstrap() {
 
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
       return res.end(
         JSON.stringify({
           success: false,
@@ -279,6 +302,7 @@ async function bootstrap() {
         }
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.end(data);
       }
     );
@@ -295,10 +319,12 @@ async function bootstrap() {
       forbiddenFileNames.has(fileName) ||
       fileName.startsWith('.env.') ||
       pathValue.includes('/.') ||
-      pathValue.includes('\\.')
+      pathValue.includes('\\.') ||
+      forbiddenPathPatterns.some((pattern) => pattern.test(pathValue))
     ) {
       res.statusCode = 404;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
     }
   };
 

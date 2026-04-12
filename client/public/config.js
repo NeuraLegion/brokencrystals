@@ -1,5 +1,9 @@
-// Intentionally left empty and unavailable for public serving.
+// Intentionally empty.
 //
-// This file contained sensitive runtime configuration and must not be
-// accessible as a static asset. The application should read configuration
-// from server-side environment variables or a protected API endpoint instead.
+// Sensitive runtime configuration must not be stored in source-controlled
+// public assets. Read secrets from server-side environment variables or a
+// protected backend-only secret manager.
+//
+// This file is kept as a harmless placeholder so any legacy references to
+// /config.js do not expose secret values.
+window.__APP_CONFIG__ = Object.freeze({});
