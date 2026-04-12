@@ -79,6 +79,9 @@ const forbiddenFileNames = new Set([
   '.env.development',
   '.env.production',
   '.env.test',
+  '.env.development.local',
+  '.env.production.local',
+  '.env.test.local',
   '.git',
   '.gitignore',
   '.gitmodules',
@@ -87,33 +90,42 @@ const forbiddenFileNames = new Set([
   'config.js'
 ]);
 
+const decodePathname = (value: string) => {
+  let current = value;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) {
+        break;
+      }
+      current = decoded;
+    } catch {
+      break;
+    }
+  }
+  return current;
+};
+
 const isForbiddenRequestPath = (requestUrl: string) => {
   const rawPath = requestUrl.split('?')[0].split('#')[0] || '/';
-  let decodedPath = rawPath;
-  try {
-    decodedPath = decodeURIComponent(rawPath);
-  } catch {
-    decodedPath = rawPath;
-  }
-
-  const normalized = posix.normalize(decodedPath.replace(/\\/g, '/'));
+  const decodedPath = decodePathname(rawPath).replace(/\\/g, '/');
+  const normalized = posix.normalize(decodedPath);
   const segments = normalized.split('/').filter(Boolean);
 
   if (segments.length === 0) {
     return false;
   }
 
-  if (segments.some((segment) => segment.startsWith('.'))) {
-    return true;
-  }
-
   return segments.some((segment) => {
     const lower = segment.toLowerCase();
     return (
+      segment.startsWith('.') ||
       forbiddenFileNames.has(lower) ||
       lower.startsWith('.env.') ||
-      lower === '.git' ||
-      lower === '.htaccess'
+      lower.endsWith('.env') ||
+      lower.endsWith('.ini') ||
+      lower.endsWith('.cfg') ||
+      lower.endsWith('.conf')
     );
   });
 };
@@ -153,16 +165,20 @@ async function bootstrap() {
         : null
   });
 
-  // Enforce the block at the earliest possible point so neither Fastify static
-  // nor any fallback route can serve hidden files such as /.htaccess.
+  // Block sensitive paths before routing, static serving, or proxying.
   server.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.raw?.url && isForbiddenRequestPath(req.raw.url)) {
       return denyForbiddenResponse(reply);
     }
   });
 
-  // Also block the matched route phase to catch any requests that bypass onRequest
-  // due to internal rewrites or future middleware changes.
+  // Also block after payload parsing so encoded/path-normalized variants are still denied.
+  server.addHook('preParsing', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (req.raw?.url && isForbiddenRequestPath(req.raw.url)) {
+      return denyForbiddenResponse(reply);
+    }
+  });
+
   server.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.raw?.url && isForbiddenRequestPath(req.raw.url)) {
       return denyForbiddenResponse(reply);
@@ -213,8 +229,19 @@ async function bootstrap() {
     );
   });
 
-  const staticSecurityHeaders = (res: { statusCode: number; setHeader: (name: string, value: string) => void }, filePath: string) => {
-    if (isForbiddenRequestPath(`/${basename(filePath)}`) || isForbiddenRequestPath(filePath)) {
+  const staticSecurityHeaders = (
+    res: { statusCode: number; setHeader: (name: string, value: string) => void },
+    filePath: string
+  ) => {
+    const fileName = basename(filePath).toLowerCase();
+    const pathValue = filePath.toLowerCase();
+    if (
+      fileName.startsWith('.') ||
+      forbiddenFileNames.has(fileName) ||
+      fileName.startsWith('.env.') ||
+      pathValue.includes('/.') ||
+      pathValue.includes('\\.')
+    ) {
       res.statusCode = 404;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     }
