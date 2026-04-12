@@ -23,50 +23,81 @@ import { join, dirname, basename, posix } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const escapeHtmlAttribute = (value: string) =>
+  escapeHtml(value).replace(/`/g, '&#96;');
+
+const sanitizeHref = (value: string) => {
+  const normalized = posix.normalize(value).replace(/\/g, '/');
+  if (!normalized.startsWith('/')) {
+    return `/${normalized}`;
+  }
+  return normalized;
+};
+
 const renderDirList: ListRender = (dirs, files) => {
   const currDir = dirname((dirs[0] || files[0]).href);
   const parentDir = dirname(currDir);
+  const safeCurrDir = escapeHtml(currDir);
+  const safeParentDir = escapeHtmlAttribute(sanitizeHref(parentDir));
+
   return `
-    <head><title>Index of ${currDir}/</title></head>
+    <head><title>Index of ${safeCurrDir}/</title></head>
     <html><body>
-      <h1>Index of ${currDir}/</h1>
+      <h1>Index of ${safeCurrDir}/</h1>
       <hr>
       <table style="width: max(450px, 50%);">
         <tr>
           <td>
-            <a href="${parentDir}">../</a>
+            <a href="${safeParentDir}">../</a>
           </td>
           <td></td><td></td>
         </tr>
-        ${dirs.map(
-          (dir) =>
-            `<tr>
+        ${dirs
+          .map((dir) => {
+            const safeHref = escapeHtmlAttribute(sanitizeHref(dir.href));
+            const safeName = escapeHtml(dir.name);
+            const safeCtime = escapeHtml(dir.stats.ctime.toLocaleString());
+            return `<tr>
               <td>
-                <a href="${dir.href}">${dir.name}</a>
+                <a href="${safeHref}">${safeName}</a>
               </td>
               <td>
-                ${dir.stats.ctime.toLocaleString()}
+                ${safeCtime}
               </td>
               <td>
                 -
               </td>
-            </tr>`
-        )}
+            </tr>`;
+          })
+          .join('')}
         <br/>
-        ${files.map(
-          (file) =>
-            `<tr>
+        ${files
+          .map((file) => {
+            const safeHref = escapeHtmlAttribute(sanitizeHref(file.href));
+            const safeName = escapeHtml(file.name);
+            const safeCtime = escapeHtml(file.stats.ctime.toLocaleString());
+            const safeSize = escapeHtml(String(file.stats.size));
+            return `<tr>
               <td>
-                <a href="${file.href}">${file.name}</a>
+                <a href="${safeHref}">${safeName}</a>
               </td>
               <td>
-                ${file.stats.ctime.toLocaleString()}
+                ${safeCtime}
               </td>
               <td>
-                ${file.stats.size}
+                ${safeSize}
               </td>
-            </tr>`
-        )}
+            </tr>`;
+          })
+          .join('')}
       </table>
       <hr>
     </body></html>
