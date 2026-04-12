@@ -17,7 +17,7 @@ import fmp from '@fastify/multipart';
 import { randomBytes } from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
-import fastify from 'fastify';
+import fastify, { FastifyRequest, FastifyReply } from 'fastify';
 import { fastifyStatic, ListRender } from '@fastify/static';
 import { join, dirname, basename, posix } from 'path';
 import rawbody from 'raw-body';
@@ -87,15 +87,14 @@ const forbiddenFileNames = new Set([
   'config.js'
 ]);
 
-const isForbiddenPath = (requestUrl: string) => {
+const isForbiddenRequestPath = (requestUrl: string) => {
   const rawPath = requestUrl.split('?')[0].split('#')[0] || '/';
-  const decodedPath = (() => {
-    try {
-      return decodeURIComponent(rawPath);
-    } catch {
-      return rawPath;
-    }
-  })();
+  let decodedPath = rawPath;
+  try {
+    decodedPath = decodeURIComponent(rawPath);
+  } catch {
+    decodedPath = rawPath;
+  }
 
   const normalized = posix.normalize(decodedPath.replace(/\\/g, '/'));
   const segments = normalized.split('/').filter(Boolean);
@@ -108,21 +107,25 @@ const isForbiddenPath = (requestUrl: string) => {
     return true;
   }
 
-  const last = segments[segments.length - 1]?.toLowerCase();
-  if (last && forbiddenFileNames.has(last)) {
-    return true;
-  }
-
   return segments.some((segment) => {
     const lower = segment.toLowerCase();
     return (
-      lower === '.env' ||
+      forbiddenFileNames.has(lower) ||
       lower.startsWith('.env.') ||
       lower === '.git' ||
-      lower === '.htaccess' ||
-      lower === 'nginx.conf' ||
-      lower === 'config.js'
+      lower === '.htaccess'
     );
+  });
+};
+
+const denyForbiddenResponse = (reply: FastifyReply) => {
+  reply.code(404);
+  return reply.send({
+    success: false,
+    error: {
+      kind: 'user_input',
+      message: 'Not Found'
+    }
   });
 };
 
@@ -150,22 +153,37 @@ async function bootstrap() {
         : null
   });
 
-  // Block access to dotfiles and sensitive filenames before any route or static
-  // handler can process the request. This is the primary fix for exposed .env.
-  server.addHook('onRequest', async (req, reply) => {
-    if (req.raw?.url && isForbiddenPath(req.raw.url)) {
-      reply.code(404);
-      return reply.send({
-        success: false,
-        error: {
-          kind: 'user_input',
-          message: 'Not Found'
-        }
-      });
+  // Enforce the block at the earliest possible point so neither Fastify static
+  // nor any fallback route can serve hidden files such as /.htaccess.
+  server.addHook('onRequest', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (req.raw?.url && isForbiddenRequestPath(req.raw.url)) {
+      return denyForbiddenResponse(reply);
+    }
+  });
+
+  // Also block the matched route phase to catch any requests that bypass onRequest
+  // due to internal rewrites or future middleware changes.
+  server.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (req.raw?.url && isForbiddenRequestPath(req.raw.url)) {
+      return denyForbiddenResponse(reply);
     }
   });
 
   server.setDefaultRoute((req, res) => {
+    if (req.url && isForbiddenRequestPath(req.url)) {
+      res.statusCode = 404;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(
+        JSON.stringify({
+          success: false,
+          error: {
+            kind: 'user_input',
+            message: 'Not Found'
+          }
+        })
+      );
+    }
+
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
       return res.end(
@@ -195,6 +213,13 @@ async function bootstrap() {
     );
   });
 
+  const staticSecurityHeaders = (res: { statusCode: number; setHeader: (name: string, value: string) => void }, filePath: string) => {
+    if (isForbiddenRequestPath(`/${basename(filePath)}`) || isForbiddenRequestPath(filePath)) {
+      res.statusCode = 404;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    }
+  };
+
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist'),
     prefix: `/`,
@@ -206,10 +231,7 @@ async function bootstrap() {
     maxAge: '0',
     etag: false,
     setHeaders(res, filePath) {
-      if (isForbiddenPath(filePath)) {
-        res.statusCode = 404;
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      }
+      staticSecurityHeaders(res, filePath);
     }
   });
 
@@ -226,10 +248,7 @@ async function bootstrap() {
       },
       serveDotFiles: false,
       setHeaders(res, filePath) {
-        if (isForbiddenPath(filePath)) {
-          res.statusCode = 404;
-          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        }
+        staticSecurityHeaders(res, filePath);
       }
     });
   }
@@ -246,10 +265,7 @@ async function bootstrap() {
     },
     serveDotFiles: false,
     setHeaders(res, filePath) {
-      if (isForbiddenPath(filePath)) {
-        res.statusCode = 404;
-        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      }
+      staticSecurityHeaders(res, filePath);
     }
   });
 
