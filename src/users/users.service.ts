@@ -6,9 +6,9 @@ import {
 } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import {
-  ForbiddenException,
   Injectable,
   Logger,
+  ForbiddenException,
   NotFoundException
 } from '@nestjs/common';
 import { PermissionDto } from './api/PermissionDto';
@@ -69,7 +69,7 @@ export class UsersService {
 
   async deletePhoto(id: number): Promise<User> {
     this.log.debug(`deletePhoto for user with id ${id}`);
-    const user = await this.findByIdForAuthorizedRequest(id, true);
+    const user = await this.findById(id);
     if (!user) {
       throw new NotFoundError('Could not find user');
     }
@@ -128,20 +128,23 @@ export class UsersService {
     return user;
   }
 
-  async findByIdForAuthorizedRequest(
+  async findAuthorizedUserByIdOrDeny(
     id: number,
-    allowed: boolean
+    requesterId: number,
+    isAdmin: boolean
   ): Promise<User> {
-    this.log.debug(`Called findByIdForAuthorizedRequest ${id}`);
+    this.log.debug(`Called findAuthorizedUserByIdOrDeny ${id}`);
 
-    if (!allowed) {
+    const user = await this.usersRepository.findOne({ id });
+
+    if (!user) {
       throw new ForbiddenException();
     }
 
-    const user = await this.usersRepository.findOne({ id });
-    if (!user) {
-      throw new NotFoundException('User not found');
+    if (!isAdmin && requesterId !== id) {
+      throw new ForbiddenException();
     }
+
     return user;
   }
 
