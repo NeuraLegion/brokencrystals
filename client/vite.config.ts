@@ -2,7 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { resolve } from 'path';
 
-const blockedAssetPaths = [/^\/config\.js(?:\?|#|$)/i, /^\/nginx\.conf(?:\?|#|$)/i];
+const blockedAssetPaths = [
+  /^\/config\.js(?:\?|#|$)/i,
+  /^\/nginx\.conf(?:\?|#|$)/i,
+  /^\/public\/config\.js(?:\?|#|$)/i,
+  /^\/assets\/config\.js(?:\?|#|$)/i
+];
 
 function blockSensitiveAssets(req: { url?: string | null }, res: any, next: () => void) {
   if (req.url && blockedAssetPaths.some((pattern) => pattern.test(req.url as string))) {
