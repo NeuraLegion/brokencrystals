@@ -1,9 +1,7 @@
-import type { JWK } from 'jose';
-
 export class JwtHeader {
-  alg: 'HS256' | 'HS384' | 'HS512' | 'RS256';
+  alg: 'RS256' | 'HS256';
   jku?: string;
-  jwk?: JWK;
+  jwk?: unknown;
   kid?: string;
   x5u?: string;
   x5c?: string[];
