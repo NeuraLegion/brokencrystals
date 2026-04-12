@@ -22,7 +22,7 @@ export abstract class JwtTokenProcessor {
     this.log.debug(`Jwt token header is ${headerStr}`);
     const header: JwtHeader = JSON.parse(headerStr);
 
-    if (!header?.alg || header.alg === 'none') {
+    if (!header?.alg || !this.isAllowedAlgorithm(header.alg)) {
       throw new Error('Invalid JWT algorithm');
     }
 
@@ -30,6 +30,10 @@ export abstract class JwtTokenProcessor {
     const payload = JSON.parse(payloadStr);
 
     return [header, payload];
+  }
+
+  private isAllowedAlgorithm(alg: string): boolean {
+    return alg === 'HS256' || alg === 'RS256';
   }
 
   private decodeBase64Url(value: string): string {

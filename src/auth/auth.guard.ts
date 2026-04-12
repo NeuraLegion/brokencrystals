@@ -43,17 +43,27 @@ export class AuthGuard implements CanActivate {
   }
 
   private extractToken(request: FastifyRequest): string | undefined {
-    let token = request.headers[AuthGuard.AUTH_HEADER];
+    const headerToken = request.headers[AuthGuard.AUTH_HEADER];
+    const cookieToken = request.cookies?.[AuthGuard.AUTH_HEADER];
+    const token = this.normalizeToken(
+      typeof headerToken === 'string' ? headerToken : cookieToken
+    );
 
+    return token;
+  }
+
+  private normalizeToken(token?: string): string | undefined {
     if (!token?.length) {
-      token = request.cookies[AuthGuard.AUTH_HEADER];
+      return undefined;
     }
 
-    if (this.checkIsBearer(token)) {
-      token = token.substring(AuthGuard.BEARER_PREFIX.length).trim();
+    const trimmed = token.trim();
+    if (this.checkIsBearer(trimmed)) {
+      const bearerToken = trimmed.substring(AuthGuard.BEARER_PREFIX.length).trim();
+      return bearerToken.length ? bearerToken : undefined;
     }
 
-    return token?.length ? token : undefined;
+    return trimmed.length ? trimmed : undefined;
   }
 
   private getRequest(context: ExecutionContext): FastifyRequest {
@@ -71,7 +81,22 @@ export class AuthGuard implements CanActivate {
       context.getHandler()
     );
 
-    if (!processorType) {
+    if (processorType === undefined || processorType === null) {
+      throw new UnauthorizedException({
+        error: 'Unauthorized',
+        line: __filename
+      });
+    }
+
+    if (!this.isAllowedProcessorType(processorType)) {
+      throw new UnauthorizedException({
+        error: 'Unauthorized',
+        line: __filename
+      });
+    }
+
+    const decodedHeader = this.getJwtHeader(token);
+    if (!decodedHeader?.alg || decodedHeader.alg.toLowerCase() === 'none') {
       throw new UnauthorizedException({
         error: 'Unauthorized',
         line: __filename
@@ -79,6 +104,26 @@ export class AuthGuard implements CanActivate {
     }
 
     return !!(await this.authService.validateToken(token, processorType));
+  }
+
+  private getJwtHeader(token: string): { alg?: string } | undefined {
+    const parts = token.split('.');
+    if (parts.length !== 3 || !parts[0]) {
+      return undefined;
+    }
+
+    try {
+      const normalized = parts[0].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+      const headerJson = Buffer.from(padded, 'base64').toString('utf8');
+      return JSON.parse(headerJson);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private isAllowedProcessorType(processorType: JwtProcessorType): boolean {
+    return Object.values(JwtProcessorType).includes(processorType);
   }
 
   private checkIsBearer(bearer: string): boolean {
