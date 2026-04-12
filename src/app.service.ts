@@ -3,7 +3,6 @@ import { spawn } from 'child_process';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from './users/users.service';
 import { AppModuleConfigProperties } from './app.module.config.properties';
-import { AppConfig } from './app.config.api';
 import { UserDto } from './users/api/UserDto';
 
 @Injectable()
@@ -44,14 +43,6 @@ export class AppService {
     });
   }
 
-  getConfig(): AppConfig {
-    return {
-      awsBucket: this.configService.get<string>(
-        AppModuleConfigProperties.ENV_AWS_BUCKET
-      )
-    };
-  }
-
   async getUserInfo(email: string): Promise<UserDto> {
     try {
       this.logger.debug(`Find a user by email: ${email}`);
@@ -59,5 +50,13 @@ export class AppService {
     } catch (err) {
       throw new HttpException(err.message, err.status);
     }
+  }
+
+  getPublicConfig(): { awsBucket: string } {
+    return {
+      awsBucket: this.configService.get<string>(
+        AppModuleConfigProperties.ENV_AWS_BUCKET
+      )
+    };
   }
 }

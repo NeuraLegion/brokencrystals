@@ -19,7 +19,8 @@ import {
   UseInterceptors,
   ParseIntPipe,
   DefaultValuePipe,
-  HttpStatus
+  HttpStatus,
+  GoneException
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import {
@@ -36,9 +37,7 @@ import {
 } from '@nestjs/swagger';
 import { FastifyReply } from 'fastify';
 import { parseXml } from 'libxmljs';
-import { AppConfig } from './app.config.api';
 import {
-  API_DESC_CONFIG_SERVER,
   API_DESC_LAUNCH_COMMAND,
   API_DESC_OPTIONS_REQUEST,
   API_DESC_REDIRECT_REQUEST,
@@ -252,13 +251,13 @@ export class AppController {
 
   @Get('/config')
   @ApiOperation({
-    description: API_DESC_CONFIG_SERVER
+    description: 'Deprecated endpoint removed to prevent exposure of sensitive configuration.'
   })
   @ApiOkResponse({
-    type: AppConfig
+    type: Object
   })
-  getConfig(): AppConfig {
-    return this.appService.getConfig();
+  getConfig(): never {
+    throw new GoneException('This endpoint is no longer available.');
   }
 
   @Get('/secrets')
