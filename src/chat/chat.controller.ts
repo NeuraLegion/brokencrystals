@@ -8,11 +8,22 @@ import {
 import { ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
 import { API_DESC_CHAT_QUESTION } from './chat.controller.api.desc';
-import { ChatMessage } from './api/ChatMessage';
 
-const MAX_MESSAGES = 20;
-const MAX_MESSAGE_LENGTH = 4000;
+const MAX_MESSAGE_LENGTH = 2000;
 const DISALLOWED_CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+const DISALLOWED_PROMPT_BOUNDARY_CHARS = /[`$<>]/g;
+const DISALLOWED_INSTRUCTION_PATTERNS = [
+  /\bignore\s+previous\s+instructions\b/i,
+  /\bignore\s+all\s+previous\s+instructions\b/i,
+  /\breveal\s+system\s+prompt\b/i,
+  /\bdisregard\s+the\s+above\b/i,
+  /\byou\s+are\s+now\b/i,
+  /\bassistant:\s*/i,
+  /\bsystem:\s*/i,
+  /\bdeveloper:\s*/i,
+  /\btool:\s*/i,
+  /\bfunction:\s*/i
+];
 
 @Controller('/api/chat')
 @ApiTags('Chat controller')
@@ -22,90 +33,74 @@ export class ChatController {
   @Post('/query')
   @ApiOperation({ description: API_DESC_CHAT_QUESTION })
   @ApiBody({
-    description: 'A list of user messages comprising the conversation so far',
-    type: [ChatMessage]
+    description: 'A single user message to send to the assistant',
+    schema: {
+      type: 'object',
+      required: ['content'],
+      properties: {
+        content: { type: 'string', maxLength: MAX_MESSAGE_LENGTH }
+      }
+    }
   })
   @ApiOkResponse({
     description: 'Chatbot answer',
     type: String
   })
-  async query(@Body() messages: ChatMessage[]): Promise<string> {
+  async query(
+    @Body() body: { content?: unknown }
+  ): Promise<string> {
     try {
-      if (!Array.isArray(messages)) {
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
         throw new HttpException(
           'Invalid chat request body',
           HttpStatus.BAD_REQUEST
         );
       }
 
-      if (messages.length === 0) {
+      if (typeof body.content !== 'string') {
         throw new HttpException(
-          'At least one message is required',
+          'Message content must be a string',
           HttpStatus.BAD_REQUEST
         );
       }
 
-      if (messages.length > MAX_MESSAGES) {
+      const normalizedContent = body.content
+        .replace(DISALLOWED_CONTROL_CHARS, ' ')
+        .replace(DISALLOWED_PROMPT_BOUNDARY_CHARS, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!normalizedContent) {
         throw new HttpException(
-          `Too many messages. Maximum allowed is ${MAX_MESSAGES}`,
+          'Message content cannot be empty',
           HttpStatus.BAD_REQUEST
         );
       }
 
-      const sanitizedMessages = messages.map((message, index) => {
-        if (!message || typeof message !== 'object') {
+      if (normalizedContent.length > MAX_MESSAGE_LENGTH) {
+        throw new HttpException(
+          `Message content exceeds maximum length of ${MAX_MESSAGE_LENGTH}`,
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      for (const pattern of DISALLOWED_INSTRUCTION_PATTERNS) {
+        if (pattern.test(normalizedContent)) {
           throw new HttpException(
-            `Invalid message at index ${index}`,
+            'Message content contains unsupported instruction-like text',
             HttpStatus.BAD_REQUEST
           );
         }
+      }
 
-        if (message.role !== 'user') {
-          throw new HttpException(
-            'Only user messages are allowed in this endpoint',
-            HttpStatus.BAD_REQUEST
-          );
-        }
-
-        if (typeof message.content !== 'string') {
-          throw new HttpException(
-            `Invalid message content at index ${index}`,
-            HttpStatus.BAD_REQUEST
-          );
-        }
-
-        const trimmedContent = message.content
-          .replace(DISALLOWED_CONTROL_CHARS, ' ')
-          .trim();
-
-        if (!trimmedContent) {
-          throw new HttpException(
-            `Message content at index ${index} cannot be empty`,
-            HttpStatus.BAD_REQUEST
-          );
-        }
-
-        if (trimmedContent.length > MAX_MESSAGE_LENGTH) {
-          throw new HttpException(
-            `Message content at index ${index} exceeds maximum length of ${MAX_MESSAGE_LENGTH}`,
-            HttpStatus.BAD_REQUEST
-          );
-        }
-
-        const sanitizedMessage = new ChatMessage();
-        sanitizedMessage.role = 'user';
-        sanitizedMessage.content = trimmedContent;
-        return sanitizedMessage;
-      });
-
-      return await this.chatService.query(sanitizedMessages);
+      return await this.chatService.query(normalizedContent);
     } catch (err) {
       if (err instanceof HttpException) {
         throw err;
       }
 
       throw new HttpException(
-        `Chat API response error: ${err}`,
+        'Chat API response error',
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }

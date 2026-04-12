@@ -3,10 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import { queryChat } from '../../api/httpClient';
 import type { ChatMessage } from '../../interfaces/ChatMessage';
 
-const UnsafeComponent: FC<{ html: string }> = ({ html }) => {
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
-};
-
 export const ChatWidget: FC = () => {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
@@ -25,17 +21,18 @@ export const ChatWidget: FC = () => {
   }, [chatMessages]);
 
   const sendMessage = async () => {
-    if (!userInput.trim()) {
+    const trimmedInput = userInput.trim();
+    if (!trimmedInput) {
       return;
     }
 
-    const userMessage: ChatMessage = { role: 'user', content: userInput };
-    const messages = [...chatMessages, userMessage];
-    setChatMessages(messages);
+    const userMessage: ChatMessage = { role: 'user', content: trimmedInput };
+    setChatMessages((messages) => [...messages, userMessage]);
     setLoading(true);
+    setUserInput('');
 
     try {
-      const answer = await queryChat(messages);
+      const answer = await queryChat({ content: trimmedInput });
 
       const serverMessage: ChatMessage = {
         role: 'assistant',
@@ -62,7 +59,6 @@ export const ChatWidget: FC = () => {
   const handleKeyDown = async (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault();
-      setUserInput('');
       await sendMessage();
     }
   };
@@ -77,13 +73,7 @@ export const ChatWidget: FC = () => {
               !msg.content ? 'message-error' : ''
             }`}
           >
-            {msg.role === 'user' ? (
-              msg.content
-            ) : msg.content ? (
-              <UnsafeComponent html={msg.content} />
-            ) : (
-              'Chat API Error'
-            )}
+            {msg.content || 'Chat API Error'}
           </div>
         ))}
         {loading && (
