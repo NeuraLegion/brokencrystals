@@ -9,8 +9,8 @@ export function identifyStartupPrompt(
       content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files and list directories.
 
 Check for (in priority order):
-1. Docker Compose files (compose.yml, docker-compose.yml, compose.local.yml) — PREFER Docker when the app has complex dependencies (databases, message queues, etc.)
-2. Dockerfile with docker build + docker run
+1. Docker Compose files (compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml) — **ALWAYS prefer Docker when a suitable compose file exists.** Docker avoids Node version incompatibilities, native module build issues, and missing system dependencies.
+2. Dockerfile with "docker build -t <name> . && docker run -d -p <port>:<port> <name>" — use this when a Dockerfile exists but no suitable compose file is available.
 3. package.json scripts (start, dev, serve)
 4. Makefile targets
 5. README instructions
@@ -18,11 +18,17 @@ Check for (in priority order):
 7. Go main.go
 8. Gemfile + config.ru (Rails)
 
-IMPORTANT: If the project has a docker-compose or compose file, strongly prefer using Docker unless the compose file requires external services that aren't defined in it. Docker avoids Node version incompatibilities and native module build issues.
+CRITICAL COMPOSE FILE RULES:
+- SKIP compose files that are clearly for CI/testing: docker-compose.test.yml, docker-compose.ci.yml, docker-compose.e2e.yml. These run tests and exit — they do NOT keep the app running.
+- READ the compose file contents before using it. If it contains a "sut" (system-under-test) service or a service that runs test commands and exits, do NOT use that compose file.
+- If the ONLY compose files are test/CI files, fall back to "docker build" + "docker run" using the Dockerfile instead.
+- Prefer compose files named: compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml, docker-compose.local.yml.
+
+IMPORTANT: If the project has Docker files (Dockerfile or compose), you MUST use Docker. Do NOT attempt a native (non-Docker) startup when Docker files are present — the app likely depends on databases, caches, or other services that won't be available natively. If no suitable compose file exists but a Dockerfile does, use "docker build" + "docker run".
 
 For Docker Compose: use "docker compose -f <file> up -d" as the command and set docker=true. Parse the compose file to find the exposed port.
 
-For non-Docker: determine prerequisites (npm install, pip install, etc.), the startup command, and the port.
+For Dockerfile (no compose): use "docker build -t app ." as prerequisite and "docker run -d -p <port>:<port> app" as command. Set docker=true. Parse the Dockerfile EXPOSE directive or application config to find the port.
 
 Determine:
 1. Prerequisites to run first (npm install, pip install, docker compose build, etc.)

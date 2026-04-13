@@ -340,20 +340,6 @@ async function createAuthObject(
 
   const loginUrl = `${baseUrl}${loginEndpoint}`;
 
-  // Build the NexTemplate for token extraction based on tokenLocation
-  let template: string;
-  if (tokenLocation === "header") {
-    const headerKey = (tokenFieldPath ?? "authorization").toLowerCase();
-    template = `{{ auth_object.stages.login.response.headers | get: '/${headerKey}' }}`;
-  } else if (tokenLocation === "cookie") {
-    const cName = tokenFieldPath ?? cookieName ?? "session";
-    template = `{{ auth_object.stages.login.response.headers | get: '/set-cookie' | match: /${cName}=([^;]*)/ }}`;
-  } else {
-    // body
-    const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
-    template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
-  }
-
   // Determine Content-Type header for the login request
   const contentTypeMap: Record<string, string> = {
     json: "application/json",
@@ -362,33 +348,41 @@ async function createAuthObject(
   };
   const loginCT = contentTypeMap[loginContentType] ?? "application/json";
 
-  // Build the embedder based on tokenEmbedLocation
+  // Build the embedder based on tokenEmbedLocation.
+  // IMPORTANT: Bright's embedder type enum is ["body","header","status","url","dom"].
+  // There is NO "cookie" or "query" type. For cookie-based auth (session),
+  // Bright automatically captures Set-Cookie headers from login responses and
+  // replays them — no explicit embedder is needed.
   const embedLocation = tokenEmbedLocation ?? "header";
-  let embedder: Record<string, unknown>;
+  const embedders: Record<string, unknown>[] = [];
+
   if (embedLocation === "cookie") {
-    embedder = {
-      type: "cookie" as const,
-      name: cookieName ?? "session",
-      template,
-      templateType: "clear_text",
-      mergeStrategy: "replace",
-    };
-  } else if (embedLocation === "query") {
-    embedder = {
-      type: "query" as const,
-      name: queryParamName ?? "token",
-      template,
-      templateType: "clear_text",
-      mergeStrategy: "replace",
-    };
+    // Cookie-based session auth: Bright auto-captures and replays cookies.
+    // No embedder needed.
+    console.log(`[Auth] Cookie-based auth — relying on Bright's automatic cookie handling`);
   } else {
-    embedder = {
+    // Build NexTemplate for token extraction
+    let template: string;
+    if (tokenLocation === "header") {
+      const headerKey = (tokenFieldPath ?? "authorization").toLowerCase();
+      template = `{{ auth_object.stages.login.response.headers | get: '/${headerKey}' }}`;
+    } else if (tokenLocation === "cookie") {
+      // Token comes from a cookie but needs to be embedded in a header (e.g. CSRF token)
+      const cName = tokenFieldPath ?? cookieName ?? "session";
+      template = `{{ auth_object.stages.login.response.headers | get: '/set-cookie' | match: /${cName}=([^;]*)/ }}`;
+    } else {
+      // body
+      const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
+      template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
+    }
+
+    embedders.push({
       type: "header" as const,
       name: headerName ?? "Authorization",
       template,
       templateType: "clear_text",
       mergeStrategy: "replace",
-    };
+    });
   }
 
   const body = {
@@ -417,14 +411,13 @@ async function createAuthObject(
             successResponseDetection: [{ type: "status", statuses: [200, 201] }],
           },
         ],
-        embedders: [embedder],
+        ...(embedders.length > 0 ? { embedders } : {}),
       },
     },
   };
 
   console.log(`[Auth] Creating multistep auth object via REST API`);
-  console.log(`[Auth] Login content type: ${loginCT}, embed: ${embedLocation}`);
-  console.log(`[Auth] Embedder template: ${template}`);
+  console.log(`[Auth] Login content type: ${loginCT}, embed: ${embedLocation}, embedders: ${embedders.length}`);
 
   return createAuthViaRest(brightToken, brightHostname, body);
 }
@@ -488,7 +481,8 @@ async function createAuthViaRest(
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.error(`[Auth] REST create auth failed: HTTP ${res.status} — ${text.slice(0, 400)}`);
+      console.error(`[Auth] REST create auth failed: HTTP ${res.status} — ${text.slice(0, 800)}`);
+      console.error(`[Auth] Request body: ${JSON.stringify(body).slice(0, 800)}`);
       return undefined;
     }
 

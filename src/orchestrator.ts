@@ -5,7 +5,7 @@ import type { OrchestratorContext, SecurityFix, Finding } from "./types.js";
 import { ProgressReporter, type FindingSummary } from "./progress.js";
 import { formatTechStack } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
-import { startApplicationWithRetries, captureDockerLogs, type StartupResult } from "./phases/startup.js";
+import { startApplicationWithRetries, captureDockerLogs, checkAppHealth, type StartupResult } from "./phases/startup.js";
 import { detectAndConfigureAuth, testAuthObject, type AuthResult } from "./phases/auth.js";
 import { registerEntrypoints, verifyEntrypointAuth, pruneDeadEntrypoints, type RegisteredEntrypoint } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
@@ -253,6 +253,22 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         }
       }
 
+      // --- Verify app is alive before scanning ---
+      const appAlive = await checkAppHealth(startupConfig.port);
+      if (!appAlive) {
+        console.warn(`[Scan] App is unreachable on port ${startupConfig.port} — restarting before scan`);
+        await killProcess(appProcess);
+        try {
+          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+          appProcess = restart.process;
+          console.log("[Scan] App restarted successfully");
+        } catch (err) {
+          console.error(`[Scan] Failed to restart app: ${err}`);
+          await progress.phaseStart("scan_error", "Application crashed and could not be restarted.");
+          break;
+        }
+      }
+
       // --- Scan all groups ---
       await progress.phaseStart(
         "scan",
@@ -307,6 +323,32 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
 
       if (anyFailed) {
+        // Check if the failure is caused by the app being down
+        const stillAlive = await checkAppHealth(startupConfig.port);
+        if (!stillAlive) {
+          console.warn("[Scan] App appears to have crashed during scanning — attempting restart and retry");
+          await killProcess(appProcess);
+          try {
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            appProcess = restart.process;
+            console.log("[Scan] App restarted — will retry scans on next iteration");
+            // Don't break — let the loop continue to re-run scans
+            await progress.phaseDetail(
+              "scan",
+              "app_restart",
+              `App crashed during round ${iteration + 1} — restarted, retrying`,
+            );
+            continue;
+          } catch (restartErr) {
+            console.error(`[Scan] Failed to restart app after crash: ${restartErr}`);
+            await progress.phaseStart(
+              "scan_error",
+              `Application crashed during round ${iteration + 1} and could not be restarted.`,
+            );
+            break;
+          }
+        }
+
         await progress.phaseStart(
           "scan_error",
           `One or more scans failed on round ${iteration + 1}. Check Bright dashboard.`,

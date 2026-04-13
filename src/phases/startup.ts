@@ -345,6 +345,22 @@ async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   );
 }
 
+/**
+ * Quick, non-throwing health check: returns true if the app responds on
+ * the given port within a short timeout.
+ */
+export async function checkAppHealth(port: number): Promise<boolean> {
+  try {
+    await fetch(`http://localhost:${port}/`, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5_000),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function extractJson(text: string): string {
   const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
   if (codeBlockMatch) return codeBlockMatch[1].trim();

@@ -33,6 +33,7 @@ async function runScanViaRest(
   scanName?: string,
 ): Promise<string> {
   let tests = [...testTags];
+  let eps = [...entrypointIds];
   const maxRetries = 3;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -40,7 +41,7 @@ async function runScanViaRest(
       name: scanName ?? `Engine Scan ${new Date().toISOString()}`,
       projectId,
       module: "dast",
-      entryPointIds: entrypointIds,
+      entryPointIds: eps,
       repeaters: [repeaterId],
       tests,
       attackParamLocations,
@@ -104,10 +105,19 @@ async function runScanViaRest(
 
     // 400 config error — try to auto-fix by removing problematic tests
     if (res.status === 400) {
+      console.warn(`[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${text.slice(0, 300)}`);
       const fixed = tryFixScanConfig(text, tests);
       if (fixed && attempt < maxRetries) {
         tests = fixed;
         console.log(`[Scan] Retrying with ${tests.length} tests after removing incompatible ones`);
+        continue;
+      }
+      // If we have many entrypoints and can't diagnose the issue,
+      // try with fewer entrypoints (first half)
+      if (eps.length > 5 && attempt < maxRetries) {
+        const prev = eps.length;
+        eps = eps.slice(0, Math.ceil(prev / 2));
+        console.log(`[Scan] Retrying with ${eps.length} entrypoints (reduced from ${prev})`);
         continue;
       }
     }
@@ -206,10 +216,6 @@ async function getScanStatusViaRest(
   const data = (await res.json()) as Record<string, unknown>;
 
   const issuesFound = extractIssueCount(data);
-  if (issuesFound === 0 && data.issuesBySeverity) {
-    // Debug: log the raw shape so we can diagnose mismatches
-    console.debug(`[Scan] issuesBySeverity shape: ${JSON.stringify(data.issuesBySeverity).slice(0, 500)}`);
-  }
 
   return {
     status: (data.status as string) ?? "unknown",

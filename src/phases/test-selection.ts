@@ -139,12 +139,39 @@ Return a JSON object with an array of entries, one per endpoint index.`,
   const MAX_GROUPS = 10;
   const consolidated = consolidateGroups(groups, MAX_GROUPS);
 
-  console.log(`[Tests] Created ${consolidated.length} scan group(s) from ${endpoints.length} endpoints`);
-  for (const [i, g] of consolidated.entries()) {
+  // Split any groups that have too many entrypoints — the Bright API
+  // rejects scans with excessive entrypoints per request
+  const MAX_ENTRYPOINTS_PER_GROUP = 10;
+  const finalGroups = splitLargeGroups(consolidated, MAX_ENTRYPOINTS_PER_GROUP);
+
+  console.log(`[Tests] Created ${finalGroups.length} scan group(s) from ${endpoints.length} endpoints`);
+  for (const [i, g] of finalGroups.entries()) {
     console.log(`[Tests]   Group ${i + 1}: ${g.entrypointIds.length} endpoints, ${g.tests.length} tests`);
   }
 
-  return consolidated;
+  return finalGroups;
+}
+
+/**
+ * Split any groups whose entrypoint count exceeds the limit into
+ * smaller chunks, preserving the same test set for each chunk.
+ */
+function splitLargeGroups(groups: ScanGroup[], maxEps: number): ScanGroup[] {
+  const result: ScanGroup[] = [];
+  for (const g of groups) {
+    if (g.entrypointIds.length <= maxEps) {
+      result.push(g);
+      continue;
+    }
+    for (let i = 0; i < g.entrypointIds.length; i += maxEps) {
+      result.push({
+        tests: g.tests,
+        entrypointIds: g.entrypointIds.slice(i, i + maxEps),
+        hasPathParams: g.hasPathParams,
+      });
+    }
+  }
+  return result;
 }
 
 /**

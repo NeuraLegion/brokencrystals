@@ -33867,8 +33867,8 @@ function identifyStartupPrompt(techStack) {
       content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files and list directories.
 
 Check for (in priority order):
-1. Docker Compose files (compose.yml, docker-compose.yml, compose.local.yml) \u2014 PREFER Docker when the app has complex dependencies (databases, message queues, etc.)
-2. Dockerfile with docker build + docker run
+1. Docker Compose files (compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml) \u2014 **ALWAYS prefer Docker when a suitable compose file exists.** Docker avoids Node version incompatibilities, native module build issues, and missing system dependencies.
+2. Dockerfile with "docker build -t <name> . && docker run -d -p <port>:<port> <name>" \u2014 use this when a Dockerfile exists but no suitable compose file is available.
 3. package.json scripts (start, dev, serve)
 4. Makefile targets
 5. README instructions
@@ -33876,11 +33876,17 @@ Check for (in priority order):
 7. Go main.go
 8. Gemfile + config.ru (Rails)
 
-IMPORTANT: If the project has a docker-compose or compose file, strongly prefer using Docker unless the compose file requires external services that aren't defined in it. Docker avoids Node version incompatibilities and native module build issues.
+CRITICAL COMPOSE FILE RULES:
+- SKIP compose files that are clearly for CI/testing: docker-compose.test.yml, docker-compose.ci.yml, docker-compose.e2e.yml. These run tests and exit \u2014 they do NOT keep the app running.
+- READ the compose file contents before using it. If it contains a "sut" (system-under-test) service or a service that runs test commands and exits, do NOT use that compose file.
+- If the ONLY compose files are test/CI files, fall back to "docker build" + "docker run" using the Dockerfile instead.
+- Prefer compose files named: compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml, docker-compose.local.yml.
+
+IMPORTANT: If the project has Docker files (Dockerfile or compose), you MUST use Docker. Do NOT attempt a native (non-Docker) startup when Docker files are present \u2014 the app likely depends on databases, caches, or other services that won't be available natively. If no suitable compose file exists but a Dockerfile does, use "docker build" + "docker run".
 
 For Docker Compose: use "docker compose -f <file> up -d" as the command and set docker=true. Parse the compose file to find the exposed port.
 
-For non-Docker: determine prerequisites (npm install, pip install, etc.), the startup command, and the port.
+For Dockerfile (no compose): use "docker build -t app ." as prerequisite and "docker run -d -p <port>:<port> app" as command. Set docker=true. Parse the Dockerfile EXPOSE directive or application config to find the port.
 
 Determine:
 1. Prerequisites to run first (npm install, pip install, docker compose build, etc.)
@@ -34254,6 +34260,17 @@ async function waitForPort(port, timeoutMs) {
     `Application did not start on port ${port} within ${timeoutMs / 1e3}s`
   );
 }
+async function checkAppHealth(port) {
+  try {
+    await fetch(`http://localhost:${port}/`, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5e3)
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 function extractJson2(text) {
   const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
   if (codeBlockMatch) return codeBlockMatch[1].trim();
@@ -34583,17 +34600,6 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
     return void 0;
   }
   const loginUrl = `${baseUrl}${loginEndpoint}`;
-  let template;
-  if (tokenLocation === "header") {
-    const headerKey = (tokenFieldPath ?? "authorization").toLowerCase();
-    template = `{{ auth_object.stages.login.response.headers | get: '/${headerKey}' }}`;
-  } else if (tokenLocation === "cookie") {
-    const cName = tokenFieldPath ?? cookieName ?? "session";
-    template = `{{ auth_object.stages.login.response.headers | get: '/set-cookie' | match: /${cName}=([^;]*)/ }}`;
-  } else {
-    const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
-    template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
-  }
   const contentTypeMap = {
     json: "application/json",
     form: "application/x-www-form-urlencoded",
@@ -34601,31 +34607,28 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
   };
   const loginCT = contentTypeMap[loginContentType] ?? "application/json";
   const embedLocation = tokenEmbedLocation ?? "header";
-  let embedder;
+  const embedders = [];
   if (embedLocation === "cookie") {
-    embedder = {
-      type: "cookie",
-      name: cookieName ?? "session",
-      template,
-      templateType: "clear_text",
-      mergeStrategy: "replace"
-    };
-  } else if (embedLocation === "query") {
-    embedder = {
-      type: "query",
-      name: queryParamName ?? "token",
-      template,
-      templateType: "clear_text",
-      mergeStrategy: "replace"
-    };
+    console.log(`[Auth] Cookie-based auth \u2014 relying on Bright's automatic cookie handling`);
   } else {
-    embedder = {
+    let template;
+    if (tokenLocation === "header") {
+      const headerKey = (tokenFieldPath ?? "authorization").toLowerCase();
+      template = `{{ auth_object.stages.login.response.headers | get: '/${headerKey}' }}`;
+    } else if (tokenLocation === "cookie") {
+      const cName = tokenFieldPath ?? cookieName ?? "session";
+      template = `{{ auth_object.stages.login.response.headers | get: '/set-cookie' | match: /${cName}=([^;]*)/ }}`;
+    } else {
+      const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
+      template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
+    }
+    embedders.push({
       type: "header",
       name: headerName ?? "Authorization",
       template,
       templateType: "clear_text",
       mergeStrategy: "replace"
-    };
+    });
   }
   const body = {
     name: `Engine Auth \u2014 ${authType}`,
@@ -34653,13 +34656,12 @@ async function createAuthObject(brightToken, brightHostname, projectId, baseUrl,
             successResponseDetection: [{ type: "status", statuses: [200, 201] }]
           }
         ],
-        embedders: [embedder]
+        ...embedders.length > 0 ? { embedders } : {}
       }
     }
   };
   console.log(`[Auth] Creating multistep auth object via REST API`);
-  console.log(`[Auth] Login content type: ${loginCT}, embed: ${embedLocation}`);
-  console.log(`[Auth] Embedder template: ${template}`);
+  console.log(`[Auth] Login content type: ${loginCT}, embed: ${embedLocation}, embedders: ${embedders.length}`);
   return createAuthViaRest(brightToken, brightHostname, body);
 }
 async function createHeaderAuth(brightToken, brightHostname, projectId, repeaterId, testUrl, detection) {
@@ -34707,7 +34709,8 @@ async function createAuthViaRest(brightToken, brightHostname, body) {
     );
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.error(`[Auth] REST create auth failed: HTTP ${res.status} \u2014 ${text.slice(0, 400)}`);
+      console.error(`[Auth] REST create auth failed: HTTP ${res.status} \u2014 ${text.slice(0, 800)}`);
+      console.error(`[Auth] Request body: ${JSON.stringify(body).slice(0, 800)}`);
       return void 0;
     }
     const data = await res.json();
@@ -35267,11 +35270,30 @@ Return a JSON object with an array of entries, one per endpoint index.`
   }
   const MAX_GROUPS = 10;
   const consolidated = consolidateGroups(groups, MAX_GROUPS);
-  console.log(`[Tests] Created ${consolidated.length} scan group(s) from ${endpoints.length} endpoints`);
-  for (const [i, g] of consolidated.entries()) {
+  const MAX_ENTRYPOINTS_PER_GROUP = 10;
+  const finalGroups = splitLargeGroups(consolidated, MAX_ENTRYPOINTS_PER_GROUP);
+  console.log(`[Tests] Created ${finalGroups.length} scan group(s) from ${endpoints.length} endpoints`);
+  for (const [i, g] of finalGroups.entries()) {
     console.log(`[Tests]   Group ${i + 1}: ${g.entrypointIds.length} endpoints, ${g.tests.length} tests`);
   }
-  return consolidated;
+  return finalGroups;
+}
+function splitLargeGroups(groups, maxEps) {
+  const result = [];
+  for (const g of groups) {
+    if (g.entrypointIds.length <= maxEps) {
+      result.push(g);
+      continue;
+    }
+    for (let i = 0; i < g.entrypointIds.length; i += maxEps) {
+      result.push({
+        tests: g.tests,
+        entrypointIds: g.entrypointIds.slice(i, i + maxEps),
+        hasPathParams: g.hasPathParams
+      });
+    }
+  }
+  return result;
 }
 function consolidateGroups(groups, maxGroups) {
   if (groups.length <= maxGroups) return groups;
@@ -35311,13 +35333,14 @@ async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, b
 }
 async function runScanViaRest(brightToken, brightHostname, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName) {
   let tests = [...testTags];
+  let eps = [...entrypointIds];
   const maxRetries = 3;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const body = {
       name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`,
       projectId,
       module: "dast",
-      entryPointIds: entrypointIds,
+      entryPointIds: eps,
       repeaters: [repeaterId],
       tests,
       attackParamLocations,
@@ -35371,10 +35394,17 @@ async function runScanViaRest(brightToken, brightHostname, projectId, entrypoint
       throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
     }
     if (res.status === 400) {
+      console.warn(`[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${text.slice(0, 300)}`);
       const fixed = tryFixScanConfig(text, tests);
       if (fixed && attempt < maxRetries) {
         tests = fixed;
         console.log(`[Scan] Retrying with ${tests.length} tests after removing incompatible ones`);
+        continue;
+      }
+      if (eps.length > 5 && attempt < maxRetries) {
+        const prev = eps.length;
+        eps = eps.slice(0, Math.ceil(prev / 2));
+        console.log(`[Scan] Retrying with ${eps.length} entrypoints (reduced from ${prev})`);
         continue;
       }
     }
@@ -35435,9 +35465,6 @@ async function getScanStatusViaRest(brightToken, brightHostname, scanId) {
   }
   const data = await res.json();
   const issuesFound = extractIssueCount(data);
-  if (issuesFound === 0 && data.issuesBySeverity) {
-    console.debug(`[Scan] issuesBySeverity shape: ${JSON.stringify(data.issuesBySeverity).slice(0, 500)}`);
-  }
   return {
     status: data.status ?? "unknown",
     issuesFound
@@ -35909,6 +35936,20 @@ async function runOrchestrator(ctx) {
           }
         }
       }
+      const appAlive = await checkAppHealth(startupConfig.port);
+      if (!appAlive) {
+        console.warn(`[Scan] App is unreachable on port ${startupConfig.port} \u2014 restarting before scan`);
+        await killProcess(appProcess);
+        try {
+          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+          appProcess = restart.process;
+          console.log("[Scan] App restarted successfully");
+        } catch (err) {
+          console.error(`[Scan] Failed to restart app: ${err}`);
+          await progress.phaseStart("scan_error", "Application crashed and could not be restarted.");
+          break;
+        }
+      }
       await progress.phaseStart(
         "scan",
         `Running scans \u2014 round ${iteration + 1}`
@@ -35956,6 +35997,29 @@ async function runOrchestrator(ctx) {
         }
       }
       if (anyFailed) {
+        const stillAlive = await checkAppHealth(startupConfig.port);
+        if (!stillAlive) {
+          console.warn("[Scan] App appears to have crashed during scanning \u2014 attempting restart and retry");
+          await killProcess(appProcess);
+          try {
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            appProcess = restart.process;
+            console.log("[Scan] App restarted \u2014 will retry scans on next iteration");
+            await progress.phaseDetail(
+              "scan",
+              "app_restart",
+              `App crashed during round ${iteration + 1} \u2014 restarted, retrying`
+            );
+            continue;
+          } catch (restartErr) {
+            console.error(`[Scan] Failed to restart app after crash: ${restartErr}`);
+            await progress.phaseStart(
+              "scan_error",
+              `Application crashed during round ${iteration + 1} and could not be restarted.`
+            );
+            break;
+          }
+        }
         await progress.phaseStart(
           "scan_error",
           `One or more scans failed on round ${iteration + 1}. Check Bright dashboard.`
