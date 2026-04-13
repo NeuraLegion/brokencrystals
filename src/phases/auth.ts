@@ -18,6 +18,14 @@ export interface AuthResult {
   hasAuth: boolean;
   /** True if auth was detected as required but could not be configured. */
   authFailed: boolean;
+  /** Registration info for re-registering the test user after app restarts. */
+  registration?: {
+    baseUrl: string;
+    endpoint: string;
+    method: string;
+    body: string;
+    contentType: string;
+  };
 }
 
 export interface AuthTestResult {
@@ -61,7 +69,7 @@ export async function detectAndConfigureAuth(
   console.log(`[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`);
 
   // Phase 2: Register a test user locally if the app has no seeded users
-  await registerUserLocally(baseUrl, detection);
+  await registerUser(baseUrl, detection);
 
   // Phase 3: Let the LLM create + test + fix the auth object via MCP tools
   const authObjectId = await createAuthViaMcp(
@@ -69,13 +77,24 @@ export async function detectAndConfigureAuth(
     brightToken, brightHostname,
   );
 
+  // Build registration info for re-use after app restarts
+  const registration = detection.registerEndpoint && detection.registerBody
+    ? {
+        baseUrl,
+        endpoint: detection.registerEndpoint,
+        method: detection.registerMethod ?? "POST",
+        body: detection.registerBody,
+        contentType: detection.loginContentType,
+      }
+    : undefined;
+
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false };
+    return { authObjectId, hasAuth: true, authFailed: false, registration };
   }
 
   console.error("[Auth] Failed to configure auth");
-  return { authObjectId: undefined, hasAuth: false, authFailed: true };
+  return { authObjectId: undefined, hasAuth: false, authFailed: true, registration };
 }
 
 // ---------------------------------------------------------------------------
@@ -662,7 +681,7 @@ Create a working auth object and test it. Follow these steps:
 // Register a test user locally before login (for apps with no seeded users)
 // ---------------------------------------------------------------------------
 
-async function registerUserLocally(
+export async function registerUser(
   baseUrl: string,
   detection: AuthDetection,
 ): Promise<void> {
@@ -690,6 +709,38 @@ async function registerUserLocally(
     console.log(`[Auth] Registration response: ${res.status}`);
   } catch (err) {
     console.warn(`[Auth] Registration call failed (user may already exist): ${err}`);
+  }
+}
+
+/**
+ * Re-register the test user after an app restart (fresh container = empty DB).
+ * Takes the registration info from AuthResult so the orchestrator doesn't need
+ * to keep the full AuthDetection around.
+ */
+export async function reRegisterUser(
+  registration: NonNullable<AuthResult["registration"]>,
+): Promise<void> {
+  const contentTypeMap: Record<string, string> = {
+    json: "application/json",
+    form: "application/x-www-form-urlencoded",
+    xml: "application/xml",
+  };
+  const url = `${registration.baseUrl}${registration.endpoint}`;
+  const ct = contentTypeMap[registration.contentType] ?? "application/json";
+  const body = normalizeBody(registration.body, registration.contentType);
+
+  try {
+    console.log(`[Auth] Re-registering test user via ${registration.method} ${registration.endpoint}`);
+    const res = await fetch(url, {
+      method: registration.method,
+      headers: { "Content-Type": ct },
+      body,
+      redirect: "manual",
+      signal: AbortSignal.timeout(15_000),
+    });
+    console.log(`[Auth] Re-registration response: ${res.status}`);
+  } catch (err) {
+    console.warn(`[Auth] Re-registration failed (user may already exist): ${err}`);
   }
 }
 

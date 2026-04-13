@@ -33831,9 +33831,12 @@ async function discoverEndpoints(llm, repoPath, techStack) {
       allEndpoints.push({ ...ep, filePath: ep.filePath || filePath });
     }
   }
+  const validMethods = /* @__PURE__ */ new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
   const seen = /* @__PURE__ */ new Set();
   const unique = allEndpoints.filter((ep) => {
-    const key = `${ep.method} ${ep.path}`;
+    const method = ep.method?.toUpperCase();
+    if (!method || !validMethods.has(method) || !ep.path || ep.path === "unknown") return false;
+    const key = `${method} ${ep.path}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -34382,7 +34385,7 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
   console.log(`[Auth] Detected auth: ${detection.authType} \u2014 ${detection.notes}`);
   console.log(`[Auth] loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`);
   console.log(`[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`);
-  await registerUserLocally(baseUrl, detection);
+  await registerUser(baseUrl, detection);
   const authObjectId = await createAuthViaMcp(
     llm,
     bright,
@@ -34394,12 +34397,19 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
     brightToken,
     brightHostname
   );
+  const registration = detection.registerEndpoint && detection.registerBody ? {
+    baseUrl,
+    endpoint: detection.registerEndpoint,
+    method: detection.registerMethod ?? "POST",
+    body: detection.registerBody,
+    contentType: detection.loginContentType
+  } : void 0;
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false };
+    return { authObjectId, hasAuth: true, authFailed: false, registration };
   }
   console.error("[Auth] Failed to configure auth");
-  return { authObjectId: void 0, hasAuth: false, authFailed: true };
+  return { authObjectId: void 0, hasAuth: false, authFailed: true, registration };
 }
 async function detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl) {
   const stackStr = formatTechStack(techStack);
@@ -34866,7 +34876,7 @@ Create a working auth object and test it. Follow these steps:
   const idMatch = trimmed.match(/[0-9a-f]{24}|[0-9a-f-]{36}/i);
   return idMatch ? idMatch[0] : trimmed;
 }
-async function registerUserLocally(baseUrl, detection) {
+async function registerUser(baseUrl, detection) {
   if (!detection.registerEndpoint || !detection.registerBody) return;
   const url2 = `${baseUrl}${detection.registerEndpoint}`;
   const contentTypeMap = {
@@ -34889,6 +34899,29 @@ async function registerUserLocally(baseUrl, detection) {
     console.log(`[Auth] Registration response: ${res.status}`);
   } catch (err) {
     console.warn(`[Auth] Registration call failed (user may already exist): ${err}`);
+  }
+}
+async function reRegisterUser(registration) {
+  const contentTypeMap = {
+    json: "application/json",
+    form: "application/x-www-form-urlencoded",
+    xml: "application/xml"
+  };
+  const url2 = `${registration.baseUrl}${registration.endpoint}`;
+  const ct = contentTypeMap[registration.contentType] ?? "application/json";
+  const body = normalizeBody(registration.body, registration.contentType);
+  try {
+    console.log(`[Auth] Re-registering test user via ${registration.method} ${registration.endpoint}`);
+    const res = await fetch(url2, {
+      method: registration.method,
+      headers: { "Content-Type": ct },
+      body,
+      redirect: "manual",
+      signal: AbortSignal.timeout(15e3)
+    });
+    console.log(`[Auth] Re-registration response: ${res.status}`);
+  } catch (err) {
+    console.warn(`[Auth] Re-registration failed (user may already exist): ${err}`);
   }
 }
 async function testAuthObject(brightToken, brightHostname, authObjectId) {
@@ -35983,6 +36016,7 @@ async function runOrchestrator(ctx) {
           try {
             const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
+            if (authResult.registration) await reRegisterUser(authResult.registration);
             const retryOk = await verifyAndRepairAuth(
               llm,
               repoPath,
@@ -36012,6 +36046,7 @@ async function runOrchestrator(ctx) {
         try {
           const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
           appProcess = restart.process;
+          if (authResult.registration) await reRegisterUser(authResult.registration);
           console.log("[Scan] App restarted successfully");
         } catch (err) {
           console.error(`[Scan] Failed to restart app: ${err}`);
@@ -36073,6 +36108,7 @@ async function runOrchestrator(ctx) {
           try {
             const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
+            if (authResult.registration) await reRegisterUser(authResult.registration);
             console.log("[Scan] App restarted \u2014 will retry scans on next iteration");
             await progress.phaseDetail(
               "scan",
@@ -36184,6 +36220,7 @@ async function runOrchestrator(ctx) {
         try {
           const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
           appProcess = restart.process;
+          if (authResult.registration) await reRegisterUser(authResult.registration);
           healthy = true;
         } catch (startupErr) {
           console.error(`[Fix] App broken after applying ${fixCommitCount.value} fix(es): ${startupErr}`);
@@ -36200,6 +36237,7 @@ async function runOrchestrator(ctx) {
           if (healthy) {
             const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
+            if (authResult.registration) await reRegisterUser(authResult.registration);
           } else {
             console.log(`[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`);
             try {
@@ -36207,6 +36245,7 @@ async function runOrchestrator(ctx) {
               execFileSync4("git", ["push"], { cwd: repoPath, stdio: "pipe" });
               const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
               appProcess = restart.process;
+              if (authResult.registration) await reRegisterUser(authResult.registration);
             } catch {
               console.error("[Fix] Could not recover \u2014 aborting fix round");
             }

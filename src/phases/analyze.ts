@@ -120,10 +120,13 @@ export async function discoverEndpoints(
     }
   }
 
-  // De-duplicate by method+path
+  // De-duplicate by method+path and drop invalid entries
+  const validMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
   const seen = new Set<string>();
   const unique = allEndpoints.filter((ep) => {
-    const key = `${ep.method} ${ep.path}`;
+    const method = ep.method?.toUpperCase();
+    if (!method || !validMethods.has(method) || !ep.path || ep.path === "unknown") return false;
+    const key = `${method} ${ep.path}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

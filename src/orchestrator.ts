@@ -6,7 +6,7 @@ import { ProgressReporter, type FindingSummary } from "./progress.js";
 import { formatTechStack } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import { startApplicationWithRetries, captureDockerLogs, checkAppHealth, type StartupResult } from "./phases/startup.js";
-import { detectAndConfigureAuth, testAuthObject, type AuthResult } from "./phases/auth.js";
+import { detectAndConfigureAuth, testAuthObject, reRegisterUser, type AuthResult } from "./phases/auth.js";
 import { registerEntrypoints, verifyEntrypointAuth, pruneDeadEntrypoints, type RegisteredEntrypoint } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
 import { selectTestsPerEndpoint, type ScanGroup } from "./phases/test-selection.js";
@@ -228,6 +228,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           try {
             const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
+            // Re-register test user (fresh container = empty DB)
+            if (authResult.registration) await reRegisterUser(authResult.registration);
             // Retest after restart
             const retryOk = await verifyAndRepairAuth(
               llm, repoPath, techStack,
@@ -257,6 +259,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         try {
           const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
           appProcess = restart.process;
+          if (authResult.registration) await reRegisterUser(authResult.registration);
           console.log("[Scan] App restarted successfully");
         } catch (err) {
           console.error(`[Scan] Failed to restart app: ${err}`);
@@ -327,6 +330,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           try {
             const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
+            if (authResult.registration) await reRegisterUser(authResult.registration);
             console.log("[Scan] App restarted — will retry scans on next iteration");
             // Don't break — let the loop continue to re-run scans
             await progress.phaseDetail(
@@ -475,6 +479,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         try {
           const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
           appProcess = restart.process;
+          if (authResult.registration) await reRegisterUser(authResult.registration);
           healthy = true;
         } catch (startupErr) {
           console.error(`[Fix] App broken after applying ${fixCommitCount.value} fix(es): ${startupErr}`);
@@ -488,6 +493,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           if (healthy) {
             const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
             appProcess = restart.process;
+            if (authResult.registration) await reRegisterUser(authResult.registration);
           } else {
             // Last resort: revert ALL fix commits from this round
             console.log(`[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`);
@@ -496,6 +502,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
               execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
               const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
               appProcess = restart.process;
+              if (authResult.registration) await reRegisterUser(authResult.registration);
             } catch {
               console.error("[Fix] Could not recover — aborting fix round");
             }
