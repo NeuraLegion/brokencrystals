@@ -33578,6 +33578,21 @@ function createToolHandler(repoPath) {
     }
   };
 }
+function convertMcpToolsToOpenAI(schemas) {
+  return schemas.map((schema) => ({
+    type: "function",
+    function: {
+      name: schema.name,
+      description: schema.description ?? schema.name,
+      parameters: schema.inputSchema
+    }
+  }));
+}
+function createMcpToolHandler(bright) {
+  return async (name, args) => {
+    return bright.callMcpToolRaw(name, args);
+  };
+}
 
 // src/prompts/detect-tech-stack.ts
 function detectTechStackPrompt(repoFiles) {
@@ -34048,11 +34063,10 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
       attemptErrors.push({ config: config2, error: errorMsg });
       if (config2.docker) {
         try {
-          execSync("docker compose down 2>/dev/null || true", {
-            cwd: repoPath,
-            stdio: "ignore",
-            timeout: 3e4
-          });
+          execSync(
+            "docker compose down 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
+            { cwd: repoPath, stdio: "ignore", timeout: 3e4 }
+          );
         } catch {
         }
       }
@@ -34291,6 +34305,17 @@ function cleanupDocker(repoPath) {
         timeout: 6e4
       });
     }
+    const stopped = execSync("docker ps -aq", {
+      encoding: "utf-8",
+      timeout: 1e4
+    }).trim();
+    if (stopped) {
+      console.log("[Startup] Removing stopped Docker containers...");
+      execSync("docker rm -f $(docker ps -aq)", {
+        stdio: "pipe",
+        timeout: 3e4
+      });
+    }
     execSync(
       "docker compose down 2>/dev/null; docker compose -f compose.local.yml down 2>/dev/null || true",
       { cwd: repoPath, stdio: "pipe", timeout: 3e4 }
@@ -34349,62 +34374,31 @@ ${containerLog.trim()}`);
 
 // src/phases/auth.ts
 async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoints, projectId, baseUrl, repeaterId, brightToken, brightHostname) {
-  const MAX_AUTH_ATTEMPTS = 10;
-  let detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl);
+  const detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl);
   if (!detection.requiresAuth) {
     console.log("[Auth] No auth required");
     return { authObjectId: void 0, hasAuth: false, authFailed: false };
   }
   console.log(`[Auth] Detected auth: ${detection.authType} \u2014 ${detection.notes}`);
-  console.log(`[Auth] tokenLocation=${detection.tokenLocation}, tokenFieldPath=${detection.tokenFieldPath}, loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`);
-  console.log(`[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}, cookieName=${detection.cookieName}, queryParam=${detection.queryParamName}`);
-  const existingAuth = await findExistingAuth(bright, projectId, detection);
-  if (existingAuth) {
-    console.log(`[Auth] Reusing existing auth object: ${existingAuth}`);
-    return { authObjectId: existingAuth, hasAuth: true, authFailed: false };
+  console.log(`[Auth] loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`);
+  console.log(`[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`);
+  await registerUserLocally(baseUrl, detection);
+  const authObjectId = await createAuthViaMcp(
+    llm,
+    bright,
+    repoPath,
+    detection,
+    projectId,
+    baseUrl,
+    repeaterId,
+    brightToken,
+    brightHostname
+  );
+  if (authObjectId) {
+    console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
+    return { authObjectId, hasAuth: true, authFailed: false };
   }
-  for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
-    console.log(`[Auth] Attempt ${attempt}/${MAX_AUTH_ATTEMPTS}`);
-    const authObjectId = await createAuthObject(
-      brightToken,
-      brightHostname,
-      projectId,
-      baseUrl,
-      repeaterId,
-      detection
-    );
-    if (!authObjectId) {
-      console.error(`[Auth] Attempt ${attempt}: Failed to create auth object`);
-      if (attempt < MAX_AUTH_ATTEMPTS) {
-        detection = await retryDetection(llm, repoPath, techStack, endpoints, baseUrl, detection, "Auth object creation failed. The API rejected the configuration.");
-        continue;
-      }
-      return { authObjectId: void 0, hasAuth: false, authFailed: true };
-    }
-    console.log(`[Auth] Created auth object: ${authObjectId}`);
-    const testResult = await testAuthObject(brightToken, brightHostname, authObjectId);
-    if (testResult.passed) {
-      console.log(`[Auth] Auth test passed: ${testResult.summary}`);
-      return { authObjectId, hasAuth: true, authFailed: false };
-    }
-    console.warn(`[Auth] Attempt ${attempt}: Auth test failed \u2014 ${testResult.summary}`);
-    if (attempt < MAX_AUTH_ATTEMPTS) {
-      await deleteAuthObject(brightToken, brightHostname, authObjectId);
-      detection = await retryDetection(
-        llm,
-        repoPath,
-        techStack,
-        endpoints,
-        baseUrl,
-        detection,
-        `Auth object test failed. Test results:
-${testResult.summary}
-
-The credentials or configuration are likely wrong. Re-examine the codebase for correct values.`
-      );
-    }
-  }
-  console.error("[Auth] All auth attempts failed \u2014 cannot proceed");
+  console.error("[Auth] Failed to configure auth");
   return { authObjectId: void 0, hasAuth: false, authFailed: true };
 }
 async function detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl) {
@@ -34446,6 +34440,15 @@ STEP 3 \u2014 Find the exact JSON field names for the login request body:
 - The field names might be "user", "email", "username", "login" \u2014 use EXACTLY what the code expects
 - The password field might be "password", "pass", "passwd" \u2014 use EXACTLY what the code expects
 
+STEP 4 \u2014 Find the user registration/signup endpoint (if applicable):
+- Many apps (especially demo/test apps) have NO seeded users \u2014 you MUST register one before logging in
+- Search for registration/signup routes (e.g. POST /register, POST /signup, POST /api/auth/register)
+- Read the registration handler to find the EXACT field names (email, username, password, cpassword, name, etc.)
+- Build a registerBody using the SAME credentials from loginBody, plus any extra required fields
+- For extra fields like "name", use a reasonable value like "Test User"
+- For "cpassword" or "confirmPassword" fields, use the same password value
+- If the app seeds users in DB migrations/fixtures and registration is NOT needed, set registerEndpoint to null
+
 Base URL: ${baseUrl}`
     },
     {
@@ -34475,13 +34478,18 @@ Return ONLY a JSON object with these exact fields:
   "reauthIndicator": "status" | "redirect" | "body",
   "reauthBodyPattern": "regex pattern" or null,
   "protectedEndpointPath": "/api/some/protected/path" or null,
+  "registerEndpoint": "/register" or "/signup" or null,
+  "registerMethod": "POST" or null,
+  "registerBody": "email=test@test.com&password=pass&username=user&name=Test+User&cpassword=pass" or null,
   "notes": "brief description including where you found the credentials"
 }
 
 CRITICAL RULES:
 - "loginBody" field names MUST match what the login endpoint handler expects (read the code!)
 - "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
-- If you cannot find real credentials, set "loginBody" to null \u2014 do NOT invent values
+- If you cannot find real credentials BUT a registration endpoint exists, invent a consistent set of test credentials used in BOTH registerBody and loginBody (e.g. username=testuser, password=TestPass123, email=test@test.com)
+- If you cannot find credentials AND there is no registration endpoint, set "loginBody" to null
+- "loginBody" FORMAT: when "loginContentType" is "form", use URL-encoded format like "username=value&password=value" \u2014 NOT JSON. When "json", use JSON like '{"username":"value","password":"value"}'
 - "loginContentType": "json" for JSON APIs, "form" for HTML form login (application/x-www-form-urlencoded), "xml" for SOAP/XML auth
 - "tokenLocation": "body" if token is in JSON response body, "header" if in a response header, "cookie" if set via Set-Cookie. READ THE LOGIN HANDLER CODE!
 - "tokenFieldPath": for body \u2192 dot-path to the token field. For header \u2192 header name in lowercase. For cookie \u2192 cookie name.
@@ -34492,15 +34500,21 @@ CRITICAL RULES:
   - "status" \u2192 returns 401/403 status codes (most common for APIs)
   - "redirect" \u2192 returns 301/302 redirect to a login page (common for web apps with server-side rendering)
   - "body" \u2192 returns 200 OK but with an error message in the response body (common for GraphQL or apps that don't use proper HTTP status codes)
-- "reauthBodyPattern": Only set when reauthIndicator is "body". A regex pattern that matches the body content indicating auth failure (e.g. "session.expired|login.required|unauthorized"). Set to null for "status" or "redirect".
-- "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT the auth token. To verify this:
+- "reauthBodyPattern": Only set when reauthIndicator is "body". A regex pattern that matches the body content indicating auth failure (e.g. "session.expired|login.required|unauthorized"). Set to null for "status" or "redirect" (redirects have no body, only a Location header).
+- "protectedEndpointPath" MUST be an endpoint that requires authentication. When accessed WITHOUT the auth token it should:
+  - Return 401/403 (for API-style apps with reauthIndicator "status")
+  - OR redirect to the login page (for server-rendered apps with reauthIndicator "redirect")
+  To verify:
   1. Pick a candidate from the Known endpoints list above
-  2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) \u2014 e.g. /api/users/me is better than /api/users/:id
+  2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) \u2014 e.g. /learn is better than /learn/vulnerability/:vuln
   3. Read its route definition and handler code
-  4. Confirm it has auth middleware/guard applied (e.g. @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
+  4. Confirm it has auth middleware/guard applied (e.g. isAuthenticated, @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
   5. If the route has NO auth guard or the guard is optional, pick a DIFFERENT endpoint
-  5. Do NOT pick endpoints that return 200 for unauthenticated requests (e.g. public pages, public APIs)
-  6. Do NOT invent endpoints \u2014 pick from the list above`
+  6. Do NOT pick endpoints that return 200 for unauthenticated requests (e.g. public pages, public APIs)
+  7. Do NOT invent endpoints \u2014 pick from the list above
+- "registerEndpoint": set if the app has a registration/signup endpoint and NO seeded users. null if users are pre-seeded.
+- "registerBody": form-encoded or JSON body for registration, using the SAME credentials as loginBody plus any extra required fields (name, email, cpassword, etc.)
+- "registerMethod": usually "POST"`
     }
   ];
   const response = await chatWithTools(llm, messages, codebaseTools, handler, void 0, 40);
@@ -34523,6 +34537,9 @@ CRITICAL RULES:
       reauthIndicator: parsed.reauthIndicator ?? "status",
       reauthBodyPattern: parsed.reauthBodyPattern ?? null,
       protectedEndpointPath: parsed.protectedEndpointPath ?? null,
+      registerEndpoint: parsed.registerEndpoint ?? null,
+      registerMethod: parsed.registerMethod ?? "POST",
+      registerBody: parsed.registerBody ?? null,
       notes: parsed.notes ?? ""
     };
   } catch {
@@ -34544,156 +34561,104 @@ CRITICAL RULES:
       reauthIndicator: "status",
       reauthBodyPattern: null,
       protectedEndpointPath: null,
+      registerEndpoint: null,
+      registerMethod: null,
+      registerBody: null,
       notes: "Detection failed"
     };
   }
 }
-async function findExistingAuth(bright, projectId, detection) {
-  try {
-    const existing = await bright.listAuths(projectId);
-    if (existing.length === 0) return void 0;
-    const typeMap = {
-      jwt: "multistep",
-      session: "multistep",
-      api_key: "header",
-      basic: "header",
-      oauth: "oidc"
-    };
-    const expectedBrightType = typeMap[detection.authType] ?? "multistep";
-    const match2 = existing.find((a) => a.type === expectedBrightType);
-    return match2?.id;
-  } catch (err) {
-    console.warn(`[Auth] Failed to list existing auth objects: ${err}`);
-    return void 0;
-  }
-}
-async function createAuthObject(brightToken, brightHostname, projectId, baseUrl, repeaterId, detection) {
-  const {
-    authType,
-    loginEndpoint,
-    loginMethod,
-    loginBody,
-    loginContentType,
-    tokenLocation,
-    tokenFieldPath,
-    tokenEmbedLocation,
-    headerName,
-    headerPrefix,
-    cookieName,
-    queryParamName,
-    protectedEndpointPath
-  } = detection;
-  const resolvedPath = protectedEndpointPath ? protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1") : "/";
-  const testUrl = `${baseUrl}${resolvedPath}`;
-  if (authType === "api_key" || authType === "basic") {
-    return createHeaderAuth(
-      brightToken,
-      brightHostname,
+async function createAuthViaRestApi(brightToken, brightHostname, projectId, repeaterId, params) {
+  const { authStyle, loginUrl, loginBody, loginContentType, testUrl } = params;
+  const contentType = loginContentType === "form" ? "application/x-www-form-urlencoded" : "application/json";
+  const normalizedBody = normalizeBody(loginBody, loginContentType);
+  if (authStyle === "api_key") {
+    const body2 = {
+      name: "Engine Auth \u2014 api_key",
       projectId,
-      repeaterId,
-      testUrl,
-      detection
-    );
+      type: "header",
+      test: {
+        repeaterId,
+        request: { method: "GET", url: testUrl }
+      },
+      successResponseDetection: [{ type: "status", statuses: [200] }],
+      reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }],
+      config: {
+        request: {
+          url: testUrl,
+          method: "GET",
+          headers: [{
+            name: params.headerName ?? "Authorization",
+            value: params.headerValue ?? "",
+            type: "clear_text"
+          }]
+        }
+      }
+    };
+    return postAuthObject(brightToken, brightHostname, body2);
   }
-  if (!loginEndpoint || !loginBody) {
-    console.warn("[Auth] Login endpoint or credentials not found \u2014 cannot create auth");
-    return void 0;
-  }
-  const loginUrl = `${baseUrl}${loginEndpoint}`;
-  const contentTypeMap = {
-    json: "application/json",
-    form: "application/x-www-form-urlencoded",
-    xml: "application/xml"
-  };
-  const loginCT = contentTypeMap[loginContentType] ?? "application/json";
-  const embedLocation = tokenEmbedLocation ?? "header";
+  const isSession = authStyle === "session";
+  const reauthTriggers = isSession ? [{ type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] }] : [{ type: "TRIGGER", location: "status", statuses: [401, 403] }];
   const embedders = [];
-  if (embedLocation === "cookie") {
-    console.log(`[Auth] Cookie-based auth \u2014 relying on Bright's automatic cookie handling`);
-  } else {
-    let template;
-    if (tokenLocation === "header") {
-      const headerKey = (tokenFieldPath ?? "authorization").toLowerCase();
-      template = `{{ auth_object.stages.login.response.headers | get: '/${headerKey}' }}`;
-    } else if (tokenLocation === "cookie") {
-      const cName = tokenFieldPath ?? cookieName ?? "session";
-      template = `{{ auth_object.stages.login.response.headers | get: '/set-cookie' | match: /${cName}=([^;]*)/ }}`;
-    } else {
-      const tokenRegex = buildTokenRegex(tokenFieldPath ?? "token");
-      template = `${headerPrefix ?? "Bearer "}{{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`;
-    }
+  if (!isSession && params.tokenFieldPath) {
+    const lastSegment = params.tokenFieldPath.includes(".") ? params.tokenFieldPath.split(".").pop() : params.tokenFieldPath;
+    const escaped = lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const tokenRegex = `"${escaped}"\\s*:\\s*"([^"]*)"`;
     embedders.push({
       type: "header",
-      name: headerName ?? "Authorization",
-      template,
+      name: "Authorization",
+      template: `Bearer {{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`,
       templateType: "clear_text",
       mergeStrategy: "replace"
     });
   }
+  const redirectOpts = isSession ? { followRedirects: false, maxRedirects: 0, changeMethodOnRedirect: false } : {};
   const body = {
-    name: `Engine Auth \u2014 ${authType}`,
+    name: `Engine Auth \u2014 ${authStyle}`,
     projectId,
     type: "multistep",
     test: {
-      request: { method: "GET", url: testUrl, protocol: "http" },
-      repeaterId
+      repeaterId,
+      request: {
+        method: "GET",
+        url: testUrl,
+        protocol: "http",
+        bodyType: "clear_text",
+        ...redirectOpts
+      }
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
-    reauthTriggers: buildReauthTriggers(detection),
+    reauthTriggers,
     config: {
       multistep: {
-        steps: [
-          {
-            name: "login",
-            request: {
-              url: loginUrl,
-              method: loginMethod ?? "POST",
-              protocol: "http",
-              headers: [{ name: "Content-Type", value: loginCT, type: "clear_text" }],
-              body: loginBody,
-              bodyType: "clear_text"
-            },
-            successResponseDetection: [{ type: "status", statuses: [200, 201] }]
-          }
-        ],
+        steps: [{
+          name: "login",
+          request: {
+            method: "POST",
+            url: loginUrl,
+            protocol: "http",
+            headers: [{
+              name: "Content-Type",
+              value: contentType,
+              type: "clear_text",
+              mergeStrategy: "replace"
+            }],
+            bodyType: "clear_text",
+            body: normalizedBody,
+            ...redirectOpts
+          },
+          successResponseDetection: [
+            { type: "status", statuses: isSession ? [200, 201, 302] : [200, 201] }
+          ]
+        }],
         ...embedders.length > 0 ? { embedders } : {}
       }
     }
   };
-  console.log(`[Auth] Creating multistep auth object via REST API`);
-  console.log(`[Auth] Login content type: ${loginCT}, embed: ${embedLocation}, embedders: ${embedders.length}`);
-  return createAuthViaRest(brightToken, brightHostname, body);
+  console.log(`[Auth] Creating ${authStyle} auth via REST API \u2014 login: ${loginUrl}, test: ${testUrl}`);
+  return postAuthObject(brightToken, brightHostname, body);
 }
-async function createHeaderAuth(brightToken, brightHostname, projectId, repeaterId, testUrl, detection) {
-  const headerValue = detection.loginBody ?? "";
-  const body = {
-    name: `Engine Auth \u2014 ${detection.authType}`,
-    projectId,
-    type: "header",
-    test: {
-      request: { method: "GET", url: testUrl },
-      repeaterId
-    },
-    successResponseDetection: [{ type: "status", statuses: [200] }],
-    reauthTriggers: buildReauthTriggers(detection),
-    config: {
-      request: {
-        url: testUrl,
-        method: "GET",
-        headers: [
-          {
-            name: detection.headerName ?? "Authorization",
-            value: headerValue,
-            type: "clear_text"
-          }
-        ]
-      }
-    }
-  };
-  console.log(`[Auth] Creating header auth object via REST API`);
-  return createAuthViaRest(brightToken, brightHostname, body);
-}
-async function createAuthViaRest(brightToken, brightHostname, body) {
+async function postAuthObject(brightToken, brightHostname, body) {
   try {
     const res = await fetch(
       `https://${brightHostname}/api/v3/auth-objects`,
@@ -34709,15 +34674,221 @@ async function createAuthViaRest(brightToken, brightHostname, body) {
     );
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.error(`[Auth] REST create auth failed: HTTP ${res.status} \u2014 ${text.slice(0, 800)}`);
-      console.error(`[Auth] Request body: ${JSON.stringify(body).slice(0, 800)}`);
-      return void 0;
+      return { error: `HTTP ${res.status}: ${text.slice(0, 500)}` };
     }
     const data = await res.json();
-    return data.id ?? data.authObjectId;
+    return { id: data.id ?? data.authObjectId };
   } catch (err) {
-    console.error(`[Auth] Failed to create auth object: ${err}`);
+    return { error: `Request failed: ${err}` };
+  }
+}
+async function createAuthViaMcp(llm, bright, _repoPath, detection, projectId, baseUrl, repeaterId, brightToken, brightHostname) {
+  const mcpSchemas = await bright.getMcpToolSchemas(["getAuth", "listAuths"]);
+  const mcpToolsDefs = convertMcpToolsToOpenAI(mcpSchemas);
+  const mcpHandler = createMcpToolHandler(bright);
+  const customTools = [
+    {
+      type: "function",
+      function: {
+        name: "create_auth",
+        description: `Create a Bright auth object with all the correct settings pre-configured.
+For session/cookie auth: automatically disables redirect following, uses header Location reauthTrigger, no embedder needed.
+For JWT auth: automatically uses status 401/403 reauthTrigger, adds Bearer header embedder.
+For API key: creates a static header auth object.`,
+        parameters: {
+          type: "object",
+          properties: {
+            authStyle: {
+              type: "string",
+              enum: ["session", "jwt", "api_key"],
+              description: "The authentication style: 'session' for cookie/session-based (Express+Passport, form login with 302 redirects), 'jwt' for JSON Web Token, 'api_key' for static API key header"
+            },
+            loginUrl: {
+              type: "string",
+              description: "Full URL for the login endpoint (e.g. http://localhost:9090/login)"
+            },
+            loginBody: {
+              type: "string",
+              description: `Login request body. For form: 'username=user&password=pass'. For JSON: '{"email":"user","password":"pass"}'`
+            },
+            loginContentType: {
+              type: "string",
+              enum: ["form", "json"],
+              description: "Content type of the login body: 'form' for application/x-www-form-urlencoded, 'json' for application/json"
+            },
+            testUrl: {
+              type: "string",
+              description: "Full URL to a protected endpoint used to verify auth works (e.g. http://localhost:9090/learn)"
+            },
+            tokenFieldPath: {
+              type: "string",
+              description: "(JWT only) Dot-path to the token field in the login response body (e.g. 'token', 'data.accessToken')"
+            },
+            headerName: {
+              type: "string",
+              description: "(API key only) Header name for the API key (e.g. 'Authorization', 'X-API-Key')"
+            },
+            headerValue: {
+              type: "string",
+              description: "(API key only) Header value (e.g. 'Bearer sk-xxx', 'my-api-key-123')"
+            }
+          },
+          required: ["authStyle", "loginUrl", "loginBody", "loginContentType", "testUrl"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "test_auth_object",
+        description: "Test a Bright auth object. Runs the login flow and checks if authentication + authorization succeed. Returns stage-by-stage results with pass/fail status and error messages.",
+        parameters: {
+          type: "object",
+          properties: {
+            authObjectId: { type: "string", description: "The auth object ID to test" }
+          },
+          required: ["authObjectId"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "delete_auth_object",
+        description: "Delete a Bright auth object that failed testing so you can recreate it with different settings.",
+        parameters: {
+          type: "object",
+          properties: {
+            authObjectId: { type: "string", description: "The auth object ID to delete" }
+          },
+          required: ["authObjectId"],
+          additionalProperties: false
+        }
+      }
+    }
+  ];
+  const customHandler = async (name, args) => {
+    if (name === "create_auth") {
+      const result = await createAuthViaRestApi(
+        brightToken,
+        brightHostname,
+        projectId,
+        repeaterId,
+        {
+          authStyle: String(args.authStyle),
+          loginUrl: String(args.loginUrl),
+          loginBody: String(args.loginBody),
+          loginContentType: String(args.loginContentType),
+          testUrl: String(args.testUrl),
+          tokenFieldPath: args.tokenFieldPath ? String(args.tokenFieldPath) : void 0,
+          headerName: args.headerName ? String(args.headerName) : void 0,
+          headerValue: args.headerValue ? String(args.headerValue) : void 0
+        }
+      );
+      if (result.error) return JSON.stringify({ error: result.error });
+      return JSON.stringify({ authObjectId: result.id });
+    }
+    if (name === "test_auth_object") {
+      const result = await testAuthObject(brightToken, brightHostname, String(args.authObjectId));
+      return JSON.stringify(result);
+    }
+    if (name === "delete_auth_object") {
+      await deleteAuthObject(brightToken, brightHostname, String(args.authObjectId));
+      return "Deleted successfully";
+    }
+    return `Unknown tool: ${name}`;
+  };
+  const combinedHandler = async (name, args) => {
+    if (name === "create_auth" || name === "test_auth_object" || name === "delete_auth_object") {
+      return customHandler(name, args);
+    }
+    return mcpHandler(name, args);
+  };
+  const allTools = [...mcpToolsDefs, ...customTools];
+  const resolvedPath = detection.protectedEndpointPath ? detection.protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1") : "/";
+  const testUrl = `${baseUrl}${resolvedPath}`;
+  const systemPrompt = `You are an expert at configuring Bright DAST authentication objects.
+
+## Context
+- Base URL: ${baseUrl}
+- App auth type: ${detection.authType}
+- Login endpoint: ${detection.loginEndpoint ?? "unknown"}
+- Login method: ${detection.loginMethod ?? "POST"}
+- Login body: ${detection.loginBody ?? "unknown"}
+- Login content type: ${detection.loginContentType}
+- Token location: ${detection.tokenLocation}
+- Token field path: ${detection.tokenFieldPath ?? "unknown"}
+- Token embed location: ${detection.tokenEmbedLocation}
+- Cookie name: ${detection.cookieName ?? "none"}
+- Reauth indicator: ${detection.reauthIndicator}
+- Protected endpoint (test URL): ${testUrl}
+
+## Your task
+Create a working auth object and test it. Follow these steps:
+
+1. **Optionally inspect existing auth objects** using listAuths/getAuth to learn from previous configurations.
+   - Clean up any broken ones with delete_auth_object.
+
+2. **Create the auth object** using create_auth. This tool handles redirect settings, reauthTriggers, and embedders automatically based on authStyle:
+   - \`session\` \u2014 for cookie/session auth (Express+Passport, form login, 302 redirects). Disables redirect following, uses header Location reauthTrigger.
+   - \`jwt\` \u2014 for JWT token auth. Uses status 401/403 reauthTrigger, adds Bearer header embedder.
+   - \`api_key\` \u2014 for static API key header auth.
+
+3. **Test it** using test_auth_object.
+
+4. **If the test fails**, analyze the error:
+   - "authentication" failure \u2192 wrong credentials in loginBody. Delete and recreate with corrected credentials.
+   - "authorization" failure \u2192 the test URL or auth configuration is wrong. Try a different testUrl or check credentials.
+   - "validation" failure \u2192 reauthTriggers didn't match. This is handled automatically by the tool, so the issue is likely credentials or testUrl.
+   Repeat up to 10 times.
+
+5. **When all stages pass**, respond with ONLY the auth object ID (nothing else).
+
+## Key rules
+- authStyle "${detection.authType === "session" ? "session" : detection.authType === "jwt" ? "jwt" : detection.authType === "api_key" ? "api_key" : "session"}" based on detected auth type
+- loginContentType: "${detection.loginContentType}" \u2014 for "form" use URL-encoded body like "username=user&password=pass", for "json" use JSON
+- loginBody values MUST use the exact credentials from the detection context above
+- testUrl should be a protected endpoint that requires auth
+- If you cannot make it work after 10 attempts, return "FAILED"`;
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: "Create and test a working auth object for this application. Return only the auth object ID when it passes." }
+  ];
+  console.log("[Auth] Starting auth configuration with custom tools...");
+  const response = await chatWithTools(llm, messages, allTools, combinedHandler, void 0, 50);
+  const trimmed = response.trim();
+  if (trimmed === "FAILED" || trimmed.length === 0) {
+    console.error("[Auth] LLM could not configure auth");
     return void 0;
+  }
+  const idMatch = trimmed.match(/[0-9a-f]{24}|[0-9a-f-]{36}/i);
+  return idMatch ? idMatch[0] : trimmed;
+}
+async function registerUserLocally(baseUrl, detection) {
+  if (!detection.registerEndpoint || !detection.registerBody) return;
+  const url2 = `${baseUrl}${detection.registerEndpoint}`;
+  const contentTypeMap = {
+    json: "application/json",
+    form: "application/x-www-form-urlencoded",
+    xml: "application/xml"
+  };
+  const ct = contentTypeMap[detection.loginContentType] ?? "application/json";
+  const body = normalizeBody(detection.registerBody, detection.loginContentType);
+  try {
+    console.log(`[Auth] Registering test user via ${detection.registerMethod ?? "POST"} ${detection.registerEndpoint}`);
+    console.log(`[Auth] Registration body: ${body.slice(0, 400)}`);
+    const res = await fetch(url2, {
+      method: detection.registerMethod ?? "POST",
+      headers: { "Content-Type": ct },
+      body,
+      redirect: "manual",
+      signal: AbortSignal.timeout(15e3)
+    });
+    console.log(`[Auth] Registration response: ${res.status}`);
+  } catch (err) {
+    console.warn(`[Auth] Registration call failed (user may already exist): ${err}`);
   }
 }
 async function testAuthObject(brightToken, brightHostname, authObjectId) {
@@ -34772,118 +34943,20 @@ async function testAuthObject(brightToken, brightHostname, authObjectId) {
   }
   return { passed: false, summary: "Exhausted retries" };
 }
-function buildTokenRegex(fieldPath) {
-  const lastSegment = fieldPath.includes(".") ? fieldPath.split(".").pop() : fieldPath;
-  const escaped = lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return `"${escaped}"\\s*:\\s*"([^"]*)"`;
-}
-function buildReauthTriggers(detection) {
-  const triggers = [];
-  triggers.push({ type: "TRIGGER", location: "status", statuses: [401, 403] });
-  const indicator = detection.reauthIndicator ?? "status";
-  if (indicator === "redirect") {
-    triggers.push({ type: "TRIGGER", location: "status", statuses: [301, 302] });
-  }
-  if (indicator === "body" && detection.reauthBodyPattern) {
-    triggers.push({
-      type: "TRIGGER",
-      location: "body",
-      pattern: detection.reauthBodyPattern
-    });
-  }
-  return triggers;
-}
-async function retryDetection(llm, repoPath, techStack, endpoints, baseUrl, previousDetection, failureReason) {
-  console.log(`[Auth] Re-detecting auth after failure: ${failureReason.slice(0, 200)}`);
-  const stackStr = formatTechStack(techStack);
-  const endpointSummary = endpoints.map((ep) => `${ep.method} ${ep.path} (${ep.filePath})`).join("\n");
-  const handler = createToolHandler(repoPath);
-  const messages = [
-    {
-      role: "system",
-      content: `You are a security analyst examining a ${stackStr} application.
-Your previous auth detection attempt FAILED. You MUST find the correct credentials this time.
-
-Base URL: ${baseUrl}
-
-PREVIOUS (FAILED) DETECTION:
-${JSON.stringify(previousDetection, null, 2)}
-
-FAILURE REASON:
-${failureReason}
-
-INSTRUCTIONS:
-- Search the codebase again MORE THOROUGHLY for the correct credentials
-- Check .env, .env.example, docker-compose.yml, seed files, README, test fixtures
-- Look for user creation code, default passwords, hardcoded credentials
-- The previous loginBody was likely WRONG \u2014 find the real one
-- Pay special attention to the exact field names in the login request body`
-    },
-    {
-      role: "user",
-      content: `The previous auth configuration failed. Re-examine the codebase and find the CORRECT credentials.
-
-Known endpoints (these are REAL endpoints that exist in the app):
-${endpointSummary}
-
-Return ONLY a JSON object with these exact fields:
-{
-  "requiresAuth": true/false,
-  "authType": "jwt" | "session" | "api_key" | "basic" | "oauth" | "none",
-  "loginEndpoint": "/api/auth/login" or null,
-  "loginMethod": "POST" or null,
-  "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "loginContentType": "json" | "form" | "xml",
-  "tokenLocation": "body" | "header" | "cookie",
-  "tokenFieldPath": "token" or "authorization" or "session_id" or null,
-  "tokenEmbedLocation": "header" | "cookie" | "query",
-  "headerName": "Authorization" or "X-API-Key" or null,
-  "headerPrefix": "Bearer " or "" or null,
-  "cookieName": "session" or null,
-  "queryParamName": "token" or null,
-  "reauthIndicator": "status" | "redirect" | "body",
-  "reauthBodyPattern": "regex pattern" or null,
-  "protectedEndpointPath": "/api/some/protected/path" or null,
-  "notes": "brief description"
-}
-
-CRITICAL RULES:
-- "loginBody" values MUST come from actual files you read (seed data, env vars, docker-compose, README)
-- Do NOT invent credentials like "admin@example.com" or "correctpassword"
-- "loginContentType": "json" for JSON APIs, "form" for HTML form login, "xml" for SOAP
-- "tokenLocation": "body" if token is in JSON response body, "header" if in response header, "cookie" if set via Set-Cookie
-- "tokenEmbedLocation": "header" for Authorization, "cookie" if app reads auth from cookies, "query" if token goes in URL
-- "reauthIndicator": "status" for 401/403 responses, "redirect" for 301/302 to login page, "body" for 200 OK with error message in body
-- "reauthBodyPattern": Only when reauthIndicator is "body" \u2014 regex matching the auth failure message. null otherwise.
-- "protectedEndpointPath" MUST be an endpoint that RETURNS 401 or 403 when accessed WITHOUT auth. Read the route handler code to confirm it has an auth guard/middleware. Do NOT pick endpoints that return 200 without auth.`
+function normalizeBody(body, contentType) {
+  if (contentType !== "form") return body;
+  const trimmed = body.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const obj = JSON.parse(trimmed);
+      const encoded = new URLSearchParams(obj).toString();
+      console.log(`[Auth] Converted JSON loginBody to form-encoded: ${encoded.slice(0, 200)}`);
+      return encoded;
+    } catch {
+      return body;
     }
-  ];
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, void 0, 30);
-  try {
-    const parsed = JSON.parse(extractJson(response));
-    return {
-      requiresAuth: parsed.requiresAuth ?? previousDetection.requiresAuth,
-      authType: parsed.authType ?? previousDetection.authType,
-      loginEndpoint: parsed.loginEndpoint ?? previousDetection.loginEndpoint,
-      loginMethod: parsed.loginMethod ?? previousDetection.loginMethod,
-      loginBody: parsed.loginBody ?? previousDetection.loginBody,
-      loginContentType: parsed.loginContentType ?? previousDetection.loginContentType,
-      tokenLocation: parsed.tokenLocation ?? previousDetection.tokenLocation,
-      tokenFieldPath: parsed.tokenFieldPath ?? previousDetection.tokenFieldPath,
-      tokenEmbedLocation: parsed.tokenEmbedLocation ?? previousDetection.tokenEmbedLocation,
-      headerName: parsed.headerName ?? previousDetection.headerName,
-      headerPrefix: parsed.headerPrefix ?? previousDetection.headerPrefix,
-      cookieName: parsed.cookieName ?? previousDetection.cookieName,
-      queryParamName: parsed.queryParamName ?? previousDetection.queryParamName,
-      reauthIndicator: parsed.reauthIndicator ?? previousDetection.reauthIndicator,
-      reauthBodyPattern: parsed.reauthBodyPattern ?? previousDetection.reauthBodyPattern,
-      protectedEndpointPath: parsed.protectedEndpointPath ?? previousDetection.protectedEndpointPath,
-      notes: parsed.notes ?? previousDetection.notes
-    };
-  } catch {
-    console.warn("[Auth] Could not parse retry detection response \u2014 using previous detection");
-    return previousDetection;
   }
+  return body;
 }
 async function deleteAuthObject(brightToken, brightHostname, authObjectId) {
   try {
@@ -35779,13 +35852,9 @@ async function runOrchestrator(ctx) {
     const baseUrl = `http://localhost:${startupConfig.port}`;
     await progress.phaseDetail("startup", "app_running", `Application running at ${baseUrl}`);
     await progress.phaseStart("setup", "Setting up Bright security scanner and Repeater");
-    let projectId = config2.brightProjectId;
+    const projectId = config2.brightProjectId;
     if (!projectId) {
-      const projects = await bright.listProjects();
-      projectId = projects[0]?.id;
-    }
-    if (!projectId) {
-      throw new Error("No Bright project found. Set BRIGHT_PROJECT_ID or create a project at app.brightsec.com.");
+      throw new Error("No Bright project ID configured. Set BRIGHT_PROJECT_ID environment variable.");
     }
     console.log(`[Setup] Using Bright project: ${projectId}`);
     repeater = await setupRepeater(llm, bright, projectId, config2.brightToken, config2.brightHostname);

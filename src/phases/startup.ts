@@ -68,11 +68,10 @@ export async function startApplicationWithRetries(
       // Clean up any Docker containers from failed attempts
       if (config.docker) {
         try {
-          execSync("docker compose down 2>/dev/null || true", {
-            cwd: repoPath,
-            stdio: "ignore",
-            timeout: 30_000,
-          });
+          execSync(
+            "docker compose down 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
+            { cwd: repoPath, stdio: "ignore", timeout: 30_000 },
+          );
         } catch { /* ignore */ }
       }
     }
@@ -384,6 +383,20 @@ function cleanupDocker(repoPath: string): void {
       execSync("docker stop $(docker ps -q)", {
         stdio: "pipe",
         timeout: 60_000,
+      });
+    }
+
+    // Remove all stopped containers so `docker run --name X` won't conflict
+    const stopped = execSync("docker ps -aq", {
+      encoding: "utf-8",
+      timeout: 10_000,
+    }).trim();
+
+    if (stopped) {
+      console.log("[Startup] Removing stopped Docker containers...");
+      execSync("docker rm -f $(docker ps -aq)", {
+        stdio: "pipe",
+        timeout: 30_000,
       });
     }
 

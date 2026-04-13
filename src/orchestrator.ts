@@ -66,13 +66,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // ----- Phase 3: Setup Bright project + repeater -----
     await progress.phaseStart("setup", "Setting up Bright security scanner and Repeater");
 
-    let projectId = config.brightProjectId;
+    const projectId = config.brightProjectId;
     if (!projectId) {
-      const projects = await bright.listProjects();
-      projectId = projects[0]?.id;
-    }
-    if (!projectId) {
-      throw new Error("No Bright project found. Set BRIGHT_PROJECT_ID or create a project at app.brightsec.com.");
+      throw new Error("No Bright project ID configured. Set BRIGHT_PROJECT_ID environment variable.");
     }
     console.log(`[Setup] Using Bright project: ${projectId}`);
 
