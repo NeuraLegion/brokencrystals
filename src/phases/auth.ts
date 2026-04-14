@@ -55,9 +55,10 @@ export async function detectAndConfigureAuth(
   repeaterId: string,
   brightToken: string,
   brightHostname: string,
+  model?: string,
 ): Promise<AuthResult> {
   // Phase 1: Detect auth from source code
-  const detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl);
+  const detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl, model);
 
   if (!detection.requiresAuth) {
     console.log("[Auth] No auth required");
@@ -74,7 +75,7 @@ export async function detectAndConfigureAuth(
   // Phase 3: Let the LLM create + test + fix the auth object via MCP tools
   const authObjectId = await createAuthViaMcp(
     llm, bright, repoPath, detection, projectId, baseUrl, repeaterId,
-    brightToken, brightHostname,
+    brightToken, brightHostname, model,
   );
 
   // Build registration info for re-use after app restarts
@@ -130,6 +131,7 @@ async function detectAuthFromCode(
   techStack: TechStack,
   endpoints: DiscoveredEndpoint[],
   baseUrl: string,
+  model?: string,
 ): Promise<AuthDetection> {
   const stackStr = formatTechStack(techStack);
   const endpointSummary = endpoints
@@ -251,7 +253,7 @@ CRITICAL RULES:
     },
   ];
 
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, undefined, 40);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, model, 40);
 
   try {
     const parsed = JSON.parse(extractJson(response));
@@ -479,6 +481,7 @@ async function createAuthViaMcp(
   repeaterId: string,
   brightToken: string,
   brightHostname: string,
+  model?: string,
 ): Promise<string | undefined> {
   // MCP tools for inspection only (listAuths, getAuth)
   const mcpSchemas = await bright.getMcpToolSchemas(["getAuth", "listAuths"]);
@@ -664,7 +667,7 @@ Create a working auth object and test it. Follow these steps:
   ];
 
   console.log("[Auth] Starting auth configuration with custom tools...");
-  const response = await chatWithTools(llm, messages, allTools, combinedHandler, undefined, 50);
+  const response = await chatWithTools(llm, messages, allTools, combinedHandler, model, 50);
 
   const trimmed = response.trim();
   if (trimmed === "FAILED" || trimmed.length === 0) {

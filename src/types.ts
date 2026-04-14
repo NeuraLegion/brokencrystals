@@ -2,6 +2,8 @@ import type OpenAI from "openai";
 import type { Platform } from "./platform.js";
 import type { BrightMcpClient } from "./mcp-client.js";
 
+import type { ModelSelector } from "./inference.js";
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -12,6 +14,7 @@ export interface EngineConfig {
   brightMcpUrl?: string;
   brightProjectId?: string;
   inferenceModel: string;
+  modelSelector: ModelSelector;
 }
 
 // ---------------------------------------------------------------------------

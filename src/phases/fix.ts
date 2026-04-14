@@ -17,6 +17,7 @@ export async function generateFixes(
   techStack: TechStack,
   findings: Finding[],
   previousFixes: SecurityFix[],
+  model?: string,
 ): Promise<SecurityFix[]> {
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
@@ -40,6 +41,7 @@ export async function generateFixes(
       taintMessages,
       codebaseTools,
       handleTool,
+      model,
     );
 
     // Step 2: Collect affected files mentioned in taint analysis
@@ -70,7 +72,7 @@ export async function generateFixes(
       const result = await chatWithSchema<{
         summary: string;
         files: Array<{ path: string; content: string }>;
-      }>(llm, fixMessages, "fix_result", fixResultSchema);
+      }>(llm, fixMessages, "fix_result", fixResultSchema, model);
 
       fixes.push({
         vulnerability: finding,

@@ -21,6 +21,95 @@ export type ToolHandler = (
   name: string,  args: Record<string, unknown>,
 ) => Promise<string>;
 
+// ---------------------------------------------------------------------------
+// Model selection: static vs escalating
+// ---------------------------------------------------------------------------
+
+export type ModelStrategy = "static" | "escalating";
+
+export class ModelSelector {
+  private readonly tiers: string[];
+  private readonly strategy: ModelStrategy;
+  private level = 0;
+
+  constructor(strategy: ModelStrategy, tiers: string[]) {
+    if (tiers.length === 0) throw new Error("At least one model tier is required");
+    this.strategy = strategy;
+    this.tiers = tiers;
+  }
+
+  /** The model name to use for the next LLM call. */
+  current(): string {
+    return this.tiers[this.level];
+  }
+
+  /**
+   * Move to the next stronger model tier.
+   * Returns true if escalation happened, false if already at the strongest tier.
+   * In static mode this is a no-op.
+   */
+  escalate(): boolean {
+    if (this.strategy === "static") return false;
+    if (this.level >= this.tiers.length - 1) return false;
+    this.level++;
+    console.log(`[Model] Escalated to ${this.tiers[this.level]} (tier ${this.level + 1}/${this.tiers.length})`);
+    return true;
+  }
+
+  /** Reset back to the base (cheapest) model. No-op in static mode. */
+  reset(): void {
+    if (this.strategy === "static") return;
+    if (this.level !== 0) {
+      this.level = 0;
+      console.log(`[Model] Reset to base model: ${this.tiers[0]}`);
+    }
+  }
+
+  /** Whether we are above the base tier. */
+  isEscalated(): boolean {
+    return this.level > 0;
+  }
+
+  toString(): string {
+    return `${this.strategy}[${this.tiers.join(" → ")}] @ tier ${this.level + 1}`;
+  }
+}
+
+/**
+ * Validate that all configured model tiers are available from the inference
+ * provider. Throws with a clear message listing invalid and available models.
+ */
+export async function validateModelTiers(
+  client: OpenAI,
+  selector: ModelSelector,
+): Promise<void> {
+  const tiers = selector["tiers"]; // access private field for validation
+  let available: string[];
+  try {
+    const list = await client.models.list();
+    available = [];
+    for await (const model of list) {
+      available.push(model.id);
+    }
+  } catch (err) {
+    console.warn(`[Model] Could not list available models — skipping tier validation: ${err}`);
+    return;
+  }
+
+  const availableSet = new Set(available);
+  const invalid = tiers.filter((t: string) => !availableSet.has(t));
+
+  if (invalid.length > 0) {
+    const availableSorted = available.sort().join("\n  - ");
+    throw new Error(
+      `Invalid model tier(s): ${invalid.join(", ")}\n` +
+      `Available models:\n  - ${availableSorted}`,
+    );
+  }
+
+  console.log(`[Model] All ${tiers.length} model tier(s) validated successfully`);
+}
+
 /**
  * Multi-turn chat loop that processes tool calls until the LLM returns
  * a final text response (no more tool_calls).

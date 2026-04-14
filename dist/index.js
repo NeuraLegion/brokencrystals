@@ -10071,23 +10071,6 @@ async function createPlatform() {
   return { platform, job };
 }
 
-// src/config.ts
-function loadConfig() {
-  const brightToken = requireEnv("BRIGHT_TOKEN");
-  const brightMcpUrl = process.env.BRIGHT_MCP_URL;
-  const brightHostname = process.env.BRIGHT_HOSTNAME ?? (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
-  const brightProjectId = process.env.BRIGHT_PROJECT_ID;
-  const inferenceModel = process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
-  return { brightToken, brightHostname, brightMcpUrl, brightProjectId, inferenceModel };
-}
-function requireEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
-
 // node_modules/openai/internal/qs/formats.mjs
 var default_format = "RFC3986";
 var formatters = {
@@ -17901,6 +17884,72 @@ function createInferenceClient(inferenceUrl, token) {
 function sanitizeForJson(s) {
   return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }
+var ModelSelector = class {
+  tiers;
+  strategy;
+  level = 0;
+  constructor(strategy, tiers) {
+    if (tiers.length === 0) throw new Error("At least one model tier is required");
+    this.strategy = strategy;
+    this.tiers = tiers;
+  }
+  /** The model name to use for the next LLM call. */
+  current() {
+    return this.tiers[this.level];
+  }
+  /**
+   * Move to the next stronger model tier.
+   * Returns true if escalation happened, false if already at the strongest tier.
+   * In static mode this is a no-op.
+   */
+  escalate() {
+    if (this.strategy === "static") return false;
+    if (this.level >= this.tiers.length - 1) return false;
+    this.level++;
+    console.log(`[Model] Escalated to ${this.tiers[this.level]} (tier ${this.level + 1}/${this.tiers.length})`);
+    return true;
+  }
+  /** Reset back to the base (cheapest) model. No-op in static mode. */
+  reset() {
+    if (this.strategy === "static") return;
+    if (this.level !== 0) {
+      this.level = 0;
+      console.log(`[Model] Reset to base model: ${this.tiers[0]}`);
+    }
+  }
+  /** Whether we are above the base tier. */
+  isEscalated() {
+    return this.level > 0;
+  }
+  toString() {
+    return `${this.strategy}[${this.tiers.join(" \u2192 ")}] @ tier ${this.level + 1}`;
+  }
+};
+async function validateModelTiers(client, selector) {
+  const tiers = selector["tiers"];
+  let available;
+  try {
+    const list = await client.models.list();
+    available = [];
+    for await (const model of list) {
+      available.push(model.id);
+    }
+  } catch (err) {
+    console.warn(`[Model] Could not list available models \u2014 skipping tier validation: ${err}`);
+    return;
+  }
+  const availableSet = new Set(available);
+  const invalid = tiers.filter((t) => !availableSet.has(t));
+  if (invalid.length > 0) {
+    const availableSorted = available.sort().join("\n  - ");
+    throw new Error(
+      `Invalid model tier(s): ${invalid.join(", ")}
+Available models:
+  - ${availableSorted}`
+    );
+  }
+  console.log(`[Model] All ${tiers.length} model tier(s) validated successfully`);
+}
 var DEFAULT_MODEL = "gpt-5.4-mini";
 async function chatWithTools(client, messages, tools, handleToolCall, model = DEFAULT_MODEL, maxTurns = 25) {
   const conversation = [...messages];
@@ -17957,6 +18006,27 @@ async function chatWithSchema(client, messages, schemaName, schema, model = DEFA
   const content = response.choices[0]?.message.content;
   if (!content) throw new Error("No content in structured response");
   return JSON.parse(content);
+}
+
+// src/config.ts
+function loadConfig() {
+  const brightToken = requireEnv("BRIGHT_TOKEN");
+  const brightMcpUrl = process.env.BRIGHT_MCP_URL;
+  const brightHostname = process.env.BRIGHT_HOSTNAME ?? (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
+  const brightProjectId = process.env.BRIGHT_PROJECT_ID;
+  const inferenceModel = process.env.OPENAI_MODEL ?? DEFAULT_MODEL;
+  const strategy = process.env.OPENAI_MODEL_STRATEGY ?? "static";
+  const tiers = process.env.OPENAI_MODEL_TIERS ? process.env.OPENAI_MODEL_TIERS.split(",").map((s) => s.trim()).filter(Boolean) : [inferenceModel];
+  const modelSelector = new ModelSelector(strategy, tiers);
+  console.log(`[Config] Model strategy: ${modelSelector}`);
+  return { brightToken, brightHostname, brightMcpUrl, brightProjectId, inferenceModel, modelSelector };
+}
+function requireEnv(name) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
 }
 
 // src/utils.ts
@@ -33752,12 +33822,12 @@ var endpointParamsSchema = {
 };
 
 // src/phases/analyze.ts
-async function detectTechStack(llm, repoPath) {
+async function detectTechStack(llm, repoPath, model) {
   const topFiles = await glob("*", { cwd: repoPath, nodir: false });
   const listing = topFiles.join("\n");
   const messages = detectTechStackPrompt(listing);
   const handleTool = createToolHandler(repoPath);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
   try {
     const parsed = JSON.parse(extractJson(response));
     return {
@@ -33769,7 +33839,7 @@ async function detectTechStack(llm, repoPath) {
     return { languages: [], frameworks: [], databases: [] };
   }
 }
-async function discoverEndpoints(llm, repoPath, techStack) {
+async function discoverEndpoints(llm, repoPath, techStack, model) {
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
   const controllerMessages = findControllerFilesPrompt(stackStr);
@@ -33777,7 +33847,8 @@ async function discoverEndpoints(llm, repoPath, techStack) {
     llm,
     controllerMessages,
     codebaseTools,
-    handleTool
+    handleTool,
+    model
   );
   let controllerFiles;
   try {
@@ -33825,7 +33896,8 @@ async function discoverEndpoints(llm, repoPath, techStack) {
       llm,
       messages,
       "endpoints",
-      endpointsSchema
+      endpointsSchema,
+      model
     );
     for (const ep of response.endpoints) {
       allEndpoints.push({ ...ep, filePath: ep.filePath || filePath });
@@ -33857,7 +33929,8 @@ async function discoverEndpoints(llm, repoPath, techStack) {
         llm,
         messages,
         "endpoint_params",
-        endpointParamsSchema
+        endpointParamsSchema,
+        model
       );
       enriched.push({
         ...ep,
@@ -33876,7 +33949,7 @@ async function discoverEndpoints(llm, repoPath, techStack) {
 // src/phases/startup.ts
 import { spawn, execSync, execFileSync as execFileSync3 } from "child_process";
 import { createInterface } from "readline";
-import { existsSync as existsSync3 } from "fs";
+import { existsSync as existsSync3, readFileSync as readFileSync3, writeFileSync } from "fs";
 
 // src/prompts/identify-startup.ts
 function identifyStartupPrompt(techStack) {
@@ -34031,7 +34104,7 @@ Return a JSON object with the new approach:
 
 // src/phases/startup.ts
 var MAX_STARTUP_ATTEMPTS = 5;
-async function startApplicationWithRetries(llm, repoPath, techStack, previousStartup) {
+async function startApplicationWithRetries(llm, repoPath, techStack, previousStartup, modelSelector) {
   cleanupDocker(repoPath);
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
@@ -34039,20 +34112,35 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
     let config2;
     if (attempt === 1 && previousStartup) {
-      config2 = await rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousStartup);
+      config2 = await rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousStartup, modelSelector?.current());
     } else if (attempt === 1) {
-      config2 = await identifyStartupConfig(llm, repoPath, stackStr, handleTool);
+      config2 = await identifyStartupConfig(llm, repoPath, stackStr, handleTool, modelSelector?.current());
     } else {
-      const prev = attemptErrors[attemptErrors.length - 1];
-      config2 = await retryStartupConfig(
-        llm,
-        repoPath,
-        stackStr,
-        handleTool,
-        prev.config,
-        prev.error,
-        attempt
-      );
+      modelSelector?.escalate();
+      const dockerfileOnly = attempt === 2 && previousStartup?.docker && usesPrebuiltImage(previousStartup.command) ? buildDockerfileOnlyConfig(repoPath, previousStartup) : null;
+      if (dockerfileOnly) {
+        console.log("[Startup] Compose failed \u2014 trying Dockerfile-only build");
+        config2 = dockerfileOnly;
+      } else {
+        const prev = attemptErrors[attemptErrors.length - 1];
+        config2 = await retryStartupConfig(
+          llm,
+          repoPath,
+          stackStr,
+          handleTool,
+          prev.config,
+          prev.error,
+          attempt,
+          modelSelector?.current()
+        );
+        if (previousStartup && config2.docker && usesPrebuiltImage(config2.command)) {
+          const fromSource = buildFromSourceConfig(repoPath, previousStartup) ?? buildDockerfileOnlyConfig(repoPath, previousStartup);
+          if (fromSource) {
+            console.log(`[Startup] LLM suggested pre-built image \u2014 overriding with source build`);
+            config2 = fromSource;
+          }
+        }
+      }
     }
     console.log(
       `[Startup] Attempt ${attempt}/${MAX_STARTUP_ATTEMPTS}: ${config2.docker ? "Docker" : "native"} \u2014 ${config2.command}`
@@ -34060,6 +34148,7 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
     try {
       const proc2 = await startApplication(repoPath, config2);
       console.log(`[Startup] Application started successfully on attempt ${attempt}`);
+      modelSelector?.reset();
       return { process: proc2, config: config2 };
     } catch (err) {
       const errorMsg = toErrorMessage(err);
@@ -34083,12 +34172,12 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
 ${summary}`
   );
 }
-async function identifyStartupConfig(llm, repoPath, stackStr, handleTool) {
+async function identifyStartupConfig(llm, repoPath, stackStr, handleTool, model) {
   const messages = identifyStartupPrompt(stackStr);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
   return parseStartupConfig(response);
 }
-async function rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig) {
+async function rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig, model) {
   if (previousConfig.docker && usesPrebuiltImage(previousConfig.command)) {
     const fromSource = buildFromSourceConfig(repoPath, previousConfig);
     if (fromSource) {
@@ -34097,7 +34186,7 @@ async function rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previou
     }
   }
   const messages = rebuildStartupPrompt(stackStr, JSON.stringify(previousConfig, null, 2));
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
   return parseStartupConfig(response);
 }
 function usesPrebuiltImage(command) {
@@ -34108,6 +34197,73 @@ function usesPrebuiltImage(command) {
     if (image.includes("/") || image.includes(":")) return true;
   }
   return false;
+}
+function findMissingEnvFiles(repoPath, composeFile) {
+  try {
+    const content = readFileSync3(`${repoPath}/${composeFile}`, "utf8");
+    const missing = [];
+    for (const m of content.matchAll(/env_file:\s+(?!-)(\S+)/g)) {
+      const file = m[1].replace(/["']/g, "");
+      if (file && !existsSync3(`${repoPath}/${file}`)) missing.push(file);
+    }
+    for (const m of content.matchAll(/env_file:\s*\n((?:\s+-\s+\S+\n?)+)/g)) {
+      for (const item of m[1].matchAll(/^\s+-\s+(\S+)/gm)) {
+        const file = item[1].replace(/["']/g, "");
+        if (file && !existsSync3(`${repoPath}/${file}`)) missing.push(file);
+      }
+    }
+    return [...new Set(missing)];
+  } catch {
+    return [];
+  }
+}
+function populateMissingEnvFile(repoPath, composeFile, envFile) {
+  const composePath = `${repoPath}/${composeFile}`;
+  const envPath = `${repoPath}/${envFile}`;
+  let content;
+  try {
+    content = readFileSync3(composePath, "utf8");
+  } catch {
+    writeFileSync(envPath, "");
+    return;
+  }
+  const lines = [];
+  const added = /* @__PURE__ */ new Set();
+  const addVar = (name, value) => {
+    if (!added.has(name)) {
+      lines.push(`${name}=${value}`);
+      added.add(name);
+    }
+  };
+  const dbDefaults = {
+    MYSQL_ROOT_PASSWORD: "bright_test",
+    MYSQL_DATABASE: "app",
+    MYSQL_USER: "app",
+    MYSQL_PASSWORD: "bright_test",
+    MYSQL_ALLOW_EMPTY_PASSWORD: "yes",
+    POSTGRES_PASSWORD: "bright_test",
+    POSTGRES_DB: "app",
+    POSTGRES_USER: "postgres",
+    MONGO_INITDB_ROOT_USERNAME: "root",
+    MONGO_INITDB_ROOT_PASSWORD: "bright_test"
+  };
+  for (const m of content.matchAll(/\$\{(\w+)\}/g)) {
+    const name = m[1];
+    if (dbDefaults[name]) addVar(name, dbDefaults[name]);
+  }
+  for (const m of content.matchAll(/^\s+(MYSQL_\w+|POSTGRES_\w+|MONGO_\w+):/gm)) {
+    const name = m[1];
+    if (dbDefaults[name] && !added.has(name)) addVar(name, dbDefaults[name]);
+  }
+  if (/image:\s*.*mysql/i.test(content) && !added.has("MYSQL_ROOT_PASSWORD")) {
+    addVar("MYSQL_ROOT_PASSWORD", "bright_test");
+    addVar("MYSQL_ALLOW_EMPTY_PASSWORD", "yes");
+  }
+  if (/image:\s*.*postgres/i.test(content) && !added.has("POSTGRES_PASSWORD")) {
+    addVar("POSTGRES_PASSWORD", "bright_test");
+  }
+  console.log(`[Startup] Created ${envFile} with ${lines.length} default variable(s)`);
+  writeFileSync(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
 }
 function buildFromSourceConfig(repoPath, previousConfig) {
   const hasDockerfile = existsSync3(`${repoPath}/Dockerfile`);
@@ -34124,6 +34280,10 @@ function buildFromSourceConfig(repoPath, previousConfig) {
   ];
   for (const cf of composeFiles) {
     if (existsSync3(`${repoPath}/${cf}`)) {
+      const missingEnvFiles = findMissingEnvFiles(repoPath, cf);
+      for (const envFile of missingEnvFiles) {
+        populateMissingEnvFile(repoPath, cf, envFile);
+      }
       return {
         command: `docker compose -f ${cf} up --build -d`,
         port,
@@ -34141,14 +34301,26 @@ function buildFromSourceConfig(repoPath, previousConfig) {
     docker: true
   };
 }
-async function retryStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig, errorOutput, attempt) {
+function buildDockerfileOnlyConfig(repoPath, previousConfig) {
+  if (!existsSync3(`${repoPath}/Dockerfile`)) return null;
+  const port = previousConfig.port;
+  const imageName = "bright-app-local";
+  return {
+    command: `docker run --name ${imageName} -p ${port}:${port} -d ${imageName}`,
+    port,
+    prerequisites: [`docker build -t ${imageName} .`],
+    envVars: previousConfig.envVars ?? {},
+    docker: true
+  };
+}
+async function retryStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig, errorOutput, attempt, model) {
   const messages = retryStartupPrompt(
     stackStr,
     JSON.stringify(previousConfig, null, 2),
     errorOutput,
     attempt
   );
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
   return parseStartupConfig(response);
 }
 function parseStartupConfig(response) {
@@ -34271,7 +34443,7 @@ ${outputLines.slice(-30).join("\n")}`));
       throw err;
     }
     console.log("[Startup] Docker Compose services healthy, checking port...");
-    await waitForPort(config2.port, 3e4);
+    await waitForPort(config2.port, 12e4);
   } else {
     const portTimeoutMs = config2.docker ? 18e4 : 9e4;
     try {
@@ -34425,8 +34597,8 @@ ${containerLog.trim()}`);
 }
 
 // src/phases/auth.ts
-async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoints, projectId, baseUrl, repeaterId, brightToken, brightHostname) {
-  const detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl);
+async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoints, projectId, baseUrl, repeaterId, brightToken, brightHostname, model) {
+  const detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl, model);
   if (!detection.requiresAuth) {
     console.log("[Auth] No auth required");
     return { authObjectId: void 0, hasAuth: false, authFailed: false };
@@ -34444,7 +34616,8 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
     baseUrl,
     repeaterId,
     brightToken,
-    brightHostname
+    brightHostname,
+    model
   );
   const registration = detection.registerEndpoint && detection.registerBody ? {
     baseUrl,
@@ -34460,7 +34633,7 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
   console.error("[Auth] Failed to configure auth");
   return { authObjectId: void 0, hasAuth: false, authFailed: true, registration };
 }
-async function detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl) {
+async function detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl, model) {
   const stackStr = formatTechStack(techStack);
   const endpointSummary = endpoints.map((ep) => `${ep.method} ${ep.path} (${ep.filePath})`).join("\n");
   const handler = createToolHandler(repoPath);
@@ -34576,7 +34749,7 @@ CRITICAL RULES:
 - "registerMethod": usually "POST"`
     }
   ];
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, void 0, 40);
+  const response = await chatWithTools(llm, messages, codebaseTools, handler, model, 40);
   try {
     const parsed = JSON.parse(extractJson(response));
     return {
@@ -34741,7 +34914,7 @@ async function postAuthObject(brightToken, brightHostname, body) {
     return { error: `Request failed: ${err}` };
   }
 }
-async function createAuthViaMcp(llm, bright, _repoPath, detection, projectId, baseUrl, repeaterId, brightToken, brightHostname) {
+async function createAuthViaMcp(llm, bright, _repoPath, detection, projectId, baseUrl, repeaterId, brightToken, brightHostname, model) {
   const mcpSchemas = await bright.getMcpToolSchemas(["getAuth", "listAuths"]);
   const mcpToolsDefs = convertMcpToolsToOpenAI(mcpSchemas);
   const mcpHandler = createMcpToolHandler(bright);
@@ -34916,7 +35089,7 @@ Create a working auth object and test it. Follow these steps:
     { role: "user", content: "Create and test a working auth object for this application. Return only the auth object ID when it passes." }
   ];
   console.log("[Auth] Starting auth configuration with custom tools...");
-  const response = await chatWithTools(llm, messages, allTools, combinedHandler, void 0, 50);
+  const response = await chatWithTools(llm, messages, allTools, combinedHandler, model, 50);
   const trimmed = response.trim();
   if (trimmed === "FAILED" || trimmed.length === 0) {
     console.error("[Auth] LLM could not configure auth");
@@ -35340,7 +35513,7 @@ var MULTI_AUTH_TESTS = /* @__PURE__ */ new Set([
 var EXCLUDED_TESTS = /* @__PURE__ */ new Set([
   "lrrl"
 ]);
-async function selectTestsPerEndpoint(llm, bright, endpoints, entrypointIds, techStack, hasAuth) {
+async function selectTestsPerEndpoint(llm, bright, endpoints, entrypointIds, techStack, hasAuth, model) {
   const availableTests = await bright.listTests();
   const eligibleTests = availableTests.filter(
     (t) => !MULTI_AUTH_TESTS.has(t.tag) && !EXCLUDED_TESTS.has(t.tag)
@@ -35397,7 +35570,8 @@ Return a JSON object with an array of entries, one per endpoint index.`
       },
       required: ["entries"],
       additionalProperties: false
-    }
+    },
+    model
   );
   const indexToTests = /* @__PURE__ */ new Map();
   for (const entry of result.entries) {
@@ -35703,7 +35877,7 @@ function normalizeSeverity(s) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync3, writeFileSync, mkdirSync as mkdirSync2 } from "fs";
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2 } from "fs";
 import { resolve as resolve3, dirname } from "path";
 
 // src/prompts/generate-fix.ts
@@ -35813,7 +35987,7 @@ var fixResultSchema = {
 };
 
 // src/phases/fix.ts
-async function generateFixes(llm, repoPath, techStack, findings, previousFixes) {
+async function generateFixes(llm, repoPath, techStack, findings, previousFixes, model) {
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
   const fixes = [];
@@ -35827,7 +36001,8 @@ async function generateFixes(llm, repoPath, techStack, findings, previousFixes) 
       llm,
       taintMessages,
       codebaseTools,
-      handleTool
+      handleTool,
+      model
     );
     const filePaths = extractFilePaths(taintAnalysis, repoPath);
     const affectedFiles = filePaths.map((p) => ({
@@ -35848,7 +36023,7 @@ async function generateFixes(llm, repoPath, techStack, findings, previousFixes) 
       } : void 0
     );
     try {
-      const result = await chatWithSchema(llm, fixMessages, "fix_result", fixResultSchema);
+      const result = await chatWithSchema(llm, fixMessages, "fix_result", fixResultSchema, model);
       fixes.push({
         vulnerability: finding,
         files: result.files,
@@ -35867,7 +36042,7 @@ function applyFixes(repoPath, fixes) {
     for (const file of fix.files) {
       const fullPath = resolve3(repoPath, file.path);
       mkdirSync2(dirname(fullPath), { recursive: true });
-      writeFileSync(fullPath, file.content, "utf-8");
+      writeFileSync2(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
   }
@@ -35879,7 +36054,7 @@ function extractFilePaths(text, repoPath) {
   while ((match2 = regex.exec(text)) !== null) {
     const p = match2[1].replace(/^\.\//, "");
     try {
-      readFileSync3(resolve3(repoPath, p));
+      readFileSync4(resolve3(repoPath, p));
       paths.add(p);
     } catch {
     }
@@ -35888,7 +36063,7 @@ function extractFilePaths(text, repoPath) {
 }
 function safeReadFile(fullPath) {
   try {
-    return readFileSync3(fullPath, "utf-8");
+    return readFileSync4(fullPath, "utf-8");
   } catch {
     return "";
   }
@@ -35907,13 +36082,13 @@ async function runOrchestrator(ctx) {
   const fixedKeys = /* @__PURE__ */ new Set();
   try {
     await progress.phaseStart("analyze", "Analyzing repository for tech stack and HTTP endpoints");
-    const techStack = await detectTechStack(llm, repoPath);
+    const techStack = await detectTechStack(llm, repoPath, config2.modelSelector.current());
     await progress.phaseDetail(
       "analyze",
       "tech_stack",
       `Tech stack: ${formatTechStack(techStack)}`
     );
-    const endpoints = await discoverEndpoints(llm, repoPath, techStack);
+    const endpoints = await discoverEndpoints(llm, repoPath, techStack, config2.modelSelector.current());
     console.log(`[Analyze] Discovered ${endpoints.length} HTTP endpoints`);
     for (const ep of endpoints) {
       console.log(`[Analyze]   ${ep.method} ${ep.path}`);
@@ -35928,7 +36103,7 @@ async function runOrchestrator(ctx) {
       return;
     }
     await progress.phaseStart("startup", "Starting the application under test");
-    const startup = await startApplicationWithRetries(llm, repoPath, techStack);
+    const startup = await startApplicationWithRetries(llm, repoPath, techStack, void 0, config2.modelSelector);
     appProcess = startup.process;
     const startupConfig = startup.config;
     const baseUrl = `http://localhost:${startupConfig.port}`;
@@ -35952,7 +36127,8 @@ async function runOrchestrator(ctx) {
       baseUrl,
       repeater.repeaterId,
       config2.brightToken,
-      config2.brightHostname
+      config2.brightHostname,
+      config2.modelSelector.current()
     );
     await progress.phaseDetail(
       "auth",
@@ -36039,7 +36215,8 @@ async function runOrchestrator(ctx) {
       liveEndpoints,
       entrypointIds,
       techStack,
-      authResult.hasAuth
+      authResult.hasAuth,
+      config2.modelSelector.current()
     );
     await progress.phaseDetail(
       "test_selection",
@@ -36058,12 +36235,13 @@ async function runOrchestrator(ctx) {
           authResult.authObjectId,
           config2.brightToken,
           config2.brightHostname,
-          allFixes
+          allFixes,
+          config2.modelSelector.current()
         );
         if (!authOk) {
           await killProcess(appProcess);
           try {
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config2.modelSelector);
             appProcess = restart.process;
             if (authResult.registration) await reRegisterUser(authResult.registration);
             const retryOk = await verifyAndRepairAuth(
@@ -36073,7 +36251,8 @@ async function runOrchestrator(ctx) {
               authResult.authObjectId,
               config2.brightToken,
               config2.brightHostname,
-              allFixes
+              allFixes,
+              config2.modelSelector.current()
             );
             if (!retryOk) {
               await progress.phaseDetail("scan", "auth_broken", "Auth broken after fixes \u2014 cannot continue scanning");
@@ -36093,7 +36272,7 @@ async function runOrchestrator(ctx) {
         console.warn(`[Scan] App is unreachable on port ${startupConfig.port} \u2014 restarting before scan`);
         await killProcess(appProcess);
         try {
-          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config2.modelSelector);
           appProcess = restart.process;
           if (authResult.registration) await reRegisterUser(authResult.registration);
           console.log("[Scan] App restarted successfully");
@@ -36155,7 +36334,7 @@ async function runOrchestrator(ctx) {
           console.warn("[Scan] App appears to have crashed during scanning \u2014 attempting restart and retry");
           await killProcess(appProcess);
           try {
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config2.modelSelector);
             appProcess = restart.process;
             if (authResult.registration) await reRegisterUser(authResult.registration);
             console.log("[Scan] App restarted \u2014 will retry scans on next iteration");
@@ -36214,10 +36393,19 @@ async function runOrchestrator(ctx) {
       }
       if (findings.length === 0) {
         for (const [, s] of allFindings) s.status = "Fixed";
+        config2.modelSelector.reset();
         buildSummaryTable(progress, allFindings, fixedKeys);
         const msg = iteration === 0 ? "No vulnerabilities found \u2014 application appears secure." : `All vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied.`;
         await progress.phaseStart("done", msg);
         return;
+      }
+      if (iteration > 0) {
+        const previousCount = allFindings.size - fixedKeys.size;
+        if (findings.length >= previousCount) {
+          config2.modelSelector.escalate();
+        } else {
+          config2.modelSelector.reset();
+        }
       }
       if (iteration === MAX_ITERATIONS - 1) {
         buildSummaryTable(progress, allFindings, fixedKeys);
@@ -36238,7 +36426,7 @@ async function runOrchestrator(ctx) {
         console.log(`[Fix] [${fi + 1}/${findings.length}] Fixing: ${finding.severity} \u2014 ${finding.name} at ${finding.url}`);
         let fixes;
         try {
-          fixes = await generateFixes(llm, repoPath, techStack, [finding], allFixes);
+          fixes = await generateFixes(llm, repoPath, techStack, [finding], allFixes, config2.modelSelector.current());
         } catch (err) {
           console.error(`[Fix] Failed to generate fix for ${finding.name}: ${err}`);
           skippedCount++;
@@ -36267,7 +36455,7 @@ async function runOrchestrator(ctx) {
         await killProcess(appProcess);
         let healthy = false;
         try {
-          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config2.modelSelector);
           appProcess = restart.process;
           if (authResult.registration) await reRegisterUser(authResult.registration);
           healthy = true;
@@ -36281,10 +36469,12 @@ async function runOrchestrator(ctx) {
             startupConfig,
             containerLogs,
             fixCommitCount.value,
-            allFixes
+            allFixes,
+            config2.modelSelector.current(),
+            config2.modelSelector
           );
           if (healthy) {
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config2.modelSelector);
             appProcess = restart.process;
             if (authResult.registration) await reRegisterUser(authResult.registration);
           } else {
@@ -36292,7 +36482,7 @@ async function runOrchestrator(ctx) {
             try {
               execFileSync4("git", ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`], { cwd: repoPath, stdio: "pipe" });
               execFileSync4("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config2.modelSelector);
               appProcess = restart.process;
               if (authResult.registration) await reRegisterUser(authResult.registration);
             } catch {
@@ -36308,7 +36498,8 @@ async function runOrchestrator(ctx) {
             authResult.authObjectId,
             config2.brightToken,
             config2.brightHostname,
-            allFixes
+            allFixes,
+            config2.modelSelector.current()
           );
           if (!authOk) {
             console.warn("[Fix] Auth broken after fixes \u2014 will attempt repair on next round");
@@ -36420,7 +36611,7 @@ async function deleteRepeater(brightToken, brightHostname, repeaterId) {
   }
 }
 var MAX_AUTH_REPAIR_ATTEMPTS = 3;
-async function verifyAndRepairAuth(llm, repoPath, techStack, authObjectId, brightToken, brightHostname, allFixes) {
+async function verifyAndRepairAuth(llm, repoPath, techStack, authObjectId, brightToken, brightHostname, allFixes, model) {
   const testResult = await testAuthObject(brightToken, brightHostname, authObjectId);
   if (testResult.passed) {
     console.log("[Auth] Pre-scan auth verification passed");
@@ -36486,7 +36677,7 @@ Respond with a JSON array of corrected files:
 If no code change is needed (e.g. the issue is transient), respond with an empty array: \`[]\``
         }
       ];
-      const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+      const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
       const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
       const parsed = JSON.parse(jsonStr);
       const files = Array.isArray(parsed) ? parsed : [];
@@ -36520,11 +36711,11 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
   console.error("[Auth] Could not repair auth after all attempts");
   return false;
 }
-async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfig, containerLogs, commitCount, allFixes) {
+async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfig, containerLogs, commitCount, allFixes, model, modelSelector) {
   if (commitCount <= 0) return false;
   for (let repair = 0; repair < MAX_FIX_REPAIR_ATTEMPTS; repair++) {
     try {
-      const repairFixes = await diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, allFixes);
+      const repairFixes = await diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, allFixes, model);
       if (repairFixes.length > 0) {
         applyFixes(repoPath, repairFixes);
         allFixes.push(...repairFixes);
@@ -36533,7 +36724,7 @@ async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfi
         } catch {
         }
       }
-      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, modelSelector);
       await killProcess(restart.process);
       console.log(`[Fix] Repaired after ${repair + 1} attempt(s)`);
       return true;
@@ -36559,7 +36750,7 @@ async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfi
       }
     }
     try {
-      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, modelSelector);
       await killProcess(restart.process);
       console.log(`[Fix] App recovered after reverting ${i + 1} commit(s)`);
       return true;
@@ -36569,7 +36760,7 @@ async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfi
   }
   return false;
 }
-async function diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, appliedFixes) {
+async function diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, appliedFixes, model) {
   const handleTool = createToolHandler(repoPath);
   const stackStr = formatTechStack(techStack);
   const fixSummary = appliedFixes.map((f) => `- ${f.vulnerability.name}: ${f.summary}
@@ -36609,7 +36800,7 @@ Respond with a JSON array of file fixes:
 \`\`\``
     }
   ];
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
   try {
     const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
     const parsed = JSON.parse(jsonStr);
@@ -36690,6 +36881,7 @@ async function main() {
   const inferenceUrl = process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceToken = process.env.OPENAI_API_KEY ?? process.env.GITHUB_INFERENCE_TOKEN ?? "";
   const llm = createInferenceClient(inferenceUrl, inferenceToken);
+  await validateModelTiers(llm, config2.modelSelector);
   const bright = await createBrightMcpClient(config2);
   console.log("[Engine] Connected to Bright MCP server");
   const ctx = {

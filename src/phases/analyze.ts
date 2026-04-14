@@ -22,13 +22,14 @@ import {
 export async function detectTechStack(
   llm: OpenAI,
   repoPath: string,
+  model?: string,
 ): Promise<TechStack> {
   const topFiles = await glob("*", { cwd: repoPath, nodir: false });
   const listing = topFiles.join("\n");
   const messages = detectTechStackPrompt(listing);
   const handleTool = createToolHandler(repoPath);
 
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
 
   try {
     const parsed = JSON.parse(extractJson(response));
@@ -46,6 +47,7 @@ export async function discoverEndpoints(
   llm: OpenAI,
   repoPath: string,
   techStack: TechStack,
+  model?: string,
 ): Promise<DiscoveredEndpoint[]> {
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
@@ -57,6 +59,7 @@ export async function discoverEndpoints(
     controllerMessages,
     codebaseTools,
     handleTool,
+    model,
   );
 
   let controllerFiles: string[];
@@ -113,6 +116,7 @@ export async function discoverEndpoints(
       messages,
       "endpoints",
       endpointsSchema,
+      model,
     );
 
     for (const ep of response.endpoints) {
@@ -157,6 +161,7 @@ export async function discoverEndpoints(
         messages,
         "endpoint_params",
         endpointParamsSchema,
+        model,
       );
       enriched.push({
         ...ep,

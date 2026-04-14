@@ -1,9 +1,9 @@
 import type OpenAI from "openai";
 import { spawn, execSync, execFileSync, type ChildProcess } from "child_process";
 import { createInterface } from "readline";
-import { existsSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import type { TechStack, StartupConfig } from "../types.js";
-import { chatWithTools } from "../inference.js";
+import { chatWithTools, type ModelSelector } from "../inference.js";
 import { codebaseTools, createToolHandler } from "../tools.js";
 import { sleep, formatTechStack, toErrorMessage } from "../utils.js";
 import {
@@ -24,6 +24,7 @@ export async function startApplicationWithRetries(
   repoPath: string,
   techStack: TechStack,
   previousStartup?: StartupConfig,
+  modelSelector?: ModelSelector,
 ): Promise<StartupResult> {
   // Clean up any running Docker containers to avoid port conflicts
   cleanupDocker(repoPath);
@@ -37,20 +38,43 @@ export async function startApplicationWithRetries(
 
     if (attempt === 1 && previousStartup) {
       // Source code changed — ask LLM to rebuild with the right strategy
-      config = await rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousStartup);
+      config = await rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousStartup, modelSelector?.current());
     } else if (attempt === 1) {
-      config = await identifyStartupConfig(llm, repoPath, stackStr, handleTool);
+      config = await identifyStartupConfig(llm, repoPath, stackStr, handleTool, modelSelector?.current());
     } else {
-      const prev = attemptErrors[attemptErrors.length - 1];
-      config = await retryStartupConfig(
-        llm,
-        repoPath,
-        stackStr,
-        handleTool,
-        prev.config,
-        prev.error,
-        attempt,
-      );
+      // Escalate model on retry if available
+      modelSelector?.escalate();
+      // If previous startup used a pre-built image and compose build-from-source
+      // failed, try Dockerfile-only build before falling back to LLM
+      const dockerfileOnly = (attempt === 2 && previousStartup?.docker && usesPrebuiltImage(previousStartup.command))
+        ? buildDockerfileOnlyConfig(repoPath, previousStartup)
+        : null;
+      if (dockerfileOnly) {
+        console.log("[Startup] Compose failed — trying Dockerfile-only build");
+        config = dockerfileOnly;
+      } else {
+        const prev = attemptErrors[attemptErrors.length - 1];
+        config = await retryStartupConfig(
+          llm,
+          repoPath,
+          stackStr,
+          handleTool,
+          prev.config,
+          prev.error,
+          attempt,
+          modelSelector?.current(),
+        );
+        // During rebuild (source changed), never fall back to a pre-built image —
+        // it would discard all fixes applied to the source code.
+        if (previousStartup && config.docker && usesPrebuiltImage(config.command)) {
+          const fromSource = buildFromSourceConfig(repoPath, previousStartup)
+            ?? buildDockerfileOnlyConfig(repoPath, previousStartup);
+          if (fromSource) {
+            console.log(`[Startup] LLM suggested pre-built image — overriding with source build`);
+            config = fromSource;
+          }
+        }
+      }
     }
 
     console.log(
@@ -60,6 +84,7 @@ export async function startApplicationWithRetries(
     try {
       const proc = await startApplication(repoPath, config);
       console.log(`[Startup] Application started successfully on attempt ${attempt}`);
+      modelSelector?.reset();
       return { process: proc, config };
     } catch (err) {
       const errorMsg = toErrorMessage(err);
@@ -93,9 +118,10 @@ async function identifyStartupConfig(
   repoPath: string,
   stackStr: string,
   handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
+  model?: string,
 ): Promise<StartupConfig> {
   const messages = identifyStartupPrompt(stackStr);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
   return parseStartupConfig(response);
 }
 
@@ -105,6 +131,7 @@ async function rebuildStartupConfig(
   stackStr: string,
   handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
   previousConfig: StartupConfig,
+  model?: string,
 ): Promise<StartupConfig> {
   // If the previous command used a pre-built Docker image (not built from source),
   // we MUST switch to building from the repo's Dockerfile. Otherwise fixes applied
@@ -118,7 +145,7 @@ async function rebuildStartupConfig(
   }
 
   const messages = rebuildStartupPrompt(stackStr, JSON.stringify(previousConfig, null, 2));
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
   return parseStartupConfig(response);
 }
 
@@ -152,6 +179,103 @@ function usesPrebuiltImage(command: string): boolean {
 }
 
 /**
+ * Scan a compose file for env_file references and return the names
+ * of any files that do not exist on disk.
+ */
+function findMissingEnvFiles(repoPath: string, composeFile: string): string[] {
+  try {
+    const content = readFileSync(`${repoPath}/${composeFile}`, "utf8");
+    const missing: string[] = [];
+    // Scalar form: env_file: vars.env
+    for (const m of content.matchAll(/env_file:\s+(?!-)(\S+)/g)) {
+      const file = m[1].replace(/["']/g, "");
+      if (file && !existsSync(`${repoPath}/${file}`)) missing.push(file);
+    }
+    // List form: env_file:\n  - vars.env
+    for (const m of content.matchAll(/env_file:\s*\n((?:\s+-\s+\S+\n?)+)/g)) {
+      for (const item of m[1].matchAll(/^\s+-\s+(\S+)/gm)) {
+        const file = item[1].replace(/["']/g, "");
+        if (file && !existsSync(`${repoPath}/${file}`)) missing.push(file);
+      }
+    }
+    return [...new Set(missing)];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Create a missing env file referenced by a compose manifest.
+ * Reads the compose content to discover environment-variable references
+ * (${VAR} syntax) and database images, then writes sensible defaults
+ * so that compose can start without manual configuration.
+ */
+function populateMissingEnvFile(
+  repoPath: string,
+  composeFile: string,
+  envFile: string,
+): void {
+  const composePath = `${repoPath}/${composeFile}`;
+  const envPath = `${repoPath}/${envFile}`;
+  let content: string;
+  try {
+    content = readFileSync(composePath, "utf8");
+  } catch {
+    // If compose file can't be read, just create an empty file
+    writeFileSync(envPath, "");
+    return;
+  }
+
+  const lines: string[] = [];
+  const added = new Set<string>();
+
+  const addVar = (name: string, value: string) => {
+    if (!added.has(name)) {
+      lines.push(`${name}=${value}`);
+      added.add(name);
+    }
+  };
+
+  // Defaults for common database env vars
+  const dbDefaults: Record<string, string> = {
+    MYSQL_ROOT_PASSWORD: "bright_test",
+    MYSQL_DATABASE: "app",
+    MYSQL_USER: "app",
+    MYSQL_PASSWORD: "bright_test",
+    MYSQL_ALLOW_EMPTY_PASSWORD: "yes",
+    POSTGRES_PASSWORD: "bright_test",
+    POSTGRES_DB: "app",
+    POSTGRES_USER: "postgres",
+    MONGO_INITDB_ROOT_USERNAME: "root",
+    MONGO_INITDB_ROOT_PASSWORD: "bright_test",
+  };
+
+  // Populate any ${VAR} references that match known DB vars
+  for (const m of content.matchAll(/\$\{(\w+)\}/g)) {
+    const name = m[1];
+    if (dbDefaults[name]) addVar(name, dbDefaults[name]);
+  }
+
+  // Also populate directly-referenced env vars like MYSQL_ROOT_PASSWORD: ...
+  for (const m of content.matchAll(/^\s+(MYSQL_\w+|POSTGRES_\w+|MONGO_\w+):/gm)) {
+    const name = m[1];
+    if (dbDefaults[name] && !added.has(name)) addVar(name, dbDefaults[name]);
+  }
+
+  // If compose has a mysql/postgres image but we haven't added any credentials, add them
+  if (/image:\s*.*mysql/i.test(content) && !added.has("MYSQL_ROOT_PASSWORD")) {
+    addVar("MYSQL_ROOT_PASSWORD", "bright_test");
+    addVar("MYSQL_ALLOW_EMPTY_PASSWORD", "yes");
+  }
+  if (/image:\s*.*postgres/i.test(content) && !added.has("POSTGRES_PASSWORD")) {
+    addVar("POSTGRES_PASSWORD", "bright_test");
+  }
+
+  console.log(`[Startup] Created ${envFile} with ${lines.length} default variable(s)`);
+  writeFileSync(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
+}
+
+/**
  * Build a startup config that builds the Docker image from source and runs it.
  * Returns null if no Dockerfile is found.
  */
@@ -174,6 +298,10 @@ function buildFromSourceConfig(
   ];
   for (const cf of composeFiles) {
     if (existsSync(`${repoPath}/${cf}`)) {
+      const missingEnvFiles = findMissingEnvFiles(repoPath, cf);
+      for (const envFile of missingEnvFiles) {
+        populateMissingEnvFile(repoPath, cf, envFile);
+      }
       return {
         command: `docker compose -f ${cf} up --build -d`,
         port,
@@ -194,6 +322,26 @@ function buildFromSourceConfig(
   };
 }
 
+/**
+ * Build directly from Dockerfile, skipping compose files.
+ * Used as fallback when compose build-from-source fails.
+ */
+function buildDockerfileOnlyConfig(
+  repoPath: string,
+  previousConfig: StartupConfig,
+): StartupConfig | null {
+  if (!existsSync(`${repoPath}/Dockerfile`)) return null;
+  const port = previousConfig.port;
+  const imageName = "bright-app-local";
+  return {
+    command: `docker run --name ${imageName} -p ${port}:${port} -d ${imageName}`,
+    port,
+    prerequisites: [`docker build -t ${imageName} .`],
+    envVars: previousConfig.envVars ?? {},
+    docker: true,
+  };
+}
+
 async function retryStartupConfig(
   llm: OpenAI,
   repoPath: string,
@@ -202,6 +350,7 @@ async function retryStartupConfig(
   previousConfig: StartupConfig,
   errorOutput: string,
   attempt: number,
+  model?: string,
 ): Promise<StartupConfig> {
   const messages = retryStartupPrompt(
     stackStr,
@@ -209,7 +358,7 @@ async function retryStartupConfig(
     errorOutput,
     attempt,
   );
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
   return parseStartupConfig(response);
 }
 
@@ -365,9 +514,12 @@ async function startApplication(
       throw err;
     }
 
-    // Compose exited successfully — services should be healthy, give port a short check
+    // Compose exited successfully — services should be healthy.
+    // However the container healthcheck may only verify the process is alive,
+    // not that the app is serving HTTP.  Dev setups often run npm install or
+    // wait-for-it inside the container, so allow generous time for the port.
     console.log("[Startup] Docker Compose services healthy, checking port...");
-    await waitForPort(config.port, 30_000);
+    await waitForPort(config.port, 120_000);
   } else {
     // Non-docker or docker without --wait
     const portTimeoutMs = config.docker ? 180_000 : 90_000;

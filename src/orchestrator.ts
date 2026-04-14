@@ -32,14 +32,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   try {
     // ----- Phase 1: Analyze codebase -----
     await progress.phaseStart("analyze", "Analyzing repository for tech stack and HTTP endpoints");
-    const techStack = await detectTechStack(llm, repoPath);
+    const techStack = await detectTechStack(llm, repoPath, config.modelSelector.current());
     await progress.phaseDetail(
       "analyze",
       "tech_stack",
       `Tech stack: ${formatTechStack(techStack)}`,
     );
 
-    const endpoints = await discoverEndpoints(llm, repoPath, techStack);
+    const endpoints = await discoverEndpoints(llm, repoPath, techStack, config.modelSelector.current());
     console.log(`[Analyze] Discovered ${endpoints.length} HTTP endpoints`);
     for (const ep of endpoints) {
       console.log(`[Analyze]   ${ep.method} ${ep.path}`);
@@ -57,7 +57,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // ----- Phase 2: Start the application -----
     await progress.phaseStart("startup", "Starting the application under test");
-    const startup = await startApplicationWithRetries(llm, repoPath, techStack);
+    const startup = await startApplicationWithRetries(llm, repoPath, techStack, undefined, config.modelSelector);
     appProcess = startup.process;
     const startupConfig = startup.config;
     const baseUrl = `http://localhost:${startupConfig.port}`;
@@ -88,6 +88,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       repeater.repeaterId,
       config.brightToken,
       config.brightHostname,
+      config.modelSelector.current(),
     );
     await progress.phaseDetail(
       "auth",
@@ -200,6 +201,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     await progress.phaseStart("test_selection", "Selecting relevant security tests per endpoint");
     const scanGroups = await selectTestsPerEndpoint(
       llm, bright, liveEndpoints, entrypointIds, techStack, authResult.hasAuth,
+      config.modelSelector.current(),
     );
     await progress.phaseDetail(
       "test_selection",
@@ -219,14 +221,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           llm, repoPath, techStack,
           authResult.authObjectId,
           config.brightToken, config.brightHostname,
-          allFixes,
+          allFixes, config.modelSelector.current(),
         );
         if (!authOk) {
           // Auth is broken and couldn't be repaired — need to restart the app
           // in case a code repair was applied, then retry
           await killProcess(appProcess);
           try {
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config.modelSelector);
             appProcess = restart.process;
             // Re-register test user (fresh container = empty DB)
             if (authResult.registration) await reRegisterUser(authResult.registration);
@@ -235,7 +237,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
               llm, repoPath, techStack,
               authResult.authObjectId,
               config.brightToken, config.brightHostname,
-              allFixes,
+              allFixes, config.modelSelector.current(),
             );
             if (!retryOk) {
               await progress.phaseDetail("scan", "auth_broken", "Auth broken after fixes — cannot continue scanning");
@@ -257,7 +259,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         console.warn(`[Scan] App is unreachable on port ${startupConfig.port} — restarting before scan`);
         await killProcess(appProcess);
         try {
-          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config.modelSelector);
           appProcess = restart.process;
           if (authResult.registration) await reRegisterUser(authResult.registration);
           console.log("[Scan] App restarted successfully");
@@ -328,7 +330,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           console.warn("[Scan] App appears to have crashed during scanning — attempting restart and retry");
           await killProcess(appProcess);
           try {
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config.modelSelector);
             appProcess = restart.process;
             if (authResult.registration) await reRegisterUser(authResult.registration);
             console.log("[Scan] App restarted — will retry scans on next iteration");
@@ -405,6 +407,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       if (findings.length === 0) {
         // Mark everything as fixed
         for (const [, s] of allFindings) s.status = "Fixed";
+        config.modelSelector.reset();
         buildSummaryTable(progress, allFindings, fixedKeys);
         const msg =
           iteration === 0
@@ -412,6 +415,16 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             : `All vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied.`;
         await progress.phaseStart("done", msg);
         return;
+      }
+
+      // Escalate model if fixes didn't reduce the vulnerability count
+      if (iteration > 0) {
+        const previousCount = allFindings.size - fixedKeys.size;
+        if (findings.length >= previousCount) {
+          config.modelSelector.escalate();
+        } else {
+          config.modelSelector.reset();
+        }
       }
 
       // Last iteration is validation-only
@@ -440,7 +453,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         // Generate fix for this single finding
         let fixes: SecurityFix[];
         try {
-          fixes = await generateFixes(llm, repoPath, techStack, [finding], allFixes);
+          fixes = await generateFixes(llm, repoPath, techStack, [finding], allFixes, config.modelSelector.current());
         } catch (err) {
           console.error(`[Fix] Failed to generate fix for ${finding.name}: ${err}`);
           skippedCount++;
@@ -477,7 +490,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         let healthy = false;
 
         try {
-          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+          const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config.modelSelector);
           appProcess = restart.process;
           if (authResult.registration) await reRegisterUser(authResult.registration);
           healthy = true;
@@ -489,9 +502,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           healthy = await bisectAndRevertBrokenFixes(
             llm, repoPath, techStack, startupConfig, containerLogs,
             fixCommitCount.value, allFixes,
+            config.modelSelector.current(), config.modelSelector,
           );
           if (healthy) {
-            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+            const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config.modelSelector);
             appProcess = restart.process;
             if (authResult.registration) await reRegisterUser(authResult.registration);
           } else {
@@ -500,7 +514,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             try {
               execFileSync("git", ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`], { cwd: repoPath, stdio: "pipe" });
               execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+              const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config.modelSelector);
               appProcess = restart.process;
               if (authResult.registration) await reRegisterUser(authResult.registration);
             } catch {
@@ -515,7 +529,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             llm, repoPath, techStack,
             authResult.authObjectId,
             config.brightToken, config.brightHostname,
-            allFixes,
+            allFixes, config.modelSelector.current(),
           );
           if (!authOk) {
             console.warn("[Fix] Auth broken after fixes — will attempt repair on next round");
@@ -676,6 +690,7 @@ async function verifyAndRepairAuth(
   brightToken: string,
   brightHostname: string,
   allFixes: SecurityFix[],
+  model?: string,
 ): Promise<boolean> {
   // First, test the auth object directly via Bright API
   const testResult = await testAuthObject(brightToken, brightHostname, authObjectId);
@@ -750,7 +765,7 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
         },
       ];
 
-      const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+      const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
       const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
       const parsed = JSON.parse(jsonStr);
       const files = Array.isArray(parsed) ? parsed : [];
@@ -802,20 +817,22 @@ async function bisectAndRevertBrokenFixes(
   containerLogs: string,
   commitCount: number,
   allFixes: SecurityFix[],
+  model?: string,
+  modelSelector?: import("./inference.js").ModelSelector,
 ): Promise<boolean> {
   if (commitCount <= 0) return false;
 
   // Simple approach: first try diagnosing + repairing
   for (let repair = 0; repair < MAX_FIX_REPAIR_ATTEMPTS; repair++) {
     try {
-      const repairFixes = await diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, allFixes);
+      const repairFixes = await diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLogs, allFixes, model);
       if (repairFixes.length > 0) {
         applyFixes(repoPath, repairFixes);
         allFixes.push(...repairFixes);
         try { gitCommitAndPush(repoPath, `fix: repair broken fix (attempt ${repair + 1})`); } catch { /* ignore */ }
       }
       // Test if app starts now
-      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, modelSelector);
       await killProcess(restart.process);
       console.log(`[Fix] Repaired after ${repair + 1} attempt(s)`);
       return true;
@@ -842,7 +859,7 @@ async function bisectAndRevertBrokenFixes(
     }
 
     try {
-      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig);
+      const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, modelSelector);
       await killProcess(restart.process);
       console.log(`[Fix] App recovered after reverting ${i + 1} commit(s)`);
       return true;
@@ -860,6 +877,7 @@ async function diagnoseAndRepairBrokenFix(
   techStack: import("./types.js").TechStack,
   containerLogs: string,
   appliedFixes: SecurityFix[],
+  model?: string,
 ): Promise<SecurityFix[]> {
   const handleTool = createToolHandler(repoPath);
   const stackStr = formatTechStack(techStack);
@@ -904,7 +922,7 @@ Respond with a JSON array of file fixes:
     },
   ];
 
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
 
   try {
     const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;

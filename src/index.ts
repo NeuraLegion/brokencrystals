@@ -1,6 +1,6 @@
 import { createPlatform, cloneRepository, gitFinalizeChanges } from "./platform.js";
 import { loadConfig } from "./config.js";
-import { createInferenceClient } from "./inference.js";
+import { createInferenceClient, validateModelTiers } from "./inference.js";
 import { toErrorMessage } from "./utils.js";
 import { createBrightMcpClient } from "./mcp-client.js";
 import { runOrchestrator } from "./orchestrator.js";
@@ -47,6 +47,9 @@ async function main(): Promise<void> {
     process.env.OPENAI_API_KEY ??
     process.env.GITHUB_INFERENCE_TOKEN ?? "";
   const llm = createInferenceClient(inferenceUrl, inferenceToken);
+
+  // 4b. Validate configured model tiers are available
+  await validateModelTiers(llm, config.modelSelector);
 
   // 5. Connect to Bright MCP
   const bright = await createBrightMcpClient(config);

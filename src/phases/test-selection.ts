@@ -32,6 +32,7 @@ export async function selectTestsPerEndpoint(
   entrypointIds: string[],
   techStack: TechStack,
   hasAuth: boolean,
+  model?: string,
 ): Promise<ScanGroup[]> {
   const availableTests = await bright.listTests();
 
@@ -101,6 +102,7 @@ Return a JSON object with an array of entries, one per endpoint index.`,
       required: ["entries"],
       additionalProperties: false,
     },
+    model,
   );
 
   // Build a lookup from index → tests
