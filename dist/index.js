@@ -34104,6 +34104,28 @@ Return a JSON object with the new approach:
 
 // src/phases/startup.ts
 var MAX_STARTUP_ATTEMPTS = 5;
+function canBuildFromSource(repoPath) {
+  const buildIndicators = [
+    "Dockerfile",
+    "Dockerfile-dev",
+    "docker-compose.yml",
+    "compose.yml",
+    "docker-compose.local.yml",
+    "compose.local.yml",
+    "docker-compose.dev.yml",
+    "compose.dev.yml",
+    "package.json",
+    "Makefile",
+    "pom.xml",
+    "build.gradle",
+    "Cargo.toml",
+    "go.mod",
+    "Gemfile",
+    "requirements.txt",
+    "pyproject.toml"
+  ];
+  return buildIndicators.some((f) => existsSync3(`${repoPath}/${f}`));
+}
 async function startApplicationWithRetries(llm, repoPath, techStack, previousStartup, modelSelector) {
   cleanupDocker(repoPath);
   const stackStr = formatTechStack(techStack);
@@ -36103,6 +36125,13 @@ async function runOrchestrator(ctx) {
       return;
     }
     await progress.phaseStart("startup", "Starting the application under test");
+    if (!canBuildFromSource(repoPath)) {
+      await progress.phaseStart(
+        "done",
+        "Cannot build application from source \u2014 no Dockerfile, package.json, or build system found. Fixes cannot be tested against a pre-built remote image. Aborting."
+      );
+      return;
+    }
     const startup = await startApplicationWithRetries(llm, repoPath, techStack, void 0, config2.modelSelector);
     appProcess = startup.process;
     const startupConfig = startup.config;

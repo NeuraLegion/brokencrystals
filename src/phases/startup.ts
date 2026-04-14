@@ -14,6 +14,34 @@ import {
 
 const MAX_STARTUP_ATTEMPTS = 5;
 
+/**
+ * Check whether the repository has the files needed to build from source
+ * (Dockerfile, docker-compose, package.json, etc.). If we can only run
+ * from a pre-built remote image, fixes will never take effect.
+ */
+export function canBuildFromSource(repoPath: string): boolean {
+  const buildIndicators = [
+    "Dockerfile",
+    "Dockerfile-dev",
+    "docker-compose.yml",
+    "compose.yml",
+    "docker-compose.local.yml",
+    "compose.local.yml",
+    "docker-compose.dev.yml",
+    "compose.dev.yml",
+    "package.json",
+    "Makefile",
+    "pom.xml",
+    "build.gradle",
+    "Cargo.toml",
+    "go.mod",
+    "Gemfile",
+    "requirements.txt",
+    "pyproject.toml",
+  ];
+  return buildIndicators.some(f => existsSync(`${repoPath}/${f}`));
+}
+
 export interface StartupResult {
   process: ChildProcess;
   config: StartupConfig;

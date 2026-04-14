@@ -5,7 +5,7 @@ import type { OrchestratorContext, SecurityFix, Finding } from "./types.js";
 import { ProgressReporter, type FindingSummary } from "./progress.js";
 import { formatTechStack } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
-import { startApplicationWithRetries, captureDockerLogs, checkAppHealth, type StartupResult } from "./phases/startup.js";
+import { startApplicationWithRetries, canBuildFromSource, captureDockerLogs, checkAppHealth, type StartupResult } from "./phases/startup.js";
 import { detectAndConfigureAuth, testAuthObject, reRegisterUser, type AuthResult } from "./phases/auth.js";
 import { registerEntrypoints, verifyEntrypointAuth, pruneDeadEntrypoints, type RegisteredEntrypoint } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
@@ -57,6 +57,18 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // ----- Phase 2: Start the application -----
     await progress.phaseStart("startup", "Starting the application under test");
+
+    // Early check: if there's no way to build from source, abort.
+    // Fixes applied to source code can never be tested against a pre-built image.
+    if (!canBuildFromSource(repoPath)) {
+      await progress.phaseStart(
+        "done",
+        "Cannot build application from source — no Dockerfile, package.json, or build system found. " +
+        "Fixes cannot be tested against a pre-built remote image. Aborting.",
+      );
+      return;
+    }
+
     const startup = await startApplicationWithRetries(llm, repoPath, techStack, undefined, config.modelSelector);
     appProcess = startup.process;
     const startupConfig = startup.config;
