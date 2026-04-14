@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 import { spawn, execSync, execFileSync, type ChildProcess } from "child_process";
 import { createInterface } from "readline";
+import { existsSync } from "fs";
 import type { TechStack, StartupConfig } from "../types.js";
 import { chatWithTools } from "../inference.js";
 import { codebaseTools, createToolHandler } from "../tools.js";
@@ -105,9 +106,92 @@ async function rebuildStartupConfig(
   handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
   previousConfig: StartupConfig,
 ): Promise<StartupConfig> {
+  // If the previous command used a pre-built Docker image (not built from source),
+  // we MUST switch to building from the repo's Dockerfile. Otherwise fixes applied
+  // to source code won't take effect — the pre-built image has the old code.
+  if (previousConfig.docker && usesPrebuiltImage(previousConfig.command)) {
+    const fromSource = buildFromSourceConfig(repoPath, previousConfig);
+    if (fromSource) {
+      console.log(`[Startup] Previous startup used pre-built image — switching to build-from-source`);
+      return fromSource;
+    }
+  }
+
   const messages = rebuildStartupPrompt(stackStr, JSON.stringify(previousConfig, null, 2));
   const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
   return parseStartupConfig(response);
+}
+
+/**
+ * Detect if a docker command uses a pre-built/remote image rather than
+ * building from local source. Pre-built images contain the old code and
+ * won't pick up source fixes.
+ *
+ * Examples of pre-built:
+ *   docker run ... appsecco/dvna:sqlite
+ *   docker run ... myrepo/myapp:latest
+ *
+ * Examples of source-built:
+ *   docker compose -f docker-compose.yml up --build -d
+ *   docker run ... app-local
+ */
+function usesPrebuiltImage(command: string): boolean {
+  // "docker compose ... --build" rebuilds from source
+  if (/docker\s+compose/.test(command) && command.includes("--build")) return false;
+
+  // "docker run ... <image>" — check if image looks like a registry image (contains / or :)
+  const runMatch = command.match(/docker\s+run\s+.*?\s+(\S+)\s*$/);
+  if (runMatch) {
+    const image = runMatch[1];
+    // Registry images contain "/" (org/repo) or ":" (tag like :latest, :sqlite)
+    // Local images built with "docker build -t name ." are usually just a simple name
+    if (image.includes("/") || image.includes(":")) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Build a startup config that builds the Docker image from source and runs it.
+ * Returns null if no Dockerfile is found.
+ */
+function buildFromSourceConfig(
+  repoPath: string,
+  previousConfig: StartupConfig,
+): StartupConfig | null {
+  // Check for Dockerfile
+  const hasDockerfile = existsSync(`${repoPath}/Dockerfile`);
+  if (!hasDockerfile) return null;
+
+  const port = previousConfig.port;
+  const imageName = "bright-app-local";
+
+  // Check for docker-compose.yml — if it exists, prefer compose with --build
+  const composeFiles = [
+    "docker-compose.yml", "compose.yml",
+    "docker-compose.local.yml", "compose.local.yml",
+    "docker-compose.dev.yml", "compose.dev.yml",
+  ];
+  for (const cf of composeFiles) {
+    if (existsSync(`${repoPath}/${cf}`)) {
+      return {
+        command: `docker compose -f ${cf} up --build -d`,
+        port,
+        prerequisites: [],
+        envVars: previousConfig.envVars,
+        docker: true,
+      };
+    }
+  }
+
+  // Fall back to docker build + docker run
+  return {
+    command: `docker run --name ${imageName} -p ${port}:${port} -d ${imageName}`,
+    port,
+    prerequisites: [`docker build -t ${imageName} .`],
+    envVars: previousConfig.envVars,
+    docker: true,
+  };
 }
 
 async function retryStartupConfig(

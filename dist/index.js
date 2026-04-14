@@ -33876,6 +33876,7 @@ async function discoverEndpoints(llm, repoPath, techStack) {
 // src/phases/startup.ts
 import { spawn, execSync, execFileSync as execFileSync3 } from "child_process";
 import { createInterface } from "readline";
+import { existsSync as existsSync3 } from "fs";
 
 // src/prompts/identify-startup.ts
 function identifyStartupPrompt(techStack) {
@@ -34088,9 +34089,57 @@ async function identifyStartupConfig(llm, repoPath, stackStr, handleTool) {
   return parseStartupConfig(response);
 }
 async function rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig) {
+  if (previousConfig.docker && usesPrebuiltImage(previousConfig.command)) {
+    const fromSource = buildFromSourceConfig(repoPath, previousConfig);
+    if (fromSource) {
+      console.log(`[Startup] Previous startup used pre-built image \u2014 switching to build-from-source`);
+      return fromSource;
+    }
+  }
   const messages = rebuildStartupPrompt(stackStr, JSON.stringify(previousConfig, null, 2));
   const response = await chatWithTools(llm, messages, codebaseTools, handleTool);
   return parseStartupConfig(response);
+}
+function usesPrebuiltImage(command) {
+  if (/docker\s+compose/.test(command) && command.includes("--build")) return false;
+  const runMatch = command.match(/docker\s+run\s+.*?\s+(\S+)\s*$/);
+  if (runMatch) {
+    const image = runMatch[1];
+    if (image.includes("/") || image.includes(":")) return true;
+  }
+  return false;
+}
+function buildFromSourceConfig(repoPath, previousConfig) {
+  const hasDockerfile = existsSync3(`${repoPath}/Dockerfile`);
+  if (!hasDockerfile) return null;
+  const port = previousConfig.port;
+  const imageName = "bright-app-local";
+  const composeFiles = [
+    "docker-compose.yml",
+    "compose.yml",
+    "docker-compose.local.yml",
+    "compose.local.yml",
+    "docker-compose.dev.yml",
+    "compose.dev.yml"
+  ];
+  for (const cf of composeFiles) {
+    if (existsSync3(`${repoPath}/${cf}`)) {
+      return {
+        command: `docker compose -f ${cf} up --build -d`,
+        port,
+        prerequisites: [],
+        envVars: previousConfig.envVars,
+        docker: true
+      };
+    }
+  }
+  return {
+    command: `docker run --name ${imageName} -p ${port}:${port} -d ${imageName}`,
+    port,
+    prerequisites: [`docker build -t ${imageName} .`],
+    envVars: previousConfig.envVars,
+    docker: true
+  };
 }
 async function retryStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig, errorOutput, attempt) {
   const messages = retryStartupPrompt(
