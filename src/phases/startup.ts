@@ -9,7 +9,13 @@ import { createInterface } from "readline";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import type { TechStack, StartupConfig } from "../types.js";
 import { chatWithTools, type ModelSelector } from "../inference.js";
-import { codebaseTools, createToolHandler } from "../tools.js";
+import {
+  codebaseTools,
+  createToolHandler,
+  dockerfileTools,
+  createDockerfileToolHandler,
+  validateDockerfileImages,
+} from "../tools.js";
 import { sleep, formatTechStack, toErrorMessage } from "../utils.js";
 import {
   identifyStartupPrompt,
@@ -19,6 +25,57 @@ import {
 import { generateDockerfilePrompt } from "../prompts/generate-dockerfile.js";
 
 const MAX_STARTUP_ATTEMPTS = 5;
+
+/**
+ * Detect build errors caused by source code compilation failures
+ * (not Dockerfile/infra issues). These can't be fixed by repairing the
+ * Dockerfile, so we should stop retrying immediately.
+ *
+ * Only triggers when we see the SAME compilation error pattern on
+ * consecutive attempts — the first occurrence might be a Dockerfile issue
+ * (e.g. missing COPY for source dirs) that the repair can fix.
+ */
+function isSourceCodeError(
+  errorMsg: string,
+  previousErrors: string[],
+): boolean {
+  // OOM errors are fixable by Dockerfile repair (adding -Xmx flags) — never bail on them
+  if (/OutOfMemoryError|out of memory/i.test(errorMsg)) return false;
+
+  // Runtime config errors are fixable by Dockerfile repair (adjusting CMD flags)
+  if (/FileNotFoundException.*conf\//i.test(errorMsg)) return false;
+
+  const patterns = [
+    // Scala / sbt
+    /Compilation failed/,
+    // Java / Maven / Gradle
+    /BUILD FAILURE/,
+    /COMPILATION ERROR/,
+    // .NET / C#
+    /Build FAILED\./,
+    /error CS\d{4}:/,
+    // Go
+    /build constraints exclude all Go files/,
+    // Rust
+    /error\[E\d{4}\]:/,
+    /could not compile/,
+    // TypeScript / JavaScript
+    /error TS\d{4}:/,
+    // Python
+    /SyntaxError: invalid syntax/,
+    // Generic: high error count
+    /\d{2,}\s+errors?\s+(found|generated|reported)/i,
+  ];
+
+  const isCompilationError = patterns.some((p) => p.test(errorMsg));
+  if (!isCompilationError) return false;
+
+  // First time seeing a compilation error — let repair try (might be a COPY issue)
+  // Only bail if a previous attempt also had a compilation error
+  return previousErrors.some((prev) =>
+    patterns.some((p) => p.test(prev)),
+  );
+}
 
 /**
  * Check whether the repository has the files needed to build from source
@@ -162,6 +219,9 @@ export async function startApplicationWithRetries(
       }
     }
 
+    // --- Pre-validation: reject known-bad configs before wasting an attempt ---
+    config = sanitizeStartupConfig(repoPath, config);
+
     // Ensure a Dockerfile exists when Docker-based startup is requested.
     // If the project has source code but no Dockerfile, generate one so
     // Docker-based builds (and post-fix rebuilds) work.
@@ -205,6 +265,31 @@ export async function startApplicationWithRetries(
       const errorMsg = toErrorMessage(err);
       console.error(`[Startup] Attempt ${attempt} failed: ${errorMsg}`);
       attemptErrors.push({ config, error: errorMsg });
+
+      // Detect source code compilation errors that Dockerfile repair can't fix
+      const previousErrorMsgs = attemptErrors.slice(0, -1).map((a) => a.error);
+      if (isSourceCodeError(errorMsg, previousErrorMsgs)) {
+        console.error(
+          "[Startup] Build failed due to source code compilation errors on consecutive attempts — this is not a Dockerfile issue. Aborting retries.",
+        );
+        break;
+      }
+
+      // LLM-based Dockerfile repair when Docker builds fail
+      // Skip on the final attempt — the repaired file would never be tested
+      if (
+        config.docker &&
+        existsSync(`${repoPath}/Dockerfile`) &&
+        attempt < MAX_STARTUP_ATTEMPTS
+      ) {
+        await repairDockerBuild(
+          llm,
+          repoPath,
+          errorMsg,
+          handleTool,
+          modelSelector?.current(),
+        );
+      }
 
       // Clean up any Docker containers from failed attempts
       if (config.docker) {
@@ -357,6 +442,120 @@ function validateComposeBuildContexts(repoPath: string, composeFile: string): bo
   }
 
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// LLM-based Dockerfile repair
+// ---------------------------------------------------------------------------
+
+/**
+ * When a Docker build fails, give the LLM the error + current Dockerfile
+ * and let it explore the codebase to produce a fixed Dockerfile.
+ * This replaces brittle regex-based patching with a general-purpose fix.
+ */
+async function repairDockerBuild(
+  llm: OpenAI,
+  repoPath: string,
+  buildError: string,
+  handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
+  model?: string,
+): Promise<void> {
+  const dockerfilePath = `${repoPath}/Dockerfile`;
+  let currentDockerfile: string;
+  try {
+    currentDockerfile = readFileSync(dockerfilePath, "utf-8");
+  } catch {
+    return;
+  }
+
+  // Truncate error to avoid blowing up the context
+  const truncatedError = buildError.length > 3000
+    ? buildError.slice(-3000)
+    : buildError;
+
+  const messages: Array<{ role: "system" | "user"; content: string }> = [
+    {
+      role: "system",
+      content: `You are a Docker expert. A Docker build just failed. Your job is to fix the Dockerfile.
+
+You have tools to read any file in the repository. Use them to understand what the project needs (package.json, .csproj, go.mod, requirements.txt, build configs, etc.).
+
+IMPORTANT: You have a verify_docker_image tool. ALWAYS call it to verify that any base image:tag you use in FROM lines exists on Docker Hub. If an image does not exist, try alternative tags until you find one that does.
+
+Common issues and fixes:
+- "npm/node: not found" in .NET builds → add RUN apt-get install nodejs npm before dotnet publish
+- corepack signature errors → add ENV COREPACK_INTEGRITY_KEYS=0 and RUN npm install -g corepack@latest
+- "git: not found" → add RUN apt-get update && apt-get install -y --no-install-recommends git in the stage that needs it
+- Missing system dependencies → add apt-get install for the needed packages
+- Wrong base image version → verify the correct tag with verify_docker_image, then switch
+- Build context / COPY failures → fix paths or remove COPY lines for files that don't exist
+- "Not found: type X" / compilation errors after COPY → the source code is incomplete. Replace individual COPY lines with "COPY . ." to ensure all source directories are included
+- OutOfMemoryError during compilation → add ENV SBT_OPTS="-J-Xmx4g -J-XX:+UseG1GC" (for sbt) or ENV MAVEN_OPTS="-Xmx4g" (for Maven) or ENV GRADLE_OPTS="-Xmx4g" (for Gradle) BEFORE the build command
+- Container crashes with "FileNotFoundException" for config files → check conf/ for available config files, use prod-mode flags (e.g. -Dconfig.resource=application.conf -Dlogger.resource=logback.xml) in CMD
+- .NET AppHost/Aspire orchestrator projects cannot be published standalone → find a real web API project (Catalog.API, WebApp, etc.) and publish that instead
+- dotnet publish succeeds but COPY --from=build fails with "not found" → the publish output path is wrong. List the build stage output to find where files actually went
+- Permission issues → add appropriate RUN chmod/chown
+
+Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`,
+    },
+    {
+      role: "user",
+      content: `The Docker build failed with this error:
+
+\`\`\`
+${truncatedError}
+\`\`\`
+
+Current Dockerfile:
+\`\`\`dockerfile
+${currentDockerfile}
+\`\`\`
+
+Use the tools to inspect relevant project files, then return a COMPLETE fixed Dockerfile.`,
+    },
+  ];
+
+  try {
+    console.log("[Startup] Asking LLM to repair Dockerfile...");
+    const dockerHandler = createDockerfileToolHandler(repoPath);
+    const response = await chatWithTools(
+      llm,
+      messages,
+      dockerfileTools,
+      dockerHandler,
+      model,
+      12,
+    );
+
+    const fixedDockerfile = extractCodeBlock(response);
+    if (!fixedDockerfile) {
+      console.warn("[Startup] LLM did not return a valid Dockerfile repair");
+      return;
+    }
+
+    // Sanity check: must contain FROM and at least one RUN/CMD
+    if (!fixedDockerfile.includes("FROM ") || !/(?:RUN|CMD|ENTRYPOINT)\s/.test(fixedDockerfile)) {
+      console.warn("[Startup] LLM returned an invalid Dockerfile — skipping");
+      return;
+    }
+
+    // Post-validate: check all FROM images exist on Docker Hub
+    const missing = await validateDockerfileImages(fixedDockerfile);
+    if (missing.length > 0) {
+      console.warn(
+        `[Startup] Repaired Dockerfile references non-existent images: ${missing.join(", ")}`,
+      );
+    }
+
+    writeFileSync(dockerfilePath, fixedDockerfile, "utf-8");
+    console.log(
+      `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines)`,
+    );
+  } catch (err) {
+    console.warn(
+      `[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`,
+    );
+  }
 }
 
 /**
@@ -613,12 +812,13 @@ async function generateDockerfile(
   handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
   model?: string,
 ): Promise<void> {
+  const dockerHandler = createDockerfileToolHandler(repoPath);
   const messages = generateDockerfilePrompt(stackStr);
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
-    handleTool,
+    dockerfileTools,
+    dockerHandler,
     model,
   );
 
@@ -626,6 +826,14 @@ async function generateDockerfile(
   if (!content) {
     throw new Error(
       "Failed to generate a valid Dockerfile — LLM did not return a code block",
+    );
+  }
+
+  // Post-validate: check all FROM images exist on Docker Hub
+  const missing = await validateDockerfileImages(content);
+  if (missing.length > 0) {
+    console.warn(
+      `[Startup] Dockerfile references non-existent images: ${missing.join(", ")}`,
     );
   }
 
@@ -746,16 +954,39 @@ function extractInlineEnvVars(command: string): {
 }
 
 /**
- * If the repo is a shallow clone, fetch the full history.
- * Tools like Nerdbank.GitVersioning fail when .git is shallow.
- * Only runs once per repo — subsequent calls are a no-op.
+ * If the repo is a shallow clone AND uses git-based versioning tools,
+ * fetch the full history so Docker builds can compute version numbers.
+ * Only needed for projects using Nerdbank.GitVersioning, GitVersion, etc.
  */
 function unshallowIfNeeded(repoPath: string): void {
   const shallowFile = `${repoPath}/.git/shallow`;
   if (!existsSync(shallowFile)) return;
 
+  // Only unshallow if the project uses git-based versioning
+  const versioningIndicators = [
+    "Directory.Build.props",
+    "version.json",         // Nerdbank.GitVersioning
+    "GitVersion.yml",       // GitVersion
+    "GitVersion.yaml",
+  ];
+  const needsHistory = versioningIndicators.some(f =>
+    existsSync(`${repoPath}/${f}`),
+  );
+  if (!needsHistory) {
+    // Also check .csproj files for Nerdbank reference
+    try {
+      const out = execSync(
+        "grep -rl 'Nerdbank.GitVersioning\\|GitVersion' --include='*.csproj' --include='*.props' . 2>/dev/null | head -1",
+        { cwd: repoPath, encoding: "utf-8", timeout: 5_000 },
+      ).trim();
+      if (!out) return;
+    } catch {
+      return;
+    }
+  }
+
   console.log(
-    "[Startup] Detected shallow clone — fetching full history for Docker build",
+    "[Startup] Detected shallow clone with git-based versioning — fetching full history",
   );
   try {
     execSync(
@@ -794,6 +1025,147 @@ function looksLikeCommand(s: string): boolean {
   }
   // Allow anything else (could be a custom binary)
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pre-validate and fix startup configs before running
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate a startup config and rewrite it if problems are detected:
+ * 1. Compose files in template dirs → fall back to root Dockerfile
+ * 2. Compose files with missing build contexts → fall back to root Dockerfile
+ * 3. Native commands for tools not on host → switch to Docker
+ */
+function sanitizeStartupConfig(
+  repoPath: string,
+  config: StartupConfig,
+): StartupConfig {
+  // --- Docker compose validation ---
+  if (config.docker && /docker\s+compose/.test(config.command)) {
+    const composeFile = extractComposeFilePath(config.command);
+
+    if (composeFile) {
+      // Reject compose files inside templates/ or scaffold directories
+      if (/\btemplates?\b|\bscaffold/i.test(composeFile)) {
+        console.log(
+          `[Startup] Rejecting compose in template dir: ${composeFile} — using root Dockerfile`,
+        );
+        return fallbackToDockerfile(repoPath, config);
+      }
+
+      // Reject compose files with missing build contexts
+      const fullPath = `${repoPath}/${composeFile}`;
+      if (existsSync(fullPath) && !validateComposeBuildContexts(repoPath, composeFile)) {
+        console.log(
+          `[Startup] Rejecting compose with missing build context: ${composeFile} — using root Dockerfile`,
+        );
+        return fallbackToDockerfile(repoPath, config);
+      }
+    }
+  }
+
+  // --- Native tool availability check ---
+  if (!config.docker) {
+    // Check if the primary build tool is available on the host
+    const knownTools = [
+      { re: /\bdotnet\b/, name: "dotnet" },
+      { re: /\bsbt\b/, name: "sbt" },
+      { re: /\bgo\s+(build|run|mod)\b/, name: "go" },
+      { re: /\bmvn\b/, name: "mvn" },
+      { re: /\bgradle\b/, name: "gradle" },
+      { re: /\bcargo\b/, name: "cargo" },
+      { re: /\bpip\s+install\b/, name: "pip" },
+      { re: /\bbundle\s+(install|exec)\b/, name: "bundle" },
+      { re: /\bmix\s/, name: "mix" },
+    ];
+    // Also check the lila.sh / build scripts that invoke tools internally
+    // by scanning their first few lines for tool references
+    const scriptMatch = config.command.match(/\.\/([\w.-]+\.sh)\b/);
+    if (scriptMatch) {
+      try {
+        const scriptContent = readFileSync(
+          `${repoPath}/${scriptMatch[1]}`,
+          "utf-8",
+        ).slice(0, 2000);
+        for (const { re, name } of knownTools) {
+          if (re.test(scriptContent) && !isToolAvailable(name)) {
+            console.log(
+              `[Startup] Script ${scriptMatch[1]} requires "${name}" which is not on host — switching to Docker`,
+            );
+            return fallbackToDockerfile(repoPath, config);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    const fullCommand = [
+      ...config.prerequisites,
+      config.command,
+    ].join(" ");
+
+    for (const { re, name } of knownTools) {
+      if (re.test(fullCommand) && !isToolAvailable(name)) {
+        console.log(
+          `[Startup] "${name}" not found on host — switching to Docker build`,
+        );
+        return fallbackToDockerfile(repoPath, config);
+      }
+    }
+  }
+
+  return config;
+}
+
+/** Extract the compose file path from a docker compose command */
+function extractComposeFilePath(command: string): string | null {
+  // -f path/to/docker-compose.yml
+  const fMatch = command.match(/-f\s+(\S+)/);
+  if (fMatch) return fMatch[1];
+
+  // cd some/dir && docker compose up
+  const cdMatch = command.match(/cd\s+(\S+)\s*&&/);
+  if (cdMatch) {
+    // The compose file is in that directory
+    return `${cdMatch[1]}/docker-compose.yml`;
+  }
+
+  return null;
+}
+
+/**
+ * Fall back to a Docker build from the root Dockerfile.
+ * Always returns a Docker config — if no Dockerfile exists yet, the caller
+ * (retry loop) will generate one before running.
+ */
+function fallbackToDockerfile(
+  repoPath: string,
+  config: StartupConfig,
+): StartupConfig {
+  // Try compose-based or Dockerfile-based source builds first
+  const fromSource =
+    buildFromSourceConfig(repoPath, config) ??
+    buildDockerfileOnlyConfig(repoPath, config);
+  if (fromSource) return fromSource;
+
+  // Return a Docker build+run config — Dockerfile will be generated if missing
+  const imageName = "bright-app-local";
+  return {
+    command: `docker build -t ${imageName} . && docker run -d -p ${config.port}:${config.port} --name ${imageName} ${imageName}`,
+    port: config.port,
+    prerequisites: [],
+    envVars: config.envVars,
+    docker: true,
+  };
+}
+
+/** Check whether a CLI tool is available on the host */
+function isToolAvailable(name: string): boolean {
+  try {
+    execSync(`command -v ${name}`, { stdio: "pipe", timeout: 5_000 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function startApplication(
@@ -954,13 +1326,38 @@ async function startApplication(
   } else {
     // Non-docker or docker without --wait
     const portTimeoutMs = config.docker ? 180_000 : 90_000;
+
+    // For `docker run -d`, the shell exits immediately with code 0 after
+    // detaching the container.  The container may crash independently.
+    // Poll for container health alongside the port check.
+    const containerName = command.match(/--name\s+(\S+)/)?.[1];
+    const containerCrashPromise = containerName
+      ? pollContainerAlive(containerName, portTimeoutMs)
+      : new Promise<never>(() => {}); // never resolves
+
     try {
       await Promise.race([
         waitForPort(config.port, portTimeoutMs),
         earlyExitPromise,
+        containerCrashPromise,
       ]);
     } catch (err) {
       if (config.docker) logDockerFailure(repoPath);
+      // Append container logs to the error for the LLM repair
+      if (containerName) {
+        try {
+          const logs = execSync(
+            `docker logs ${containerName} 2>&1 | tail -30`,
+            { encoding: "utf-8", timeout: 10_000 },
+          ).trim();
+          if (logs) {
+            const origMsg = err instanceof Error ? err.message : String(err);
+            throw new Error(`${origMsg}\n\nContainer logs:\n${logs}`);
+          }
+        } catch (logErr) {
+          if (logErr instanceof Error && logErr.message.includes("Container logs:")) throw logErr;
+        }
+      }
       if (child.exitCode === null) {
         child.kill("SIGTERM");
       }
@@ -1017,6 +1414,42 @@ async function waitForPort(port: number, timeoutMs: number): Promise<void> {
   throw new Error(
     `Application did not start on port ${port} within ${timeoutMs / 1000}s`,
   );
+}
+
+/**
+ * Poll a detached Docker container and reject if it stops running.
+ * This catches containers that crash immediately after `docker run -d`.
+ */
+async function pollContainerAlive(
+  containerName: string,
+  timeoutMs: number,
+): Promise<never> {
+  const start = Date.now();
+  // Give the container a few seconds to start before checking
+  await sleep(3_000);
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const status = execSync(
+        `docker inspect --format='{{.State.Status}}' ${containerName} 2>/dev/null`,
+        { encoding: "utf-8", timeout: 5_000 },
+      ).trim();
+      if (status === "exited" || status === "dead" || status === "removing") {
+        throw new Error(
+          `Container "${containerName}" exited unexpectedly (status: ${status})`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("exited unexpectedly")) {
+        throw err;
+      }
+      // docker inspect failed — container may not exist yet, ignore
+    }
+    await sleep(3_000);
+  }
+
+  // Should never reach here — waitForPort should resolve or reject first
+  throw new Error(`Container health poll timed out`);
 }
 
 /**

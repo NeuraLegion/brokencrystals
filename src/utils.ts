@@ -11,8 +11,13 @@ export function sleep(ms: number): Promise<void> {
 export function formatTechStack(techStack: {
   languages: string[];
   frameworks: string[];
+  serviceRoot?: string;
 }): string {
-  return [...techStack.languages, ...techStack.frameworks].join(", ");
+  const stack = [...techStack.languages, ...techStack.frameworks].join(", ");
+  if (techStack.serviceRoot && techStack.serviceRoot !== ".") {
+    return `${stack} (service: ${techStack.serviceRoot})`;
+  }
+  return stack;
 }
 
 /**

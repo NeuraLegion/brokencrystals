@@ -210,10 +210,12 @@ export async function chatWithTools(
   const conversation = [...messages];
 
   for (let turn = 0; turn < maxTurns; turn++) {
+    // On the last turn, strip tools to force a text response
+    const isLastTurn = turn === maxTurns - 1;
     const response = await client.chat.completions.create({
       model,
       messages: conversation,
-      tools: tools.length > 0 ? tools : undefined,
+      tools: !isLastTurn && tools.length > 0 ? tools : undefined,
       max_completion_tokens: 16384,
     });
 

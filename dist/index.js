@@ -5937,7 +5937,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve4.call(this, root, ref);
+      let _sch = resolve5.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
         const { schemaId } = this.opts;
@@ -5964,7 +5964,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve4(root, ref) {
+    function resolve5(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -6539,7 +6539,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve4(baseURI, relativeURI, options) {
+    function resolve5(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -6766,7 +6766,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize2,
-      resolve: resolve4,
+      resolve: resolve5,
       resolveComponent,
       equal,
       serialize,
@@ -10806,7 +10806,7 @@ function consumeBody() {
   let accum = [];
   let accumBytes = 0;
   let abort = false;
-  return new Body.Promise(function(resolve4, reject) {
+  return new Body.Promise(function(resolve5, reject) {
     let resTimeout;
     if (_this4.timeout) {
       resTimeout = setTimeout(function() {
@@ -10840,7 +10840,7 @@ function consumeBody() {
       }
       clearTimeout(resTimeout);
       try {
-        resolve4(Buffer.concat(accum, accumBytes));
+        resolve5(Buffer.concat(accum, accumBytes));
       } catch (err) {
         reject(new FetchError(`Could not create Buffer from response body for ${_this4.url}: ${err.message}`, "system", err));
       }
@@ -11515,7 +11515,7 @@ function fetch3(url2, opts) {
     throw new Error("native promise missing, set fetch.Promise to your favorite alternative");
   }
   Body.Promise = fetch3.Promise;
-  return new fetch3.Promise(function(resolve4, reject) {
+  return new fetch3.Promise(function(resolve5, reject) {
     const request = new Request2(url2, opts);
     const options = getNodeRequestOptions(request);
     const send = (options.protocol === "https:" ? https : http).request;
@@ -11648,7 +11648,7 @@ function fetch3(url2, opts) {
               requestOpts.body = void 0;
               requestOpts.headers.delete("content-length");
             }
-            resolve4(fetch3(new Request2(locationURL, requestOpts)));
+            resolve5(fetch3(new Request2(locationURL, requestOpts)));
             finalize();
             return;
         }
@@ -11669,7 +11669,7 @@ function fetch3(url2, opts) {
       const codings = headers.get("Content-Encoding");
       if (!request.compress || request.method === "HEAD" || codings === null || res.statusCode === 204 || res.statusCode === 304) {
         response = new Response3(body, response_options);
-        resolve4(response);
+        resolve5(response);
         return;
       }
       const zlibOptions = {
@@ -11679,7 +11679,7 @@ function fetch3(url2, opts) {
       if (codings == "gzip" || codings == "x-gzip") {
         body = body.pipe(zlib.createGunzip(zlibOptions));
         response = new Response3(body, response_options);
-        resolve4(response);
+        resolve5(response);
         return;
       }
       if (codings == "deflate" || codings == "x-deflate") {
@@ -11691,12 +11691,12 @@ function fetch3(url2, opts) {
             body = body.pipe(zlib.createInflateRaw());
           }
           response = new Response3(body, response_options);
-          resolve4(response);
+          resolve5(response);
         });
         raw.on("end", function() {
           if (!response) {
             response = new Response3(body, response_options);
-            resolve4(response);
+            resolve5(response);
           }
         });
         return;
@@ -11704,11 +11704,11 @@ function fetch3(url2, opts) {
       if (codings == "br" && typeof zlib.createBrotliDecompress === "function") {
         body = body.pipe(zlib.createBrotliDecompress());
         response = new Response3(body, response_options);
-        resolve4(response);
+        resolve5(response);
         return;
       }
       response = new Response3(body, response_options);
-      resolve4(response);
+      resolve5(response);
     });
     writeToStream(req, request);
   });
@@ -12758,8 +12758,8 @@ function _addRequestID(value, response) {
 }
 var APIPromise = class _APIPromise extends Promise {
   constructor(responsePromise, parseResponse2 = defaultParseResponse) {
-    super((resolve4) => {
-      resolve4(null);
+    super((resolve5) => {
+      resolve5(null);
     });
     this.responsePromise = responsePromise;
     this.parseResponse = parseResponse2;
@@ -13334,7 +13334,7 @@ var startsWithSchemeRegexp = /^[a-z][a-z0-9+.-]*:/i;
 var isAbsoluteURL = (url2) => {
   return startsWithSchemeRegexp.test(url2);
 };
-var sleep = (ms) => new Promise((resolve4) => setTimeout(resolve4, ms));
+var sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
 var validatePositiveInteger = (name, n) => {
   if (typeof n !== "number" || !Number.isInteger(n)) {
     throw new OpenAIError(`${name} must be an integer`);
@@ -13767,12 +13767,12 @@ var EventStream = class {
     _EventStream_errored.set(this, false);
     _EventStream_aborted.set(this, false);
     _EventStream_catchingPromiseCreated.set(this, false);
-    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve4, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve4, "f");
+    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve5, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve5, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectConnectedPromise, reject, "f");
     }), "f");
-    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve4, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve4, "f");
+    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve5, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve5, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectEndPromise, reject, "f");
     }), "f");
     __classPrivateFieldGet5(this, _EventStream_connectedPromise, "f").catch(() => {
@@ -13856,11 +13856,11 @@ var EventStream = class {
    *   const message = await stream.emitted('message') // rejects if the stream errors
    */
   emitted(event) {
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       __classPrivateFieldSet4(this, _EventStream_catchingPromiseCreated, true, "f");
       if (event !== "error")
         this.once("error", reject);
-      this.once(event, resolve4);
+      this.once(event, resolve5);
     });
   }
   async done() {
@@ -14013,7 +14013,7 @@ var AssistantStream = class _AssistantStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve4, reject) => readQueue.push({ resolve: resolve4, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -15631,7 +15631,7 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve4, reject) => readQueue.push({ resolve: resolve4, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -17282,7 +17282,7 @@ var ResponseStream = class _ResponseStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve4, reject) => readQueue.push({ resolve: resolve4, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
         }
         const event = pushQueue.shift();
         return { value: event, done: false };
@@ -18040,10 +18040,11 @@ var DEFAULT_MODEL = "gpt-5.4-mini";
 async function chatWithTools(client, messages, tools, handleToolCall, model = DEFAULT_MODEL, maxTurns = 25) {
   const conversation = [...messages];
   for (let turn = 0; turn < maxTurns; turn++) {
+    const isLastTurn = turn === maxTurns - 1;
     const response = await client.chat.completions.create({
       model,
       messages: conversation,
-      tools: tools.length > 0 ? tools : void 0,
+      tools: !isLastTurn && tools.length > 0 ? tools : void 0,
       max_completion_tokens: 16384
     });
     const choice = response.choices[0];
@@ -18147,10 +18148,14 @@ function requireEnv(name) {
 
 // src/utils.ts
 function sleep2(ms) {
-  return new Promise((resolve4) => setTimeout(resolve4, ms));
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function formatTechStack(techStack) {
-  return [...techStack.languages, ...techStack.frameworks].join(", ");
+  const stack = [...techStack.languages, ...techStack.frameworks].join(", ");
+  if (techStack.serviceRoot && techStack.serviceRoot !== ".") {
+    return `${stack} (service: ${techStack.serviceRoot})`;
+  }
+  return stack;
 }
 function toErrorMessage(err) {
   return err instanceof Error ? err.message : String(err);
@@ -24178,7 +24183,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve4) => setTimeout(resolve4, pollInterval));
+        await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -24195,7 +24200,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -24273,7 +24278,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve4(parseResult.data);
+            resolve5(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -24534,12 +24539,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve4, interval);
+      const timeoutId = setTimeout(resolve5, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -26738,7 +26743,7 @@ var SSEClientTransport = class {
   }
   _startOrAuth() {
     const fetchImpl = this?._eventSourceInit?.fetch ?? this._fetch ?? fetch;
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       this._eventSource = new EventSource(this._url.href, {
         ...this._eventSourceInit,
         fetch: async (url2, init2) => {
@@ -26759,7 +26764,7 @@ var SSEClientTransport = class {
       this._abortController = new AbortController();
       this._eventSource.onerror = (event) => {
         if (event.code === 401 && this._authProvider) {
-          this._authThenStart().then(resolve4, reject);
+          this._authThenStart().then(resolve5, reject);
           return;
         }
         const error2 = new SseError(event.code, event.message, event);
@@ -26781,7 +26786,7 @@ var SSEClientTransport = class {
           void this.close();
           return;
         }
-        resolve4();
+        resolve5();
       });
       this._eventSource.onmessage = (event) => {
         const messageEvent = event;
@@ -30729,10 +30734,10 @@ var Minipass = class extends EventEmitter {
    * Return a void Promise that resolves once the stream ends.
    */
   async promise() {
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       this.on(DESTROYED, () => reject(new Error("stream destroyed")));
       this.on("error", (er) => reject(er));
-      this.on("end", () => resolve4());
+      this.on("end", () => resolve5());
     });
   }
   /**
@@ -30756,7 +30761,7 @@ var Minipass = class extends EventEmitter {
         return Promise.resolve({ done: false, value: res });
       if (this[EOF])
         return stop();
-      let resolve4;
+      let resolve5;
       let reject;
       const onerr = (er) => {
         this.off("data", ondata);
@@ -30770,19 +30775,19 @@ var Minipass = class extends EventEmitter {
         this.off("end", onend);
         this.off(DESTROYED, ondestroy);
         this.pause();
-        resolve4({ value, done: !!this[EOF] });
+        resolve5({ value, done: !!this[EOF] });
       };
       const onend = () => {
         this.off("error", onerr);
         this.off("data", ondata);
         this.off(DESTROYED, ondestroy);
         stop();
-        resolve4({ done: true, value: void 0 });
+        resolve5({ done: true, value: void 0 });
       };
       const ondestroy = () => onerr(new Error("stream destroyed"));
       return new Promise((res2, rej) => {
         reject = rej;
-        resolve4 = res2;
+        resolve5 = res2;
         this.once(DESTROYED, ondestroy);
         this.once("error", onerr);
         this.once("end", onend);
@@ -31758,9 +31763,9 @@ var PathBase = class {
     if (this.#asyncReaddirInFlight) {
       await this.#asyncReaddirInFlight;
     } else {
-      let resolve4 = () => {
+      let resolve5 = () => {
       };
-      this.#asyncReaddirInFlight = new Promise((res) => resolve4 = res);
+      this.#asyncReaddirInFlight = new Promise((res) => resolve5 = res);
       try {
         for (const e of await this.#fs.promises.readdir(fullpath, {
           withFileTypes: true
@@ -31773,7 +31778,7 @@ var PathBase = class {
         children.provisional = 0;
       }
       this.#asyncReaddirInFlight = void 0;
-      resolve4();
+      resolve5();
     }
     return children.slice(0, children.provisional);
   }
@@ -33698,6 +33703,7 @@ async function detectTechStackFromFiles(repoPath) {
     if (allDeps?.hapi || allDeps?.["@hapi/hapi"]) frameworks.add("Hapi");
     if (allDeps?.next) frameworks.add("Next.js");
     if (allDeps?.nuxt) frameworks.add("Nuxt");
+    if (allDeps?.["@remix-run/node"] || allDeps?.["@remix-run/react"]) frameworks.add("Remix");
     if (allDeps?.["@nestjs/core"]) frameworks.add("NestJS");
     if (allDeps?.mongoose || allDeps?.mongodb) databases.add("MongoDB");
     if (allDeps?.pg || allDeps?.["pg-promise"]) databases.add("PostgreSQL");
@@ -33822,6 +33828,29 @@ async function detectTechStackFromFiles(repoPath) {
     } catch {
     }
   }
+  if (has2("build.sbt")) {
+    languages.add("Scala");
+    if (!languages.has("Java")) languages.add("Java");
+    try {
+      const sbt = readFileSync(resolve(repoPath, "build.sbt"), "utf-8").toLowerCase();
+      if (sbt.includes("play") || sbt.includes("playframework")) frameworks.add("Play Framework");
+      if (sbt.includes("akka-http")) frameworks.add("Akka HTTP");
+      if (sbt.includes("http4s")) frameworks.add("http4s");
+      if (sbt.includes("slick")) databases.add("SQL (Slick)");
+      if (sbt.includes("reactivemongo") || sbt.includes("mongo")) databases.add("MongoDB");
+      if (sbt.includes("postgres")) databases.add("PostgreSQL");
+    } catch {
+    }
+  }
+  if (has2("mix.exs")) {
+    languages.add("Elixir");
+    try {
+      const mix = readFileSync(resolve(repoPath, "mix.exs"), "utf-8").toLowerCase();
+      if (mix.includes("phoenix")) frameworks.add("Phoenix");
+      if (mix.includes("ecto")) databases.add("SQL (Ecto)");
+    } catch {
+    }
+  }
   if (has2("composer.json")) {
     languages.add("PHP");
     const pkg = readJson("composer.json");
@@ -33857,6 +33886,7 @@ async function detectTechStackFromFiles(repoPath) {
       ".go": "Go",
       ".rs": "Rust",
       ".java": "Java",
+      ".scala": "Scala",
       ".kt": "Kotlin",
       ".cs": "C#",
       ".php": "PHP",
@@ -33876,8 +33906,200 @@ async function detectTechStackFromFiles(repoPath) {
   return {
     languages: [...languages],
     frameworks: [...frameworks],
-    databases: [...databases]
+    databases: [...databases],
+    serviceRoot: await selectServiceForTesting(repoPath, [...frameworks])
   };
+}
+var SKIP_PROJECT_PATTERNS = [
+  /apphost/i,
+  /servicedefaults/i,
+  /aspire/i,
+  /\.tests?$/i,
+  /\.test$/i,
+  /\.spec$/i,
+  /\.e2e$/i,
+  /\.benchmark/i,
+  /\.shared$/i,
+  /\.common$/i,
+  /\.contracts$/i,
+  /migrations/i,
+  /\.cli$/i,
+  /\.tools?$/i,
+  /\.worker$/i
+];
+var PREFER_PROJECT_PATTERNS = [
+  /api$/i,
+  /\.api$/i,
+  /web$/i,
+  /webapp$/i,
+  /server$/i,
+  /gateway$/i,
+  /host$/i,
+  /\.web$/i
+];
+async function selectServiceForTesting(repoPath, rootFrameworks) {
+  const monorepoIndicators = [
+    "pnpm-workspace.yaml",
+    "lerna.json",
+    "nx.json",
+    "turbo.json",
+    "rush.json"
+  ];
+  const hasWorkspaceConfig = monorepoIndicators.some(
+    (f) => existsSync2(resolve(repoPath, f))
+  );
+  const csprojFiles = await glob("**/*.csproj", {
+    cwd: repoPath,
+    nodir: true,
+    maxDepth: 4,
+    ignore: ["**/node_modules/**", "**/bin/**", "**/obj/**"]
+  });
+  const csprojDirs = new Set(csprojFiles.map((f) => f.replace(/\/[^/]+$/, "")));
+  const isDotnetMultiProject = csprojDirs.size > 3;
+  const pkgJsonFiles = await glob("*/package.json", {
+    cwd: repoPath,
+    nodir: true
+  });
+  const isJsMonorepo = hasWorkspaceConfig || pkgJsonFiles.length > 2;
+  const goMains = await glob("**/main.go", {
+    cwd: repoPath,
+    nodir: true,
+    maxDepth: 4,
+    ignore: ["**/vendor/**", "**/node_modules/**"]
+  });
+  const isGoMulti = goMains.length > 2;
+  if (!isDotnetMultiProject && !isJsMonorepo && !isGoMulti && !hasWorkspaceConfig) {
+    return ".";
+  }
+  console.log("[Analyze] Monorepo detected \u2014 selecting best service for testing");
+  const candidates = [];
+  if (isDotnetMultiProject) {
+    for (const csproj of csprojFiles) {
+      const dir = csproj.replace(/\/[^/]+$/, "");
+      const name = csproj.replace(/\.csproj$/, "").replace(/.*\//, "");
+      const candidate = await scoreCandidate(repoPath, dir, name);
+      candidates.push(candidate);
+    }
+  }
+  if (isJsMonorepo) {
+    const allPkgJsons = await glob(
+      "{*/,apps/*/,packages/*/,services/*/}package.json",
+      { cwd: repoPath, nodir: true }
+    );
+    for (const pkg of allPkgJsons) {
+      const dir = pkg.replace(/\/package\.json$/, "");
+      const name = dir.replace(/.*\//, "");
+      const candidate = await scoreCandidate(repoPath, dir, name);
+      candidates.push(candidate);
+    }
+  }
+  if (isGoMulti) {
+    for (const mainGo of goMains) {
+      const dir = mainGo.replace(/\/main\.go$/, "");
+      const name = dir.replace(/.*\//, "");
+      const candidate = await scoreCandidate(repoPath, dir, name);
+      candidates.push(candidate);
+    }
+  }
+  if (candidates.length === 0) return ".";
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  if (best.score <= 0) {
+    console.log("[Analyze] No viable web service found in monorepo \u2014 using root");
+    return ".";
+  }
+  console.log(
+    `[Analyze] Selected service: ${best.path} (score: ${best.score}) from ${candidates.length} candidates`
+  );
+  if (candidates.length > 1) {
+    const top3 = candidates.slice(0, 3).map((c3) => `${c3.path}(${c3.score})`).join(", ");
+    console.log(`[Analyze] Top candidates: ${top3}`);
+  }
+  return best.path;
+}
+async function scoreCandidate(repoPath, dir, name) {
+  let score = 0;
+  const absDir = resolve(repoPath, dir);
+  if (SKIP_PROJECT_PATTERNS.some((p) => p.test(name))) {
+    return { path: dir, name, score: -100 };
+  }
+  if (existsSync2(resolve(absDir, "Dockerfile")) || existsSync2(resolve(absDir, "dockerfile"))) {
+    score += 10;
+  }
+  if (PREFER_PROJECT_PATTERNS.some((p) => p.test(name))) {
+    score += 5;
+  }
+  score += await scoreHttpFramework(absDir);
+  const controllers = await glob(
+    "**/{*controller*,*Controller*,routes*,*handler*}.{ts,js,cs,java,go,py,rb,php}",
+    { cwd: absDir, nodir: true, maxDepth: 4, ignore: GLOB_IGNORE }
+  );
+  if (controllers.length > 0) score += 3;
+  const manifests = [
+    "package.json",
+    "go.mod",
+    "Cargo.toml",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "build.sbt",
+    "mix.exs",
+    "composer.json"
+  ];
+  if (manifests.some((m) => existsSync2(resolve(absDir, m)))) score += 2;
+  return { path: dir, name, score };
+}
+async function scoreHttpFramework(absDir) {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(resolve(absDir, "package.json"), "utf-8")
+    );
+    const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
+    const httpPkgs = [
+      "express",
+      "fastify",
+      "koa",
+      "@hapi/hapi",
+      "@nestjs/core",
+      "next",
+      "nuxt"
+    ];
+    if (httpPkgs.some((p) => allDeps?.[p])) return 8;
+  } catch {
+  }
+  const csprojFiles = await glob("*.csproj", {
+    cwd: absDir,
+    nodir: true
+  });
+  for (const f of csprojFiles) {
+    try {
+      const content = readFileSync(resolve(absDir, f), "utf-8").toLowerCase();
+      if (content.includes("microsoft.aspnetcore") || content.includes("aspnet")) {
+        return 8;
+      }
+    } catch {
+    }
+  }
+  for (const f of ["requirements.txt", "pyproject.toml"]) {
+    try {
+      const content = readFileSync(resolve(absDir, f), "utf-8").toLowerCase();
+      if (content.includes("django") || content.includes("flask") || content.includes("fastapi")) {
+        return 8;
+      }
+    } catch {
+    }
+  }
+  try {
+    const gomod = readFileSync(
+      resolve(absDir, "go.mod"),
+      "utf-8"
+    ).toLowerCase();
+    if (gomod.includes("gin-gonic") || gomod.includes("gorilla/mux") || gomod.includes("fiber") || gomod.includes("echo") || gomod.includes("net/http")) {
+      return 8;
+    }
+  } catch {
+  }
+  return 0;
 }
 var CONTROLLER_GLOBS = [
   // JS / TS
@@ -33941,6 +34163,102 @@ async function findControllerFiles(repoPath) {
   }
   return [...files];
 }
+async function extractFsBasedRoutes(repoPath, techStack) {
+  const endpoints = [];
+  const isNextJs = techStack.frameworks.some((f) => /next/i.test(f));
+  if (isNextJs) {
+    const pagesApiFiles = await glob("pages/api/**/*.{ts,js,tsx,jsx}", {
+      cwd: repoPath,
+      nodir: true,
+      ignore: GLOB_IGNORE
+    });
+    for (const f of pagesApiFiles) {
+      const route = "/" + f.replace(/^pages\//, "").replace(/\/index\.\w+$/, "").replace(/\.\w+$/, "").replace(/\[\.\.\.(\w+)\]/g, ":$1*").replace(/\[(\w+)\]/g, ":$1");
+      endpoints.push({ method: "GET", path: route, filePath: f });
+    }
+    const appApiFiles = await glob("app/api/**/route.{ts,js,tsx,jsx}", {
+      cwd: repoPath,
+      nodir: true,
+      ignore: GLOB_IGNORE
+    });
+    for (const f of appApiFiles) {
+      const route = "/" + f.replace(/^app\//, "").replace(/\/route\.\w+$/, "").replace(/\[\.\.\.(\w+)\]/g, ":$1*").replace(/\[(\w+)\]/g, ":$1");
+      try {
+        const content = readFileSync(resolve(repoPath, f), "utf-8");
+        const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"].filter(
+          (m) => new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b`, "i").test(content)
+        );
+        for (const method of methods.length > 0 ? methods : ["GET"]) {
+          endpoints.push({ method, path: route, filePath: f });
+        }
+      } catch {
+        endpoints.push({ method: "GET", path: route, filePath: f });
+      }
+    }
+  }
+  const isRemix = techStack.frameworks.some((f) => /remix/i.test(f));
+  if (isRemix) {
+    const remixFiles = await glob("app/routes/**/*.{ts,tsx,js,jsx}", {
+      cwd: repoPath,
+      nodir: true,
+      ignore: GLOB_IGNORE
+    });
+    for (const f of remixFiles) {
+      const route = "/" + f.replace(/^app\/routes\//, "").replace(/\.\w+$/, "").replace(/_index$/, "").replace(/\$/g, ":").replace(/\./g, "/").replace(/\/_/, "/");
+      if (route && route !== "/") {
+        endpoints.push({ method: "GET", path: route, filePath: f });
+      }
+    }
+  }
+  return endpoints;
+}
+async function detectRoutePrefixes(repoPath) {
+  const prefixMap = /* @__PURE__ */ new Map();
+  const entryFiles = await glob(
+    "{index,app,server,main,src/index,src/app,src/server,src/main}.{ts,js}",
+    { cwd: repoPath, nodir: true }
+  );
+  for (const f of entryFiles) {
+    let content;
+    try {
+      content = readFileSync(resolve(repoPath, f), "utf-8");
+    } catch {
+      continue;
+    }
+    const useRe = /\.use\(\s*["'`](\/[^"'`]*)["'`]\s*,\s*(?:require\(\s*["'`]([^"'`]+)["'`]\s*\)|(\w+))/g;
+    let m;
+    while ((m = useRe.exec(content)) !== null) {
+      const prefix = m[1];
+      const requirePath = m[2];
+      const varName = m[3];
+      if (requirePath) {
+        const normalized = requirePath.replace(/^\.\//, "").replace(/\.\w+$/, "");
+        prefixMap.set(normalized, prefix);
+      }
+      if (varName) {
+        const importRe = new RegExp(
+          `import\\s+${varName}\\s+from\\s+["'\`]([^"'\`]+)["'\`]|const\\s+${varName}\\s*=\\s*require\\(\\s*["'\`]([^"'\`]+)["'\`]\\s*\\)`
+        );
+        const importMatch = content.match(importRe);
+        if (importMatch) {
+          const importPath = (importMatch[1] ?? importMatch[2]).replace(/^\.\//, "").replace(/\.\w+$/, "");
+          prefixMap.set(importPath, prefix);
+        }
+      }
+    }
+  }
+  return prefixMap;
+}
+function findPrefixForFile(filePath, prefixMap) {
+  const normalized = filePath.replace(/\.\w+$/, "");
+  if (prefixMap.has(normalized)) return prefixMap.get(normalized);
+  for (const [key, prefix] of prefixMap) {
+    if (normalized.endsWith(key) || key.endsWith(normalized.split("/").pop())) {
+      return prefix;
+    }
+  }
+  return "";
+}
 function extractEndpointsFromFile(content, filePath) {
   const endpoints = [];
   const ext2 = extname(filePath).toLowerCase();
@@ -33958,13 +34276,24 @@ function extractEndpointsFromFile(content, filePath) {
     while ((m = fastifyRouteRevRe.exec(content)) !== null) {
       endpoints.push({ method: m[2].toUpperCase(), path: m[1], filePath });
     }
+    const controllerMatch = content.match(/@Controller\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/);
+    const nestPrefix = controllerMatch?.[1] ? controllerMatch[1].startsWith("/") ? controllerMatch[1] : "/" + controllerMatch[1] : "";
+    if (/@Crud\s*\(/.test(content) && nestPrefix) {
+      for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
+        const crudPath = method === "GET" || method === "DELETE" || method === "PUT" || method === "PATCH" ? `${nestPrefix}/:id` : nestPrefix;
+        endpoints.push({ method, path: crudPath, filePath });
+      }
+      endpoints.push({ method: "GET", path: nestPrefix, filePath });
+    }
     const nestRe = /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/gi;
     while ((m = nestRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+      const subPath = m[2];
+      const fullPath = nestPrefix && subPath ? `${nestPrefix}/${subPath.replace(/^\//, "")}` : nestPrefix + (subPath.startsWith("/") ? subPath : `/${subPath}`);
+      endpoints.push({ method: m[1].toUpperCase(), path: fullPath || "/", filePath });
     }
     const nestNoPathRe = /@(Get|Post|Put|Patch|Delete)\s*\(\s*\)/gi;
     while ((m = nestNoPathRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: "/", filePath });
+      endpoints.push({ method: m[1].toUpperCase(), path: nestPrefix || "/", filePath });
     }
   }
   if (ext2 === ".cs") {
@@ -34371,6 +34700,25 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
       noMatchFiles.push(filePath);
     }
   }
+  const fsRoutes = await extractFsBasedRoutes(repoPath, techStack);
+  if (fsRoutes.length > 0) {
+    console.log(
+      `[Analyze] Extracted ${fsRoutes.length} endpoints from file-system routes`
+    );
+    allEndpoints.push(...fsRoutes);
+  }
+  const prefixMap = await detectRoutePrefixes(repoPath);
+  if (prefixMap.size > 0) {
+    console.log(
+      `[Analyze] Detected ${prefixMap.size} route prefix mount(s): ${[...prefixMap.entries()].map(([k, v]) => `${v} \u2192 ${k}`).join(", ")}`
+    );
+    for (const ep of allEndpoints) {
+      const prefix = findPrefixForFile(ep.filePath, prefixMap);
+      if (prefix && !ep.path.startsWith(prefix)) {
+        ep.path = prefix.replace(/\/$/, "") + (ep.path.startsWith("/") ? ep.path : "/" + ep.path);
+      }
+    }
+  }
   if (noMatchFiles.length > 0) {
     console.log(
       `[Analyze] ${noMatchFiles.length} controller file(s) had no regex matches \u2014 using LLM fallback`
@@ -34383,6 +34731,12 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
       handleTool2,
       model
     );
+    for (const ep of llmEndpoints) {
+      const prefix = findPrefixForFile(ep.filePath, prefixMap);
+      if (prefix && !ep.path.startsWith(prefix)) {
+        ep.path = prefix.replace(/\/$/, "") + (ep.path.startsWith("/") ? ep.path : "/" + ep.path);
+      }
+    }
     allEndpoints.push(...llmEndpoints);
   }
   const validMethods = /* @__PURE__ */ new Set([
@@ -34521,14 +34875,10 @@ If you see a DTO/model type referenced, use find_type to look it up. Return JSON
   return enriched;
 }
 
-// src/phases/startup.ts
-import {
-  spawn,
-  execSync,
-  execFileSync as execFileSync4
-} from "child_process";
-import { createInterface } from "readline";
-import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync } from "fs";
+// src/phases/swagger.ts
+import { writeFileSync, mkdirSync as mkdirSync2 } from "fs";
+import { resolve as resolve3, dirname } from "path";
+import { execSync } from "child_process";
 
 // src/tools.ts
 import { readFileSync as readFileSync2, existsSync as existsSync3 } from "fs";
@@ -34672,6 +35022,77 @@ function createToolHandler(repoPath) {
     }
   };
 }
+var verifyDockerImageTool = {
+  type: "function",
+  function: {
+    name: "verify_docker_image",
+    description: "Check if a Docker image:tag exists on Docker Hub. Use this BEFORE writing FROM lines to ensure the image tag is valid. Returns 'exists' or 'not found'.",
+    parameters: {
+      type: "object",
+      properties: {
+        image: {
+          type: "string",
+          description: 'Full image reference (e.g. "node:22-bookworm-slim", "sbtscala/scala-sbt:eclipse-temurin-jammy-21.0.6_7_1.10.11_3.6.4")'
+        }
+      },
+      required: ["image"],
+      additionalProperties: false
+    }
+  }
+};
+var dockerfileTools = [
+  ...codebaseTools,
+  verifyDockerImageTool
+];
+async function verifyDockerImage(imageRef) {
+  const [imagePart, tag = "latest"] = imageRef.split(":");
+  const repo = imagePart.includes("/") ? imagePart : `library/${imagePart}`;
+  const url2 = `https://hub.docker.com/v2/repositories/${repo}/tags/${tag}`;
+  try {
+    const res = await fetch(url2, {
+      signal: AbortSignal.timeout(1e4),
+      headers: { Accept: "application/json" }
+    });
+    return res.ok;
+  } catch {
+    return true;
+  }
+}
+function createDockerfileToolHandler(repoPath) {
+  const baseHandler = createToolHandler(repoPath);
+  return async (name, args) => {
+    if (name === "verify_docker_image") {
+      const image = String(args.image ?? "");
+      if (!image) return "Error: image parameter is required";
+      const exists = await verifyDockerImage(image);
+      return exists ? `\u2713 Image "${image}" exists on Docker Hub` : `\u2717 Image "${image}" NOT FOUND on Docker Hub. Try a different tag.`;
+    }
+    return baseHandler(name, args);
+  };
+}
+async function validateDockerfileImages(dockerfile) {
+  const fromRe = /^FROM\s+(\S+)/gmi;
+  const images = /* @__PURE__ */ new Set();
+  let m;
+  while ((m = fromRe.exec(dockerfile)) !== null) {
+    const img = m[1];
+    if (img.startsWith("$") || img === "scratch") continue;
+    if (!img.includes("/") && !img.includes(":") && img === img.toLowerCase()) {
+      const officialPrefixes = ["node", "python", "golang", "ruby", "rust", "openjdk", "eclipse-temurin", "amazoncorretto", "maven", "gradle", "php", "nginx", "alpine", "ubuntu", "debian"];
+      if (!officialPrefixes.some((p) => img.startsWith(p))) continue;
+    }
+    images.add(img);
+  }
+  const missing = [];
+  for (const img of images) {
+    const exists = await verifyDockerImage(img);
+    if (!exists) {
+      missing.push(img);
+      console.warn(`[Startup] Docker image not found: ${img}`);
+    }
+  }
+  return missing;
+}
 function convertMcpToolsToOpenAI(schemas) {
   return schemas.map((schema) => ({
     type: "function",
@@ -34688,12 +35109,359 @@ function createMcpToolHandler(bright) {
   };
 }
 
+// src/phases/swagger.ts
+var SWAGGER_PATHS = [
+  // OpenAPI 3.x
+  "/openapi.json",
+  "/openapi.yaml",
+  "/api/openapi.json",
+  "/v3/api-docs",
+  "/docs/openapi.json",
+  // Swagger 2.x
+  "/swagger.json",
+  "/swagger/v1/swagger.json",
+  "/swagger/v2/swagger.json",
+  "/api-docs",
+  "/api-docs.json",
+  "/v2/api-docs",
+  // FastAPI
+  "/openapi.json",
+  // NestJS / @nestjs/swagger
+  "/api",
+  "/api-json",
+  // .NET
+  "/swagger/v1/swagger.json",
+  // Rails rswag
+  "/api-docs/v1/swagger.json"
+];
+var UNIQUE_SWAGGER_PATHS = [...new Set(SWAGGER_PATHS)];
+async function probeSwaggerSpec(baseUrl) {
+  for (const path2 of UNIQUE_SWAGGER_PATHS) {
+    const url2 = `${baseUrl.replace(/\/$/, "")}${path2}`;
+    try {
+      const res = await fetch(url2, {
+        signal: AbortSignal.timeout(5e3),
+        headers: { Accept: "application/json" }
+      });
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (!text.startsWith("{") && !text.startsWith("[")) continue;
+      const spec = JSON.parse(text);
+      if (spec.openapi || spec.swagger || spec.paths) {
+        console.log(`[Swagger] Found OpenAPI spec at ${url2}`);
+        return { found: true, specUrl: url2, spec };
+      }
+    } catch {
+    }
+  }
+  return { found: false };
+}
+function parseOpenApiToEndpoints(spec) {
+  const endpoints = [];
+  const paths = spec.paths;
+  if (!paths) return endpoints;
+  let basePath = "";
+  if (spec.servers && Array.isArray(spec.servers) && spec.servers.length > 0) {
+    const serverUrl = spec.servers[0]?.url ?? "";
+    try {
+      basePath = new URL(serverUrl).pathname.replace(/\/$/, "");
+    } catch {
+      basePath = serverUrl.replace(/\/$/, "");
+    }
+  } else if (typeof spec.basePath === "string") {
+    basePath = spec.basePath.replace(/\/$/, "");
+  }
+  for (const [pathTemplate, methods] of Object.entries(paths)) {
+    if (!methods || typeof methods !== "object") continue;
+    for (const [method, operation] of Object.entries(methods)) {
+      const httpMethod = method.toUpperCase();
+      if (!["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(httpMethod)) {
+        continue;
+      }
+      const op = operation;
+      const normalizedPath = (basePath + pathTemplate).replace(
+        /\{(\w+)\}/g,
+        ":$1"
+      );
+      const queryParams = [];
+      const pathParams = {};
+      for (const param of op.parameters ?? []) {
+        const sampleValue = String(
+          param.example ?? param.schema?.example ?? param.schema?.default ?? sampleForType(param.schema?.type)
+        );
+        if (param.in === "query") {
+          queryParams.push({ name: param.name, value: sampleValue });
+        } else if (param.in === "path") {
+          pathParams[param.name] = sampleValue;
+        }
+      }
+      let resolvedPath = normalizedPath;
+      for (const [name, value] of Object.entries(pathParams)) {
+        resolvedPath = resolvedPath.replace(`:${name}`, value);
+      }
+      let body;
+      let contentType;
+      if (op.requestBody?.content) {
+        const jsonContent = op.requestBody.content["application/json"];
+        if (jsonContent?.schema) {
+          contentType = "application/json";
+          body = JSON.stringify(generateSampleFromSchema(jsonContent.schema));
+        } else {
+          const [ct, def] = Object.entries(op.requestBody.content)[0] ?? [];
+          if (ct && def?.schema) {
+            contentType = ct;
+            body = JSON.stringify(generateSampleFromSchema(def.schema));
+          }
+        }
+      }
+      endpoints.push({
+        method: httpMethod,
+        path: resolvedPath,
+        filePath: "openapi-spec",
+        queryParams: queryParams.length > 0 ? queryParams : void 0,
+        body,
+        contentType
+      });
+    }
+  }
+  return endpoints;
+}
+function sampleForType(type) {
+  switch (type) {
+    case "integer":
+      return 1;
+    case "number":
+      return 1;
+    case "boolean":
+      return true;
+    case "array":
+      return "[]";
+    default:
+      return "example";
+  }
+}
+function generateSampleFromSchema(schema, depth = 0) {
+  if (depth > 5) return {};
+  if (schema.$ref) return {};
+  if (schema.example !== void 0) return schema.example;
+  const type = schema.type;
+  if (type === "object" || schema.properties) {
+    const props = schema.properties;
+    if (!props) return {};
+    const result = {};
+    for (const [key, propSchema] of Object.entries(props)) {
+      result[key] = generateSampleFromSchema(propSchema, depth + 1);
+    }
+    return result;
+  }
+  if (type === "array") {
+    const items = schema.items;
+    if (items) return [generateSampleFromSchema(items, depth + 1)];
+    return [];
+  }
+  if (type === "string") {
+    if (schema.enum && Array.isArray(schema.enum)) return schema.enum[0];
+    if (schema.format === "email") return "user@example.com";
+    if (schema.format === "date") return "2024-01-15";
+    if (schema.format === "date-time") return "2024-01-15T10:30:00Z";
+    if (schema.format === "uuid") return "550e8400-e29b-41d4-a716-446655440000";
+    if (schema.format === "uri") return "https://example.com";
+    return "string";
+  }
+  if (type === "integer") return schema.example ?? 1;
+  if (type === "number") return schema.example ?? 1;
+  if (type === "boolean") return schema.example ?? true;
+  return "example";
+}
+var SWAGGER_LIBRARIES = {
+  Express: "swagger-jsdoc + swagger-ui-express",
+  Fastify: "@fastify/swagger + @fastify/swagger-ui",
+  Koa: "koa2-swagger-ui + swagger-jsdoc",
+  NestJS: "@nestjs/swagger",
+  "Next.js": "next-swagger-doc + swagger-ui-react",
+  "ASP.NET": "Swashbuckle.AspNetCore (usually pre-installed)",
+  "Spring Boot": "springdoc-openapi-starter-webmvc-ui",
+  Flask: "flask-restx or flasgger",
+  FastAPI: "Built-in (already at /openapi.json)",
+  Django: "drf-spectacular",
+  Rails: "rswag-api + rswag-ui",
+  Go: "swaggo/swag + gin-swagger (for Gin) or echo-swagger",
+  Laravel: "darkaonline/l5-swagger"
+};
+var injectSwaggerResultSchema = {
+  type: "object",
+  properties: {
+    files: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Relative file path to create or modify"
+          },
+          content: {
+            type: "string",
+            description: "Complete file content after modification"
+          }
+        },
+        required: ["path", "content"]
+      },
+      description: "Files to create or overwrite"
+    },
+    installCommand: {
+      type: "string",
+      description: "Shell command to install the swagger library (e.g. npm install swagger-jsdoc swagger-ui-express)"
+    },
+    swaggerPath: {
+      type: "string",
+      description: "The URL path where the JSON spec will be served (e.g. /api-docs, /swagger.json)"
+    }
+  },
+  required: ["files", "installCommand", "swaggerPath"],
+  additionalProperties: false
+};
+async function injectSwaggerSupport(llm, repoPath, techStack, model) {
+  const stackStr = formatTechStack(techStack);
+  const handleTool = createToolHandler(repoPath);
+  const frameworkHints = techStack.frameworks.map((fw) => {
+    const lib = Object.entries(SWAGGER_LIBRARIES).find(
+      ([k]) => fw.toLowerCase().includes(k.toLowerCase())
+    );
+    return lib ? `${fw}: use ${lib[1]}` : null;
+  }).filter(Boolean).join("\n");
+  const messages = [
+    {
+      role: "system",
+      content: `You are an expert at adding Swagger/OpenAPI auto-generation to web applications.
+Your task: add the minimal code to make this application serve a JSON OpenAPI spec at a well-known path.
+
+Tech stack: ${stackStr}
+${frameworkHints ? `
+Recommended libraries:
+${frameworkHints}` : ""}
+
+RULES:
+1. Use the tools to read the application's entry point and routing files to understand the existing structure.
+2. Make MINIMAL changes \u2014 only add the swagger library registration/middleware.
+3. The spec MUST be auto-generated from the existing routes (not hand-written).
+4. Prefer libraries that auto-discover routes without needing JSDoc annotations.
+5. Do NOT modify existing route handlers.
+6. Return the COMPLETE content of each file you modify (not just the diff).
+7. Return the install command for the swagger library.
+8. Return the URL path where the JSON spec will be available.`
+    },
+    {
+      role: "user",
+      content: `Add Swagger/OpenAPI auto-generation to this ${stackStr} application.
+
+Read the entry point and routing setup, then provide the minimal file changes to add a swagger spec endpoint. Focus on auto-discovering existing routes.`
+    }
+  ];
+  try {
+    const exploration = await chatWithTools(
+      llm,
+      messages,
+      codebaseTools,
+      handleTool,
+      model,
+      8
+    );
+    const result = await chatWithSchema(
+      llm,
+      [
+        ...messages,
+        { role: "assistant", content: exploration },
+        {
+          role: "user",
+          content: "Now return the exact file changes, install command, and swagger spec URL path as structured JSON."
+        }
+      ],
+      "swagger_injection",
+      injectSwaggerResultSchema,
+      model
+    );
+    if (!result.files || result.files.length === 0) {
+      console.warn("[Swagger] LLM returned no file changes");
+      return null;
+    }
+    for (const file of result.files) {
+      const fullPath = resolve3(repoPath, file.path);
+      if (!fullPath.startsWith(repoPath)) {
+        console.warn(`[Swagger] Blocked path traversal: ${file.path}`);
+        continue;
+      }
+      mkdirSync2(dirname(fullPath), { recursive: true });
+      writeFileSync(fullPath, file.content, "utf-8");
+      console.log(`[Swagger] Wrote ${file.path}`);
+    }
+    if (result.installCommand) {
+      console.log(`[Swagger] Running: ${result.installCommand}`);
+      try {
+        execSync(result.installCommand, {
+          cwd: repoPath,
+          stdio: "pipe",
+          timeout: 12e4,
+          env: { ...process.env, NODE_ENV: void 0 }
+        });
+      } catch (err) {
+        console.warn(
+          `[Swagger] Install command failed: ${err instanceof Error ? err.message : err}`
+        );
+      }
+    }
+    const specPath = result.swaggerPath || "/swagger.json";
+    console.log(`[Swagger] Injection complete \u2014 spec expected at ${specPath}`);
+    return specPath;
+  } catch (err) {
+    console.warn(
+      `[Swagger] Failed to inject swagger support: ${err instanceof Error ? err.message : err}`
+    );
+    return null;
+  }
+}
+async function discoverEndpointsViaSwagger(llm, repoPath, techStack, baseUrl, model) {
+  console.log("[Swagger] Probing for existing OpenAPI/Swagger spec...");
+  const probe = await probeSwaggerSpec(baseUrl);
+  if (probe.found && probe.spec) {
+    const endpoints = parseOpenApiToEndpoints(probe.spec);
+    if (endpoints.length > 0) {
+      console.log(
+        `[Swagger] Parsed ${endpoints.length} endpoints from existing spec at ${probe.specUrl}`
+      );
+      return { endpoints, source: "existing-spec", needsRebuild: false };
+    }
+  }
+  console.log("[Swagger] No existing spec found \u2014 attempting injection");
+  const specPath = await injectSwaggerSupport(llm, repoPath, techStack, model);
+  if (!specPath) {
+    return { endpoints: [], source: "none", needsRebuild: false };
+  }
+  return {
+    endpoints: [],
+    source: "injected-spec",
+    needsRebuild: true,
+    specPath
+  };
+}
+
+// src/phases/startup.ts
+import {
+  spawn,
+  execSync as execSync2,
+  execFileSync as execFileSync4
+} from "child_process";
+import { createInterface } from "readline";
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "fs";
+
 // src/prompts/identify-startup.ts
 function identifyStartupPrompt(techStack) {
   return [
     {
       role: "system",
       content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files and list directories.
+
+If the tech stack description says "(service: <path>)", focus on building and running THAT specific service. It was selected as the best candidate for security testing in a monorepo. Build/publish commands should target that service's project file, and the port should match that service.
 
 Check for (in priority order):
 1. Docker Compose files (compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml) \u2014 **ALWAYS prefer Docker when a suitable compose file exists.** Docker avoids Node version incompatibilities, native module build issues, and missing system dependencies.
@@ -34840,28 +35608,77 @@ Return a JSON object with the new approach:
 }
 
 // src/prompts/generate-dockerfile.ts
+var FRAMEWORK_HINTS = [
+  {
+    keywords: ["scala", "sbt", "play framework"],
+    hint: `- For Scala/sbt projects, use the "sbtscala/scala-sbt" image (e.g. sbtscala/scala-sbt:eclipse-temurin-21.0.6_7_1.10.11_3.6.4). Verify the exact tag with verify_docker_image.
+- Large Scala projects need extra heap: ENV SBT_OPTS="-J-Xmx4g -J-XX:+UseG1GC" before running sbt.
+- If the project also has a Node.js/pnpm UI build, use a separate stage FROM node:<version>-bookworm-slim for the UI, and copy the built UI assets into the sbt build stage.
+- Check the project's .node-version or package.json engines field for the required Node.js version.
+- Run sbt commands (e.g. "sbt stage" or "sbt dist") to produce the build output.
+- The runtime stage can use eclipse-temurin:<version>-jre for a smaller image.
+- For Play Framework apps, start with "-Dconfig.resource=application.conf" and "-Dlogger.resource=logback.xml" (or logger.prod.xml if it exists) to avoid dev-mode file-not-found errors. Check conf/ for available logger config files.`
+  },
+  {
+    keywords: ["elixir", "phoenix"],
+    hint: `- For Elixir/Phoenix projects, use the official "elixir" image for the build stage and "debian:bookworm-slim" or "alpine" for runtime.
+- Install hex and rebar: RUN mix local.hex --force && mix local.rebar --force
+- Compile with MIX_ENV=prod: RUN mix deps.get --only prod && mix compile && mix phx.digest && mix release`
+  },
+  {
+    keywords: [".net", "c#", "aspnet", "dotnet"],
+    hint: `- For .NET projects, use "mcr.microsoft.com/dotnet/sdk" for build and "mcr.microsoft.com/dotnet/aspnet" for runtime. Verify the exact tags with verify_docker_image.
+- If the project uses Node.js for front-end assets, install Node.js via apt-get or a separate build stage.
+- IMPORTANT: For multi-project solutions, find and publish the correct runnable web API project. Do NOT publish orchestrator projects (AppHost, ServiceDefaults, Aspire) \u2014 they are not standalone deployable services.
+- Look for projects with "WebApp", "API", "Server", or "Web" in their name that reference ASP.NET Core.
+- If there's a global.json, use the exact SDK version it specifies. If using a preview/RC SDK not yet on MCR, install it via the dotnet-install.sh script instead of using the MCR image tag.
+- Use "dotnet publish <project>.csproj -c Release -o /app/publish" and verify the output .dll exists.`
+  },
+  {
+    keywords: ["java", "maven", "gradle", "spring"],
+    hint: `- For Java projects, use eclipse-temurin or amazoncorretto for the JDK build stage.
+- For Maven: RUN mvn package -DskipTests. For Gradle: RUN gradle build -x test.
+- Use a JRE image for the runtime stage.`
+  }
+];
+function getFrameworkHints(techStack) {
+  const lower = techStack.toLowerCase();
+  const hints = FRAMEWORK_HINTS.filter((fh) => fh.keywords.some((kw) => lower.includes(kw))).map((fh) => fh.hint);
+  return hints.length > 0 ? `
+
+Framework-specific guidance for this stack:
+${hints.join("\n")}` : "";
+}
 function generateDockerfilePrompt(techStack) {
+  const frameworkHints = getFrameworkHints(techStack);
   return [
     {
       role: "system",
       content: `You are a DevOps engineer. Generate a Dockerfile for a ${techStack} project so it can be built and run in a Docker container.
 
-You have tools to read files and list directories. Use them to inspect the project's dependency and configuration files (package.json, requirements.txt, .csproj, go.mod, Gemfile, pom.xml, Cargo.toml, etc.) to determine:
+If the tech stack description says "(service: <path>)", this is a monorepo. Build and run THAT specific service. The Dockerfile should restore/build only that service (and its dependencies), not the entire repo. For .NET: "dotnet publish <path>/<name>.csproj". For Node.js: focus on that package's build script.
+
+You have tools to read files and list directories. Use them to inspect the project's dependency and configuration files (package.json, requirements.txt, .csproj, go.mod, Gemfile, pom.xml, Cargo.toml, build.sbt, project/build.properties, etc.) to determine:
 1. The language runtime and version needed
 2. How dependencies are installed
 3. Any build steps required (compilation, transpilation, etc.)
 4. The application entry point / start command
 5. The port the application listens on (check config files, source code, and README)
 
+IMPORTANT: You have a verify_docker_image tool. ALWAYS call it to verify that a base image:tag exists on Docker Hub BEFORE including it in a FROM line. If the image does not exist, try alternative tags until you find one that does.
+
 Generate a Dockerfile that:
-- Uses an appropriate official base image with a specific version tag
+- Uses an appropriate official base image with a specific version tag (VERIFIED via the tool)
 - Sets a WORKDIR
 - Copies dependency manifests first and installs dependencies (for layer caching)
-- Copies the rest of the source code
+- Copies the rest of the source code using "COPY . ." (do NOT cherry-pick individual directories \u2014 you will miss required source files)
+- Installs git (apt-get install -y git) if any build step or postinstall script may call git
 - Runs any necessary build steps
 - EXPOSEs the correct port
 - Sets CMD to start the application
-- For compiled languages (Go, Java, C#, Rust), use a multi-stage build to keep the final image small
+- For compiled languages (Go, Java, C#, Rust, Scala), use a multi-stage build to keep the final image small
+- Use .dockerignore-friendly patterns: copy manifests first for caching, then "COPY . ." for everything else
+- For multi-project/microservice repos, build the main web-facing API server (NOT orchestrators, test projects, or CLI tools)${frameworkHints}
 
 Return ONLY the Dockerfile content inside a single fenced code block. No explanation outside the code block.`
     },
@@ -34874,6 +35691,36 @@ Return ONLY the Dockerfile content inside a single fenced code block. No explana
 
 // src/phases/startup.ts
 var MAX_STARTUP_ATTEMPTS = 5;
+function isSourceCodeError(errorMsg, previousErrors) {
+  if (/OutOfMemoryError|out of memory/i.test(errorMsg)) return false;
+  if (/FileNotFoundException.*conf\//i.test(errorMsg)) return false;
+  const patterns = [
+    // Scala / sbt
+    /Compilation failed/,
+    // Java / Maven / Gradle
+    /BUILD FAILURE/,
+    /COMPILATION ERROR/,
+    // .NET / C#
+    /Build FAILED\./,
+    /error CS\d{4}:/,
+    // Go
+    /build constraints exclude all Go files/,
+    // Rust
+    /error\[E\d{4}\]:/,
+    /could not compile/,
+    // TypeScript / JavaScript
+    /error TS\d{4}:/,
+    // Python
+    /SyntaxError: invalid syntax/,
+    // Generic: high error count
+    /\d{2,}\s+errors?\s+(found|generated|reported)/i
+  ];
+  const isCompilationError = patterns.some((p) => p.test(errorMsg));
+  if (!isCompilationError) return false;
+  return previousErrors.some(
+    (prev) => patterns.some((p) => p.test(prev))
+  );
+}
 function canBuildFromSource(repoPath) {
   const buildIndicators = [
     "Dockerfile",
@@ -34898,9 +35745,9 @@ function canBuildFromSource(repoPath) {
     "CMakeLists.txt",
     "meson.build"
   ];
-  if (buildIndicators.some((f) => existsSync4(`${repoPath}/${f}`))) return true;
+  if (buildIndicators.some((f) => existsSync5(`${repoPath}/${f}`))) return true;
   try {
-    const entries = execSync("ls -1", {
+    const entries = execSync2("ls -1", {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: 5e3
@@ -34972,7 +35819,8 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         }
       }
     }
-    if (config2.docker && !existsSync4(`${repoPath}/Dockerfile`)) {
+    config2 = sanitizeStartupConfig(repoPath, config2);
+    if (config2.docker && !existsSync5(`${repoPath}/Dockerfile`)) {
       console.log(
         "[Startup] No Dockerfile found \u2014 generating one for this project"
       );
@@ -35007,9 +35855,25 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
       const errorMsg = toErrorMessage(err);
       console.error(`[Startup] Attempt ${attempt} failed: ${errorMsg}`);
       attemptErrors.push({ config: config2, error: errorMsg });
+      const previousErrorMsgs = attemptErrors.slice(0, -1).map((a) => a.error);
+      if (isSourceCodeError(errorMsg, previousErrorMsgs)) {
+        console.error(
+          "[Startup] Build failed due to source code compilation errors on consecutive attempts \u2014 this is not a Dockerfile issue. Aborting retries."
+        );
+        break;
+      }
+      if (config2.docker && existsSync5(`${repoPath}/Dockerfile`) && attempt < MAX_STARTUP_ATTEMPTS) {
+        await repairDockerBuild(
+          llm,
+          repoPath,
+          errorMsg,
+          handleTool,
+          modelSelector?.current()
+        );
+      }
       if (config2.docker) {
         try {
-          execSync(
+          execSync2(
             "docker compose down 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
             { cwd: repoPath, stdio: "ignore", timeout: 3e4 }
           );
@@ -35073,7 +35937,7 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   const filePath = `${repoPath}/${composeFile}`;
   let content;
   try {
-    content = readFileSync3(filePath, "utf8");
+    content = readFileSync4(filePath, "utf8");
   } catch {
     return true;
   }
@@ -35094,25 +35958,111 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   for (const ctx of contexts) {
     if (ctx === "." || ctx === "./") continue;
     const resolved = ctx.startsWith("/") ? ctx : `${baseDir}/${ctx}`;
-    if (!existsSync4(resolved)) {
+    if (!existsSync5(resolved)) {
       console.warn(`[Startup] Compose ${composeFile}: build context "${ctx}" does not exist (${resolved})`);
       return false;
     }
   }
   return true;
 }
+async function repairDockerBuild(llm, repoPath, buildError, handleTool, model) {
+  const dockerfilePath = `${repoPath}/Dockerfile`;
+  let currentDockerfile;
+  try {
+    currentDockerfile = readFileSync4(dockerfilePath, "utf-8");
+  } catch {
+    return;
+  }
+  const truncatedError = buildError.length > 3e3 ? buildError.slice(-3e3) : buildError;
+  const messages = [
+    {
+      role: "system",
+      content: `You are a Docker expert. A Docker build just failed. Your job is to fix the Dockerfile.
+
+You have tools to read any file in the repository. Use them to understand what the project needs (package.json, .csproj, go.mod, requirements.txt, build configs, etc.).
+
+IMPORTANT: You have a verify_docker_image tool. ALWAYS call it to verify that any base image:tag you use in FROM lines exists on Docker Hub. If an image does not exist, try alternative tags until you find one that does.
+
+Common issues and fixes:
+- "npm/node: not found" in .NET builds \u2192 add RUN apt-get install nodejs npm before dotnet publish
+- corepack signature errors \u2192 add ENV COREPACK_INTEGRITY_KEYS=0 and RUN npm install -g corepack@latest
+- "git: not found" \u2192 add RUN apt-get update && apt-get install -y --no-install-recommends git in the stage that needs it
+- Missing system dependencies \u2192 add apt-get install for the needed packages
+- Wrong base image version \u2192 verify the correct tag with verify_docker_image, then switch
+- Build context / COPY failures \u2192 fix paths or remove COPY lines for files that don't exist
+- "Not found: type X" / compilation errors after COPY \u2192 the source code is incomplete. Replace individual COPY lines with "COPY . ." to ensure all source directories are included
+- OutOfMemoryError during compilation \u2192 add ENV SBT_OPTS="-J-Xmx4g -J-XX:+UseG1GC" (for sbt) or ENV MAVEN_OPTS="-Xmx4g" (for Maven) or ENV GRADLE_OPTS="-Xmx4g" (for Gradle) BEFORE the build command
+- Container crashes with "FileNotFoundException" for config files \u2192 check conf/ for available config files, use prod-mode flags (e.g. -Dconfig.resource=application.conf -Dlogger.resource=logback.xml) in CMD
+- .NET AppHost/Aspire orchestrator projects cannot be published standalone \u2192 find a real web API project (Catalog.API, WebApp, etc.) and publish that instead
+- dotnet publish succeeds but COPY --from=build fails with "not found" \u2192 the publish output path is wrong. List the build stage output to find where files actually went
+- Permission issues \u2192 add appropriate RUN chmod/chown
+
+Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`
+    },
+    {
+      role: "user",
+      content: `The Docker build failed with this error:
+
+\`\`\`
+${truncatedError}
+\`\`\`
+
+Current Dockerfile:
+\`\`\`dockerfile
+${currentDockerfile}
+\`\`\`
+
+Use the tools to inspect relevant project files, then return a COMPLETE fixed Dockerfile.`
+    }
+  ];
+  try {
+    console.log("[Startup] Asking LLM to repair Dockerfile...");
+    const dockerHandler = createDockerfileToolHandler(repoPath);
+    const response = await chatWithTools(
+      llm,
+      messages,
+      dockerfileTools,
+      dockerHandler,
+      model,
+      12
+    );
+    const fixedDockerfile = extractCodeBlock(response);
+    if (!fixedDockerfile) {
+      console.warn("[Startup] LLM did not return a valid Dockerfile repair");
+      return;
+    }
+    if (!fixedDockerfile.includes("FROM ") || !/(?:RUN|CMD|ENTRYPOINT)\s/.test(fixedDockerfile)) {
+      console.warn("[Startup] LLM returned an invalid Dockerfile \u2014 skipping");
+      return;
+    }
+    const missing = await validateDockerfileImages(fixedDockerfile);
+    if (missing.length > 0) {
+      console.warn(
+        `[Startup] Repaired Dockerfile references non-existent images: ${missing.join(", ")}`
+      );
+    }
+    writeFileSync2(dockerfilePath, fixedDockerfile, "utf-8");
+    console.log(
+      `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines)`
+    );
+  } catch (err) {
+    console.warn(
+      `[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`
+    );
+  }
+}
 function findMissingEnvFiles(repoPath, composeFile) {
   try {
-    const content = readFileSync3(`${repoPath}/${composeFile}`, "utf8");
+    const content = readFileSync4(`${repoPath}/${composeFile}`, "utf8");
     const missing = [];
     for (const m of content.matchAll(/env_file:\s+(?!-)(\S+)/g)) {
       const file = m[1].replace(/["']/g, "");
-      if (file && !existsSync4(`${repoPath}/${file}`)) missing.push(file);
+      if (file && !existsSync5(`${repoPath}/${file}`)) missing.push(file);
     }
     for (const m of content.matchAll(/env_file:\s*\n((?:\s+-\s+\S+\n?)+)/g)) {
       for (const item of m[1].matchAll(/^\s+-\s+(\S+)/gm)) {
         const file = item[1].replace(/["']/g, "");
-        if (file && !existsSync4(`${repoPath}/${file}`)) missing.push(file);
+        if (file && !existsSync5(`${repoPath}/${file}`)) missing.push(file);
       }
     }
     return [...new Set(missing)];
@@ -35145,10 +36095,10 @@ function sanitizeComposeTemplateVars(repoPath, config2) {
   }
   for (const cf of filesToCheck) {
     const filePath = cf.startsWith("/") ? cf : `${repoPath}/${cf}`;
-    if (!existsSync4(filePath)) continue;
+    if (!existsSync5(filePath)) continue;
     let content;
     try {
-      content = readFileSync3(filePath, "utf8");
+      content = readFileSync4(filePath, "utf8");
     } catch {
       continue;
     }
@@ -35157,7 +36107,7 @@ function sanitizeComposeTemplateVars(repoPath, config2) {
       String(config2.port)
     );
     if (sanitized !== content) {
-      writeFileSync(filePath, sanitized);
+      writeFileSync2(filePath, sanitized);
       console.log(
         `[Startup] Replaced template port placeholder(s) in ${cf} with ${config2.port}`
       );
@@ -35169,9 +36119,9 @@ function populateMissingEnvFile(repoPath, composeFile, envFile) {
   const envPath = `${repoPath}/${envFile}`;
   let content;
   try {
-    content = readFileSync3(composePath, "utf8");
+    content = readFileSync4(composePath, "utf8");
   } catch {
-    writeFileSync(envPath, "");
+    writeFileSync2(envPath, "");
     return;
   }
   const lines = [];
@@ -35214,10 +36164,10 @@ function populateMissingEnvFile(repoPath, composeFile, envFile) {
   console.log(
     `[Startup] Created ${envFile} with ${lines.length} default variable(s)`
   );
-  writeFileSync(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
+  writeFileSync2(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
 }
 function buildFromSourceConfig(repoPath, previousConfig) {
-  const hasDockerfile = existsSync4(`${repoPath}/Dockerfile`);
+  const hasDockerfile = existsSync5(`${repoPath}/Dockerfile`);
   if (!hasDockerfile) return null;
   const port = previousConfig.port;
   const imageName = "bright-app-local";
@@ -35230,7 +36180,7 @@ function buildFromSourceConfig(repoPath, previousConfig) {
     "compose.dev.yml"
   ];
   for (const cf of composeFiles) {
-    if (existsSync4(`${repoPath}/${cf}`)) {
+    if (existsSync5(`${repoPath}/${cf}`)) {
       if (!validateComposeBuildContexts(repoPath, cf)) {
         console.log(`[Startup] Skipping ${cf} \u2014 build context directory missing`);
         continue;
@@ -35257,7 +36207,7 @@ function buildFromSourceConfig(repoPath, previousConfig) {
   };
 }
 function buildDockerfileOnlyConfig(repoPath, previousConfig) {
-  if (!existsSync4(`${repoPath}/Dockerfile`)) return null;
+  if (!existsSync5(`${repoPath}/Dockerfile`)) return null;
   const port = previousConfig.port;
   const imageName = "bright-app-local";
   return {
@@ -35269,12 +36219,13 @@ function buildDockerfileOnlyConfig(repoPath, previousConfig) {
   };
 }
 async function generateDockerfile(llm, repoPath, stackStr, handleTool, model) {
+  const dockerHandler = createDockerfileToolHandler(repoPath);
   const messages = generateDockerfilePrompt(stackStr);
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
-    handleTool,
+    dockerfileTools,
+    dockerHandler,
     model
   );
   const content = extractCodeBlock(response);
@@ -35283,7 +36234,13 @@ async function generateDockerfile(llm, repoPath, stackStr, handleTool, model) {
       "Failed to generate a valid Dockerfile \u2014 LLM did not return a code block"
     );
   }
-  writeFileSync(`${repoPath}/Dockerfile`, content);
+  const missing = await validateDockerfileImages(content);
+  if (missing.length > 0) {
+    console.warn(
+      `[Startup] Dockerfile references non-existent images: ${missing.join(", ")}`
+    );
+  }
+  writeFileSync2(`${repoPath}/Dockerfile`, content);
   console.log(
     `[Startup] Generated Dockerfile (${content.split("\n").length} lines)`
   );
@@ -35362,12 +36319,34 @@ function extractInlineEnvVars(command) {
 }
 function unshallowIfNeeded(repoPath) {
   const shallowFile = `${repoPath}/.git/shallow`;
-  if (!existsSync4(shallowFile)) return;
+  if (!existsSync5(shallowFile)) return;
+  const versioningIndicators = [
+    "Directory.Build.props",
+    "version.json",
+    // Nerdbank.GitVersioning
+    "GitVersion.yml",
+    // GitVersion
+    "GitVersion.yaml"
+  ];
+  const needsHistory = versioningIndicators.some(
+    (f) => existsSync5(`${repoPath}/${f}`)
+  );
+  if (!needsHistory) {
+    try {
+      const out = execSync2(
+        "grep -rl 'Nerdbank.GitVersioning\\|GitVersion' --include='*.csproj' --include='*.props' . 2>/dev/null | head -1",
+        { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
+      ).trim();
+      if (!out) return;
+    } catch {
+      return;
+    }
+  }
   console.log(
-    "[Startup] Detected shallow clone \u2014 fetching full history for Docker build"
+    "[Startup] Detected shallow clone with git-based versioning \u2014 fetching full history"
   );
   try {
-    execSync(
+    execSync2(
       "git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true",
       {
         cwd: repoPath,
@@ -35393,13 +36372,106 @@ function looksLikeCommand(s) {
   }
   return true;
 }
+function sanitizeStartupConfig(repoPath, config2) {
+  if (config2.docker && /docker\s+compose/.test(config2.command)) {
+    const composeFile = extractComposeFilePath(config2.command);
+    if (composeFile) {
+      if (/\btemplates?\b|\bscaffold/i.test(composeFile)) {
+        console.log(
+          `[Startup] Rejecting compose in template dir: ${composeFile} \u2014 using root Dockerfile`
+        );
+        return fallbackToDockerfile(repoPath, config2);
+      }
+      const fullPath = `${repoPath}/${composeFile}`;
+      if (existsSync5(fullPath) && !validateComposeBuildContexts(repoPath, composeFile)) {
+        console.log(
+          `[Startup] Rejecting compose with missing build context: ${composeFile} \u2014 using root Dockerfile`
+        );
+        return fallbackToDockerfile(repoPath, config2);
+      }
+    }
+  }
+  if (!config2.docker) {
+    const knownTools = [
+      { re: /\bdotnet\b/, name: "dotnet" },
+      { re: /\bsbt\b/, name: "sbt" },
+      { re: /\bgo\s+(build|run|mod)\b/, name: "go" },
+      { re: /\bmvn\b/, name: "mvn" },
+      { re: /\bgradle\b/, name: "gradle" },
+      { re: /\bcargo\b/, name: "cargo" },
+      { re: /\bpip\s+install\b/, name: "pip" },
+      { re: /\bbundle\s+(install|exec)\b/, name: "bundle" },
+      { re: /\bmix\s/, name: "mix" }
+    ];
+    const scriptMatch = config2.command.match(/\.\/([\w.-]+\.sh)\b/);
+    if (scriptMatch) {
+      try {
+        const scriptContent = readFileSync4(
+          `${repoPath}/${scriptMatch[1]}`,
+          "utf-8"
+        ).slice(0, 2e3);
+        for (const { re, name } of knownTools) {
+          if (re.test(scriptContent) && !isToolAvailable(name)) {
+            console.log(
+              `[Startup] Script ${scriptMatch[1]} requires "${name}" which is not on host \u2014 switching to Docker`
+            );
+            return fallbackToDockerfile(repoPath, config2);
+          }
+        }
+      } catch {
+      }
+    }
+    const fullCommand = [
+      ...config2.prerequisites,
+      config2.command
+    ].join(" ");
+    for (const { re, name } of knownTools) {
+      if (re.test(fullCommand) && !isToolAvailable(name)) {
+        console.log(
+          `[Startup] "${name}" not found on host \u2014 switching to Docker build`
+        );
+        return fallbackToDockerfile(repoPath, config2);
+      }
+    }
+  }
+  return config2;
+}
+function extractComposeFilePath(command) {
+  const fMatch = command.match(/-f\s+(\S+)/);
+  if (fMatch) return fMatch[1];
+  const cdMatch = command.match(/cd\s+(\S+)\s*&&/);
+  if (cdMatch) {
+    return `${cdMatch[1]}/docker-compose.yml`;
+  }
+  return null;
+}
+function fallbackToDockerfile(repoPath, config2) {
+  const fromSource = buildFromSourceConfig(repoPath, config2) ?? buildDockerfileOnlyConfig(repoPath, config2);
+  if (fromSource) return fromSource;
+  const imageName = "bright-app-local";
+  return {
+    command: `docker build -t ${imageName} . && docker run -d -p ${config2.port}:${config2.port} --name ${imageName} ${imageName}`,
+    port: config2.port,
+    prerequisites: [],
+    envVars: config2.envVars,
+    docker: true
+  };
+}
+function isToolAvailable(name) {
+  try {
+    execSync2(`command -v ${name}`, { stdio: "pipe", timeout: 5e3 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 async function startApplication(repoPath, config2) {
   if (config2.docker && /docker\s+compose/.test(config2.command)) {
     sanitizeComposeTemplateVars(repoPath, config2);
     const composeFileMatch = config2.command.match(/-f\s+(\S+)/);
     const cdMatch = config2.command.match(/cd\s+(\S+)\s*&&/);
     const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : null);
-    if (composeFile && existsSync4(`${repoPath}/${composeFile}`)) {
+    if (composeFile && existsSync5(`${repoPath}/${composeFile}`)) {
       if (!validateComposeBuildContexts(repoPath, composeFile)) {
         throw new Error(
           `Compose file ${composeFile} references a build context that does not exist. This is likely a template scaffold \u2014 try building from the root Dockerfile instead.`
@@ -35412,7 +36484,7 @@ async function startApplication(repoPath, config2) {
   }
   for (const cmd of config2.prerequisites) {
     console.log(`[Startup] Running prerequisite: ${cmd}`);
-    execSync(cmd, {
+    execSync2(cmd, {
       cwd: repoPath,
       stdio: "pipe",
       timeout: 3e5,
@@ -35465,13 +36537,13 @@ ${outputLines.slice(-30).join("\n")}`
     });
   });
   if (config2.docker && command.includes("--wait")) {
-    const composeExitPromise = new Promise((resolve4, reject) => {
+    const composeExitPromise = new Promise((resolve5, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("docker compose --wait timed out after 300s"));
       }, 3e5);
       child.on("exit", (code) => {
         clearTimeout(timer);
-        if (code === 0) resolve4();
+        if (code === 0) resolve5();
         else
           reject(
             new Error(
@@ -35509,13 +36581,34 @@ ${outputLines.slice(-30).join("\n")}`
     await waitForPort(config2.port, 12e4);
   } else {
     const portTimeoutMs = config2.docker ? 18e4 : 9e4;
+    const containerName = command.match(/--name\s+(\S+)/)?.[1];
+    const containerCrashPromise = containerName ? pollContainerAlive(containerName, portTimeoutMs) : new Promise(() => {
+    });
     try {
       await Promise.race([
         waitForPort(config2.port, portTimeoutMs),
-        earlyExitPromise
+        earlyExitPromise,
+        containerCrashPromise
       ]);
     } catch (err) {
       if (config2.docker) logDockerFailure(repoPath);
+      if (containerName) {
+        try {
+          const logs = execSync2(
+            `docker logs ${containerName} 2>&1 | tail -30`,
+            { encoding: "utf-8", timeout: 1e4 }
+          ).trim();
+          if (logs) {
+            const origMsg = err instanceof Error ? err.message : String(err);
+            throw new Error(`${origMsg}
+
+Container logs:
+${logs}`);
+          }
+        } catch (logErr) {
+          if (logErr instanceof Error && logErr.message.includes("Container logs:")) throw logErr;
+        }
+      }
       if (child.exitCode === null) {
         child.kill("SIGTERM");
       }
@@ -35526,7 +36619,7 @@ ${outputLines.slice(-30).join("\n")}`
 }
 function logDockerFailure(repoPath) {
   try {
-    const ps = execSync(
+    const ps = execSync2(
       "docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true",
       {
         cwd: repoPath,
@@ -35536,7 +36629,7 @@ function logDockerFailure(repoPath) {
     ).trim();
     if (ps) console.log(`[Startup] Docker container status:
 ${ps}`);
-    const logs = execSync("docker compose logs --tail=40 2>/dev/null || true", {
+    const logs = execSync2("docker compose logs --tail=40 2>/dev/null || true", {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: 15e3
@@ -35567,6 +36660,29 @@ async function waitForPort(port, timeoutMs) {
     `Application did not start on port ${port} within ${timeoutMs / 1e3}s`
   );
 }
+async function pollContainerAlive(containerName, timeoutMs) {
+  const start = Date.now();
+  await sleep2(3e3);
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const status = execSync2(
+        `docker inspect --format='{{.State.Status}}' ${containerName} 2>/dev/null`,
+        { encoding: "utf-8", timeout: 5e3 }
+      ).trim();
+      if (status === "exited" || status === "dead" || status === "removing") {
+        throw new Error(
+          `Container "${containerName}" exited unexpectedly (status: ${status})`
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("exited unexpectedly")) {
+        throw err;
+      }
+    }
+    await sleep2(3e3);
+  }
+  throw new Error(`Container health poll timed out`);
+}
 async function checkAppHealth(port) {
   try {
     await fetch(`http://localhost:${port}/`, {
@@ -35587,29 +36703,29 @@ function extractJson2(text) {
 }
 function cleanupDocker(repoPath) {
   try {
-    const running = execSync("docker ps -q", {
+    const running = execSync2("docker ps -q", {
       encoding: "utf-8",
       timeout: 1e4
     }).trim();
     if (running) {
       console.log("[Startup] Stopping all running Docker containers...");
-      execSync("docker stop $(docker ps -q)", {
+      execSync2("docker stop $(docker ps -q)", {
         stdio: "pipe",
         timeout: 6e4
       });
     }
-    const stopped = execSync("docker ps -aq", {
+    const stopped = execSync2("docker ps -aq", {
       encoding: "utf-8",
       timeout: 1e4
     }).trim();
     if (stopped) {
       console.log("[Startup] Removing stopped Docker containers...");
-      execSync("docker rm -f $(docker ps -aq)", {
+      execSync2("docker rm -f $(docker ps -aq)", {
         stdio: "pipe",
         timeout: 3e4
       });
     }
-    execSync(
+    execSync2(
       "docker compose down 2>/dev/null; docker compose -f compose.local.yml down 2>/dev/null || true",
       { cwd: repoPath, stdio: "pipe", timeout: 3e4 }
     );
@@ -36678,13 +37794,13 @@ async function setupRepeater(_llm, _bright, projectId, brightToken, brightHostna
   return { repeaterId, process: proc2 };
 }
 async function waitForRepeaterReady(proc2, timeoutMs) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     const timer = setTimeout(() => {
       console.warn(
         "[Repeater] Timed out waiting for connection \u2014 proceeding anyway"
       );
       cleanup();
-      resolve4();
+      resolve5();
     }, timeoutMs);
     let exited = false;
     function cleanup() {
@@ -36696,7 +37812,7 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
       const text = d.toString();
       if (/connect(ed|ion established)|started/i.test(text)) {
         cleanup();
-        resolve4();
+        resolve5();
       }
     }
     function onExit(code) {
@@ -36705,13 +37821,13 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
         `[Repeater] Process exited with code ${code} before connecting`
       );
       cleanup();
-      resolve4();
+      resolve5();
     }
     proc2.stdout?.on("data", onData);
     proc2.on("exit", onExit);
     if (proc2.exitCode !== null) {
       cleanup();
-      resolve4();
+      resolve5();
     }
   });
 }
@@ -37138,8 +38254,8 @@ function normalizeSeverity(s) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2 } from "fs";
-import { resolve as resolve3, dirname } from "path";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync3, mkdirSync as mkdirSync3 } from "fs";
+import { resolve as resolve4, dirname as dirname2 } from "path";
 
 // src/prompts/generate-fix.ts
 function taintAnalysisPrompt(techStack, finding) {
@@ -37268,7 +38384,7 @@ async function generateFixes(llm, repoPath, techStack, findings, previousFixes, 
     const filePaths = extractFilePaths(taintAnalysis, repoPath);
     const affectedFiles = filePaths.map((p) => ({
       path: p,
-      content: safeReadFile(resolve3(repoPath, p))
+      content: safeReadFile(resolve4(repoPath, p))
     }));
     const fixMessages = generateFixPrompt(
       stackStr,
@@ -37303,9 +38419,9 @@ async function generateFixes(llm, repoPath, techStack, findings, previousFixes, 
 function applyFixes(repoPath, fixes) {
   for (const fix of fixes) {
     for (const file of fix.files) {
-      const fullPath = resolve3(repoPath, file.path);
-      mkdirSync2(dirname(fullPath), { recursive: true });
-      writeFileSync2(fullPath, file.content, "utf-8");
+      const fullPath = resolve4(repoPath, file.path);
+      mkdirSync3(dirname2(fullPath), { recursive: true });
+      writeFileSync3(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
   }
@@ -37317,7 +38433,7 @@ function extractFilePaths(text, repoPath) {
   while ((match2 = regex.exec(text)) !== null) {
     const p = match2[1].replace(/^\.\//, "");
     try {
-      readFileSync4(resolve3(repoPath, p));
+      readFileSync5(resolve4(repoPath, p));
       paths.add(p);
     } catch {
     }
@@ -37326,7 +38442,7 @@ function extractFilePaths(text, repoPath) {
 }
 function safeReadFile(fullPath) {
   try {
-    return readFileSync4(fullPath, "utf-8");
+    return readFileSync5(fullPath, "utf-8");
   } catch {
     return "";
   }
@@ -37345,8 +38461,8 @@ async function runOrchestrator(ctx) {
   const fixedKeys = /* @__PURE__ */ new Set();
   try {
     await progress.phaseStart(
-      "analyze",
-      "Analyzing repository for tech stack and HTTP endpoints"
+      "startup",
+      "Detecting tech stack and starting the application"
     );
     const techStack = await detectTechStack(
       llm,
@@ -37354,33 +38470,10 @@ async function runOrchestrator(ctx) {
       config2.modelSelector.current()
     );
     await progress.phaseDetail(
-      "analyze",
+      "startup",
       "tech_stack",
       `Tech stack: ${formatTechStack(techStack)}`
     );
-    const endpoints = await discoverEndpoints(
-      llm,
-      repoPath,
-      techStack,
-      config2.modelSelector.current()
-    );
-    console.log(`[Analyze] Discovered ${endpoints.length} HTTP endpoints`);
-    for (const ep of endpoints) {
-      console.log(`[Analyze]   ${ep.method} ${ep.path}`);
-    }
-    await progress.phaseDetail(
-      "analyze",
-      "endpoints",
-      `Found ${endpoints.length} HTTP endpoints`
-    );
-    if (endpoints.length === 0) {
-      await progress.phaseStart(
-        "done",
-        "No HTTP endpoints found. Nothing to scan."
-      );
-      return;
-    }
-    await progress.phaseStart("startup", "Starting the application under test");
     if (!canBuildFromSource(repoPath)) {
       await progress.phaseStart(
         "done",
@@ -37403,6 +38496,116 @@ async function runOrchestrator(ctx) {
       "app_running",
       `Application running at ${baseUrl}`
     );
+    await progress.phaseStart(
+      "swagger",
+      "Probing for OpenAPI/Swagger spec"
+    );
+    const swaggerResult = await discoverEndpointsViaSwagger(
+      llm,
+      repoPath,
+      techStack,
+      baseUrl,
+      config2.modelSelector.current()
+    );
+    let swaggerEndpoints = [];
+    if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {
+      swaggerEndpoints = swaggerResult.endpoints;
+      console.log(
+        `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from existing OpenAPI spec`
+      );
+      await progress.phaseDetail(
+        "swagger",
+        "spec_found",
+        `OpenAPI spec found \u2014 ${swaggerEndpoints.length} endpoints`
+      );
+    } else if (swaggerResult.needsRebuild && swaggerResult.specPath) {
+      console.log("[Swagger] Swagger injected \u2014 rebuilding application...");
+      await killProcess(appProcess);
+      try {
+        const restart = await startApplicationWithRetries(
+          llm,
+          repoPath,
+          techStack,
+          startupConfig,
+          config2.modelSelector
+        );
+        appProcess = restart.process;
+        const probe = await probeSwaggerSpec(baseUrl);
+        if (probe.found && probe.spec) {
+          swaggerEndpoints = parseOpenApiToEndpoints(probe.spec);
+          if (swaggerEndpoints.length > 0) {
+            console.log(
+              `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from injected spec`
+            );
+            await progress.phaseDetail(
+              "swagger",
+              "spec_injected",
+              `Swagger injected \u2014 ${swaggerEndpoints.length} endpoints`
+            );
+          }
+        }
+        if (swaggerEndpoints.length === 0) {
+          console.log("[Swagger] Spec not usable after injection");
+        }
+      } catch (err) {
+        console.warn(`[Swagger] Rebuild after injection failed: ${err}`);
+        try {
+          const restart = await startApplicationWithRetries(
+            llm,
+            repoPath,
+            techStack,
+            startupConfig,
+            config2.modelSelector
+          );
+          appProcess = restart.process;
+        } catch {
+        }
+      }
+    } else {
+      console.log("[Swagger] No spec found and injection skipped");
+      await progress.phaseDetail(
+        "swagger",
+        "no_spec",
+        "No OpenAPI spec available \u2014 will rely on static analysis"
+      );
+    }
+    await progress.phaseStart(
+      "analyze",
+      "Analyzing source code for endpoints and parameters"
+    );
+    const staticEndpoints = await discoverEndpoints(
+      llm,
+      repoPath,
+      techStack,
+      config2.modelSelector.current()
+    );
+    console.log(
+      `[Analyze] Discovered ${staticEndpoints.length} endpoints via static analysis`
+    );
+    let endpoints;
+    if (swaggerEndpoints.length > 0) {
+      endpoints = mergeSwaggerAndStaticEndpoints(swaggerEndpoints, staticEndpoints);
+      console.log(
+        `[Analyze] Merged: ${swaggerEndpoints.length} swagger + ${staticEndpoints.length} static \u2192 ${endpoints.length} total`
+      );
+    } else {
+      endpoints = staticEndpoints;
+    }
+    for (const ep of endpoints) {
+      console.log(`[Analyze]   ${ep.method} ${ep.path}`);
+    }
+    await progress.phaseDetail(
+      "analyze",
+      "endpoints",
+      `${endpoints.length} endpoints (${swaggerEndpoints.length > 0 ? `${swaggerEndpoints.length} from spec + ${staticEndpoints.length} from code` : "static analysis"})`
+    );
+    if (endpoints.length === 0) {
+      await progress.phaseStart(
+        "done",
+        "No HTTP endpoints found. Nothing to scan."
+      );
+      return;
+    }
     await progress.phaseStart(
       "setup",
       "Setting up Bright security scanner and Repeater"
@@ -38000,13 +39203,66 @@ function buildSummaryTable(progress, allFindings, fixedKeys) {
   });
   progress.setFindingsSummary(summaries);
 }
+function mergeSwaggerAndStaticEndpoints(swagger, staticEps) {
+  const staticByKey = /* @__PURE__ */ new Map();
+  for (const ep of staticEps) {
+    const key = `${ep.method.toUpperCase()} ${ep.path}`;
+    staticByKey.set(key, ep);
+  }
+  const merged = [];
+  const coveredKeys = /* @__PURE__ */ new Set();
+  for (const swEp of swagger) {
+    const key = `${swEp.method.toUpperCase()} ${swEp.path}`;
+    coveredKeys.add(key);
+    const staticEp = staticByKey.get(key);
+    if (staticEp) {
+      merged.push({
+        ...swEp,
+        filePath: staticEp.filePath !== "openapi-spec" ? staticEp.filePath : swEp.filePath,
+        // Prefer static body if swagger has none (or swagger body is just "{}")
+        body: isUsefulBody(swEp.body) ? swEp.body : staticEp.body,
+        contentType: swEp.contentType || staticEp.contentType,
+        // Merge query params — static may have discovered extra ones
+        queryParams: mergeQueryParams(swEp.queryParams, staticEp.queryParams)
+      });
+    } else {
+      merged.push(swEp);
+    }
+  }
+  for (const ep of staticEps) {
+    const key = `${ep.method.toUpperCase()} ${ep.path}`;
+    if (!coveredKeys.has(key)) {
+      merged.push(ep);
+    }
+  }
+  return merged;
+}
+function isUsefulBody(body) {
+  if (!body) return false;
+  const trimmed = body.trim();
+  return trimmed !== "" && trimmed !== "{}" && trimmed !== "null";
+}
+function mergeQueryParams(a, b) {
+  if (!a && !b) return void 0;
+  if (!a) return b;
+  if (!b) return a;
+  const seen = new Set(a.map((p) => p.name));
+  const merged = [...a];
+  for (const param of b) {
+    if (!seen.has(param.name)) {
+      merged.push(param);
+      seen.add(param.name);
+    }
+  }
+  return merged.length > 0 ? merged : void 0;
+}
 function killProcess(proc2) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     if (!proc2 || !proc2.pid) {
-      resolve4();
+      resolve5();
       return;
     }
-    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve4());
+    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve5());
   });
 }
 async function stopRunningScans(brightToken, brightHostname, scanIds) {

@@ -47,6 +47,7 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
     if (allDeps?.hapi || allDeps?.["@hapi/hapi"]) frameworks.add("Hapi");
     if (allDeps?.next) frameworks.add("Next.js");
     if (allDeps?.nuxt) frameworks.add("Nuxt");
+    if (allDeps?.["@remix-run/node"] || allDeps?.["@remix-run/react"]) frameworks.add("Remix");
     if (allDeps?.["@nestjs/core"]) frameworks.add("NestJS");
     // Databases
     if (allDeps?.mongoose || allDeps?.mongodb) databases.add("MongoDB");
@@ -199,6 +200,31 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
     }
   }
 
+  // ---- Scala ----
+  if (has("build.sbt")) {
+    languages.add("Scala");
+    if (!languages.has("Java")) languages.add("Java");
+    try {
+      const sbt = readFileSync(resolve(repoPath, "build.sbt"), "utf-8").toLowerCase();
+      if (sbt.includes("play") || sbt.includes("playframework")) frameworks.add("Play Framework");
+      if (sbt.includes("akka-http")) frameworks.add("Akka HTTP");
+      if (sbt.includes("http4s")) frameworks.add("http4s");
+      if (sbt.includes("slick")) databases.add("SQL (Slick)");
+      if (sbt.includes("reactivemongo") || sbt.includes("mongo")) databases.add("MongoDB");
+      if (sbt.includes("postgres")) databases.add("PostgreSQL");
+    } catch { /* skip */ }
+  }
+
+  // ---- Elixir ----
+  if (has("mix.exs")) {
+    languages.add("Elixir");
+    try {
+      const mix = readFileSync(resolve(repoPath, "mix.exs"), "utf-8").toLowerCase();
+      if (mix.includes("phoenix")) frameworks.add("Phoenix");
+      if (mix.includes("ecto")) databases.add("SQL (Ecto)");
+    } catch { /* skip */ }
+  }
+
   // ---- PHP ----
   if (has("composer.json")) {
     languages.add("PHP");
@@ -245,6 +271,7 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
       ".go": "Go",
       ".rs": "Rust",
       ".java": "Java",
+      ".scala": "Scala",
       ".kt": "Kotlin",
       ".cs": "C#",
       ".php": "PHP",
@@ -266,7 +293,310 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
     languages: [...languages],
     frameworks: [...frameworks],
     databases: [...databases],
+    serviceRoot: await selectServiceForTesting(repoPath, [...frameworks]),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Monorepo service selection (zero LLM calls)
+// ---------------------------------------------------------------------------
+
+/** Names that indicate a project is NOT a standalone runnable web service. */
+const SKIP_PROJECT_PATTERNS = [
+  /apphost/i,
+  /servicedefaults/i,
+  /aspire/i,
+  /\.tests?$/i,
+  /\.test$/i,
+  /\.spec$/i,
+  /\.e2e$/i,
+  /\.benchmark/i,
+  /\.shared$/i,
+  /\.common$/i,
+  /\.contracts$/i,
+  /migrations/i,
+  /\.cli$/i,
+  /\.tools?$/i,
+  /\.worker$/i,
+];
+
+/** Names that strongly suggest a runnable web API. */
+const PREFER_PROJECT_PATTERNS = [
+  /api$/i,
+  /\.api$/i,
+  /web$/i,
+  /webapp$/i,
+  /server$/i,
+  /gateway$/i,
+  /host$/i,
+  /\.web$/i,
+];
+
+interface ServiceCandidate {
+  /** Relative path from repo root to the service directory */
+  path: string;
+  /** Candidate name (directory or project name) */
+  name: string;
+  score: number;
+}
+
+/**
+ * For monorepos with multiple deployable services, pick the best candidate
+ * for DAST testing. Returns "." for single-project repos.
+ *
+ * Scoring:
+ *  +10  has its own Dockerfile
+ *  +8   has HTTP framework dependency (express, fastapi, ASP.NET, etc.)
+ *  +5   name matches web/API patterns
+ *  +3   has controller/route files
+ *  +2   has package.json / go.mod / .csproj at that level
+ *  -100 is a test/orchestrator/shared/CLI project
+ */
+async function selectServiceForTesting(
+  repoPath: string,
+  rootFrameworks: string[],
+): Promise<string> {
+  // Quick check: not a monorepo → "."
+  const monorepoIndicators = [
+    "pnpm-workspace.yaml",
+    "lerna.json",
+    "nx.json",
+    "turbo.json",
+    "rush.json",
+  ];
+  const hasWorkspaceConfig = monorepoIndicators.some((f) =>
+    existsSync(resolve(repoPath, f)),
+  );
+
+  // .NET multi-project: many .csproj files in different dirs
+  const csprojFiles = await glob("**/*.csproj", {
+    cwd: repoPath,
+    nodir: true,
+    maxDepth: 4,
+    ignore: ["**/node_modules/**", "**/bin/**", "**/obj/**"],
+  });
+  const csprojDirs = new Set(csprojFiles.map((f) => f.replace(/\/[^/]+$/, "")));
+  const isDotnetMultiProject = csprojDirs.size > 3;
+
+  // Multiple package.json files in different dirs
+  const pkgJsonFiles = await glob("*/package.json", {
+    cwd: repoPath,
+    nodir: true,
+  });
+  const isJsMonorepo = hasWorkspaceConfig || pkgJsonFiles.length > 2;
+
+  // Multiple Go modules or main.go files
+  const goMains = await glob("**/main.go", {
+    cwd: repoPath,
+    nodir: true,
+    maxDepth: 4,
+    ignore: ["**/vendor/**", "**/node_modules/**"],
+  });
+  const isGoMulti = goMains.length > 2;
+
+  if (
+    !isDotnetMultiProject &&
+    !isJsMonorepo &&
+    !isGoMulti &&
+    !hasWorkspaceConfig
+  ) {
+    return ".";
+  }
+
+  console.log("[Analyze] Monorepo detected — selecting best service for testing");
+
+  const candidates: ServiceCandidate[] = [];
+
+  // --- .NET candidates: each .csproj directory ---
+  if (isDotnetMultiProject) {
+    for (const csproj of csprojFiles) {
+      const dir = csproj.replace(/\/[^/]+$/, "");
+      const name = csproj.replace(/\.csproj$/, "").replace(/.*\//, "");
+      const candidate = await scoreCandidate(repoPath, dir, name);
+      candidates.push(candidate);
+    }
+  }
+
+  // --- JS/TS candidates: each dir with its own package.json ---
+  if (isJsMonorepo) {
+    // Also check apps/*/package.json, packages/*/package.json patterns
+    const allPkgJsons = await glob(
+      "{*/,apps/*/,packages/*/,services/*/}package.json",
+      { cwd: repoPath, nodir: true },
+    );
+    for (const pkg of allPkgJsons) {
+      const dir = pkg.replace(/\/package\.json$/, "");
+      const name = dir.replace(/.*\//, "");
+      const candidate = await scoreCandidate(repoPath, dir, name);
+      candidates.push(candidate);
+    }
+  }
+
+  // --- Go candidates: each dir with main.go ---
+  if (isGoMulti) {
+    for (const mainGo of goMains) {
+      const dir = mainGo.replace(/\/main\.go$/, "");
+      const name = dir.replace(/.*\//, "");
+      const candidate = await scoreCandidate(repoPath, dir, name);
+      candidates.push(candidate);
+    }
+  }
+
+  if (candidates.length === 0) return ".";
+
+  // Sort by score descending, pick the best
+  candidates.sort((a, b) => b.score - a.score);
+
+  const best = candidates[0];
+  if (best.score <= 0) {
+    console.log("[Analyze] No viable web service found in monorepo — using root");
+    return ".";
+  }
+
+  console.log(
+    `[Analyze] Selected service: ${best.path} (score: ${best.score}) from ${candidates.length} candidates`,
+  );
+  if (candidates.length > 1) {
+    const top3 = candidates
+      .slice(0, 3)
+      .map((c) => `${c.path}(${c.score})`)
+      .join(", ");
+    console.log(`[Analyze] Top candidates: ${top3}`);
+  }
+
+  return best.path;
+}
+
+async function scoreCandidate(
+  repoPath: string,
+  dir: string,
+  name: string,
+): Promise<ServiceCandidate> {
+  let score = 0;
+  const absDir = resolve(repoPath, dir);
+
+  // Skip known non-service projects
+  if (SKIP_PROJECT_PATTERNS.some((p) => p.test(name))) {
+    return { path: dir, name, score: -100 };
+  }
+
+  // Bonus: has its own Dockerfile
+  if (
+    existsSync(resolve(absDir, "Dockerfile")) ||
+    existsSync(resolve(absDir, "dockerfile"))
+  ) {
+    score += 10;
+  }
+
+  // Bonus: name suggests a web API
+  if (PREFER_PROJECT_PATTERNS.some((p) => p.test(name))) {
+    score += 5;
+  }
+
+  // Check for HTTP framework dependencies
+  score += await scoreHttpFramework(absDir);
+
+  // Check for controller/route files
+  const controllers = await glob(
+    "**/{*controller*,*Controller*,routes*,*handler*}.{ts,js,cs,java,go,py,rb,php}",
+    { cwd: absDir, nodir: true, maxDepth: 4, ignore: GLOB_IGNORE },
+  );
+  if (controllers.length > 0) score += 3;
+
+  // Has a build manifest at this level
+  const manifests = [
+    "package.json",
+    "go.mod",
+    "Cargo.toml",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "build.sbt",
+    "mix.exs",
+    "composer.json",
+  ];
+  if (manifests.some((m) => existsSync(resolve(absDir, m)))) score += 2;
+
+  return { path: dir, name, score };
+}
+
+/** Check if a directory has HTTP framework dependencies */
+async function scoreHttpFramework(absDir: string): Promise<number> {
+  // Node.js
+  try {
+    const pkg = JSON.parse(
+      readFileSync(resolve(absDir, "package.json"), "utf-8"),
+    );
+    const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
+    const httpPkgs = [
+      "express",
+      "fastify",
+      "koa",
+      "@hapi/hapi",
+      "@nestjs/core",
+      "next",
+      "nuxt",
+    ];
+    if (httpPkgs.some((p) => allDeps?.[p])) return 8;
+  } catch {
+    /* not a Node project */
+  }
+
+  // .NET
+  const csprojFiles = await glob("*.csproj", {
+    cwd: absDir,
+    nodir: true,
+  });
+  for (const f of csprojFiles) {
+    try {
+      const content = readFileSync(resolve(absDir, f), "utf-8").toLowerCase();
+      if (
+        content.includes("microsoft.aspnetcore") ||
+        content.includes("aspnet")
+      ) {
+        return 8;
+      }
+    } catch {
+      /* skip */
+    }
+  }
+
+  // Python
+  for (const f of ["requirements.txt", "pyproject.toml"]) {
+    try {
+      const content = readFileSync(resolve(absDir, f), "utf-8").toLowerCase();
+      if (
+        content.includes("django") ||
+        content.includes("flask") ||
+        content.includes("fastapi")
+      ) {
+        return 8;
+      }
+    } catch {
+      /* skip */
+    }
+  }
+
+  // Go
+  try {
+    const gomod = readFileSync(
+      resolve(absDir, "go.mod"),
+      "utf-8",
+    ).toLowerCase();
+    if (
+      gomod.includes("gin-gonic") ||
+      gomod.includes("gorilla/mux") ||
+      gomod.includes("fiber") ||
+      gomod.includes("echo") ||
+      gomod.includes("net/http")
+    ) {
+      return 8;
+    }
+  } catch {
+    /* skip */
+  }
+
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +669,168 @@ async function findControllerFiles(repoPath: string): Promise<string[]> {
   return [...files];
 }
 
+// ---------------------------------------------------------------------------
+// FS-based route detection (Next.js pages/api, Remix routes)
+// ---------------------------------------------------------------------------
+
+async function extractFsBasedRoutes(
+  repoPath: string,
+  techStack: TechStack,
+): Promise<DiscoveredEndpoint[]> {
+  const endpoints: DiscoveredEndpoint[] = [];
+
+  // Next.js: pages/api/**/*.{ts,js,tsx,jsx} or app/api/**/route.{ts,js}
+  const isNextJs = techStack.frameworks.some(f => /next/i.test(f));
+  if (isNextJs) {
+    // Pages Router: pages/api/users/[id].ts → GET /api/users/:id
+    const pagesApiFiles = await glob("pages/api/**/*.{ts,js,tsx,jsx}", {
+      cwd: repoPath,
+      nodir: true,
+      ignore: GLOB_IGNORE,
+    });
+    for (const f of pagesApiFiles) {
+      const route = "/" + f
+        .replace(/^pages\//, "")
+        .replace(/\/index\.\w+$/, "")
+        .replace(/\.\w+$/, "")
+        .replace(/\[\.\.\.(\w+)\]/g, ":$1*")
+        .replace(/\[(\w+)\]/g, ":$1");
+      endpoints.push({ method: "GET", path: route, filePath: f });
+    }
+
+    // App Router: app/api/**/route.{ts,js} → methods from file
+    const appApiFiles = await glob("app/api/**/route.{ts,js,tsx,jsx}", {
+      cwd: repoPath,
+      nodir: true,
+      ignore: GLOB_IGNORE,
+    });
+    for (const f of appApiFiles) {
+      const route = "/" + f
+        .replace(/^app\//, "")
+        .replace(/\/route\.\w+$/, "")
+        .replace(/\[\.\.\.(\w+)\]/g, ":$1*")
+        .replace(/\[(\w+)\]/g, ":$1");
+      // Detect exported HTTP methods from the file
+      try {
+        const content = readFileSync(resolve(repoPath, f), "utf-8");
+        const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"].filter(
+          m => new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b`, "i").test(content),
+        );
+        for (const method of methods.length > 0 ? methods : ["GET"]) {
+          endpoints.push({ method, path: route, filePath: f });
+        }
+      } catch {
+        endpoints.push({ method: "GET", path: route, filePath: f });
+      }
+    }
+  }
+
+  // Remix: app/routes/**/*.{ts,tsx,js,jsx}
+  const isRemix = techStack.frameworks.some(f => /remix/i.test(f));
+  if (isRemix) {
+    const remixFiles = await glob("app/routes/**/*.{ts,tsx,js,jsx}", {
+      cwd: repoPath,
+      nodir: true,
+      ignore: GLOB_IGNORE,
+    });
+    for (const f of remixFiles) {
+      // Remix flat routes: app/routes/users.$userId.tsx → /users/:userId
+      const route = "/" + f
+        .replace(/^app\/routes\//, "")
+        .replace(/\.\w+$/, "")        // remove extension
+        .replace(/_index$/, "")        // _index → parent route
+        .replace(/\$/g, ":")           // $param → :param
+        .replace(/\./g, "/")          // dot → slash (flat routes)
+        .replace(/\/_/, "/");          // _layout segments
+      if (route && route !== "/") {
+        endpoints.push({ method: "GET", path: route, filePath: f });
+      }
+    }
+  }
+
+  return endpoints;
+}
+
+// ---------------------------------------------------------------------------
+// Express/Koa prefix mounting detection (app.use('/api', router))
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan entry files for app.use('/prefix', router) patterns and
+ * return a map of router variable name → prefix path.
+ * This lets us prepend prefixes to routes found in router files.
+ */
+async function detectRoutePrefixes(
+  repoPath: string,
+): Promise<Map<string, string>> {
+  const prefixMap = new Map<string, string>();
+
+  // Scan common entry points
+  const entryFiles = await glob(
+    "{index,app,server,main,src/index,src/app,src/server,src/main}.{ts,js}",
+    { cwd: repoPath, nodir: true },
+  );
+
+  for (const f of entryFiles) {
+    let content: string;
+    try {
+      content = readFileSync(resolve(repoPath, f), "utf-8");
+    } catch {
+      continue;
+    }
+
+    // app.use('/api/v1', usersRouter)  or  app.use('/api', require('./routes/users'))
+    const useRe = /\.use\(\s*["'`](\/[^"'`]*)["'`]\s*,\s*(?:require\(\s*["'`]([^"'`]+)["'`]\s*\)|(\w+))/g;
+    let m;
+    while ((m = useRe.exec(content)) !== null) {
+      const prefix = m[1];
+      const requirePath = m[2];
+      const varName = m[3];
+
+      if (requirePath) {
+        // Normalize require path to a file name
+        const normalized = requirePath.replace(/^\.\//, "").replace(/\.\w+$/, "");
+        prefixMap.set(normalized, prefix);
+      }
+      if (varName) {
+        // Try to find where this variable was imported from
+        // import usersRouter from './routes/users'
+        const importRe = new RegExp(
+          `import\\s+${varName}\\s+from\\s+["'\`]([^"'\`]+)["'\`]` +
+          `|const\\s+${varName}\\s*=\\s*require\\(\\s*["'\`]([^"'\`]+)["'\`]\\s*\\)`,
+        );
+        const importMatch = content.match(importRe);
+        if (importMatch) {
+          const importPath = (importMatch[1] ?? importMatch[2]).replace(/^\.\//, "").replace(/\.\w+$/, "");
+          prefixMap.set(importPath, prefix);
+        }
+      }
+    }
+  }
+
+  return prefixMap;
+}
+
+/**
+ * Given a file path like "routes/users.ts", find the best matching
+ * prefix from the prefix map (e.g. "routes/users" → "/api").
+ */
+function findPrefixForFile(
+  filePath: string,
+  prefixMap: Map<string, string>,
+): string {
+  const normalized = filePath.replace(/\.\w+$/, "");
+  // Direct match
+  if (prefixMap.has(normalized)) return prefixMap.get(normalized)!;
+  // Match by basename (e.g. "users" matches "src/routes/users")
+  for (const [key, prefix] of prefixMap) {
+    if (normalized.endsWith(key) || key.endsWith(normalized.split("/").pop()!)) {
+      return prefix;
+    }
+  }
+  return "";
+}
+
 /** Extract HTTP endpoints from source code using regex patterns per framework */
 function extractEndpointsFromFile(
   content: string,
@@ -368,16 +860,39 @@ function extractEndpointsFromFile(
     while ((m = fastifyRouteRevRe.exec(content)) !== null) {
       endpoints.push({ method: m[2].toUpperCase(), path: m[1], filePath });
     }
+
+    // NestJS: extract @Controller('prefix') for prepending to routes
+    const controllerMatch = content.match(/@Controller\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/);
+    const nestPrefix = controllerMatch?.[1]
+      ? (controllerMatch[1].startsWith("/") ? controllerMatch[1] : "/" + controllerMatch[1])
+      : "";
+
+    // NestJS @Crud() + @Controller('path') → generate standard CRUD endpoints
+    if (/@Crud\s*\(/.test(content) && nestPrefix) {
+      for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"] as const) {
+        const crudPath = method === "GET" || method === "DELETE" || method === "PUT" || method === "PATCH"
+          ? `${nestPrefix}/:id`
+          : nestPrefix;
+        endpoints.push({ method, path: crudPath, filePath });
+      }
+      // Also add GET for list (no :id)
+      endpoints.push({ method: "GET", path: nestPrefix, filePath });
+    }
+
     // NestJS decorators: @Get("/path"), @Post("/path")
     const nestRe =
       /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/gi;
     while ((m = nestRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+      const subPath = m[2];
+      const fullPath = nestPrefix && subPath
+        ? `${nestPrefix}/${subPath.replace(/^\//, "")}`
+        : nestPrefix + (subPath.startsWith("/") ? subPath : `/${subPath}`);
+      endpoints.push({ method: m[1].toUpperCase(), path: fullPath || "/", filePath });
     }
     // NestJS decorators without path: @Get()
     const nestNoPathRe = /@(Get|Post|Put|Patch|Delete)\s*\(\s*\)/gi;
     while ((m = nestNoPathRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: "/", filePath });
+      endpoints.push({ method: m[1].toUpperCase(), path: nestPrefix || "/", filePath });
     }
   }
 
@@ -913,7 +1428,31 @@ export async function discoverEndpoints(
     }
   }
 
-  // Step 2b: LLM fallback for controller files with zero regex matches
+  // Step 2a: FS-based routes (Next.js pages/api, App Router, Remix flat routes)
+  const fsRoutes = await extractFsBasedRoutes(repoPath, techStack);
+  if (fsRoutes.length > 0) {
+    console.log(
+      `[Analyze] Extracted ${fsRoutes.length} endpoints from file-system routes`,
+    );
+    allEndpoints.push(...fsRoutes);
+  }
+
+  // Step 2b: Detect route prefix mounting (app.use('/api', router))
+  const prefixMap = await detectRoutePrefixes(repoPath);
+  if (prefixMap.size > 0) {
+    console.log(
+      `[Analyze] Detected ${prefixMap.size} route prefix mount(s): ${[...prefixMap.entries()].map(([k, v]) => `${v} → ${k}`).join(", ")}`,
+    );
+    // Prepend prefixes to regex-extracted endpoints
+    for (const ep of allEndpoints) {
+      const prefix = findPrefixForFile(ep.filePath, prefixMap);
+      if (prefix && !ep.path.startsWith(prefix)) {
+        ep.path = prefix.replace(/\/$/, "") + (ep.path.startsWith("/") ? ep.path : "/" + ep.path);
+      }
+    }
+  }
+
+  // Step 2c: LLM fallback for controller files with zero regex matches
   if (noMatchFiles.length > 0) {
     console.log(
       `[Analyze] ${noMatchFiles.length} controller file(s) had no regex matches — using LLM fallback`,
@@ -926,6 +1465,13 @@ export async function discoverEndpoints(
       handleTool,
       model,
     );
+    // Apply prefix map to LLM-extracted endpoints too
+    for (const ep of llmEndpoints) {
+      const prefix = findPrefixForFile(ep.filePath, prefixMap);
+      if (prefix && !ep.path.startsWith(prefix)) {
+        ep.path = prefix.replace(/\/$/, "") + (ep.path.startsWith("/") ? ep.path : "/" + ep.path);
+      }
+    }
     allEndpoints.push(...llmEndpoints);
   }
 

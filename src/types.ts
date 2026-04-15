@@ -25,6 +25,8 @@ export interface TechStack {
   languages: string[];
   frameworks: string[];
   databases: string[];
+  /** Relative path to the best service to build/test in a monorepo (e.g. "src/WebApp"). "." for single-project repos. */
+  serviceRoot: string;
 }
 
 export interface DiscoveredEndpoint {

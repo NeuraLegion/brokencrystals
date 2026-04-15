@@ -1,10 +1,15 @@
 import { gitCommitAndPush } from "./platform.js";
 import { execFileSync, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
-import type { OrchestratorContext, SecurityFix, Finding } from "./types.js";
+import type { OrchestratorContext, SecurityFix, Finding, DiscoveredEndpoint } from "./types.js";
 import { ProgressReporter, type FindingSummary } from "./progress.js";
 import { formatTechStack } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
+import {
+  discoverEndpointsViaSwagger,
+  probeSwaggerSpec,
+  parseOpenApiToEndpoints,
+} from "./phases/swagger.js";
 import {
   startApplicationWithRetries,
   canBuildFromSource,
@@ -53,10 +58,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   const fixedKeys = new Set<string>();
 
   try {
-    // ----- Phase 1: Analyze codebase -----
+    // ----- Phase 1: Tech stack + Start application (fail fast) -----
     await progress.phaseStart(
-      "analyze",
-      "Analyzing repository for tech stack and HTTP endpoints",
+      "startup",
+      "Detecting tech stack and starting the application",
     );
     const techStack = await detectTechStack(
       llm,
@@ -64,40 +69,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       config.modelSelector.current(),
     );
     await progress.phaseDetail(
-      "analyze",
+      "startup",
       "tech_stack",
       `Tech stack: ${formatTechStack(techStack)}`,
     );
 
-    const endpoints = await discoverEndpoints(
-      llm,
-      repoPath,
-      techStack,
-      config.modelSelector.current(),
-    );
-    console.log(`[Analyze] Discovered ${endpoints.length} HTTP endpoints`);
-    for (const ep of endpoints) {
-      console.log(`[Analyze]   ${ep.method} ${ep.path}`);
-    }
-    await progress.phaseDetail(
-      "analyze",
-      "endpoints",
-      `Found ${endpoints.length} HTTP endpoints`,
-    );
-
-    if (endpoints.length === 0) {
-      await progress.phaseStart(
-        "done",
-        "No HTTP endpoints found. Nothing to scan.",
-      );
-      return;
-    }
-
-    // ----- Phase 2: Start the application -----
-    await progress.phaseStart("startup", "Starting the application under test");
-
     // Early check: if there's no way to build from source, abort.
-    // Fixes applied to source code can never be tested against a pre-built image.
     if (!canBuildFromSource(repoPath)) {
       await progress.phaseStart(
         "done",
@@ -123,7 +100,130 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       `Application running at ${baseUrl}`,
     );
 
-    // ----- Phase 3: Setup Bright project + repeater -----
+    // ----- Phase 2: Swagger / OpenAPI discovery -----
+    await progress.phaseStart(
+      "swagger",
+      "Probing for OpenAPI/Swagger spec",
+    );
+    const swaggerResult = await discoverEndpointsViaSwagger(
+      llm,
+      repoPath,
+      techStack,
+      baseUrl,
+      config.modelSelector.current(),
+    );
+
+    let swaggerEndpoints: DiscoveredEndpoint[] = [];
+    if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {
+      swaggerEndpoints = swaggerResult.endpoints;
+      console.log(
+        `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from existing OpenAPI spec`,
+      );
+      await progress.phaseDetail(
+        "swagger",
+        "spec_found",
+        `OpenAPI spec found — ${swaggerEndpoints.length} endpoints`,
+      );
+    } else if (swaggerResult.needsRebuild && swaggerResult.specPath) {
+      // Swagger lib was injected — rebuild & restart, then probe again
+      console.log("[Swagger] Swagger injected — rebuilding application...");
+      await killProcess(appProcess);
+      try {
+        const restart = await startApplicationWithRetries(
+          llm,
+          repoPath,
+          techStack,
+          startupConfig,
+          config.modelSelector,
+        );
+        appProcess = restart.process;
+
+        const probe = await probeSwaggerSpec(baseUrl);
+        if (probe.found && probe.spec) {
+          swaggerEndpoints = parseOpenApiToEndpoints(probe.spec);
+          if (swaggerEndpoints.length > 0) {
+            console.log(
+              `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from injected spec`,
+            );
+            await progress.phaseDetail(
+              "swagger",
+              "spec_injected",
+              `Swagger injected — ${swaggerEndpoints.length} endpoints`,
+            );
+          }
+        }
+        if (swaggerEndpoints.length === 0) {
+          console.log("[Swagger] Spec not usable after injection");
+        }
+      } catch (err) {
+        console.warn(`[Swagger] Rebuild after injection failed: ${err}`);
+        try {
+          const restart = await startApplicationWithRetries(
+            llm,
+            repoPath,
+            techStack,
+            startupConfig,
+            config.modelSelector,
+          );
+          appProcess = restart.process;
+        } catch {
+          // Will be caught by the health check before scanning
+        }
+      }
+    } else {
+      console.log("[Swagger] No spec found and injection skipped");
+      await progress.phaseDetail(
+        "swagger",
+        "no_spec",
+        "No OpenAPI spec available — will rely on static analysis",
+      );
+    }
+
+    // ----- Phase 3: Static analysis (always runs — fills gaps, enriches params) -----
+    await progress.phaseStart(
+      "analyze",
+      "Analyzing source code for endpoints and parameters",
+    );
+    const staticEndpoints = await discoverEndpoints(
+      llm,
+      repoPath,
+      techStack,
+      config.modelSelector.current(),
+    );
+    console.log(
+      `[Analyze] Discovered ${staticEndpoints.length} endpoints via static analysis`,
+    );
+
+    // Merge: swagger endpoints are authoritative for paths, static analysis
+    // fills in missing endpoints and enriches params (body, query, path values)
+    let endpoints: DiscoveredEndpoint[];
+    if (swaggerEndpoints.length > 0) {
+      endpoints = mergeSwaggerAndStaticEndpoints(swaggerEndpoints, staticEndpoints);
+      console.log(
+        `[Analyze] Merged: ${swaggerEndpoints.length} swagger + ${staticEndpoints.length} static → ${endpoints.length} total`,
+      );
+    } else {
+      endpoints = staticEndpoints;
+    }
+
+    for (const ep of endpoints) {
+      console.log(`[Analyze]   ${ep.method} ${ep.path}`);
+    }
+    await progress.phaseDetail(
+      "analyze",
+      "endpoints",
+      `${endpoints.length} endpoints (${swaggerEndpoints.length > 0 ? `${swaggerEndpoints.length} from spec + ${staticEndpoints.length} from code` : "static analysis"})`,
+    );
+
+    if (endpoints.length === 0) {
+      await progress.phaseStart(
+        "done",
+        "No HTTP endpoints found. Nothing to scan.",
+      );
+      return;
+    }
+
+    // ----- Phase 4: Setup Bright project + repeater -----
     await progress.phaseStart(
       "setup",
       "Setting up Bright security scanner and Repeater",
@@ -150,7 +250,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       `Repeater connected: ${repeater.repeaterId}`,
     );
 
-    // ----- Phase 4: Auth configuration -----
+    // ----- Phase 5: Auth configuration -----
     await progress.phaseStart("auth", "Detecting authentication requirements");
     const authResult = await detectAndConfigureAuth(
       llm,
@@ -182,7 +282,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       return;
     }
 
-    // ----- Phase 5: Register entrypoints -----
+    // ----- Phase 6: Register entrypoints -----
     await progress.phaseStart(
       "entrypoints",
       "Registering API endpoints for scanning",
@@ -283,7 +383,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
     }
 
-    // ----- Phase 6–8: Scan → Fix → Validate loop -----
+    // ----- Phase 7–9: Scan → Fix → Validate loop -----
     if (registered.length === 0) {
       await progress.phaseStart(
         "done",
@@ -296,7 +396,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     const liveEndpoints = registered.map((r) => r.endpoint);
     const entrypointIds = registered.map((r) => r.entrypointId);
 
-    // ----- Phase 6: Select relevant tests per endpoint -----
+    // ----- Phase 7: Select relevant tests per endpoint -----
     await progress.phaseStart(
       "test_selection",
       "Selecting relevant security tests per endpoint",
@@ -838,6 +938,92 @@ function buildSummaryTable(
     return 0;
   });
   progress.setFindingsSummary(summaries);
+}
+
+// ---------------------------------------------------------------------------
+// Merge Swagger + Static endpoint lists
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge endpoints from Swagger spec with static analysis results.
+ *
+ * Strategy:
+ * - Start with swagger endpoints (authoritative for paths)
+ * - For each swagger endpoint, enrich with param data from static if available
+ *   (swagger specs often lack sample values for body/query/path params)
+ * - Add any static-only endpoints not covered by swagger (gap filling)
+ */
+function mergeSwaggerAndStaticEndpoints(
+  swagger: DiscoveredEndpoint[],
+  staticEps: DiscoveredEndpoint[],
+): DiscoveredEndpoint[] {
+  // Build a lookup from static analysis by normalized method+path
+  const staticByKey = new Map<string, DiscoveredEndpoint>();
+  for (const ep of staticEps) {
+    // Normalize: strip sample path param values back to :param for matching
+    const key = `${ep.method.toUpperCase()} ${ep.path}`;
+    staticByKey.set(key, ep);
+  }
+
+  const merged: DiscoveredEndpoint[] = [];
+  const coveredKeys = new Set<string>();
+
+  for (const swEp of swagger) {
+    const key = `${swEp.method.toUpperCase()} ${swEp.path}`;
+    coveredKeys.add(key);
+
+    // Try to find a matching static endpoint to enrich from
+    const staticEp = staticByKey.get(key);
+
+    if (staticEp) {
+      // Enrich swagger endpoint with static analysis data
+      merged.push({
+        ...swEp,
+        filePath: staticEp.filePath !== "openapi-spec" ? staticEp.filePath : swEp.filePath,
+        // Prefer static body if swagger has none (or swagger body is just "{}")
+        body: isUsefulBody(swEp.body) ? swEp.body : staticEp.body,
+        contentType: swEp.contentType || staticEp.contentType,
+        // Merge query params — static may have discovered extra ones
+        queryParams: mergeQueryParams(swEp.queryParams, staticEp.queryParams),
+      });
+    } else {
+      merged.push(swEp);
+    }
+  }
+
+  // Add static-only endpoints not in swagger (gap filling)
+  for (const ep of staticEps) {
+    const key = `${ep.method.toUpperCase()} ${ep.path}`;
+    if (!coveredKeys.has(key)) {
+      merged.push(ep);
+    }
+  }
+
+  return merged;
+}
+
+function isUsefulBody(body?: string | null): boolean {
+  if (!body) return false;
+  const trimmed = body.trim();
+  return trimmed !== "" && trimmed !== "{}" && trimmed !== "null";
+}
+
+function mergeQueryParams(
+  a?: Array<{ name: string; value: string }>,
+  b?: Array<{ name: string; value: string }>,
+): Array<{ name: string; value: string }> | undefined {
+  if (!a && !b) return undefined;
+  if (!a) return b;
+  if (!b) return a;
+  const seen = new Set(a.map((p) => p.name));
+  const merged = [...a];
+  for (const param of b) {
+    if (!seen.has(param.name)) {
+      merged.push(param);
+      seen.add(param.name);
+    }
+  }
+  return merged.length > 0 ? merged : undefined;
 }
 
 function killProcess(proc: ChildProcess | undefined): Promise<void> {

@@ -160,6 +160,110 @@ export function createToolHandler(repoPath: string): ToolHandler {
 }
 
 // ---------------------------------------------------------------------------
+// Docker image verification tool
+// ---------------------------------------------------------------------------
+
+const verifyDockerImageTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "verify_docker_image",
+    description:
+      "Check if a Docker image:tag exists on Docker Hub. Use this BEFORE writing FROM lines to ensure the image tag is valid. Returns 'exists' or 'not found'.",
+    parameters: {
+      type: "object",
+      properties: {
+        image: {
+          type: "string",
+          description:
+            'Full image reference (e.g. "node:22-bookworm-slim", "sbtscala/scala-sbt:eclipse-temurin-jammy-21.0.6_7_1.10.11_3.6.4")',
+        },
+      },
+      required: ["image"],
+      additionalProperties: false,
+    },
+  },
+};
+
+/** Codebase tools + Docker image verification — for Dockerfile generation/repair */
+export const dockerfileTools: ChatCompletionTool[] = [
+  ...codebaseTools,
+  verifyDockerImageTool,
+];
+
+/**
+ * Check if a Docker image:tag exists on Docker Hub.
+ * Uses the Docker Hub v2 API (no auth needed for public images).
+ */
+export async function verifyDockerImage(imageRef: string): Promise<boolean> {
+  // Parse image:tag
+  const [imagePart, tag = "latest"] = imageRef.split(":");
+  // Official images are under library/
+  const repo = imagePart.includes("/") ? imagePart : `library/${imagePart}`;
+
+  const url = `https://hub.docker.com/v2/repositories/${repo}/tags/${tag}`;
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(10_000),
+      headers: { Accept: "application/json" },
+    });
+    return res.ok;
+  } catch {
+    // Network error or timeout — assume it exists to avoid false negatives
+    return true;
+  }
+}
+
+export function createDockerfileToolHandler(
+  repoPath: string,
+): ToolHandler {
+  const baseHandler = createToolHandler(repoPath);
+  return async (name: string, args: Record<string, unknown>) => {
+    if (name === "verify_docker_image") {
+      const image = String(args.image ?? "");
+      if (!image) return "Error: image parameter is required";
+      const exists = await verifyDockerImage(image);
+      return exists ? `✓ Image "${image}" exists on Docker Hub` : `✗ Image "${image}" NOT FOUND on Docker Hub. Try a different tag.`;
+    }
+    return baseHandler(name, args);
+  };
+}
+
+/**
+ * Validate all FROM lines in a Dockerfile against Docker Hub.
+ * Returns list of images that don't exist.
+ */
+export async function validateDockerfileImages(
+  dockerfile: string,
+): Promise<string[]> {
+  const fromRe = /^FROM\s+(\S+)/gmi;
+  const images = new Set<string>();
+  let m;
+  while ((m = fromRe.exec(dockerfile)) !== null) {
+    const img = m[1];
+    // Skip build args like $VARIANT and scratch
+    if (img.startsWith("$") || img === "scratch") continue;
+    // Skip AS aliases referenced in other FROM lines
+    if (!img.includes("/") && !img.includes(":") && img === img.toLowerCase()) {
+      // Could be an alias — skip single-word lowercase without colons
+      // unless it looks like a known official image
+      const officialPrefixes = ["node", "python", "golang", "ruby", "rust", "openjdk", "eclipse-temurin", "amazoncorretto", "maven", "gradle", "php", "nginx", "alpine", "ubuntu", "debian"];
+      if (!officialPrefixes.some(p => img.startsWith(p))) continue;
+    }
+    images.add(img);
+  }
+
+  const missing: string[] = [];
+  for (const img of images) {
+    const exists = await verifyDockerImage(img);
+    if (!exists) {
+      missing.push(img);
+      console.warn(`[Startup] Docker image not found: ${img}`);
+    }
+  }
+  return missing;
+}
+
+// ---------------------------------------------------------------------------
 // MCP tool helpers — convert MCP schemas to OpenAI format & dispatch calls
 // ---------------------------------------------------------------------------
 
@@ -167,6 +271,7 @@ const CODEBASE_TOOL_NAMES = new Set([
   "read_file",
   "list_files",
   "search_files",
+  "verify_docker_image",
 ]);
 
 export function convertMcpToolsToOpenAI(

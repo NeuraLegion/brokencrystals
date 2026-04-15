@@ -8,6 +8,8 @@ export function identifyStartupPrompt(
       role: "system",
       content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files and list directories.
 
+If the tech stack description says "(service: <path>)", focus on building and running THAT specific service. It was selected as the best candidate for security testing in a monorepo. Build/publish commands should target that service's project file, and the port should match that service.
+
 Check for (in priority order):
 1. Docker Compose files (compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml) — **ALWAYS prefer Docker when a suitable compose file exists.** Docker avoids Node version incompatibilities, native module build issues, and missing system dependencies.
 2. Dockerfile with "docker build -t <name> . && docker run -d -p <port>:<port> <name>" — use this when a Dockerfile exists but no suitable compose file is available.
