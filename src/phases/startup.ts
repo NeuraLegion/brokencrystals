@@ -11,6 +11,7 @@ import {
   rebuildStartupPrompt,
   retryStartupPrompt,
 } from "../prompts/identify-startup.js";
+import { generateDockerfilePrompt } from "../prompts/generate-dockerfile.js";
 
 const MAX_STARTUP_ATTEMPTS = 5;
 
@@ -20,6 +21,7 @@ const MAX_STARTUP_ATTEMPTS = 5;
  * from a pre-built remote image, fixes will never take effect.
  */
 export function canBuildFromSource(repoPath: string): boolean {
+  // Exact filenames at the repo root
   const buildIndicators = [
     "Dockerfile",
     "Dockerfile-dev",
@@ -33,13 +35,26 @@ export function canBuildFromSource(repoPath: string): boolean {
     "Makefile",
     "pom.xml",
     "build.gradle",
+    "build.gradle.kts",
     "Cargo.toml",
     "go.mod",
     "Gemfile",
     "requirements.txt",
     "pyproject.toml",
+    "setup.py",
+    "CMakeLists.txt",
+    "meson.build",
   ];
-  return buildIndicators.some(f => existsSync(`${repoPath}/${f}`));
+  if (buildIndicators.some(f => existsSync(`${repoPath}/${f}`))) return true;
+
+  // Glob patterns for build systems that use varying filenames (.sln, .csproj, .fsproj, etc.)
+  try {
+    const entries = execSync("ls -1", { cwd: repoPath, encoding: "utf-8", timeout: 5_000 }).split("\n");
+    const globPatterns = [/\.sln$/i, /\.csproj$/i, /\.fsproj$/i, /\.vbproj$/i, /\.cabal$/i, /\.pro$/i];
+    if (entries.some(e => globPatterns.some(p => p.test(e.trim())))) return true;
+  } catch { /* ignore */ }
+
+  return false;
 }
 
 export interface StartupResult {
@@ -101,6 +116,23 @@ export async function startApplicationWithRetries(
             console.log(`[Startup] LLM suggested pre-built image — overriding with source build`);
             config = fromSource;
           }
+        }
+      }
+    }
+
+    // Ensure a Dockerfile exists when Docker-based startup is requested.
+    // If the project has source code but no Dockerfile, generate one so
+    // Docker-based builds (and post-fix rebuilds) work.
+    if (config.docker && !existsSync(`${repoPath}/Dockerfile`)) {
+      console.log("[Startup] No Dockerfile found — generating one for this project");
+      await generateDockerfile(llm, repoPath, stackStr, handleTool, modelSelector?.current());
+      // Now that a Dockerfile exists, switch pre-built image configs to source builds
+      if (usesPrebuiltImage(config.command)) {
+        const fromSource = buildFromSourceConfig(repoPath, config)
+          ?? buildDockerfileOnlyConfig(repoPath, config);
+        if (fromSource) {
+          console.log("[Startup] Switching to source build with generated Dockerfile");
+          config = fromSource;
         }
       }
     }
@@ -368,6 +400,46 @@ function buildDockerfileOnlyConfig(
     envVars: previousConfig.envVars ?? {},
     docker: true,
   };
+}
+
+/**
+ * Generate a Dockerfile using the LLM when the project needs Docker-based
+ * startup but no Dockerfile exists.  The LLM inspects the project's config
+ * and source files via codebase tools to produce an appropriate Dockerfile.
+ */
+async function generateDockerfile(
+  llm: OpenAI,
+  repoPath: string,
+  stackStr: string,
+  handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
+  model?: string,
+): Promise<void> {
+  const messages = generateDockerfilePrompt(stackStr);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
+
+  const content = extractCodeBlock(response);
+  if (!content) {
+    throw new Error("Failed to generate a valid Dockerfile — LLM did not return a code block");
+  }
+
+  writeFileSync(`${repoPath}/Dockerfile`, content);
+  console.log(`[Startup] Generated Dockerfile (${content.split("\n").length} lines)`);
+}
+
+function extractCodeBlock(text: string): string | null {
+  const match = text.match(/```(?:dockerfile|docker|Dockerfile)?\s*\n([\s\S]*?)```/i);
+  if (match) return match[1].trimEnd() + "\n";
+
+  // Fallback: extract lines that look like Dockerfile instructions
+  const lines = text.split("\n");
+  const dockerLines = lines.filter(l =>
+    /^(FROM|RUN|COPY|ADD|WORKDIR|EXPOSE|CMD|ENTRYPOINT|ENV|ARG|LABEL|VOLUME|USER|HEALTHCHECK|SHELL|STOPSIGNAL|ONBUILD)\s/i.test(l.trim()) ||
+    l.trim() === "" ||
+    l.trim().startsWith("#"),
+  );
+  if (dockerLines.length >= 3) return dockerLines.join("\n") + "\n";
+
+  return null;
 }
 
 async function retryStartupConfig(
