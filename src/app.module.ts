@@ -39,7 +39,17 @@ import { McpModule } from './mcp/mcp.module';
       driver: MercuriusDriver,
       graphiql: false, // Disable GraphiQL
       autoSchemaFile: true,
-      introspection: process.env.NODE_ENV !== 'production' // Disable introspection in production
+      introspection: false, // Disable introspection
+      context: ({ req }) => ({
+        headers: req.headers,
+        isAuthenticated: req.isAuthenticated && req.isAuthenticated(),
+      }),
+      formatResponse: (response, { context }) => {
+        if (!context.isAuthenticated) {
+          delete response.data.__schema;
+        }
+        return response;
+      },
     }),
     PartnersModule,
     EmailModule,
