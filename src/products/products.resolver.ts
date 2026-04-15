@@ -28,7 +28,9 @@ export class ProductsResolver {
     description: API_DESC_GET_LATEST_PRODUCTS
   })
   async latestProducts(@Args('limit', { type: () => Number, nullable: true }) limit: number = 10): Promise<Product[]> {
-    const products = await this.productsService.findLatest(limit);
+    const maxLimit = 10; // Define the maximum limit here as well
+    const effectiveLimit = Math.min(limit, maxLimit);
+    const products = await this.productsService.findLatest(effectiveLimit);
     return products.map((p: Product) => new ProductDto(p));
   }
 
