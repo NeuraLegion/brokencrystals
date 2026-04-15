@@ -34102,15 +34102,23 @@ async function scoreHttpFramework(absDir) {
   return 0;
 }
 var CONTROLLER_GLOBS = [
-  // JS / TS
+  // JS / TS — structured directories (use ** prefix so nested dirs like backend/ are found)
   "src/**/*.controller.{ts,js}",
   "src/**/routes.{ts,js}",
   "src/**/router.{ts,js}",
   "src/**/*.routes.{ts,js}",
-  "app/controllers/**/*.{ts,js,rb}",
-  "controllers/**/*.{ts,js}",
-  "routes/**/*.{ts,js}",
+  "**/controllers/**/*.{ts,js}",
+  "**/routes/**/*.{ts,js}",
+  "**/routers/**/*.{ts,js}",
+  "**/express-routers/**/*.{ts,js}",
   "api/**/*.{ts,js}",
+  // JS / TS — file-name conventions (kebab-case and camelCase)
+  "**/*-controller.{ts,js}",
+  "**/*-router.{ts,js}",
+  "**/*-routes.{ts,js}",
+  "**/*Controller.{ts,js}",
+  "**/*Router.{ts,js}",
+  "**/*Routes.{ts,js}",
   // .NET / C#
   "**/*Controller.cs",
   "**/*ApiController.cs",
@@ -35305,7 +35313,8 @@ var injectSwaggerResultSchema = {
             description: "Complete file content after modification"
           }
         },
-        required: ["path", "content"]
+        required: ["path", "content"],
+        additionalProperties: false
       },
       description: "Files to create or overwrite"
     },
@@ -35933,6 +35942,52 @@ function usesPrebuiltImage(command) {
   }
   return false;
 }
+function composeUsesPrebuiltImages(repoPath, composeFile) {
+  let content;
+  try {
+    content = readFileSync4(`${repoPath}/${composeFile}`, "utf-8");
+  } catch {
+    return false;
+  }
+  const imageRe = /^\s+image:\s*(\S+)/gm;
+  const buildRe = /^\s+build:/gm;
+  const hasRegistryImage = (() => {
+    let m;
+    while ((m = imageRe.exec(content)) !== null) {
+      const img = m[1].replace(/["']/g, "");
+      if (img.includes("/")) return true;
+    }
+    return false;
+  })();
+  if (!hasRegistryImage) return false;
+  return !buildRe.test(content);
+}
+function patchComposeForSourceBuild(repoPath, composeFile) {
+  const filePath = `${repoPath}/${composeFile}`;
+  let content;
+  try {
+    content = readFileSync4(filePath, "utf-8");
+  } catch {
+    return;
+  }
+  const infraPatterns = /\b(mongo|postgres|mysql|mariadb|redis|rabbitmq|memcached|elasticsearch|minio|nats|kafka|zookeeper|consul|vault|nginx|traefik|caddy|haproxy)\b/i;
+  const patched = content.replace(
+    /^(\s+)image:\s*(\S+)\s*$/gm,
+    (match2, indent, image) => {
+      const cleanImage = image.replace(/["']/g, "");
+      if (cleanImage.includes("/") && !infraPatterns.test(cleanImage)) {
+        return `${indent}build: .`;
+      }
+      return match2;
+    }
+  );
+  if (patched !== content) {
+    writeFileSync2(filePath, patched);
+    console.log(
+      `[Startup] Replaced pre-built image in ${composeFile} with build: .`
+    );
+  }
+}
 function validateComposeBuildContexts(repoPath, composeFile) {
   const filePath = `${repoPath}/${composeFile}`;
   let content;
@@ -36389,6 +36444,21 @@ function sanitizeStartupConfig(repoPath, config2) {
         );
         return fallbackToDockerfile(repoPath, config2);
       }
+      if (existsSync5(fullPath) && composeUsesPrebuiltImages(repoPath, composeFile) && existsSync5(`${repoPath}/Dockerfile`)) {
+        patchComposeForSourceBuild(repoPath, composeFile);
+        if (!config2.command.includes("--build")) {
+          config2 = {
+            ...config2,
+            command: config2.command.replace(
+              /up\s/,
+              "up --build "
+            )
+          };
+        }
+        console.log(
+          `[Startup] Patched compose to build from source instead of pulling pre-built image`
+        );
+      }
     }
   }
   if (!config2.docker) {
@@ -36442,6 +36512,9 @@ function extractComposeFilePath(command) {
   const cdMatch = command.match(/cd\s+(\S+)\s*&&/);
   if (cdMatch) {
     return `${cdMatch[1]}/docker-compose.yml`;
+  }
+  if (/docker\s+compose/.test(command)) {
+    return "docker-compose.yml";
   }
   return null;
 }

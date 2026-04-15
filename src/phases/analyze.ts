@@ -605,15 +605,23 @@ async function scoreHttpFramework(absDir: string): Promise<number> {
 
 /** Glob patterns covering controller/route files for all major frameworks */
 const CONTROLLER_GLOBS = [
-  // JS / TS
+  // JS / TS — structured directories (use ** prefix so nested dirs like backend/ are found)
   "src/**/*.controller.{ts,js}",
   "src/**/routes.{ts,js}",
   "src/**/router.{ts,js}",
   "src/**/*.routes.{ts,js}",
-  "app/controllers/**/*.{ts,js,rb}",
-  "controllers/**/*.{ts,js}",
-  "routes/**/*.{ts,js}",
+  "**/controllers/**/*.{ts,js}",
+  "**/routes/**/*.{ts,js}",
+  "**/routers/**/*.{ts,js}",
+  "**/express-routers/**/*.{ts,js}",
   "api/**/*.{ts,js}",
+  // JS / TS — file-name conventions (kebab-case and camelCase)
+  "**/*-controller.{ts,js}",
+  "**/*-router.{ts,js}",
+  "**/*-routes.{ts,js}",
+  "**/*Controller.{ts,js}",
+  "**/*Router.{ts,js}",
+  "**/*Routes.{ts,js}",
   // .NET / C#
   "**/*Controller.cs",
   "**/*ApiController.cs",

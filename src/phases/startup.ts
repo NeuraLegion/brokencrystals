@@ -399,6 +399,81 @@ function usesPrebuiltImage(command: string): boolean {
 }
 
 /**
+ * Check if a compose file uses pre-built images instead of building from source.
+ * Returns true if ANY service has `image:` with a registry reference but no `build:`.
+ * We must build from source so that vulnerability fixes are included.
+ */
+function composeUsesPrebuiltImages(repoPath: string, composeFile: string): boolean {
+  let content: string;
+  try {
+    content = readFileSync(`${repoPath}/${composeFile}`, "utf-8");
+  } catch {
+    return false;
+  }
+
+  // Simple YAML parsing: look for services that have `image:` but no `build:`
+  // Split into service blocks by looking for top-level indentation patterns
+  const imageRe = /^\s+image:\s*(\S+)/gm;
+  const buildRe = /^\s+build:/gm;
+
+  const hasRegistryImage = (() => {
+    let m;
+    while ((m = imageRe.exec(content)) !== null) {
+      const img = m[1].replace(/["']/g, "");
+      // Registry images contain "/" (org/repo) or explicit tags
+      if (img.includes("/")) return true;
+    }
+    return false;
+  })();
+
+  // If no registry images found, compose is fine
+  if (!hasRegistryImage) return false;
+
+  // If there's at least one `build:` directive, the app service might build from source
+  // But if no build directive at all, it's definitely using pre-built images
+  return !buildRe.test(content);
+}
+
+/**
+ * Patch a docker-compose file to build from the repo Dockerfile instead of
+ * pulling a pre-built registry image. For app services with `image: org/repo:tag`,
+ * replace the `image:` line with `build: .` so the local source code is used.
+ * Database / infra images (mongo, postgres, redis, mysql, etc.) are left alone.
+ */
+function patchComposeForSourceBuild(repoPath: string, composeFile: string): void {
+  const filePath = `${repoPath}/${composeFile}`;
+  let content: string;
+  try {
+    content = readFileSync(filePath, "utf-8");
+  } catch {
+    return;
+  }
+
+  // Infrastructure images we should NOT replace
+  const infraPatterns =
+    /\b(mongo|postgres|mysql|mariadb|redis|rabbitmq|memcached|elasticsearch|minio|nats|kafka|zookeeper|consul|vault|nginx|traefik|caddy|haproxy)\b/i;
+
+  const patched = content.replace(
+    /^(\s+)image:\s*(\S+)\s*$/gm,
+    (match, indent: string, image: string) => {
+      const cleanImage = image.replace(/["']/g, "");
+      // Only patch registry images (contain "/") that aren't infra
+      if (cleanImage.includes("/") && !infraPatterns.test(cleanImage)) {
+        return `${indent}build: .`;
+      }
+      return match;
+    },
+  );
+
+  if (patched !== content) {
+    writeFileSync(filePath, patched);
+    console.log(
+      `[Startup] Replaced pre-built image in ${composeFile} with build: .`,
+    );
+  }
+}
+
+/**
  * Check that all `build:` context directories referenced in a compose file
  * actually exist on disk. Returns false if any are missing.
  */
@@ -1035,7 +1110,8 @@ function looksLikeCommand(s: string): boolean {
  * Validate a startup config and rewrite it if problems are detected:
  * 1. Compose files in template dirs → fall back to root Dockerfile
  * 2. Compose files with missing build contexts → fall back to root Dockerfile
- * 3. Native commands for tools not on host → switch to Docker
+ * 3. Compose files using pre-built images → switch to build-from-source
+ * 4. Native commands for tools not on host → switch to Docker
  */
 function sanitizeStartupConfig(
   repoPath: string,
@@ -1061,6 +1137,30 @@ function sanitizeStartupConfig(
           `[Startup] Rejecting compose with missing build context: ${composeFile} — using root Dockerfile`,
         );
         return fallbackToDockerfile(repoPath, config);
+      }
+
+      // Reject compose files that pull pre-built images instead of building.
+      // We must build from source so code fixes are included in the image.
+      // Patch the compose to build from the repo Dockerfile instead.
+      if (
+        existsSync(fullPath) &&
+        composeUsesPrebuiltImages(repoPath, composeFile) &&
+        existsSync(`${repoPath}/Dockerfile`)
+      ) {
+        patchComposeForSourceBuild(repoPath, composeFile);
+        // Ensure --build flag is present
+        if (!config.command.includes("--build")) {
+          config = {
+            ...config,
+            command: config.command.replace(
+              /up\s/,
+              "up --build ",
+            ),
+          };
+        }
+        console.log(
+          `[Startup] Patched compose to build from source instead of pulling pre-built image`,
+        );
       }
     }
   }
@@ -1127,6 +1227,11 @@ function extractComposeFilePath(command: string): string | null {
   if (cdMatch) {
     // The compose file is in that directory
     return `${cdMatch[1]}/docker-compose.yml`;
+  }
+
+  // No -f flag → docker compose uses docker-compose.yml or compose.yml in cwd
+  if (/docker\s+compose/.test(command)) {
+    return "docker-compose.yml"; // caller should check existence
   }
 
   return null;

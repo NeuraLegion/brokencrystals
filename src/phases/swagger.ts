@@ -286,6 +286,7 @@ const injectSwaggerResultSchema = {
           },
         },
         required: ["path", "content"] as const,
+        additionalProperties: false,
       },
       description: "Files to create or overwrite",
     },
