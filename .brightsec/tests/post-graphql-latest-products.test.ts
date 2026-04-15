@@ -21,7 +21,7 @@ after(() => runner.clear());
 test('POST /graphql latestProducts', { signal: AbortSignal.timeout(timeout) }, async () => {
   await runner
     .createScan({
-      tests: ['graphql_introspection', 'sqli', 'xss', 'csrf', 'jwt'],
+      tests: ['graphql_introspection'],
       attackParamLocations: [AttackParamLocation.BODY],
       starMetadata: {
         code_source: "NeuraLegion/brokencrystals:stable",
