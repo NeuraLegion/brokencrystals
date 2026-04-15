@@ -314,6 +314,52 @@ function usesPrebuiltImage(command: string): boolean {
 }
 
 /**
+ * Check that all `build:` context directories referenced in a compose file
+ * actually exist on disk. Returns false if any are missing.
+ */
+function validateComposeBuildContexts(repoPath: string, composeFile: string): boolean {
+  const filePath = `${repoPath}/${composeFile}`;
+  let content: string;
+  try {
+    content = readFileSync(filePath, "utf8");
+  } catch {
+    return true; // can't read → let docker fail with a better error
+  }
+
+  const composeDir = composeFile.includes("/")
+    ? composeFile.substring(0, composeFile.lastIndexOf("/"))
+    : "";
+  const baseDir = composeDir ? `${repoPath}/${composeDir}` : repoPath;
+
+  // Match build context: `build: ./path` or `build:\n  context: ./path`
+  const simpleBuildRe = /^\s+build:\s+(\S+)\s*$/gm;
+  const contextBuildRe = /^\s+context:\s+(\S+)\s*$/gm;
+
+  const contexts = new Set<string>();
+  let m;
+  while ((m = simpleBuildRe.exec(content)) !== null) {
+    const val = m[1].replace(/["']/g, "");
+    // Skip if it looks like a sub-key (e.g. "build:" followed by "context:")
+    if (val === "" || val.startsWith("#")) continue;
+    contexts.add(val);
+  }
+  while ((m = contextBuildRe.exec(content)) !== null) {
+    contexts.add(m[1].replace(/["']/g, ""));
+  }
+
+  for (const ctx of contexts) {
+    if (ctx === "." || ctx === "./") continue; // current dir always exists
+    const resolved = ctx.startsWith("/") ? ctx : `${baseDir}/${ctx}`;
+    if (!existsSync(resolved)) {
+      console.warn(`[Startup] Compose ${composeFile}: build context "${ctx}" does not exist (${resolved})`);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Scan a compose file for env_file references and return the names
  * of any files that do not exist on disk.
  */
@@ -496,6 +542,7 @@ function buildFromSourceConfig(
   const imageName = "bright-app-local";
 
   // Check for docker-compose.yml — if it exists, prefer compose with --build
+  // Skip compose files in template directories (they're scaffolds, not working configs)
   const composeFiles = [
     "docker-compose.yml",
     "compose.yml",
@@ -506,6 +553,10 @@ function buildFromSourceConfig(
   ];
   for (const cf of composeFiles) {
     if (existsSync(`${repoPath}/${cf}`)) {
+      if (!validateComposeBuildContexts(repoPath, cf)) {
+        console.log(`[Startup] Skipping ${cf} — build context directory missing`);
+        continue;
+      }
       const missingEnvFiles = findMissingEnvFiles(repoPath, cf);
       for (const envFile of missingEnvFiles) {
         populateMissingEnvFile(repoPath, cf, envFile);
@@ -752,6 +803,21 @@ async function startApplication(
   // Sanitize compose template placeholders (e.g. TEMPLATE_PORT from .NET templates)
   if (config.docker && /docker\s+compose/.test(config.command)) {
     sanitizeComposeTemplateVars(repoPath, config);
+
+    // Validate build contexts — fail fast if a compose file references
+    // a non-existent directory (e.g. template scaffolds)
+    const composeFileMatch = config.command.match(/-f\s+(\S+)/);
+    const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
+    const composeFile = composeFileMatch?.[1]
+      ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : null);
+    if (composeFile && existsSync(`${repoPath}/${composeFile}`)) {
+      if (!validateComposeBuildContexts(repoPath, composeFile)) {
+        throw new Error(
+          `Compose file ${composeFile} references a build context that does not exist. ` +
+          `This is likely a template scaffold — try building from the root Dockerfile instead.`,
+        );
+      }
+    }
   }
 
   // Unshallow the git repo if needed — tools like Nerdbank.GitVersioning

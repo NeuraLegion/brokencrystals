@@ -356,6 +356,18 @@ function extractEndpointsFromFile(
     while ((m = jsRouteRe.exec(content)) !== null) {
       endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
     }
+    // Fastify object-config: fastify.route({ method: 'GET', url: '/path' })
+    const fastifyRouteRe =
+      /\.route\s*\(\s*\{[^}]*?method\s*:\s*["'`](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)["'`]\s*,[^}]*?url\s*:\s*["'`]([^"'`]+)["'`]/gi;
+    while ((m = fastifyRouteRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    // Also match url before method: .route({ url: '/path', method: 'GET' })
+    const fastifyRouteRevRe =
+      /\.route\s*\(\s*\{[^}]*?url\s*:\s*["'`]([^"'`]+)["'`]\s*,[^}]*?method\s*:\s*["'`](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)["'`]/gi;
+    while ((m = fastifyRouteRevRe.exec(content)) !== null) {
+      endpoints.push({ method: m[2].toUpperCase(), path: m[1], filePath });
+    }
     // NestJS decorators: @Get("/path"), @Post("/path")
     const nestRe =
       /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/gi;
@@ -757,6 +769,115 @@ function createBodyExtractionToolHandler(repoPath: string): ToolHandler {
   };
 }
 
+// ---------------------------------------------------------------------------
+// LLM fallback for controller files where regex found no endpoints
+// ---------------------------------------------------------------------------
+
+const endpointDiscoveryTools = [
+  bodyExtractionTools[0], // read_lines
+  bodyExtractionTools[2], // grep_code
+];
+
+async function extractEndpointsViaLlm(
+  llm: OpenAI,
+  repoPath: string,
+  files: string[],
+  handleTool: ToolHandler,
+  model?: string,
+): Promise<DiscoveredEndpoint[]> {
+  const results: DiscoveredEndpoint[] = [];
+
+  for (const filePath of files) {
+    const fullPath = resolve(repoPath, filePath);
+    let content: string;
+    try {
+      content = readFileSync(fullPath, "utf-8");
+    } catch {
+      continue;
+    }
+
+    // Send first ~80 lines or the whole file if small
+    const lines = content.split("\n");
+    const snippet = lines
+      .slice(0, Math.min(lines.length, 80))
+      .map((l, i) => `${i + 1}: ${l}`)
+      .join("\n");
+    const truncated = lines.length > 80 ? ` (showing first 80 of ${lines.length} lines)` : "";
+
+    console.log(
+      `[Analyze] LLM endpoint discovery: ${filePath}${truncated}`,
+    );
+
+    const messages = [
+      {
+        role: "system" as const,
+        content: `You are an API route analyst. Given source code from a controller/route file, identify all HTTP endpoints it registers.
+
+Look for:
+- Direct route registrations (app.get, router.post, etc.)
+- Helper functions that register routes (registerRoutes, addCrudRoutes, etc.) — follow them with grep_code if needed
+- Route configuration objects, arrays, or maps
+
+You have tools:
+- read_lines: read more of this or other files
+- grep_code: search the codebase for function definitions, route registrations, etc.
+
+Return ONLY a JSON array of endpoints:
+[{"method": "GET", "path": "/api/users"}, {"method": "POST", "path": "/api/users"}]
+
+If no HTTP endpoints are found, return an empty array: []`,
+      },
+      {
+        role: "user" as const,
+        content: `File: ${filePath}${truncated}
+
+\`\`\`
+${snippet}
+\`\`\`
+
+Find all HTTP endpoints registered in this file. If routes are registered via helper functions, use grep_code to find their definitions.`,
+      },
+    ];
+
+    try {
+      const response = await chatWithTools(
+        llm,
+        messages,
+        endpointDiscoveryTools,
+        handleTool,
+        model,
+        3,
+      );
+      const parsed = JSON.parse(extractJson(response));
+      const eps = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed.endpoints)
+          ? parsed.endpoints
+          : [];
+      for (const ep of eps) {
+        if (ep.method && ep.path) {
+          results.push({
+            method: String(ep.method).toUpperCase(),
+            path: String(ep.path),
+            filePath,
+          });
+        }
+      }
+      if (eps.length > 0) {
+        console.log(
+          `[Analyze] LLM found ${eps.length} endpoint(s) in ${filePath}`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[Analyze] LLM fallback failed for ${filePath}: ${err}`,
+      );
+    }
+  }
+
+  return results;
+}
+
 export async function discoverEndpoints(
   llm: OpenAI,
   repoPath: string,
@@ -775,6 +896,7 @@ export async function discoverEndpoints(
 
   // Step 2: Extract endpoints from each file using regex (zero LLM)
   const allEndpoints: DiscoveredEndpoint[] = [];
+  const noMatchFiles: string[] = [];
   for (const filePath of controllerFiles) {
     const fullPath = resolve(repoPath, filePath);
     let content: string;
@@ -784,7 +906,27 @@ export async function discoverEndpoints(
       continue;
     }
     const eps = extractEndpointsFromFile(content, filePath);
-    allEndpoints.push(...eps);
+    if (eps.length > 0) {
+      allEndpoints.push(...eps);
+    } else {
+      noMatchFiles.push(filePath);
+    }
+  }
+
+  // Step 2b: LLM fallback for controller files with zero regex matches
+  if (noMatchFiles.length > 0) {
+    console.log(
+      `[Analyze] ${noMatchFiles.length} controller file(s) had no regex matches — using LLM fallback`,
+    );
+    const handleTool = createBodyExtractionToolHandler(repoPath);
+    const llmEndpoints = await extractEndpointsViaLlm(
+      llm,
+      repoPath,
+      noMatchFiles,
+      handleTool,
+      model,
+    );
+    allEndpoints.push(...llmEndpoints);
   }
 
   // De-duplicate by method+path
