@@ -265,6 +265,63 @@ function findMissingEnvFiles(repoPath: string, composeFile: string): string[] {
 }
 
 /**
+ * Replace .NET template placeholders (e.g. TEMPLATE_PORT) in compose files
+ * with the actual port from the startup config, so Docker can parse them.
+ */
+function sanitizeComposeTemplateVars(repoPath: string, config: StartupConfig): void {
+  // Collect compose file paths to check:
+  // 1. Files explicitly referenced via -f <path> in the command
+  // 2. Common compose filenames in the repo root and in any cd target dir
+  const filesToCheck = new Set<string>();
+
+  // Extract -f <path> references from the command
+  for (const m of config.command.matchAll(/-f\s+(\S+)/g)) {
+    filesToCheck.add(m[1]);
+  }
+
+  // Detect cd target directory (e.g. "cd templates/Foo && docker compose ...")
+  const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
+  const dirs = [""]; // repo root
+  if (cdMatch) dirs.push(cdMatch[1]);
+
+  const defaultNames = [
+    "docker-compose.yml", "compose.yml",
+    "docker-compose.local.yml", "compose.local.yml",
+    "docker-compose.dev.yml", "compose.dev.yml",
+    "docker-compose.override.yml", "compose.override.yml",
+  ];
+  for (const dir of dirs) {
+    for (const name of defaultNames) {
+      filesToCheck.add(dir ? `${dir}/${name}` : name);
+    }
+  }
+
+  for (const cf of filesToCheck) {
+    const filePath = cf.startsWith("/") ? cf : `${repoPath}/${cf}`;
+    if (!existsSync(filePath)) continue;
+
+    let content: string;
+    try {
+      content = readFileSync(filePath, "utf8");
+    } catch {
+      continue;
+    }
+
+    // Replace TEMPLATE_PORT (bare), ${TEMPLATE_PORT}, $TEMPLATE_PORT
+    // and similar .NET template vars like TEMPLATE_HTTPPORT, TEMPLATE_HTTPSPORT
+    const sanitized = content.replace(
+      /\$\{TEMPLATE_\w*PORT\w*\}|(?<!\$)\bTEMPLATE_\w*PORT\w*\b|\$TEMPLATE_\w*PORT\w*/g,
+      String(config.port),
+    );
+
+    if (sanitized !== content) {
+      writeFileSync(filePath, sanitized);
+      console.log(`[Startup] Replaced template port placeholder(s) in ${cf} with ${config.port}`);
+    }
+  }
+}
+
+/**
  * Create a missing env file referenced by a compose manifest.
  * Reads the compose content to discover environment-variable references
  * (${VAR} syntax) and database images, then writes sensible defaults
@@ -470,11 +527,21 @@ function parseStartupConfig(response: string): StartupConfig {
     const prerequisites = (parsed.prerequisites ?? []).filter(
       (cmd: unknown) => typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd),
     );
+
+    const envVars: Record<string, string> = parsed.envVars ?? {};
+    let command: string = parsed.command ?? "npm start";
+
+    // Extract inline env vars from the command (e.g. "DB_PASSWORD=x docker compose up")
+    // and move them into envVars so they're available to prerequisites too.
+    const extracted = extractInlineEnvVars(command);
+    command = extracted.command;
+    Object.assign(envVars, extracted.envVars);
+
     return {
-      command: parsed.command ?? "npm start",
+      command,
       port: parsed.port ?? 3000,
       prerequisites,
-      envVars: parsed.envVars ?? {},
+      envVars,
       docker: parsed.docker ?? false,
     };
   } catch {
@@ -485,6 +552,50 @@ function parseStartupConfig(response: string): StartupConfig {
       envVars: { NODE_ENV: "development" },
       docker: false,
     };
+  }
+}
+
+/**
+ * Extract leading KEY=VALUE pairs from a shell command.
+ * e.g. "DB_PASSWORD=x RAILS_ENV=test docker compose up" →
+ *   { command: "docker compose up", envVars: { DB_PASSWORD: "x", RAILS_ENV: "test" } }
+ */
+function extractInlineEnvVars(command: string): { command: string; envVars: Record<string, string> } {
+  const envVars: Record<string, string> = {};
+  let rest = command;
+
+  // Match KEY=VALUE tokens at the start of the command
+  while (true) {
+    const match = rest.match(/^(\w+)=((?:"[^"]*"|'[^']*'|\S)+)\s+(.*)/s);
+    if (!match) break;
+    const key = match[1];
+    // Skip if the "key" looks like a command (e.g. "docker" in "docker=...")
+    if (/^[a-z]/.test(key) && !/[A-Z_]/.test(key)) break;
+    envVars[key] = match[2].replace(/^["']|["']$/g, "");
+    rest = match[3];
+  }
+
+  return { command: rest || command, envVars };
+}
+
+/**
+ * If the repo is a shallow clone, fetch the full history.
+ * Tools like Nerdbank.GitVersioning fail when .git is shallow.
+ * Only runs once per repo — subsequent calls are a no-op.
+ */
+function unshallowIfNeeded(repoPath: string): void {
+  const shallowFile = `${repoPath}/.git/shallow`;
+  if (!existsSync(shallowFile)) return;
+
+  console.log("[Startup] Detected shallow clone — fetching full history for Docker build");
+  try {
+    execSync("git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true", {
+      cwd: repoPath,
+      stdio: "pipe",
+      timeout: 120_000,
+    });
+  } catch {
+    console.warn("[Startup] Failed to unshallow git repo — build may fail if version tools require full history");
   }
 }
 
@@ -511,6 +622,17 @@ async function startApplication(
   repoPath: string,
   config: StartupConfig,
 ): Promise<ChildProcess> {
+  // Sanitize compose template placeholders (e.g. TEMPLATE_PORT from .NET templates)
+  if (config.docker && /docker\s+compose/.test(config.command)) {
+    sanitizeComposeTemplateVars(repoPath, config);
+  }
+
+  // Unshallow the git repo if needed — tools like Nerdbank.GitVersioning
+  // fail inside Docker when .git is from a shallow clone.
+  if (config.docker) {
+    unshallowIfNeeded(repoPath);
+  }
+
   // Run prerequisites
   for (const cmd of config.prerequisites) {
     console.log(`[Startup] Running prerequisite: ${cmd}`);
@@ -531,18 +653,16 @@ async function startApplication(
     command = command.replace("-d", "-d --wait");
   }
 
-  // Parse command into parts
-  const parts = command.split(/\s+/);
-  const bin = parts[0];
-  const args = parts.slice(1);
-
   console.log(`[Startup] Starting application: ${command} (port ${config.port})`);
 
-  const child = spawn(bin, args, {
+  // Use shell: true so commands with inline env vars (DB_PASSWORD=x cmd),
+  // && chains, pipes, and other shell features work correctly.
+  const child = spawn(command, [], {
     cwd: repoPath,
     env,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
+    shell: true,
   });
 
   // Capture output for error reporting

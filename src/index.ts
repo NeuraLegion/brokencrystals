@@ -45,11 +45,12 @@ async function main(): Promise<void> {
     process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceToken =
     process.env.OPENAI_API_KEY ??
-    process.env.GITHUB_INFERENCE_TOKEN ?? "";
-  const llm = createInferenceClient(inferenceUrl, inferenceToken);
+    process.env.GITHUB_INFERENCE_TOKEN ??
+    process.env.GITHUB_TOKEN ?? "";
+  const llm = createInferenceClient(inferenceUrl, inferenceToken, config.inferenceProvider);
 
   // 4b. Validate configured model tiers are available
-  await validateModelTiers(llm, config.modelSelector);
+  await validateModelTiers(llm, config.modelSelector, config.inferenceProvider);
 
   // 5. Connect to Bright MCP
   const bright = await createBrightMcpClient(config);

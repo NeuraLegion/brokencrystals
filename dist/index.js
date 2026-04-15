@@ -17878,19 +17878,51 @@ OpenAI.ContainerListResponsesPage = ContainerListResponsesPage;
 var openai_default = OpenAI;
 
 // src/inference.ts
-function createInferenceClient(inferenceUrl, token) {
-  return new openai_default({ baseURL: inferenceUrl, apiKey: token });
+function detectProvider(baseUrl) {
+  const explicit = process.env.INFERENCE_PROVIDER?.toLowerCase();
+  if (explicit === "github-models" || explicit === "ollama" || explicit === "openai") {
+    return explicit;
+  }
+  const url2 = baseUrl.toLowerCase();
+  if (url2.includes("models.github.ai") || url2.includes("models.inference.ai.azure.com")) {
+    return "github-models";
+  }
+  if (url2.includes("localhost:11434") || url2.includes("127.0.0.1:11434") || url2.includes("/ollama")) {
+    return "ollama";
+  }
+  return "openai";
+}
+function normalizeBaseUrl(baseUrl, provider) {
+  if (provider === "ollama") {
+    const trimmed = baseUrl.replace(/\/+$/, "");
+    return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+  }
+  return baseUrl;
+}
+function createInferenceClient(inferenceUrl, token, provider) {
+  const resolved = provider ?? detectProvider(inferenceUrl);
+  const baseURL = normalizeBaseUrl(inferenceUrl, resolved);
+  const opts = {
+    baseURL,
+    apiKey: token || "ollama"
+    // Ollama doesn't require a key
+  };
+  if (resolved === "github-models") {
+    opts.defaultHeaders = {
+      "X-GitHub-Api-Version": "2026-03-10"
+    };
+  }
+  console.log(`[Inference] Provider: ${resolved}, baseURL: ${baseURL}`);
+  return new openai_default(opts);
 }
 function sanitizeForJson(s) {
   return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }
 var ModelSelector = class {
   tiers;
-  strategy;
   level = 0;
-  constructor(strategy, tiers) {
-    if (tiers.length === 0) throw new Error("At least one model tier is required");
-    this.strategy = strategy;
+  constructor(tiers) {
+    if (tiers.length === 0) throw new Error("At least one model is required in AI_MODEL");
     this.tiers = tiers;
   }
   /** The model name to use for the next LLM call. */
@@ -17900,18 +17932,15 @@ var ModelSelector = class {
   /**
    * Move to the next stronger model tier.
    * Returns true if escalation happened, false if already at the strongest tier.
-   * In static mode this is a no-op.
    */
   escalate() {
-    if (this.strategy === "static") return false;
     if (this.level >= this.tiers.length - 1) return false;
     this.level++;
     console.log(`[Model] Escalated to ${this.tiers[this.level]} (tier ${this.level + 1}/${this.tiers.length})`);
     return true;
   }
-  /** Reset back to the base (cheapest) model. No-op in static mode. */
+  /** Reset back to the base (cheapest) model. */
   reset() {
-    if (this.strategy === "static") return;
     if (this.level !== 0) {
       this.level = 0;
       console.log(`[Model] Reset to base model: ${this.tiers[0]}`);
@@ -17922,11 +17951,16 @@ var ModelSelector = class {
     return this.level > 0;
   }
   toString() {
-    return `${this.strategy}[${this.tiers.join(" \u2192 ")}] @ tier ${this.level + 1}`;
+    if (this.tiers.length === 1) return this.tiers[0];
+    return `[${this.tiers.join(" \u2192 ")}] @ tier ${this.level + 1}`;
   }
 };
-async function validateModelTiers(client, selector) {
+async function validateModelTiers(client, selector, provider = "openai") {
   const tiers = selector["tiers"];
+  if (provider === "github-models") {
+    console.log(`[Model] GitHub Models provider \u2014 skipping tier validation (${tiers.length} tier(s) configured)`);
+    return;
+  }
   let available;
   try {
     const list = await client.models.list();
@@ -17957,14 +17991,25 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
     const response = await client.chat.completions.create({
       model,
       messages: conversation,
-      tools: tools.length > 0 ? tools : void 0
+      tools: tools.length > 0 ? tools : void 0,
+      max_completion_tokens: 16384
     });
     const choice = response.choices[0];
     if (!choice) throw new Error("No response from model");
     const msg = choice.message;
+    const usage = response.usage;
     conversation.push(msg);
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
+      if (usage) {
+        console.log(`[Inference] Turn ${turn + 1}/${maxTurns}: final response (${usage.prompt_tokens}\u2192${usage.completion_tokens} tokens)`);
+      }
       return msg.content ?? "";
+    }
+    const toolNames = msg.tool_calls.map((tc) => tc.function.name).join(", ");
+    if (usage) {
+      console.log(`[Inference] Turn ${turn + 1}/${maxTurns}: ${msg.tool_calls.length} tool call(s) [${toolNames}] (${usage.prompt_tokens}\u2192${usage.completion_tokens} tokens)`);
+    } else {
+      console.log(`[Inference] Turn ${turn + 1}/${maxTurns}: ${msg.tool_calls.length} tool call(s) [${toolNames}]`);
     }
     for (const tc of msg.tool_calls) {
       let args;
@@ -17994,6 +18039,7 @@ async function chatWithSchema(client, messages, schemaName, schema, model = DEFA
   const response = await client.chat.completions.create({
     model,
     messages,
+    max_completion_tokens: 16384,
     response_format: {
       type: "json_schema",
       json_schema: {
@@ -18014,12 +18060,13 @@ function loadConfig() {
   const brightMcpUrl = process.env.BRIGHT_MCP_URL;
   const brightHostname = process.env.BRIGHT_HOSTNAME ?? (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
-  const inferenceModel = process.env.OPENAI_MODEL ?? DEFAULT_MODEL;
-  const strategy = process.env.OPENAI_MODEL_STRATEGY ?? "static";
-  const tiers = process.env.OPENAI_MODEL_TIERS ? process.env.OPENAI_MODEL_TIERS.split(",").map((s) => s.trim()).filter(Boolean) : [inferenceModel];
-  const modelSelector = new ModelSelector(strategy, tiers);
-  console.log(`[Config] Model strategy: ${modelSelector}`);
-  return { brightToken, brightHostname, brightMcpUrl, brightProjectId, inferenceModel, modelSelector };
+  const models = (process.env.AI_MODEL ?? DEFAULT_MODEL).split(",").map((s) => s.trim()).filter(Boolean);
+  const modelSelector = new ModelSelector(models);
+  const inferenceUrl = process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
+  const inferenceProvider = detectProvider(inferenceUrl);
+  console.log(`[Config] AI model(s): ${modelSelector}`);
+  console.log(`[Config] Inference provider: ${inferenceProvider}`);
+  return { brightToken, brightHostname, brightMcpUrl, brightProjectId, inferenceProvider, modelSelector };
 }
 function requireEnv(name) {
   const value = process.env[name];
@@ -27388,7 +27435,7 @@ async function createBrightMcpClient(config2) {
 
 // src/orchestrator.ts
 var import_tree_kill = __toESM(require_tree_kill(), 1);
-import { execFileSync as execFileSync4 } from "child_process";
+import { execFileSync as execFileSync5 } from "child_process";
 
 // src/progress.ts
 var ProgressReporter = class {
@@ -27473,8 +27520,9 @@ ${lines.join("\n")}`
 };
 
 // src/phases/analyze.ts
-import { readFileSync as readFileSync2 } from "fs";
-import { resolve as resolve2 } from "path";
+import { readFileSync, existsSync as existsSync2 } from "fs";
+import { resolve, extname } from "path";
+import { execFileSync as execFileSync2 } from "child_process";
 
 // node_modules/balanced-match/dist/esm/index.js
 var balanced = (a, b, str2) => {
@@ -33506,10 +33554,655 @@ var glob = Object.assign(glob_, {
 });
 glob.glob = glob;
 
+// src/phases/analyze.ts
+async function detectTechStack(_llm, repoPath, _model) {
+  return detectTechStackFromFiles(repoPath);
+}
+async function detectTechStackFromFiles(repoPath) {
+  const languages = /* @__PURE__ */ new Set();
+  const frameworks = /* @__PURE__ */ new Set();
+  const databases = /* @__PURE__ */ new Set();
+  const has2 = (rel) => existsSync2(resolve(repoPath, rel));
+  const readJson = (rel) => {
+    try {
+      return JSON.parse(readFileSync(resolve(repoPath, rel), "utf-8"));
+    } catch {
+      return null;
+    }
+  };
+  if (has2("package.json")) {
+    const pkg = readJson("package.json");
+    const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
+    languages.add("JavaScript");
+    if (allDeps?.typescript || has2("tsconfig.json")) languages.add("TypeScript");
+    if (allDeps?.express) frameworks.add("Express");
+    if (allDeps?.fastify) frameworks.add("Fastify");
+    if (allDeps?.koa) frameworks.add("Koa");
+    if (allDeps?.hapi || allDeps?.["@hapi/hapi"]) frameworks.add("Hapi");
+    if (allDeps?.next) frameworks.add("Next.js");
+    if (allDeps?.nuxt) frameworks.add("Nuxt");
+    if (allDeps?.["@nestjs/core"]) frameworks.add("NestJS");
+    if (allDeps?.mongoose || allDeps?.mongodb) databases.add("MongoDB");
+    if (allDeps?.pg || allDeps?.["pg-promise"]) databases.add("PostgreSQL");
+    if (allDeps?.mysql || allDeps?.mysql2) databases.add("MySQL");
+    if (allDeps?.sequelize) databases.add("SQL (Sequelize)");
+    if (allDeps?.knex) databases.add("SQL (Knex)");
+    if (allDeps?.redis || allDeps?.ioredis) databases.add("Redis");
+    if (allDeps?.sqlite3 || allDeps?.["better-sqlite3"]) databases.add("SQLite");
+    if (allDeps?.typeorm) databases.add("SQL (TypeORM)");
+    if (allDeps?.prisma || allDeps?.["@prisma/client"]) databases.add("SQL (Prisma)");
+  }
+  if (has2("requirements.txt") || has2("pyproject.toml") || has2("setup.py") || has2("Pipfile")) {
+    languages.add("Python");
+    const readReqs = () => {
+      for (const f of ["requirements.txt", "Pipfile"]) {
+        try {
+          return readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
+        } catch {
+        }
+      }
+      try {
+        return readFileSync(resolve(repoPath, "pyproject.toml"), "utf-8").toLowerCase();
+      } catch {
+        return "";
+      }
+    };
+    const reqs = readReqs();
+    if (reqs.includes("django")) frameworks.add("Django");
+    if (reqs.includes("flask")) frameworks.add("Flask");
+    if (reqs.includes("fastapi")) frameworks.add("FastAPI");
+    if (reqs.includes("sqlalchemy")) databases.add("SQL (SQLAlchemy)");
+    if (reqs.includes("psycopg")) databases.add("PostgreSQL");
+    if (reqs.includes("pymongo")) databases.add("MongoDB");
+  }
+  if (has2("Gemfile")) {
+    languages.add("Ruby");
+    try {
+      const gemfile = readFileSync(resolve(repoPath, "Gemfile"), "utf-8").toLowerCase();
+      if (gemfile.includes("rails")) frameworks.add("Rails");
+      if (gemfile.includes("sinatra")) frameworks.add("Sinatra");
+      if (gemfile.includes("pg")) databases.add("PostgreSQL");
+      if (gemfile.includes("mysql")) databases.add("MySQL");
+      if (gemfile.includes("mongoid")) databases.add("MongoDB");
+    } catch {
+    }
+  }
+  if (has2("pom.xml") || has2("build.gradle") || has2("build.gradle.kts")) {
+    languages.add("Java");
+    if (has2("build.gradle.kts")) languages.add("Kotlin");
+    const readBuild = () => {
+      for (const f of ["pom.xml", "build.gradle", "build.gradle.kts"]) {
+        try {
+          return readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
+        } catch {
+        }
+      }
+      return "";
+    };
+    const build = readBuild();
+    if (build.includes("spring")) frameworks.add("Spring");
+    if (build.includes("quarkus")) frameworks.add("Quarkus");
+    if (build.includes("postgresql") || build.includes("postgres")) databases.add("PostgreSQL");
+    if (build.includes("mysql")) databases.add("MySQL");
+    if (build.includes("mongodb") || build.includes("mongo")) databases.add("MongoDB");
+  }
+  if (has2("go.mod")) {
+    languages.add("Go");
+    try {
+      const gomod = readFileSync(resolve(repoPath, "go.mod"), "utf-8").toLowerCase();
+      if (gomod.includes("gin-gonic")) frameworks.add("Gin");
+      if (gomod.includes("gorilla/mux")) frameworks.add("Gorilla Mux");
+      if (gomod.includes("fiber")) frameworks.add("Fiber");
+      if (gomod.includes("echo")) frameworks.add("Echo");
+    } catch {
+    }
+  }
+  const csprojFiles = await glob("**/*.{csproj,sln,fsproj}", { cwd: repoPath, nodir: true, maxDepth: 3 });
+  if (csprojFiles.length > 0) {
+    languages.add("C#");
+    for (const f of csprojFiles.slice(0, 5)) {
+      try {
+        const content = readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
+        if (content.includes("microsoft.aspnetcore") || content.includes("aspnet")) frameworks.add("ASP.NET");
+        if (content.includes("entityframework")) databases.add("SQL (EF Core)");
+        if (content.includes("npgsql")) databases.add("PostgreSQL");
+        if (content.includes("umbraco")) frameworks.add("Umbraco CMS");
+      } catch {
+      }
+    }
+  }
+  if (has2("Cargo.toml")) {
+    languages.add("Rust");
+    try {
+      const cargo = readFileSync(resolve(repoPath, "Cargo.toml"), "utf-8").toLowerCase();
+      if (cargo.includes("actix")) frameworks.add("Actix");
+      if (cargo.includes("axum")) frameworks.add("Axum");
+      if (cargo.includes("rocket")) frameworks.add("Rocket");
+    } catch {
+    }
+  }
+  if (has2("composer.json")) {
+    languages.add("PHP");
+    const pkg = readJson("composer.json");
+    const allDeps = { ...pkg?.require, ...pkg?.["require-dev"] };
+    if (allDeps?.["laravel/framework"]) frameworks.add("Laravel");
+    if (allDeps?.["symfony/framework-bundle"]) frameworks.add("Symfony");
+  }
+  if (has2("docker-compose.yml") || has2("docker-compose.yaml") || has2("compose.yml") || has2("compose.yaml")) {
+    for (const f of ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]) {
+      try {
+        const content = readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
+        if (content.includes("postgres")) databases.add("PostgreSQL");
+        if (content.includes("mysql") || content.includes("mariadb")) databases.add("MySQL");
+        if (content.includes("mongo")) databases.add("MongoDB");
+        if (content.includes("redis")) databases.add("Redis");
+      } catch {
+      }
+    }
+  }
+  if (languages.size === 0) {
+    const extMap = {
+      ".py": "Python",
+      ".rb": "Ruby",
+      ".go": "Go",
+      ".rs": "Rust",
+      ".java": "Java",
+      ".kt": "Kotlin",
+      ".cs": "C#",
+      ".php": "PHP",
+      ".ts": "TypeScript",
+      ".js": "JavaScript"
+    };
+    const srcFiles = await glob("src/**/*", { cwd: repoPath, nodir: true, maxDepth: 3 });
+    for (const f of srcFiles.slice(0, 50)) {
+      const ext2 = extname(f);
+      if (extMap[ext2]) languages.add(extMap[ext2]);
+    }
+  }
+  return {
+    languages: [...languages],
+    frameworks: [...frameworks],
+    databases: [...databases]
+  };
+}
+var CONTROLLER_GLOBS = [
+  // JS / TS
+  "src/**/*.controller.{ts,js}",
+  "src/**/routes.{ts,js}",
+  "src/**/router.{ts,js}",
+  "src/**/*.routes.{ts,js}",
+  "app/controllers/**/*.{ts,js,rb}",
+  "controllers/**/*.{ts,js}",
+  "routes/**/*.{ts,js}",
+  "api/**/*.{ts,js}",
+  // .NET / C#
+  "**/*Controller.cs",
+  "**/*ApiController.cs",
+  "**/Controllers/**/*.cs",
+  // Java / Kotlin
+  "**/*Controller.java",
+  "**/*Controller.kt",
+  "**/controller/**/*.java",
+  "**/controllers/**/*.java",
+  // Python
+  "**/views.py",
+  "**/routes.py",
+  "**/api.py",
+  "**/endpoints.py",
+  "**/*_views.py",
+  "**/*_routes.py",
+  "**/urls.py",
+  // Ruby
+  "app/controllers/**/*.rb",
+  "config/routes.rb",
+  // Go
+  "**/*handler*.go",
+  "**/*router*.go",
+  // PHP
+  "**/Controller/**/*.php",
+  "**/Controllers/**/*.php",
+  "routes/**/*.php"
+];
+var GLOB_IGNORE = [
+  "**/node_modules/**",
+  "**/vendor/**",
+  "**/bin/**",
+  "**/obj/**",
+  "**/test/**",
+  "**/tests/**",
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/TestData/**"
+];
+async function findControllerFiles(repoPath) {
+  const files = /* @__PURE__ */ new Set();
+  for (const pattern of CONTROLLER_GLOBS) {
+    for (const f of await glob(pattern, { cwd: repoPath, nodir: true, ignore: GLOB_IGNORE })) {
+      files.add(f);
+    }
+  }
+  return [...files];
+}
+function extractEndpointsFromFile(content, filePath) {
+  const endpoints = [];
+  const ext2 = extname(filePath).toLowerCase();
+  if (ext2 === ".ts" || ext2 === ".js") {
+    const jsRouteRe = /\b(?:router|app|server|route)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*["'`]([^"'`]+)["'`]/gi;
+    let m;
+    while ((m = jsRouteRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const nestRe = /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/gi;
+    while ((m = nestRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const nestNoPathRe = /@(Get|Post|Put|Patch|Delete)\s*\(\s*\)/gi;
+    while ((m = nestNoPathRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: "/", filePath });
+    }
+  }
+  if (ext2 === ".cs") {
+    const classRouteMatch = content.match(/\[Route\(\s*"([^"]+)"\s*\)\]/);
+    let routePrefix = classRouteMatch?.[1] ?? "";
+    const classNameMatch = content.match(/class\s+(\w+?)(?:Controller)\b/);
+    if (classNameMatch) {
+      routePrefix = routePrefix.replace(/\[controller\]/gi, classNameMatch[1].toLowerCase());
+    }
+    if (routePrefix && !routePrefix.startsWith("/")) routePrefix = "/" + routePrefix;
+    const csMethodRe = /\[(Http(Get|Post|Put|Patch|Delete|Head|Options))(?:\(\s*"([^"]*)")?\s*\)?\]/gi;
+    let m;
+    while ((m = csMethodRe.exec(content)) !== null) {
+      const method = m[2].toUpperCase();
+      const subPath = m[3] ?? "";
+      let fullPath = routePrefix;
+      if (subPath) {
+        fullPath = fullPath ? `${fullPath}/${subPath}` : `/${subPath}`;
+      }
+      if (!fullPath) fullPath = "/";
+      fullPath = fullPath.replace(/\{(\w+)(?::[^}]*)?\}/g, ":$1");
+      endpoints.push({ method, path: fullPath, filePath });
+    }
+  }
+  if (ext2 === ".java" || ext2 === ".kt") {
+    const springRe = /@(Get|Post|Put|Patch|Delete)Mapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/gi;
+    let m;
+    while ((m = springRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const reqMapRe = /@RequestMapping\s*\([^)]*value\s*=\s*"([^"]+)"[^)]*method\s*=\s*RequestMethod\.(\w+)/gi;
+    while ((m = reqMapRe.exec(content)) !== null) {
+      endpoints.push({ method: m[2].toUpperCase(), path: m[1], filePath });
+    }
+  }
+  if (ext2 === ".py") {
+    const flaskRe = /@\w+\.route\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?\s*\)/gi;
+    let m;
+    while ((m = flaskRe.exec(content)) !== null) {
+      const path2 = m[1];
+      const methods = m[2] ? m[2].replace(/["'\s]/g, "").split(",") : ["GET"];
+      for (const method of methods) {
+        endpoints.push({ method: method.toUpperCase(), path: path2, filePath });
+      }
+    }
+    const fastapiRe = /@\w+\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi;
+    while ((m = fastapiRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const djangoRe = /path\(\s*["']([^"']+)["']/gi;
+    while ((m = djangoRe.exec(content)) !== null) {
+      endpoints.push({ method: "GET", path: m[1].startsWith("/") ? m[1] : "/" + m[1], filePath });
+    }
+  }
+  if (ext2 === ".go") {
+    const goRe = /\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*"([^"]+)"/gi;
+    let m;
+    while ((m = goRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const handleRe = /HandleFunc\(\s*"([^"]+)"/gi;
+    while ((m = handleRe.exec(content)) !== null) {
+      endpoints.push({ method: "GET", path: m[1], filePath });
+    }
+  }
+  if (ext2 === ".php") {
+    const phpRe = /Route::(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi;
+    let m;
+    while ((m = phpRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+  }
+  if (ext2 === ".rb") {
+    const railsRe = /\b(get|post|put|patch|delete)\s+["']([^"']+)["']/gi;
+    let m;
+    while ((m = railsRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+  }
+  return endpoints;
+}
+function extractParamsFromCode(content, endpoint) {
+  const ext2 = extname(endpoint.filePath).toLowerCase();
+  if (ext2 === ".cs") {
+    const queryParams = [];
+    const fromQueryRe = /\[FromQuery(?:\(Name\s*=\s*"(\w+)")?\)?\]\s*\w+\s+(\w+)/g;
+    let m;
+    while ((m = fromQueryRe.exec(content)) !== null) {
+      const name = m[1] ?? m[2];
+      queryParams.push({ name, value: "test" });
+    }
+    return queryParams.length > 0 ? { queryParams } : null;
+  }
+  if (ext2 === ".ts" || ext2 === ".js") {
+    const queryParams = [];
+    const queryRe = /req\.query\.(\w+)|req\.query\["(\w+)"\]/g;
+    let m;
+    while ((m = queryRe.exec(content)) !== null) {
+      const name = m[1] ?? m[2];
+      queryParams.push({ name, value: "test" });
+    }
+    return queryParams.length > 0 ? { queryParams } : null;
+  }
+  return null;
+}
+function extractSnippet(content, anchor, contextLines = 30) {
+  const lines = content.split("\n");
+  const regions = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(anchor)) {
+      const start = Math.max(0, i - 5);
+      const end = Math.min(lines.length - 1, i + contextLines);
+      regions.push([start, end]);
+    }
+  }
+  if (regions.length === 0) {
+    const end = Math.min(lines.length - 1, contextLines * 2);
+    regions.push([0, end]);
+  }
+  const merged = [];
+  for (const [s, e] of regions.sort((a, b) => a[0] - b[0])) {
+    const last = merged[merged.length - 1];
+    if (last && s <= last[1] + 1) {
+      last[1] = Math.max(last[1], e);
+    } else {
+      merged.push([s, e]);
+    }
+  }
+  const parts = [];
+  for (const [s, e] of merged) {
+    if (parts.length > 0) parts.push("...");
+    for (let i = s; i <= e; i++) {
+      parts.push(`${i + 1}: ${lines[i]}`);
+    }
+  }
+  return parts.join("\n");
+}
+var bodyExtractionTools = [
+  {
+    type: "function",
+    function: {
+      name: "read_lines",
+      description: "Read specific line range from a file. Use this to inspect DTO/model classes, request schemas, or other referenced types.",
+      parameters: {
+        type: "object",
+        properties: {
+          file: { type: "string", description: "Relative file path" },
+          start_line: { type: "number", description: "Start line number (1-based)" },
+          end_line: { type: "number", description: "End line number (1-based, inclusive)" }
+        },
+        required: ["file", "start_line", "end_line"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_type",
+      description: "Search for a class, interface, struct, or type definition by name across the codebase. Returns a snippet of the definition.",
+      parameters: {
+        type: "object",
+        properties: {
+          type_name: { type: "string", description: "The class/interface/struct name to find" }
+        },
+        required: ["type_name"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "grep_code",
+      description: "Search for a text pattern across source files using grep. Returns matching lines with file paths and line numbers. Use to find where a DTO is used, how a field is set, or locate related code.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search string (fixed text)" },
+          glob: { type: "string", description: 'Optional glob to restrict search (e.g. "*.cs", "*.ts")' }
+        },
+        required: ["query"]
+      }
+    }
+  }
+];
+function createBodyExtractionToolHandler(repoPath) {
+  return async (name, args) => {
+    if (name === "read_lines") {
+      const file = String(args.file ?? "");
+      const startLine = Number(args.start_line ?? 1);
+      const endLine = Number(args.end_line ?? startLine + 50);
+      try {
+        const fullPath = resolve(repoPath, file);
+        const content = readFileSync(fullPath, "utf-8");
+        const lines = content.split("\n");
+        const s = Math.max(0, startLine - 1);
+        const e = Math.min(lines.length, endLine);
+        return lines.slice(s, e).map((l, i) => `${s + i + 1}: ${l}`).join("\n");
+      } catch {
+        return `Error: could not read ${file}`;
+      }
+    }
+    if (name === "find_type") {
+      const typeName = String(args.type_name ?? "");
+      if (!typeName) return "Error: type_name is required";
+      const exts = ["cs", "ts", "js", "java", "kt", "py"];
+      const pattern = `**/*.{${exts.join(",")}}`;
+      const files = await glob(pattern, {
+        cwd: repoPath,
+        nodir: true,
+        ignore: ["**/node_modules/**", "**/vendor/**", "**/bin/**", "**/obj/**"]
+      });
+      const typeRe = new RegExp(`\\b(?:class|interface|struct|type|record|enum)\\s+${typeName}\\b`);
+      for (const f of files) {
+        try {
+          const content = readFileSync(resolve(repoPath, f), "utf-8");
+          const match2 = typeRe.exec(content);
+          if (match2) {
+            const lines = content.split("\n");
+            const lineIdx = content.substring(0, match2.index).split("\n").length - 1;
+            const start = Math.max(0, lineIdx - 2);
+            const end = Math.min(lines.length, lineIdx + 40);
+            const snippet = lines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join("\n");
+            return `Found in ${f}:
+${snippet}`;
+          }
+        } catch {
+        }
+      }
+      return `Type "${typeName}" not found in codebase`;
+    }
+    if (name === "grep_code") {
+      const query = String(args.query ?? "");
+      if (!query) return "Error: query is required";
+      const fileGlob = args.glob ? String(args.glob) : void 0;
+      try {
+        const grepArgs = [
+          "-rn",
+          "--binary-files=without-match",
+          "--include",
+          fileGlob ?? "*",
+          "--exclude-dir=node_modules",
+          "--exclude-dir=.git",
+          "--exclude-dir=dist",
+          "--exclude-dir=bin",
+          "--exclude-dir=obj",
+          "--exclude-dir=vendor",
+          "-F",
+          query,
+          "."
+        ];
+        const output = execFileSync2("grep", grepArgs, {
+          cwd: repoPath,
+          encoding: "utf-8",
+          maxBuffer: 512 * 1024,
+          timeout: 1e4
+        });
+        const lines = output.trim().split("\n");
+        if (lines.length > 30) {
+          return lines.slice(0, 30).join("\n") + `
+... (${lines.length} matches total)`;
+        }
+        return lines.join("\n");
+      } catch {
+        return "No matches found.";
+      }
+    }
+    return `Unknown tool: ${name}`;
+  };
+}
+async function discoverEndpoints(llm, repoPath, techStack, model) {
+  const controllerFiles = await findControllerFiles(repoPath);
+  console.log(`[Analyze] Found ${controllerFiles.length} controller files via glob`);
+  if (controllerFiles.length === 0) {
+    return [];
+  }
+  const allEndpoints = [];
+  for (const filePath of controllerFiles) {
+    const fullPath = resolve(repoPath, filePath);
+    let content;
+    try {
+      content = readFileSync(fullPath, "utf-8");
+    } catch {
+      continue;
+    }
+    const eps = extractEndpointsFromFile(content, filePath);
+    allEndpoints.push(...eps);
+  }
+  const validMethods = /* @__PURE__ */ new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+  const seen = /* @__PURE__ */ new Set();
+  const unique = allEndpoints.filter((ep) => {
+    const method = ep.method?.toUpperCase();
+    if (!method || !validMethods.has(method) || !ep.path || ep.path === "unknown") return false;
+    const key = `${method} ${ep.path}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  console.log(`[Analyze] Extracted ${unique.length} unique endpoints via regex`);
+  const enriched = [];
+  const needsLlm = [];
+  for (const ep of unique) {
+    const fullPath = resolve(repoPath, ep.filePath);
+    let content;
+    try {
+      content = readFileSync(fullPath, "utf-8");
+    } catch {
+      enriched.push(ep);
+      continue;
+    }
+    const params = extractParamsFromCode(content, ep);
+    if (params?.queryParams) {
+      ep.queryParams = params.queryParams;
+    }
+    if (ep.method.toUpperCase() === "DELETE") {
+      enriched.push(ep);
+      continue;
+    }
+    const needsBody = ["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase());
+    const hasPathParams = /[:{}]/.test(ep.path);
+    if (needsBody || hasPathParams) {
+      needsLlm.push(ep);
+    } else {
+      enriched.push(ep);
+    }
+  }
+  if (needsLlm.length > 0) {
+    console.log(`[Analyze] Using LLM for param extraction on ${needsLlm.length} endpoints (body + path params)`);
+  }
+  const handleTool = createBodyExtractionToolHandler(repoPath);
+  for (let idx = 0; idx < needsLlm.length; idx++) {
+    const ep = needsLlm[idx];
+    console.log(`[Analyze] Param extraction [${idx + 1}/${needsLlm.length}]: ${ep.method} ${ep.path} (${ep.filePath})`);
+    const fullPath = resolve(repoPath, ep.filePath);
+    let content;
+    try {
+      content = readFileSync(fullPath, "utf-8");
+    } catch {
+      enriched.push(ep);
+      continue;
+    }
+    const anchor = ep.path.replace(/^\//, "").split("/")[0] || ep.method;
+    const snippet = extractSnippet(content, anchor);
+    const totalLines = content.split("\n").length;
+    const needsBody = ["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase());
+    const hasPathParams = /[:{}]/.test(ep.path);
+    const messages = [
+      {
+        role: "system",
+        content: `You are an API analyst. Given a code snippet for a ${ep.method} endpoint, determine the parameters with realistic sample values.
+
+You have tools to inspect more code:
+- read_lines: read specific line ranges from any file
+- find_type: search for a class/interface/DTO definition by name
+
+Use these tools to look up referenced DTOs, request models, or schemas. Return your final answer as JSON:
+{"body": "<json string or empty>", "contentType": "application/json or empty", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}`
+      },
+      {
+        role: "user",
+        content: `Endpoint: ${ep.method} ${ep.path}
+File: ${ep.filePath} (${totalLines} lines total)
+
+\`\`\`
+${snippet}
+\`\`\`
+
+${needsBody ? `This is a ${ep.method} endpoint \u2014 provide a realistic request body with field names and sample values. DO NOT return an empty body "{}".` : ""}
+${hasPathParams ? `This endpoint has path parameters. Provide realistic values for each path param (e.g. a GUID for :id, a slug for :name).` : ""}
+If you see a DTO/model type referenced, use find_type to look it up. Return JSON with body, contentType, queryParams, and pathParams.`
+      }
+    ];
+    try {
+      const response = await chatWithTools(llm, messages, bodyExtractionTools, handleTool, model, 5);
+      const parsed = JSON.parse(extractJson(response));
+      let resolvedPath = ep.path;
+      if (parsed.pathParams && typeof parsed.pathParams === "object") {
+        for (const [param, value] of Object.entries(parsed.pathParams)) {
+          resolvedPath = resolvedPath.replace(`:${param}`, String(value)).replace(`{${param}}`, String(value));
+        }
+      }
+      enriched.push({
+        ...ep,
+        path: resolvedPath,
+        queryParams: parsed.queryParams?.length > 0 ? parsed.queryParams : ep.queryParams,
+        body: parsed.body || void 0,
+        contentType: parsed.contentType || void 0
+      });
+    } catch (err) {
+      console.warn(`[Analyze] Failed to identify params for ${ep.method} ${ep.path}: ${err}`);
+      enriched.push(ep);
+    }
+  }
+  return enriched;
+}
+
+// src/phases/startup.ts
+import { spawn, execSync, execFileSync as execFileSync4 } from "child_process";
+import { createInterface } from "readline";
+import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync } from "fs";
+
 // src/tools.ts
-import { readFileSync, existsSync as existsSync2 } from "fs";
-import { resolve } from "path";
-import { execFileSync as execFileSync2 } from "child_process";
+import { readFileSync as readFileSync2, existsSync as existsSync3 } from "fs";
+import { resolve as resolve2 } from "path";
+import { execFileSync as execFileSync3 } from "child_process";
 var codebaseTools = [
   {
     type: "function",
@@ -33574,14 +34267,14 @@ function createToolHandler(repoPath) {
   return async (name, args) => {
     switch (name) {
       case "read_file": {
-        const filePath = resolve(repoPath, String(args.path ?? ""));
+        const filePath = resolve2(repoPath, String(args.path ?? ""));
         if (!filePath.startsWith(repoPath)) {
           return "Error: path traversal attempt blocked";
         }
-        if (!existsSync2(filePath)) {
+        if (!existsSync3(filePath)) {
           return `Error: file not found: ${args.path}`;
         }
-        const content = readFileSync(filePath, "utf-8");
+        const content = readFileSync2(filePath, "utf-8");
         if (content.length > 1e5) {
           return content.slice(0, 1e5) + "\n... [truncated]";
         }
@@ -33627,7 +34320,7 @@ function createToolHandler(repoPath) {
             query,
             "."
           ];
-          const output = execFileSync2("grep", grepArgs, {
+          const output = execFileSync3("grep", grepArgs, {
             cwd: repoPath,
             encoding: "utf-8",
             maxBuffer: 1024 * 1024,
@@ -33663,293 +34356,6 @@ function createMcpToolHandler(bright) {
     return bright.callMcpToolRaw(name, args);
   };
 }
-
-// src/prompts/detect-tech-stack.ts
-function detectTechStackPrompt(repoFiles) {
-  return [
-    {
-      role: "system",
-      content: `You are a software architecture analyst. Analyze a repository's file structure and configuration files to identify the technology stack. You have tools to read files and list directories. Use them to inspect configuration files (package.json, go.mod, requirements.txt, Gemfile, pom.xml, Cargo.toml, Dockerfile, docker-compose.yml, etc.) to determine:
-
-1. Programming languages used (from file extensions and config)
-2. Backend web frameworks (Express, Fastify, Django, Flask, Rails, Spring, Gin, etc.)
-3. Databases used (from config, dependencies, or ORM models)
-
-Return your analysis as a JSON object.`
-    },
-    {
-      role: "user",
-      content: `Analyze this repository to identify the technology stack.
-
-Here is the top-level file listing:
-${repoFiles}
-
-Use the read_file and list_files tools to inspect configuration and dependency files.
-Return a JSON object with this exact format:
-{
-  "languages": ["language1", "language2"],
-  "frameworks": ["framework1"],
-  "databases": ["database1"]
-}`
-    }
-  ];
-}
-
-// src/prompts/discover-endpoints.ts
-function findControllerFilesPrompt(techStack) {
-  return [
-    {
-      role: "system",
-      content: `You are a backend code analyst. Given a repository with the tech stack: ${techStack}, identify all files that define HTTP endpoints (routes, controllers, handlers). Use the list_files and read_file tools to explore the codebase.
-
-Look for:
-- Route definition files (Express router files, Django urls.py, Rails routes.rb, Spring @RestController, Gin router setup, etc.)
-- Controller/handler files that contain HTTP method decorators or route registrations
-- API definition files
-
-Return a JSON array of file paths.`
-    },
-    {
-      role: "user",
-      content: `Find all files that define HTTP endpoints in this repository. Use list_files to explore the directory structure, then read_file to confirm files contain route definitions.
-
-Return a JSON array of relative file paths:
-["src/routes/users.ts", "src/routes/auth.ts"]`
-    }
-  ];
-}
-function discoverEndpointsPrompt(techStack, fileContent, filePath) {
-  return [
-    {
-      role: "system",
-      content: `You are an HTTP endpoint analyst for a ${techStack} application. Given a source file, extract all HTTP endpoints defined in it.`
-    },
-    {
-      role: "user",
-      content: `Analyze this file and extract all HTTP endpoints.
-
-File: ${filePath}
-\`\`\`
-${fileContent}
-\`\`\`
-
-For each endpoint, provide:
-- method: HTTP method (GET, POST, PUT, DELETE, PATCH, etc.)
-- path: URL path (e.g. /api/users/:id)
-- filePath: the source file path
-
-Return a JSON array:
-[{ "method": "GET", "path": "/api/users", "filePath": "${filePath}" }]`
-    }
-  ];
-}
-function identifyParametersPrompt(techStack, endpoint, fileContent) {
-  const needsBody = ["POST", "PUT", "PATCH"].includes(endpoint.method.toUpperCase());
-  return [
-    {
-      role: "system",
-      content: `You are an API analyst for a ${techStack} application. Given an endpoint and its source code, identify all parameters it accepts and generate realistic sample values.
-
-CRITICAL: For POST/PUT/PATCH endpoints, you MUST provide a realistic non-empty request body based on the DTO/schema/validation decorators in the code. Look for:
-- Class-validator decorators (@IsString, @IsEmail, etc.)
-- TypeScript interfaces or types used as @Body() parameter
-- Swagger/OpenAPI decorators (@ApiBody, @ApiProperty)
-- Mongoose/TypeORM/Prisma schemas referenced by the handler
-- Direct property access on req.body`
-    },
-    {
-      role: "user",
-      content: `Analyze this endpoint and identify ALL its parameters with realistic sample values:
-
-Endpoint: ${endpoint.method} ${endpoint.path}
-File: ${endpoint.filePath}
-
-\`\`\`
-${fileContent}
-\`\`\`
-
-${needsBody ? `This is a ${endpoint.method} endpoint \u2014 you MUST provide a realistic body with actual field names and sample values based on the code. DO NOT return an empty body "{}".` : "This endpoint likely does not use a request body. Set body to null."}
-
-Return a JSON object with:
-- body: ${needsBody ? "A JSON string with realistic sample data based on the code (e.g. a login endpoint should have email and password fields)" : "An empty string if no body"}
-- contentType: "application/json" for JSON APIs, or appropriate content type, or empty string
-- hasQueryParams: true if the endpoint accepts query parameters, false otherwise
-- queryParamsList: array of {name, value} objects for query parameters, or empty array`
-    }
-  ];
-}
-var endpointsSchema = {
-  type: "object",
-  properties: {
-    endpoints: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          method: { type: "string" },
-          path: { type: "string" },
-          filePath: { type: "string" }
-        },
-        required: ["method", "path", "filePath"],
-        additionalProperties: false
-      }
-    }
-  },
-  required: ["endpoints"],
-  additionalProperties: false
-};
-var endpointParamsSchema = {
-  type: "object",
-  properties: {
-    body: { type: "string", description: "JSON request body string, or empty string if no body" },
-    contentType: { type: "string", description: "Content type, or empty string if none" },
-    hasQueryParams: { type: "boolean" },
-    queryParamsList: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          value: { type: "string" }
-        },
-        required: ["name", "value"],
-        additionalProperties: false
-      }
-    }
-  },
-  required: ["body", "contentType", "hasQueryParams", "queryParamsList"],
-  additionalProperties: false
-};
-
-// src/phases/analyze.ts
-async function detectTechStack(llm, repoPath, model) {
-  const topFiles = await glob("*", { cwd: repoPath, nodir: false });
-  const listing = topFiles.join("\n");
-  const messages = detectTechStackPrompt(listing);
-  const handleTool = createToolHandler(repoPath);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
-  try {
-    const parsed = JSON.parse(extractJson(response));
-    return {
-      languages: parsed.languages ?? [],
-      frameworks: parsed.frameworks ?? [],
-      databases: parsed.databases ?? []
-    };
-  } catch {
-    return { languages: [], frameworks: [], databases: [] };
-  }
-}
-async function discoverEndpoints(llm, repoPath, techStack, model) {
-  const stackStr = formatTechStack(techStack);
-  const handleTool = createToolHandler(repoPath);
-  const controllerMessages = findControllerFilesPrompt(stackStr);
-  const controllerResponse = await chatWithTools(
-    llm,
-    controllerMessages,
-    codebaseTools,
-    handleTool,
-    model
-  );
-  let controllerFiles;
-  try {
-    const parsed = JSON.parse(extractJson(controllerResponse));
-    controllerFiles = Array.isArray(parsed) ? parsed : parsed.files ?? [];
-  } catch {
-    controllerFiles = [];
-  }
-  if (controllerFiles.length === 0) {
-    console.log("[Analyze] LLM did not return controller files, falling back to glob patterns");
-    const patterns = [
-      "src/**/*.controller.{ts,js}",
-      "src/**/routes.{ts,js}",
-      "src/**/router.{ts,js}",
-      "src/**/*.routes.{ts,js}",
-      "app/controllers/**/*.{ts,js,rb}",
-      "controllers/**/*.{ts,js}",
-      "routes/**/*.{ts,js}",
-      "api/**/*.{ts,js}"
-    ];
-    for (const pattern of patterns) {
-      const files = await glob(pattern, { cwd: repoPath, nodir: true });
-      for (const f of files) {
-        if (!controllerFiles.includes(f)) {
-          controllerFiles.push(f);
-        }
-      }
-    }
-    console.log(`[Analyze] Glob fallback found ${controllerFiles.length} controller files`);
-  }
-  if (controllerFiles.length === 0) {
-    return [];
-  }
-  const allEndpoints = [];
-  for (const filePath of controllerFiles) {
-    const fullPath = resolve2(repoPath, filePath);
-    let content;
-    try {
-      content = readFileSync2(fullPath, "utf-8");
-    } catch {
-      continue;
-    }
-    const messages = discoverEndpointsPrompt(stackStr, content, filePath);
-    const response = await chatWithSchema(
-      llm,
-      messages,
-      "endpoints",
-      endpointsSchema,
-      model
-    );
-    for (const ep of response.endpoints) {
-      allEndpoints.push({ ...ep, filePath: ep.filePath || filePath });
-    }
-  }
-  const validMethods = /* @__PURE__ */ new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
-  const seen = /* @__PURE__ */ new Set();
-  const unique = allEndpoints.filter((ep) => {
-    const method = ep.method?.toUpperCase();
-    if (!method || !validMethods.has(method) || !ep.path || ep.path === "unknown") return false;
-    const key = `${method} ${ep.path}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  const enriched = [];
-  for (const ep of unique) {
-    const fullPath = resolve2(repoPath, ep.filePath);
-    let content;
-    try {
-      content = readFileSync2(fullPath, "utf-8");
-    } catch {
-      enriched.push(ep);
-      continue;
-    }
-    const messages = identifyParametersPrompt(stackStr, ep, content);
-    try {
-      const params = await chatWithSchema(
-        llm,
-        messages,
-        "endpoint_params",
-        endpointParamsSchema,
-        model
-      );
-      enriched.push({
-        ...ep,
-        queryParams: params.hasQueryParams && params.queryParamsList.length > 0 ? params.queryParamsList : void 0,
-        body: params.body || void 0,
-        contentType: params.contentType || void 0
-      });
-    } catch (err) {
-      console.warn(`[Analyze] Failed to identify params for ${ep.method} ${ep.path}: ${err}`);
-      enriched.push(ep);
-    }
-  }
-  return enriched;
-}
-
-// src/phases/startup.ts
-import { spawn, execSync, execFileSync as execFileSync3 } from "child_process";
-import { createInterface } from "readline";
-import { existsSync as existsSync3, readFileSync as readFileSync3, writeFileSync } from "fs";
 
 // src/prompts/identify-startup.ts
 function identifyStartupPrompt(techStack) {
@@ -34102,6 +34508,39 @@ Return a JSON object with the new approach:
   ];
 }
 
+// src/prompts/generate-dockerfile.ts
+function generateDockerfilePrompt(techStack) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. Generate a Dockerfile for a ${techStack} project so it can be built and run in a Docker container.
+
+You have tools to read files and list directories. Use them to inspect the project's dependency and configuration files (package.json, requirements.txt, .csproj, go.mod, Gemfile, pom.xml, Cargo.toml, etc.) to determine:
+1. The language runtime and version needed
+2. How dependencies are installed
+3. Any build steps required (compilation, transpilation, etc.)
+4. The application entry point / start command
+5. The port the application listens on (check config files, source code, and README)
+
+Generate a Dockerfile that:
+- Uses an appropriate official base image with a specific version tag
+- Sets a WORKDIR
+- Copies dependency manifests first and installs dependencies (for layer caching)
+- Copies the rest of the source code
+- Runs any necessary build steps
+- EXPOSEs the correct port
+- Sets CMD to start the application
+- For compiled languages (Go, Java, C#, Rust), use a multi-stage build to keep the final image small
+
+Return ONLY the Dockerfile content inside a single fenced code block. No explanation outside the code block.`
+    },
+    {
+      role: "user",
+      content: `Analyze this project and generate a Dockerfile for it. Use the tools to inspect the project's files and determine the right configuration.`
+    }
+  ];
+}
+
 // src/phases/startup.ts
 var MAX_STARTUP_ATTEMPTS = 5;
 function canBuildFromSource(repoPath) {
@@ -34118,13 +34557,24 @@ function canBuildFromSource(repoPath) {
     "Makefile",
     "pom.xml",
     "build.gradle",
+    "build.gradle.kts",
     "Cargo.toml",
     "go.mod",
     "Gemfile",
     "requirements.txt",
-    "pyproject.toml"
+    "pyproject.toml",
+    "setup.py",
+    "CMakeLists.txt",
+    "meson.build"
   ];
-  return buildIndicators.some((f) => existsSync3(`${repoPath}/${f}`));
+  if (buildIndicators.some((f) => existsSync4(`${repoPath}/${f}`))) return true;
+  try {
+    const entries = execSync("ls -1", { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }).split("\n");
+    const globPatterns = [/\.sln$/i, /\.csproj$/i, /\.fsproj$/i, /\.vbproj$/i, /\.cabal$/i, /\.pro$/i];
+    if (entries.some((e) => globPatterns.some((p) => p.test(e.trim())))) return true;
+  } catch {
+  }
+  return false;
 }
 async function startApplicationWithRetries(llm, repoPath, techStack, previousStartup, modelSelector) {
   cleanupDocker(repoPath);
@@ -34161,6 +34611,17 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
             console.log(`[Startup] LLM suggested pre-built image \u2014 overriding with source build`);
             config2 = fromSource;
           }
+        }
+      }
+    }
+    if (config2.docker && !existsSync4(`${repoPath}/Dockerfile`)) {
+      console.log("[Startup] No Dockerfile found \u2014 generating one for this project");
+      await generateDockerfile(llm, repoPath, stackStr, handleTool, modelSelector?.current());
+      if (usesPrebuiltImage(config2.command)) {
+        const fromSource = buildFromSourceConfig(repoPath, config2) ?? buildDockerfileOnlyConfig(repoPath, config2);
+        if (fromSource) {
+          console.log("[Startup] Switching to source build with generated Dockerfile");
+          config2 = fromSource;
         }
       }
     }
@@ -34226,17 +34687,59 @@ function findMissingEnvFiles(repoPath, composeFile) {
     const missing = [];
     for (const m of content.matchAll(/env_file:\s+(?!-)(\S+)/g)) {
       const file = m[1].replace(/["']/g, "");
-      if (file && !existsSync3(`${repoPath}/${file}`)) missing.push(file);
+      if (file && !existsSync4(`${repoPath}/${file}`)) missing.push(file);
     }
     for (const m of content.matchAll(/env_file:\s*\n((?:\s+-\s+\S+\n?)+)/g)) {
       for (const item of m[1].matchAll(/^\s+-\s+(\S+)/gm)) {
         const file = item[1].replace(/["']/g, "");
-        if (file && !existsSync3(`${repoPath}/${file}`)) missing.push(file);
+        if (file && !existsSync4(`${repoPath}/${file}`)) missing.push(file);
       }
     }
     return [...new Set(missing)];
   } catch {
     return [];
+  }
+}
+function sanitizeComposeTemplateVars(repoPath, config2) {
+  const filesToCheck = /* @__PURE__ */ new Set();
+  for (const m of config2.command.matchAll(/-f\s+(\S+)/g)) {
+    filesToCheck.add(m[1]);
+  }
+  const cdMatch = config2.command.match(/cd\s+(\S+)\s*&&/);
+  const dirs = [""];
+  if (cdMatch) dirs.push(cdMatch[1]);
+  const defaultNames = [
+    "docker-compose.yml",
+    "compose.yml",
+    "docker-compose.local.yml",
+    "compose.local.yml",
+    "docker-compose.dev.yml",
+    "compose.dev.yml",
+    "docker-compose.override.yml",
+    "compose.override.yml"
+  ];
+  for (const dir of dirs) {
+    for (const name of defaultNames) {
+      filesToCheck.add(dir ? `${dir}/${name}` : name);
+    }
+  }
+  for (const cf of filesToCheck) {
+    const filePath = cf.startsWith("/") ? cf : `${repoPath}/${cf}`;
+    if (!existsSync4(filePath)) continue;
+    let content;
+    try {
+      content = readFileSync3(filePath, "utf8");
+    } catch {
+      continue;
+    }
+    const sanitized = content.replace(
+      /\$\{TEMPLATE_\w*PORT\w*\}|(?<!\$)\bTEMPLATE_\w*PORT\w*\b|\$TEMPLATE_\w*PORT\w*/g,
+      String(config2.port)
+    );
+    if (sanitized !== content) {
+      writeFileSync(filePath, sanitized);
+      console.log(`[Startup] Replaced template port placeholder(s) in ${cf} with ${config2.port}`);
+    }
   }
 }
 function populateMissingEnvFile(repoPath, composeFile, envFile) {
@@ -34288,7 +34791,7 @@ function populateMissingEnvFile(repoPath, composeFile, envFile) {
   writeFileSync(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
 }
 function buildFromSourceConfig(repoPath, previousConfig) {
-  const hasDockerfile = existsSync3(`${repoPath}/Dockerfile`);
+  const hasDockerfile = existsSync4(`${repoPath}/Dockerfile`);
   if (!hasDockerfile) return null;
   const port = previousConfig.port;
   const imageName = "bright-app-local";
@@ -34301,7 +34804,7 @@ function buildFromSourceConfig(repoPath, previousConfig) {
     "compose.dev.yml"
   ];
   for (const cf of composeFiles) {
-    if (existsSync3(`${repoPath}/${cf}`)) {
+    if (existsSync4(`${repoPath}/${cf}`)) {
       const missingEnvFiles = findMissingEnvFiles(repoPath, cf);
       for (const envFile of missingEnvFiles) {
         populateMissingEnvFile(repoPath, cf, envFile);
@@ -34324,7 +34827,7 @@ function buildFromSourceConfig(repoPath, previousConfig) {
   };
 }
 function buildDockerfileOnlyConfig(repoPath, previousConfig) {
-  if (!existsSync3(`${repoPath}/Dockerfile`)) return null;
+  if (!existsSync4(`${repoPath}/Dockerfile`)) return null;
   const port = previousConfig.port;
   const imageName = "bright-app-local";
   return {
@@ -34334,6 +34837,26 @@ function buildDockerfileOnlyConfig(repoPath, previousConfig) {
     envVars: previousConfig.envVars ?? {},
     docker: true
   };
+}
+async function generateDockerfile(llm, repoPath, stackStr, handleTool, model) {
+  const messages = generateDockerfilePrompt(stackStr);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
+  const content = extractCodeBlock(response);
+  if (!content) {
+    throw new Error("Failed to generate a valid Dockerfile \u2014 LLM did not return a code block");
+  }
+  writeFileSync(`${repoPath}/Dockerfile`, content);
+  console.log(`[Startup] Generated Dockerfile (${content.split("\n").length} lines)`);
+}
+function extractCodeBlock(text) {
+  const match2 = text.match(/```(?:dockerfile|docker|Dockerfile)?\s*\n([\s\S]*?)```/i);
+  if (match2) return match2[1].trimEnd() + "\n";
+  const lines = text.split("\n");
+  const dockerLines = lines.filter(
+    (l) => /^(FROM|RUN|COPY|ADD|WORKDIR|EXPOSE|CMD|ENTRYPOINT|ENV|ARG|LABEL|VOLUME|USER|HEALTHCHECK|SHELL|STOPSIGNAL|ONBUILD)\s/i.test(l.trim()) || l.trim() === "" || l.trim().startsWith("#")
+  );
+  if (dockerLines.length >= 3) return dockerLines.join("\n") + "\n";
+  return null;
 }
 async function retryStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig, errorOutput, attempt, model) {
   const messages = retryStartupPrompt(
@@ -34352,11 +34875,16 @@ function parseStartupConfig(response) {
     const prerequisites = (parsed.prerequisites ?? []).filter(
       (cmd) => typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd)
     );
+    const envVars = parsed.envVars ?? {};
+    let command = parsed.command ?? "npm start";
+    const extracted = extractInlineEnvVars(command);
+    command = extracted.command;
+    Object.assign(envVars, extracted.envVars);
     return {
-      command: parsed.command ?? "npm start",
+      command,
       port: parsed.port ?? 3e3,
       prerequisites,
-      envVars: parsed.envVars ?? {},
+      envVars,
       docker: parsed.docker ?? false
     };
   } catch {
@@ -34367,6 +34895,33 @@ function parseStartupConfig(response) {
       envVars: { NODE_ENV: "development" },
       docker: false
     };
+  }
+}
+function extractInlineEnvVars(command) {
+  const envVars = {};
+  let rest = command;
+  while (true) {
+    const match2 = rest.match(/^(\w+)=((?:"[^"]*"|'[^']*'|\S)+)\s+(.*)/s);
+    if (!match2) break;
+    const key = match2[1];
+    if (/^[a-z]/.test(key) && !/[A-Z_]/.test(key)) break;
+    envVars[key] = match2[2].replace(/^["']|["']$/g, "");
+    rest = match2[3];
+  }
+  return { command: rest || command, envVars };
+}
+function unshallowIfNeeded(repoPath) {
+  const shallowFile = `${repoPath}/.git/shallow`;
+  if (!existsSync4(shallowFile)) return;
+  console.log("[Startup] Detected shallow clone \u2014 fetching full history for Docker build");
+  try {
+    execSync("git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true", {
+      cwd: repoPath,
+      stdio: "pipe",
+      timeout: 12e4
+    });
+  } catch {
+    console.warn("[Startup] Failed to unshallow git repo \u2014 build may fail if version tools require full history");
   }
 }
 function looksLikeCommand(s) {
@@ -34380,6 +34935,12 @@ function looksLikeCommand(s) {
   return true;
 }
 async function startApplication(repoPath, config2) {
+  if (config2.docker && /docker\s+compose/.test(config2.command)) {
+    sanitizeComposeTemplateVars(repoPath, config2);
+  }
+  if (config2.docker) {
+    unshallowIfNeeded(repoPath);
+  }
   for (const cmd of config2.prerequisites) {
     console.log(`[Startup] Running prerequisite: ${cmd}`);
     execSync(cmd, {
@@ -34394,15 +34955,13 @@ async function startApplication(repoPath, config2) {
   if (config2.docker && /docker\s+compose/.test(command) && command.includes("-d") && !command.includes("--wait")) {
     command = command.replace("-d", "-d --wait");
   }
-  const parts = command.split(/\s+/);
-  const bin = parts[0];
-  const args = parts.slice(1);
   console.log(`[Startup] Starting application: ${command} (port ${config2.port})`);
-  const child = spawn(bin, args, {
+  const child = spawn(command, [], {
     cwd: repoPath,
     env,
     stdio: ["ignore", "pipe", "pipe"],
-    detached: true
+    detached: true,
+    shell: true
   });
   const outputLines = [];
   if (child.stdout) {
@@ -34572,14 +35131,14 @@ function cleanupDocker(repoPath) {
 function captureDockerLogs(repoPath, tailLines = 80) {
   const logs = [];
   try {
-    const containers = execFileSync3(
+    const containers = execFileSync4(
       "docker",
       ["compose", "ps", "-a", "--format", "{{.Name}}"],
       { cwd: repoPath, encoding: "utf-8", timeout: 1e4 }
     ).trim().split("\n").filter(Boolean);
     for (const name of containers) {
       try {
-        const containerLog = execFileSync3(
+        const containerLog = execFileSync4(
           "docker",
           ["logs", "--tail", String(tailLines), name],
           { encoding: "utf-8", timeout: 1e4 }
@@ -34593,14 +35152,14 @@ ${containerLog.trim()}`);
     }
   } catch {
     try {
-      const allContainers = execFileSync3(
+      const allContainers = execFileSync4(
         "docker",
         ["ps", "-a", "--format", "{{.Names}}", "--filter", "name=nodejs"],
         { encoding: "utf-8", timeout: 1e4 }
       ).trim().split("\n").filter(Boolean);
       for (const name of allContainers) {
         try {
-          const containerLog = execFileSync3(
+          const containerLog = execFileSync4(
             "docker",
             ["logs", "--tail", String(tailLines), name],
             { encoding: "utf-8", timeout: 1e4 }
@@ -36509,8 +37068,8 @@ async function runOrchestrator(ctx) {
           } else {
             console.log(`[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`);
             try {
-              execFileSync4("git", ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`], { cwd: repoPath, stdio: "pipe" });
-              execFileSync4("git", ["push"], { cwd: repoPath, stdio: "pipe" });
+              execFileSync5("git", ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`], { cwd: repoPath, stdio: "pipe" });
+              execFileSync5("git", ["push"], { cwd: repoPath, stdio: "pipe" });
               const restart = await startApplicationWithRetries(llm, repoPath, techStack, startupConfig, config2.modelSelector);
               appProcess = restart.process;
               if (authResult.registration) await reRegisterUser(authResult.registration);
@@ -36764,16 +37323,16 @@ async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfi
   console.log(`[Fix] Bisecting ${commitCount} fix commits to find the breaker`);
   for (let i = 0; i < commitCount; i++) {
     try {
-      execFileSync4("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
-      execFileSync4("git", ["push"], { cwd: repoPath, stdio: "pipe" });
+      execFileSync5("git", ["revert", "--no-edit", "HEAD"], { cwd: repoPath, stdio: "pipe" });
+      execFileSync5("git", ["push"], { cwd: repoPath, stdio: "pipe" });
     } catch {
       try {
-        execFileSync4("git", ["revert", "--abort"], { cwd: repoPath, stdio: "pipe" });
+        execFileSync5("git", ["revert", "--abort"], { cwd: repoPath, stdio: "pipe" });
       } catch {
       }
       try {
-        execFileSync4("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
-        execFileSync4("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
+        execFileSync5("git", ["reset", "--hard", "HEAD~1"], { cwd: repoPath, stdio: "pipe" });
+        execFileSync5("git", ["push", "--force-with-lease"], { cwd: repoPath, stdio: "pipe" });
       } catch {
         return false;
       }
@@ -36908,9 +37467,9 @@ async function main() {
   console.log(`[Engine] Cloned to: ${repoPath}`);
   await platform.initPr(repoPath);
   const inferenceUrl = process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
-  const inferenceToken = process.env.OPENAI_API_KEY ?? process.env.GITHUB_INFERENCE_TOKEN ?? "";
-  const llm = createInferenceClient(inferenceUrl, inferenceToken);
-  await validateModelTiers(llm, config2.modelSelector);
+  const inferenceToken = process.env.OPENAI_API_KEY ?? process.env.GITHUB_INFERENCE_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
+  const llm = createInferenceClient(inferenceUrl, inferenceToken, config2.inferenceProvider);
+  await validateModelTiers(llm, config2.modelSelector, config2.inferenceProvider);
   const bright = await createBrightMcpClient(config2);
   console.log("[Engine] Connected to Bright MCP server");
   const ctx = {

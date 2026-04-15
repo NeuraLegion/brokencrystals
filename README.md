@@ -131,21 +131,78 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 
 ### Environment Variables
 
-```bash
-# GitHub Copilot Engine (required in CI/CD)
-export GITHUB_JOB_ID=<job-id>
-export GITHUB_PLATFORM_API_TOKEN=<api-token>
-export GITHUB_PLATFORM_API_URL=<api-url>
-export GITHUB_JOB_NONCE=<optional-nonce>
-export GITHUB_GIT_TOKEN=<git-token>
-export GITHUB_INFERENCE_URL=<inference-url>      # Optional
-export GITHUB_INFERENCE_TOKEN=<inference-token>  # Optional
+#### Bright (required)
 
-# Bright (required)
-export BRIGHT_TOKEN=<api-key-from-app.brightsec.com>
-export BRIGHT_MCP_URL=https://app.brightsec.com/mcp  # MCP server URL
-export BRIGHT_PROJECT_ID=<project-id>                # Optional, auto-detected if omitted
-export BRIGHT_HOSTNAME=app.brightsec.com              # Optional, derived from BRIGHT_MCP_URL
+| Variable | Required | Description |
+|---|---|---|
+| `BRIGHT_TOKEN` | **Yes** | API key from [app.brightsec.com](https://app.brightsec.com) |
+| `BRIGHT_MCP_URL` | No | MCP server URL (default: `https://app.brightsec.com/mcp`) |
+| `BRIGHT_PROJECT_ID` | No | Project ID. Auto-detected if omitted |
+| `BRIGHT_HOSTNAME` | No | API hostname. Derived from `BRIGHT_MCP_URL` if omitted |
+
+#### AI / Inference
+
+| Variable | Required | Description |
+|---|---|---|
+| `AI_MODEL` | No | Model name or comma-separated escalation chain. Single model stays fixed; multiple models auto-escalate on retry (e.g. `gpt-4.1-mini,gpt-4.1,o3`). Default: `gpt-5.4-mini` |
+| `GITHUB_INFERENCE_URL` | No | Inference API base URL. Supports OpenAI (`https://api.openai.com/v1`), GitHub Models (`https://models.github.ai/inference`), and Ollama (`http://localhost:11434`). Default: `https://api.openai.com/v1` |
+| `OPENAI_API_KEY` | Varies | API key for OpenAI. Takes priority over other token vars |
+| `GITHUB_INFERENCE_TOKEN` | Varies | Inference token for GitHub Models. Fallback after `OPENAI_API_KEY` |
+| `GITHUB_TOKEN` | Varies | GitHub PAT. Used for git operations and as inference token fallback. At least one of `OPENAI_API_KEY`, `GITHUB_INFERENCE_TOKEN`, or `GITHUB_TOKEN` must be set |
+| `INFERENCE_PROVIDER` | No | Force provider: `openai`, `github-models`, or `ollama`. Auto-detected from URL if omitted |
+
+#### GitHub / Git
+
+| Variable | Required | Description |
+|---|---|---|
+| `GITHUB_TOKEN` | **Yes** | GitHub PAT for cloning repos and creating PRs |
+| `GITHUB_GIT_TOKEN` | No | Dedicated git clone token. Falls back to `GIT_TOKEN` then `GITHUB_TOKEN` |
+| `GITHUB_REPOSITORY` | No | Target repository in `owner/repo` format. Falls back to `REPO` env var |
+| `GITHUB_SERVER_URL` | No | GitHub server URL (default: `https://github.com`) |
+| `GITHUB_BRANCH` | No | Branch name for fixes (default: `bright-scan-<timestamp>`) |
+| `GIT_AUTHOR_NAME` | No | Git commit author name (default: `BrightSec`) |
+| `GIT_AUTHOR_EMAIL` | No | Git commit author email (default: `bot@brightsec.com`) |
+
+#### Copilot Engine (CI/CD only — set automatically by engine-cli)
+
+| Variable | Required | Description |
+|---|---|---|
+| `GITHUB_JOB_ID` | No | Job ID from Copilot Engine platform |
+| `GITHUB_PLATFORM_API_TOKEN` | No | Platform API token |
+| `GITHUB_PLATFORM_API_URL` | No | Platform API URL |
+| `GITHUB_JOB_NONCE` | No | Optional job nonce |
+
+#### Standalone Mode
+
+| Variable | Required | Description |
+|---|---|---|
+| `PROBLEM_STATEMENT` | No | Problem description (default: `Run a security scan and fix vulnerabilities`) |
+| `ACTION` | No | Action to perform (default: `fix`) |
+
+#### Provider Examples
+
+**OpenAI (default):**
+```bash
+export OPENAI_API_KEY="sk-..."
+export AI_MODEL="gpt-4.1-mini"
+```
+
+**GitHub Models:**
+```bash
+export GITHUB_INFERENCE_URL="https://models.github.ai/inference"
+export GITHUB_TOKEN="ghp_..."
+export AI_MODEL="openai/gpt-4.1-mini"
+```
+
+**Ollama (local):**
+```bash
+export GITHUB_INFERENCE_URL="http://localhost:11434"
+export AI_MODEL="llama4:latest"
+```
+
+**Escalating models (auto-upgrade on failure):**
+```bash
+export AI_MODEL="gpt-4.1-mini,gpt-4.1,o3"
 ```
 
 ### System Requirements
@@ -186,18 +243,21 @@ node dist/index.js
 
 ### LLM-Driven Analysis
 
-The engine uses an LLM (OpenAI/Claude) with tool-calling to analyze the codebase:
+The engine minimizes LLM usage by doing as much as possible programmatically:
+
+- **Tech stack detection** — Fully deterministic: reads `package.json`, `.csproj`, `go.mod`, `Cargo.toml`, `composer.json`, etc.
+- **Controller discovery** — Glob patterns for all major frameworks (Express, ASP.NET, Spring, Flask, Rails, Gin, Laravel)
+- **Endpoint extraction** — Regex parsing of route decorators/registrations per language
+- **Query params** — Regex extraction from `[FromQuery]`, `req.query.*`, etc.
+- **Request body analysis** — **LLM-only** for POST/PUT/PATCH endpoints (receives a small code snippet, can request more via `read_lines` and `find_type` tools)
+- **Path param values** — **LLM-only** for endpoints with `:id`, `{slug}` etc.
 
 - **Tools provided to LLM**:
   - `read_file(path)` — Read file contents
   - `list_files(pattern)` — Glob pattern matching
   - `search_files(query)` — Text search via grep
-
-- **LLM makes decisions on**:
-  - What tech stack and frameworks are in use
-  - Where HTTP routes/controllers are defined
-  - How authentication works
-  - How to start the application
+  - `read_lines(file, start, end)` — Read specific line range
+  - `find_type(type_name)` — Search for class/interface/DTO definitions
   - Where vulnerabilities are introduced in code
   - How to patch vulnerable code
 
@@ -280,6 +340,7 @@ BRIGHT_TOKEN="your-bright-api-token" \
 BRIGHT_MCP_URL="https://app.brightsec.com/mcp" \
 GITHUB_INFERENCE_URL="https://api.openai.com/v1" \
 OPENAI_API_KEY="your-openai-key" \
+AI_MODEL="gpt-4.1-mini" \
 ./path/to/engine-cli run "node dist/index.js" \
   --repo https://github.com/owner/target-repo \
   --problem-statement "Run a security scan and fix vulnerabilities" \

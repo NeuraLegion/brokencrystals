@@ -4,11 +4,66 @@ import type {
   ChatCompletionTool,
 } from "openai/resources/chat/completions.mjs";
 
+// ---------------------------------------------------------------------------
+// Inference provider detection
+// ---------------------------------------------------------------------------
+
+export type InferenceProvider = "openai" | "github-models" | "ollama";
+
+/**
+ * Detect the inference provider from the base URL.
+ * Can be overridden via INFERENCE_PROVIDER env var.
+ */
+export function detectProvider(baseUrl: string): InferenceProvider {
+  const explicit = process.env.INFERENCE_PROVIDER?.toLowerCase();
+  if (explicit === "github-models" || explicit === "ollama" || explicit === "openai") {
+    return explicit;
+  }
+
+  const url = baseUrl.toLowerCase();
+  if (url.includes("models.github.ai") || url.includes("models.inference.ai.azure.com")) {
+    return "github-models";
+  }
+  if (url.includes("localhost:11434") || url.includes("127.0.0.1:11434") || url.includes("/ollama")) {
+    return "ollama";
+  }
+  return "openai";
+}
+
+/**
+ * Normalize the base URL for each provider so the OpenAI SDK sends requests
+ * to the correct path.
+ */
+function normalizeBaseUrl(baseUrl: string, provider: InferenceProvider): string {
+  if (provider === "ollama") {
+    // Ollama exposes OpenAI-compat at /v1 — ensure the suffix is present
+    const trimmed = baseUrl.replace(/\/+$/, "");
+    return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+  }
+  return baseUrl;
+}
+
 export function createInferenceClient(
   inferenceUrl: string,
   token: string,
+  provider?: InferenceProvider,
 ): OpenAI {
-  return new OpenAI({ baseURL: inferenceUrl, apiKey: token });
+  const resolved = provider ?? detectProvider(inferenceUrl);
+  const baseURL = normalizeBaseUrl(inferenceUrl, resolved);
+
+  const opts: ConstructorParameters<typeof OpenAI>[0] = {
+    baseURL,
+    apiKey: token || "ollama",  // Ollama doesn't require a key
+  };
+
+  if (resolved === "github-models") {
+    opts.defaultHeaders = {
+      "X-GitHub-Api-Version": "2026-03-10",
+    };
+  }
+
+  console.log(`[Inference] Provider: ${resolved}, baseURL: ${baseURL}`);
+  return new OpenAI(opts);
 }
 
 /** Strip control characters and null bytes that break JSON serialization */
@@ -22,19 +77,16 @@ export type ToolHandler = (
 ) => Promise<string>;
 
 // ---------------------------------------------------------------------------
-// Model selection: static vs escalating
+// Model selection — always escalates through the configured tier list.
+// Single-model configs simply stay on that model.
 // ---------------------------------------------------------------------------
-
-export type ModelStrategy = "static" | "escalating";
 
 export class ModelSelector {
   private readonly tiers: string[];
-  private readonly strategy: ModelStrategy;
   private level = 0;
 
-  constructor(strategy: ModelStrategy, tiers: string[]) {
-    if (tiers.length === 0) throw new Error("At least one model tier is required");
-    this.strategy = strategy;
+  constructor(tiers: string[]) {
+    if (tiers.length === 0) throw new Error("At least one model is required in AI_MODEL");
     this.tiers = tiers;
   }
 
@@ -46,19 +98,16 @@ export class ModelSelector {
   /**
    * Move to the next stronger model tier.
    * Returns true if escalation happened, false if already at the strongest tier.
-   * In static mode this is a no-op.
    */
   escalate(): boolean {
-    if (this.strategy === "static") return false;
     if (this.level >= this.tiers.length - 1) return false;
     this.level++;
     console.log(`[Model] Escalated to ${this.tiers[this.level]} (tier ${this.level + 1}/${this.tiers.length})`);
     return true;
   }
 
-  /** Reset back to the base (cheapest) model. No-op in static mode. */
+  /** Reset back to the base (cheapest) model. */
   reset(): void {
-    if (this.strategy === "static") return;
     if (this.level !== 0) {
       this.level = 0;
       console.log(`[Model] Reset to base model: ${this.tiers[0]}`);
@@ -71,7 +120,8 @@ export class ModelSelector {
   }
 
   toString(): string {
-    return `${this.strategy}[${this.tiers.join(" → ")}] @ tier ${this.level + 1}`;
+    if (this.tiers.length === 1) return this.tiers[0];
+    return `[${this.tiers.join(" → ")}] @ tier ${this.level + 1}`;
   }
 }
 
@@ -82,8 +132,17 @@ export class ModelSelector {
 export async function validateModelTiers(
   client: OpenAI,
   selector: ModelSelector,
+  provider: InferenceProvider = "openai",
 ): Promise<void> {
   const tiers = selector["tiers"]; // access private field for validation
+
+  // GitHub Models doesn't expose a standard /v1/models list endpoint;
+  // skip tier validation and rely on runtime errors for bad model names.
+  if (provider === "github-models") {
+    console.log(`[Model] GitHub Models provider — skipping tier validation (${tiers.length} tier(s) configured)`);
+    return;
+  }
+
   let available: string[];
   try {
     const list = await client.models.list();
@@ -131,16 +190,28 @@ export async function chatWithTools(
       model,
       messages: conversation,
       tools: tools.length > 0 ? tools : undefined,
+      max_completion_tokens: 16384,
     });
 
     const choice = response.choices[0];
     if (!choice) throw new Error("No response from model");
 
     const msg = choice.message;
+    const usage = response.usage;
     conversation.push(msg);
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
+      if (usage) {
+        console.log(`[Inference] Turn ${turn + 1}/${maxTurns}: final response (${usage.prompt_tokens}→${usage.completion_tokens} tokens)`);
+      }
       return msg.content ?? "";
+    }
+
+    const toolNames = msg.tool_calls.map(tc => tc.function.name).join(", ");
+    if (usage) {
+      console.log(`[Inference] Turn ${turn + 1}/${maxTurns}: ${msg.tool_calls.length} tool call(s) [${toolNames}] (${usage.prompt_tokens}→${usage.completion_tokens} tokens)`);
+    } else {
+      console.log(`[Inference] Turn ${turn + 1}/${maxTurns}: ${msg.tool_calls.length} tool call(s) [${toolNames}]`);
     }
 
     for (const tc of msg.tool_calls) {
@@ -184,6 +255,7 @@ export async function chatWithSchema<T>(
   const response = await client.chat.completions.create({
     model,
     messages,
+    max_completion_tokens: 16384,
     response_format: {
       type: "json_schema",
       json_schema: {
