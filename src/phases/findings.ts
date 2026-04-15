@@ -66,7 +66,9 @@ async function fetchScanIssues(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.error(`[Findings] Failed to fetch issues for scan ${scanId}: ${res.status} ${body}`);
+    console.error(
+      `[Findings] Failed to fetch issues for scan ${scanId}: ${res.status} ${body}`,
+    );
     return [];
   }
 
@@ -75,9 +77,7 @@ async function fetchScanIssues(
   return data;
 }
 
-function normalizeSeverity(
-  s: string,
-): "Critical" | "High" | "Medium" | "Low" {
+function normalizeSeverity(s: string): "Critical" | "High" | "Medium" | "Low" {
   const lower = s.toLowerCase();
   if (lower === "critical") return "Critical";
   if (lower === "high") return "High";

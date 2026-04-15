@@ -24,7 +24,12 @@ export interface Platform {
   fetchJobDetails(): Promise<JobDetails>;
   initPr(repoPath: string): Promise<void>;
   reportPhase(phase: string, description: string, turn: number): Promise<void>;
-  reportDetail(phase: string, toolName: string, detail: string, turn: number): Promise<void>;
+  reportDetail(
+    phase: string,
+    toolName: string,
+    detail: string,
+    turn: number,
+  ): Promise<void>;
   reportError(message: string): Promise<void>;
   reportPrDescription(description: string): Promise<void>;
 }
@@ -56,20 +61,35 @@ export function cloneRepository(opts: {
   mkdirSync(dest, { recursive: true });
 
   // Clone with depth 2 so we have a parent commit for diffs
-  execFileSync("git", [
-    "clone", "--depth", "2", cloneUrl, dest,
-  ], { stdio: "pipe", timeout: 120_000 });
+  execFileSync("git", ["clone", "--depth", "2", cloneUrl, dest], {
+    stdio: "pipe",
+    timeout: 120_000,
+  });
 
   // Try to check out the branch, create it if it doesn't exist
   try {
-    execFileSync("git", ["checkout", opts.branchName], { cwd: dest, stdio: "pipe" });
+    execFileSync("git", ["checkout", opts.branchName], {
+      cwd: dest,
+      stdio: "pipe",
+    });
   } catch {
-    execFileSync("git", ["checkout", "-b", opts.branchName], { cwd: dest, stdio: "pipe" });
+    execFileSync("git", ["checkout", "-b", opts.branchName], {
+      cwd: dest,
+      stdio: "pipe",
+    });
   }
 
   // Configure git author
-  execFileSync("git", ["config", "user.name", opts.commitLogin || "BrightSec"], { cwd: dest, stdio: "pipe" });
-  execFileSync("git", ["config", "user.email", opts.commitEmail || "bot@brightsec.com"], { cwd: dest, stdio: "pipe" });
+  execFileSync(
+    "git",
+    ["config", "user.name", opts.commitLogin || "BrightSec"],
+    { cwd: dest, stdio: "pipe" },
+  );
+  execFileSync(
+    "git",
+    ["config", "user.email", opts.commitEmail || "bot@brightsec.com"],
+    { cwd: dest, stdio: "pipe" },
+  );
 
   return dest;
 }
@@ -79,14 +99,20 @@ export function gitCommitAndPush(repoPath: string, message: string): void {
 
   // Check if there's anything to commit
   try {
-    execFileSync("git", ["diff", "--cached", "--quiet"], { cwd: repoPath, stdio: "pipe" });
+    execFileSync("git", ["diff", "--cached", "--quiet"], {
+      cwd: repoPath,
+      stdio: "pipe",
+    });
     // No changes staged
     return;
   } catch {
     // There are changes — proceed with commit
   }
 
-  execFileSync("git", ["commit", "-m", message], { cwd: repoPath, stdio: "pipe" });
+  execFileSync("git", ["commit", "-m", message], {
+    cwd: repoPath,
+    stdio: "pipe",
+  });
   execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
 }
 
@@ -113,7 +139,10 @@ async function findPullRequestNumber(
   const url = `${apiBase}/repos/${owner}/${repo}/pulls?head=${owner}:${branch}&state=open&per_page=1`;
   try {
     const res = await fetch(url, {
-      headers: { Authorization: `token ${token}`, Accept: "application/vnd.github+json" },
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json",
+      },
     });
     if (!res.ok) return null;
     const pulls = (await res.json()) as Array<{ number: number }>;
@@ -176,7 +205,9 @@ async function updatePullRequestBody(
     body: JSON.stringify({ body }),
   });
   if (!res.ok) {
-    console.warn(`[Platform] Failed to update PR description: ${res.status} ${res.statusText}`);
+    console.warn(
+      `[Platform] Failed to update PR description: ${res.status} ${res.statusText}`,
+    );
   }
 }
 
@@ -192,7 +223,10 @@ export class DefaultPlatform implements Platform {
 
   constructor(job: JobDetails) {
     this.job = job;
-    this.gitToken = process.env.GITHUB_GIT_TOKEN ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN;
+    this.gitToken =
+      process.env.GITHUB_GIT_TOKEN ??
+      process.env.GIT_TOKEN ??
+      process.env.GITHUB_TOKEN;
     this.apiBase = job.serverUrl.replace(/\/$/, "").includes("github.com")
       ? "https://api.github.com"
       : `${job.serverUrl.replace(/\/$/, "")}/api/v3`;
@@ -210,11 +244,22 @@ export class DefaultPlatform implements Platform {
 
     // Push the branch to origin — create an initial commit so the PR has a diff
     try {
-      execFileSync("git", ["commit", "--allow-empty", "-m", "chore: initialize Bright security scan"], {
-        cwd: repoPath, stdio: "pipe",
-      });
+      execFileSync(
+        "git",
+        [
+          "commit",
+          "--allow-empty",
+          "-m",
+          "chore: initialize Bright security scan",
+        ],
+        {
+          cwd: repoPath,
+          stdio: "pipe",
+        },
+      );
       execFileSync("git", ["push", "-u", "origin", this.job.branchName], {
-        cwd: repoPath, stdio: "pipe",
+        cwd: repoPath,
+        stdio: "pipe",
       });
       console.log(`[Platform] Pushed branch ${this.job.branchName}`);
     } catch (err) {
@@ -224,7 +269,11 @@ export class DefaultPlatform implements Platform {
 
     // Check if a PR already exists for this branch
     this.prNumber = await findPullRequestNumber(
-      this.apiBase, this.gitToken, owner, repo, this.job.branchName,
+      this.apiBase,
+      this.gitToken,
+      owner,
+      repo,
+      this.job.branchName,
     );
 
     if (!this.prNumber) {
@@ -232,17 +281,26 @@ export class DefaultPlatform implements Platform {
       let baseBranch = "main";
       try {
         const repoRes = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
-          headers: { Authorization: `token ${this.gitToken}`, Accept: "application/vnd.github+json" },
+          headers: {
+            Authorization: `token ${this.gitToken}`,
+            Accept: "application/vnd.github+json",
+          },
         });
         if (repoRes.ok) {
           const repoData = (await repoRes.json()) as { default_branch: string };
           baseBranch = repoData.default_branch;
         }
-      } catch { /* fallback to main */ }
+      } catch {
+        /* fallback to main */
+      }
 
       this.prNumber = await createPullRequest(
-        this.apiBase, this.gitToken, owner, repo,
-        this.job.branchName, baseBranch,
+        this.apiBase,
+        this.gitToken,
+        owner,
+        repo,
+        this.job.branchName,
+        baseBranch,
         `🛡️ Bright Security Scan`,
         `## 🛡️ Bright Security Scan\n\n🔄 **Initializing...**`,
       );
@@ -251,7 +309,9 @@ export class DefaultPlatform implements Platform {
     if (this.prNumber) {
       console.log(`[Platform] PR #${this.prNumber} ready for progress updates`);
     } else {
-      console.warn(`[Platform] Could not create PR — progress will only appear in logs`);
+      console.warn(
+        `[Platform] Could not create PR — progress will only appear in logs`,
+      );
     }
   }
 
@@ -259,11 +319,20 @@ export class DefaultPlatform implements Platform {
     return this.job;
   }
 
-  async reportPhase(_phase: string, description: string, _turn: number): Promise<void> {
+  async reportPhase(
+    _phase: string,
+    description: string,
+    _turn: number,
+  ): Promise<void> {
     console.log(`[Phase] ${description}`);
   }
 
-  async reportDetail(_phase: string, toolName: string, detail: string, _turn: number): Promise<void> {
+  async reportDetail(
+    _phase: string,
+    toolName: string,
+    detail: string,
+    _turn: number,
+  ): Promise<void> {
     console.log(`[Detail] ${toolName}: ${detail}`);
   }
 
@@ -277,14 +346,24 @@ export class DefaultPlatform implements Platform {
     const [owner, repo] = this.job.repository.split("/");
     if (!owner || !repo) return;
 
-    await updatePullRequestBody(this.apiBase, this.gitToken, owner, repo, this.prNumber, description);
+    await updatePullRequestBody(
+      this.apiBase,
+      this.gitToken,
+      owner,
+      repo,
+      this.prNumber,
+      description,
+    );
   }
 }
 
 /**
  * Create the platform. Reads job details from environment variables.
  */
-export async function createPlatform(): Promise<{ platform: Platform; job: JobDetails }> {
+export async function createPlatform(): Promise<{
+  platform: Platform;
+  job: JobDetails;
+}> {
   const repo = process.env.GITHUB_REPOSITORY ?? process.env.REPO;
   if (!repo) {
     throw new Error("Missing GITHUB_REPOSITORY or REPO environment variable");
@@ -297,7 +376,9 @@ export async function createPlatform(): Promise<{ platform: Platform; job: JobDe
     branchName: process.env.GITHUB_BRANCH ?? `bright-scan-${Date.now()}`,
     commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",
     commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bot@brightsec.com",
-    problemStatement: process.env.PROBLEM_STATEMENT ?? "Run a security scan and fix vulnerabilities",
+    problemStatement:
+      process.env.PROBLEM_STATEMENT ??
+      "Run a security scan and fix vulnerabilities",
     action: process.env.ACTION ?? "fix",
   };
 

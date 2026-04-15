@@ -47,7 +47,8 @@ export async function registerEntrypoints(
 
     // Add headers — ensure Content-Type for POST/PUT/PATCH
     const needsBody = ["POST", "PUT", "PATCH"].includes(method);
-    const contentType = ep.contentType ?? (needsBody ? "application/json" : undefined);
+    const contentType =
+      ep.contentType ?? (needsBody ? "application/json" : undefined);
 
     if (ep.headers || contentType) {
       const headers: Record<string, string[]> = { ...(ep.headers ?? {}) };
@@ -84,24 +85,41 @@ export async function registerEntrypoints(
         registered.push({ endpoint: ep, entrypointId: epId });
       } else if (result.includes(CONFLICT_MSG)) {
         // EP already exists — look up the existing ID
-        const existingId = await findExistingEntrypoint(bright, projectId, fullUrl, method);
+        const existingId = await findExistingEntrypoint(
+          bright,
+          projectId,
+          fullUrl,
+          method,
+        );
         if (existingId) {
-          console.log(`[Entrypoints] Reusing existing EP ${existingId} for ${method} ${fullUrl}`);
+          console.log(
+            `[Entrypoints] Reusing existing EP ${existingId} for ${method} ${fullUrl}`,
+          );
           registered.push({ endpoint: ep, entrypointId: existingId });
         } else {
-          console.warn(`[Entrypoints] Conflict but could not find existing EP for ${method} ${fullUrl}`);
+          console.warn(
+            `[Entrypoints] Conflict but could not find existing EP for ${method} ${fullUrl}`,
+          );
         }
       } else if (result.startsWith("Error")) {
-        console.error(`[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`);
+        console.error(
+          `[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`,
+        );
       } else {
-        console.warn(`[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`);
+        console.warn(
+          `[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`,
+        );
       }
     } catch (err) {
-      console.error(`[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`);
+      console.error(
+        `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`,
+      );
     }
   }
 
-  console.log(`[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints`);
+  console.log(
+    `[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints`,
+  );
   return registered;
 }
 
@@ -121,7 +139,7 @@ async function findExistingEntrypoint(
       limit: 10,
     });
     const parsed = JSON.parse(response);
-    const items = Array.isArray(parsed) ? parsed : parsed.items ?? [];
+    const items = Array.isArray(parsed) ? parsed : (parsed.items ?? []);
     // Find exact URL match
     const match = items.find(
       (ep: { url?: string; method?: string }) =>
@@ -129,15 +147,15 @@ async function findExistingEntrypoint(
     );
     return match?.id;
   } catch (err) {
-    console.error(`[Entrypoints] Failed to look up existing EP: ${toErrorMessage(err)}`);
+    console.error(
+      `[Entrypoints] Failed to look up existing EP: ${toErrorMessage(err)}`,
+    );
     return undefined;
   }
 }
 
 function resolvePath(path: string): string {
-  return path
-    .replace(/:(\w+)/g, "1")
-    .replace(/\{(\w+)\}/g, "1");
+  return path.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1");
 }
 
 /**
@@ -150,16 +168,27 @@ export async function verifyEntrypointAuth(
   entrypointId: string,
 ): Promise<{ ok: boolean; detail: string }> {
   try {
-    console.log(`[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`);
-    const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId });
+    console.log(
+      `[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`,
+    );
+    const raw = await bright.callMcpToolRaw("getEntrypoint", {
+      projectId,
+      entrypointId,
+    });
     console.log(`[Entrypoints] getEntrypoint response: ${raw.slice(0, 1000)}`);
 
     const data = JSON.parse(raw);
     const status = data.response?.status ?? data.status;
     if (status && (status === 401 || status === 403)) {
-      return { ok: false, detail: `Entrypoint returned HTTP ${status} — auth likely not working` };
+      return {
+        ok: false,
+        detail: `Entrypoint returned HTTP ${status} — auth likely not working`,
+      };
     }
-    return { ok: true, detail: `Entrypoint response: ${JSON.stringify(data.response ?? {}).slice(0, 300)}` };
+    return {
+      ok: true,
+      detail: `Entrypoint response: ${JSON.stringify(data.response ?? {}).slice(0, 300)}`,
+    };
   } catch (err) {
     const msg = toErrorMessage(err);
     console.warn(`[Entrypoints] Failed to verify entrypoint auth: ${msg}`);
@@ -183,7 +212,10 @@ export async function pruneDeadEntrypoints(
 
   for (const entry of entries) {
     try {
-      const raw = await bright.callMcpToolRaw("getEntrypoint", { projectId, entrypointId: entry.entrypointId });
+      const raw = await bright.callMcpToolRaw("getEntrypoint", {
+        projectId,
+        entrypointId: entry.entrypointId,
+      });
       const data = JSON.parse(raw);
       const status = data.response?.status ?? data.status;
 
@@ -202,11 +234,15 @@ export async function pruneDeadEntrypoints(
 
   // Delete the dead entrypoints in parallel
   await Promise.allSettled(
-    dead.map((epId) => deleteEntrypoint(brightToken, brightHostname, projectId, epId)),
+    dead.map((epId) =>
+      deleteEntrypoint(brightToken, brightHostname, projectId, epId),
+    ),
   );
 
   if (dead.length > 0) {
-    console.log(`[Entrypoints] Pruned ${dead.length} dead (404) entrypoint(s), ${alive.length} remaining`);
+    console.log(
+      `[Entrypoints] Pruned ${dead.length} dead (404) entrypoint(s), ${alive.length} remaining`,
+    );
   }
 
   return alive;
@@ -231,10 +267,14 @@ async function deleteEntrypoint(
     } else if (res.status === 404) {
       // Already gone — not a problem
     } else {
-      console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${res.status}`);
+      console.warn(
+        `[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${res.status}`,
+      );
     }
   } catch (err) {
-    console.warn(`[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${err}`);
+    console.warn(
+      `[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${err}`,
+    );
   }
 }
 
@@ -257,7 +297,15 @@ function sanitizeBody(body: string): string {
 }
 
 const VALID_HTTP_METHODS = new Set([
-  "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH",
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "DELETE",
+  "CONNECT",
+  "OPTIONS",
+  "TRACE",
+  "PATCH",
 ]);
 
 /**

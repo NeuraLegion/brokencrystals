@@ -4,14 +4,17 @@ import { ModelSelector, DEFAULT_MODEL, detectProvider } from "./inference.js";
 export function loadConfig(): EngineConfig {
   const brightToken = requireEnv("BRIGHT_TOKEN");
   const brightMcpUrl = process.env.BRIGHT_MCP_URL;
-  const brightHostname = process.env.BRIGHT_HOSTNAME
-    ?? (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
+  const brightHostname =
+    process.env.BRIGHT_HOSTNAME ??
+    (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
 
   // AI_MODEL: single model or comma-separated escalation chain
   // e.g. "gpt-4.1-mini" or "gpt-4.1-mini,gpt-4.1,o3"
   const models = (process.env.AI_MODEL ?? DEFAULT_MODEL)
-    .split(",").map(s => s.trim()).filter(Boolean);
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const modelSelector = new ModelSelector(models);
 
   // Inference provider detection
@@ -22,7 +25,14 @@ export function loadConfig(): EngineConfig {
   console.log(`[Config] AI model(s): ${modelSelector}`);
   console.log(`[Config] Inference provider: ${inferenceProvider}`);
 
-  return { brightToken, brightHostname, brightMcpUrl, brightProjectId, inferenceProvider, modelSelector };
+  return {
+    brightToken,
+    brightHostname,
+    brightMcpUrl,
+    brightProjectId,
+    inferenceProvider,
+    modelSelector,
+  };
 }
 
 function requireEnv(name: string): string {

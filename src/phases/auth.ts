@@ -58,36 +58,58 @@ export async function detectAndConfigureAuth(
   model?: string,
 ): Promise<AuthResult> {
   // Phase 1: Detect auth from source code
-  const detection = await detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl, model);
+  const detection = await detectAuthFromCode(
+    llm,
+    repoPath,
+    techStack,
+    endpoints,
+    baseUrl,
+    model,
+  );
 
   if (!detection.requiresAuth) {
     console.log("[Auth] No auth required");
     return { authObjectId: undefined, hasAuth: false, authFailed: false };
   }
 
-  console.log(`[Auth] Detected auth: ${detection.authType} — ${detection.notes}`);
-  console.log(`[Auth] loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`);
-  console.log(`[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`);
+  console.log(
+    `[Auth] Detected auth: ${detection.authType} — ${detection.notes}`,
+  );
+  console.log(
+    `[Auth] loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`,
+  );
+  console.log(
+    `[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`,
+  );
 
   // Phase 2: Register a test user locally if the app has no seeded users
   await registerUser(baseUrl, detection);
 
   // Phase 3: Let the LLM create + test + fix the auth object via MCP tools
   const authObjectId = await createAuthViaMcp(
-    llm, bright, repoPath, detection, projectId, baseUrl, repeaterId,
-    brightToken, brightHostname, model,
+    llm,
+    bright,
+    repoPath,
+    detection,
+    projectId,
+    baseUrl,
+    repeaterId,
+    brightToken,
+    brightHostname,
+    model,
   );
 
   // Build registration info for re-use after app restarts
-  const registration = detection.registerEndpoint && detection.registerBody
-    ? {
-        baseUrl,
-        endpoint: detection.registerEndpoint,
-        method: detection.registerMethod ?? "POST",
-        body: detection.registerBody,
-        contentType: detection.loginContentType,
-      }
-    : undefined;
+  const registration =
+    detection.registerEndpoint && detection.registerBody
+      ? {
+          baseUrl,
+          endpoint: detection.registerEndpoint,
+          method: detection.registerMethod ?? "POST",
+          body: detection.registerBody,
+          contentType: detection.loginContentType,
+        }
+      : undefined;
 
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
@@ -95,7 +117,12 @@ export async function detectAndConfigureAuth(
   }
 
   console.error("[Auth] Failed to configure auth");
-  return { authObjectId: undefined, hasAuth: false, authFailed: true, registration };
+  return {
+    authObjectId: undefined,
+    hasAuth: false,
+    authFailed: true,
+    registration,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +280,14 @@ CRITICAL RULES:
     },
   ];
 
-  const response = await chatWithTools(llm, messages, codebaseTools, handler, model, 40);
+  const response = await chatWithTools(
+    llm,
+    messages,
+    codebaseTools,
+    handler,
+    model,
+    40,
+  );
 
   try {
     const parsed = JSON.parse(extractJson(response));
@@ -280,7 +314,10 @@ CRITICAL RULES:
       notes: parsed.notes ?? "",
     };
   } catch {
-    console.warn("[Auth] Could not parse detection response:", response.slice(0, 300));
+    console.warn(
+      "[Auth] Could not parse detection response:",
+      response.slice(0, 300),
+    );
     return {
       requiresAuth: false,
       authType: "none",
@@ -333,9 +370,10 @@ async function createAuthViaRestApi(
 ): Promise<{ id?: string; error?: string }> {
   const { authStyle, loginUrl, loginBody, loginContentType, testUrl } = params;
 
-  const contentType = loginContentType === "form"
-    ? "application/x-www-form-urlencoded"
-    : "application/json";
+  const contentType =
+    loginContentType === "form"
+      ? "application/x-www-form-urlencoded"
+      : "application/json";
   const normalizedBody = normalizeBody(loginBody, loginContentType);
 
   // --- API key: simple header auth ---
@@ -349,16 +387,20 @@ async function createAuthViaRestApi(
         request: { method: "GET", url: testUrl },
       },
       successResponseDetection: [{ type: "status", statuses: [200] }],
-      reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }],
+      reauthTriggers: [
+        { type: "TRIGGER", location: "status", statuses: [401, 403] },
+      ],
       config: {
         request: {
           url: testUrl,
           method: "GET",
-          headers: [{
-            name: params.headerName ?? "Authorization",
-            value: params.headerValue ?? "",
-            type: "clear_text",
-          }],
+          headers: [
+            {
+              name: params.headerName ?? "Authorization",
+              value: params.headerValue ?? "",
+              type: "clear_text",
+            },
+          ],
         },
       },
     };
@@ -370,7 +412,14 @@ async function createAuthViaRestApi(
 
   // reauthTriggers: header Location for session, status 401/403 for JWT
   const reauthTriggers = isSession
-    ? [{ type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] }]
+    ? [
+        {
+          type: "TRIGGER",
+          location: "header",
+          name: "Location",
+          patterns: ["login"],
+        },
+      ]
     : [{ type: "TRIGGER", location: "status", statuses: [401, 403] }];
 
   // Embedders: none for session (Bright auto-replays cookies), bearer header for JWT
@@ -413,32 +462,41 @@ async function createAuthViaRestApi(
     reauthTriggers,
     config: {
       multistep: {
-        steps: [{
-          name: "login",
-          request: {
-            method: "POST",
-            url: loginUrl,
-            protocol: "http",
-            headers: [{
-              name: "Content-Type",
-              value: contentType,
-              type: "clear_text",
-              mergeStrategy: "replace",
-            }],
-            bodyType: "clear_text",
-            body: normalizedBody,
-            ...redirectOpts,
+        steps: [
+          {
+            name: "login",
+            request: {
+              method: "POST",
+              url: loginUrl,
+              protocol: "http",
+              headers: [
+                {
+                  name: "Content-Type",
+                  value: contentType,
+                  type: "clear_text",
+                  mergeStrategy: "replace",
+                },
+              ],
+              bodyType: "clear_text",
+              body: normalizedBody,
+              ...redirectOpts,
+            },
+            successResponseDetection: [
+              {
+                type: "status",
+                statuses: isSession ? [200, 201, 302] : [200, 201],
+              },
+            ],
           },
-          successResponseDetection: [
-            { type: "status", statuses: isSession ? [200, 201, 302] : [200, 201] },
-          ],
-        }],
+        ],
         ...(embedders.length > 0 ? { embedders } : {}),
       },
     },
   };
 
-  console.log(`[Auth] Creating ${authStyle} auth via REST API — login: ${loginUrl}, test: ${testUrl}`);
+  console.log(
+    `[Auth] Creating ${authStyle} auth via REST API — login: ${loginUrl}, test: ${testUrl}`,
+  );
   return postAuthObject(brightToken, brightHostname, body);
 }
 
@@ -448,18 +506,15 @@ async function postAuthObject(
   body: Record<string, unknown>,
 ): Promise<{ id?: string; error?: string }> {
   try {
-    const res = await fetch(
-      `https://${brightHostname}/api/v3/auth-objects`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Api-Key ${brightToken}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(body),
+    const res = await fetch(`https://${brightHostname}/api/v3/auth-objects`, {
+      method: "POST",
+      headers: {
+        Authorization: `Api-Key ${brightToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
-    );
+      body: JSON.stringify(body),
+    });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       return { error: `HTTP ${res.status}: ${text.slice(0, 500)}` };
@@ -504,39 +559,53 @@ For API key: creates a static header auth object.`,
             authStyle: {
               type: "string",
               enum: ["session", "jwt", "api_key"],
-              description: "The authentication style: 'session' for cookie/session-based (Express+Passport, form login with 302 redirects), 'jwt' for JSON Web Token, 'api_key' for static API key header",
+              description:
+                "The authentication style: 'session' for cookie/session-based (Express+Passport, form login with 302 redirects), 'jwt' for JSON Web Token, 'api_key' for static API key header",
             },
             loginUrl: {
               type: "string",
-              description: "Full URL for the login endpoint (e.g. http://localhost:9090/login)",
+              description:
+                "Full URL for the login endpoint (e.g. http://localhost:9090/login)",
             },
             loginBody: {
               type: "string",
-              description: "Login request body. For form: 'username=user&password=pass'. For JSON: '{\"email\":\"user\",\"password\":\"pass\"}'",
+              description:
+                'Login request body. For form: \'username=user&password=pass\'. For JSON: \'{"email":"user","password":"pass"}\'',
             },
             loginContentType: {
               type: "string",
               enum: ["form", "json"],
-              description: "Content type of the login body: 'form' for application/x-www-form-urlencoded, 'json' for application/json",
+              description:
+                "Content type of the login body: 'form' for application/x-www-form-urlencoded, 'json' for application/json",
             },
             testUrl: {
               type: "string",
-              description: "Full URL to a protected endpoint used to verify auth works (e.g. http://localhost:9090/learn)",
+              description:
+                "Full URL to a protected endpoint used to verify auth works (e.g. http://localhost:9090/learn)",
             },
             tokenFieldPath: {
               type: "string",
-              description: "(JWT only) Dot-path to the token field in the login response body (e.g. 'token', 'data.accessToken')",
+              description:
+                "(JWT only) Dot-path to the token field in the login response body (e.g. 'token', 'data.accessToken')",
             },
             headerName: {
               type: "string",
-              description: "(API key only) Header name for the API key (e.g. 'Authorization', 'X-API-Key')",
+              description:
+                "(API key only) Header name for the API key (e.g. 'Authorization', 'X-API-Key')",
             },
             headerValue: {
               type: "string",
-              description: "(API key only) Header value (e.g. 'Bearer sk-xxx', 'my-api-key-123')",
+              description:
+                "(API key only) Header value (e.g. 'Bearer sk-xxx', 'my-api-key-123')",
             },
           },
-          required: ["authStyle", "loginUrl", "loginBody", "loginContentType", "testUrl"],
+          required: [
+            "authStyle",
+            "loginUrl",
+            "loginBody",
+            "loginContentType",
+            "testUrl",
+          ],
           additionalProperties: false,
         },
       },
@@ -545,11 +614,15 @@ For API key: creates a static header auth object.`,
       type: "function",
       function: {
         name: "test_auth_object",
-        description: "Test a Bright auth object. Runs the login flow and checks if authentication + authorization succeed. Returns stage-by-stage results with pass/fail status and error messages.",
+        description:
+          "Test a Bright auth object. Runs the login flow and checks if authentication + authorization succeed. Returns stage-by-stage results with pass/fail status and error messages.",
         parameters: {
           type: "object",
           properties: {
-            authObjectId: { type: "string", description: "The auth object ID to test" },
+            authObjectId: {
+              type: "string",
+              description: "The auth object ID to test",
+            },
           },
           required: ["authObjectId"],
           additionalProperties: false,
@@ -560,11 +633,15 @@ For API key: creates a static header auth object.`,
       type: "function",
       function: {
         name: "delete_auth_object",
-        description: "Delete a Bright auth object that failed testing so you can recreate it with different settings.",
+        description:
+          "Delete a Bright auth object that failed testing so you can recreate it with different settings.",
         parameters: {
           type: "object",
           properties: {
-            authObjectId: { type: "string", description: "The auth object ID to delete" },
+            authObjectId: {
+              type: "string",
+              description: "The auth object ID to delete",
+            },
           },
           required: ["authObjectId"],
           additionalProperties: false,
@@ -576,14 +653,19 @@ For API key: creates a static header auth object.`,
   const customHandler: ToolHandler = async (name, args) => {
     if (name === "create_auth") {
       const result = await createAuthViaRestApi(
-        brightToken, brightHostname, projectId, repeaterId,
+        brightToken,
+        brightHostname,
+        projectId,
+        repeaterId,
         {
           authStyle: String(args.authStyle),
           loginUrl: String(args.loginUrl),
           loginBody: String(args.loginBody),
           loginContentType: String(args.loginContentType),
           testUrl: String(args.testUrl),
-          tokenFieldPath: args.tokenFieldPath ? String(args.tokenFieldPath) : undefined,
+          tokenFieldPath: args.tokenFieldPath
+            ? String(args.tokenFieldPath)
+            : undefined,
           headerName: args.headerName ? String(args.headerName) : undefined,
           headerValue: args.headerValue ? String(args.headerValue) : undefined,
         },
@@ -592,18 +674,30 @@ For API key: creates a static header auth object.`,
       return JSON.stringify({ authObjectId: result.id });
     }
     if (name === "test_auth_object") {
-      const result = await testAuthObject(brightToken, brightHostname, String(args.authObjectId));
+      const result = await testAuthObject(
+        brightToken,
+        brightHostname,
+        String(args.authObjectId),
+      );
       return JSON.stringify(result);
     }
     if (name === "delete_auth_object") {
-      await deleteAuthObject(brightToken, brightHostname, String(args.authObjectId));
+      await deleteAuthObject(
+        brightToken,
+        brightHostname,
+        String(args.authObjectId),
+      );
       return "Deleted successfully";
     }
     return `Unknown tool: ${name}`;
   };
 
   const combinedHandler: ToolHandler = async (name, args) => {
-    if (name === "create_auth" || name === "test_auth_object" || name === "delete_auth_object") {
+    if (
+      name === "create_auth" ||
+      name === "test_auth_object" ||
+      name === "delete_auth_object"
+    ) {
       return customHandler(name, args);
     }
     return mcpHandler(name, args);
@@ -613,7 +707,9 @@ For API key: creates a static header auth object.`,
 
   // Resolve protected endpoint path for test URL
   const resolvedPath = detection.protectedEndpointPath
-    ? detection.protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1")
+    ? detection.protectedEndpointPath
+        .replace(/:(\w+)/g, "1")
+        .replace(/\{(\w+)\}/g, "1")
     : "/";
   const testUrl = `${baseUrl}${resolvedPath}`;
 
@@ -663,11 +759,22 @@ Create a working auth object and test it. Follow these steps:
 
   const messages: Parameters<typeof chatWithTools>[1] = [
     { role: "system", content: systemPrompt },
-    { role: "user", content: "Create and test a working auth object for this application. Return only the auth object ID when it passes." },
+    {
+      role: "user",
+      content:
+        "Create and test a working auth object for this application. Return only the auth object ID when it passes.",
+    },
   ];
 
   console.log("[Auth] Starting auth configuration with custom tools...");
-  const response = await chatWithTools(llm, messages, allTools, combinedHandler, model, 50);
+  const response = await chatWithTools(
+    llm,
+    messages,
+    allTools,
+    combinedHandler,
+    model,
+    50,
+  );
 
   const trimmed = response.trim();
   if (trimmed === "FAILED" || trimmed.length === 0) {
@@ -697,10 +804,15 @@ export async function registerUser(
     xml: "application/xml",
   };
   const ct = contentTypeMap[detection.loginContentType] ?? "application/json";
-  const body = normalizeBody(detection.registerBody, detection.loginContentType);
+  const body = normalizeBody(
+    detection.registerBody,
+    detection.loginContentType,
+  );
 
   try {
-    console.log(`[Auth] Registering test user via ${detection.registerMethod ?? "POST"} ${detection.registerEndpoint}`);
+    console.log(
+      `[Auth] Registering test user via ${detection.registerMethod ?? "POST"} ${detection.registerEndpoint}`,
+    );
     console.log(`[Auth] Registration body: ${body.slice(0, 400)}`);
     const res = await fetch(url, {
       method: detection.registerMethod ?? "POST",
@@ -711,7 +823,9 @@ export async function registerUser(
     });
     console.log(`[Auth] Registration response: ${res.status}`);
   } catch (err) {
-    console.warn(`[Auth] Registration call failed (user may already exist): ${err}`);
+    console.warn(
+      `[Auth] Registration call failed (user may already exist): ${err}`,
+    );
   }
 }
 
@@ -733,7 +847,9 @@ export async function reRegisterUser(
   const body = normalizeBody(registration.body, registration.contentType);
 
   try {
-    console.log(`[Auth] Re-registering test user via ${registration.method} ${registration.endpoint}`);
+    console.log(
+      `[Auth] Re-registering test user via ${registration.method} ${registration.endpoint}`,
+    );
     const res = await fetch(url, {
       method: registration.method,
       headers: { "Content-Type": ct },
@@ -743,7 +859,9 @@ export async function reRegisterUser(
     });
     console.log(`[Auth] Re-registration response: ${res.status}`);
   } catch (err) {
-    console.warn(`[Auth] Re-registration failed (user may already exist): ${err}`);
+    console.warn(
+      `[Auth] Re-registration failed (user may already exist): ${err}`,
+    );
   }
 }
 
@@ -767,7 +885,9 @@ export async function testAuthObject(
   const retryDelayMs = 5_000;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(`[Auth] Testing auth object (attempt ${attempt}/${maxRetries})`);
+    console.log(
+      `[Auth] Testing auth object (attempt ${attempt}/${maxRetries})`,
+    );
 
     try {
       const res = await fetch(url, {
@@ -783,12 +903,18 @@ export async function testAuthObject(
           await new Promise((r) => setTimeout(r, retryDelayMs));
           continue;
         }
-        return { passed: false, summary: `503 after ${maxRetries} retries — ${body.slice(0, 300)}` };
+        return {
+          passed: false,
+          summary: `503 after ${maxRetries} retries — ${body.slice(0, 300)}`,
+        };
       }
 
       if (!res.ok) {
         const body = await res.text().catch(() => "");
-        return { passed: false, summary: `HTTP ${res.status} — ${body.slice(0, 400)}` };
+        return {
+          passed: false,
+          summary: `HTTP ${res.status} — ${body.slice(0, 400)}`,
+        };
       }
 
       const results = (await res.json()) as Array<{
@@ -802,7 +928,8 @@ export async function testAuthObject(
       }
 
       const lines = results.map(
-        (r) => `stage=${r.stage} status=${r.status}${r.message ? ` — ${r.message}` : ""}`,
+        (r) =>
+          `stage=${r.stage} status=${r.status}${r.message ? ` — ${r.message}` : ""}`,
       );
       for (const l of lines) console.log(`[Auth] Test: ${l}`);
 
@@ -834,7 +961,9 @@ function normalizeBody(body: string, contentType: string): string {
     try {
       const obj = JSON.parse(trimmed) as Record<string, string>;
       const encoded = new URLSearchParams(obj).toString();
-      console.log(`[Auth] Converted JSON loginBody to form-encoded: ${encoded.slice(0, 200)}`);
+      console.log(
+        `[Auth] Converted JSON loginBody to form-encoded: ${encoded.slice(0, 200)}`,
+      );
       return encoded;
     } catch {
       return body;

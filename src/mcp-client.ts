@@ -24,10 +24,7 @@ export interface BrightMcpClient {
   listAuths(projectId: string): Promise<BrightAuth[]>;
   runScan(opts: RunScanOpts): Promise<{ scanId: string }>;
   getScanStatus(scanId: string): Promise<BrightScanStatus>;
-  listIssues(
-    projectId: string,
-    opts?: ListIssuesOpts,
-  ): Promise<BrightIssue[]>;
+  listIssues(projectId: string, opts?: ListIssuesOpts): Promise<BrightIssue[]>;
   listTests(): Promise<BrightTest[]>;
   runDiscovery(opts: RunDiscoveryOpts): Promise<{ discoveryId: string }>;
   getDiscoveryStatus(
@@ -156,7 +153,8 @@ export interface UploadApiDefOpts {
 export async function createBrightMcpClient(
   config: EngineConfig,
 ): Promise<BrightMcpClient> {
-  const mcpUrl = config.brightMcpUrl ?? `https://${config.brightHostname}/api/v1/mcp/sse`;
+  const mcpUrl =
+    config.brightMcpUrl ?? `https://${config.brightHostname}/api/v1/mcp/sse`;
 
   const headers = { Authorization: `Api-Key ${config.brightToken}` };
 
@@ -186,7 +184,9 @@ export async function createBrightMcpClient(
   try {
     await connect();
   } catch {
-    console.log("[MCP] Streamable HTTP failed on initial connect, falling back to SSE");
+    console.log(
+      "[MCP] Streamable HTTP failed on initial connect, falling back to SSE",
+    );
     transportType = "sse";
     await connect();
   }
@@ -212,7 +212,13 @@ export async function createBrightMcpClient(
     }
     reconnectPromise = (async () => {
       console.log("[MCP] Session lost, reconnecting...");
-      try { await client.close(); } catch (err) { console.warn(`[MCP] Error closing old client: ${err instanceof Error ? err.message : String(err)}`); }
+      try {
+        await client.close();
+      } catch (err) {
+        console.warn(
+          `[MCP] Error closing old client: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
       cachedSchemas = null;
 
       // Retry connection up to 3 times with backoff
@@ -224,7 +230,9 @@ export async function createBrightMcpClient(
           return;
         } catch (err) {
           lastErr = err;
-          console.warn(`[MCP] Reconnect attempt ${i + 1}/3 failed: ${err instanceof Error ? err.message : String(err)}`);
+          console.warn(
+            `[MCP] Reconnect attempt ${i + 1}/3 failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
           if (i < 2) await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
         }
       }
@@ -242,7 +250,10 @@ export async function createBrightMcpClient(
     args: Record<string, unknown>,
     isRetry = false,
   ): Promise<T> {
-    console.log(`[MCP] Calling ${name} with args:`, JSON.stringify(args).slice(0, 500));
+    console.log(
+      `[MCP] Calling ${name} with args:`,
+      JSON.stringify(args).slice(0, 500),
+    );
     let result;
     try {
       result = await client.callTool({ name, arguments: args });
@@ -257,7 +268,9 @@ export async function createBrightMcpClient(
     const text = contentArr
       .filter(
         (c: unknown): c is { type: "text"; text: string } =>
-          typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text",
+          typeof c === "object" &&
+          c !== null &&
+          (c as Record<string, unknown>).type === "text",
       )
       .map((c) => c.text)
       .join("");
@@ -284,7 +297,10 @@ export async function createBrightMcpClient(
     args: Record<string, unknown>,
     isRetry = false,
   ): Promise<string> {
-    console.log(`[MCP] Calling ${name} with args:`, JSON.stringify(args).slice(0, 500));
+    console.log(
+      `[MCP] Calling ${name} with args:`,
+      JSON.stringify(args).slice(0, 500),
+    );
     let result;
     try {
       result = await client.callTool({ name, arguments: args });
@@ -299,7 +315,9 @@ export async function createBrightMcpClient(
     const text = contentArr
       .filter(
         (c: unknown): c is { type: "text"; text: string } =>
-          typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text",
+          typeof c === "object" &&
+          c !== null &&
+          (c as Record<string, unknown>).type === "text",
       )
       .map((c) => c.text)
       .join("");
@@ -346,23 +364,37 @@ export async function createBrightMcpClient(
     },
 
     async listProjects(opts) {
-      return callTool<unknown>("listProjects", opts ?? {}).then(unwrapList<BrightProject>);
+      return callTool<unknown>("listProjects", opts ?? {}).then(
+        unwrapList<BrightProject>,
+      );
     },
 
     async listRepeaters() {
-      return callTool<unknown>("listRepeaters", {}).then(unwrapList<BrightRepeater>);
+      return callTool<unknown>("listRepeaters", {}).then(
+        unwrapList<BrightRepeater>,
+      );
     },
 
     async createRepeater(projectId, name) {
-      return callTool<BrightRepeater>("createRepeater", { projectId, name }).then((r) => {
+      return callTool<BrightRepeater>("createRepeater", {
+        projectId,
+        name,
+      }).then((r) => {
         // MCP returns { repeaterId } — normalize to { id }
         const raw = r as unknown as Record<string, unknown>;
-        return { id: (raw.repeaterId ?? raw.id ?? "") as string, name: (raw.name ?? name) as string, status: raw.status as string | undefined };
+        return {
+          id: (raw.repeaterId ?? raw.id ?? "") as string,
+          name: (raw.name ?? name) as string,
+          status: raw.status as string | undefined,
+        };
       });
     },
 
     async addEntrypoint(opts) {
-      return callTool<{ id: string }>("addEntrypoint", opts as unknown as Record<string, unknown>).then((r) => {
+      return callTool<{ id: string }>(
+        "addEntrypoint",
+        opts as unknown as Record<string, unknown>,
+      ).then((r) => {
         // MCP returns { entrypointId } — normalize to { id }
         const raw = r as unknown as Record<string, unknown>;
         return { id: (raw.entrypointId ?? raw.id ?? "") as string };
@@ -377,15 +409,23 @@ export async function createBrightMcpClient(
     },
 
     async addAuth(opts) {
-      return callTool<{ id: string }>("addAuth", opts as unknown as Record<string, unknown>);
+      return callTool<{ id: string }>(
+        "addAuth",
+        opts as unknown as Record<string, unknown>,
+      );
     },
 
     async listAuths(projectId) {
-      return callTool<unknown>("listAuths", { projectId }).then(unwrapList<BrightAuth>);
+      return callTool<unknown>("listAuths", { projectId }).then(
+        unwrapList<BrightAuth>,
+      );
     },
 
     async runScan(opts) {
-      return callTool<{ scanId: string }>("runScan", opts as unknown as Record<string, unknown>);
+      return callTool<{ scanId: string }>(
+        "runScan",
+        opts as unknown as Record<string, unknown>,
+      );
     },
 
     async getScanStatus(scanId) {
@@ -404,7 +444,10 @@ export async function createBrightMcpClient(
     },
 
     async runDiscovery(opts) {
-      return callTool<{ discoveryId: string }>("runDiscovery", opts as unknown as Record<string, unknown>);
+      return callTool<{ discoveryId: string }>(
+        "runDiscovery",
+        opts as unknown as Record<string, unknown>,
+      );
     },
 
     async getDiscoveryStatus(projectId, discoveryId) {
@@ -415,7 +458,10 @@ export async function createBrightMcpClient(
     },
 
     async uploadApiDefinition(opts) {
-      return callTool<{ fileId: string }>("uploadApiDefinition", opts as unknown as Record<string, unknown>);
+      return callTool<{ fileId: string }>(
+        "uploadApiDefinition",
+        opts as unknown as Record<string, unknown>,
+      );
     },
 
     async close() {

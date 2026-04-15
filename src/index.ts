@@ -1,4 +1,8 @@
-import { createPlatform, cloneRepository, gitFinalizeChanges } from "./platform.js";
+import {
+  createPlatform,
+  cloneRepository,
+  gitFinalizeChanges,
+} from "./platform.js";
 import { loadConfig } from "./config.js";
 import { createInferenceClient, validateModelTiers } from "./inference.js";
 import { toErrorMessage } from "./utils.js";
@@ -11,9 +15,12 @@ async function main(): Promise<void> {
   const origLog = console.log.bind(console);
   const origWarn = console.warn.bind(console);
   const origError = console.error.bind(console);
-  console.log = (...args: unknown[]) => origLog(new Date().toISOString(), ...args);
-  console.warn = (...args: unknown[]) => origWarn(new Date().toISOString(), ...args);
-  console.error = (...args: unknown[]) => origError(new Date().toISOString(), ...args);
+  console.log = (...args: unknown[]) =>
+    origLog(new Date().toISOString(), ...args);
+  console.warn = (...args: unknown[]) =>
+    origWarn(new Date().toISOString(), ...args);
+  console.error = (...args: unknown[]) =>
+    origError(new Date().toISOString(), ...args);
 
   console.log("[Engine] Bright Security Copilot Engine starting...");
 
@@ -30,7 +37,11 @@ async function main(): Promise<void> {
   const repoPath = cloneRepository({
     serverUrl: job.serverUrl,
     repository: job.repository,
-    gitToken: process.env.GITHUB_GIT_TOKEN ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN ?? "",
+    gitToken:
+      process.env.GITHUB_GIT_TOKEN ??
+      process.env.GIT_TOKEN ??
+      process.env.GITHUB_TOKEN ??
+      "",
     branchName: job.branchName,
     commitLogin: job.commitLogin,
     commitEmail: job.commitEmail,
@@ -46,8 +57,13 @@ async function main(): Promise<void> {
   const inferenceToken =
     process.env.OPENAI_API_KEY ??
     process.env.GITHUB_INFERENCE_TOKEN ??
-    process.env.GITHUB_TOKEN ?? "";
-  const llm = createInferenceClient(inferenceUrl, inferenceToken, config.inferenceProvider);
+    process.env.GITHUB_TOKEN ??
+    "";
+  const llm = createInferenceClient(
+    inferenceUrl,
+    inferenceToken,
+    config.inferenceProvider,
+  );
 
   // 4b. Validate configured model tiers are available
   await validateModelTiers(llm, config.modelSelector, config.inferenceProvider);

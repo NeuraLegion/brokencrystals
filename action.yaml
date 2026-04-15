@@ -1,37 +1,37 @@
-name: 'Bright Security Copilot Engine'
-description: 'Security scanning and auto-remediation engine powered by Bright DAST'
-author: 'Bright Security'
+name: "Bright Security Copilot Engine"
+description: "Security scanning and auto-remediation engine powered by Bright DAST"
+author: "Bright Security"
 
 inputs:
   GITHUB_JOB_ID:
-    description: 'Unique identifier for the job'
+    description: "Unique identifier for the job"
     required: true
   GITHUB_PLATFORM_API_TOKEN:
-    description: 'Authentication token for platform API calls'
+    description: "Authentication token for platform API calls"
     required: true
   GITHUB_PLATFORM_API_URL:
-    description: 'Base URL for platform API endpoints'
+    description: "Base URL for platform API endpoints"
     required: true
   GITHUB_JOB_NONCE:
-    description: 'Job nonce for request validation'
+    description: "Job nonce for request validation"
     required: false
   BRIGHT_TOKEN:
-    description: 'Bright API token for MCP server authentication'
+    description: "Bright API token for MCP server authentication"
     required: true
   BRIGHT_HOSTNAME:
-    description: 'Bright platform hostname'
+    description: "Bright platform hostname"
     required: false
-    default: 'app.brightsec.com'
+    default: "app.brightsec.com"
   BRIGHT_MCP_URL:
-    description: 'Full URL for Bright MCP SSE endpoint (overrides BRIGHT_HOSTNAME-based URL)'
+    description: "Full URL for Bright MCP SSE endpoint (overrides BRIGHT_HOSTNAME-based URL)"
     required: false
   BRIGHT_PROJECT_ID:
-    description: 'Bright project ID to use for scanning. Falls back to the first available project.'
+    description: "Bright project ID to use for scanning. Falls back to the first available project."
     required: false
 
 runs:
-  using: 'node20'
-  main: 'dist/index.js'
+  using: "node20"
+  main: "dist/index.js"
   env:
     GITHUB_JOB_ID: ${{ inputs.GITHUB_JOB_ID }}
     GITHUB_PLATFORM_API_TOKEN: ${{ inputs.GITHUB_PLATFORM_API_TOKEN }}

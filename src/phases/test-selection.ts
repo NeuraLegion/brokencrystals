@@ -5,15 +5,11 @@ import { chatWithSchema } from "../inference.js";
 import { formatTechStack } from "../utils.js";
 
 // Tests that require multiple auth objects (different user roles) at the scan level.
-const MULTI_AUTH_TESTS = new Set([
-  "broken_access_control",
-]);
+const MULTI_AUTH_TESTS = new Set(["broken_access_control"]);
 
 // Tests that are mutually exclusive with other tests and must run alone,
 // or are destructive / counterproductive for automated scanning.
-const EXCLUDED_TESTS = new Set([
-  "lrrl",
-]);
+const EXCLUDED_TESTS = new Set(["lrrl"]);
 
 export interface ScanGroup {
   tests: string[];
@@ -116,17 +112,23 @@ Return a JSON object with an array of entries, one per endpoint index.`,
   const perEndpoint: string[][] = endpoints.map((_, i) => {
     const raw = indexToTests.get(i) ?? [];
     const valid = raw.filter((t) => validTags.has(t));
-    return valid.length > 0 ? valid : ["header_security", "cookie_security"].filter((t) => validTags.has(t));
+    return valid.length > 0
+      ? valid
+      : ["header_security", "cookie_security"].filter((t) => validTags.has(t));
   });
 
   const PATH_PARAM_RE = /[:{}]/;
 
   // Group endpoints that share the exact same test set
-  const groupMap = new Map<string, { epIds: string[]; hasPathParams: boolean }>();
+  const groupMap = new Map<
+    string,
+    { epIds: string[]; hasPathParams: boolean }
+  >();
   for (let i = 0; i < endpoints.length; i++) {
     if (i >= entrypointIds.length) break;
     const key = [...perEndpoint[i]].sort().join(",");
-    if (!groupMap.has(key)) groupMap.set(key, { epIds: [], hasPathParams: false });
+    if (!groupMap.has(key))
+      groupMap.set(key, { epIds: [], hasPathParams: false });
     const g = groupMap.get(key)!;
     g.epIds.push(entrypointIds[i]);
     if (PATH_PARAM_RE.test(endpoints[i].path)) g.hasPathParams = true;
@@ -134,7 +136,11 @@ Return a JSON object with an array of entries, one per endpoint index.`,
 
   const groups: ScanGroup[] = [];
   for (const [testsKey, { epIds, hasPathParams }] of groupMap) {
-    groups.push({ tests: testsKey.split(","), entrypointIds: epIds, hasPathParams });
+    groups.push({
+      tests: testsKey.split(","),
+      entrypointIds: epIds,
+      hasPathParams,
+    });
   }
 
   // Cap the number of scan groups to avoid excessive parallel scans
@@ -146,9 +152,13 @@ Return a JSON object with an array of entries, one per endpoint index.`,
   const MAX_ENTRYPOINTS_PER_GROUP = 10;
   const finalGroups = splitLargeGroups(consolidated, MAX_ENTRYPOINTS_PER_GROUP);
 
-  console.log(`[Tests] Created ${finalGroups.length} scan group(s) from ${endpoints.length} endpoints`);
+  console.log(
+    `[Tests] Created ${finalGroups.length} scan group(s) from ${endpoints.length} endpoints`,
+  );
   for (const [i, g] of finalGroups.entries()) {
-    console.log(`[Tests]   Group ${i + 1}: ${g.entrypointIds.length} endpoints, ${g.tests.length} tests`);
+    console.log(
+      `[Tests]   Group ${i + 1}: ${g.entrypointIds.length} endpoints, ${g.tests.length} tests`,
+    );
   }
 
   return finalGroups;
@@ -180,11 +190,16 @@ function splitLargeGroups(groups: ScanGroup[], maxEps: number): ScanGroup[] {
  * If there are more groups than maxGroups, merge the smallest groups
  * (by entrypoint count) into larger ones by taking the union of their tests.
  */
-function consolidateGroups(groups: ScanGroup[], maxGroups: number): ScanGroup[] {
+function consolidateGroups(
+  groups: ScanGroup[],
+  maxGroups: number,
+): ScanGroup[] {
   if (groups.length <= maxGroups) return groups;
 
   // Sort by entrypoint count ascending — merge smallest first
-  const sorted = [...groups].sort((a, b) => a.entrypointIds.length - b.entrypointIds.length);
+  const sorted = [...groups].sort(
+    (a, b) => a.entrypointIds.length - b.entrypointIds.length,
+  );
 
   while (sorted.length > maxGroups) {
     // Take the two smallest groups and merge them
@@ -197,7 +212,9 @@ function consolidateGroups(groups: ScanGroup[], maxGroups: number): ScanGroup[] 
       hasPathParams: a.hasPathParams || b.hasPathParams,
     };
     // Re-insert in sorted position
-    const insertIdx = sorted.findIndex((g) => g.entrypointIds.length >= merged.entrypointIds.length);
+    const insertIdx = sorted.findIndex(
+      (g) => g.entrypointIds.length >= merged.entrypointIds.length,
+    );
     if (insertIdx === -1) sorted.push(merged);
     else sorted.splice(insertIdx, 0, merged);
   }

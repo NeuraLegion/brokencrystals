@@ -1,5 +1,10 @@
 import type OpenAI from "openai";
-import { spawn, execSync, execFileSync, type ChildProcess } from "child_process";
+import {
+  spawn,
+  execSync,
+  execFileSync,
+  type ChildProcess,
+} from "child_process";
 import { createInterface } from "readline";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import type { TechStack, StartupConfig } from "../types.js";
@@ -45,14 +50,28 @@ export function canBuildFromSource(repoPath: string): boolean {
     "CMakeLists.txt",
     "meson.build",
   ];
-  if (buildIndicators.some(f => existsSync(`${repoPath}/${f}`))) return true;
+  if (buildIndicators.some((f) => existsSync(`${repoPath}/${f}`))) return true;
 
   // Glob patterns for build systems that use varying filenames (.sln, .csproj, .fsproj, etc.)
   try {
-    const entries = execSync("ls -1", { cwd: repoPath, encoding: "utf-8", timeout: 5_000 }).split("\n");
-    const globPatterns = [/\.sln$/i, /\.csproj$/i, /\.fsproj$/i, /\.vbproj$/i, /\.cabal$/i, /\.pro$/i];
-    if (entries.some(e => globPatterns.some(p => p.test(e.trim())))) return true;
-  } catch { /* ignore */ }
+    const entries = execSync("ls -1", {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 5_000,
+    }).split("\n");
+    const globPatterns = [
+      /\.sln$/i,
+      /\.csproj$/i,
+      /\.fsproj$/i,
+      /\.vbproj$/i,
+      /\.cabal$/i,
+      /\.pro$/i,
+    ];
+    if (entries.some((e) => globPatterns.some((p) => p.test(e.trim()))))
+      return true;
+  } catch {
+    /* ignore */
+  }
 
   return false;
 }
@@ -81,17 +100,33 @@ export async function startApplicationWithRetries(
 
     if (attempt === 1 && previousStartup) {
       // Source code changed — ask LLM to rebuild with the right strategy
-      config = await rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousStartup, modelSelector?.current());
+      config = await rebuildStartupConfig(
+        llm,
+        repoPath,
+        stackStr,
+        handleTool,
+        previousStartup,
+        modelSelector?.current(),
+      );
     } else if (attempt === 1) {
-      config = await identifyStartupConfig(llm, repoPath, stackStr, handleTool, modelSelector?.current());
+      config = await identifyStartupConfig(
+        llm,
+        repoPath,
+        stackStr,
+        handleTool,
+        modelSelector?.current(),
+      );
     } else {
       // Escalate model on retry if available
       modelSelector?.escalate();
       // If previous startup used a pre-built image and compose build-from-source
       // failed, try Dockerfile-only build before falling back to LLM
-      const dockerfileOnly = (attempt === 2 && previousStartup?.docker && usesPrebuiltImage(previousStartup.command))
-        ? buildDockerfileOnlyConfig(repoPath, previousStartup)
-        : null;
+      const dockerfileOnly =
+        attempt === 2 &&
+        previousStartup?.docker &&
+        usesPrebuiltImage(previousStartup.command)
+          ? buildDockerfileOnlyConfig(repoPath, previousStartup)
+          : null;
       if (dockerfileOnly) {
         console.log("[Startup] Compose failed — trying Dockerfile-only build");
         config = dockerfileOnly;
@@ -109,11 +144,18 @@ export async function startApplicationWithRetries(
         );
         // During rebuild (source changed), never fall back to a pre-built image —
         // it would discard all fixes applied to the source code.
-        if (previousStartup && config.docker && usesPrebuiltImage(config.command)) {
-          const fromSource = buildFromSourceConfig(repoPath, previousStartup)
-            ?? buildDockerfileOnlyConfig(repoPath, previousStartup);
+        if (
+          previousStartup &&
+          config.docker &&
+          usesPrebuiltImage(config.command)
+        ) {
+          const fromSource =
+            buildFromSourceConfig(repoPath, previousStartup) ??
+            buildDockerfileOnlyConfig(repoPath, previousStartup);
           if (fromSource) {
-            console.log(`[Startup] LLM suggested pre-built image — overriding with source build`);
+            console.log(
+              `[Startup] LLM suggested pre-built image — overriding with source build`,
+            );
             config = fromSource;
           }
         }
@@ -124,14 +166,25 @@ export async function startApplicationWithRetries(
     // If the project has source code but no Dockerfile, generate one so
     // Docker-based builds (and post-fix rebuilds) work.
     if (config.docker && !existsSync(`${repoPath}/Dockerfile`)) {
-      console.log("[Startup] No Dockerfile found — generating one for this project");
-      await generateDockerfile(llm, repoPath, stackStr, handleTool, modelSelector?.current());
+      console.log(
+        "[Startup] No Dockerfile found — generating one for this project",
+      );
+      await generateDockerfile(
+        llm,
+        repoPath,
+        stackStr,
+        handleTool,
+        modelSelector?.current(),
+      );
       // Now that a Dockerfile exists, switch pre-built image configs to source builds
       if (usesPrebuiltImage(config.command)) {
-        const fromSource = buildFromSourceConfig(repoPath, config)
-          ?? buildDockerfileOnlyConfig(repoPath, config);
+        const fromSource =
+          buildFromSourceConfig(repoPath, config) ??
+          buildDockerfileOnlyConfig(repoPath, config);
         if (fromSource) {
-          console.log("[Startup] Switching to source build with generated Dockerfile");
+          console.log(
+            "[Startup] Switching to source build with generated Dockerfile",
+          );
           config = fromSource;
         }
       }
@@ -143,7 +196,9 @@ export async function startApplicationWithRetries(
 
     try {
       const proc = await startApplication(repoPath, config);
-      console.log(`[Startup] Application started successfully on attempt ${attempt}`);
+      console.log(
+        `[Startup] Application started successfully on attempt ${attempt}`,
+      );
       modelSelector?.reset();
       return { process: proc, config };
     } catch (err) {
@@ -158,7 +213,9 @@ export async function startApplicationWithRetries(
             "docker compose down 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
             { cwd: repoPath, stdio: "ignore", timeout: 30_000 },
           );
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -181,7 +238,13 @@ async function identifyStartupConfig(
   model?: string,
 ): Promise<StartupConfig> {
   const messages = identifyStartupPrompt(stackStr);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
+  const response = await chatWithTools(
+    llm,
+    messages,
+    codebaseTools,
+    handleTool,
+    model,
+  );
   return parseStartupConfig(response);
 }
 
@@ -199,13 +262,24 @@ async function rebuildStartupConfig(
   if (previousConfig.docker && usesPrebuiltImage(previousConfig.command)) {
     const fromSource = buildFromSourceConfig(repoPath, previousConfig);
     if (fromSource) {
-      console.log(`[Startup] Previous startup used pre-built image — switching to build-from-source`);
+      console.log(
+        `[Startup] Previous startup used pre-built image — switching to build-from-source`,
+      );
       return fromSource;
     }
   }
 
-  const messages = rebuildStartupPrompt(stackStr, JSON.stringify(previousConfig, null, 2));
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
+  const messages = rebuildStartupPrompt(
+    stackStr,
+    JSON.stringify(previousConfig, null, 2),
+  );
+  const response = await chatWithTools(
+    llm,
+    messages,
+    codebaseTools,
+    handleTool,
+    model,
+  );
   return parseStartupConfig(response);
 }
 
@@ -224,7 +298,8 @@ async function rebuildStartupConfig(
  */
 function usesPrebuiltImage(command: string): boolean {
   // "docker compose ... --build" rebuilds from source
-  if (/docker\s+compose/.test(command) && command.includes("--build")) return false;
+  if (/docker\s+compose/.test(command) && command.includes("--build"))
+    return false;
 
   // "docker run ... <image>" — check if image looks like a registry image (contains / or :)
   const runMatch = command.match(/docker\s+run\s+.*?\s+(\S+)\s*$/);
@@ -268,7 +343,10 @@ function findMissingEnvFiles(repoPath: string, composeFile: string): string[] {
  * Replace .NET template placeholders (e.g. TEMPLATE_PORT) in compose files
  * with the actual port from the startup config, so Docker can parse them.
  */
-function sanitizeComposeTemplateVars(repoPath: string, config: StartupConfig): void {
+function sanitizeComposeTemplateVars(
+  repoPath: string,
+  config: StartupConfig,
+): void {
   // Collect compose file paths to check:
   // 1. Files explicitly referenced via -f <path> in the command
   // 2. Common compose filenames in the repo root and in any cd target dir
@@ -285,10 +363,14 @@ function sanitizeComposeTemplateVars(repoPath: string, config: StartupConfig): v
   if (cdMatch) dirs.push(cdMatch[1]);
 
   const defaultNames = [
-    "docker-compose.yml", "compose.yml",
-    "docker-compose.local.yml", "compose.local.yml",
-    "docker-compose.dev.yml", "compose.dev.yml",
-    "docker-compose.override.yml", "compose.override.yml",
+    "docker-compose.yml",
+    "compose.yml",
+    "docker-compose.local.yml",
+    "compose.local.yml",
+    "docker-compose.dev.yml",
+    "compose.dev.yml",
+    "docker-compose.override.yml",
+    "compose.override.yml",
   ];
   for (const dir of dirs) {
     for (const name of defaultNames) {
@@ -316,7 +398,9 @@ function sanitizeComposeTemplateVars(repoPath: string, config: StartupConfig): v
 
     if (sanitized !== content) {
       writeFileSync(filePath, sanitized);
-      console.log(`[Startup] Replaced template port placeholder(s) in ${cf} with ${config.port}`);
+      console.log(
+        `[Startup] Replaced template port placeholder(s) in ${cf} with ${config.port}`,
+      );
     }
   }
 }
@@ -374,7 +458,9 @@ function populateMissingEnvFile(
   }
 
   // Also populate directly-referenced env vars like MYSQL_ROOT_PASSWORD: ...
-  for (const m of content.matchAll(/^\s+(MYSQL_\w+|POSTGRES_\w+|MONGO_\w+):/gm)) {
+  for (const m of content.matchAll(
+    /^\s+(MYSQL_\w+|POSTGRES_\w+|MONGO_\w+):/gm,
+  )) {
     const name = m[1];
     if (dbDefaults[name] && !added.has(name)) addVar(name, dbDefaults[name]);
   }
@@ -388,7 +474,9 @@ function populateMissingEnvFile(
     addVar("POSTGRES_PASSWORD", "bright_test");
   }
 
-  console.log(`[Startup] Created ${envFile} with ${lines.length} default variable(s)`);
+  console.log(
+    `[Startup] Created ${envFile} with ${lines.length} default variable(s)`,
+  );
   writeFileSync(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
 }
 
@@ -409,9 +497,12 @@ function buildFromSourceConfig(
 
   // Check for docker-compose.yml — if it exists, prefer compose with --build
   const composeFiles = [
-    "docker-compose.yml", "compose.yml",
-    "docker-compose.local.yml", "compose.local.yml",
-    "docker-compose.dev.yml", "compose.dev.yml",
+    "docker-compose.yml",
+    "compose.yml",
+    "docker-compose.local.yml",
+    "compose.local.yml",
+    "docker-compose.dev.yml",
+    "compose.dev.yml",
   ];
   for (const cf of composeFiles) {
     if (existsSync(`${repoPath}/${cf}`)) {
@@ -472,27 +563,42 @@ async function generateDockerfile(
   model?: string,
 ): Promise<void> {
   const messages = generateDockerfilePrompt(stackStr);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
+  const response = await chatWithTools(
+    llm,
+    messages,
+    codebaseTools,
+    handleTool,
+    model,
+  );
 
   const content = extractCodeBlock(response);
   if (!content) {
-    throw new Error("Failed to generate a valid Dockerfile — LLM did not return a code block");
+    throw new Error(
+      "Failed to generate a valid Dockerfile — LLM did not return a code block",
+    );
   }
 
   writeFileSync(`${repoPath}/Dockerfile`, content);
-  console.log(`[Startup] Generated Dockerfile (${content.split("\n").length} lines)`);
+  console.log(
+    `[Startup] Generated Dockerfile (${content.split("\n").length} lines)`,
+  );
 }
 
 function extractCodeBlock(text: string): string | null {
-  const match = text.match(/```(?:dockerfile|docker|Dockerfile)?\s*\n([\s\S]*?)```/i);
+  const match = text.match(
+    /```(?:dockerfile|docker|Dockerfile)?\s*\n([\s\S]*?)```/i,
+  );
   if (match) return match[1].trimEnd() + "\n";
 
   // Fallback: extract lines that look like Dockerfile instructions
   const lines = text.split("\n");
-  const dockerLines = lines.filter(l =>
-    /^(FROM|RUN|COPY|ADD|WORKDIR|EXPOSE|CMD|ENTRYPOINT|ENV|ARG|LABEL|VOLUME|USER|HEALTHCHECK|SHELL|STOPSIGNAL|ONBUILD)\s/i.test(l.trim()) ||
-    l.trim() === "" ||
-    l.trim().startsWith("#"),
+  const dockerLines = lines.filter(
+    (l) =>
+      /^(FROM|RUN|COPY|ADD|WORKDIR|EXPOSE|CMD|ENTRYPOINT|ENV|ARG|LABEL|VOLUME|USER|HEALTHCHECK|SHELL|STOPSIGNAL|ONBUILD)\s/i.test(
+        l.trim(),
+      ) ||
+      l.trim() === "" ||
+      l.trim().startsWith("#"),
   );
   if (dockerLines.length >= 3) return dockerLines.join("\n") + "\n";
 
@@ -515,7 +621,13 @@ async function retryStartupConfig(
     errorOutput,
     attempt,
   );
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
+  const response = await chatWithTools(
+    llm,
+    messages,
+    codebaseTools,
+    handleTool,
+    model,
+  );
   return parseStartupConfig(response);
 }
 
@@ -525,7 +637,8 @@ function parseStartupConfig(response: string): StartupConfig {
     const parsed = JSON.parse(jsonStr);
     // Filter out natural language "prerequisites" that aren't real commands
     const prerequisites = (parsed.prerequisites ?? []).filter(
-      (cmd: unknown) => typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd),
+      (cmd: unknown) =>
+        typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd),
     );
 
     const envVars: Record<string, string> = parsed.envVars ?? {};
@@ -560,7 +673,10 @@ function parseStartupConfig(response: string): StartupConfig {
  * e.g. "DB_PASSWORD=x RAILS_ENV=test docker compose up" →
  *   { command: "docker compose up", envVars: { DB_PASSWORD: "x", RAILS_ENV: "test" } }
  */
-function extractInlineEnvVars(command: string): { command: string; envVars: Record<string, string> } {
+function extractInlineEnvVars(command: string): {
+  command: string;
+  envVars: Record<string, string>;
+} {
   const envVars: Record<string, string> = {};
   let rest = command;
 
@@ -587,15 +703,22 @@ function unshallowIfNeeded(repoPath: string): void {
   const shallowFile = `${repoPath}/.git/shallow`;
   if (!existsSync(shallowFile)) return;
 
-  console.log("[Startup] Detected shallow clone — fetching full history for Docker build");
+  console.log(
+    "[Startup] Detected shallow clone — fetching full history for Docker build",
+  );
   try {
-    execSync("git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true", {
-      cwd: repoPath,
-      stdio: "pipe",
-      timeout: 120_000,
-    });
+    execSync(
+      "git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true",
+      {
+        cwd: repoPath,
+        stdio: "pipe",
+        timeout: 120_000,
+      },
+    );
   } catch {
-    console.warn("[Startup] Failed to unshallow git repo — build may fail if version tools require full history");
+    console.warn(
+      "[Startup] Failed to unshallow git repo — build may fail if version tools require full history",
+    );
   }
 }
 
@@ -606,7 +729,11 @@ function unshallowIfNeeded(repoPath: string): void {
 function looksLikeCommand(s: string): boolean {
   const trimmed = s.trim();
   // Common command prefixes
-  if (/^(npm|npx|yarn|pnpm|docker|make|pip|python|go|gradle|mvn|java|cargo|gem|bundle|cp|mv|mkdir|cat|echo|sh|bash|chmod|curl|wget|git|apt|brew|sed|awk|tee|touch|ln|export|cd|source|\.|\/)/.test(trimmed)) {
+  if (
+    /^(npm|npx|yarn|pnpm|docker|make|pip|python|go|gradle|mvn|java|cargo|gem|bundle|cp|mv|mkdir|cat|echo|sh|bash|chmod|curl|wget|git|apt|brew|sed|awk|tee|touch|ln|export|cd|source|\.|\/)/.test(
+      trimmed,
+    )
+  ) {
     return true;
   }
   // Reject if it starts with a capitalized English word followed by a space
@@ -649,11 +776,18 @@ async function startApplication(
 
   // For docker compose commands, add --wait to wait for healthchecks
   let command = config.command;
-  if (config.docker && /docker\s+compose/.test(command) && command.includes("-d") && !command.includes("--wait")) {
+  if (
+    config.docker &&
+    /docker\s+compose/.test(command) &&
+    command.includes("-d") &&
+    !command.includes("--wait")
+  ) {
     command = command.replace("-d", "-d --wait");
   }
 
-  console.log(`[Startup] Starting application: ${command} (port ${config.port})`);
+  console.log(
+    `[Startup] Starting application: ${command} (port ${config.port})`,
+  );
 
   // Use shell: true so commands with inline env vars (DB_PASSWORD=x cmd),
   // && chains, pipes, and other shell features work correctly.
@@ -709,7 +843,12 @@ async function startApplication(
       child.on("exit", (code) => {
         clearTimeout(timer);
         if (code === 0) resolve();
-        else reject(new Error(`docker compose exited with code ${code}. Output:\n${outputLines.slice(-30).join("\n")}`));
+        else
+          reject(
+            new Error(
+              `docker compose exited with code ${code}. Output:\n${outputLines.slice(-30).join("\n")}`,
+            ),
+          );
       });
     });
 
@@ -720,14 +859,20 @@ async function startApplication(
       // The app container itself may be fine — fall back to port check.
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes("unhealthy") || errMsg.includes("exited with code")) {
-        console.warn(`[Startup] docker compose --wait failed (${errMsg.slice(0, 200)}), falling back to port check...`);
+        console.warn(
+          `[Startup] docker compose --wait failed (${errMsg.slice(0, 200)}), falling back to port check...`,
+        );
         logDockerFailure(repoPath);
         try {
           await waitForPort(config.port, 60_000);
-          console.log(`[Startup] Port ${config.port} is reachable despite --wait failure`);
+          console.log(
+            `[Startup] Port ${config.port} is reachable despite --wait failure`,
+          );
           return child;
         } catch {
-          throw new Error(`docker compose --wait failed and port ${config.port} is not reachable. Original error: ${errMsg.slice(0, 300)}`);
+          throw new Error(
+            `docker compose --wait failed and port ${config.port} is not reachable. Original error: ${errMsg.slice(0, 300)}`,
+          );
         }
       }
       logDockerFailure(repoPath);
@@ -762,11 +907,14 @@ async function startApplication(
 
 function logDockerFailure(repoPath: string): void {
   try {
-    const ps = execSync("docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true", {
-      cwd: repoPath,
-      encoding: "utf-8",
-      timeout: 10_000,
-    }).trim();
+    const ps = execSync(
+      "docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true",
+      {
+        cwd: repoPath,
+        encoding: "utf-8",
+        timeout: 10_000,
+      },
+    ).trim();
     if (ps) console.log(`[Startup] Docker container status:\n${ps}`);
 
     const logs = execSync("docker compose logs --tail=40 2>/dev/null || true", {
@@ -774,8 +922,13 @@ function logDockerFailure(repoPath: string): void {
       encoding: "utf-8",
       timeout: 15_000,
     }).trim();
-    if (logs) console.log(`[Startup] Docker logs (last 40 lines):\n${logs.slice(-3000)}`);
-  } catch { /* ignore */ }
+    if (logs)
+      console.log(
+        `[Startup] Docker logs (last 40 lines):\n${logs.slice(-3000)}`,
+      );
+  } catch {
+    /* ignore */
+  }
 }
 
 async function waitForPort(port: number, timeoutMs: number): Promise<void> {
@@ -875,14 +1028,19 @@ export function captureDockerLogs(repoPath: string, tailLines = 80): string {
   try {
     // Get running and exited containers from compose
     const containers = execFileSync(
-      "docker", ["compose", "ps", "-a", "--format", "{{.Name}}"],
+      "docker",
+      ["compose", "ps", "-a", "--format", "{{.Name}}"],
       { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
-    ).trim().split("\n").filter(Boolean);
+    )
+      .trim()
+      .split("\n")
+      .filter(Boolean);
 
     for (const name of containers) {
       try {
         const containerLog = execFileSync(
-          "docker", ["logs", "--tail", String(tailLines), name],
+          "docker",
+          ["logs", "--tail", String(tailLines), name],
           { encoding: "utf-8", timeout: 10_000 },
         );
         if (containerLog.trim()) {
@@ -896,22 +1054,31 @@ export function captureDockerLogs(repoPath: string, tailLines = 80): string {
     // docker compose ps failed — try docker logs for node-related containers
     try {
       const allContainers = execFileSync(
-        "docker", ["ps", "-a", "--format", "{{.Names}}", "--filter", "name=nodejs"],
+        "docker",
+        ["ps", "-a", "--format", "{{.Names}}", "--filter", "name=nodejs"],
         { encoding: "utf-8", timeout: 10_000 },
-      ).trim().split("\n").filter(Boolean);
+      )
+        .trim()
+        .split("\n")
+        .filter(Boolean);
 
       for (const name of allContainers) {
         try {
           const containerLog = execFileSync(
-            "docker", ["logs", "--tail", String(tailLines), name],
+            "docker",
+            ["logs", "--tail", String(tailLines), name],
             { encoding: "utf-8", timeout: 10_000 },
           );
           if (containerLog.trim()) {
             logs.push(`=== ${name} ===\n${containerLog.trim()}`);
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return logs.join("\n\n") || "No container logs available.";
 }

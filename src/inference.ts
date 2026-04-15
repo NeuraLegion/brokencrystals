@@ -16,15 +16,26 @@ export type InferenceProvider = "openai" | "github-models" | "ollama";
  */
 export function detectProvider(baseUrl: string): InferenceProvider {
   const explicit = process.env.INFERENCE_PROVIDER?.toLowerCase();
-  if (explicit === "github-models" || explicit === "ollama" || explicit === "openai") {
+  if (
+    explicit === "github-models" ||
+    explicit === "ollama" ||
+    explicit === "openai"
+  ) {
     return explicit;
   }
 
   const url = baseUrl.toLowerCase();
-  if (url.includes("models.github.ai") || url.includes("models.inference.ai.azure.com")) {
+  if (
+    url.includes("models.github.ai") ||
+    url.includes("models.inference.ai.azure.com")
+  ) {
     return "github-models";
   }
-  if (url.includes("localhost:11434") || url.includes("127.0.0.1:11434") || url.includes("/ollama")) {
+  if (
+    url.includes("localhost:11434") ||
+    url.includes("127.0.0.1:11434") ||
+    url.includes("/ollama")
+  ) {
     return "ollama";
   }
   return "openai";
@@ -34,7 +45,10 @@ export function detectProvider(baseUrl: string): InferenceProvider {
  * Normalize the base URL for each provider so the OpenAI SDK sends requests
  * to the correct path.
  */
-function normalizeBaseUrl(baseUrl: string, provider: InferenceProvider): string {
+function normalizeBaseUrl(
+  baseUrl: string,
+  provider: InferenceProvider,
+): string {
   if (provider === "ollama") {
     // Ollama exposes OpenAI-compat at /v1 — ensure the suffix is present
     const trimmed = baseUrl.replace(/\/+$/, "");
@@ -53,7 +67,7 @@ export function createInferenceClient(
 
   const opts: ConstructorParameters<typeof OpenAI>[0] = {
     baseURL,
-    apiKey: token || "ollama",  // Ollama doesn't require a key
+    apiKey: token || "ollama", // Ollama doesn't require a key
   };
 
   if (resolved === "github-models") {
@@ -73,7 +87,8 @@ function sanitizeForJson(s: string): string {
 }
 
 export type ToolHandler = (
-  name: string,  args: Record<string, unknown>,
+  name: string,
+  args: Record<string, unknown>,
 ) => Promise<string>;
 
 // ---------------------------------------------------------------------------
@@ -86,7 +101,8 @@ export class ModelSelector {
   private level = 0;
 
   constructor(tiers: string[]) {
-    if (tiers.length === 0) throw new Error("At least one model is required in AI_MODEL");
+    if (tiers.length === 0)
+      throw new Error("At least one model is required in AI_MODEL");
     this.tiers = tiers;
   }
 
@@ -102,7 +118,9 @@ export class ModelSelector {
   escalate(): boolean {
     if (this.level >= this.tiers.length - 1) return false;
     this.level++;
-    console.log(`[Model] Escalated to ${this.tiers[this.level]} (tier ${this.level + 1}/${this.tiers.length})`);
+    console.log(
+      `[Model] Escalated to ${this.tiers[this.level]} (tier ${this.level + 1}/${this.tiers.length})`,
+    );
     return true;
   }
 
@@ -139,7 +157,9 @@ export async function validateModelTiers(
   // GitHub Models doesn't expose a standard /v1/models list endpoint;
   // skip tier validation and rely on runtime errors for bad model names.
   if (provider === "github-models") {
-    console.log(`[Model] GitHub Models provider — skipping tier validation (${tiers.length} tier(s) configured)`);
+    console.log(
+      `[Model] GitHub Models provider — skipping tier validation (${tiers.length} tier(s) configured)`,
+    );
     return;
   }
 
@@ -151,7 +171,9 @@ export async function validateModelTiers(
       available.push(model.id);
     }
   } catch (err) {
-    console.warn(`[Model] Could not list available models — skipping tier validation: ${err}`);
+    console.warn(
+      `[Model] Could not list available models — skipping tier validation: ${err}`,
+    );
     return;
   }
 
@@ -162,11 +184,13 @@ export async function validateModelTiers(
     const availableSorted = available.sort().join("\n  - ");
     throw new Error(
       `Invalid model tier(s): ${invalid.join(", ")}\n` +
-      `Available models:\n  - ${availableSorted}`,
+        `Available models:\n  - ${availableSorted}`,
     );
   }
 
-  console.log(`[Model] All ${tiers.length} model tier(s) validated successfully`);
+  console.log(
+    `[Model] All ${tiers.length} model tier(s) validated successfully`,
+  );
 }
 
 /**
@@ -202,16 +226,22 @@ export async function chatWithTools(
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
       if (usage) {
-        console.log(`[Inference] Turn ${turn + 1}/${maxTurns}: final response (${usage.prompt_tokens}→${usage.completion_tokens} tokens)`);
+        console.log(
+          `[Inference] Turn ${turn + 1}/${maxTurns}: final response (${usage.prompt_tokens}→${usage.completion_tokens} tokens)`,
+        );
       }
       return msg.content ?? "";
     }
 
-    const toolNames = msg.tool_calls.map(tc => tc.function.name).join(", ");
+    const toolNames = msg.tool_calls.map((tc) => tc.function.name).join(", ");
     if (usage) {
-      console.log(`[Inference] Turn ${turn + 1}/${maxTurns}: ${msg.tool_calls.length} tool call(s) [${toolNames}] (${usage.prompt_tokens}→${usage.completion_tokens} tokens)`);
+      console.log(
+        `[Inference] Turn ${turn + 1}/${maxTurns}: ${msg.tool_calls.length} tool call(s) [${toolNames}] (${usage.prompt_tokens}→${usage.completion_tokens} tokens)`,
+      );
     } else {
-      console.log(`[Inference] Turn ${turn + 1}/${maxTurns}: ${msg.tool_calls.length} tool call(s) [${toolNames}]`);
+      console.log(
+        `[Inference] Turn ${turn + 1}/${maxTurns}: ${msg.tool_calls.length} tool call(s) [${toolNames}]`,
+      );
     }
 
     for (const tc of msg.tool_calls) {
@@ -232,14 +262,20 @@ export async function chatWithTools(
   }
 
   // Exhausted turns — return the last assistant content if available
-  console.warn(`[Inference] chatWithTools: exhausted ${maxTurns} tool-calling turns, returning last response`);
+  console.warn(
+    `[Inference] chatWithTools: exhausted ${maxTurns} tool-calling turns, returning last response`,
+  );
   for (let i = conversation.length - 1; i >= 0; i--) {
     const m = conversation[i];
     if (m.role === "assistant" && "content" in m && m.content) {
-      return typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+      return typeof m.content === "string"
+        ? m.content
+        : JSON.stringify(m.content);
     }
   }
-  throw new Error("chatWithTools: exceeded maximum tool-calling turns with no assistant response");
+  throw new Error(
+    "chatWithTools: exceeded maximum tool-calling turns with no assistant response",
+  );
 }
 
 /**

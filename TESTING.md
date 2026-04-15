@@ -3,6 +3,7 @@
 ## Prerequisites
 
 Ensure you have:
+
 - Node.js ≥20.0.0
 - npm or yarn
 - A Bright account with at least one project at [app.brightsec.com](https://app.brightsec.com)
@@ -45,11 +46,13 @@ export GITHUB_GIT_TOKEN="ghp_xxx..."
 ## Step 3: Prepare a Test Repository
 
 Clone or prepare a small web application to test with. Examples:
+
 - [Express.js Hello World](https://github.com/expressjs/examples)
 - [Flask Simple App](https://github.com/pallets/flask/tree/main/examples)
 - Your own small web app
 
 The engine will:
+
 1. Analyze the codebase
 2. Discover HTTP endpoints
 3. Start the app locally
@@ -99,6 +102,7 @@ The engine logs progress to the console:
 ### Build Failures
 
 Check for TypeScript errors:
+
 ```bash
 npm run typecheck
 ```
@@ -106,6 +110,7 @@ npm run typecheck
 ### Missing Dependencies
 
 Reinstall dependencies:
+
 ```bash
 rm -rf node_modules package-lock.json
 npm install

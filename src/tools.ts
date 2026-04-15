@@ -107,7 +107,10 @@ export function createToolHandler(repoPath: string): ToolHandler {
         });
         if (files.length === 0) return "No files found matching that pattern.";
         if (files.length > 200) {
-          return files.slice(0, 200).join("\n") + `\n... and ${files.length - 200} more`;
+          return (
+            files.slice(0, 200).join("\n") +
+            `\n... and ${files.length - 200} more`
+          );
         }
         return files.join("\n");
       }
@@ -160,7 +163,11 @@ export function createToolHandler(repoPath: string): ToolHandler {
 // MCP tool helpers — convert MCP schemas to OpenAI format & dispatch calls
 // ---------------------------------------------------------------------------
 
-const CODEBASE_TOOL_NAMES = new Set(["read_file", "list_files", "search_files"]);
+const CODEBASE_TOOL_NAMES = new Set([
+  "read_file",
+  "list_files",
+  "search_files",
+]);
 
 export function convertMcpToolsToOpenAI(
   schemas: McpToolSchema[],

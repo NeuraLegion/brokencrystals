@@ -83,7 +83,9 @@ export async function generateFixes(
 
       console.log(`[Fix] Generated fix: ${result.summary}`);
     } catch (err) {
-      console.error(`[Fix] Failed to generate fix for ${finding.name}: ${toErrorMessage(err)}`);
+      console.error(
+        `[Fix] Failed to generate fix for ${finding.name}: ${toErrorMessage(err)}`,
+      );
     }
   }
 

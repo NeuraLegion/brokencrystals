@@ -13,12 +13,22 @@ export async function runSecurityScan(
   scanName?: string,
   hasPathParams = false,
 ): Promise<string> {
-  const locations = hasPathParams ? PATH_ATTACK_LOCATIONS : DEFAULT_ATTACK_LOCATIONS;
-  console.log(`[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests, attack locations: ${locations.join(", ")}`);
+  const locations = hasPathParams
+    ? PATH_ATTACK_LOCATIONS
+    : DEFAULT_ATTACK_LOCATIONS;
+  console.log(
+    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests, attack locations: ${locations.join(", ")}`,
+  );
 
   return runScanViaRest(
-    brightToken, brightHostname, projectId, entrypointIds,
-    repeaterId, testTags, locations, scanName,
+    brightToken,
+    brightHostname,
+    projectId,
+    entrypointIds,
+    repeaterId,
+    testTags,
+    locations,
+    scanName,
   );
 }
 
@@ -63,7 +73,9 @@ async function runScanViaRest(
     } catch (err) {
       // TCP/network error — retry
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`);
+      console.warn(
+        `[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`,
+      );
       if (attempt < maxRetries) {
         await sleep(5_000 * attempt);
         continue;
@@ -75,7 +87,9 @@ async function runScanViaRest(
       const data = (await res.json()) as Record<string, unknown>;
       const scanId = (data.id ?? data.scanId) as string | undefined;
       if (!scanId) {
-        throw new Error(`runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`);
+        throw new Error(
+          `runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`,
+        );
       }
       console.log(`[Scan] Scan started (REST): ${scanId}`);
       return scanId;
@@ -85,7 +99,9 @@ async function runScanViaRest(
 
     // Rate limit — back off and retry
     if (res.status === 429) {
-      console.warn(`[Scan] Rate limited (attempt ${attempt}/${maxRetries}), backing off...`);
+      console.warn(
+        `[Scan] Rate limited (attempt ${attempt}/${maxRetries}), backing off...`,
+      );
       if (attempt < maxRetries) {
         await sleep(10_000 * attempt);
         continue;
@@ -95,21 +111,29 @@ async function runScanViaRest(
 
     // Server error — retry
     if (res.status >= 500) {
-      console.warn(`[Scan] Server error ${res.status} (attempt ${attempt}/${maxRetries}): ${text.slice(0, 200)}`);
+      console.warn(
+        `[Scan] Server error ${res.status} (attempt ${attempt}/${maxRetries}): ${text.slice(0, 200)}`,
+      );
       if (attempt < maxRetries) {
         await sleep(5_000 * attempt);
         continue;
       }
-      throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
+      throw new Error(
+        `runScan REST failed (${res.status}): ${text.slice(0, 500)}`,
+      );
     }
 
     // 400 config error — try to auto-fix by removing problematic tests
     if (res.status === 400) {
-      console.warn(`[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${text.slice(0, 300)}`);
+      console.warn(
+        `[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${text.slice(0, 300)}`,
+      );
       const fixed = tryFixScanConfig(text, tests);
       if (fixed && attempt < maxRetries) {
         tests = fixed;
-        console.log(`[Scan] Retrying with ${tests.length} tests after removing incompatible ones`);
+        console.log(
+          `[Scan] Retrying with ${tests.length} tests after removing incompatible ones`,
+        );
         continue;
       }
       // If we have many entrypoints and can't diagnose the issue,
@@ -117,12 +141,16 @@ async function runScanViaRest(
       if (eps.length > 5 && attempt < maxRetries) {
         const prev = eps.length;
         eps = eps.slice(0, Math.ceil(prev / 2));
-        console.log(`[Scan] Retrying with ${eps.length} entrypoints (reduced from ${prev})`);
+        console.log(
+          `[Scan] Retrying with ${eps.length} entrypoints (reduced from ${prev})`,
+        );
         continue;
       }
     }
 
-    throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
+    throw new Error(
+      `runScan REST failed (${res.status}): ${text.slice(0, 500)}`,
+    );
   }
 
   throw new Error("runScan: exhausted retries");
@@ -139,18 +167,27 @@ function tryFixScanConfig(errorText: string, tests: string[]): string[] | null {
   if (lower.includes("mutually exclusive")) {
     // Try to identify which test from the error message
     const exclusiveTests = ["lrrl"];
-    const filtered = tests.filter((t) => !exclusiveTests.some((ex) => lower.includes(ex) || t === ex));
+    const filtered = tests.filter(
+      (t) => !exclusiveTests.some((ex) => lower.includes(ex) || t === ex),
+    );
     if (filtered.length < tests.length && filtered.length > 0) {
-      console.log(`[Scan] Removed mutually exclusive test(s), ${tests.length} → ${filtered.length}`);
+      console.log(
+        `[Scan] Removed mutually exclusive test(s), ${tests.length} → ${filtered.length}`,
+      );
       return filtered;
     }
   }
 
   // "multiple auth attack tests" — remove broken_access_control
-  if (lower.includes("multiple auth attack tests") || lower.includes("custom auth objects")) {
+  if (
+    lower.includes("multiple auth attack tests") ||
+    lower.includes("custom auth objects")
+  ) {
     const filtered = tests.filter((t) => t !== "broken_access_control");
     if (filtered.length < tests.length && filtered.length > 0) {
-      console.log(`[Scan] Removed multi-auth test(s), ${tests.length} → ${filtered.length}`);
+      console.log(
+        `[Scan] Removed multi-auth test(s), ${tests.length} → ${filtered.length}`,
+      );
       return filtered;
     }
   }
@@ -158,7 +195,13 @@ function tryFixScanConfig(errorText: string, tests: string[]): string[] | null {
   return null;
 }
 
-const TERMINAL_STATUSES = new Set(["done", "completed", "stopped", "failed", "disrupted"]);
+const TERMINAL_STATUSES = new Set([
+  "done",
+  "completed",
+  "stopped",
+  "failed",
+  "disrupted",
+]);
 
 function isTerminalStatus(status: string): boolean {
   return TERMINAL_STATUSES.has(status.toLowerCase());
@@ -183,7 +226,11 @@ export async function waitForScanCompletion(
   await sleep(pollInterval);
 
   while (true) {
-    const scanStatus = await getScanStatusViaRest(brightToken, brightHostname, scanId);
+    const scanStatus = await getScanStatusViaRest(
+      brightToken,
+      brightHostname,
+      scanId,
+    );
     const issues = scanStatus.issuesFound;
 
     onProgress?.(scanStatus.status, issues);
@@ -193,7 +240,9 @@ export async function waitForScanCompletion(
       return scanStatus.status.toLowerCase();
     }
 
-    console.log(`[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`);
+    console.log(
+      `[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`,
+    );
     await sleep(pollInterval);
   }
 }
@@ -210,7 +259,9 @@ async function getScanStatusViaRest(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`getScanStatus failed (${res.status}): ${text.slice(0, 300)}`);
+    throw new Error(
+      `getScanStatus failed (${res.status}): ${text.slice(0, 300)}`,
+    );
   }
 
   const data = (await res.json()) as Record<string, unknown>;
@@ -258,7 +309,11 @@ function extractIssueCount(data: Record<string, unknown>): number {
   // Deprecated: issuesBySeverity is an array of { type, number, issuesByStatus }
   if (Array.isArray(data.issuesBySeverity)) {
     for (const item of data.issuesBySeverity) {
-      if (typeof item === "object" && item !== null && typeof item.number === "number") {
+      if (
+        typeof item === "object" &&
+        item !== null &&
+        typeof item.number === "number"
+      ) {
         total += item.number;
       }
     }

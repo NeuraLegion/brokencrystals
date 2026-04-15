@@ -5,6 +5,7 @@ A GitHub Copilot Engine that performs automated security scanning and remediatio
 ## Overview
 
 This engine integrates with:
+
 - **GitHub Copilot Engine SDK** (`@github/copilot-engine-sdk`) for orchestration and CI/CD integration
 - **Bright MCP Server** for security scanning capabilities
 - **OpenAI/Claude API** for LLM-driven code analysis and fix generation
@@ -51,6 +52,7 @@ src/
 The orchestrator executes the following workflow, repeating the scan-fix loop up to 5 times:
 
 ### Phase 1: Analyze Repository
+
 - **Component**: `phases/analyze.ts`
 - Detects tech stack (languages, frameworks, databases) from config files
 - Discovers HTTP endpoints by analyzing route controllers
@@ -58,6 +60,7 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 - **Output**: List of `DiscoveredEndpoint` objects
 
 ### Phase 2: Start Application
+
 - **Component**: `phases/startup.ts`
 - Analyzes startup config (scripts, env vars, prerequisites, Docker)
 - Runs prerequisites (npm install, pip install, etc.)
@@ -65,12 +68,14 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 - **Output**: Application running on localhost
 
 ### Phase 3: Setup Repeater
+
 - **Component**: `phases/repeater.ts`
 - Creates a Bright Repeater (local proxy for scanning private/internal apps)
 - Registers the repeater with Bright cloud service
 - **Output**: Active repeater connection
 
 ### Phase 4: Detect & Configure Authentication
+
 - **Component**: `phases/auth.ts`
 - Analyzes codebase for auth mechanisms (JWT, API keys, sessions, OAuth)
 - Determines login endpoints and token extraction logic
@@ -80,6 +85,7 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 - **Output**: Per-endpoint auth mapping (`endpointAuthMap`)
 
 ### Phase 5: Register Entrypoints
+
 - **Component**: `phases/entrypoints.ts`
 - Programmatically registers discovered endpoints with Bright project
 - Associates repeater and per-endpoint auth objects with each entrypoint
@@ -87,6 +93,7 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 - **Output**: List of entrypoint IDs ready for scanning
 
 ### Phase 6: Select Security Tests
+
 - **Component**: `phases/test-selection.ts`
 - LLM selects relevant security tests for each endpoint based on its technology, parameters, and auth
 - Groups endpoints that share the same test set into scan groups for efficiency
@@ -94,6 +101,7 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 - **Output**: `ScanGroup[]` — each with entrypoint IDs and test tags
 
 ### Phase 7: Run Security Scans
+
 - **Component**: `phases/scan.ts`
 - Programmatically launches one Bright scan per scan group (no LLM involved)
 - Polls scan status until completion (up to 30 minutes per scan)
@@ -101,12 +109,14 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 - **Output**: Completed scans with vulnerabilities identified
 
 ### Phase 8: Fetch Findings
+
 - **Component**: `phases/findings.ts`
 - Retrieves critical/high/medium severity issues from completed scans
 - Normalizes issue data for fix generation
 - **Output**: List of `Finding` objects with vulnerability details
 
 ### Phase 9: Generate, Apply & Validate Fixes
+
 - **Component**: `phases/fix.ts`
 - For each finding, performs taint analysis to identify vulnerable code paths
 - Generates fixes using LLM with context of affected files
@@ -115,11 +125,13 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 - **If the fix breaks the app**: captures Docker container logs, lets the LLM diagnose and repair the broken code (up to 2 repair attempts), or reverts the fix commit as a fallback
 
 ### Cleanup
+
 - Kills application and repeater processes
 - Deletes the repeater from Bright to avoid stale entries
 - Closes MCP connection
 
 ### Loop Strategy
+
 - **Iterations**: Up to 5 passes (phases 7-9)
 - **Early exit**:
   - No vulnerabilities found → exit successfully
@@ -133,61 +145,63 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 
 #### Bright (required)
 
-| Variable | Required | Description |
-|---|---|---|
-| `BRIGHT_TOKEN` | **Yes** | API key from [app.brightsec.com](https://app.brightsec.com) |
-| `BRIGHT_MCP_URL` | No | MCP server URL (default: `https://app.brightsec.com/mcp`) |
-| `BRIGHT_PROJECT_ID` | No | Project ID. Auto-detected if omitted |
-| `BRIGHT_HOSTNAME` | No | API hostname. Derived from `BRIGHT_MCP_URL` if omitted |
+| Variable            | Required | Description                                                 |
+| ------------------- | -------- | ----------------------------------------------------------- |
+| `BRIGHT_TOKEN`      | **Yes**  | API key from [app.brightsec.com](https://app.brightsec.com) |
+| `BRIGHT_MCP_URL`    | No       | MCP server URL (default: `https://app.brightsec.com/mcp`)   |
+| `BRIGHT_PROJECT_ID` | No       | Project ID. Auto-detected if omitted                        |
+| `BRIGHT_HOSTNAME`   | No       | API hostname. Derived from `BRIGHT_MCP_URL` if omitted      |
 
 #### AI / Inference
 
-| Variable | Required | Description |
-|---|---|---|
-| `AI_MODEL` | No | Model name or comma-separated escalation chain. Single model stays fixed; multiple models auto-escalate on retry (e.g. `gpt-4.1-mini,gpt-4.1,o3`). Default: `gpt-5.4-mini` |
-| `GITHUB_INFERENCE_URL` | No | Inference API base URL. Supports OpenAI (`https://api.openai.com/v1`), GitHub Models (`https://models.github.ai/inference`), and Ollama (`http://localhost:11434`). Default: `https://api.openai.com/v1` |
-| `OPENAI_API_KEY` | Varies | API key for OpenAI. Takes priority over other token vars |
-| `GITHUB_INFERENCE_TOKEN` | Varies | Inference token for GitHub Models. Fallback after `OPENAI_API_KEY` |
-| `GITHUB_TOKEN` | Varies | GitHub PAT. Used for git operations and as inference token fallback. At least one of `OPENAI_API_KEY`, `GITHUB_INFERENCE_TOKEN`, or `GITHUB_TOKEN` must be set |
-| `INFERENCE_PROVIDER` | No | Force provider: `openai`, `github-models`, or `ollama`. Auto-detected from URL if omitted |
+| Variable                 | Required | Description                                                                                                                                                                                              |
+| ------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AI_MODEL`               | No       | Model name or comma-separated escalation chain. Single model stays fixed; multiple models auto-escalate on retry (e.g. `gpt-4.1-mini,gpt-4.1,o3`). Default: `gpt-5.4-mini`                               |
+| `GITHUB_INFERENCE_URL`   | No       | Inference API base URL. Supports OpenAI (`https://api.openai.com/v1`), GitHub Models (`https://models.github.ai/inference`), and Ollama (`http://localhost:11434`). Default: `https://api.openai.com/v1` |
+| `OPENAI_API_KEY`         | Varies   | API key for OpenAI. Takes priority over other token vars                                                                                                                                                 |
+| `GITHUB_INFERENCE_TOKEN` | Varies   | Inference token for GitHub Models. Fallback after `OPENAI_API_KEY`                                                                                                                                       |
+| `GITHUB_TOKEN`           | Varies   | GitHub PAT. Used for git operations and as inference token fallback. At least one of `OPENAI_API_KEY`, `GITHUB_INFERENCE_TOKEN`, or `GITHUB_TOKEN` must be set                                           |
+| `INFERENCE_PROVIDER`     | No       | Force provider: `openai`, `github-models`, or `ollama`. Auto-detected from URL if omitted                                                                                                                |
 
 #### GitHub / Git
 
-| Variable | Required | Description |
-|---|---|---|
-| `GITHUB_TOKEN` | **Yes** | GitHub PAT for cloning repos and creating PRs |
-| `GITHUB_GIT_TOKEN` | No | Dedicated git clone token. Falls back to `GIT_TOKEN` then `GITHUB_TOKEN` |
-| `GITHUB_REPOSITORY` | No | Target repository in `owner/repo` format. Falls back to `REPO` env var |
-| `GITHUB_SERVER_URL` | No | GitHub server URL (default: `https://github.com`) |
-| `GITHUB_BRANCH` | No | Branch name for fixes (default: `bright-scan-<timestamp>`) |
-| `GIT_AUTHOR_NAME` | No | Git commit author name (default: `BrightSec`) |
-| `GIT_AUTHOR_EMAIL` | No | Git commit author email (default: `bot@brightsec.com`) |
+| Variable            | Required | Description                                                              |
+| ------------------- | -------- | ------------------------------------------------------------------------ |
+| `GITHUB_TOKEN`      | **Yes**  | GitHub PAT for cloning repos and creating PRs                            |
+| `GITHUB_GIT_TOKEN`  | No       | Dedicated git clone token. Falls back to `GIT_TOKEN` then `GITHUB_TOKEN` |
+| `GITHUB_REPOSITORY` | No       | Target repository in `owner/repo` format. Falls back to `REPO` env var   |
+| `GITHUB_SERVER_URL` | No       | GitHub server URL (default: `https://github.com`)                        |
+| `GITHUB_BRANCH`     | No       | Branch name for fixes (default: `bright-scan-<timestamp>`)               |
+| `GIT_AUTHOR_NAME`   | No       | Git commit author name (default: `BrightSec`)                            |
+| `GIT_AUTHOR_EMAIL`  | No       | Git commit author email (default: `bot@brightsec.com`)                   |
 
 #### Copilot Engine (CI/CD only — set automatically by engine-cli)
 
-| Variable | Required | Description |
-|---|---|---|
-| `GITHUB_JOB_ID` | No | Job ID from Copilot Engine platform |
-| `GITHUB_PLATFORM_API_TOKEN` | No | Platform API token |
-| `GITHUB_PLATFORM_API_URL` | No | Platform API URL |
-| `GITHUB_JOB_NONCE` | No | Optional job nonce |
+| Variable                    | Required | Description                         |
+| --------------------------- | -------- | ----------------------------------- |
+| `GITHUB_JOB_ID`             | No       | Job ID from Copilot Engine platform |
+| `GITHUB_PLATFORM_API_TOKEN` | No       | Platform API token                  |
+| `GITHUB_PLATFORM_API_URL`   | No       | Platform API URL                    |
+| `GITHUB_JOB_NONCE`          | No       | Optional job nonce                  |
 
 #### Standalone Mode
 
-| Variable | Required | Description |
-|---|---|---|
-| `PROBLEM_STATEMENT` | No | Problem description (default: `Run a security scan and fix vulnerabilities`) |
-| `ACTION` | No | Action to perform (default: `fix`) |
+| Variable            | Required | Description                                                                  |
+| ------------------- | -------- | ---------------------------------------------------------------------------- |
+| `PROBLEM_STATEMENT` | No       | Problem description (default: `Run a security scan and fix vulnerabilities`) |
+| `ACTION`            | No       | Action to perform (default: `fix`)                                           |
 
 #### Provider Examples
 
 **OpenAI (default):**
+
 ```bash
 export OPENAI_API_KEY="sk-..."
 export AI_MODEL="gpt-4.1-mini"
 ```
 
 **GitHub Models:**
+
 ```bash
 export GITHUB_INFERENCE_URL="https://models.github.ai/inference"
 export GITHUB_TOKEN="ghp_..."
@@ -195,12 +209,14 @@ export AI_MODEL="openai/gpt-4.1-mini"
 ```
 
 **Ollama (local):**
+
 ```bash
 export GITHUB_INFERENCE_URL="http://localhost:11434"
 export AI_MODEL="llama4:latest"
 ```
 
 **Escalating models (auto-upgrade on failure):**
+
 ```bash
 export AI_MODEL="gpt-4.1-mini,gpt-4.1,o3"
 ```
@@ -351,6 +367,7 @@ AI_MODEL="gpt-4.1-mini" \
 ```
 
 The CLI will:
+
 - Clone the target repository to a temp directory
 - Start a mock HTTP server that mimics the platform API
 - Spawn the engine with all required environment variables (`GITHUB_JOB_ID`, `GITHUB_PLATFORM_API_TOKEN`, etc.)
@@ -386,6 +403,7 @@ Check Bright dashboard at [app.brightsec.com](https://app.brightsec.com). The 30
 ### Application Won't Start
 
 Ensure prerequisites run correctly:
+
 - Check `startup.ts` LLM output for detected startup command
 - Manually verify `npm start` or equivalent works in the cloned repo
 - If the app breaks after a fix is applied, the engine will capture Docker container logs, attempt a repair, or revert the fix commit automatically

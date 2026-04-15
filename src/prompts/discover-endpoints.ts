@@ -60,7 +60,9 @@ export function identifyParametersPrompt(
   endpoint: { method: string; path: string; filePath: string },
   fileContent: string,
 ): ChatCompletionMessageParam[] {
-  const needsBody = ["POST", "PUT", "PATCH"].includes(endpoint.method.toUpperCase());
+  const needsBody = ["POST", "PUT", "PATCH"].includes(
+    endpoint.method.toUpperCase(),
+  );
   return [
     {
       role: "system",
@@ -87,7 +89,7 @@ ${fileContent}
 ${needsBody ? `This is a ${endpoint.method} endpoint — you MUST provide a realistic body with actual field names and sample values based on the code. DO NOT return an empty body "{}".` : "This endpoint likely does not use a request body. Set body to null."}
 
 Return a JSON object with:
-- body: ${needsBody ? 'A JSON string with realistic sample data based on the code (e.g. a login endpoint should have email and password fields)' : "An empty string if no body"}
+- body: ${needsBody ? "A JSON string with realistic sample data based on the code (e.g. a login endpoint should have email and password fields)" : "An empty string if no body"}
 - contentType: "application/json" for JSON APIs, or appropriate content type, or empty string
 - hasQueryParams: true if the endpoint accepts query parameters, false otherwise
 - queryParamsList: array of {name, value} objects for query parameters, or empty array`,
@@ -128,8 +130,14 @@ export const endpointsSchema = {
 export const endpointParamsSchema = {
   type: "object" as const,
   properties: {
-    body: { type: "string" as const, description: "JSON request body string, or empty string if no body" },
-    contentType: { type: "string" as const, description: "Content type, or empty string if none" },
+    body: {
+      type: "string" as const,
+      description: "JSON request body string, or empty string if no body",
+    },
+    contentType: {
+      type: "string" as const,
+      description: "Content type, or empty string if none",
+    },
     hasQueryParams: { type: "boolean" as const },
     queryParamsList: {
       type: "array" as const,
@@ -144,6 +152,11 @@ export const endpointParamsSchema = {
       },
     },
   },
-  required: ["body", "contentType", "hasQueryParams", "queryParamsList"] as const,
+  required: [
+    "body",
+    "contentType",
+    "hasQueryParams",
+    "queryParamsList",
+  ] as const,
   additionalProperties: false,
 };

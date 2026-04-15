@@ -84,7 +84,9 @@ async function waitForRepeaterReady(
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     const timer = setTimeout(() => {
-      console.warn("[Repeater] Timed out waiting for connection — proceeding anyway");
+      console.warn(
+        "[Repeater] Timed out waiting for connection — proceeding anyway",
+      );
       cleanup();
       resolve();
     }, timeoutMs);
@@ -108,7 +110,9 @@ async function waitForRepeaterReady(
 
     function onExit(code: number | null) {
       exited = true;
-      console.warn(`[Repeater] Process exited with code ${code} before connecting`);
+      console.warn(
+        `[Repeater] Process exited with code ${code} before connecting`,
+      );
       cleanup();
       resolve();
     }
