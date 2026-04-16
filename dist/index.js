@@ -38158,7 +38158,11 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
 
 // src/phases/test-selection.ts
 var MULTI_AUTH_TESTS = /* @__PURE__ */ new Set(["broken_access_control"]);
-var EXCLUDED_TESTS = /* @__PURE__ */ new Set(["lrrl"]);
+var EXCLUDED_TESTS = /* @__PURE__ */ new Set([
+  "lrrl",
+  "header_security",
+  "cookie_security"
+]);
 async function selectTestsPerEndpoint(llm, bright, endpoints, entrypointIds, techStack, hasAuth, model) {
   const availableTests = await bright.listTests();
   const eligibleTests = availableTests.filter(
@@ -38177,9 +38181,8 @@ For EACH endpoint, select ONLY tests that are relevant to it. Consider:
 - Path patterns: /auth/ endpoints are relevant for JWT/session tests, /upload for file_upload, etc.
 - Technology: skip WordPress/GraphQL tests for non-matching tech
 - Parameters: endpoints with query params \u2192 XSS, SSRF; with body \u2192 SQLi, XSS, SSTI
-- Always include header_security and cookie_security for all endpoints
-
-Be selective \u2014 irrelevant tests waste scan time.`
+- Be selective \u2014 irrelevant tests waste scan time.
+- Do NOT include header_security or cookie_security \u2014 they produce low-severity findings and are excluded.`
     },
     {
       role: "user",
@@ -38227,7 +38230,7 @@ Return a JSON object with an array of entries, one per endpoint index.`
   const perEndpoint = endpoints.map((_, i) => {
     const raw = indexToTests.get(i) ?? [];
     const valid = raw.filter((t) => validTags.has(t));
-    return valid.length > 0 ? valid : ["header_security", "cookie_security"].filter((t) => validTags.has(t));
+    return valid.length > 0 ? valid : [];
   });
   const PATH_PARAM_RE = /[:{}]/;
   const groupMap = /* @__PURE__ */ new Map();

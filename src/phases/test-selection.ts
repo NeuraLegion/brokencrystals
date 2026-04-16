@@ -8,8 +8,13 @@ import { formatTechStack } from "../utils.js";
 const MULTI_AUTH_TESTS = new Set(["broken_access_control"]);
 
 // Tests that are mutually exclusive with other tests and must run alone,
-// or are destructive / counterproductive for automated scanning.
-const EXCLUDED_TESTS = new Set(["lrrl"]);
+// or are destructive / counterproductive for automated scanning,
+// or produce low-severity findings (cookie/header config) not worth scanning.
+const EXCLUDED_TESTS = new Set([
+  "lrrl",
+  "header_security",
+  "cookie_security",
+]);
 
 export interface ScanGroup {
   tests: string[];
@@ -55,9 +60,8 @@ For EACH endpoint, select ONLY tests that are relevant to it. Consider:
 - Path patterns: /auth/ endpoints are relevant for JWT/session tests, /upload for file_upload, etc.
 - Technology: skip WordPress/GraphQL tests for non-matching tech
 - Parameters: endpoints with query params → XSS, SSRF; with body → SQLi, XSS, SSTI
-- Always include header_security and cookie_security for all endpoints
-
-Be selective — irrelevant tests waste scan time.`,
+- Be selective — irrelevant tests waste scan time.
+- Do NOT include header_security or cookie_security — they produce low-severity findings and are excluded.`,
     },
     {
       role: "user",
@@ -114,7 +118,7 @@ Return a JSON object with an array of entries, one per endpoint index.`,
     const valid = raw.filter((t) => validTags.has(t));
     return valid.length > 0
       ? valid
-      : ["header_security", "cookie_security"].filter((t) => validTags.has(t));
+      : [];
   });
 
   const PATH_PARAM_RE = /[:{}]/;
