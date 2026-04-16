@@ -1,7 +1,7 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, statSync, writeFileSync } from "fs";
 import { resolve, relative } from "path";
 import { glob } from "glob";
-import { execFileSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import type { ToolHandler } from "./inference.js";
 import type { McpToolSchema, BrightMcpClient } from "./mcp-client.js";
@@ -84,6 +84,9 @@ export function createToolHandler(repoPath: string): ToolHandler {
         if (!existsSync(filePath)) {
           return `Error: file not found: ${args.path}`;
         }
+        if (statSync(filePath).isDirectory()) {
+          return `Error: path is a directory, not a file: ${args.path}`;
+        }
         const content = readFileSync(filePath, "utf-8");
         if (content.length > 100_000) {
           return content.slice(0, 100_000) + "\n... [truncated]";
@@ -130,7 +133,9 @@ export function createToolHandler(repoPath: string): ToolHandler {
             "--exclude-dir=build",
             "--exclude-dir=vendor",
             "--exclude-dir=.data",
+            "--exclude-dir=data",
             "-F",
+            "--",
             query,
             ".",
           ];
@@ -160,6 +165,111 @@ export function createToolHandler(repoPath: string): ToolHandler {
 }
 
 // ---------------------------------------------------------------------------
+// Infrastructure repair tools — write_file + run_command for fixing scripts,
+// compose files, configs, etc. between retry attempts.
+// ---------------------------------------------------------------------------
+
+const writeFileTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "write_file",
+    description:
+      "Write content to a file (create or overwrite). Use this to patch shell scripts, compose files, config files, etc.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            "Relative file path from the repository root (e.g. bin/docker/exec)",
+        },
+        content: {
+          type: "string",
+          description: "The full file content to write",
+        },
+      },
+      required: ["path", "content"],
+      additionalProperties: false,
+    },
+  },
+};
+
+const runCommandTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "run_command",
+    description:
+      "Run a shell command in the repository directory and return its output. Use for diagnostics (docker logs, docker ps, ls, cat) or small fixes (sed, chmod). Commands are killed after 30 seconds.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description:
+            'Shell command to run (e.g. "docker logs discourse_dev --tail 50", "sed -i \'s/-it/-i/g\' bin/docker/exec")',
+        },
+      },
+      required: ["command"],
+      additionalProperties: false,
+    },
+  },
+};
+
+// infraTools is defined after verifyDockerImageTool below
+
+export function createInfraToolHandler(repoPath: string): ToolHandler {
+  const baseHandler = createDockerfileToolHandler(repoPath);
+  return async (name: string, args: Record<string, unknown>) => {
+    switch (name) {
+      case "write_file": {
+        const filePath = resolve(repoPath, String(args.path ?? ""));
+        if (!filePath.startsWith(repoPath)) {
+          return "Error: path traversal attempt blocked";
+        }
+        const content = String(args.content ?? "");
+        try {
+          writeFileSync(filePath, content);
+          return `Written ${content.length} bytes to ${args.path}`;
+        } catch (err) {
+          return `Error writing file: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+
+      case "run_command": {
+        const command = String(args.command ?? "");
+        // Block dangerous commands
+        if (/\brm\s+-rf\s+[/~]|:\(\)\{|fork\s*bomb|mkfs|dd\s+if=/i.test(command)) {
+          return "Error: dangerous command blocked";
+        }
+        try {
+          const output = execSync(command, {
+            cwd: repoPath,
+            encoding: "utf-8",
+            timeout: 30_000,
+            maxBuffer: 5 * 1024 * 1024,
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          const result = output.trim();
+          return result.length > 10_000
+            ? result.slice(-10_000) + "\n... [truncated]"
+            : result || "(no output)";
+        } catch (err) {
+          if (err && typeof err === "object" && "stderr" in err) {
+            const stderr = String((err as { stderr: unknown }).stderr).trim();
+            const stdout = String((err as { stdout: unknown }).stdout).trim();
+            return `Command failed:\n${stdout}\n${stderr}`.slice(-5_000);
+          }
+          return `Command failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+
+      default:
+        return baseHandler(name, args);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Docker image verification tool
 // ---------------------------------------------------------------------------
 
@@ -183,6 +293,14 @@ const verifyDockerImageTool: ChatCompletionTool = {
     },
   },
 };
+
+/** Codebase tools + write_file + run_command — for infrastructure repair between retries */
+export const infraTools: ChatCompletionTool[] = [
+  ...codebaseTools,
+  verifyDockerImageTool,
+  writeFileTool,
+  runCommandTool,
+];
 
 /** Codebase tools + Docker image verification — for Dockerfile generation/repair */
 export const dockerfileTools: ChatCompletionTool[] = [

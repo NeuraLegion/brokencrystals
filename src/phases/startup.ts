@@ -15,6 +15,8 @@ import {
   dockerfileTools,
   createDockerfileToolHandler,
   validateDockerfileImages,
+  infraTools,
+  createInfraToolHandler,
 } from "../tools.js";
 import { sleep, formatTechStack, toErrorMessage } from "../utils.js";
 import {
@@ -44,6 +46,9 @@ function isSourceCodeError(
 
   // Runtime config errors are fixable by Dockerfile repair (adjusting CMD flags)
   if (/FileNotFoundException.*conf\//i.test(errorMsg)) return false;
+
+  // tsc with --noEmitOnError exits non-zero but the fix is just || true — not a source code issue
+  if (/--noEmitOnError/.test(errorMsg)) return false;
 
   const patterns = [
     // Scala / sbt
@@ -275,20 +280,33 @@ export async function startApplicationWithRetries(
         break;
       }
 
-      // LLM-based Dockerfile repair when Docker builds fail
-      // Skip on the final attempt — the repaired file would never be tested
-      if (
-        config.docker &&
-        existsSync(`${repoPath}/Dockerfile`) &&
-        attempt < MAX_STARTUP_ATTEMPTS
-      ) {
-        await repairDockerBuild(
-          llm,
-          repoPath,
-          errorMsg,
-          handleTool,
-          modelSelector?.current(),
-        );
+      // LLM-based repair when startup fails
+      // Skip on the final attempt — repairs would never be tested
+      if (attempt < MAX_STARTUP_ATTEMPTS) {
+        const isDockerBuildError = config.docker &&
+          existsSync(`${repoPath}/Dockerfile`) &&
+          /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(errorMsg);
+
+        if (isDockerBuildError) {
+          // Dockerfile build failure — let LLM fix the Dockerfile
+          await repairDockerBuild(
+            llm,
+            repoPath,
+            errorMsg,
+            handleTool,
+            modelSelector?.current(),
+          );
+        } else {
+          // Infrastructure failure (TTY flags, missing DB, compose issues, permissions, etc.)
+          // Give the LLM write_file + run_command tools to fix the environment
+          await repairInfrastructure(
+            llm,
+            repoPath,
+            config,
+            errorMsg,
+            modelSelector?.current(),
+          );
+        }
       }
 
       // Clean up any Docker containers from failed attempts
@@ -570,6 +588,9 @@ Common issues and fixes:
 - .NET AppHost/Aspire orchestrator projects cannot be published standalone → find a real web API project (Catalog.API, WebApp, etc.) and publish that instead
 - dotnet publish succeeds but COPY --from=build fails with "not found" → the publish output path is wrong. List the build stage output to find where files actually went
 - Permission issues → add appropriate RUN chmod/chown
+- "tsc" exits with non-zero even when "--noEmitOnError false" is set (it still reports type errors) → append "|| true" to the tsc RUN command so the Docker build continues despite type warnings
+- "npm ci" fails with "package.json and package-lock.json are in sync" / "Missing: <pkg> from lock file" → the runtime stage is using a built sub-project's package.json that doesn't match the root lockfile. Replace "npm ci" with "npm install" in that stage (or copy the sub-project's own lock file if it exists)
+- "npm ci" postinstall fails with "Failed to process project graph" or monorepo tooling errors (nx, lerna, turbo, patch-package) → use "npm ci --ignore-scripts" to skip postinstall hooks, then run only the specific scripts needed (e.g. "RUN npx patch-package" separately). The full monorepo graph is NOT needed inside Docker when building a single service.
 
 Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`,
     },
@@ -629,6 +650,90 @@ Use the tools to inspect relevant project files, then return a COMPLETE fixed Do
   } catch (err) {
     console.warn(
       `[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LLM-based infrastructure repair — fix shell scripts, compose files, env
+// files, TTY flags, database setup, etc. between retry attempts.
+// ---------------------------------------------------------------------------
+
+/**
+ * When a startup attempt fails for reasons OTHER than a Dockerfile build error
+ * (e.g. TTY flags in scripts, missing DB, broken compose, permission issues),
+ * give the LLM tools to diagnose and fix the infrastructure before the next
+ * retry attempt. The LLM can read/write files and run shell commands.
+ */
+async function repairInfrastructure(
+  llm: OpenAI,
+  repoPath: string,
+  config: StartupConfig,
+  errorOutput: string,
+  model?: string,
+): Promise<void> {
+  const truncatedError = errorOutput.length > 4000
+    ? errorOutput.slice(-4000)
+    : errorOutput;
+
+  const messages: Array<{ role: "system" | "user"; content: string }> = [
+    {
+      role: "system",
+      content: `You are a DevOps engineer fixing a failed application startup. You have tools to:
+- read_file / list_files / search_files — inspect the repository
+- write_file — modify shell scripts, compose files, config files, etc.
+- run_command — run diagnostic or repair commands (docker logs, sed, chmod, etc.)
+- verify_docker_image — check if a Docker image exists
+
+The application failed to start. Your job is to fix the root cause so the SAME startup command can succeed on the next attempt.
+
+Common issues you should fix:
+- "cannot attach stdin to a TTY-enabled container" → find and patch scripts that use "docker exec -it" or "docker run -it" to remove the -t flag. Use sed or write_file.
+- "database does not exist" → run the database creation command (e.g. docker exec <container> bin/rails db:create db:migrate)
+- Compose service errors ("has neither an image nor a build context") → edit the compose file to comment out or remove the broken service
+- Permission denied → chmod +x the script, or fix file permissions
+- Missing .env file → copy from .env.example or create a minimal one
+- Missing config files → create them with sensible defaults
+- Port already in use → kill the old process
+
+IMPORTANT:
+- Do NOT change the startup command itself — only fix the files/environment so the same command works.
+- Make targeted, minimal fixes. Don't rewrite entire files unless necessary.
+- Run diagnostic commands first to understand the problem, then apply fixes.
+- After fixing, verify the fix worked if possible (e.g. re-read the patched file).`,
+    },
+    {
+      role: "user",
+      content: `The application failed to start with this config:
+
+Command: ${config.command}
+Prerequisites: ${JSON.stringify(config.prerequisites)}
+Docker: ${config.docker}
+
+Error output:
+\`\`\`
+${truncatedError}
+\`\`\`
+
+Investigate the root cause using the tools, then fix it. Reply with a brief summary of what you fixed.`,
+    },
+  ];
+
+  try {
+    console.log("[Startup] Asking LLM to repair infrastructure...");
+    const infraHandler = createInfraToolHandler(repoPath);
+    const response = await chatWithTools(
+      llm,
+      messages,
+      infraTools,
+      infraHandler,
+      model,
+      15, // generous tool turns for diagnosis + repair
+    );
+    console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
+  } catch (err) {
+    console.warn(
+      `[Startup] Infrastructure repair failed: ${err instanceof Error ? err.message : err}`,
     );
   }
 }
@@ -1080,6 +1185,37 @@ function unshallowIfNeeded(repoPath: string): void {
 }
 
 /**
+ * Ensure a .dockerignore exists and excludes common directories that cause
+ * permission errors during docker build (e.g. data/postgres with 0700 perms).
+ */
+function ensureDockerIgnore(repoPath: string): void {
+  const ignorePath = `${repoPath}/.dockerignore`;
+  const problematicDirs = ["data/", ".data/", "tmp/", "log/"];
+  
+  let existing = "";
+  try {
+    existing = readFileSync(ignorePath, "utf-8");
+  } catch { /* doesn't exist yet */ }
+
+  const linesToAdd = problematicDirs.filter(
+    (dir) =>
+      !existing.includes(dir) &&
+      existsSync(`${repoPath}/${dir.replace(/\/$/, "")}`),
+  );
+
+  if (linesToAdd.length === 0) return;
+
+  const newContent = existing
+    ? `${existing.trimEnd()}\n# Added by bright-agent to avoid permission errors\n${linesToAdd.join("\n")}\n`
+    : `# Added by bright-agent to avoid permission errors\n${linesToAdd.join("\n")}\n`;
+
+  writeFileSync(ignorePath, newContent);
+  console.log(
+    `[Startup] Updated .dockerignore to exclude: ${linesToAdd.join(", ")}`,
+  );
+}
+
+/**
  * Heuristic: a real shell command starts with a known CLI tool or path,
  * not an English sentence.
  */
@@ -1220,7 +1356,12 @@ function sanitizeStartupConfig(
 function extractComposeFilePath(command: string): string | null {
   // -f path/to/docker-compose.yml
   const fMatch = command.match(/-f\s+(\S+)/);
-  if (fMatch) return fMatch[1];
+  if (fMatch) {
+    const file = fMatch[1];
+    // Reject non-YAML files (e.g. README.md accidentally picked up)
+    if (!/\.ya?ml$/i.test(file)) return null;
+    return file;
+  }
 
   // cd some/dir && docker compose up
   const cdMatch = command.match(/cd\s+(\S+)\s*&&/);
@@ -1263,6 +1404,118 @@ function fallbackToDockerfile(
   };
 }
 
+/**
+ * Strip -t / -it / --tty flags from docker exec / docker run commands.
+ * We run non-interactively so TTY-enabled containers fail with
+ * "cannot attach stdin to a TTY-enabled container".
+ *
+ * Handles flags anywhere in the command, not just immediately after docker run:
+ *   docker run --rm -it -p 3000:3000 → docker run --rm -i -p 3000:3000
+ *   docker exec -e FOO=bar -it container → docker exec -e FOO=bar -i container
+ */
+function stripDockerTtyFlags(cmd: string): string {
+  return cmd
+    // Replace standalone -it → -i
+    .replace(/\s-it\b/g, " -i")
+    // Replace -t when it's a standalone flag (not part of --tag, etc.)
+    .replace(/\s-t\s/g, " ")
+    // Remove --tty
+    .replace(/\s--tty\b/g, "")
+    // Handle combined flags containing t (e.g. -dit → -di, -itu → -iu)
+    .replace(/\s-([a-zA-Z]*t[a-zA-Z]*)\b/g, (_m, flags: string) => {
+      // Only if it looks like short flags (not --tag, --timeout, etc.)
+      if (flags.length > 5) return _m; // likely a long-ish flag, skip
+      const without = flags.replace(/t/g, "");
+      return without ? ` -${without}` : "";
+    });
+}
+
+/**
+ * Patch shell scripts referenced by the startup command/prerequisites to
+ * remove docker TTY flags (-it, -t, --tty).  Projects like Discourse ship
+ * wrapper scripts (bin/docker/boot_dev) that call `docker exec -it` which
+ * fails in CI / non-interactive environments.
+ *
+ * Instead of trying to follow `source` directives (which often use
+ * $() command substitution we can't resolve), we scan ALL files in the
+ * same directory trees as the referenced scripts.
+ */
+function patchScriptTtyFlags(
+  repoPath: string,
+  config: StartupConfig,
+): void {
+  // Collect directories containing scripts referenced in command + prerequisites
+  const allCmds = [config.command, ...config.prerequisites];
+  const scriptDirs = new Set<string>();
+
+  for (const cmd of allCmds) {
+    // Match script invocations like `bin/docker/boot_dev`, `d/rails`, `./scripts/start.sh`
+    // Patterns: *.sh files, paths with bin/, and short relative paths (e.g. d/boot_dev)
+    const matches = cmd.matchAll(/(?:\.\/)?(\S+\.sh|\S*bin\/\S+|[a-zA-Z][\w]*\/[\w./-]+)/g);
+    for (const m of matches) {
+      const candidate = m[1];
+      // Skip common binaries that aren't repo scripts
+      if (/^\/(usr|bin|sbin)\//.test(candidate)) continue;
+      // Skip Docker image references (contain : for tag)
+      if (candidate.includes(":")) continue;
+      const fullPath = `${repoPath}/${candidate}`;
+      if (existsSync(fullPath)) {
+        // Add the directory containing this script
+        const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
+        scriptDirs.add(dir);
+      }
+    }
+  }
+
+  if (scriptDirs.size === 0) return;
+
+  // Scan all files in those directories for docker TTY flags
+  // Docker commands in scripts often span multiple lines with backslash:
+  //   docker exec \
+  //     -it \
+  //     -u user ...
+  // So we match -it / -t as standalone flags on ANY line, not just same line as docker exec.
+
+  for (const dir of scriptDirs) {
+    let files: string[];
+    try {
+      files = execSync(`find "${dir}" -maxdepth 2 -type f 2>/dev/null`, {
+        encoding: "utf-8",
+        timeout: 5_000,
+      }).trim().split("\n").filter(Boolean);
+    } catch {
+      continue;
+    }
+
+    for (const filePath of files) {
+      try {
+        const content = readFileSync(filePath, "utf-8");
+        // Only patch files that actually contain docker exec/run
+        if (!/docker\s+(?:exec|run)/.test(content)) continue;
+
+        const patched = content
+          // Replace -it flag (standalone or combined) on same or continuation lines
+          // Handles: "-it", "-it \", "  -it  \"
+          .replace(/^(\s*)-it(\s*\\?\s*)$/gm, "$1-i$2")
+          // Handles: "docker exec -it" on the same line
+          .replace(/\b(docker\s+(?:exec|run)\s+(?:[^\n]*?\s)?)-it\b/g, "$1-i")
+          // Handles: standalone -t (without i) on continuation lines
+          .replace(/^(\s*)-t(\s*\\?\s*)$/gm, (_m, pre: string, post: string) => {
+            // If the line is JUST "-t" as a flag, remove it entirely
+            return post.includes("\\") ? `${pre}${post}` : "";
+          })
+          // Remove --tty anywhere
+          .replace(/\s--tty\b/g, "");
+
+        if (patched !== content) {
+          writeFileSync(filePath, patched);
+          console.log(`[Startup] Patched TTY flags in ${filePath.replace(repoPath + "/", "")}`);
+        }
+      } catch { /* ignore binary/unreadable/unwritable files */ }
+    }
+  }
+}
+
 /** Check whether a CLI tool is available on the host */
 function isToolAvailable(name: string): boolean {
   try {
@@ -1301,15 +1554,23 @@ async function startApplication(
   // fail inside Docker when .git is from a shallow clone.
   if (config.docker) {
     unshallowIfNeeded(repoPath);
+    ensureDockerIgnore(repoPath);
   }
 
+  // Patch shell scripts that use docker exec -it / docker run -it —
+  // we run non-interactively so TTY flags cause "cannot attach stdin" errors.
+  patchScriptTtyFlags(repoPath, config);
+
   // Run prerequisites
-  for (const cmd of config.prerequisites) {
+  for (let cmd of config.prerequisites) {
+    // Strip TTY flags — we run non-interactively (no terminal attached)
+    cmd = stripDockerTtyFlags(cmd);
     console.log(`[Startup] Running prerequisite: ${cmd}`);
     execSync(cmd, {
       cwd: repoPath,
       stdio: "pipe",
       timeout: 300_000,
+      maxBuffer: 50 * 1024 * 1024, // 50 MB — large installs produce lots of output
       env: { ...process.env, ...config.envVars },
     });
   }
@@ -1318,7 +1579,7 @@ async function startApplication(
   const env = { ...process.env, ...config.envVars };
 
   // For docker compose commands, add --wait to wait for healthchecks
-  let command = config.command;
+  let command = stripDockerTtyFlags(config.command);
   if (
     config.docker &&
     /docker\s+compose/.test(command) &&
@@ -1401,7 +1662,11 @@ async function startApplication(
       // --wait fails if ANY container is unhealthy (e.g. watchtower, sidecars).
       // The app container itself may be fine — fall back to port check.
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (errMsg.includes("unhealthy") || errMsg.includes("exited with code")) {
+      if (
+        errMsg.includes("unhealthy") ||
+        errMsg.includes("exited with code") ||
+        errMsg.includes("invalid compose project")
+      ) {
         console.warn(
           `[Startup] docker compose --wait failed (${errMsg.slice(0, 200)}), falling back to port check...`,
         );

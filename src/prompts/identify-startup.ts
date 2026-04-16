@@ -28,6 +28,18 @@ CRITICAL COMPOSE FILE RULES:
 
 IMPORTANT: If the project has Docker files (Dockerfile or compose), you MUST use Docker. Do NOT attempt a native (non-Docker) startup when Docker files are present — the app likely depends on databases, caches, or other services that won't be available natively. If no suitable compose file exists but a Dockerfile does, use "docker build" + "docker run".
 
+DOCKER WRAPPER SCRIPTS (e.g. bin/docker/boot_dev, d/rails, d/boot_dev):
+- Some projects (like Discourse) use shell scripts that internally run "docker exec -it". The "-it" flag requires a TTY which is NOT available in CI/automated environments.
+- If using such scripts, add prerequisites to strip -it flags BEFORE running them:
+  e.g. "find d/ bin/ -type f -exec sed -i 's/ -it / -i /g; s/ --tty//g' {} +"
+- Alternatively, call docker exec directly without -t instead of using the wrapper scripts.
+- Rails projects inside Docker containers need database setup. Add a prerequisite to run "docker exec <container> bin/rails db:create db:migrate" AFTER the container is running but BEFORE the Rails server starts.
+
+PORT SELECTION for full-stack apps (e.g. Rails + Ember CLI, Django + React):
+- For security scanning, ALWAYS use the BACKEND API port (e.g. Rails on 3000, Django on 8000), NOT the frontend dev server port (e.g. Ember CLI on 4200, Webpack on 3001).
+- The backend serves HTTP API endpoints that the security scanner needs to test.
+- The frontend dev server is just a hot-reload proxy — scanning it tests nothing useful.
+
 For Docker Compose: use "docker compose -f <file> up -d" as the command and set docker=true. Parse the compose file to find the exposed port.
 
 For Dockerfile (no compose): use "docker build -t app ." as prerequisite and "docker run -d -p <port>:<port> app" as command. Set docker=true. Parse the Dockerfile EXPOSE directive or application config to find the port.
@@ -132,6 +144,9 @@ Analyze the error and determine an alternative way to start the application. Com
 - If a port conflict occurred, try a different port
 - If missing environment variables, check .env.example or README for required values
 - If build failed, check if there's a pre-built option or different build command
+- "cannot attach stdin to a TTY" → the wrapper scripts use "docker exec -it". Call docker exec directly WITHOUT -t, or strip -it flags from the scripts as a prerequisite: find d/ bin/ -type f -exec sed -i 's/ -it / -i /g' {} +
+- "database does not exist" / "relation does not exist" → add a prerequisite: docker exec <container> bin/rails db:create db:migrate (or the equivalent for the framework)
+- For full-stack apps (Rails+Ember, Django+React), use the BACKEND port (e.g. Rails=3000) NOT the frontend dev server port (e.g. Ember CLI=4200). The security scanner needs the API, not the frontend proxy.
 
 IMPORTANT: Do NOT repeat the same approach that already failed. Try a fundamentally different strategy.
 

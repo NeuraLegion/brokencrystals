@@ -379,11 +379,22 @@ async function selectServiceForTesting(
   const isDotnetMultiProject = csprojDirs.size > 3;
 
   // Multiple package.json files in different dirs
+  // Require BOTH a workspace config AND multiple package.json files with
+  // their own "start" or HTTP dependencies to be a true JS monorepo.
+  // Projects like Rails+pnpm (Discourse) have pnpm-workspace.yaml for
+  // frontend plugins but are NOT monorepos with multiple deployable services.
   const pkgJsonFiles = await glob("*/package.json", {
     cwd: repoPath,
     nodir: true,
   });
-  const isJsMonorepo = hasWorkspaceConfig || pkgJsonFiles.length > 2;
+  const hasRootGemfile = existsSync(resolve(repoPath, "Gemfile"));
+  const hasRootGoMod = existsSync(resolve(repoPath, "go.mod"));
+  // If the root project is Rails/Go/Python, pnpm workspaces are just for
+  // frontend assets — not a JS monorepo.
+  const isJsMonorepo =
+    !hasRootGemfile &&
+    !hasRootGoMod &&
+    (hasWorkspaceConfig ? pkgJsonFiles.length > 2 : pkgJsonFiles.length > 3);
 
   // Multiple Go modules or main.go files
   const goMains = await glob("**/main.go", {
@@ -397,8 +408,7 @@ async function selectServiceForTesting(
   if (
     !isDotnetMultiProject &&
     !isJsMonorepo &&
-    !isGoMulti &&
-    !hasWorkspaceConfig
+    !isGoMulti
   ) {
     return ".";
   }

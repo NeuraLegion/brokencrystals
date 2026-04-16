@@ -33960,7 +33960,9 @@ async function selectServiceForTesting(repoPath, rootFrameworks) {
     cwd: repoPath,
     nodir: true
   });
-  const isJsMonorepo = hasWorkspaceConfig || pkgJsonFiles.length > 2;
+  const hasRootGemfile = existsSync2(resolve(repoPath, "Gemfile"));
+  const hasRootGoMod = existsSync2(resolve(repoPath, "go.mod"));
+  const isJsMonorepo = !hasRootGemfile && !hasRootGoMod && (hasWorkspaceConfig ? pkgJsonFiles.length > 2 : pkgJsonFiles.length > 3);
   const goMains = await glob("**/main.go", {
     cwd: repoPath,
     nodir: true,
@@ -33968,7 +33970,7 @@ async function selectServiceForTesting(repoPath, rootFrameworks) {
     ignore: ["**/vendor/**", "**/node_modules/**"]
   });
   const isGoMulti = goMains.length > 2;
-  if (!isDotnetMultiProject && !isJsMonorepo && !isGoMulti && !hasWorkspaceConfig) {
+  if (!isDotnetMultiProject && !isJsMonorepo && !isGoMulti) {
     return ".";
   }
   console.log("[Analyze] Monorepo detected \u2014 selecting best service for testing");
@@ -34884,14 +34886,14 @@ If you see a DTO/model type referenced, use find_type to look it up. Return JSON
 }
 
 // src/phases/swagger.ts
-import { writeFileSync, mkdirSync as mkdirSync2 } from "fs";
+import { writeFileSync as writeFileSync2, mkdirSync as mkdirSync2 } from "fs";
 import { resolve as resolve3, dirname } from "path";
-import { execSync } from "child_process";
+import { execSync as execSync2 } from "child_process";
 
 // src/tools.ts
-import { readFileSync as readFileSync2, existsSync as existsSync3 } from "fs";
+import { readFileSync as readFileSync2, existsSync as existsSync3, statSync, writeFileSync } from "fs";
 import { resolve as resolve2 } from "path";
-import { execFileSync as execFileSync3 } from "child_process";
+import { execFileSync as execFileSync3, execSync } from "child_process";
 var codebaseTools = [
   {
     type: "function",
@@ -34963,6 +34965,9 @@ function createToolHandler(repoPath) {
         if (!existsSync3(filePath)) {
           return `Error: file not found: ${args.path}`;
         }
+        if (statSync(filePath).isDirectory()) {
+          return `Error: path is a directory, not a file: ${args.path}`;
+        }
         const content = readFileSync2(filePath, "utf-8");
         if (content.length > 1e5) {
           return content.slice(0, 1e5) + "\n... [truncated]";
@@ -35005,7 +35010,9 @@ function createToolHandler(repoPath) {
             "--exclude-dir=build",
             "--exclude-dir=vendor",
             "--exclude-dir=.data",
+            "--exclude-dir=data",
             "-F",
+            "--",
             query,
             "."
           ];
@@ -35030,6 +35037,94 @@ function createToolHandler(repoPath) {
     }
   };
 }
+var writeFileTool = {
+  type: "function",
+  function: {
+    name: "write_file",
+    description: "Write content to a file (create or overwrite). Use this to patch shell scripts, compose files, config files, etc.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Relative file path from the repository root (e.g. bin/docker/exec)"
+        },
+        content: {
+          type: "string",
+          description: "The full file content to write"
+        }
+      },
+      required: ["path", "content"],
+      additionalProperties: false
+    }
+  }
+};
+var runCommandTool = {
+  type: "function",
+  function: {
+    name: "run_command",
+    description: "Run a shell command in the repository directory and return its output. Use for diagnostics (docker logs, docker ps, ls, cat) or small fixes (sed, chmod). Commands are killed after 30 seconds.",
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description: `Shell command to run (e.g. "docker logs discourse_dev --tail 50", "sed -i 's/-it/-i/g' bin/docker/exec")`
+        }
+      },
+      required: ["command"],
+      additionalProperties: false
+    }
+  }
+};
+function createInfraToolHandler(repoPath) {
+  const baseHandler = createDockerfileToolHandler(repoPath);
+  return async (name, args) => {
+    switch (name) {
+      case "write_file": {
+        const filePath = resolve2(repoPath, String(args.path ?? ""));
+        if (!filePath.startsWith(repoPath)) {
+          return "Error: path traversal attempt blocked";
+        }
+        const content = String(args.content ?? "");
+        try {
+          writeFileSync(filePath, content);
+          return `Written ${content.length} bytes to ${args.path}`;
+        } catch (err) {
+          return `Error writing file: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+      case "run_command": {
+        const command = String(args.command ?? "");
+        if (/\brm\s+-rf\s+[/~]|:\(\)\{|fork\s*bomb|mkfs|dd\s+if=/i.test(command)) {
+          return "Error: dangerous command blocked";
+        }
+        try {
+          const output = execSync(command, {
+            cwd: repoPath,
+            encoding: "utf-8",
+            timeout: 3e4,
+            maxBuffer: 5 * 1024 * 1024,
+            stdio: ["pipe", "pipe", "pipe"]
+          });
+          const result = output.trim();
+          return result.length > 1e4 ? result.slice(-1e4) + "\n... [truncated]" : result || "(no output)";
+        } catch (err) {
+          if (err && typeof err === "object" && "stderr" in err) {
+            const stderr = String(err.stderr).trim();
+            const stdout = String(err.stdout).trim();
+            return `Command failed:
+${stdout}
+${stderr}`.slice(-5e3);
+          }
+          return `Command failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+      default:
+        return baseHandler(name, args);
+    }
+  };
+}
 var verifyDockerImageTool = {
   type: "function",
   function: {
@@ -35048,6 +35143,12 @@ var verifyDockerImageTool = {
     }
   }
 };
+var infraTools = [
+  ...codebaseTools,
+  verifyDockerImageTool,
+  writeFileTool,
+  runCommandTool
+];
 var dockerfileTools = [
   ...codebaseTools,
   verifyDockerImageTool
@@ -35401,13 +35502,13 @@ Read the entry point and routing setup, then provide the minimal file changes to
         continue;
       }
       mkdirSync2(dirname(fullPath), { recursive: true });
-      writeFileSync(fullPath, file.content, "utf-8");
+      writeFileSync2(fullPath, file.content, "utf-8");
       console.log(`[Swagger] Wrote ${file.path}`);
     }
     if (result.installCommand) {
       console.log(`[Swagger] Running: ${result.installCommand}`);
       try {
-        execSync(result.installCommand, {
+        execSync2(result.installCommand, {
           cwd: repoPath,
           stdio: "pipe",
           timeout: 12e4,
@@ -35457,11 +35558,11 @@ async function discoverEndpointsViaSwagger(llm, repoPath, techStack, baseUrl, mo
 // src/phases/startup.ts
 import {
   spawn,
-  execSync as execSync2,
+  execSync as execSync3,
   execFileSync as execFileSync4
 } from "child_process";
 import { createInterface } from "readline";
-import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync2 } from "fs";
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
 
 // src/prompts/identify-startup.ts
 function identifyStartupPrompt(techStack) {
@@ -35489,6 +35590,18 @@ CRITICAL COMPOSE FILE RULES:
 - Prefer compose files named: compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml, docker-compose.local.yml.
 
 IMPORTANT: If the project has Docker files (Dockerfile or compose), you MUST use Docker. Do NOT attempt a native (non-Docker) startup when Docker files are present \u2014 the app likely depends on databases, caches, or other services that won't be available natively. If no suitable compose file exists but a Dockerfile does, use "docker build" + "docker run".
+
+DOCKER WRAPPER SCRIPTS (e.g. bin/docker/boot_dev, d/rails, d/boot_dev):
+- Some projects (like Discourse) use shell scripts that internally run "docker exec -it". The "-it" flag requires a TTY which is NOT available in CI/automated environments.
+- If using such scripts, add prerequisites to strip -it flags BEFORE running them:
+  e.g. "find d/ bin/ -type f -exec sed -i 's/ -it / -i /g; s/ --tty//g' {} +"
+- Alternatively, call docker exec directly without -t instead of using the wrapper scripts.
+- Rails projects inside Docker containers need database setup. Add a prerequisite to run "docker exec <container> bin/rails db:create db:migrate" AFTER the container is running but BEFORE the Rails server starts.
+
+PORT SELECTION for full-stack apps (e.g. Rails + Ember CLI, Django + React):
+- For security scanning, ALWAYS use the BACKEND API port (e.g. Rails on 3000, Django on 8000), NOT the frontend dev server port (e.g. Ember CLI on 4200, Webpack on 3001).
+- The backend serves HTTP API endpoints that the security scanner needs to test.
+- The frontend dev server is just a hot-reload proxy \u2014 scanning it tests nothing useful.
 
 For Docker Compose: use "docker compose -f <file> up -d" as the command and set docker=true. Parse the compose file to find the exposed port.
 
@@ -35584,6 +35697,9 @@ Analyze the error and determine an alternative way to start the application. Com
 - If a port conflict occurred, try a different port
 - If missing environment variables, check .env.example or README for required values
 - If build failed, check if there's a pre-built option or different build command
+- "cannot attach stdin to a TTY" \u2192 the wrapper scripts use "docker exec -it". Call docker exec directly WITHOUT -t, or strip -it flags from the scripts as a prerequisite: find d/ bin/ -type f -exec sed -i 's/ -it / -i /g' {} +
+- "database does not exist" / "relation does not exist" \u2192 add a prerequisite: docker exec <container> bin/rails db:create db:migrate (or the equivalent for the framework)
+- For full-stack apps (Rails+Ember, Django+React), use the BACKEND port (e.g. Rails=3000) NOT the frontend dev server port (e.g. Ember CLI=4200). The security scanner needs the API, not the frontend proxy.
 
 IMPORTANT: Do NOT repeat the same approach that already failed. Try a fundamentally different strategy.
 
@@ -35648,6 +35764,21 @@ var FRAMEWORK_HINTS = [
     hint: `- For Java projects, use eclipse-temurin or amazoncorretto for the JDK build stage.
 - For Maven: RUN mvn package -DskipTests. For Gradle: RUN gradle build -x test.
 - Use a JRE image for the runtime stage.`
+  },
+  {
+    keywords: ["typescript", "node", "express", "nestjs", "next"],
+    hint: `- TypeScript's "tsc" exits with non-zero even when "--noEmitOnError false" is set (it still reports type errors to stderr). Always append "|| true" to any tsc RUN command so the Docker build continues despite type-check warnings.
+- Prefer "npm run build" or the project's own build script over raw tsc when possible.
+- In monorepo/Nx multi-stage Dockerfiles, the runtime stage's package.json (from the build output) often has different dependencies than the root package-lock.json. Use "npm install" instead of "npm ci" in the runtime stage to avoid lock-file mismatch errors.
+- Monorepo postinstall scripts often fail inside Docker (e.g. "Failed to process project graph", nx/lerna/turbo errors). Use "npm ci --ignore-scripts" to skip postinstall hooks, then run only needed post-install steps separately (e.g. "RUN npx patch-package || true").`
+  },
+  {
+    keywords: ["ruby", "rails", "sinatra", "rack"],
+    hint: `- For Ruby on Rails projects that ship with bin/docker/ wrapper scripts (e.g. Discourse), those scripts use "docker exec -it" which fails in CI. The Dockerfile should NOT use those scripts \u2014 instead call commands directly.
+- Rails apps need a running PostgreSQL/MySQL database before starting. Include "bin/rails db:create db:migrate" as part of the startup or prerequisites.
+- Use the official ruby:<version> or the project's own dev Docker image if available.
+- For bundler: RUN bundle install --without development test.
+- Start with: CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0", "-p", "3000"].`
   }
 ];
 function getFrameworkHints(techStack) {
@@ -35703,6 +35834,7 @@ var MAX_STARTUP_ATTEMPTS = 5;
 function isSourceCodeError(errorMsg, previousErrors) {
   if (/OutOfMemoryError|out of memory/i.test(errorMsg)) return false;
   if (/FileNotFoundException.*conf\//i.test(errorMsg)) return false;
+  if (/--noEmitOnError/.test(errorMsg)) return false;
   const patterns = [
     // Scala / sbt
     /Compilation failed/,
@@ -35756,7 +35888,7 @@ function canBuildFromSource(repoPath) {
   ];
   if (buildIndicators.some((f) => existsSync5(`${repoPath}/${f}`))) return true;
   try {
-    const entries = execSync2("ls -1", {
+    const entries = execSync3("ls -1", {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: 5e3
@@ -35871,18 +36003,29 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         );
         break;
       }
-      if (config2.docker && existsSync5(`${repoPath}/Dockerfile`) && attempt < MAX_STARTUP_ATTEMPTS) {
-        await repairDockerBuild(
-          llm,
-          repoPath,
-          errorMsg,
-          handleTool,
-          modelSelector?.current()
-        );
+      if (attempt < MAX_STARTUP_ATTEMPTS) {
+        const isDockerBuildError = config2.docker && existsSync5(`${repoPath}/Dockerfile`) && /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(errorMsg);
+        if (isDockerBuildError) {
+          await repairDockerBuild(
+            llm,
+            repoPath,
+            errorMsg,
+            handleTool,
+            modelSelector?.current()
+          );
+        } else {
+          await repairInfrastructure(
+            llm,
+            repoPath,
+            config2,
+            errorMsg,
+            modelSelector?.current()
+          );
+        }
       }
       if (config2.docker) {
         try {
-          execSync2(
+          execSync3(
             "docker compose down 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
             { cwd: repoPath, stdio: "ignore", timeout: 3e4 }
           );
@@ -35982,7 +36125,7 @@ function patchComposeForSourceBuild(repoPath, composeFile) {
     }
   );
   if (patched !== content) {
-    writeFileSync2(filePath, patched);
+    writeFileSync3(filePath, patched);
     console.log(
       `[Startup] Replaced pre-built image in ${composeFile} with build: .`
     );
@@ -36051,6 +36194,9 @@ Common issues and fixes:
 - .NET AppHost/Aspire orchestrator projects cannot be published standalone \u2192 find a real web API project (Catalog.API, WebApp, etc.) and publish that instead
 - dotnet publish succeeds but COPY --from=build fails with "not found" \u2192 the publish output path is wrong. List the build stage output to find where files actually went
 - Permission issues \u2192 add appropriate RUN chmod/chown
+- "tsc" exits with non-zero even when "--noEmitOnError false" is set (it still reports type errors) \u2192 append "|| true" to the tsc RUN command so the Docker build continues despite type warnings
+- "npm ci" fails with "package.json and package-lock.json are in sync" / "Missing: <pkg> from lock file" \u2192 the runtime stage is using a built sub-project's package.json that doesn't match the root lockfile. Replace "npm ci" with "npm install" in that stage (or copy the sub-project's own lock file if it exists)
+- "npm ci" postinstall fails with "Failed to process project graph" or monorepo tooling errors (nx, lerna, turbo, patch-package) \u2192 use "npm ci --ignore-scripts" to skip postinstall hooks, then run only the specific scripts needed (e.g. "RUN npx patch-package" separately). The full monorepo graph is NOT needed inside Docker when building a single service.
 
 Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`
     },
@@ -36096,13 +36242,76 @@ Use the tools to inspect relevant project files, then return a COMPLETE fixed Do
         `[Startup] Repaired Dockerfile references non-existent images: ${missing.join(", ")}`
       );
     }
-    writeFileSync2(dockerfilePath, fixedDockerfile, "utf-8");
+    writeFileSync3(dockerfilePath, fixedDockerfile, "utf-8");
     console.log(
       `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines)`
     );
   } catch (err) {
     console.warn(
       `[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`
+    );
+  }
+}
+async function repairInfrastructure(llm, repoPath, config2, errorOutput, model) {
+  const truncatedError = errorOutput.length > 4e3 ? errorOutput.slice(-4e3) : errorOutput;
+  const messages = [
+    {
+      role: "system",
+      content: `You are a DevOps engineer fixing a failed application startup. You have tools to:
+- read_file / list_files / search_files \u2014 inspect the repository
+- write_file \u2014 modify shell scripts, compose files, config files, etc.
+- run_command \u2014 run diagnostic or repair commands (docker logs, sed, chmod, etc.)
+- verify_docker_image \u2014 check if a Docker image exists
+
+The application failed to start. Your job is to fix the root cause so the SAME startup command can succeed on the next attempt.
+
+Common issues you should fix:
+- "cannot attach stdin to a TTY-enabled container" \u2192 find and patch scripts that use "docker exec -it" or "docker run -it" to remove the -t flag. Use sed or write_file.
+- "database does not exist" \u2192 run the database creation command (e.g. docker exec <container> bin/rails db:create db:migrate)
+- Compose service errors ("has neither an image nor a build context") \u2192 edit the compose file to comment out or remove the broken service
+- Permission denied \u2192 chmod +x the script, or fix file permissions
+- Missing .env file \u2192 copy from .env.example or create a minimal one
+- Missing config files \u2192 create them with sensible defaults
+- Port already in use \u2192 kill the old process
+
+IMPORTANT:
+- Do NOT change the startup command itself \u2014 only fix the files/environment so the same command works.
+- Make targeted, minimal fixes. Don't rewrite entire files unless necessary.
+- Run diagnostic commands first to understand the problem, then apply fixes.
+- After fixing, verify the fix worked if possible (e.g. re-read the patched file).`
+    },
+    {
+      role: "user",
+      content: `The application failed to start with this config:
+
+Command: ${config2.command}
+Prerequisites: ${JSON.stringify(config2.prerequisites)}
+Docker: ${config2.docker}
+
+Error output:
+\`\`\`
+${truncatedError}
+\`\`\`
+
+Investigate the root cause using the tools, then fix it. Reply with a brief summary of what you fixed.`
+    }
+  ];
+  try {
+    console.log("[Startup] Asking LLM to repair infrastructure...");
+    const infraHandler = createInfraToolHandler(repoPath);
+    const response = await chatWithTools(
+      llm,
+      messages,
+      infraTools,
+      infraHandler,
+      model,
+      15
+      // generous tool turns for diagnosis + repair
+    );
+    console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
+  } catch (err) {
+    console.warn(
+      `[Startup] Infrastructure repair failed: ${err instanceof Error ? err.message : err}`
     );
   }
 }
@@ -36162,7 +36371,7 @@ function sanitizeComposeTemplateVars(repoPath, config2) {
       String(config2.port)
     );
     if (sanitized !== content) {
-      writeFileSync2(filePath, sanitized);
+      writeFileSync3(filePath, sanitized);
       console.log(
         `[Startup] Replaced template port placeholder(s) in ${cf} with ${config2.port}`
       );
@@ -36176,7 +36385,7 @@ function populateMissingEnvFile(repoPath, composeFile, envFile) {
   try {
     content = readFileSync4(composePath, "utf8");
   } catch {
-    writeFileSync2(envPath, "");
+    writeFileSync3(envPath, "");
     return;
   }
   const lines = [];
@@ -36219,7 +36428,7 @@ function populateMissingEnvFile(repoPath, composeFile, envFile) {
   console.log(
     `[Startup] Created ${envFile} with ${lines.length} default variable(s)`
   );
-  writeFileSync2(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
+  writeFileSync3(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
 }
 function buildFromSourceConfig(repoPath, previousConfig) {
   const hasDockerfile = existsSync5(`${repoPath}/Dockerfile`);
@@ -36295,7 +36504,7 @@ async function generateDockerfile(llm, repoPath, stackStr, handleTool, model) {
       `[Startup] Dockerfile references non-existent images: ${missing.join(", ")}`
     );
   }
-  writeFileSync2(`${repoPath}/Dockerfile`, content);
+  writeFileSync3(`${repoPath}/Dockerfile`, content);
   console.log(
     `[Startup] Generated Dockerfile (${content.split("\n").length} lines)`
   );
@@ -36388,7 +36597,7 @@ function unshallowIfNeeded(repoPath) {
   );
   if (!needsHistory) {
     try {
-      const out = execSync2(
+      const out = execSync3(
         "grep -rl 'Nerdbank.GitVersioning\\|GitVersion' --include='*.csproj' --include='*.props' . 2>/dev/null | head -1",
         { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
       ).trim();
@@ -36401,7 +36610,7 @@ function unshallowIfNeeded(repoPath) {
     "[Startup] Detected shallow clone with git-based versioning \u2014 fetching full history"
   );
   try {
-    execSync2(
+    execSync3(
       "git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true",
       {
         cwd: repoPath,
@@ -36414,6 +36623,29 @@ function unshallowIfNeeded(repoPath) {
       "[Startup] Failed to unshallow git repo \u2014 build may fail if version tools require full history"
     );
   }
+}
+function ensureDockerIgnore(repoPath) {
+  const ignorePath = `${repoPath}/.dockerignore`;
+  const problematicDirs = ["data/", ".data/", "tmp/", "log/"];
+  let existing = "";
+  try {
+    existing = readFileSync4(ignorePath, "utf-8");
+  } catch {
+  }
+  const linesToAdd = problematicDirs.filter(
+    (dir) => !existing.includes(dir) && existsSync5(`${repoPath}/${dir.replace(/\/$/, "")}`)
+  );
+  if (linesToAdd.length === 0) return;
+  const newContent = existing ? `${existing.trimEnd()}
+# Added by bright-agent to avoid permission errors
+${linesToAdd.join("\n")}
+` : `# Added by bright-agent to avoid permission errors
+${linesToAdd.join("\n")}
+`;
+  writeFileSync3(ignorePath, newContent);
+  console.log(
+    `[Startup] Updated .dockerignore to exclude: ${linesToAdd.join(", ")}`
+  );
 }
 function looksLikeCommand(s) {
   const trimmed = s.trim();
@@ -36508,7 +36740,11 @@ function sanitizeStartupConfig(repoPath, config2) {
 }
 function extractComposeFilePath(command) {
   const fMatch = command.match(/-f\s+(\S+)/);
-  if (fMatch) return fMatch[1];
+  if (fMatch) {
+    const file = fMatch[1];
+    if (!/\.ya?ml$/i.test(file)) return null;
+    return file;
+  }
   const cdMatch = command.match(/cd\s+(\S+)\s*&&/);
   if (cdMatch) {
     return `${cdMatch[1]}/docker-compose.yml`;
@@ -36530,9 +36766,59 @@ function fallbackToDockerfile(repoPath, config2) {
     docker: true
   };
 }
+function stripDockerTtyFlags(cmd) {
+  return cmd.replace(/\s-it\b/g, " -i").replace(/\s-t\s/g, " ").replace(/\s--tty\b/g, "").replace(/\s-([a-zA-Z]*t[a-zA-Z]*)\b/g, (_m, flags) => {
+    if (flags.length > 5) return _m;
+    const without = flags.replace(/t/g, "");
+    return without ? ` -${without}` : "";
+  });
+}
+function patchScriptTtyFlags(repoPath, config2) {
+  const allCmds = [config2.command, ...config2.prerequisites];
+  const scriptDirs = /* @__PURE__ */ new Set();
+  for (const cmd of allCmds) {
+    const matches = cmd.matchAll(/(?:\.\/)?(\S+\.sh|\S*bin\/\S+|[a-zA-Z][\w]*\/[\w./-]+)/g);
+    for (const m of matches) {
+      const candidate = m[1];
+      if (/^\/(usr|bin|sbin)\//.test(candidate)) continue;
+      if (candidate.includes(":")) continue;
+      const fullPath = `${repoPath}/${candidate}`;
+      if (existsSync5(fullPath)) {
+        const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
+        scriptDirs.add(dir);
+      }
+    }
+  }
+  if (scriptDirs.size === 0) return;
+  for (const dir of scriptDirs) {
+    let files;
+    try {
+      files = execSync3(`find "${dir}" -maxdepth 2 -type f 2>/dev/null`, {
+        encoding: "utf-8",
+        timeout: 5e3
+      }).trim().split("\n").filter(Boolean);
+    } catch {
+      continue;
+    }
+    for (const filePath of files) {
+      try {
+        const content = readFileSync4(filePath, "utf-8");
+        if (!/docker\s+(?:exec|run)/.test(content)) continue;
+        const patched = content.replace(/^(\s*)-it(\s*\\?\s*)$/gm, "$1-i$2").replace(/\b(docker\s+(?:exec|run)\s+(?:[^\n]*?\s)?)-it\b/g, "$1-i").replace(/^(\s*)-t(\s*\\?\s*)$/gm, (_m, pre, post) => {
+          return post.includes("\\") ? `${pre}${post}` : "";
+        }).replace(/\s--tty\b/g, "");
+        if (patched !== content) {
+          writeFileSync3(filePath, patched);
+          console.log(`[Startup] Patched TTY flags in ${filePath.replace(repoPath + "/", "")}`);
+        }
+      } catch {
+      }
+    }
+  }
+}
 function isToolAvailable(name) {
   try {
-    execSync2(`command -v ${name}`, { stdio: "pipe", timeout: 5e3 });
+    execSync3(`command -v ${name}`, { stdio: "pipe", timeout: 5e3 });
     return true;
   } catch {
     return false;
@@ -36554,18 +36840,23 @@ async function startApplication(repoPath, config2) {
   }
   if (config2.docker) {
     unshallowIfNeeded(repoPath);
+    ensureDockerIgnore(repoPath);
   }
-  for (const cmd of config2.prerequisites) {
+  patchScriptTtyFlags(repoPath, config2);
+  for (let cmd of config2.prerequisites) {
+    cmd = stripDockerTtyFlags(cmd);
     console.log(`[Startup] Running prerequisite: ${cmd}`);
-    execSync2(cmd, {
+    execSync3(cmd, {
       cwd: repoPath,
       stdio: "pipe",
       timeout: 3e5,
+      maxBuffer: 50 * 1024 * 1024,
+      // 50 MB — large installs produce lots of output
       env: { ...process.env, ...config2.envVars }
     });
   }
   const env = { ...process.env, ...config2.envVars };
-  let command = config2.command;
+  let command = stripDockerTtyFlags(config2.command);
   if (config2.docker && /docker\s+compose/.test(command) && command.includes("-d") && !command.includes("--wait")) {
     command = command.replace("-d", "-d --wait");
   }
@@ -36630,7 +36921,7 @@ ${outputLines.slice(-30).join("\n")}`
       await Promise.race([composeExitPromise, earlyExitPromise]);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      if (errMsg.includes("unhealthy") || errMsg.includes("exited with code")) {
+      if (errMsg.includes("unhealthy") || errMsg.includes("exited with code") || errMsg.includes("invalid compose project")) {
         console.warn(
           `[Startup] docker compose --wait failed (${errMsg.slice(0, 200)}), falling back to port check...`
         );
@@ -36667,7 +36958,7 @@ ${outputLines.slice(-30).join("\n")}`
       if (config2.docker) logDockerFailure(repoPath);
       if (containerName) {
         try {
-          const logs = execSync2(
+          const logs = execSync3(
             `docker logs ${containerName} 2>&1 | tail -30`,
             { encoding: "utf-8", timeout: 1e4 }
           ).trim();
@@ -36692,7 +36983,7 @@ ${logs}`);
 }
 function logDockerFailure(repoPath) {
   try {
-    const ps = execSync2(
+    const ps = execSync3(
       "docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true",
       {
         cwd: repoPath,
@@ -36702,7 +36993,7 @@ function logDockerFailure(repoPath) {
     ).trim();
     if (ps) console.log(`[Startup] Docker container status:
 ${ps}`);
-    const logs = execSync2("docker compose logs --tail=40 2>/dev/null || true", {
+    const logs = execSync3("docker compose logs --tail=40 2>/dev/null || true", {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: 15e3
@@ -36738,7 +37029,7 @@ async function pollContainerAlive(containerName, timeoutMs) {
   await sleep2(3e3);
   while (Date.now() - start < timeoutMs) {
     try {
-      const status = execSync2(
+      const status = execSync3(
         `docker inspect --format='{{.State.Status}}' ${containerName} 2>/dev/null`,
         { encoding: "utf-8", timeout: 5e3 }
       ).trim();
@@ -36776,29 +37067,29 @@ function extractJson2(text) {
 }
 function cleanupDocker(repoPath) {
   try {
-    const running = execSync2("docker ps -q", {
+    const running = execSync3("docker ps -q", {
       encoding: "utf-8",
       timeout: 1e4
     }).trim();
     if (running) {
       console.log("[Startup] Stopping all running Docker containers...");
-      execSync2("docker stop $(docker ps -q)", {
+      execSync3("docker stop $(docker ps -q)", {
         stdio: "pipe",
         timeout: 6e4
       });
     }
-    const stopped = execSync2("docker ps -aq", {
+    const stopped = execSync3("docker ps -aq", {
       encoding: "utf-8",
       timeout: 1e4
     }).trim();
     if (stopped) {
       console.log("[Startup] Removing stopped Docker containers...");
-      execSync2("docker rm -f $(docker ps -aq)", {
+      execSync3("docker rm -f $(docker ps -aq)", {
         stdio: "pipe",
         timeout: 3e4
       });
     }
-    execSync2(
+    execSync3(
       "docker compose down 2>/dev/null; docker compose -f compose.local.yml down 2>/dev/null || true",
       { cwd: repoPath, stdio: "pipe", timeout: 3e4 }
     );
@@ -38327,7 +38618,7 @@ function normalizeSeverity(s) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync3, mkdirSync as mkdirSync3 } from "fs";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
 import { resolve as resolve4, dirname as dirname2 } from "path";
 
 // src/prompts/generate-fix.ts
@@ -38494,7 +38785,7 @@ function applyFixes(repoPath, fixes) {
     for (const file of fix.files) {
       const fullPath = resolve4(repoPath, file.path);
       mkdirSync3(dirname2(fullPath), { recursive: true });
-      writeFileSync3(fullPath, file.content, "utf-8");
+      writeFileSync4(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
   }

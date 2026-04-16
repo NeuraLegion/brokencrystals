@@ -33,6 +33,21 @@ const FRAMEWORK_HINTS: Array<{ keywords: string[]; hint: string }> = [
 - For Maven: RUN mvn package -DskipTests. For Gradle: RUN gradle build -x test.
 - Use a JRE image for the runtime stage.`,
   },
+  {
+    keywords: ["typescript", "node", "express", "nestjs", "next"],
+    hint: `- TypeScript's "tsc" exits with non-zero even when "--noEmitOnError false" is set (it still reports type errors to stderr). Always append "|| true" to any tsc RUN command so the Docker build continues despite type-check warnings.
+- Prefer "npm run build" or the project's own build script over raw tsc when possible.
+- In monorepo/Nx multi-stage Dockerfiles, the runtime stage's package.json (from the build output) often has different dependencies than the root package-lock.json. Use "npm install" instead of "npm ci" in the runtime stage to avoid lock-file mismatch errors.
+- Monorepo postinstall scripts often fail inside Docker (e.g. "Failed to process project graph", nx/lerna/turbo errors). Use "npm ci --ignore-scripts" to skip postinstall hooks, then run only needed post-install steps separately (e.g. "RUN npx patch-package || true").`,
+  },
+  {
+    keywords: ["ruby", "rails", "sinatra", "rack"],
+    hint: `- For Ruby on Rails projects that ship with bin/docker/ wrapper scripts (e.g. Discourse), those scripts use "docker exec -it" which fails in CI. The Dockerfile should NOT use those scripts — instead call commands directly.
+- Rails apps need a running PostgreSQL/MySQL database before starting. Include "bin/rails db:create db:migrate" as part of the startup or prerequisites.
+- Use the official ruby:<version> or the project's own dev Docker image if available.
+- For bundler: RUN bundle install --without development test.
+- Start with: CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0", "-p", "3000"].`,
+  },
 ];
 
 function getFrameworkHints(techStack: string): string {
