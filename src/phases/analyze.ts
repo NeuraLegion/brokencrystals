@@ -671,6 +671,13 @@ const GLOB_IGNORE = [
   "**/*.test.*",
   "**/*.spec.*",
   "**/TestData/**",
+  "**/data/**",
+  "**/.data/**",
+  // Frontend framework directories — these contain client-side controllers/routes,
+  // not backend API endpoints
+  "**/frontend/**",
+  "**/client/**",
+  "**/app/assets/**",
 ];
 
 async function findControllerFiles(repoPath: string): Promise<string[]> {
@@ -1021,10 +1028,69 @@ function extractEndpointsFromFile(
 
   // ---- Ruby / Rails ----
   if (ext === ".rb") {
+    // Explicit routes: get "/path", post "/path"
     const railsRe = /\b(get|post|put|patch|delete)\s+["']([^"']+)["']/gi;
     let m;
     while ((m = railsRe.exec(content)) !== null) {
       endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+
+    // Rails resources/resource — generates standard CRUD endpoints
+    // Track namespace/scope nesting for prefix building
+    const lines = content.split("\n");
+    const prefixStack: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // namespace :admin do → prefix "/admin"
+      const nsMatch = trimmed.match(
+        /^\s*namespace\s+[:"'](\w+)/,
+      );
+      if (nsMatch) {
+        prefixStack.push(`/${nsMatch[1]}`);
+        continue;
+      }
+
+      // scope "/api/v1" do → prefix "/api/v1"
+      const scopeMatch = trimmed.match(
+        /^\s*scope\s+["']([^"']+)["']/,
+      );
+      if (scopeMatch) {
+        prefixStack.push(scopeMatch[1].startsWith("/") ? scopeMatch[1] : `/${scopeMatch[1]}`);
+        continue;
+      }
+
+      // Track block ends to pop prefix (simple heuristic — "end" at same/lower indent)
+      if (/^\s*end\b/.test(trimmed) && prefixStack.length > 0) {
+        prefixStack.pop();
+        continue;
+      }
+
+      // resources :users → GET/POST /users, GET/PUT/PATCH/DELETE /users/:id
+      const resMatch = trimmed.match(
+        /^\s*resources?\s+:(\w+)/,
+      );
+      if (resMatch) {
+        const name = resMatch[0].includes("resources") ? resMatch[1] : resMatch[1];
+        const isSingular = /^\s*resource\s/.test(trimmed);
+        const prefix = prefixStack.join("") + `/${name}`;
+
+        if (isSingular) {
+          // resource :profile → GET/POST/PUT/PATCH/DELETE /profile (no :id)
+          for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"] as const) {
+            endpoints.push({ method, path: prefix, filePath });
+          }
+        } else {
+          // resources :users → standard 7 RESTful routes
+          endpoints.push({ method: "GET", path: prefix, filePath });
+          endpoints.push({ method: "POST", path: prefix, filePath });
+          endpoints.push({ method: "GET", path: `${prefix}/:id`, filePath });
+          endpoints.push({ method: "PUT", path: `${prefix}/:id`, filePath });
+          endpoints.push({ method: "PATCH", path: `${prefix}/:id`, filePath });
+          endpoints.push({ method: "DELETE", path: `${prefix}/:id`, filePath });
+        }
+      }
     }
   }
 
@@ -1276,7 +1342,10 @@ function createBodyExtractionToolHandler(repoPath: string): ToolHandler {
           "--exclude-dir=bin",
           "--exclude-dir=obj",
           "--exclude-dir=vendor",
+          "--exclude-dir=data",
+          "--exclude-dir=.data",
           "-F",
+          "--",
           query,
           ".",
         ];
@@ -1471,15 +1540,26 @@ export async function discoverEndpoints(
   }
 
   // Step 2c: LLM fallback for controller files with zero regex matches
-  if (noMatchFiles.length > 0) {
+  // Skip Rails controller files — they define action METHODS (def index, def show)
+  // not routes. Routes are centrally defined in config/routes.rb which is handled
+  // by regex extraction above.
+  const llmCandidates = noMatchFiles.filter(
+    (f) => !/\bapp\/controllers\/.*\.rb$/.test(f),
+  );
+  if (noMatchFiles.length > llmCandidates.length) {
     console.log(
-      `[Analyze] ${noMatchFiles.length} controller file(s) had no regex matches — using LLM fallback`,
+      `[Analyze] Skipping ${noMatchFiles.length - llmCandidates.length} Rails controller file(s) — routes are in config/routes.rb`,
+    );
+  }
+  if (llmCandidates.length > 0) {
+    console.log(
+      `[Analyze] ${llmCandidates.length} controller file(s) had no regex matches — using LLM fallback`,
     );
     const handleTool = createBodyExtractionToolHandler(repoPath);
     const llmEndpoints = await extractEndpointsViaLlm(
       llm,
       repoPath,
-      noMatchFiles,
+      llmCandidates,
       handleTool,
       model,
     );

@@ -1,11 +1,4 @@
-import type OpenAI from "openai";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { resolve, dirname } from "path";
-import { execSync } from "child_process";
 import type { TechStack, DiscoveredEndpoint } from "../types.js";
-import { chatWithTools, chatWithSchema } from "../inference.js";
-import { codebaseTools, createToolHandler } from "../tools.js";
-import { formatTechStack } from "../utils.js";
 
 // ---------------------------------------------------------------------------
 // Common Swagger / OpenAPI spec paths (ordered roughly by popularity)
@@ -248,223 +241,21 @@ function generateSampleFromSchema(
 }
 
 // ---------------------------------------------------------------------------
-// 3. Inject Swagger support into the application via LLM
-// ---------------------------------------------------------------------------
-
-/** Framework → swagger library mapping for the LLM prompt */
-const SWAGGER_LIBRARIES: Record<string, string> = {
-  Express: "swagger-jsdoc + swagger-ui-express",
-  Fastify: "@fastify/swagger + @fastify/swagger-ui",
-  Koa: "koa2-swagger-ui + swagger-jsdoc",
-  NestJS: "@nestjs/swagger",
-  "Next.js": "next-swagger-doc + swagger-ui-react",
-  "ASP.NET": "Swashbuckle.AspNetCore (usually pre-installed)",
-  "Spring Boot": "springdoc-openapi-starter-webmvc-ui",
-  Flask: "flask-restx or flasgger",
-  FastAPI: "Built-in (already at /openapi.json)",
-  Django: "drf-spectacular",
-  Rails: "rswag-api + rswag-ui",
-  Go: "swaggo/swag + gin-swagger (for Gin) or echo-swagger",
-  Laravel: "darkaonline/l5-swagger",
-};
-
-const injectSwaggerResultSchema = {
-  type: "object" as const,
-  properties: {
-    files: {
-      type: "array" as const,
-      items: {
-        type: "object" as const,
-        properties: {
-          path: {
-            type: "string" as const,
-            description: "Relative file path to create or modify",
-          },
-          content: {
-            type: "string" as const,
-            description: "Complete file content after modification",
-          },
-        },
-        required: ["path", "content"] as const,
-        additionalProperties: false,
-      },
-      description: "Files to create or overwrite",
-    },
-    installCommand: {
-      type: "string" as const,
-      description:
-        "Shell command to install the swagger library (e.g. npm install swagger-jsdoc swagger-ui-express)",
-    },
-    swaggerPath: {
-      type: "string" as const,
-      description:
-        "The URL path where the JSON spec will be served (e.g. /api-docs, /swagger.json)",
-    },
-  },
-  required: ["files", "installCommand", "swaggerPath"] as const,
-  additionalProperties: false,
-};
-
-interface SwaggerInjectionResult {
-  files: Array<{ path: string; content: string }>;
-  installCommand: string;
-  swaggerPath: string;
-}
-
-/**
- * Use LLM to add Swagger/OpenAPI generation to the application.
- * Returns the spec path to probe after rebuild, or null if injection failed.
- */
-export async function injectSwaggerSupport(
-  llm: OpenAI,
-  repoPath: string,
-  techStack: TechStack,
-  model?: string,
-): Promise<string | null> {
-  const stackStr = formatTechStack(techStack);
-  const handleTool = createToolHandler(repoPath);
-
-  // Build framework-specific hint
-  const frameworkHints = techStack.frameworks
-    .map((fw) => {
-      const lib = Object.entries(SWAGGER_LIBRARIES).find(([k]) =>
-        fw.toLowerCase().includes(k.toLowerCase()),
-      );
-      return lib ? `${fw}: use ${lib[1]}` : null;
-    })
-    .filter(Boolean)
-    .join("\n");
-
-  const messages: Array<{ role: "system" | "user"; content: string }> = [
-    {
-      role: "system",
-      content: `You are an expert at adding Swagger/OpenAPI auto-generation to web applications.
-Your task: add the minimal code to make this application serve a JSON OpenAPI spec at a well-known path.
-
-Tech stack: ${stackStr}
-${frameworkHints ? `\nRecommended libraries:\n${frameworkHints}` : ""}
-
-RULES:
-1. Use the tools to read the application's entry point and routing files to understand the existing structure.
-2. Make MINIMAL changes — only add the swagger library registration/middleware.
-3. The spec MUST be auto-generated from the existing routes (not hand-written).
-4. Prefer libraries that auto-discover routes without needing JSDoc annotations.
-5. Do NOT modify existing route handlers.
-6. Return the COMPLETE content of each file you modify (not just the diff).
-7. Return the install command for the swagger library.
-8. Return the URL path where the JSON spec will be available.`,
-    },
-    {
-      role: "user",
-      content: `Add Swagger/OpenAPI auto-generation to this ${stackStr} application.
-
-Read the entry point and routing setup, then provide the minimal file changes to add a swagger spec endpoint. Focus on auto-discovering existing routes.`,
-    },
-  ];
-
-  try {
-    // Let LLM explore the codebase to understand the app structure
-    const exploration = await chatWithTools(
-      llm,
-      messages,
-      codebaseTools,
-      handleTool,
-      model,
-      8,
-    );
-
-    // Now get the structured result
-    const result = (await chatWithSchema(
-      llm,
-      [
-        ...messages,
-        { role: "assistant" as const, content: exploration },
-        {
-          role: "user",
-          content:
-            "Now return the exact file changes, install command, and swagger spec URL path as structured JSON.",
-        },
-      ],
-      "swagger_injection",
-      injectSwaggerResultSchema,
-      model,
-    )) as SwaggerInjectionResult;
-
-    if (!result.files || result.files.length === 0) {
-      console.warn("[Swagger] LLM returned no file changes");
-      return null;
-    }
-
-    // Apply file changes
-    for (const file of result.files) {
-      const fullPath = resolve(repoPath, file.path);
-      // Security: block path traversal
-      if (!fullPath.startsWith(repoPath)) {
-        console.warn(`[Swagger] Blocked path traversal: ${file.path}`);
-        continue;
-      }
-      mkdirSync(dirname(fullPath), { recursive: true });
-      writeFileSync(fullPath, file.content, "utf-8");
-      console.log(`[Swagger] Wrote ${file.path}`);
-    }
-
-    // Run install command
-    if (result.installCommand) {
-      console.log(`[Swagger] Running: ${result.installCommand}`);
-      try {
-        execSync(result.installCommand, {
-          cwd: repoPath,
-          stdio: "pipe",
-          timeout: 120_000,
-          env: { ...process.env, NODE_ENV: undefined },
-        });
-      } catch (err) {
-        console.warn(
-          `[Swagger] Install command failed: ${err instanceof Error ? err.message : err}`,
-        );
-        // Non-fatal — the dependency might already be installed or the
-        // framework has built-in support
-      }
-    }
-
-    const specPath = result.swaggerPath || "/swagger.json";
-    console.log(`[Swagger] Injection complete — spec expected at ${specPath}`);
-    return specPath;
-  } catch (err) {
-    console.warn(
-      `[Swagger] Failed to inject swagger support: ${err instanceof Error ? err.message : err}`,
-    );
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 4. High-level: try to get endpoints from Swagger, with injection fallback
+// 3. High-level: probe for existing Swagger spec (no injection)
 // ---------------------------------------------------------------------------
 
 export interface SwaggerDiscoveryResult {
   endpoints: DiscoveredEndpoint[];
-  source: "existing-spec" | "injected-spec" | "none";
-  needsRebuild: boolean;
-  specPath?: string;
+  source: "existing-spec" | "none";
 }
 
 /**
- * Attempt to discover endpoints via Swagger/OpenAPI spec.
- *
- * Call flow:
- * 1. Probe the running app for an existing spec → parse it
- * 2. If not found, inject swagger support via LLM → signal caller to rebuild
- * 3. After rebuild, caller probes again with probeSwaggerSpec + parseOpenApiToEndpoints
+ * Attempt to discover endpoints via an existing Swagger/OpenAPI spec.
+ * Probes the running application at well-known paths and parses the spec.
  */
 export async function discoverEndpointsViaSwagger(
-  llm: OpenAI,
-  repoPath: string,
-  techStack: TechStack,
   baseUrl: string,
-  model?: string,
 ): Promise<SwaggerDiscoveryResult> {
-  // Step 1: Probe for existing spec
   console.log("[Swagger] Probing for existing OpenAPI/Swagger spec...");
   const probe = await probeSwaggerSpec(baseUrl);
   if (probe.found && probe.spec) {
@@ -473,22 +264,9 @@ export async function discoverEndpointsViaSwagger(
       console.log(
         `[Swagger] Parsed ${endpoints.length} endpoints from existing spec at ${probe.specUrl}`,
       );
-      return { endpoints, source: "existing-spec", needsRebuild: false };
+      return { endpoints, source: "existing-spec" };
     }
   }
-  console.log("[Swagger] No existing spec found — attempting injection");
-
-  // Step 2: Inject swagger support
-  const specPath = await injectSwaggerSupport(llm, repoPath, techStack, model);
-  if (!specPath) {
-    return { endpoints: [], source: "none", needsRebuild: false };
-  }
-
-  // Signal caller that a rebuild + restart is needed, then probe again
-  return {
-    endpoints: [],
-    source: "injected-spec",
-    needsRebuild: true,
-    specPath,
-  };
+  console.log("[Swagger] No existing spec found");
+  return { endpoints: [], source: "none" };
 }

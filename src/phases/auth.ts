@@ -161,11 +161,75 @@ async function detectAuthFromCode(
   model?: string,
 ): Promise<AuthDetection> {
   const stackStr = formatTechStack(techStack);
-  const endpointSummary = endpoints
+
+  // Give LLM a brief summary + a tool to paginate through endpoints on demand
+  const endpointsTool: ChatCompletionTool = {
+    type: "function",
+    function: {
+      name: "list_endpoints",
+      description: `Browse the ${endpoints.length} discovered API endpoints. Returns endpoints in pages of 50. Each entry shows METHOD, path, and source file.`,
+      parameters: {
+        type: "object",
+        properties: {
+          from: {
+            type: "number",
+            description: "Start index (0-based). Default 0.",
+          },
+          to: {
+            type: "number",
+            description: `End index (exclusive). Default 50. Max ${endpoints.length}.`,
+          },
+          filter: {
+            type: "string",
+            description:
+              "Optional substring filter — only return endpoints whose path or file contains this string (e.g. 'auth', 'login', 'session', 'user').",
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  };
+
+  const baseHandler = createToolHandler(repoPath);
+  const handler: typeof baseHandler = async (name, args) => {
+    if (name === "list_endpoints") {
+      const from = Math.max(0, Number(args.from ?? 0));
+      const to = Math.min(endpoints.length, Number(args.to ?? from + 50));
+      const filter = args.filter ? String(args.filter).toLowerCase() : null;
+
+      let slice = endpoints.slice(from, to);
+      if (filter) {
+        slice = endpoints.filter(
+          (ep) =>
+            ep.path.toLowerCase().includes(filter) ||
+            ep.filePath.toLowerCase().includes(filter),
+        );
+        if (slice.length > 100) slice = slice.slice(0, 100);
+      }
+      const lines = slice.map(
+        (ep) => `${ep.method} ${ep.path} (${ep.filePath})`,
+      );
+      return lines.length > 0
+        ? lines.join("\n") +
+            `\n(${endpoints.length} total endpoints)`
+        : "No endpoints match that filter.";
+    }
+    return baseHandler(name, args);
+  };
+
+  const authTools: ChatCompletionTool[] = [...codebaseTools, endpointsTool];
+
+  // Show a brief initial summary so the LLM knows the shape of the app
+  const first20 = endpoints
+    .slice(0, 20)
     .map((ep) => `${ep.method} ${ep.path} (${ep.filePath})`)
     .join("\n");
-
-  const handler = createToolHandler(repoPath);
+  const endpointSummary =
+    first20 +
+    (endpoints.length > 20
+      ? `\n... (${endpoints.length} total — use the list_endpoints tool with filter="auth" or filter="login" to find auth-related endpoints)`
+      : "");
 
   const messages: Parameters<typeof chatWithTools>[1] = [
     {
@@ -181,7 +245,16 @@ STEP 1 — Find the login endpoint:
   a) Does the handler call res.set(), res.header(), response.header(), or set a header like "authorization"? → tokenLocation = "header", tokenFieldPath = the header name in lowercase (e.g. "authorization")
   b) Does the handler return a JSON body containing a token field (e.g. { token: jwt })? → tokenLocation = "body", tokenFieldPath = the field name
   c) If the handler calls something like res.header('authorization', token) or response.set('authorization', ...), that means tokenLocation = "header", NOT "body"
+  d) Does the app use session-based auth (cookies)? → tokenLocation = "cookie". Common in Rails (session[:user_id]), Django (request.session), Express (req.session)
 - You MUST search for "res.header", "res.set", "response.header", "setHeader" in the auth controller to check this
+
+FRAMEWORK-SPECIFIC AUTH DETECTION:
+- **Rails**: Search for "before_action :authenticate", "devise", "current_user", "session[:", "warden", "ApplicationController" inheriting auth. Rails apps almost ALWAYS require auth — look at ApplicationController for before_action filters. Discourse uses session-based auth with CSRF tokens.
+- **Django**: Search for "@login_required", "IsAuthenticated", "SessionAuthentication", "AUTHENTICATION_BACKENDS"
+- **Express/Node**: Search for "passport", "jwt", "express-jwt", "isAuthenticated", "auth middleware"
+- **Spring Boot**: Search for "SecurityFilterChain", "@PreAuthorize", "WebSecurityConfigurerAdapter"
+- **ASP.NET**: Search for "[Authorize]", "AddAuthentication", "UseAuthentication"
+If the app uses ANY of these patterns, set requiresAuth to TRUE even if some endpoints are public.
 
 STEP 2 — Find REAL credentials (THIS IS CRITICAL):
 You MUST actually read these files to find credentials. Do NOT skip this step:
@@ -283,7 +356,7 @@ CRITICAL RULES:
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
+    authTools,
     handler,
     model,
     40,

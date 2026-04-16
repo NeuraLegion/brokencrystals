@@ -7,8 +7,6 @@ import { formatTechStack } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import {
   discoverEndpointsViaSwagger,
-  probeSwaggerSpec,
-  parseOpenApiToEndpoints,
 } from "./phases/swagger.js";
 import {
   startApplicationWithRetries,
@@ -105,13 +103,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       "swagger",
       "Probing for OpenAPI/Swagger spec",
     );
-    const swaggerResult = await discoverEndpointsViaSwagger(
-      llm,
-      repoPath,
-      techStack,
-      baseUrl,
-      config.modelSelector.current(),
-    );
+    const swaggerResult = await discoverEndpointsViaSwagger(baseUrl);
 
     let swaggerEndpoints: DiscoveredEndpoint[] = [];
     if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {
@@ -124,54 +116,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         "spec_found",
         `OpenAPI spec found — ${swaggerEndpoints.length} endpoints`,
       );
-    } else if (swaggerResult.needsRebuild && swaggerResult.specPath) {
-      // Swagger lib was injected — rebuild & restart, then probe again
-      console.log("[Swagger] Swagger injected — rebuilding application...");
-      await killProcess(appProcess);
-      try {
-        const restart = await startApplicationWithRetries(
-          llm,
-          repoPath,
-          techStack,
-          startupConfig,
-          config.modelSelector,
-        );
-        appProcess = restart.process;
-
-        const probe = await probeSwaggerSpec(baseUrl);
-        if (probe.found && probe.spec) {
-          swaggerEndpoints = parseOpenApiToEndpoints(probe.spec);
-          if (swaggerEndpoints.length > 0) {
-            console.log(
-              `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from injected spec`,
-            );
-            await progress.phaseDetail(
-              "swagger",
-              "spec_injected",
-              `Swagger injected — ${swaggerEndpoints.length} endpoints`,
-            );
-          }
-        }
-        if (swaggerEndpoints.length === 0) {
-          console.log("[Swagger] Spec not usable after injection");
-        }
-      } catch (err) {
-        console.warn(`[Swagger] Rebuild after injection failed: ${err}`);
-        try {
-          const restart = await startApplicationWithRetries(
-            llm,
-            repoPath,
-            techStack,
-            startupConfig,
-            config.modelSelector,
-          );
-          appProcess = restart.process;
-        } catch {
-          // Will be caught by the health check before scanning
-        }
-      }
     } else {
-      console.log("[Swagger] No spec found and injection skipped");
+      console.log("[Swagger] No spec found — will rely on static analysis");
       await progress.phaseDetail(
         "swagger",
         "no_spec",

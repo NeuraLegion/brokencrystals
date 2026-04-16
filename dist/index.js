@@ -5937,7 +5937,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve5.call(this, root, ref);
+      let _sch = resolve4.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
         const { schemaId } = this.opts;
@@ -5964,7 +5964,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve5(root, ref) {
+    function resolve4(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -6539,7 +6539,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve5(baseURI, relativeURI, options) {
+    function resolve4(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -6766,7 +6766,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize2,
-      resolve: resolve5,
+      resolve: resolve4,
       resolveComponent,
       equal,
       serialize,
@@ -10806,7 +10806,7 @@ function consumeBody() {
   let accum = [];
   let accumBytes = 0;
   let abort = false;
-  return new Body.Promise(function(resolve5, reject) {
+  return new Body.Promise(function(resolve4, reject) {
     let resTimeout;
     if (_this4.timeout) {
       resTimeout = setTimeout(function() {
@@ -10840,7 +10840,7 @@ function consumeBody() {
       }
       clearTimeout(resTimeout);
       try {
-        resolve5(Buffer.concat(accum, accumBytes));
+        resolve4(Buffer.concat(accum, accumBytes));
       } catch (err) {
         reject(new FetchError(`Could not create Buffer from response body for ${_this4.url}: ${err.message}`, "system", err));
       }
@@ -11515,7 +11515,7 @@ function fetch3(url2, opts) {
     throw new Error("native promise missing, set fetch.Promise to your favorite alternative");
   }
   Body.Promise = fetch3.Promise;
-  return new fetch3.Promise(function(resolve5, reject) {
+  return new fetch3.Promise(function(resolve4, reject) {
     const request = new Request2(url2, opts);
     const options = getNodeRequestOptions(request);
     const send = (options.protocol === "https:" ? https : http).request;
@@ -11648,7 +11648,7 @@ function fetch3(url2, opts) {
               requestOpts.body = void 0;
               requestOpts.headers.delete("content-length");
             }
-            resolve5(fetch3(new Request2(locationURL, requestOpts)));
+            resolve4(fetch3(new Request2(locationURL, requestOpts)));
             finalize();
             return;
         }
@@ -11669,7 +11669,7 @@ function fetch3(url2, opts) {
       const codings = headers.get("Content-Encoding");
       if (!request.compress || request.method === "HEAD" || codings === null || res.statusCode === 204 || res.statusCode === 304) {
         response = new Response3(body, response_options);
-        resolve5(response);
+        resolve4(response);
         return;
       }
       const zlibOptions = {
@@ -11679,7 +11679,7 @@ function fetch3(url2, opts) {
       if (codings == "gzip" || codings == "x-gzip") {
         body = body.pipe(zlib.createGunzip(zlibOptions));
         response = new Response3(body, response_options);
-        resolve5(response);
+        resolve4(response);
         return;
       }
       if (codings == "deflate" || codings == "x-deflate") {
@@ -11691,12 +11691,12 @@ function fetch3(url2, opts) {
             body = body.pipe(zlib.createInflateRaw());
           }
           response = new Response3(body, response_options);
-          resolve5(response);
+          resolve4(response);
         });
         raw.on("end", function() {
           if (!response) {
             response = new Response3(body, response_options);
-            resolve5(response);
+            resolve4(response);
           }
         });
         return;
@@ -11704,11 +11704,11 @@ function fetch3(url2, opts) {
       if (codings == "br" && typeof zlib.createBrotliDecompress === "function") {
         body = body.pipe(zlib.createBrotliDecompress());
         response = new Response3(body, response_options);
-        resolve5(response);
+        resolve4(response);
         return;
       }
       response = new Response3(body, response_options);
-      resolve5(response);
+      resolve4(response);
     });
     writeToStream(req, request);
   });
@@ -12758,8 +12758,8 @@ function _addRequestID(value, response) {
 }
 var APIPromise = class _APIPromise extends Promise {
   constructor(responsePromise, parseResponse2 = defaultParseResponse) {
-    super((resolve5) => {
-      resolve5(null);
+    super((resolve4) => {
+      resolve4(null);
     });
     this.responsePromise = responsePromise;
     this.parseResponse = parseResponse2;
@@ -13334,7 +13334,7 @@ var startsWithSchemeRegexp = /^[a-z][a-z0-9+.-]*:/i;
 var isAbsoluteURL = (url2) => {
   return startsWithSchemeRegexp.test(url2);
 };
-var sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
+var sleep = (ms) => new Promise((resolve4) => setTimeout(resolve4, ms));
 var validatePositiveInteger = (name, n) => {
   if (typeof n !== "number" || !Number.isInteger(n)) {
     throw new OpenAIError(`${name} must be an integer`);
@@ -13767,12 +13767,12 @@ var EventStream = class {
     _EventStream_errored.set(this, false);
     _EventStream_aborted.set(this, false);
     _EventStream_catchingPromiseCreated.set(this, false);
-    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve5, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve5, "f");
+    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve4, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve4, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectConnectedPromise, reject, "f");
     }), "f");
-    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve5, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve5, "f");
+    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve4, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve4, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectEndPromise, reject, "f");
     }), "f");
     __classPrivateFieldGet5(this, _EventStream_connectedPromise, "f").catch(() => {
@@ -13856,11 +13856,11 @@ var EventStream = class {
    *   const message = await stream.emitted('message') // rejects if the stream errors
    */
   emitted(event) {
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve4, reject) => {
       __classPrivateFieldSet4(this, _EventStream_catchingPromiseCreated, true, "f");
       if (event !== "error")
         this.once("error", reject);
-      this.once(event, resolve5);
+      this.once(event, resolve4);
     });
   }
   async done() {
@@ -14013,7 +14013,7 @@ var AssistantStream = class _AssistantStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve4, reject) => readQueue.push({ resolve: resolve4, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -15631,7 +15631,7 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve4, reject) => readQueue.push({ resolve: resolve4, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -17282,7 +17282,7 @@ var ResponseStream = class _ResponseStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve4, reject) => readQueue.push({ resolve: resolve4, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
         }
         const event = pushQueue.shift();
         return { value: event, done: false };
@@ -18148,7 +18148,7 @@ function requireEnv(name) {
 
 // src/utils.ts
 function sleep2(ms) {
-  return new Promise((resolve5) => setTimeout(resolve5, ms));
+  return new Promise((resolve4) => setTimeout(resolve4, ms));
 }
 function formatTechStack(techStack) {
   const stack = [...techStack.languages, ...techStack.frameworks].join(", ");
@@ -24183,7 +24183,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
+        await new Promise((resolve4) => setTimeout(resolve4, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -24200,7 +24200,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve4, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -24278,7 +24278,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve5(parseResult.data);
+            resolve4(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -24539,12 +24539,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve4, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve5, interval);
+      const timeoutId = setTimeout(resolve4, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -26743,7 +26743,7 @@ var SSEClientTransport = class {
   }
   _startOrAuth() {
     const fetchImpl = this?._eventSourceInit?.fetch ?? this._fetch ?? fetch;
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve4, reject) => {
       this._eventSource = new EventSource(this._url.href, {
         ...this._eventSourceInit,
         fetch: async (url2, init2) => {
@@ -26764,7 +26764,7 @@ var SSEClientTransport = class {
       this._abortController = new AbortController();
       this._eventSource.onerror = (event) => {
         if (event.code === 401 && this._authProvider) {
-          this._authThenStart().then(resolve5, reject);
+          this._authThenStart().then(resolve4, reject);
           return;
         }
         const error2 = new SseError(event.code, event.message, event);
@@ -26786,7 +26786,7 @@ var SSEClientTransport = class {
           void this.close();
           return;
         }
-        resolve5();
+        resolve4();
       });
       this._eventSource.onmessage = (event) => {
         const messageEvent = event;
@@ -30734,10 +30734,10 @@ var Minipass = class extends EventEmitter {
    * Return a void Promise that resolves once the stream ends.
    */
   async promise() {
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve4, reject) => {
       this.on(DESTROYED, () => reject(new Error("stream destroyed")));
       this.on("error", (er) => reject(er));
-      this.on("end", () => resolve5());
+      this.on("end", () => resolve4());
     });
   }
   /**
@@ -30761,7 +30761,7 @@ var Minipass = class extends EventEmitter {
         return Promise.resolve({ done: false, value: res });
       if (this[EOF])
         return stop();
-      let resolve5;
+      let resolve4;
       let reject;
       const onerr = (er) => {
         this.off("data", ondata);
@@ -30775,19 +30775,19 @@ var Minipass = class extends EventEmitter {
         this.off("end", onend);
         this.off(DESTROYED, ondestroy);
         this.pause();
-        resolve5({ value, done: !!this[EOF] });
+        resolve4({ value, done: !!this[EOF] });
       };
       const onend = () => {
         this.off("error", onerr);
         this.off("data", ondata);
         this.off(DESTROYED, ondestroy);
         stop();
-        resolve5({ done: true, value: void 0 });
+        resolve4({ done: true, value: void 0 });
       };
       const ondestroy = () => onerr(new Error("stream destroyed"));
       return new Promise((res2, rej) => {
         reject = rej;
-        resolve5 = res2;
+        resolve4 = res2;
         this.once(DESTROYED, ondestroy);
         this.once("error", onerr);
         this.once("end", onend);
@@ -31763,9 +31763,9 @@ var PathBase = class {
     if (this.#asyncReaddirInFlight) {
       await this.#asyncReaddirInFlight;
     } else {
-      let resolve5 = () => {
+      let resolve4 = () => {
       };
-      this.#asyncReaddirInFlight = new Promise((res) => resolve5 = res);
+      this.#asyncReaddirInFlight = new Promise((res) => resolve4 = res);
       try {
         for (const e of await this.#fs.promises.readdir(fullpath, {
           withFileTypes: true
@@ -31778,7 +31778,7 @@ var PathBase = class {
         children.provisional = 0;
       }
       this.#asyncReaddirInFlight = void 0;
-      resolve5();
+      resolve4();
     }
     return children.slice(0, children.provisional);
   }
@@ -34158,7 +34158,14 @@ var GLOB_IGNORE = [
   "**/tests/**",
   "**/*.test.*",
   "**/*.spec.*",
-  "**/TestData/**"
+  "**/TestData/**",
+  "**/data/**",
+  "**/.data/**",
+  // Frontend framework directories — these contain client-side controllers/routes,
+  // not backend API endpoints
+  "**/frontend/**",
+  "**/client/**",
+  "**/app/assets/**"
 ];
 async function findControllerFiles(repoPath) {
   const files = /* @__PURE__ */ new Set();
@@ -34390,6 +34397,49 @@ function extractEndpointsFromFile(content, filePath) {
     while ((m = railsRe.exec(content)) !== null) {
       endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
     }
+    const lines = content.split("\n");
+    const prefixStack = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const nsMatch = trimmed.match(
+        /^\s*namespace\s+[:"'](\w+)/
+      );
+      if (nsMatch) {
+        prefixStack.push(`/${nsMatch[1]}`);
+        continue;
+      }
+      const scopeMatch = trimmed.match(
+        /^\s*scope\s+["']([^"']+)["']/
+      );
+      if (scopeMatch) {
+        prefixStack.push(scopeMatch[1].startsWith("/") ? scopeMatch[1] : `/${scopeMatch[1]}`);
+        continue;
+      }
+      if (/^\s*end\b/.test(trimmed) && prefixStack.length > 0) {
+        prefixStack.pop();
+        continue;
+      }
+      const resMatch = trimmed.match(
+        /^\s*resources?\s+:(\w+)/
+      );
+      if (resMatch) {
+        const name = resMatch[0].includes("resources") ? resMatch[1] : resMatch[1];
+        const isSingular = /^\s*resource\s/.test(trimmed);
+        const prefix = prefixStack.join("") + `/${name}`;
+        if (isSingular) {
+          for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
+            endpoints.push({ method, path: prefix, filePath });
+          }
+        } else {
+          endpoints.push({ method: "GET", path: prefix, filePath });
+          endpoints.push({ method: "POST", path: prefix, filePath });
+          endpoints.push({ method: "GET", path: `${prefix}/:id`, filePath });
+          endpoints.push({ method: "PUT", path: `${prefix}/:id`, filePath });
+          endpoints.push({ method: "PATCH", path: `${prefix}/:id`, filePath });
+          endpoints.push({ method: "DELETE", path: `${prefix}/:id`, filePath });
+        }
+      }
+    }
   }
   return endpoints;
 }
@@ -34577,7 +34627,10 @@ ${snippet}`;
           "--exclude-dir=bin",
           "--exclude-dir=obj",
           "--exclude-dir=vendor",
+          "--exclude-dir=data",
+          "--exclude-dir=.data",
           "-F",
+          "--",
           query,
           "."
         ];
@@ -34729,15 +34782,23 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
       }
     }
   }
-  if (noMatchFiles.length > 0) {
+  const llmCandidates = noMatchFiles.filter(
+    (f) => !/\bapp\/controllers\/.*\.rb$/.test(f)
+  );
+  if (noMatchFiles.length > llmCandidates.length) {
     console.log(
-      `[Analyze] ${noMatchFiles.length} controller file(s) had no regex matches \u2014 using LLM fallback`
+      `[Analyze] Skipping ${noMatchFiles.length - llmCandidates.length} Rails controller file(s) \u2014 routes are in config/routes.rb`
+    );
+  }
+  if (llmCandidates.length > 0) {
+    console.log(
+      `[Analyze] ${llmCandidates.length} controller file(s) had no regex matches \u2014 using LLM fallback`
     );
     const handleTool2 = createBodyExtractionToolHandler(repoPath);
     const llmEndpoints = await extractEndpointsViaLlm(
       llm,
       repoPath,
-      noMatchFiles,
+      llmCandidates,
       handleTool2,
       model
     );
@@ -34886,9 +34947,193 @@ If you see a DTO/model type referenced, use find_type to look it up. Return JSON
 }
 
 // src/phases/swagger.ts
-import { writeFileSync as writeFileSync2, mkdirSync as mkdirSync2 } from "fs";
-import { resolve as resolve3, dirname } from "path";
-import { execSync as execSync2 } from "child_process";
+var SWAGGER_PATHS = [
+  // OpenAPI 3.x
+  "/openapi.json",
+  "/openapi.yaml",
+  "/api/openapi.json",
+  "/v3/api-docs",
+  "/docs/openapi.json",
+  // Swagger 2.x
+  "/swagger.json",
+  "/swagger/v1/swagger.json",
+  "/swagger/v2/swagger.json",
+  "/api-docs",
+  "/api-docs.json",
+  "/v2/api-docs",
+  // FastAPI
+  "/openapi.json",
+  // NestJS / @nestjs/swagger
+  "/api",
+  "/api-json",
+  // .NET
+  "/swagger/v1/swagger.json",
+  // Rails rswag
+  "/api-docs/v1/swagger.json"
+];
+var UNIQUE_SWAGGER_PATHS = [...new Set(SWAGGER_PATHS)];
+async function probeSwaggerSpec(baseUrl) {
+  for (const path2 of UNIQUE_SWAGGER_PATHS) {
+    const url2 = `${baseUrl.replace(/\/$/, "")}${path2}`;
+    try {
+      const res = await fetch(url2, {
+        signal: AbortSignal.timeout(5e3),
+        headers: { Accept: "application/json" }
+      });
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (!text.startsWith("{") && !text.startsWith("[")) continue;
+      const spec = JSON.parse(text);
+      if (spec.openapi || spec.swagger || spec.paths) {
+        console.log(`[Swagger] Found OpenAPI spec at ${url2}`);
+        return { found: true, specUrl: url2, spec };
+      }
+    } catch {
+    }
+  }
+  return { found: false };
+}
+function parseOpenApiToEndpoints(spec) {
+  const endpoints = [];
+  const paths = spec.paths;
+  if (!paths) return endpoints;
+  let basePath = "";
+  if (spec.servers && Array.isArray(spec.servers) && spec.servers.length > 0) {
+    const serverUrl = spec.servers[0]?.url ?? "";
+    try {
+      basePath = new URL(serverUrl).pathname.replace(/\/$/, "");
+    } catch {
+      basePath = serverUrl.replace(/\/$/, "");
+    }
+  } else if (typeof spec.basePath === "string") {
+    basePath = spec.basePath.replace(/\/$/, "");
+  }
+  for (const [pathTemplate, methods] of Object.entries(paths)) {
+    if (!methods || typeof methods !== "object") continue;
+    for (const [method, operation] of Object.entries(methods)) {
+      const httpMethod = method.toUpperCase();
+      if (!["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(httpMethod)) {
+        continue;
+      }
+      const op = operation;
+      const normalizedPath = (basePath + pathTemplate).replace(
+        /\{(\w+)\}/g,
+        ":$1"
+      );
+      const queryParams = [];
+      const pathParams = {};
+      for (const param of op.parameters ?? []) {
+        const sampleValue = String(
+          param.example ?? param.schema?.example ?? param.schema?.default ?? sampleForType(param.schema?.type)
+        );
+        if (param.in === "query") {
+          queryParams.push({ name: param.name, value: sampleValue });
+        } else if (param.in === "path") {
+          pathParams[param.name] = sampleValue;
+        }
+      }
+      let resolvedPath = normalizedPath;
+      for (const [name, value] of Object.entries(pathParams)) {
+        resolvedPath = resolvedPath.replace(`:${name}`, value);
+      }
+      let body;
+      let contentType;
+      if (op.requestBody?.content) {
+        const jsonContent = op.requestBody.content["application/json"];
+        if (jsonContent?.schema) {
+          contentType = "application/json";
+          body = JSON.stringify(generateSampleFromSchema(jsonContent.schema));
+        } else {
+          const [ct, def] = Object.entries(op.requestBody.content)[0] ?? [];
+          if (ct && def?.schema) {
+            contentType = ct;
+            body = JSON.stringify(generateSampleFromSchema(def.schema));
+          }
+        }
+      }
+      endpoints.push({
+        method: httpMethod,
+        path: resolvedPath,
+        filePath: "openapi-spec",
+        queryParams: queryParams.length > 0 ? queryParams : void 0,
+        body,
+        contentType
+      });
+    }
+  }
+  return endpoints;
+}
+function sampleForType(type) {
+  switch (type) {
+    case "integer":
+      return 1;
+    case "number":
+      return 1;
+    case "boolean":
+      return true;
+    case "array":
+      return "[]";
+    default:
+      return "example";
+  }
+}
+function generateSampleFromSchema(schema, depth = 0) {
+  if (depth > 5) return {};
+  if (schema.$ref) return {};
+  if (schema.example !== void 0) return schema.example;
+  const type = schema.type;
+  if (type === "object" || schema.properties) {
+    const props = schema.properties;
+    if (!props) return {};
+    const result = {};
+    for (const [key, propSchema] of Object.entries(props)) {
+      result[key] = generateSampleFromSchema(propSchema, depth + 1);
+    }
+    return result;
+  }
+  if (type === "array") {
+    const items = schema.items;
+    if (items) return [generateSampleFromSchema(items, depth + 1)];
+    return [];
+  }
+  if (type === "string") {
+    if (schema.enum && Array.isArray(schema.enum)) return schema.enum[0];
+    if (schema.format === "email") return "user@example.com";
+    if (schema.format === "date") return "2024-01-15";
+    if (schema.format === "date-time") return "2024-01-15T10:30:00Z";
+    if (schema.format === "uuid") return "550e8400-e29b-41d4-a716-446655440000";
+    if (schema.format === "uri") return "https://example.com";
+    return "string";
+  }
+  if (type === "integer") return schema.example ?? 1;
+  if (type === "number") return schema.example ?? 1;
+  if (type === "boolean") return schema.example ?? true;
+  return "example";
+}
+async function discoverEndpointsViaSwagger(baseUrl) {
+  console.log("[Swagger] Probing for existing OpenAPI/Swagger spec...");
+  const probe = await probeSwaggerSpec(baseUrl);
+  if (probe.found && probe.spec) {
+    const endpoints = parseOpenApiToEndpoints(probe.spec);
+    if (endpoints.length > 0) {
+      console.log(
+        `[Swagger] Parsed ${endpoints.length} endpoints from existing spec at ${probe.specUrl}`
+      );
+      return { endpoints, source: "existing-spec" };
+    }
+  }
+  console.log("[Swagger] No existing spec found");
+  return { endpoints: [], source: "none" };
+}
+
+// src/phases/startup.ts
+import {
+  spawn,
+  execSync as execSync2,
+  execFileSync as execFileSync4
+} from "child_process";
+import { createInterface } from "readline";
+import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "fs";
 
 // src/tools.ts
 import { readFileSync as readFileSync2, existsSync as existsSync3, statSync, writeFileSync } from "fs";
@@ -35218,352 +35463,6 @@ function createMcpToolHandler(bright) {
   };
 }
 
-// src/phases/swagger.ts
-var SWAGGER_PATHS = [
-  // OpenAPI 3.x
-  "/openapi.json",
-  "/openapi.yaml",
-  "/api/openapi.json",
-  "/v3/api-docs",
-  "/docs/openapi.json",
-  // Swagger 2.x
-  "/swagger.json",
-  "/swagger/v1/swagger.json",
-  "/swagger/v2/swagger.json",
-  "/api-docs",
-  "/api-docs.json",
-  "/v2/api-docs",
-  // FastAPI
-  "/openapi.json",
-  // NestJS / @nestjs/swagger
-  "/api",
-  "/api-json",
-  // .NET
-  "/swagger/v1/swagger.json",
-  // Rails rswag
-  "/api-docs/v1/swagger.json"
-];
-var UNIQUE_SWAGGER_PATHS = [...new Set(SWAGGER_PATHS)];
-async function probeSwaggerSpec(baseUrl) {
-  for (const path2 of UNIQUE_SWAGGER_PATHS) {
-    const url2 = `${baseUrl.replace(/\/$/, "")}${path2}`;
-    try {
-      const res = await fetch(url2, {
-        signal: AbortSignal.timeout(5e3),
-        headers: { Accept: "application/json" }
-      });
-      if (!res.ok) continue;
-      const text = await res.text();
-      if (!text.startsWith("{") && !text.startsWith("[")) continue;
-      const spec = JSON.parse(text);
-      if (spec.openapi || spec.swagger || spec.paths) {
-        console.log(`[Swagger] Found OpenAPI spec at ${url2}`);
-        return { found: true, specUrl: url2, spec };
-      }
-    } catch {
-    }
-  }
-  return { found: false };
-}
-function parseOpenApiToEndpoints(spec) {
-  const endpoints = [];
-  const paths = spec.paths;
-  if (!paths) return endpoints;
-  let basePath = "";
-  if (spec.servers && Array.isArray(spec.servers) && spec.servers.length > 0) {
-    const serverUrl = spec.servers[0]?.url ?? "";
-    try {
-      basePath = new URL(serverUrl).pathname.replace(/\/$/, "");
-    } catch {
-      basePath = serverUrl.replace(/\/$/, "");
-    }
-  } else if (typeof spec.basePath === "string") {
-    basePath = spec.basePath.replace(/\/$/, "");
-  }
-  for (const [pathTemplate, methods] of Object.entries(paths)) {
-    if (!methods || typeof methods !== "object") continue;
-    for (const [method, operation] of Object.entries(methods)) {
-      const httpMethod = method.toUpperCase();
-      if (!["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(httpMethod)) {
-        continue;
-      }
-      const op = operation;
-      const normalizedPath = (basePath + pathTemplate).replace(
-        /\{(\w+)\}/g,
-        ":$1"
-      );
-      const queryParams = [];
-      const pathParams = {};
-      for (const param of op.parameters ?? []) {
-        const sampleValue = String(
-          param.example ?? param.schema?.example ?? param.schema?.default ?? sampleForType(param.schema?.type)
-        );
-        if (param.in === "query") {
-          queryParams.push({ name: param.name, value: sampleValue });
-        } else if (param.in === "path") {
-          pathParams[param.name] = sampleValue;
-        }
-      }
-      let resolvedPath = normalizedPath;
-      for (const [name, value] of Object.entries(pathParams)) {
-        resolvedPath = resolvedPath.replace(`:${name}`, value);
-      }
-      let body;
-      let contentType;
-      if (op.requestBody?.content) {
-        const jsonContent = op.requestBody.content["application/json"];
-        if (jsonContent?.schema) {
-          contentType = "application/json";
-          body = JSON.stringify(generateSampleFromSchema(jsonContent.schema));
-        } else {
-          const [ct, def] = Object.entries(op.requestBody.content)[0] ?? [];
-          if (ct && def?.schema) {
-            contentType = ct;
-            body = JSON.stringify(generateSampleFromSchema(def.schema));
-          }
-        }
-      }
-      endpoints.push({
-        method: httpMethod,
-        path: resolvedPath,
-        filePath: "openapi-spec",
-        queryParams: queryParams.length > 0 ? queryParams : void 0,
-        body,
-        contentType
-      });
-    }
-  }
-  return endpoints;
-}
-function sampleForType(type) {
-  switch (type) {
-    case "integer":
-      return 1;
-    case "number":
-      return 1;
-    case "boolean":
-      return true;
-    case "array":
-      return "[]";
-    default:
-      return "example";
-  }
-}
-function generateSampleFromSchema(schema, depth = 0) {
-  if (depth > 5) return {};
-  if (schema.$ref) return {};
-  if (schema.example !== void 0) return schema.example;
-  const type = schema.type;
-  if (type === "object" || schema.properties) {
-    const props = schema.properties;
-    if (!props) return {};
-    const result = {};
-    for (const [key, propSchema] of Object.entries(props)) {
-      result[key] = generateSampleFromSchema(propSchema, depth + 1);
-    }
-    return result;
-  }
-  if (type === "array") {
-    const items = schema.items;
-    if (items) return [generateSampleFromSchema(items, depth + 1)];
-    return [];
-  }
-  if (type === "string") {
-    if (schema.enum && Array.isArray(schema.enum)) return schema.enum[0];
-    if (schema.format === "email") return "user@example.com";
-    if (schema.format === "date") return "2024-01-15";
-    if (schema.format === "date-time") return "2024-01-15T10:30:00Z";
-    if (schema.format === "uuid") return "550e8400-e29b-41d4-a716-446655440000";
-    if (schema.format === "uri") return "https://example.com";
-    return "string";
-  }
-  if (type === "integer") return schema.example ?? 1;
-  if (type === "number") return schema.example ?? 1;
-  if (type === "boolean") return schema.example ?? true;
-  return "example";
-}
-var SWAGGER_LIBRARIES = {
-  Express: "swagger-jsdoc + swagger-ui-express",
-  Fastify: "@fastify/swagger + @fastify/swagger-ui",
-  Koa: "koa2-swagger-ui + swagger-jsdoc",
-  NestJS: "@nestjs/swagger",
-  "Next.js": "next-swagger-doc + swagger-ui-react",
-  "ASP.NET": "Swashbuckle.AspNetCore (usually pre-installed)",
-  "Spring Boot": "springdoc-openapi-starter-webmvc-ui",
-  Flask: "flask-restx or flasgger",
-  FastAPI: "Built-in (already at /openapi.json)",
-  Django: "drf-spectacular",
-  Rails: "rswag-api + rswag-ui",
-  Go: "swaggo/swag + gin-swagger (for Gin) or echo-swagger",
-  Laravel: "darkaonline/l5-swagger"
-};
-var injectSwaggerResultSchema = {
-  type: "object",
-  properties: {
-    files: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "Relative file path to create or modify"
-          },
-          content: {
-            type: "string",
-            description: "Complete file content after modification"
-          }
-        },
-        required: ["path", "content"],
-        additionalProperties: false
-      },
-      description: "Files to create or overwrite"
-    },
-    installCommand: {
-      type: "string",
-      description: "Shell command to install the swagger library (e.g. npm install swagger-jsdoc swagger-ui-express)"
-    },
-    swaggerPath: {
-      type: "string",
-      description: "The URL path where the JSON spec will be served (e.g. /api-docs, /swagger.json)"
-    }
-  },
-  required: ["files", "installCommand", "swaggerPath"],
-  additionalProperties: false
-};
-async function injectSwaggerSupport(llm, repoPath, techStack, model) {
-  const stackStr = formatTechStack(techStack);
-  const handleTool = createToolHandler(repoPath);
-  const frameworkHints = techStack.frameworks.map((fw) => {
-    const lib = Object.entries(SWAGGER_LIBRARIES).find(
-      ([k]) => fw.toLowerCase().includes(k.toLowerCase())
-    );
-    return lib ? `${fw}: use ${lib[1]}` : null;
-  }).filter(Boolean).join("\n");
-  const messages = [
-    {
-      role: "system",
-      content: `You are an expert at adding Swagger/OpenAPI auto-generation to web applications.
-Your task: add the minimal code to make this application serve a JSON OpenAPI spec at a well-known path.
-
-Tech stack: ${stackStr}
-${frameworkHints ? `
-Recommended libraries:
-${frameworkHints}` : ""}
-
-RULES:
-1. Use the tools to read the application's entry point and routing files to understand the existing structure.
-2. Make MINIMAL changes \u2014 only add the swagger library registration/middleware.
-3. The spec MUST be auto-generated from the existing routes (not hand-written).
-4. Prefer libraries that auto-discover routes without needing JSDoc annotations.
-5. Do NOT modify existing route handlers.
-6. Return the COMPLETE content of each file you modify (not just the diff).
-7. Return the install command for the swagger library.
-8. Return the URL path where the JSON spec will be available.`
-    },
-    {
-      role: "user",
-      content: `Add Swagger/OpenAPI auto-generation to this ${stackStr} application.
-
-Read the entry point and routing setup, then provide the minimal file changes to add a swagger spec endpoint. Focus on auto-discovering existing routes.`
-    }
-  ];
-  try {
-    const exploration = await chatWithTools(
-      llm,
-      messages,
-      codebaseTools,
-      handleTool,
-      model,
-      8
-    );
-    const result = await chatWithSchema(
-      llm,
-      [
-        ...messages,
-        { role: "assistant", content: exploration },
-        {
-          role: "user",
-          content: "Now return the exact file changes, install command, and swagger spec URL path as structured JSON."
-        }
-      ],
-      "swagger_injection",
-      injectSwaggerResultSchema,
-      model
-    );
-    if (!result.files || result.files.length === 0) {
-      console.warn("[Swagger] LLM returned no file changes");
-      return null;
-    }
-    for (const file of result.files) {
-      const fullPath = resolve3(repoPath, file.path);
-      if (!fullPath.startsWith(repoPath)) {
-        console.warn(`[Swagger] Blocked path traversal: ${file.path}`);
-        continue;
-      }
-      mkdirSync2(dirname(fullPath), { recursive: true });
-      writeFileSync2(fullPath, file.content, "utf-8");
-      console.log(`[Swagger] Wrote ${file.path}`);
-    }
-    if (result.installCommand) {
-      console.log(`[Swagger] Running: ${result.installCommand}`);
-      try {
-        execSync2(result.installCommand, {
-          cwd: repoPath,
-          stdio: "pipe",
-          timeout: 12e4,
-          env: { ...process.env, NODE_ENV: void 0 }
-        });
-      } catch (err) {
-        console.warn(
-          `[Swagger] Install command failed: ${err instanceof Error ? err.message : err}`
-        );
-      }
-    }
-    const specPath = result.swaggerPath || "/swagger.json";
-    console.log(`[Swagger] Injection complete \u2014 spec expected at ${specPath}`);
-    return specPath;
-  } catch (err) {
-    console.warn(
-      `[Swagger] Failed to inject swagger support: ${err instanceof Error ? err.message : err}`
-    );
-    return null;
-  }
-}
-async function discoverEndpointsViaSwagger(llm, repoPath, techStack, baseUrl, model) {
-  console.log("[Swagger] Probing for existing OpenAPI/Swagger spec...");
-  const probe = await probeSwaggerSpec(baseUrl);
-  if (probe.found && probe.spec) {
-    const endpoints = parseOpenApiToEndpoints(probe.spec);
-    if (endpoints.length > 0) {
-      console.log(
-        `[Swagger] Parsed ${endpoints.length} endpoints from existing spec at ${probe.specUrl}`
-      );
-      return { endpoints, source: "existing-spec", needsRebuild: false };
-    }
-  }
-  console.log("[Swagger] No existing spec found \u2014 attempting injection");
-  const specPath = await injectSwaggerSupport(llm, repoPath, techStack, model);
-  if (!specPath) {
-    return { endpoints: [], source: "none", needsRebuild: false };
-  }
-  return {
-    endpoints: [],
-    source: "injected-spec",
-    needsRebuild: true,
-    specPath
-  };
-}
-
-// src/phases/startup.ts
-import {
-  spawn,
-  execSync as execSync3,
-  execFileSync as execFileSync4
-} from "child_process";
-import { createInterface } from "readline";
-import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
-
 // src/prompts/identify-startup.ts
 function identifyStartupPrompt(techStack) {
   return [
@@ -35886,9 +35785,9 @@ function canBuildFromSource(repoPath) {
     "CMakeLists.txt",
     "meson.build"
   ];
-  if (buildIndicators.some((f) => existsSync5(`${repoPath}/${f}`))) return true;
+  if (buildIndicators.some((f) => existsSync4(`${repoPath}/${f}`))) return true;
   try {
-    const entries = execSync3("ls -1", {
+    const entries = execSync2("ls -1", {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: 5e3
@@ -35961,7 +35860,7 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
       }
     }
     config2 = sanitizeStartupConfig(repoPath, config2);
-    if (config2.docker && !existsSync5(`${repoPath}/Dockerfile`)) {
+    if (config2.docker && !existsSync4(`${repoPath}/Dockerfile`)) {
       console.log(
         "[Startup] No Dockerfile found \u2014 generating one for this project"
       );
@@ -36004,7 +35903,7 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         break;
       }
       if (attempt < MAX_STARTUP_ATTEMPTS) {
-        const isDockerBuildError = config2.docker && existsSync5(`${repoPath}/Dockerfile`) && /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(errorMsg);
+        const isDockerBuildError = config2.docker && existsSync4(`${repoPath}/Dockerfile`) && /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(errorMsg);
         if (isDockerBuildError) {
           await repairDockerBuild(
             llm,
@@ -36025,7 +35924,7 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
       }
       if (config2.docker) {
         try {
-          execSync3(
+          execSync2(
             "docker compose down 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
             { cwd: repoPath, stdio: "ignore", timeout: 3e4 }
           );
@@ -36088,7 +35987,7 @@ function usesPrebuiltImage(command) {
 function composeUsesPrebuiltImages(repoPath, composeFile) {
   let content;
   try {
-    content = readFileSync4(`${repoPath}/${composeFile}`, "utf-8");
+    content = readFileSync3(`${repoPath}/${composeFile}`, "utf-8");
   } catch {
     return false;
   }
@@ -36109,7 +36008,7 @@ function patchComposeForSourceBuild(repoPath, composeFile) {
   const filePath = `${repoPath}/${composeFile}`;
   let content;
   try {
-    content = readFileSync4(filePath, "utf-8");
+    content = readFileSync3(filePath, "utf-8");
   } catch {
     return;
   }
@@ -36125,7 +36024,7 @@ function patchComposeForSourceBuild(repoPath, composeFile) {
     }
   );
   if (patched !== content) {
-    writeFileSync3(filePath, patched);
+    writeFileSync2(filePath, patched);
     console.log(
       `[Startup] Replaced pre-built image in ${composeFile} with build: .`
     );
@@ -36135,7 +36034,7 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   const filePath = `${repoPath}/${composeFile}`;
   let content;
   try {
-    content = readFileSync4(filePath, "utf8");
+    content = readFileSync3(filePath, "utf8");
   } catch {
     return true;
   }
@@ -36156,7 +36055,7 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   for (const ctx of contexts) {
     if (ctx === "." || ctx === "./") continue;
     const resolved = ctx.startsWith("/") ? ctx : `${baseDir}/${ctx}`;
-    if (!existsSync5(resolved)) {
+    if (!existsSync4(resolved)) {
       console.warn(`[Startup] Compose ${composeFile}: build context "${ctx}" does not exist (${resolved})`);
       return false;
     }
@@ -36167,7 +36066,7 @@ async function repairDockerBuild(llm, repoPath, buildError, handleTool, model) {
   const dockerfilePath = `${repoPath}/Dockerfile`;
   let currentDockerfile;
   try {
-    currentDockerfile = readFileSync4(dockerfilePath, "utf-8");
+    currentDockerfile = readFileSync3(dockerfilePath, "utf-8");
   } catch {
     return;
   }
@@ -36242,7 +36141,7 @@ Use the tools to inspect relevant project files, then return a COMPLETE fixed Do
         `[Startup] Repaired Dockerfile references non-existent images: ${missing.join(", ")}`
       );
     }
-    writeFileSync3(dockerfilePath, fixedDockerfile, "utf-8");
+    writeFileSync2(dockerfilePath, fixedDockerfile, "utf-8");
     console.log(
       `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines)`
     );
@@ -36317,16 +36216,16 @@ Investigate the root cause using the tools, then fix it. Reply with a brief summ
 }
 function findMissingEnvFiles(repoPath, composeFile) {
   try {
-    const content = readFileSync4(`${repoPath}/${composeFile}`, "utf8");
+    const content = readFileSync3(`${repoPath}/${composeFile}`, "utf8");
     const missing = [];
     for (const m of content.matchAll(/env_file:\s+(?!-)(\S+)/g)) {
       const file = m[1].replace(/["']/g, "");
-      if (file && !existsSync5(`${repoPath}/${file}`)) missing.push(file);
+      if (file && !existsSync4(`${repoPath}/${file}`)) missing.push(file);
     }
     for (const m of content.matchAll(/env_file:\s*\n((?:\s+-\s+\S+\n?)+)/g)) {
       for (const item of m[1].matchAll(/^\s+-\s+(\S+)/gm)) {
         const file = item[1].replace(/["']/g, "");
-        if (file && !existsSync5(`${repoPath}/${file}`)) missing.push(file);
+        if (file && !existsSync4(`${repoPath}/${file}`)) missing.push(file);
       }
     }
     return [...new Set(missing)];
@@ -36359,10 +36258,10 @@ function sanitizeComposeTemplateVars(repoPath, config2) {
   }
   for (const cf of filesToCheck) {
     const filePath = cf.startsWith("/") ? cf : `${repoPath}/${cf}`;
-    if (!existsSync5(filePath)) continue;
+    if (!existsSync4(filePath)) continue;
     let content;
     try {
-      content = readFileSync4(filePath, "utf8");
+      content = readFileSync3(filePath, "utf8");
     } catch {
       continue;
     }
@@ -36371,7 +36270,7 @@ function sanitizeComposeTemplateVars(repoPath, config2) {
       String(config2.port)
     );
     if (sanitized !== content) {
-      writeFileSync3(filePath, sanitized);
+      writeFileSync2(filePath, sanitized);
       console.log(
         `[Startup] Replaced template port placeholder(s) in ${cf} with ${config2.port}`
       );
@@ -36383,9 +36282,9 @@ function populateMissingEnvFile(repoPath, composeFile, envFile) {
   const envPath = `${repoPath}/${envFile}`;
   let content;
   try {
-    content = readFileSync4(composePath, "utf8");
+    content = readFileSync3(composePath, "utf8");
   } catch {
-    writeFileSync3(envPath, "");
+    writeFileSync2(envPath, "");
     return;
   }
   const lines = [];
@@ -36428,10 +36327,10 @@ function populateMissingEnvFile(repoPath, composeFile, envFile) {
   console.log(
     `[Startup] Created ${envFile} with ${lines.length} default variable(s)`
   );
-  writeFileSync3(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
+  writeFileSync2(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
 }
 function buildFromSourceConfig(repoPath, previousConfig) {
-  const hasDockerfile = existsSync5(`${repoPath}/Dockerfile`);
+  const hasDockerfile = existsSync4(`${repoPath}/Dockerfile`);
   if (!hasDockerfile) return null;
   const port = previousConfig.port;
   const imageName = "bright-app-local";
@@ -36444,7 +36343,7 @@ function buildFromSourceConfig(repoPath, previousConfig) {
     "compose.dev.yml"
   ];
   for (const cf of composeFiles) {
-    if (existsSync5(`${repoPath}/${cf}`)) {
+    if (existsSync4(`${repoPath}/${cf}`)) {
       if (!validateComposeBuildContexts(repoPath, cf)) {
         console.log(`[Startup] Skipping ${cf} \u2014 build context directory missing`);
         continue;
@@ -36471,7 +36370,7 @@ function buildFromSourceConfig(repoPath, previousConfig) {
   };
 }
 function buildDockerfileOnlyConfig(repoPath, previousConfig) {
-  if (!existsSync5(`${repoPath}/Dockerfile`)) return null;
+  if (!existsSync4(`${repoPath}/Dockerfile`)) return null;
   const port = previousConfig.port;
   const imageName = "bright-app-local";
   return {
@@ -36504,7 +36403,7 @@ async function generateDockerfile(llm, repoPath, stackStr, handleTool, model) {
       `[Startup] Dockerfile references non-existent images: ${missing.join(", ")}`
     );
   }
-  writeFileSync3(`${repoPath}/Dockerfile`, content);
+  writeFileSync2(`${repoPath}/Dockerfile`, content);
   console.log(
     `[Startup] Generated Dockerfile (${content.split("\n").length} lines)`
   );
@@ -36583,7 +36482,7 @@ function extractInlineEnvVars(command) {
 }
 function unshallowIfNeeded(repoPath) {
   const shallowFile = `${repoPath}/.git/shallow`;
-  if (!existsSync5(shallowFile)) return;
+  if (!existsSync4(shallowFile)) return;
   const versioningIndicators = [
     "Directory.Build.props",
     "version.json",
@@ -36593,11 +36492,11 @@ function unshallowIfNeeded(repoPath) {
     "GitVersion.yaml"
   ];
   const needsHistory = versioningIndicators.some(
-    (f) => existsSync5(`${repoPath}/${f}`)
+    (f) => existsSync4(`${repoPath}/${f}`)
   );
   if (!needsHistory) {
     try {
-      const out = execSync3(
+      const out = execSync2(
         "grep -rl 'Nerdbank.GitVersioning\\|GitVersion' --include='*.csproj' --include='*.props' . 2>/dev/null | head -1",
         { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
       ).trim();
@@ -36610,7 +36509,7 @@ function unshallowIfNeeded(repoPath) {
     "[Startup] Detected shallow clone with git-based versioning \u2014 fetching full history"
   );
   try {
-    execSync3(
+    execSync2(
       "git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true",
       {
         cwd: repoPath,
@@ -36629,11 +36528,11 @@ function ensureDockerIgnore(repoPath) {
   const problematicDirs = ["data/", ".data/", "tmp/", "log/"];
   let existing = "";
   try {
-    existing = readFileSync4(ignorePath, "utf-8");
+    existing = readFileSync3(ignorePath, "utf-8");
   } catch {
   }
   const linesToAdd = problematicDirs.filter(
-    (dir) => !existing.includes(dir) && existsSync5(`${repoPath}/${dir.replace(/\/$/, "")}`)
+    (dir) => !existing.includes(dir) && existsSync4(`${repoPath}/${dir.replace(/\/$/, "")}`)
   );
   if (linesToAdd.length === 0) return;
   const newContent = existing ? `${existing.trimEnd()}
@@ -36642,7 +36541,7 @@ ${linesToAdd.join("\n")}
 ` : `# Added by bright-agent to avoid permission errors
 ${linesToAdd.join("\n")}
 `;
-  writeFileSync3(ignorePath, newContent);
+  writeFileSync2(ignorePath, newContent);
   console.log(
     `[Startup] Updated .dockerignore to exclude: ${linesToAdd.join(", ")}`
   );
@@ -36670,13 +36569,13 @@ function sanitizeStartupConfig(repoPath, config2) {
         return fallbackToDockerfile(repoPath, config2);
       }
       const fullPath = `${repoPath}/${composeFile}`;
-      if (existsSync5(fullPath) && !validateComposeBuildContexts(repoPath, composeFile)) {
+      if (existsSync4(fullPath) && !validateComposeBuildContexts(repoPath, composeFile)) {
         console.log(
           `[Startup] Rejecting compose with missing build context: ${composeFile} \u2014 using root Dockerfile`
         );
         return fallbackToDockerfile(repoPath, config2);
       }
-      if (existsSync5(fullPath) && composeUsesPrebuiltImages(repoPath, composeFile) && existsSync5(`${repoPath}/Dockerfile`)) {
+      if (existsSync4(fullPath) && composeUsesPrebuiltImages(repoPath, composeFile) && existsSync4(`${repoPath}/Dockerfile`)) {
         patchComposeForSourceBuild(repoPath, composeFile);
         if (!config2.command.includes("--build")) {
           config2 = {
@@ -36708,7 +36607,7 @@ function sanitizeStartupConfig(repoPath, config2) {
     const scriptMatch = config2.command.match(/\.\/([\w.-]+\.sh)\b/);
     if (scriptMatch) {
       try {
-        const scriptContent = readFileSync4(
+        const scriptContent = readFileSync3(
           `${repoPath}/${scriptMatch[1]}`,
           "utf-8"
         ).slice(0, 2e3);
@@ -36767,11 +36666,14 @@ function fallbackToDockerfile(repoPath, config2) {
   };
 }
 function stripDockerTtyFlags(cmd) {
-  return cmd.replace(/\s-it\b/g, " -i").replace(/\s-t\s/g, " ").replace(/\s--tty\b/g, "").replace(/\s-([a-zA-Z]*t[a-zA-Z]*)\b/g, (_m, flags) => {
-    if (flags.length > 5) return _m;
-    const without = flags.replace(/t/g, "");
-    return without ? ` -${without}` : "";
-  });
+  return cmd.replace(
+    /\bdocker\s+(run|exec)\b[^;&|]*/g,
+    (segment) => segment.replace(/\s-it\b/g, " -i").replace(/\s-t\s/g, " ").replace(/\s--tty\b/g, "").replace(/\s-([a-zA-Z]*t[a-zA-Z]*)\b/g, (_m, flags) => {
+      if (flags.length > 5) return _m;
+      const without = flags.replace(/t/g, "");
+      return without ? ` -${without}` : "";
+    })
+  );
 }
 function patchScriptTtyFlags(repoPath, config2) {
   const allCmds = [config2.command, ...config2.prerequisites];
@@ -36783,7 +36685,7 @@ function patchScriptTtyFlags(repoPath, config2) {
       if (/^\/(usr|bin|sbin)\//.test(candidate)) continue;
       if (candidate.includes(":")) continue;
       const fullPath = `${repoPath}/${candidate}`;
-      if (existsSync5(fullPath)) {
+      if (existsSync4(fullPath)) {
         const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
         scriptDirs.add(dir);
       }
@@ -36793,7 +36695,7 @@ function patchScriptTtyFlags(repoPath, config2) {
   for (const dir of scriptDirs) {
     let files;
     try {
-      files = execSync3(`find "${dir}" -maxdepth 2 -type f 2>/dev/null`, {
+      files = execSync2(`find "${dir}" -maxdepth 2 -type f 2>/dev/null`, {
         encoding: "utf-8",
         timeout: 5e3
       }).trim().split("\n").filter(Boolean);
@@ -36802,13 +36704,13 @@ function patchScriptTtyFlags(repoPath, config2) {
     }
     for (const filePath of files) {
       try {
-        const content = readFileSync4(filePath, "utf-8");
+        const content = readFileSync3(filePath, "utf-8");
         if (!/docker\s+(?:exec|run)/.test(content)) continue;
         const patched = content.replace(/^(\s*)-it(\s*\\?\s*)$/gm, "$1-i$2").replace(/\b(docker\s+(?:exec|run)\s+(?:[^\n]*?\s)?)-it\b/g, "$1-i").replace(/^(\s*)-t(\s*\\?\s*)$/gm, (_m, pre, post) => {
           return post.includes("\\") ? `${pre}${post}` : "";
         }).replace(/\s--tty\b/g, "");
         if (patched !== content) {
-          writeFileSync3(filePath, patched);
+          writeFileSync2(filePath, patched);
           console.log(`[Startup] Patched TTY flags in ${filePath.replace(repoPath + "/", "")}`);
         }
       } catch {
@@ -36818,7 +36720,7 @@ function patchScriptTtyFlags(repoPath, config2) {
 }
 function isToolAvailable(name) {
   try {
-    execSync3(`command -v ${name}`, { stdio: "pipe", timeout: 5e3 });
+    execSync2(`command -v ${name}`, { stdio: "pipe", timeout: 5e3 });
     return true;
   } catch {
     return false;
@@ -36830,7 +36732,7 @@ async function startApplication(repoPath, config2) {
     const composeFileMatch = config2.command.match(/-f\s+(\S+)/);
     const cdMatch = config2.command.match(/cd\s+(\S+)\s*&&/);
     const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : null);
-    if (composeFile && existsSync5(`${repoPath}/${composeFile}`)) {
+    if (composeFile && existsSync4(`${repoPath}/${composeFile}`)) {
       if (!validateComposeBuildContexts(repoPath, composeFile)) {
         throw new Error(
           `Compose file ${composeFile} references a build context that does not exist. This is likely a template scaffold \u2014 try building from the root Dockerfile instead.`
@@ -36846,7 +36748,7 @@ async function startApplication(repoPath, config2) {
   for (let cmd of config2.prerequisites) {
     cmd = stripDockerTtyFlags(cmd);
     console.log(`[Startup] Running prerequisite: ${cmd}`);
-    execSync3(cmd, {
+    execSync2(cmd, {
       cwd: repoPath,
       stdio: "pipe",
       timeout: 3e5,
@@ -36901,13 +36803,13 @@ ${outputLines.slice(-30).join("\n")}`
     });
   });
   if (config2.docker && command.includes("--wait")) {
-    const composeExitPromise = new Promise((resolve5, reject) => {
+    const composeExitPromise = new Promise((resolve4, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("docker compose --wait timed out after 300s"));
       }, 3e5);
       child.on("exit", (code) => {
         clearTimeout(timer);
-        if (code === 0) resolve5();
+        if (code === 0) resolve4();
         else
           reject(
             new Error(
@@ -36958,7 +36860,7 @@ ${outputLines.slice(-30).join("\n")}`
       if (config2.docker) logDockerFailure(repoPath);
       if (containerName) {
         try {
-          const logs = execSync3(
+          const logs = execSync2(
             `docker logs ${containerName} 2>&1 | tail -30`,
             { encoding: "utf-8", timeout: 1e4 }
           ).trim();
@@ -36983,7 +36885,7 @@ ${logs}`);
 }
 function logDockerFailure(repoPath) {
   try {
-    const ps = execSync3(
+    const ps = execSync2(
       "docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true",
       {
         cwd: repoPath,
@@ -36993,7 +36895,7 @@ function logDockerFailure(repoPath) {
     ).trim();
     if (ps) console.log(`[Startup] Docker container status:
 ${ps}`);
-    const logs = execSync3("docker compose logs --tail=40 2>/dev/null || true", {
+    const logs = execSync2("docker compose logs --tail=40 2>/dev/null || true", {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: 15e3
@@ -37029,7 +36931,7 @@ async function pollContainerAlive(containerName, timeoutMs) {
   await sleep2(3e3);
   while (Date.now() - start < timeoutMs) {
     try {
-      const status = execSync3(
+      const status = execSync2(
         `docker inspect --format='{{.State.Status}}' ${containerName} 2>/dev/null`,
         { encoding: "utf-8", timeout: 5e3 }
       ).trim();
@@ -37067,29 +36969,29 @@ function extractJson2(text) {
 }
 function cleanupDocker(repoPath) {
   try {
-    const running = execSync3("docker ps -q", {
+    const running = execSync2("docker ps -q", {
       encoding: "utf-8",
       timeout: 1e4
     }).trim();
     if (running) {
       console.log("[Startup] Stopping all running Docker containers...");
-      execSync3("docker stop $(docker ps -q)", {
+      execSync2("docker stop $(docker ps -q)", {
         stdio: "pipe",
         timeout: 6e4
       });
     }
-    const stopped = execSync3("docker ps -aq", {
+    const stopped = execSync2("docker ps -aq", {
       encoding: "utf-8",
       timeout: 1e4
     }).trim();
     if (stopped) {
       console.log("[Startup] Removing stopped Docker containers...");
-      execSync3("docker rm -f $(docker ps -aq)", {
+      execSync2("docker rm -f $(docker ps -aq)", {
         stdio: "pipe",
         timeout: 3e4
       });
     }
-    execSync3(
+    execSync2(
       "docker compose down 2>/dev/null; docker compose -f compose.local.yml down 2>/dev/null || true",
       { cwd: repoPath, stdio: "pipe", timeout: 3e4 }
     );
@@ -37202,8 +37104,57 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
 }
 async function detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl, model) {
   const stackStr = formatTechStack(techStack);
-  const endpointSummary = endpoints.map((ep) => `${ep.method} ${ep.path} (${ep.filePath})`).join("\n");
-  const handler = createToolHandler(repoPath);
+  const endpointsTool = {
+    type: "function",
+    function: {
+      name: "list_endpoints",
+      description: `Browse the ${endpoints.length} discovered API endpoints. Returns endpoints in pages of 50. Each entry shows METHOD, path, and source file.`,
+      parameters: {
+        type: "object",
+        properties: {
+          from: {
+            type: "number",
+            description: "Start index (0-based). Default 0."
+          },
+          to: {
+            type: "number",
+            description: `End index (exclusive). Default 50. Max ${endpoints.length}.`
+          },
+          filter: {
+            type: "string",
+            description: "Optional substring filter \u2014 only return endpoints whose path or file contains this string (e.g. 'auth', 'login', 'session', 'user')."
+          }
+        },
+        required: [],
+        additionalProperties: false
+      }
+    }
+  };
+  const baseHandler = createToolHandler(repoPath);
+  const handler = async (name, args) => {
+    if (name === "list_endpoints") {
+      const from = Math.max(0, Number(args.from ?? 0));
+      const to = Math.min(endpoints.length, Number(args.to ?? from + 50));
+      const filter2 = args.filter ? String(args.filter).toLowerCase() : null;
+      let slice = endpoints.slice(from, to);
+      if (filter2) {
+        slice = endpoints.filter(
+          (ep) => ep.path.toLowerCase().includes(filter2) || ep.filePath.toLowerCase().includes(filter2)
+        );
+        if (slice.length > 100) slice = slice.slice(0, 100);
+      }
+      const lines = slice.map(
+        (ep) => `${ep.method} ${ep.path} (${ep.filePath})`
+      );
+      return lines.length > 0 ? lines.join("\n") + `
+(${endpoints.length} total endpoints)` : "No endpoints match that filter.";
+    }
+    return baseHandler(name, args);
+  };
+  const authTools = [...codebaseTools, endpointsTool];
+  const first20 = endpoints.slice(0, 20).map((ep) => `${ep.method} ${ep.path} (${ep.filePath})`).join("\n");
+  const endpointSummary = first20 + (endpoints.length > 20 ? `
+... (${endpoints.length} total \u2014 use the list_endpoints tool with filter="auth" or filter="login" to find auth-related endpoints)` : "");
   const messages = [
     {
       role: "system",
@@ -37218,7 +37169,16 @@ STEP 1 \u2014 Find the login endpoint:
   a) Does the handler call res.set(), res.header(), response.header(), or set a header like "authorization"? \u2192 tokenLocation = "header", tokenFieldPath = the header name in lowercase (e.g. "authorization")
   b) Does the handler return a JSON body containing a token field (e.g. { token: jwt })? \u2192 tokenLocation = "body", tokenFieldPath = the field name
   c) If the handler calls something like res.header('authorization', token) or response.set('authorization', ...), that means tokenLocation = "header", NOT "body"
+  d) Does the app use session-based auth (cookies)? \u2192 tokenLocation = "cookie". Common in Rails (session[:user_id]), Django (request.session), Express (req.session)
 - You MUST search for "res.header", "res.set", "response.header", "setHeader" in the auth controller to check this
+
+FRAMEWORK-SPECIFIC AUTH DETECTION:
+- **Rails**: Search for "before_action :authenticate", "devise", "current_user", "session[:", "warden", "ApplicationController" inheriting auth. Rails apps almost ALWAYS require auth \u2014 look at ApplicationController for before_action filters. Discourse uses session-based auth with CSRF tokens.
+- **Django**: Search for "@login_required", "IsAuthenticated", "SessionAuthentication", "AUTHENTICATION_BACKENDS"
+- **Express/Node**: Search for "passport", "jwt", "express-jwt", "isAuthenticated", "auth middleware"
+- **Spring Boot**: Search for "SecurityFilterChain", "@PreAuthorize", "WebSecurityConfigurerAdapter"
+- **ASP.NET**: Search for "[Authorize]", "AddAuthentication", "UseAuthentication"
+If the app uses ANY of these patterns, set requiresAuth to TRUE even if some endpoints are public.
 
 STEP 2 \u2014 Find REAL credentials (THIS IS CRITICAL):
 You MUST actually read these files to find credentials. Do NOT skip this step:
@@ -37319,7 +37279,7 @@ CRITICAL RULES:
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
+    authTools,
     handler,
     model,
     40
@@ -38158,13 +38118,13 @@ async function setupRepeater(_llm, _bright, projectId, brightToken, brightHostna
   return { repeaterId, process: proc2 };
 }
 async function waitForRepeaterReady(proc2, timeoutMs) {
-  return new Promise((resolve5) => {
+  return new Promise((resolve4) => {
     const timer = setTimeout(() => {
       console.warn(
         "[Repeater] Timed out waiting for connection \u2014 proceeding anyway"
       );
       cleanup();
-      resolve5();
+      resolve4();
     }, timeoutMs);
     let exited = false;
     function cleanup() {
@@ -38176,7 +38136,7 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
       const text = d.toString();
       if (/connect(ed|ion established)|started/i.test(text)) {
         cleanup();
-        resolve5();
+        resolve4();
       }
     }
     function onExit(code) {
@@ -38185,13 +38145,13 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
         `[Repeater] Process exited with code ${code} before connecting`
       );
       cleanup();
-      resolve5();
+      resolve4();
     }
     proc2.stdout?.on("data", onData);
     proc2.on("exit", onExit);
     if (proc2.exitCode !== null) {
       cleanup();
-      resolve5();
+      resolve4();
     }
   });
 }
@@ -38618,8 +38578,8 @@ function normalizeSeverity(s) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
-import { resolve as resolve4, dirname as dirname2 } from "path";
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync2 } from "fs";
+import { resolve as resolve3, dirname } from "path";
 
 // src/prompts/generate-fix.ts
 function taintAnalysisPrompt(techStack, finding) {
@@ -38748,7 +38708,7 @@ async function generateFixes(llm, repoPath, techStack, findings, previousFixes, 
     const filePaths = extractFilePaths(taintAnalysis, repoPath);
     const affectedFiles = filePaths.map((p) => ({
       path: p,
-      content: safeReadFile(resolve4(repoPath, p))
+      content: safeReadFile(resolve3(repoPath, p))
     }));
     const fixMessages = generateFixPrompt(
       stackStr,
@@ -38783,9 +38743,9 @@ async function generateFixes(llm, repoPath, techStack, findings, previousFixes, 
 function applyFixes(repoPath, fixes) {
   for (const fix of fixes) {
     for (const file of fix.files) {
-      const fullPath = resolve4(repoPath, file.path);
-      mkdirSync3(dirname2(fullPath), { recursive: true });
-      writeFileSync4(fullPath, file.content, "utf-8");
+      const fullPath = resolve3(repoPath, file.path);
+      mkdirSync2(dirname(fullPath), { recursive: true });
+      writeFileSync3(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
   }
@@ -38797,7 +38757,7 @@ function extractFilePaths(text, repoPath) {
   while ((match2 = regex.exec(text)) !== null) {
     const p = match2[1].replace(/^\.\//, "");
     try {
-      readFileSync5(resolve4(repoPath, p));
+      readFileSync4(resolve3(repoPath, p));
       paths.add(p);
     } catch {
     }
@@ -38806,7 +38766,7 @@ function extractFilePaths(text, repoPath) {
 }
 function safeReadFile(fullPath) {
   try {
-    return readFileSync5(fullPath, "utf-8");
+    return readFileSync4(fullPath, "utf-8");
   } catch {
     return "";
   }
@@ -38864,13 +38824,7 @@ async function runOrchestrator(ctx) {
       "swagger",
       "Probing for OpenAPI/Swagger spec"
     );
-    const swaggerResult = await discoverEndpointsViaSwagger(
-      llm,
-      repoPath,
-      techStack,
-      baseUrl,
-      config2.modelSelector.current()
-    );
+    const swaggerResult = await discoverEndpointsViaSwagger(baseUrl);
     let swaggerEndpoints = [];
     if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {
       swaggerEndpoints = swaggerResult.endpoints;
@@ -38882,51 +38836,8 @@ async function runOrchestrator(ctx) {
         "spec_found",
         `OpenAPI spec found \u2014 ${swaggerEndpoints.length} endpoints`
       );
-    } else if (swaggerResult.needsRebuild && swaggerResult.specPath) {
-      console.log("[Swagger] Swagger injected \u2014 rebuilding application...");
-      await killProcess(appProcess);
-      try {
-        const restart = await startApplicationWithRetries(
-          llm,
-          repoPath,
-          techStack,
-          startupConfig,
-          config2.modelSelector
-        );
-        appProcess = restart.process;
-        const probe = await probeSwaggerSpec(baseUrl);
-        if (probe.found && probe.spec) {
-          swaggerEndpoints = parseOpenApiToEndpoints(probe.spec);
-          if (swaggerEndpoints.length > 0) {
-            console.log(
-              `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from injected spec`
-            );
-            await progress.phaseDetail(
-              "swagger",
-              "spec_injected",
-              `Swagger injected \u2014 ${swaggerEndpoints.length} endpoints`
-            );
-          }
-        }
-        if (swaggerEndpoints.length === 0) {
-          console.log("[Swagger] Spec not usable after injection");
-        }
-      } catch (err) {
-        console.warn(`[Swagger] Rebuild after injection failed: ${err}`);
-        try {
-          const restart = await startApplicationWithRetries(
-            llm,
-            repoPath,
-            techStack,
-            startupConfig,
-            config2.modelSelector
-          );
-          appProcess = restart.process;
-        } catch {
-        }
-      }
     } else {
-      console.log("[Swagger] No spec found and injection skipped");
+      console.log("[Swagger] No spec found \u2014 will rely on static analysis");
       await progress.phaseDetail(
         "swagger",
         "no_spec",
@@ -39621,12 +39532,12 @@ function mergeQueryParams(a, b) {
   return merged.length > 0 ? merged : void 0;
 }
 function killProcess(proc2) {
-  return new Promise((resolve5) => {
+  return new Promise((resolve4) => {
     if (!proc2 || !proc2.pid) {
-      resolve5();
+      resolve4();
       return;
     }
-    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve5());
+    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve4());
   });
 }
 async function stopRunningScans(brightToken, brightHostname, scanIds) {

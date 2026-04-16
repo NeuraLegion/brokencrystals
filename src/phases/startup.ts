@@ -1414,20 +1414,26 @@ function fallbackToDockerfile(
  *   docker exec -e FOO=bar -it container → docker exec -e FOO=bar -i container
  */
 function stripDockerTtyFlags(cmd: string): string {
-  return cmd
-    // Replace standalone -it → -i
-    .replace(/\s-it\b/g, " -i")
-    // Replace -t when it's a standalone flag (not part of --tag, etc.)
-    .replace(/\s-t\s/g, " ")
-    // Remove --tty
-    .replace(/\s--tty\b/g, "")
-    // Handle combined flags containing t (e.g. -dit → -di, -itu → -iu)
-    .replace(/\s-([a-zA-Z]*t[a-zA-Z]*)\b/g, (_m, flags: string) => {
-      // Only if it looks like short flags (not --tag, --timeout, etc.)
-      if (flags.length > 5) return _m; // likely a long-ish flag, skip
-      const without = flags.replace(/t/g, "");
-      return without ? ` -${without}` : "";
-    });
+  // Split on command separators (&&, ||, ;) to handle each segment independently.
+  // Only strip TTY flags inside "docker run" and "docker exec" segments —
+  // NOT "docker build -t" (tag flag) or other subcommands.
+  return cmd.replace(
+    /\bdocker\s+(run|exec)\b[^;&|]*/g,
+    (segment) =>
+      segment
+        // Replace standalone -it → -i
+        .replace(/\s-it\b/g, " -i")
+        // Replace standalone -t flag (space before AND after)
+        .replace(/\s-t\s/g, " ")
+        // Remove --tty
+        .replace(/\s--tty\b/g, "")
+        // Handle combined flags containing t (e.g. -dit → -di, -itu → -iu)
+        .replace(/\s-([a-zA-Z]*t[a-zA-Z]*)\b/g, (_m, flags: string) => {
+          if (flags.length > 5) return _m;
+          const without = flags.replace(/t/g, "");
+          return without ? ` -${without}` : "";
+        }),
+  );
 }
 
 /**
