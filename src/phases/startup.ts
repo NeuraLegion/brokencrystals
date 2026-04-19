@@ -935,6 +935,8 @@ async function repairInfrastructure(
 - **run_command_on_host** — run diagnostic or repair commands on the host (docker logs, docker ps, sed, chmod, find, etc.)
 - **run_command_in_docker** — run commands inside the application container (check installed tools, read config, test commands, inspect processes)
 - **probe_url** — make an HTTP request and see the full response (status, headers, body). Use this to check what the app returns, diagnose 500 errors, test if endpoints work.
+- **search_web** — search the internet for technical solutions. Use when you're stuck on: how to install a specific package on a specific OS, the correct package name for a version, how to fix an unfamiliar error. Don't guess — search.
+- **fetch_url** — fetch the full content of a web page (e.g. a Stack Overflow answer or docs page found via search_web). Large pages are saved to .bright-fetched-page.txt — use read_file to see the full content.
 - **verify_docker_image** — check if a Docker image exists
 - **wait** — wait for a specified number of seconds (use when services need time to start up)
 - **save_hint** — save an important discovery for the NEXT repair attempt (e.g. "app reads DB config from config/database.yml not DATABASE_URL", "needs Redis on port 6379"). Use this whenever you learn something non-obvious about how this app works.
@@ -968,6 +970,13 @@ If the app starts inside the container but the port is NOT reachable from the ho
 - Django: pass 0.0.0.0:PORT to runserver
 - Generic: BIND=0.0.0.0 or HOST=0.0.0.0
 Use run_command_in_docker to check what the server is actually listening on (ss -ltnp or netstat -ltnp).
+
+WHEN YOU'RE STUCK — USE search_web:
+If you can't figure out how to install a package, fix a version mismatch, or resolve an unfamiliar error after one attempt, use **search_web** to look it up. For example:
+- "install imagemagick 7 debian bookworm" (when apt only has v6)
+- "fix ENOENT magick binary rails" (when a specific binary is missing)
+- "postgresql 16 pgvector extension docker" (when an extension isn't available)
+Don't waste turns guessing package names — search for the answer.
 
 RESPONSE FORMAT:
 After fixing the issue, reply with a JSON object describing what changed:

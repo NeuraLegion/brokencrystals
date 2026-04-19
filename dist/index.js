@@ -35660,6 +35660,18 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
       case "probe_url": {
         return probeUrl(args);
       }
+      case "search_web": {
+        const query = String(args.query ?? "").trim();
+        if (!query) return "Error: query parameter is required";
+        console.log(`[Tool] search_web: ${query}`);
+        return searchWeb(query);
+      }
+      case "fetch_url": {
+        const url2 = String(args.url ?? "").trim();
+        if (!url2) return "Error: url parameter is required";
+        console.log(`[Tool] fetch_url: ${url2.slice(0, 200)}`);
+        return fetchUrlContent(url2, repoPath);
+      }
       default:
         return baseHandler(name, args);
     }
@@ -35737,6 +35749,136 @@ var removeHintTool = {
     }
   }
 };
+function htmlToText(html) {
+  let text = html;
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  text = text.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "");
+  text = text.replace(/<\/(p|div|h[1-6]|li|tr|dt|dd|blockquote|pre|section|article)>/gi, "\n");
+  text = text.replace(/<br[^>]*\/?>/gi, "\n");
+  text = text.replace(/<hr[^>]*\/?>/gi, "\n---\n");
+  text = text.replace(/<[^>]*>/g, "");
+  text = text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&apos;/g, "'").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  text = text.replace(/[ \t]+/g, " ");
+  text = text.replace(/\n[ \t]+/g, "\n");
+  text = text.replace(/\n{3,}/g, "\n\n");
+  return text.trim();
+}
+async function searchWeb(query) {
+  try {
+    const res = await fetch(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+          Accept: "text/html"
+        },
+        signal: AbortSignal.timeout(15e3)
+      }
+    );
+    if (!res.ok) return `Search failed (HTTP ${res.status})`;
+    const html = await res.text();
+    const blocks = html.split(/class="result\s/);
+    const results = [];
+    for (const block of blocks.slice(1, 8)) {
+      const titleMatch = block.match(/class="result__a"[^>]*>([\s\S]*?)<\/a>/);
+      const title = titleMatch ? htmlToText(titleMatch[1]).trim() : "";
+      const hrefMatch = block.match(/class="result__a"[^>]*href="([^"]*)"/);
+      let url2 = hrefMatch ? hrefMatch[1] : "";
+      const uddgMatch = url2.match(/[?&]uddg=([^&]*)/);
+      if (uddgMatch) url2 = decodeURIComponent(uddgMatch[1]);
+      const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+      const snippet = snippetMatch ? htmlToText(snippetMatch[1]).trim() : "";
+      if (title && (snippet || url2)) {
+        results.push(`${results.length + 1}. ${title}
+   ${url2}
+   ${snippet}`);
+      }
+    }
+    if (results.length === 0) return "No search results found. Try rephrasing the query.";
+    return results.join("\n\n");
+  } catch (err) {
+    return `Search error: ${toErrorMessage(err)}`;
+  }
+}
+var FETCH_INLINE_LIMIT = 1500;
+var FETCH_FILE_LIMIT = 2e4;
+async function fetchUrlContent(targetUrl, repoPath) {
+  try {
+    const res = await fetch(targetUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+        Accept: "text/html, text/plain, application/json, */*"
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!res.ok) return `Failed to fetch (HTTP ${res.status})`;
+    const contentType = res.headers.get("content-type") || "";
+    const body = await res.text();
+    let text;
+    if (contentType.includes("text/plain") || contentType.includes("application/json")) {
+      text = body;
+    } else {
+      text = htmlToText(body);
+    }
+    if (text.length > FETCH_FILE_LIMIT) {
+      text = text.slice(0, FETCH_FILE_LIMIT) + "\n... [truncated at 20 000 chars]";
+    }
+    if (text.length <= FETCH_INLINE_LIMIT) {
+      return text;
+    }
+    if (repoPath) {
+      const filePath = resolve2(repoPath, ".bright-fetched-page.txt");
+      writeFileSync(filePath, text, "utf-8");
+      const preview = text.slice(0, 800);
+      return `Content saved to .bright-fetched-page.txt (${text.length} chars). Use read_file to see the full page.
+
+Preview:
+${preview}
+...`;
+    }
+    return text.slice(0, 3e3) + "\n... [truncated \u2014 content too large for inline]";
+  } catch (err) {
+    return `Fetch error: ${toErrorMessage(err)}`;
+  }
+}
+var searchWebTool = {
+  type: "function",
+  function: {
+    name: "search_web",
+    description: "Search the web for technical solutions. Use when you're stuck on: how to install a specific package/tool on a specific OS, the correct package name, how to fix a specific error, or version-specific configuration. Returns top results with titles and snippets.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: 'Technical search query (e.g. "install imagemagick 7 debian bookworm", "fix Pitchfork::BootFailure rails 7", "postgresql 16 apt repository ubuntu 24.04")'
+        }
+      },
+      required: ["query"],
+      additionalProperties: false
+    }
+  }
+};
+var fetchUrlTool = {
+  type: "function",
+  function: {
+    name: "fetch_url",
+    description: "Fetch a web page and return its text content. Use after search_web to read the full content of a promising result (e.g. a Stack Overflow answer, documentation page, or GitHub issue). Returns page text with HTML stripped.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "The URL to fetch (from search_web results or known documentation)"
+        }
+      },
+      required: ["url"],
+      additionalProperties: false
+    }
+  }
+};
 var probeUrlTool = {
   type: "function",
   function: {
@@ -35775,6 +35917,8 @@ var infraTools = [
   runCommandInDockerTool,
   waitTool,
   probeUrlTool,
+  searchWebTool,
+  fetchUrlTool,
   saveHintTool,
   removeHintTool
 ];
@@ -36842,6 +36986,8 @@ ${tailLines}
 - **run_command_on_host** \u2014 run diagnostic or repair commands on the host (docker logs, docker ps, sed, chmod, find, etc.)
 - **run_command_in_docker** \u2014 run commands inside the application container (check installed tools, read config, test commands, inspect processes)
 - **probe_url** \u2014 make an HTTP request and see the full response (status, headers, body). Use this to check what the app returns, diagnose 500 errors, test if endpoints work.
+- **search_web** \u2014 search the internet for technical solutions. Use when you're stuck on: how to install a specific package on a specific OS, the correct package name for a version, how to fix an unfamiliar error. Don't guess \u2014 search.
+- **fetch_url** \u2014 fetch the full content of a web page (e.g. a Stack Overflow answer or docs page found via search_web). Large pages are saved to .bright-fetched-page.txt \u2014 use read_file to see the full content.
 - **verify_docker_image** \u2014 check if a Docker image exists
 - **wait** \u2014 wait for a specified number of seconds (use when services need time to start up)
 - **save_hint** \u2014 save an important discovery for the NEXT repair attempt (e.g. "app reads DB config from config/database.yml not DATABASE_URL", "needs Redis on port 6379"). Use this whenever you learn something non-obvious about how this app works.
@@ -36875,6 +37021,13 @@ If the app starts inside the container but the port is NOT reachable from the ho
 - Django: pass 0.0.0.0:PORT to runserver
 - Generic: BIND=0.0.0.0 or HOST=0.0.0.0
 Use run_command_in_docker to check what the server is actually listening on (ss -ltnp or netstat -ltnp).
+
+WHEN YOU'RE STUCK \u2014 USE search_web:
+If you can't figure out how to install a package, fix a version mismatch, or resolve an unfamiliar error after one attempt, use **search_web** to look it up. For example:
+- "install imagemagick 7 debian bookworm" (when apt only has v6)
+- "fix ENOENT magick binary rails" (when a specific binary is missing)
+- "postgresql 16 pgvector extension docker" (when an extension isn't available)
+Don't waste turns guessing package names \u2014 search for the answer.
 
 RESPONSE FORMAT:
 After fixing the issue, reply with a JSON object describing what changed:
