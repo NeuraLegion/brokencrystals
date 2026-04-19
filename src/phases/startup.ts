@@ -26,6 +26,14 @@ import { generateDockerfilePrompt } from "../prompts/generate-dockerfile.js";
 
 const MAX_STARTUP_ATTEMPTS = parseInt(process.env.MAX_STARTUP_ATTEMPTS ?? "10", 10);
 
+/** Intentional startup failure — must always propagate through catch blocks. */
+class StartupFailedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StartupFailedError";
+  }
+}
+
 /** Per-attempt stats for debugging startup failures */
 interface AttemptStat {
   attempt: number;
@@ -385,15 +393,30 @@ Respond with EXACTLY one JSON object:
           messages: [
             {
               role: "system",
-              content: `You are checking if a web application's HTTP response indicates a healthy, working application.
+              content: `You are checking if a web application's HTTP response indicates a FULLY WORKING application ready for real users.
 
 Respond with EXACTLY one JSON object:
 {"healthy": true/false, "reason": "<one sentence explanation>"}
 
-HEALTHY responses: actual app content (HTML pages with real content, JSON API responses, login forms, dashboards, etc.)
-UNHEALTHY responses: error pages, setup/configuration required pages, "service unavailable", proxy errors, framework boilerplate errors, "CLI required" messages, blank pages with only error info, database migration needed pages, or any response that indicates the app is NOT ready for normal use.
+Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
+- Setup wizards, installation pages, or "finish installation" screens
+- "CLI required", "Ember CLI", "proxy bypass", or development mode warnings
+- Error pages (500, 503, "something went wrong", stack traces)
+- "Service unavailable", "under maintenance", or placeholder pages
+- Database migration needed, pending migrations
+- Configuration required, environment variable missing
+- Framework default welcome pages (Rails welcome, Django debug, etc.)
+- Blank or nearly empty pages with just a title and no real content
+- Pages that tell the user to run a command or configure something before use
+- JSON error responses like {"error": ...} or {"errors": [...]}
 
-Be strict: if the response looks like an error or setup page rather than the actual working application, mark it unhealthy.`,
+Mark as HEALTHY (healthy: true) ONLY if the response is clearly a WORKING application page:
+- A real login form that a user could actually fill out
+- A dashboard, feed, or content page with actual data
+- A JSON API response with real data (not an error)
+- A working application UI with navigation, content, and interactive elements
+
+When in doubt, mark as UNHEALTHY. It is better to trigger a repair cycle than to accept a broken app.`,
             },
             {
               role: "user",
@@ -2067,7 +2090,7 @@ export async function waitForPort(
         const logs = getContainerLogTail(repoPath, 40);
         if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
       }
-      throw new Error(errMsg);
+      throw new StartupFailedError(errMsg);
     }
 
     try {
@@ -2101,13 +2124,12 @@ export async function waitForPort(
                 const logs = getContainerLogTail(repoPath, 40);
                 if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
               }
-              throw new Error(errMsg);
+              throw new StartupFailedError(errMsg);
             }
             console.log(`[Startup] AI response analysis: healthy — ${result.reason}`);
           } catch (err) {
-            // If the error is from our own throw above, re-throw it
-            if (err instanceof Error && err.message.startsWith("Application on port")) throw err;
-            // Otherwise AI analysis failed — fall through to accept
+            if (err instanceof StartupFailedError) throw err;
+            // AI analysis itself failed — fall through to accept
             console.log(`[Startup] AI response analysis failed, accepting response as healthy`);
           }
         }
@@ -2131,14 +2153,15 @@ export async function waitForPort(
           const logs = getContainerLogTail(repoPath, 40);
           if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
         }
-        throw new Error(errMsg);
+        throw new StartupFailedError(errMsg);
       }
 
       console.log(
         `[Startup] Port ${port} responding with HTTP ${response.status} (${consecutive500s}/${max500sBeforeFail}) — will fail fast if persistent...`,
       );
-    } catch {
-      // Connection refused — server not ready yet
+    } catch (err) {
+      if (err instanceof StartupFailedError) throw err;
+      // Connection refused / timeout — server not ready yet
     }
 
     // Periodically ask the LLM to analyze container logs
@@ -2185,7 +2208,7 @@ export async function waitForPort(
     const finalLogs = getContainerLogTail(repoPath, 40);
     if (finalLogs) errMsg += `\n\nContainer logs (last 40 lines):\n${finalLogs}`;
   }
-  throw new Error(errMsg);
+  throw new StartupFailedError(errMsg);
 }
 
 /**
