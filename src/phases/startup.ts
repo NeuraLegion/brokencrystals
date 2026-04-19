@@ -530,9 +530,15 @@ When in doubt, mark as UNHEALTHY. It is better to trigger a repair cycle than to
               config = { ...config, command: infraResult.command };
             }
             if (infraResult.postStartCommands?.length) {
+              // Replace rather than accumulate — each repair produces a fresh
+              // set of commands and re-adding the same ones wastes time.
+              const existing = config.postStartCommands ?? [];
+              const deduped = infraResult.postStartCommands.filter(
+                (cmd) => !existing.includes(cmd),
+              );
               config = {
                 ...config,
-                postStartCommands: [...(config.postStartCommands ?? []), ...infraResult.postStartCommands],
+                postStartCommands: [...existing, ...deduped],
               };
             }
             if (infraResult.addEnvVars) {
@@ -1704,8 +1710,27 @@ async function startApplication(
           `[Startup] docker compose --wait failed (${errMsg.slice(0, 200)}), falling back to port check...`,
         );
         logDockerFailure(repoPath);
+
+        // Run post-start commands before the fallback port check.
+        // This solves the chicken-and-egg problem: the app may have crashed
+        // because it needs migrations/asset-precompilation that only post-start
+        // commands can provide (DB must be running first).
+        if (config.postStartCommands?.length) {
+          console.log("[Startup] Running post-start commands before fallback port check...");
+          await runPostStartCommands(config, repoPath);
+          // Restart the app container so it can boot with the post-start
+          // changes applied (e.g. migrated DB, precompiled assets).
+          try {
+            execSync(
+              "docker compose up -d --no-deps app 2>/dev/null || docker compose up -d --no-deps web 2>/dev/null || true",
+              { cwd: repoPath, stdio: "pipe", timeout: 30_000 },
+            );
+            await sleep(3_000);
+          } catch { /* best effort */ }
+        }
+
         try {
-          await waitForPort(config.port, 60_000, config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
+          await waitForPort(config.port, 120_000, config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
           console.log(
             `[Startup] Port ${config.port} is reachable despite --wait failure`,
           );
@@ -2245,14 +2270,23 @@ export async function waitForPort(
 }
 
 /**
- * Grab the last N lines from the compose app container's logs.
+ * Grab both the first and last N lines from the compose app container's logs.
+ * Exception messages (e.g. Rails, Django) typically appear near the top of
+ * output while recent activity is at the tail — capturing both gives the AI
+ * the full picture.
  */
 function getContainerLogTail(repoPath: string, lines = 30): string {
   try {
-    return execSync(
-      `docker compose logs --tail=${lines} 2>/dev/null || true`,
-      { cwd: repoPath, encoding: "utf-8", timeout: 5_000 },
+    const full = execSync(
+      `docker compose logs 2>/dev/null || true`,
+      { cwd: repoPath, encoding: "utf-8", timeout: 10_000, maxBuffer: 5 * 1024 * 1024 },
     ).trim();
+    if (!full) return "";
+    const allLines = full.split("\n");
+    if (allLines.length <= lines * 2) return full;
+    const head = allLines.slice(0, lines).join("\n");
+    const tail = allLines.slice(-lines).join("\n");
+    return `${head}\n\n... (${allLines.length - lines * 2} lines omitted) ...\n\n${tail}`;
   } catch {
     return "";
   }

@@ -36546,9 +36546,13 @@ ${body}
               config2 = { ...config2, command: infraResult.command };
             }
             if (infraResult.postStartCommands?.length) {
+              const existing = config2.postStartCommands ?? [];
+              const deduped = infraResult.postStartCommands.filter(
+                (cmd) => !existing.includes(cmd)
+              );
               config2 = {
                 ...config2,
-                postStartCommands: [...config2.postStartCommands ?? [], ...infraResult.postStartCommands]
+                postStartCommands: [...existing, ...deduped]
               };
             }
             if (infraResult.addEnvVars) {
@@ -37386,8 +37390,20 @@ ${containerLogs}`);
           `[Startup] docker compose --wait failed (${errMsg.slice(0, 200)}), falling back to port check...`
         );
         logDockerFailure(repoPath);
+        if (config2.postStartCommands?.length) {
+          console.log("[Startup] Running post-start commands before fallback port check...");
+          await runPostStartCommands(config2, repoPath);
+          try {
+            execSync3(
+              "docker compose up -d --no-deps app 2>/dev/null || docker compose up -d --no-deps web 2>/dev/null || true",
+              { cwd: repoPath, stdio: "pipe", timeout: 3e4 }
+            );
+            await sleep2(3e3);
+          } catch {
+          }
+        }
         try {
-          await waitForPort(config2.port, 6e4, config2.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
+          await waitForPort(config2.port, 12e4, config2.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
           console.log(
             `[Startup] Port ${config2.port} is reachable despite --wait failure`
           );
@@ -37850,10 +37866,20 @@ ${finalLogs}`;
 }
 function getContainerLogTail(repoPath, lines = 30) {
   try {
-    return execSync3(
-      `docker compose logs --tail=${lines} 2>/dev/null || true`,
-      { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
+    const full = execSync3(
+      `docker compose logs 2>/dev/null || true`,
+      { cwd: repoPath, encoding: "utf-8", timeout: 1e4, maxBuffer: 5 * 1024 * 1024 }
     ).trim();
+    if (!full) return "";
+    const allLines = full.split("\n");
+    if (allLines.length <= lines * 2) return full;
+    const head = allLines.slice(0, lines).join("\n");
+    const tail = allLines.slice(-lines).join("\n");
+    return `${head}
+
+... (${allLines.length - lines * 2} lines omitted) ...
+
+${tail}`;
   } catch {
     return "";
   }
