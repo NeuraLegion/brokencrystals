@@ -36843,15 +36843,16 @@ ${tailLines}
 - **save_hint** \u2014 save an important discovery for the NEXT repair attempt (e.g. "app reads DB config from config/database.yml not DATABASE_URL", "needs Redis on port 6379"). Use this whenever you learn something non-obvious about how this app works.
 - **remove_hint** \u2014 remove a previously saved hint that turned out to be WRONG or MISLEADING. If you see hints that led to this failure, remove them.
 
-IMPORTANT: When the error output shows a stack trace without a clear error message, the ACTUAL exception is likely at the top \u2014 read .bright-container-logs.txt and .bright-build-error.log (full logs) to find the real error. Do NOT guess from truncated stack traces.
-
 IMPORTANT: The startup command runs ON THE HOST, not inside a container. If the command uses a tool like pnpm/node/rails that only exists inside the Docker image, the command must be wrapped with 'docker run' or 'docker exec'.
 
 APPROACH:
-1. Read the error carefully. Identify the exact failing command and what it needs.
+1. **FIRST \u2014 read the full logs.** The error excerpt below may be truncated (e.g. only stack trace tails without the actual exception). BEFORE investigating anything else, use read_file on these files which contain the COMPLETE untruncated output:
+   - .bright-container-logs.txt \u2014 full Docker container logs (all containers)
+   - .bright-build-error.log \u2014 full error output from the failed command
+   The real error message is almost always near the TOP of these files. Do NOT run 'docker logs --tail' \u2014 it only shows the bottom of the stack trace.
 2. If the error mentions HTTP 500 or similar, use **probe_url** to see the full error response from the app \u2014 it often contains the exact problem (e.g. "Migrations are pending", "database does not exist").
 3. If hints from previous attempts are provided, evaluate them critically \u2014 remove any that are wrong or led to this failure.
-4. Use run_command_on_host for host-level diagnostics (docker ps, docker logs, docker inspect).
+4. Use run_command_on_host for host-level diagnostics (docker ps, docker inspect).
 5. Use run_command_in_docker to inspect what's available INSIDE the container (which pnpm, ps aux, cat /app/config.yml).
 6. Fix the ROOT CAUSE with targeted changes \u2014 fix config files, scripts, compose files, environment so the startup command can succeed.
 7. After fixing, verify your changes (e.g. re-read the patched file, run a diagnostic command, use probe_url to test the app).
@@ -36905,10 +36906,10 @@ ${e.slice(-500)}`).join("\n")}
 Hints from previous repair attempts (use these \u2014 they were discovered through investigation):
 ${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
 ` : ""}
-Investigate the root cause using the tools, then fix it. IMPORTANT FILES:
-- .bright-build-error.log \u2014 full error output from the failed command
-- .bright-container-logs.txt \u2014 full Docker container logs (ALL containers, not truncated)
-If the error below only shows a stack trace without the actual exception, read these files FIRST to find the real error message at the top.
+Investigate the root cause using the tools, then fix it.
+
+\u26A0\uFE0F YOUR FIRST ACTION must be: read_file .bright-container-logs.txt \u2014 the error excerpt above is likely truncated. The full logs have the actual exception message near the top. Do NOT skip this step or run 'docker logs --tail' instead.
+
 Reply with the JSON object.`
     }
   ];
