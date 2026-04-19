@@ -953,6 +953,15 @@ IMPORTANT DATABASE TIPS:
 - If a migration fails because of a missing PostgreSQL extension (e.g. pgvector), first check if you can REMOVE the plugin that requires it (e.g. delete/rename its directory under plugins/) rather than installing the extension. Removing an optional plugin is often simpler than fixing extension availability.
 - If the app crashes with "No such file or directory" for a tool (e.g. brotli, wkhtmltopdf), install it in the Dockerfile or set an env var to disable the feature that needs it.
 
+COMMON DOCKER NETWORKING PITFALL:
+If the app starts inside the container but the port is NOT reachable from the host (timeout / connection refused from outside), the server is almost certainly binding to 127.0.0.1 inside the container instead of 0.0.0.0. Fix by setting the appropriate env var:
+- Rails/Puma: RUBY_BIND=0.0.0.0 or pass -b 0.0.0.0
+- Rails/Unicorn/Pitchfork: UNICORN_BIND_ALL=true
+- Node.js/Express: HOST=0.0.0.0 or --host 0.0.0.0
+- Django: pass 0.0.0.0:PORT to runserver
+- Generic: BIND=0.0.0.0 or HOST=0.0.0.0
+Use run_command_in_docker to check what the server is actually listening on (ss -ltnp or netstat -ltnp).
+
 RESPONSE FORMAT:
 After fixing the issue, reply with a JSON object describing what changed:
 \`\`\`json
@@ -1746,11 +1755,11 @@ async function startApplication(
     }
 
     // Poll compose containers for crashes alongside the port wait so we
-    // don't burn the full 120s when the app container exits immediately.
-    const composeCrashPromise = pollComposeContainersAlive(repoPath, 120_000);
+    // don't burn the full 300s when the app container exits immediately.
+    const composeCrashPromise = pollComposeContainersAlive(repoPath, 300_000);
     try {
       await Promise.race([
-        waitForPort(config.port, 120_000, config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
+        waitForPort(config.port, 300_000, config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
         composeCrashPromise,
       ]);
     } catch (err) {
@@ -2079,8 +2088,11 @@ export async function waitForPort(
   let consecutive500s = 0;
   const max500sBeforeFail = 5; // fail fast after 5 consecutive 500s (~10s)
   let responseAnalysisDone = false; // only analyze once per health check cycle
+  let progressCount = 0; // how many times AI reported "still progressing"
+  let timeoutExtended = false; // only extend once
+  let effectiveTimeoutMs = timeoutMs;
 
-  while (Date.now() - start < timeoutMs) {
+  while (Date.now() - start < effectiveTimeoutMs) {
     // If the AI flagged a fatal error, stop waiting immediately
     if (fatalDiagnosis) {
       let errMsg = `Application failed on port ${port}: ${fatalDiagnosis}`;
@@ -2179,6 +2191,7 @@ export async function waitForPort(
             .then((result) => {
               analysisInFlight = false;
               if (result.status === "progress") {
+                progressCount++;
                 console.log(`[Startup] AI log analysis: still progressing — ${result.summary}`);
               } else if (result.status === "fatal") {
                 console.log(`[Startup] AI log analysis: fatal — ${result.summary}`);
@@ -2197,10 +2210,29 @@ export async function waitForPort(
       }
     }
 
+    // If approaching timeout and the AI has been reporting progress, ask once
+    // whether to extend — avoids killing apps that are actively booting.
+    const remaining = effectiveTimeoutMs - (Date.now() - start);
+    if (remaining < 30_000 && progressCount > 0 && !timeoutExtended && analyzeLogsFn && repoPath) {
+      const snapshot = getContainerLogTail(repoPath, 40);
+      if (snapshot) {
+        try {
+          const result = await analyzeLogsFn(snapshot);
+          if (result.status === "progress") {
+            timeoutExtended = true;
+            const extensionMs = 180_000;
+            effectiveTimeoutMs += extensionMs;
+            console.log(`[Startup] AI confirms app is still progressing — extending timeout by ${extensionMs / 1000}s`);
+          }
+        } catch { /* ignore analysis failure */ }
+      }
+    }
+
     await sleep(interval);
   }
 
-  let errMsg = `Application did not start on port ${port} within ${timeoutMs / 1000}s`;
+  let errMsg = `Application did not start on port ${port} within ${effectiveTimeoutMs / 1000}s`;
+  if (timeoutExtended) errMsg += ` (extended from ${timeoutMs / 1000}s because app was progressing)`;
   if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
   if (lastBody) errMsg += `\n\nHTTP 500 response body:\n${lastBody}`;
   // Attach final container logs so the repair LLM has full context
