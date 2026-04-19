@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import type { TechStack } from "../types.js";
+import type { TechStack, BrightApiContext } from "../types.js";
 import type { BrightMcpClient } from "../mcp-client.js";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import { execSync } from "child_process";
@@ -60,8 +60,7 @@ export async function detectAndConfigureAuth(
   projectId: string,
   baseUrl: string,
   repeaterId: string,
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   model?: string,
   contextSummary?: string,
 ): Promise<AuthResult> {
@@ -134,8 +133,7 @@ export async function detectAndConfigureAuth(
       projectId,
       baseUrl,
       repeaterId,
-      brightToken,
-      brightHostname,
+      api,
       model,
       attemptContext,
     );
@@ -322,8 +320,7 @@ async function detectAuthFromCode(
  * embedders, NexTemplate). The LLM only needs to choose the high-level params.
  */
 async function createAuthViaRestApi(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   projectId: string,
   repeaterId: string,
   params: {
@@ -378,7 +375,7 @@ async function createAuthViaRestApi(
         },
       },
     };
-    return postAuthObject(brightToken, brightHostname, body);
+    return postAuthObject(api, body);
   }
 
   // --- Session or JWT: multistep auth ---
@@ -474,7 +471,7 @@ async function createAuthViaRestApi(
   console.log(
     `[Auth] Creating ${authStyle} auth via REST API — login: ${loginUrl}, test: ${testUrl}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`,
   );
-  return postAuthObject(brightToken, brightHostname, body);
+  return postAuthObject(api, body);
 }
 
 /**
@@ -563,15 +560,14 @@ function buildLoginSteps(opts: {
 }
 
 async function postAuthObject(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   body: Record<string, unknown>,
 ): Promise<{ id?: string; error?: string }> {
   try {
-    const res = await fetch(`https://${brightHostname}/api/v3/auth-objects`, {
+    const res = await fetch(`https://${api.brightHostname}/api/v3/auth-objects`, {
       method: "POST",
       headers: {
-        Authorization: `Api-Key ${brightToken}`,
+        Authorization: `Api-Key ${api.brightToken}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
@@ -597,8 +593,7 @@ async function createAuthViaMcp(
   projectId: string,
   baseUrl: string,
   repeaterId: string,
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   model?: string,
   preProbeContext?: string,
 ): Promise<{ authId: string | undefined; attemptLog: string[] }> {
@@ -831,8 +826,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     if (name === "create_auth") {
       lastCreateArgs = { ...args };
       const result = await createAuthViaRestApi(
-        brightToken,
-        brightHostname,
+        api,
         projectId,
         repeaterId,
         {
@@ -869,8 +863,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     }
     if (name === "test_auth_object") {
       const result = await testAuthObject(
-        brightToken,
-        brightHostname,
+        api,
         String(args.authObjectId),
       );
       // Log the test result with the create_auth params that produced this auth object
@@ -883,8 +876,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     }
     if (name === "delete_auth_object") {
       await deleteAuthObject(
-        brightToken,
-        brightHostname,
+        api,
         String(args.authObjectId),
       );
       return "Deleted successfully";
@@ -1191,14 +1183,13 @@ async function seedTestUser(
 // ---------------------------------------------------------------------------
 
 export async function testAuthObject(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   authObjectId: string,
 ): Promise<AuthTestResult> {
-  const base = `https://${brightHostname}`;
+  const base = `https://${api.brightHostname}`;
   const url = `${base}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}/test`;
   const headers: Record<string, string> = {
-    Authorization: `Api-Key ${brightToken}`,
+    Authorization: `Api-Key ${api.brightToken}`,
     Accept: "application/json",
   };
 
@@ -1298,16 +1289,15 @@ function normalizeBody(body: string, contentType: string): string {
 // ---------------------------------------------------------------------------
 
 async function deleteAuthObject(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   authObjectId: string,
 ): Promise<void> {
   try {
     const res = await fetch(
-      `https://${brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
+      `https://${api.brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
       {
         method: "DELETE",
-        headers: { Authorization: `Api-Key ${brightToken}` },
+        headers: { Authorization: `Api-Key ${api.brightToken}` },
       },
     );
     if (res.ok || res.status === 204) {

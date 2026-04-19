@@ -48,9 +48,7 @@ export class ProgressReporter {
     detail: string,
   ): Promise<void> {
     // Append detail to the current working step
-    const current = [...this.steps]
-      .reverse()
-      .find((s) => s.status === "working");
+    const current = this.steps.findLast((s) => s.status === "working");
     if (current) {
       current.details.push(detail);
     }
@@ -69,9 +67,7 @@ export class ProgressReporter {
     key: string,
     detail: string,
   ): Promise<void> {
-    const current = [...this.steps]
-      .reverse()
-      .find((s) => s.status === "working");
+    const current = this.steps.findLast((s) => s.status === "working");
     if (current) {
       current.keyedDetails.set(key, detail);
     }

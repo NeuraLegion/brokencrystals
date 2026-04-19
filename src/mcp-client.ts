@@ -246,11 +246,15 @@ export async function createBrightMcpClient(
     }
   }
 
-  async function callTool<T = unknown>(
+  /**
+   * Base MCP tool call — handles logging, text extraction, session reconnect.
+   * Returns the raw text response and whether it was an error.
+   */
+  async function callToolBase(
     name: string,
     args: Record<string, unknown>,
     isRetry = false,
-  ): Promise<T> {
+  ): Promise<{ text: string; isError: boolean }> {
     console.log(
       `[MCP] Calling ${name} with args:`,
       JSON.stringify(args).slice(0, 500),
@@ -261,7 +265,7 @@ export async function createBrightMcpClient(
     } catch (err) {
       if (!isRetry && isSessionError(err)) {
         await reconnect();
-        return callTool(name, args, true);
+        return callToolBase(name, args, true);
       }
       throw err;
     }
@@ -278,14 +282,22 @@ export async function createBrightMcpClient(
 
     console.log(`[MCP] ${name} response:`, text.slice(0, 500));
 
-    if (result.isError) {
-      if (!isRetry && isSessionError(text)) {
-        await reconnect();
-        return callTool(name, args, true);
-      }
-      throw new Error(`Bright MCP tool ${name} failed: ${text}`);
+    if (result.isError && !isRetry && isSessionError(text)) {
+      await reconnect();
+      return callToolBase(name, args, true);
     }
 
+    return { text, isError: !!result.isError };
+  }
+
+  async function callTool<T = unknown>(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<T> {
+    const { text, isError } = await callToolBase(name, args);
+    if (isError) {
+      throw new Error(`Bright MCP tool ${name} failed: ${text}`);
+    }
     try {
       return JSON.parse(text ?? "{}") as T;
     } catch {
@@ -296,43 +308,17 @@ export async function createBrightMcpClient(
   async function callMcpToolRawImpl(
     name: string,
     args: Record<string, unknown>,
-    isRetry = false,
   ): Promise<string> {
-    console.log(
-      `[MCP] Calling ${name} with args:`,
-      JSON.stringify(args).slice(0, 500),
-    );
-    let result;
+    let result: { text: string; isError: boolean };
     try {
-      result = await client.callTool({ name, arguments: args });
+      result = await callToolBase(name, args);
     } catch (err) {
-      if (!isRetry && isSessionError(err)) {
-        await reconnect();
-        return callMcpToolRawImpl(name, args, true);
-      }
       return `Error from Bright API: ${toErrorMessage(err)}`;
     }
-    const contentArr = Array.isArray(result.content) ? result.content : [];
-    const text = contentArr
-      .filter(
-        (c: unknown): c is { type: "text"; text: string } =>
-          typeof c === "object" &&
-          c !== null &&
-          (c as Record<string, unknown>).type === "text",
-      )
-      .map((c) => c.text)
-      .join("");
-
-    console.log(`[MCP] ${name} response:`, text.slice(0, 500));
-
     if (result.isError) {
-      if (!isRetry && isSessionError(text)) {
-        await reconnect();
-        return callMcpToolRawImpl(name, args, true);
-      }
-      return `Error from Bright API: ${text}`;
+      return `Error from Bright API: ${result.text}`;
     }
-    return text || "Success (empty response)";
+    return result.text || "Success (empty response)";
   }
 
   function unwrapList<T>(result: unknown): T[] {

@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   const config = loadConfig();
 
   // 2. Initialize platform (GitHub SDK or standalone)
-  const { platform, job } = await createPlatform();
+  const { platform, job } = await createPlatform(config.gitToken);
   console.log(`[Engine] Job: ${job.id}, action: ${job.action}`);
   console.log(`[Engine] Repository: ${job.repository}`);
   console.log(`[Engine] Problem: ${job.problemStatement.slice(0, 200)}`);
@@ -37,11 +37,7 @@ async function main(): Promise<void> {
   const repoPath = cloneRepository({
     serverUrl: job.serverUrl,
     repository: job.repository,
-    gitToken:
-      process.env.GITHUB_GIT_TOKEN ??
-      process.env.GIT_TOKEN ??
-      process.env.GITHUB_TOKEN ??
-      "",
+    gitToken: config.gitToken,
     branchName: job.branchName,
     commitLogin: job.commitLogin,
     commitEmail: job.commitEmail,
@@ -52,15 +48,13 @@ async function main(): Promise<void> {
   await platform.initPr(repoPath);
 
   // 4. Initialize inference client (OpenAI-compatible)
-  const inferenceUrl =
-    process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceToken =
     process.env.OPENAI_API_KEY ??
     process.env.GITHUB_INFERENCE_TOKEN ??
     process.env.GITHUB_TOKEN ??
     "";
   const llm = createInferenceClient(
-    inferenceUrl,
+    config.inferenceUrl,
     inferenceToken,
     config.inferenceProvider,
   );

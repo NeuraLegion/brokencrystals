@@ -9989,9 +9989,9 @@ var DefaultPlatform = class {
   apiBase;
   prNumber;
   // undefined = not looked up yet
-  constructor(job) {
+  constructor(job, gitToken) {
     this.job = job;
-    this.gitToken = process.env.GITHUB_GIT_TOKEN ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN;
+    this.gitToken = gitToken;
     this.apiBase = job.serverUrl.replace(/\/$/, "").includes("github.com") ? "https://api.github.com" : `${job.serverUrl.replace(/\/$/, "")}/api/v3`;
   }
   /**
@@ -10094,7 +10094,7 @@ var DefaultPlatform = class {
     );
   }
 };
-async function createPlatform() {
+async function createPlatform(gitToken) {
   const repo = process.env.GITHUB_REPOSITORY ?? process.env.REPO;
   if (!repo) {
     throw new Error("Missing GITHUB_REPOSITORY or REPO environment variable");
@@ -10109,7 +10109,7 @@ async function createPlatform() {
     problemStatement: process.env.PROBLEM_STATEMENT ?? "Run a security scan and fix vulnerabilities",
     action: process.env.ACTION ?? "fix"
   };
-  const platform = new DefaultPlatform(job);
+  const platform = new DefaultPlatform(job, gitToken);
   console.log("[Platform] Initialized (GitHub API for PR updates)");
   return { platform, job };
 }
@@ -18126,6 +18126,7 @@ function loadConfig() {
   const runMode = process.env.RUN_MODE ?? "full";
   const models = (process.env.AI_MODEL ?? DEFAULT_MODEL).split(",").map((s) => s.trim()).filter(Boolean);
   const modelSelector = new ModelSelector(models);
+  const gitToken = process.env.GITHUB_GIT_TOKEN ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
   const inferenceUrl = process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceProvider = detectProvider(inferenceUrl);
   console.log(`[Config] AI model(s): ${modelSelector}`);
@@ -18136,6 +18137,8 @@ function loadConfig() {
     brightHostname,
     brightMcpUrl,
     brightProjectId,
+    gitToken,
+    inferenceUrl,
     inferenceProvider,
     modelSelector,
     runMode
@@ -18151,6 +18154,22 @@ function requireEnv(name) {
 
 // src/utils.ts
 import { execSync } from "child_process";
+var SEVERITY_ORDER = {
+  Critical: 0,
+  High: 1,
+  Medium: 2,
+  Low: 3
+};
+function findingKey(f) {
+  return `${f.name}::${f.method}::${f.url}`;
+}
+function buildSeveritySummary(findings) {
+  const bySev = {};
+  for (const f of findings) {
+    bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
+  }
+  return Object.entries(bySev).sort(([a], [b]) => (SEVERITY_ORDER[a] ?? 4) - (SEVERITY_ORDER[b] ?? 4)).map(([sev, count]) => `${count} ${sev}`).join(", ");
+}
 function sleep2(ms) {
   return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
@@ -18227,81 +18246,82 @@ function extractJson(text) {
   }
   return text.slice(start);
 }
+var SAFE_HOST_COMMANDS = /* @__PURE__ */ new Set([
+  "cat",
+  "ls",
+  "head",
+  "tail",
+  "grep",
+  "find",
+  "wc",
+  // read-only inspection
+  "chmod",
+  "chown",
+  // permission fixes
+  "sed",
+  "awk",
+  // text transforms
+  "cp",
+  "mv",
+  "mkdir",
+  "touch",
+  "ln",
+  "rm",
+  // file operations
+  "echo",
+  "printf",
+  "tee",
+  // output/write
+  "git",
+  // version control
+  "npm",
+  "npx",
+  "pnpm",
+  "yarn",
+  "bun",
+  // JS package managers
+  "bundle",
+  "gem",
+  "rake",
+  // Ruby
+  "pip",
+  "pip3",
+  "python",
+  "python3",
+  // Python
+  "go",
+  "cargo",
+  "mvn",
+  "gradle",
+  "sbt",
+  // Other build tools
+  "make",
+  "cmake",
+  // Build systems
+  "env",
+  "which",
+  "command",
+  "type",
+  "test",
+  "true",
+  // Shell builtins
+  "sh",
+  "bash",
+  "zsh",
+  // Subshells (for -c "...")
+  "curl",
+  "wget",
+  // HTTP (for healthchecks)
+  "kill",
+  "pkill",
+  // Process management
+  "sleep",
+  "date",
+  // Utilities
+  "node"
+  // Node.js
+]);
 function isDangerousCommand(command) {
-  const SAFE_HOST_COMMANDS = /* @__PURE__ */ new Set([
-    "cat",
-    "ls",
-    "head",
-    "tail",
-    "grep",
-    "find",
-    "wc",
-    // read-only inspection
-    "chmod",
-    "chown",
-    // permission fixes
-    "sed",
-    "awk",
-    // text transforms
-    "cp",
-    "mv",
-    "mkdir",
-    "touch",
-    "ln",
-    // file operations
-    "echo",
-    "printf",
-    "tee",
-    // output/write
-    "git",
-    // version control
-    "npm",
-    "npx",
-    "pnpm",
-    "yarn",
-    "bun",
-    // JS package managers
-    "bundle",
-    "gem",
-    "rake",
-    // Ruby
-    "pip",
-    "pip3",
-    "python",
-    "python3",
-    // Python
-    "go",
-    "cargo",
-    "mvn",
-    "gradle",
-    "sbt",
-    // Other build tools
-    "make",
-    "cmake",
-    // Build systems
-    "env",
-    "which",
-    "command",
-    "type",
-    "test",
-    "true",
-    // Shell builtins
-    "sh",
-    "bash",
-    "zsh",
-    // Subshells (for -c "...")
-    "curl",
-    "wget",
-    // HTTP (for healthchecks)
-    "kill",
-    "pkill",
-    // Process management
-    "sleep",
-    "date",
-    // Utilities
-    "node"
-    // Node.js
-  ]);
   function getFirstWord(segment) {
     return segment.trim().replace(/^(\w+=\S+\s+)*/, "").split(/\s+/)[0]?.toLowerCase() ?? "";
   }
@@ -18337,7 +18357,7 @@ function runShellCommand(repoPath, command, timeoutMs = 6e4) {
       stdio: ["pipe", "pipe", "pipe"]
     });
     const result = output.trim();
-    return result.length > 1e4 ? result.slice(-1e4) + "\n... [truncated]" : result || "(no output)";
+    return result.length > 1e4 ? "... [truncated beginning]\n" + result.slice(-1e4) : result || "(no output)";
   } catch (err) {
     if (err && typeof err === "object" && "stderr" in err) {
       const errObj = err;
@@ -27561,7 +27581,7 @@ async function createBrightMcpClient(config2) {
       reconnectPromise = null;
     }
   }
-  async function callTool(name, args, isRetry = false) {
+  async function callToolBase(name, args, isRetry = false) {
     console.log(
       `[MCP] Calling ${name} with args:`,
       JSON.stringify(args).slice(0, 500)
@@ -27572,7 +27592,7 @@ async function createBrightMcpClient(config2) {
     } catch (err) {
       if (!isRetry && isSessionError(err)) {
         await reconnect();
-        return callTool(name, args, true);
+        return callToolBase(name, args, true);
       }
       throw err;
     }
@@ -27581,11 +27601,15 @@ async function createBrightMcpClient(config2) {
       (c3) => typeof c3 === "object" && c3 !== null && c3.type === "text"
     ).map((c3) => c3.text).join("");
     console.log(`[MCP] ${name} response:`, text.slice(0, 500));
-    if (result.isError) {
-      if (!isRetry && isSessionError(text)) {
-        await reconnect();
-        return callTool(name, args, true);
-      }
+    if (result.isError && !isRetry && isSessionError(text)) {
+      await reconnect();
+      return callToolBase(name, args, true);
+    }
+    return { text, isError: !!result.isError };
+  }
+  async function callTool(name, args) {
+    const { text, isError } = await callToolBase(name, args);
+    if (isError) {
       throw new Error(`Bright MCP tool ${name} failed: ${text}`);
     }
     try {
@@ -27594,34 +27618,17 @@ async function createBrightMcpClient(config2) {
       return text;
     }
   }
-  async function callMcpToolRawImpl(name, args, isRetry = false) {
-    console.log(
-      `[MCP] Calling ${name} with args:`,
-      JSON.stringify(args).slice(0, 500)
-    );
+  async function callMcpToolRawImpl(name, args) {
     let result;
     try {
-      result = await client.callTool({ name, arguments: args });
+      result = await callToolBase(name, args);
     } catch (err) {
-      if (!isRetry && isSessionError(err)) {
-        await reconnect();
-        return callMcpToolRawImpl(name, args, true);
-      }
       return `Error from Bright API: ${toErrorMessage(err)}`;
     }
-    const contentArr = Array.isArray(result.content) ? result.content : [];
-    const text = contentArr.filter(
-      (c3) => typeof c3 === "object" && c3 !== null && c3.type === "text"
-    ).map((c3) => c3.text).join("");
-    console.log(`[MCP] ${name} response:`, text.slice(0, 500));
     if (result.isError) {
-      if (!isRetry && isSessionError(text)) {
-        await reconnect();
-        return callMcpToolRawImpl(name, args, true);
-      }
-      return `Error from Bright API: ${text}`;
+      return `Error from Bright API: ${result.text}`;
     }
-    return text || "Success (empty response)";
+    return result.text || "Success (empty response)";
   }
   function unwrapList(result) {
     if (Array.isArray(result)) return result;
@@ -27767,7 +27774,7 @@ var ProgressReporter = class {
     await this.updatePrDescription();
   }
   async phaseDetail(phase, toolName, detail) {
-    const current = [...this.steps].reverse().find((s) => s.status === "working");
+    const current = this.steps.findLast((s) => s.status === "working");
     if (current) {
       current.details.push(detail);
     }
@@ -27780,7 +27787,7 @@ var ProgressReporter = class {
    * (e.g. scan status) that would otherwise flood the PR description.
    */
   async phaseUpdateDetail(phase, key, detail) {
-    const current = [...this.steps].reverse().find((s) => s.status === "working");
+    const current = this.steps.findLast((s) => s.status === "working");
     if (current) {
       current.keyedDetails.set(key, detail);
     }
@@ -36142,6 +36149,12 @@ Return ONLY the Dockerfile content inside a single fenced code block. No explana
 
 // src/phases/startup.ts
 var MAX_STARTUP_ATTEMPTS = parseInt(process.env.MAX_STARTUP_ATTEMPTS ?? "10", 10);
+var StartupFailedError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "StartupFailedError";
+  }
+};
 function printStartupStats(stats) {
   const total = stats.reduce((s, a) => s + a.durationMs, 0);
   console.log(`
@@ -36418,15 +36431,30 @@ ${logs.slice(-3e3)}
           messages: [
             {
               role: "system",
-              content: `You are checking if a web application's HTTP response indicates a healthy, working application.
+              content: `You are checking if a web application's HTTP response indicates a FULLY WORKING application ready for real users.
 
 Respond with EXACTLY one JSON object:
 {"healthy": true/false, "reason": "<one sentence explanation>"}
 
-HEALTHY responses: actual app content (HTML pages with real content, JSON API responses, login forms, dashboards, etc.)
-UNHEALTHY responses: error pages, setup/configuration required pages, "service unavailable", proxy errors, framework boilerplate errors, "CLI required" messages, blank pages with only error info, database migration needed pages, or any response that indicates the app is NOT ready for normal use.
+Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
+- Setup wizards, installation pages, or "finish installation" screens
+- "CLI required", "Ember CLI", "proxy bypass", or development mode warnings
+- Error pages (500, 503, "something went wrong", stack traces)
+- "Service unavailable", "under maintenance", or placeholder pages
+- Database migration needed, pending migrations
+- Configuration required, environment variable missing
+- Framework default welcome pages (Rails welcome, Django debug, etc.)
+- Blank or nearly empty pages with just a title and no real content
+- Pages that tell the user to run a command or configure something before use
+- JSON error responses like {"error": ...} or {"errors": [...]}
 
-Be strict: if the response looks like an error or setup page rather than the actual working application, mark it unhealthy.`
+Mark as HEALTHY (healthy: true) ONLY if the response is clearly a WORKING application page:
+- A real login form that a user could actually fill out
+- A dashboard, feed, or content page with actual data
+- A JSON API response with real data (not an error)
+- A working application UI with navigation, content, and interactive elements
+
+When in doubt, mark as UNHEALTHY. It is better to trigger a repair cycle than to accept a broken app.`
             },
             {
               role: "user",
@@ -36904,7 +36932,7 @@ Reply with the JSON object.`
       infraTools,
       trackingHandler,
       model,
-      20
+      30
     );
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
     const result = parseInfraRepairResult(response);
@@ -37675,7 +37703,7 @@ ${lastBody}`;
 Container logs:
 ${logs}`;
       }
-      throw new Error(errMsg2);
+      throw new StartupFailedError(errMsg2);
     }
     try {
       const response = await fetch(`http://localhost:${port}${probePath}`, {
@@ -37709,11 +37737,11 @@ ${bodyPreview}`;
 Container logs:
 ${logs}`;
               }
-              throw new Error(errMsg2);
+              throw new StartupFailedError(errMsg2);
             }
             console.log(`[Startup] AI response analysis: healthy \u2014 ${result.reason}`);
           } catch (err) {
-            if (err instanceof Error && err.message.startsWith("Application on port")) throw err;
+            if (err instanceof StartupFailedError) throw err;
             console.log(`[Startup] AI response analysis failed, accepting response as healthy`);
           }
         }
@@ -37738,12 +37766,13 @@ ${lastBody}`;
 Container logs:
 ${logs}`;
         }
-        throw new Error(errMsg2);
+        throw new StartupFailedError(errMsg2);
       }
       console.log(
         `[Startup] Port ${port} responding with HTTP ${response.status} (${consecutive500s}/${max500sBeforeFail}) \u2014 will fail fast if persistent...`
       );
-    } catch {
+    } catch (err) {
+      if (err instanceof StartupFailedError) throw err;
     }
     if (repoPath && !analysisInFlight && Date.now() - lastLogCheckTime > logCheckInterval) {
       const snapshot = getContainerLogTail(repoPath, 40);
@@ -37786,7 +37815,7 @@ ${lastBody}`;
 Container logs (last 40 lines):
 ${finalLogs}`;
   }
-  throw new Error(errMsg);
+  throw new StartupFailedError(errMsg);
 }
 function getContainerLogTail(repoPath, lines = 30) {
   try {
@@ -38239,7 +38268,7 @@ var CONTENT_TYPE_MAP = {
   form: "application/x-www-form-urlencoded",
   xml: "application/xml"
 };
-async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectId, baseUrl, repeaterId, brightToken, brightHostname, model, contextSummary) {
+async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectId, baseUrl, repeaterId, api, model, contextSummary) {
   const detection = await detectAuthFromCode(
     llm,
     repoPath,
@@ -38292,8 +38321,7 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectI
       projectId,
       baseUrl,
       repeaterId,
-      brightToken,
-      brightHostname,
+      api,
       model,
       attemptContext
     );
@@ -38416,7 +38444,7 @@ async function detectAuthFromCode(llm, repoPath, techStack, baseUrl, model, cont
     };
   }
 }
-async function createAuthViaRestApi(brightToken, brightHostname, projectId, repeaterId, params) {
+async function createAuthViaRestApi(api, projectId, repeaterId, params) {
   const { authStyle, loginUrl, loginBody, loginContentType, testUrl } = params;
   const contentType = loginContentType === "form" ? "application/x-www-form-urlencoded" : "application/json";
   const normalizedBody = normalizeBody(loginBody, loginContentType);
@@ -38447,7 +38475,7 @@ async function createAuthViaRestApi(brightToken, brightHostname, projectId, repe
         }
       }
     };
-    return postAuthObject(brightToken, brightHostname, body2);
+    return postAuthObject(api, body2);
   }
   const isSession = authStyle === "session";
   const reauthStrat = params.reauthStrategy ?? (isSession ? "both" : "status");
@@ -38527,7 +38555,7 @@ async function createAuthViaRestApi(brightToken, brightHostname, projectId, repe
   console.log(
     `[Auth] Creating ${authStyle} auth via REST API \u2014 login: ${loginUrl}, test: ${testUrl}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`
   );
-  return postAuthObject(brightToken, brightHostname, body);
+  return postAuthObject(api, body);
 }
 function buildLoginSteps(opts) {
   const steps = [];
@@ -38590,12 +38618,12 @@ function buildLoginSteps(opts) {
   });
   return steps;
 }
-async function postAuthObject(brightToken, brightHostname, body) {
+async function postAuthObject(api, body) {
   try {
-    const res = await fetch(`https://${brightHostname}/api/v3/auth-objects`, {
+    const res = await fetch(`https://${api.brightHostname}/api/v3/auth-objects`, {
       method: "POST",
       headers: {
-        Authorization: `Api-Key ${brightToken}`,
+        Authorization: `Api-Key ${api.brightToken}`,
         "Content-Type": "application/json",
         Accept: "application/json"
       },
@@ -38611,7 +38639,7 @@ async function postAuthObject(brightToken, brightHostname, body) {
     return { error: `Request failed: ${err}` };
   }
 }
-async function createAuthViaMcp(llm, bright, repoPath, detection, registrationOk, projectId, baseUrl, repeaterId, brightToken, brightHostname, model, preProbeContext) {
+async function createAuthViaMcp(llm, bright, repoPath, detection, registrationOk, projectId, baseUrl, repeaterId, api, model, preProbeContext) {
   _probeCookieJar = {};
   const mcpSchemas = await bright.getMcpToolSchemas(["getAuth", "listAuths"]);
   const mcpToolsDefs = convertMcpToolsToOpenAI(mcpSchemas);
@@ -38811,8 +38839,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     if (name === "create_auth") {
       lastCreateArgs = { ...args };
       const result = await createAuthViaRestApi(
-        brightToken,
-        brightHostname,
+        api,
         projectId,
         repeaterId,
         {
@@ -38839,8 +38866,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     }
     if (name === "test_auth_object") {
       const result = await testAuthObject(
-        brightToken,
-        brightHostname,
+        api,
         String(args.authObjectId)
       );
       const summary = JSON.stringify(result);
@@ -38852,8 +38878,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     }
     if (name === "delete_auth_object") {
       await deleteAuthObject(
-        brightToken,
-        brightHostname,
+        api,
         String(args.authObjectId)
       );
       return "Deleted successfully";
@@ -39080,11 +39105,11 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model) {
     return void 0;
   }
 }
-async function testAuthObject(brightToken, brightHostname, authObjectId) {
-  const base = `https://${brightHostname}`;
+async function testAuthObject(api, authObjectId) {
+  const base = `https://${api.brightHostname}`;
   const url2 = `${base}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}/test`;
   const headers = {
-    Authorization: `Api-Key ${brightToken}`,
+    Authorization: `Api-Key ${api.brightToken}`,
     Accept: "application/json"
   };
   const maxRetries = 5;
@@ -39157,13 +39182,13 @@ function normalizeBody(body, contentType) {
   }
   return body;
 }
-async function deleteAuthObject(brightToken, brightHostname, authObjectId) {
+async function deleteAuthObject(api, authObjectId) {
   try {
     const res = await fetch(
-      `https://${brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
+      `https://${api.brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
       {
         method: "DELETE",
-        headers: { Authorization: `Api-Key ${brightToken}` }
+        headers: { Authorization: `Api-Key ${api.brightToken}` }
       }
     );
     if (res.ok || res.status === 204) {
@@ -39601,7 +39626,7 @@ async function verifyEntrypointAuth(bright, projectId, entrypointId) {
     return { ok: false, detail: `Could not verify: ${msg}` };
   }
 }
-async function pruneDeadEntrypoints(bright, projectId, entries, brightToken, brightHostname) {
+async function pruneDeadEntrypoints(bright, projectId, entries, api) {
   const alive = [];
   const dead = [];
   for (const entry of entries) {
@@ -39625,7 +39650,7 @@ async function pruneDeadEntrypoints(bright, projectId, entries, brightToken, bri
   }
   await Promise.allSettled(
     dead.map(
-      (epId) => deleteEntrypoint(brightToken, brightHostname, projectId, epId)
+      (epId) => deleteEntrypoint(api, projectId, epId)
     )
   );
   if (dead.length > 0) {
@@ -39635,13 +39660,13 @@ async function pruneDeadEntrypoints(bright, projectId, entries, brightToken, bri
   }
   return alive;
 }
-async function deleteEntrypoint(brightToken, brightHostname, projectId, entrypointId) {
+async function deleteEntrypoint(api, projectId, entrypointId) {
   try {
     const res = await fetch(
-      `https://${brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`,
+      `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`,
       {
         method: "DELETE",
-        headers: { Authorization: `Api-Key ${brightToken}` }
+        headers: { Authorization: `Api-Key ${api.brightToken}` }
       }
     );
     if (res.ok || res.status === 204) {
@@ -39690,12 +39715,12 @@ function normalizeMethod(method) {
 
 // src/phases/repeater.ts
 import { spawn as spawn2 } from "child_process";
-async function setupRepeater(projectId, brightToken, brightHostname) {
+async function setupRepeater(projectId, api) {
   const name = `engine-${Date.now()}`;
-  const res = await fetch(`https://${brightHostname}/api/v1/repeaters`, {
+  const res = await fetch(`https://${api.brightHostname}/api/v1/repeaters`, {
     method: "POST",
     headers: {
-      Authorization: `Api-Key ${brightToken}`,
+      Authorization: `Api-Key ${api.brightToken}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ name, projectIds: [projectId] })
@@ -39718,9 +39743,9 @@ async function setupRepeater(projectId, brightToken, brightHostname) {
       "--id",
       repeaterId,
       "--token",
-      brightToken,
+      api.brightToken,
       "--hostname",
-      brightHostname
+      api.brightHostname
     ],
     {
       detached: true,
@@ -39748,7 +39773,7 @@ async function setupRepeater(projectId, brightToken, brightHostname) {
   return { repeaterId, process: proc2 };
 }
 async function waitForRepeaterReady(proc2, timeoutMs) {
-  return new Promise((resolve5) => {
+  return new Promise((resolve5, reject) => {
     const timer = setTimeout(() => {
       console.warn(
         "[Repeater] Timed out waiting for connection \u2014 proceeding anyway"
@@ -39769,17 +39794,14 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
       }
     }
     function onExit(code) {
-      console.warn(
-        `[Repeater] Process exited with code ${code} before connecting`
-      );
       cleanup();
-      resolve5();
+      reject(new Error(`Repeater process exited with code ${code} before connecting`));
     }
     proc2.stdout?.on("data", onData);
     proc2.on("exit", onExit);
     if (proc2.exitCode !== null) {
       cleanup();
-      resolve5();
+      reject(new Error(`Repeater process already exited with code ${proc2.exitCode}`));
     }
   });
 }
@@ -39936,14 +39958,13 @@ function consolidateGroups(groups, maxGroups) {
 // src/phases/scan.ts
 var DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
 var PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
-async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, brightToken, brightHostname, scanName, hasPathParams = false) {
+async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, api, scanName, hasPathParams = false) {
   const locations = hasPathParams ? PATH_ATTACK_LOCATIONS : DEFAULT_ATTACK_LOCATIONS;
   console.log(
     `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests, attack locations: ${locations.join(", ")}`
   );
   return runScanViaRest(
-    brightToken,
-    brightHostname,
+    api,
     projectId,
     entrypointIds,
     repeaterId,
@@ -39952,7 +39973,7 @@ async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, b
     scanName
   );
 }
-async function runScanViaRest(brightToken, brightHostname, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName) {
+async function runScanViaRest(api, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName) {
   let tests = [...testTags];
   let eps = [...entrypointIds];
   const maxRetries = 3;
@@ -39971,10 +39992,10 @@ async function runScanViaRest(brightToken, brightHostname, projectId, entrypoint
     };
     let res;
     try {
-      res = await fetch(`https://${brightHostname}/api/v1/scans`, {
+      res = await fetch(`https://${api.brightHostname}/api/v1/scans`, {
         method: "POST",
         headers: {
-          Authorization: `Api-Key ${brightToken}`,
+          Authorization: `Api-Key ${api.brightToken}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify(body)
@@ -40090,13 +40111,12 @@ function isFailureStatus(status) {
   const s = status.toLowerCase();
   return s === "failed" || s === "disrupted" || s === "timeout";
 }
-async function waitForScanCompletion(brightToken, brightHostname, scanId, onProgress) {
+async function waitForScanCompletion(api, scanId, onProgress) {
   const pollInterval = 3e4;
   await sleep2(pollInterval);
   while (true) {
     const scanStatus = await getScanStatusViaRest(
-      brightToken,
-      brightHostname,
+      api,
       scanId
     );
     const issues = scanStatus.issuesFound;
@@ -40111,10 +40131,10 @@ async function waitForScanCompletion(brightToken, brightHostname, scanId, onProg
     await sleep2(pollInterval);
   }
 }
-async function getScanStatusViaRest(brightToken, brightHostname, scanId) {
-  const url2 = `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
+async function getScanStatusViaRest(api, scanId) {
+  const url2 = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
   const res = await fetch(url2, {
-    headers: { Authorization: `Api-Key ${brightToken}` }
+    headers: { Authorization: `Api-Key ${api.brightToken}` }
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -40158,13 +40178,13 @@ function extractIssueCount(data) {
 }
 
 // src/phases/findings.ts
-async function fetchFindings(brightToken, brightHostname, scanIds) {
+async function fetchFindings(api, scanIds) {
   const findings = [];
   const seen = /* @__PURE__ */ new Set();
   for (const scanId of scanIds) {
-    const issues = await fetchScanIssues(brightToken, brightHostname, scanId);
+    const issues = await fetchScanIssues(api, scanId);
     for (const issue2 of issues) {
-      const key = `${issue2.name}::${issue2.url}::${issue2.method}`;
+      const key = findingKey({ name: issue2.name, method: issue2.method ?? "GET", url: issue2.url ?? "" });
       if (seen.has(key)) continue;
       seen.add(key);
       const severity = normalizeSeverity(issue2.severity);
@@ -40183,11 +40203,11 @@ async function fetchFindings(brightToken, brightHostname, scanIds) {
   }
   return findings;
 }
-async function fetchScanIssues(brightToken, hostname2, scanId) {
-  const url2 = `https://${hostname2}/api/v1/scans/${encodeURIComponent(scanId)}/issues`;
+async function fetchScanIssues(api, scanId) {
+  const url2 = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/issues`;
   console.log(`[Findings] Fetching issues for scan ${scanId}`);
   const res = await fetch(url2, {
-    headers: { Authorization: `Api-Key ${brightToken}` }
+    headers: { Authorization: `Api-Key ${api.brightToken}` }
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -41447,8 +41467,17 @@ function cleanupHarnessInfra(repoPath) {
 // src/orchestrator.ts
 var MAX_ITERATIONS = 5;
 var MAX_FIX_REPAIR_ATTEMPTS = 2;
-function findingKey(f) {
-  return `${f.name}::${f.method}::${f.url}`;
+async function restartApp(current, llm, repoPath, techStack, startupConfig, modelSelector, registration) {
+  await killProcess(current);
+  const result = await startApplicationWithRetries(
+    llm,
+    repoPath,
+    techStack,
+    startupConfig,
+    modelSelector
+  );
+  if (registration) await reRegisterUser(registration);
+  return result;
 }
 async function runOrchestrator(ctx) {
   const { repoPath, platform, llm, bright, config: config2 } = ctx;
@@ -41558,8 +41587,7 @@ async function runOrchestrator(ctx) {
     console.log(`[Setup] Using Bright project: ${projectId}`);
     repeater = await setupRepeater(
       projectId,
-      config2.brightToken,
-      config2.brightHostname
+      config2
     );
     await progress.phaseDetail(
       "setup",
@@ -41576,8 +41604,7 @@ async function runOrchestrator(ctx) {
       projectId,
       baseUrl,
       repeater.repeaterId,
-      config2.brightToken,
-      config2.brightHostname,
+      config2,
       config2.modelSelector.current(),
       preAuthContext
     );
@@ -41753,8 +41780,7 @@ async function runOrchestrator(ctx) {
         bright,
         projectId,
         registered,
-        config2.brightToken,
-        config2.brightHostname
+        config2
       );
       await progress.phaseDetail(
         "entrypoints",
@@ -41799,31 +41825,20 @@ async function runOrchestrator(ctx) {
           repoPath,
           techStack,
           authResult.authObjectId,
-          config2.brightToken,
-          config2.brightHostname,
+          config2,
           allFixes,
           config2.modelSelector.current()
         );
         if (!authOk) {
-          await killProcess(appProcess);
           try {
-            const restart = await startApplicationWithRetries(
-              llm,
-              repoPath,
-              techStack,
-              startupConfig,
-              config2.modelSelector
-            );
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config2.modelSelector, authResult.registration);
             appProcess = restart.process;
-            if (authResult.registration)
-              await reRegisterUser(authResult.registration);
             const retryOk = await verifyAndRepairAuth(
               llm,
               repoPath,
               techStack,
               authResult.authObjectId,
-              config2.brightToken,
-              config2.brightHostname,
+              config2,
               allFixes,
               config2.modelSelector.current()
             );
@@ -41855,18 +41870,9 @@ async function runOrchestrator(ctx) {
         console.warn(
           `[Scan] App is unreachable on port ${startupConfig.port} \u2014 restarting before scan`
         );
-        await killProcess(appProcess);
         try {
-          const restart = await startApplicationWithRetries(
-            llm,
-            repoPath,
-            techStack,
-            startupConfig,
-            config2.modelSelector
-          );
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config2.modelSelector, authResult.registration);
           appProcess = restart.process;
-          if (authResult.registration)
-            await reRegisterUser(authResult.registration);
           console.log("[Scan] App restarted successfully");
         } catch (err) {
           console.error(`[Scan] Failed to restart app: ${err}`);
@@ -41889,8 +41895,7 @@ async function runOrchestrator(ctx) {
             group.entrypointIds,
             repeater.repeaterId,
             group.tests,
-            config2.brightToken,
-            config2.brightHostname,
+            config2,
             `Engine Pass ${iteration + 1} \u2014 Group ${gi + 1}`,
             group.hasPathParams
           );
@@ -41915,8 +41920,7 @@ async function runOrchestrator(ctx) {
             `[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`
           );
           const finalStatus = await waitForScanCompletion(
-            config2.brightToken,
-            config2.brightHostname,
+            config2,
             scanId,
             (status, issues) => {
               console.log(
@@ -41947,18 +41951,9 @@ async function runOrchestrator(ctx) {
           console.warn(
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart and retry"
           );
-          await killProcess(appProcess);
           try {
-            const restart = await startApplicationWithRetries(
-              llm,
-              repoPath,
-              techStack,
-              startupConfig,
-              config2.modelSelector
-            );
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config2.modelSelector, authResult.registration);
             appProcess = restart.process;
-            if (authResult.registration)
-              await reRegisterUser(authResult.registration);
             console.log(
               "[Scan] App restarted \u2014 will retry scans on next iteration"
             );
@@ -41986,17 +41981,10 @@ async function runOrchestrator(ctx) {
         break;
       }
       const findings = await fetchFindings(
-        config2.brightToken,
-        config2.brightHostname,
+        config2,
         scanIds
       );
-      const bySev = {};
-      for (const f of findings) {
-        bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
-      }
-      const sevSummary = Object.entries(bySev).sort(
-        ([a], [b]) => ["Critical", "High", "Medium", "Low"].indexOf(a) - ["Critical", "High", "Medium", "Low"].indexOf(b)
-      ).map(([sev, count]) => `${count} ${sev}`).join(", ");
+      const sevSummary = buildSeveritySummary(findings);
       await progress.phaseDetail(
         "scan",
         "findings",
@@ -42095,19 +42083,10 @@ async function runOrchestrator(ctx) {
         fixedCount++;
       }
       if (fixCommitCount.value > 0) {
-        await killProcess(appProcess);
         let healthy = false;
         try {
-          const restart = await startApplicationWithRetries(
-            llm,
-            repoPath,
-            techStack,
-            startupConfig,
-            config2.modelSelector
-          );
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config2.modelSelector, authResult.registration);
           appProcess = restart.process;
-          if (authResult.registration)
-            await reRegisterUser(authResult.registration);
           healthy = true;
         } catch (startupErr) {
           console.error(
@@ -42126,16 +42105,8 @@ async function runOrchestrator(ctx) {
             config2.modelSelector
           );
           if (healthy) {
-            const restart = await startApplicationWithRetries(
-              llm,
-              repoPath,
-              techStack,
-              startupConfig,
-              config2.modelSelector
-            );
+            const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config2.modelSelector, authResult.registration);
             appProcess = restart.process;
-            if (authResult.registration)
-              await reRegisterUser(authResult.registration);
           } else {
             console.log(
               `[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`
@@ -42147,16 +42118,8 @@ async function runOrchestrator(ctx) {
                 { cwd: repoPath, stdio: "pipe" }
               );
               execFileSync5("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await startApplicationWithRetries(
-                llm,
-                repoPath,
-                techStack,
-                startupConfig,
-                config2.modelSelector
-              );
+              const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config2.modelSelector, authResult.registration);
               appProcess = restart.process;
-              if (authResult.registration)
-                await reRegisterUser(authResult.registration);
             } catch {
               console.error("[Fix] Could not recover \u2014 aborting fix round");
             }
@@ -42168,8 +42131,7 @@ async function runOrchestrator(ctx) {
             repoPath,
             techStack,
             authResult.authObjectId,
-            config2.brightToken,
-            config2.brightHostname,
+            config2,
             allFixes,
             config2.modelSelector.current()
           );
@@ -42192,14 +42154,12 @@ async function runOrchestrator(ctx) {
     await killProcess(appProcess);
     await killProcess(repeater?.process);
     await stopRunningScans(
-      config2.brightToken,
-      config2.brightHostname,
+      config2,
       allScanIds
     );
     if (repeater?.repeaterId) {
       await deleteRepeater(
-        config2.brightToken,
-        config2.brightHostname,
+        config2,
         repeater.repeaterId
       );
     }
@@ -42222,8 +42182,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
   await progress.phaseStart("setup", "Setting up Bright Repeater for harness scan");
   const repeater = await setupRepeater(
     projectId,
-    config2.brightToken,
-    config2.brightHostname
+    config2
   );
   await progress.phaseDetail("setup", "repeater", `Repeater connected: ${repeater.repeaterId}`);
   try {
@@ -42273,8 +42232,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
           group.entrypointIds,
           repeater.repeaterId,
           group.tests,
-          config2.brightToken,
-          config2.brightHostname,
+          config2,
           `Harness Scan \u2014 Group ${gi + 1}`,
           group.hasPathParams
         );
@@ -42292,8 +42250,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
       scanIds.map(async (scanId, si) => {
         console.log(`[Scan] Waiting for harness scan ${si + 1}/${scanIds.length}: ${scanId}`);
         return await waitForScanCompletion(
-          config2.brightToken,
-          config2.brightHostname,
+          config2,
           scanId,
           (status, issues) => {
             console.log(`[Scan] Harness scan ${si + 1}: ${status} \u2014 ${issues} issue(s)`);
@@ -42309,17 +42266,10 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
       }
     }
     const findings = await fetchFindings(
-      config2.brightToken,
-      config2.brightHostname,
+      config2,
       scanIds
     );
-    const bySev = {};
-    for (const f of findings) {
-      bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
-    }
-    const sevSummary = Object.entries(bySev).sort(
-      ([a], [b]) => ["Critical", "High", "Medium", "Low"].indexOf(a) - ["Critical", "High", "Medium", "Low"].indexOf(b)
-    ).map(([sev, count]) => `${count} ${sev}`).join(", ");
+    const sevSummary = buildSeveritySummary(findings);
     await progress.phaseDetail(
       "scan",
       "findings",
@@ -42345,9 +42295,9 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
     );
   } finally {
     await killProcess(repeater.process);
-    await stopRunningScans(config2.brightToken, config2.brightHostname, allScanIds);
+    await stopRunningScans(config2, allScanIds);
     if (repeater.repeaterId) {
-      await deleteRepeater(config2.brightToken, config2.brightHostname, repeater.repeaterId);
+      await deleteRepeater(config2, repeater.repeaterId);
     }
   }
 }
@@ -42359,15 +42309,9 @@ function buildSummaryTable(progress, allFindings, fixedKeys) {
       status: fixedKeys.has(key) ? "Fixed" : finding.status
     });
   }
-  const sevOrder = {
-    Critical: 0,
-    High: 1,
-    Medium: 2,
-    Low: 3
-  };
   summaries.sort((a, b) => {
-    const sa = sevOrder[a.severity] ?? 4;
-    const sb = sevOrder[b.severity] ?? 4;
+    const sa = SEVERITY_ORDER[a.severity] ?? 4;
+    const sb = SEVERITY_ORDER[b.severity] ?? 4;
     if (sa !== sb) return sa - sb;
     if (a.status !== b.status) return a.status === "Open" ? -1 : 1;
     return 0;
@@ -42436,16 +42380,16 @@ function killProcess(proc2) {
     (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve5());
   });
 }
-async function stopRunningScans(brightToken, brightHostname, scanIds) {
+async function stopRunningScans(api, scanIds) {
   if (scanIds.length === 0) return;
   const headers = {
-    Authorization: `Api-Key ${brightToken}`,
+    Authorization: `Api-Key ${api.brightToken}`,
     "Content-Type": "application/json"
   };
   const results = await Promise.allSettled(
     scanIds.map(async (scanId) => {
       const statusRes = await fetch(
-        `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`,
+        `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`,
         { headers }
       );
       if (!statusRes.ok) return;
@@ -42454,7 +42398,7 @@ async function stopRunningScans(brightToken, brightHostname, scanIds) {
       if (!scan.status || !active.includes(scan.status)) return;
       console.log(`[Cleanup] Stopping scan ${scanId} (status: ${scan.status})`);
       const stopRes = await fetch(
-        `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/lifecycle`,
+        `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/lifecycle`,
         {
           method: "PUT",
           headers,
@@ -42475,14 +42419,14 @@ async function stopRunningScans(brightToken, brightHostname, scanIds) {
     console.warn(`[Cleanup] ${failed.length} scan stop request(s) failed`);
   }
 }
-async function deleteRepeater(brightToken, brightHostname, repeaterId) {
+async function deleteRepeater(api, repeaterId) {
   try {
     console.log(`[Cleanup] Deleting repeater ${repeaterId}`);
     const res = await fetch(
-      `https://${brightHostname}/api/v1/repeaters/${encodeURIComponent(repeaterId)}`,
+      `https://${api.brightHostname}/api/v1/repeaters/${encodeURIComponent(repeaterId)}`,
       {
         method: "DELETE",
-        headers: { Authorization: `Api-Key ${brightToken}` }
+        headers: { Authorization: `Api-Key ${api.brightToken}` }
       }
     );
     if (res.ok || res.status === 204) {
@@ -42497,10 +42441,9 @@ async function deleteRepeater(brightToken, brightHostname, repeaterId) {
   }
 }
 var MAX_AUTH_REPAIR_ATTEMPTS = 3;
-async function verifyAndRepairAuth(llm, repoPath, techStack, authObjectId, brightToken, brightHostname, allFixes, model) {
+async function verifyAndRepairAuth(llm, repoPath, techStack, authObjectId, api, allFixes, model) {
   const testResult = await testAuthObject(
-    brightToken,
-    brightHostname,
+    api,
     authObjectId
   );
   if (testResult.passed) {
@@ -42613,8 +42556,7 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
         await new Promise((r) => setTimeout(r, 3e3));
       }
       const retest = await testAuthObject(
-        brightToken,
-        brightHostname,
+        api,
         authObjectId
       );
       if (retest.passed) {
@@ -42853,24 +42795,23 @@ async function main() {
   console.error = (...args) => origError((/* @__PURE__ */ new Date()).toISOString(), ...args);
   console.log("[Engine] Bright Security Copilot Engine starting...");
   const config2 = loadConfig();
-  const { platform, job } = await createPlatform();
+  const { platform, job } = await createPlatform(config2.gitToken);
   console.log(`[Engine] Job: ${job.id}, action: ${job.action}`);
   console.log(`[Engine] Repository: ${job.repository}`);
   console.log(`[Engine] Problem: ${job.problemStatement.slice(0, 200)}`);
   const repoPath = cloneRepository({
     serverUrl: job.serverUrl,
     repository: job.repository,
-    gitToken: process.env.GITHUB_GIT_TOKEN ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN ?? "",
+    gitToken: config2.gitToken,
     branchName: job.branchName,
     commitLogin: job.commitLogin,
     commitEmail: job.commitEmail
   });
   console.log(`[Engine] Cloned to: ${repoPath}`);
   await platform.initPr(repoPath);
-  const inferenceUrl = process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceToken = process.env.OPENAI_API_KEY ?? process.env.GITHUB_INFERENCE_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
   const llm = createInferenceClient(
-    inferenceUrl,
+    config2.inferenceUrl,
     inferenceToken,
     config2.inferenceProvider
   );

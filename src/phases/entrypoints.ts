@@ -1,4 +1,4 @@
-import type { DiscoveredEndpoint } from "../types.js";
+import type { DiscoveredEndpoint, BrightApiContext } from "../types.js";
 import type { BrightMcpClient } from "../mcp-client.js";
 import { toErrorMessage } from "../utils.js";
 
@@ -261,8 +261,7 @@ export async function pruneDeadEntrypoints(
   bright: BrightMcpClient,
   projectId: string,
   entries: RegisteredEntrypoint[],
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
 ): Promise<RegisteredEntrypoint[]> {
   const alive: RegisteredEntrypoint[] = [];
   const dead: string[] = [];
@@ -292,7 +291,7 @@ export async function pruneDeadEntrypoints(
   // Delete the dead entrypoints in parallel
   await Promise.allSettled(
     dead.map((epId) =>
-      deleteEntrypoint(brightToken, brightHostname, projectId, epId),
+      deleteEntrypoint(api, projectId, epId),
     ),
   );
 
@@ -306,17 +305,16 @@ export async function pruneDeadEntrypoints(
 }
 
 async function deleteEntrypoint(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   projectId: string,
   entrypointId: string,
 ): Promise<void> {
   try {
     const res = await fetch(
-      `https://${brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`,
+      `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`,
       {
         method: "DELETE",
-        headers: { Authorization: `Api-Key ${brightToken}` },
+        headers: { Authorization: `Api-Key ${api.brightToken}` },
       },
     );
     if (res.ok || res.status === 204) {

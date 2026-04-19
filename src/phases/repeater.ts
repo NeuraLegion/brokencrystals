@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "child_process";
+import type { BrightApiContext } from "../types.js";
 
 export interface RepeaterHandle {
   repeaterId: string;
@@ -7,16 +8,15 @@ export interface RepeaterHandle {
 
 export async function setupRepeater(
   projectId: string,
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
 ): Promise<RepeaterHandle> {
   const name = `engine-${Date.now()}`;
 
   // Create repeater via REST API — no LLM needed
-  const res = await fetch(`https://${brightHostname}/api/v1/repeaters`, {
+  const res = await fetch(`https://${api.brightHostname}/api/v1/repeaters`, {
     method: "POST",
     headers: {
-      Authorization: `Api-Key ${brightToken}`,
+      Authorization: `Api-Key ${api.brightToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ name, projectIds: [projectId] }),
@@ -43,9 +43,9 @@ export async function setupRepeater(
       "--id",
       repeaterId,
       "--token",
-      brightToken,
+      api.brightToken,
       "--hostname",
-      brightHostname,
+      api.brightHostname,
     ],
     {
       detached: true,
@@ -80,7 +80,7 @@ async function waitForRepeaterReady(
   proc: ChildProcess,
   timeoutMs: number,
 ): Promise<void> {
-  return new Promise<void>((resolve) => {
+  return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       console.warn(
         "[Repeater] Timed out waiting for connection — proceeding anyway",
@@ -105,11 +105,8 @@ async function waitForRepeaterReady(
     }
 
     function onExit(code: number | null) {
-      console.warn(
-        `[Repeater] Process exited with code ${code} before connecting`,
-      );
       cleanup();
-      resolve();
+      reject(new Error(`Repeater process exited with code ${code} before connecting`));
     }
 
     proc.stdout?.on("data", onData);
@@ -118,7 +115,7 @@ async function waitForRepeaterReady(
     // If already exited before we attached listeners
     if (proc.exitCode !== null) {
       cleanup();
-      resolve();
+      reject(new Error(`Repeater process already exited with code ${proc.exitCode}`));
     }
   });
 }

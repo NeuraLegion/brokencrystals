@@ -221,12 +221,9 @@ export class DefaultPlatform implements Platform {
   private readonly apiBase: string;
   private prNumber: number | null | undefined; // undefined = not looked up yet
 
-  constructor(job: JobDetails) {
+  constructor(job: JobDetails, gitToken?: string) {
     this.job = job;
-    this.gitToken =
-      process.env.GITHUB_GIT_TOKEN ??
-      process.env.GIT_TOKEN ??
-      process.env.GITHUB_TOKEN;
+    this.gitToken = gitToken;
     this.apiBase = job.serverUrl.replace(/\/$/, "").includes("github.com")
       ? "https://api.github.com"
       : `${job.serverUrl.replace(/\/$/, "")}/api/v3`;
@@ -360,7 +357,7 @@ export class DefaultPlatform implements Platform {
 /**
  * Create the platform. Reads job details from environment variables.
  */
-export async function createPlatform(): Promise<{
+export async function createPlatform(gitToken?: string): Promise<{
   platform: Platform;
   job: JobDetails;
 }> {
@@ -382,7 +379,7 @@ export async function createPlatform(): Promise<{
     action: process.env.ACTION ?? "fix",
   };
 
-  const platform = new DefaultPlatform(job);
+  const platform = new DefaultPlatform(job, gitToken);
   console.log("[Platform] Initialized (GitHub API for PR updates)");
   return { platform, job };
 }

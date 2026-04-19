@@ -5,14 +5,23 @@ import type { BrightMcpClient } from "./mcp-client.js";
 import type { ModelSelector, InferenceProvider } from "./inference.js";
 
 // ---------------------------------------------------------------------------
+// Bright API context — avoids threading brightToken + brightHostname everywhere
+// ---------------------------------------------------------------------------
+
+export interface BrightApiContext {
+  brightToken: string;
+  brightHostname: string;
+}
+
+// ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-export interface EngineConfig {
-  brightToken: string;
-  brightHostname: string;
+export interface EngineConfig extends BrightApiContext {
   brightMcpUrl?: string;
   brightProjectId?: string;
+  gitToken: string;
+  inferenceUrl: string;
   inferenceProvider: InferenceProvider;
   modelSelector: ModelSelector;
   runMode: RunMode;
@@ -89,7 +98,7 @@ export interface SecurityFix {
 // Orchestrator context
 // ---------------------------------------------------------------------------
 
-export type RunMode = "full" | "dynamic" | "dynamic" | "function";
+export type RunMode = "full" | "dynamic" | "function";
 
 export interface OrchestratorContext {
   repoPath: string;

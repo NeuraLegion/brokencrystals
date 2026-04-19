@@ -1,4 +1,5 @@
 import { sleep, toErrorMessage } from "../utils.js";
+import type { BrightApiContext } from "../types.js";
 
 const DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
 const PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
@@ -8,8 +9,7 @@ export async function runSecurityScan(
   entrypointIds: string[],
   repeaterId: string,
   testTags: string[],
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   scanName?: string,
   hasPathParams = false,
 ): Promise<string> {
@@ -21,8 +21,7 @@ export async function runSecurityScan(
   );
 
   return runScanViaRest(
-    brightToken,
-    brightHostname,
+    api,
     projectId,
     entrypointIds,
     repeaterId,
@@ -33,8 +32,7 @@ export async function runSecurityScan(
 }
 
 async function runScanViaRest(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   projectId: string,
   entrypointIds: string[],
   repeaterId: string,
@@ -62,10 +60,10 @@ async function runScanViaRest(
 
     let res: Response;
     try {
-      res = await fetch(`https://${brightHostname}/api/v1/scans`, {
+      res = await fetch(`https://${api.brightHostname}/api/v1/scans`, {
         method: "POST",
         headers: {
-          Authorization: `Api-Key ${brightToken}`,
+          Authorization: `Api-Key ${api.brightToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -215,8 +213,7 @@ function isFailureStatus(status: string): boolean {
 export { isFailureStatus };
 
 export async function waitForScanCompletion(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   scanId: string,
   onProgress?: (status: string, issuesFound: number) => void,
 ): Promise<string> {
@@ -227,8 +224,7 @@ export async function waitForScanCompletion(
 
   while (true) {
     const scanStatus = await getScanStatusViaRest(
-      brightToken,
-      brightHostname,
+      api,
       scanId,
     );
     const issues = scanStatus.issuesFound;
@@ -248,13 +244,12 @@ export async function waitForScanCompletion(
 }
 
 async function getScanStatusViaRest(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   scanId: string,
 ): Promise<{ status: string; issuesFound: number }> {
-  const url = `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
+  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
   const res = await fetch(url, {
-    headers: { Authorization: `Api-Key ${brightToken}` },
+    headers: { Authorization: `Api-Key ${api.brightToken}` },
   });
 
   if (!res.ok) {

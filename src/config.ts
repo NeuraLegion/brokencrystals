@@ -9,7 +9,7 @@ export function loadConfig(): EngineConfig {
     (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
 
-  // RUN_MODE: "full" (default), "dynamic" (no harness fallback),, "dynamic" (no harness fallback), or "function"
+  // RUN_MODE: "full" (default), "dynamic" (no harness fallback), or "function"
   const runMode = (process.env.RUN_MODE ?? "full") as RunMode;
 
   // AI_MODEL: single model or comma-separated escalation chain
@@ -19,6 +19,13 @@ export function loadConfig(): EngineConfig {
     .map((s) => s.trim())
     .filter(Boolean);
   const modelSelector = new ModelSelector(models);
+
+  // Git token resolution (single source of truth)
+  const gitToken =
+    process.env.GITHUB_GIT_TOKEN ??
+    process.env.GIT_TOKEN ??
+    process.env.GITHUB_TOKEN ??
+    "";
 
   // Inference provider detection
   const inferenceUrl =
@@ -34,6 +41,8 @@ export function loadConfig(): EngineConfig {
     brightHostname,
     brightMcpUrl,
     brightProjectId,
+    gitToken,
+    inferenceUrl,
     inferenceProvider,
     modelSelector,
     runMode,

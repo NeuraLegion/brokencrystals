@@ -1,5 +1,33 @@
 import { execSync } from "child_process";
 
+// ---------------------------------------------------------------------------
+// Severity helpers (shared across orchestrator, findings, progress)
+// ---------------------------------------------------------------------------
+
+export const SEVERITY_ORDER: Record<string, number> = {
+  Critical: 0,
+  High: 1,
+  Medium: 2,
+  Low: 3,
+};
+
+/** Dedup key for findings — same vuln type + method + URL = same finding */
+export function findingKey(f: { name: string; method: string; url: string }): string {
+  return `${f.name}::${f.method}::${f.url}`;
+}
+
+/** Build a severity breakdown string like "2 Critical, 1 High" */
+export function buildSeveritySummary(findings: { severity: string }[]): string {
+  const bySev: Record<string, number> = {};
+  for (const f of findings) {
+    bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
+  }
+  return Object.entries(bySev)
+    .sort(([a], [b]) => (SEVERITY_ORDER[a] ?? 4) - (SEVERITY_ORDER[b] ?? 4))
+    .map(([sev, count]) => `${count} ${sev}`)
+    .join(", ");
+}
+
 /**
  * Sleep for a given number of milliseconds.
  */
@@ -114,27 +142,27 @@ export function extractJson(text: string): string {
  * 2. Safe host commands scoped to repo work (chmod, cat, grep, ls, etc.)
  * Everything else is blocked — the LLM should never run arbitrary host commands.
  */
+const SAFE_HOST_COMMANDS = new Set([
+  "cat", "ls", "head", "tail", "grep", "find", "wc",   // read-only inspection
+  "chmod", "chown",                                       // permission fixes
+  "sed", "awk",                                           // text transforms
+  "cp", "mv", "mkdir", "touch", "ln", "rm",              // file operations
+  "echo", "printf", "tee",                                // output/write
+  "git",                                                  // version control
+  "npm", "npx", "pnpm", "yarn", "bun",                   // JS package managers
+  "bundle", "gem", "rake",                                // Ruby
+  "pip", "pip3", "python", "python3",                     // Python
+  "go", "cargo", "mvn", "gradle", "sbt",                 // Other build tools
+  "make", "cmake",                                        // Build systems
+  "env", "which", "command", "type", "test", "true",     // Shell builtins
+  "sh", "bash", "zsh",                                    // Subshells (for -c "...")
+  "curl", "wget",                                         // HTTP (for healthchecks)
+  "kill", "pkill",                                        // Process management
+  "sleep", "date",                                        // Utilities
+  "node",                                                 // Node.js
+]);
+
 export function isDangerousCommand(command: string): boolean {
-  // Safe repo-scoped commands for infrastructure repair
-  const SAFE_HOST_COMMANDS = new Set([
-    "cat", "ls", "head", "tail", "grep", "find", "wc",   // read-only inspection
-    "chmod", "chown",                                       // permission fixes
-    "sed", "awk",                                           // text transforms
-    "cp", "mv", "mkdir", "touch", "ln",                    // file operations
-    "echo", "printf", "tee",                                // output/write
-    "git",                                                  // version control
-    "npm", "npx", "pnpm", "yarn", "bun",                   // JS package managers
-    "bundle", "gem", "rake",                                // Ruby
-    "pip", "pip3", "python", "python3",                     // Python
-    "go", "cargo", "mvn", "gradle", "sbt",                 // Other build tools
-    "make", "cmake",                                        // Build systems
-    "env", "which", "command", "type", "test", "true",     // Shell builtins
-    "sh", "bash", "zsh",                                    // Subshells (for -c "...")
-    "curl", "wget",                                         // HTTP (for healthchecks)
-    "kill", "pkill",                                        // Process management
-    "sleep", "date",                                        // Utilities
-    "node",                                                 // Node.js
-  ]);
 
   function getFirstWord(segment: string): string {
     return segment.trim().replace(/^(\w+=\S+\s+)*/, "").split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -194,7 +222,7 @@ export function runShellCommand(
     });
     const result = output.trim();
     return result.length > 10_000
-      ? result.slice(-10_000) + "\n... [truncated]"
+      ? "... [truncated beginning]\n" + result.slice(-10_000)
       : result || "(no output)";
   } catch (err) {
     if (err && typeof err === "object" && "stderr" in err) {

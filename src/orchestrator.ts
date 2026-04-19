@@ -1,9 +1,9 @@
 import { gitCommitAndPush } from "./platform.js";
 import { execFileSync, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
-import type { OrchestratorContext, SecurityFix, Finding, DiscoveredEndpoint, TechStack, StartupConfig } from "./types.js";
+import type { OrchestratorContext, SecurityFix, Finding, DiscoveredEndpoint, TechStack, StartupConfig, BrightApiContext } from "./types.js";
 import { ProgressReporter, type FindingSummary } from "./progress.js";
-import { formatTechStack, toErrorMessage } from "./utils.js";
+import { formatTechStack, toErrorMessage, findingKey, buildSeveritySummary, SEVERITY_ORDER } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import {
   discoverEndpointsViaSwagger,
@@ -46,9 +46,29 @@ import { codebaseTools, createToolHandler } from "./tools.js";
 const MAX_ITERATIONS = 5;
 const MAX_FIX_REPAIR_ATTEMPTS = 2;
 
-/** Dedup key for findings — same vuln type + method + URL = same finding */
-function findingKey(f: { name: string; method: string; url: string }): string {
-  return `${f.name}::${f.method}::${f.url}`;
+/**
+ * Kill the current app process, restart, and re-register the test user.
+ * Returns the new StartupResult. Throws on failure.
+ */
+async function restartApp(
+  current: ChildProcess | undefined,
+  llm: Parameters<typeof chatWithTools>[0],
+  repoPath: string,
+  techStack: TechStack,
+  startupConfig: StartupConfig,
+  modelSelector: ModelSelector,
+  registration?: AuthResult["registration"],
+): Promise<StartupResult> {
+  await killProcess(current);
+  const result = await startApplicationWithRetries(
+    llm,
+    repoPath,
+    techStack,
+    startupConfig,
+    modelSelector,
+  );
+  if (registration) await reRegisterUser(registration);
+  return result;
 }
 
 export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
@@ -179,8 +199,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     repeater = await setupRepeater(
       projectId,
-      config.brightToken,
-      config.brightHostname,
+      config,
     );
     await progress.phaseDetail(
       "setup",
@@ -202,8 +221,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       projectId,
       baseUrl,
       repeater.repeaterId,
-      config.brightToken,
-      config.brightHostname,
+      config,
       config.modelSelector.current(),
       preAuthContext,
     );
@@ -420,8 +438,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         bright,
         projectId,
         registered,
-        config.brightToken,
-        config.brightHostname,
+        config,
       );
       await progress.phaseDetail(
         "entrypoints",
@@ -476,35 +493,23 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           repoPath,
           techStack,
           authResult.authObjectId,
-          config.brightToken,
-          config.brightHostname,
+          config,
           allFixes,
           config.modelSelector.current(),
         );
         if (!authOk) {
           // Auth is broken and couldn't be repaired — need to restart the app
           // in case a code repair was applied, then retry
-          await killProcess(appProcess);
           try {
-            const restart = await startApplicationWithRetries(
-              llm,
-              repoPath,
-              techStack,
-              startupConfig,
-              config.modelSelector,
-            );
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
             appProcess = restart.process;
-            // Re-register test user (fresh container = empty DB)
-            if (authResult.registration)
-              await reRegisterUser(authResult.registration);
             // Retest after restart
             const retryOk = await verifyAndRepairAuth(
               llm,
               repoPath,
               techStack,
               authResult.authObjectId,
-              config.brightToken,
-              config.brightHostname,
+              config,
               allFixes,
               config.modelSelector.current(),
             );
@@ -538,18 +543,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         console.warn(
           `[Scan] App is unreachable on port ${startupConfig.port} — restarting before scan`,
         );
-        await killProcess(appProcess);
         try {
-          const restart = await startApplicationWithRetries(
-            llm,
-            repoPath,
-            techStack,
-            startupConfig,
-            config.modelSelector,
-          );
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
           appProcess = restart.process;
-          if (authResult.registration)
-            await reRegisterUser(authResult.registration);
           console.log("[Scan] App restarted successfully");
         } catch (err) {
           console.error(`[Scan] Failed to restart app: ${err}`);
@@ -575,8 +571,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             group.entrypointIds,
             repeater.repeaterId,
             group.tests,
-            config.brightToken,
-            config.brightHostname,
+            config,
             `Engine Pass ${iteration + 1} — Group ${gi + 1}`,
             group.hasPathParams,
           );
@@ -604,8 +599,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             `[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`,
           );
           const finalStatus = await waitForScanCompletion(
-            config.brightToken,
-            config.brightHostname,
+            config,
             scanId,
             (status, issues) => {
               console.log(
@@ -639,18 +633,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           console.warn(
             "[Scan] App appears to have crashed during scanning — attempting restart and retry",
           );
-          await killProcess(appProcess);
           try {
-            const restart = await startApplicationWithRetries(
-              llm,
-              repoPath,
-              techStack,
-              startupConfig,
-              config.modelSelector,
-            );
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
             appProcess = restart.process;
-            if (authResult.registration)
-              await reRegisterUser(authResult.registration);
             console.log(
               "[Scan] App restarted — will retry scans on next iteration",
             );
@@ -682,24 +667,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       // --- Fetch findings ---
       const findings = await fetchFindings(
-        config.brightToken,
-        config.brightHostname,
+        config,
         scanIds,
       );
 
-      // Build severity breakdown for the PR
-      const bySev: Record<string, number> = {};
-      for (const f of findings) {
-        bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
-      }
-      const sevSummary = Object.entries(bySev)
-        .sort(
-          ([a], [b]) =>
-            ["Critical", "High", "Medium", "Low"].indexOf(a) -
-            ["Critical", "High", "Medium", "Low"].indexOf(b),
-        )
-        .map(([sev, count]) => `${count} ${sev}`)
-        .join(", ");
+      const sevSummary = buildSeveritySummary(findings);
 
       await progress.phaseDetail(
         "scan",
@@ -825,20 +797,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       // --- Single restart after all fixes applied ---
       if (fixCommitCount.value > 0) {
-        await killProcess(appProcess);
         let healthy = false;
 
         try {
-          const restart = await startApplicationWithRetries(
-            llm,
-            repoPath,
-            techStack,
-            startupConfig,
-            config.modelSelector,
-          );
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
           appProcess = restart.process;
-          if (authResult.registration)
-            await reRegisterUser(authResult.registration);
           healthy = true;
         } catch (startupErr) {
           console.error(
@@ -859,16 +822,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             config.modelSelector,
           );
           if (healthy) {
-            const restart = await startApplicationWithRetries(
-              llm,
-              repoPath,
-              techStack,
-              startupConfig,
-              config.modelSelector,
-            );
+            const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
             appProcess = restart.process;
-            if (authResult.registration)
-              await reRegisterUser(authResult.registration);
           } else {
             // Last resort: revert ALL fix commits from this round
             console.log(
@@ -881,16 +836,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
                 { cwd: repoPath, stdio: "pipe" },
               );
               execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await startApplicationWithRetries(
-                llm,
-                repoPath,
-                techStack,
-                startupConfig,
-                config.modelSelector,
-              );
+              const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
               appProcess = restart.process;
-              if (authResult.registration)
-                await reRegisterUser(authResult.registration);
             } catch {
               console.error("[Fix] Could not recover — aborting fix round");
             }
@@ -904,8 +851,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             repoPath,
             techStack,
             authResult.authObjectId,
-            config.brightToken,
-            config.brightHostname,
+            config,
             allFixes,
             config.modelSelector.current(),
           );
@@ -934,16 +880,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // Stop any scans that are still running
     await stopRunningScans(
-      config.brightToken,
-      config.brightHostname,
+      config,
       allScanIds,
     );
 
     // Delete the repeater from Bright to avoid stale entries
     if (repeater?.repeaterId) {
       await deleteRepeater(
-        config.brightToken,
-        config.brightHostname,
+        config,
         repeater.repeaterId,
       );
     }
@@ -985,8 +929,7 @@ async function runScanLoop(
   await progress.phaseStart("setup", "Setting up Bright Repeater for harness scan");
   const repeater = await setupRepeater(
     projectId,
-    config.brightToken,
-    config.brightHostname,
+    config,
   );
   await progress.phaseDetail("setup", "repeater", `Repeater connected: ${repeater.repeaterId}`);
 
@@ -1042,8 +985,7 @@ async function runScanLoop(
           group.entrypointIds,
           repeater.repeaterId,
           group.tests,
-          config.brightToken,
-          config.brightHostname,
+          config,
           `Harness Scan — Group ${gi + 1}`,
           group.hasPathParams,
         );
@@ -1064,8 +1006,7 @@ async function runScanLoop(
       scanIds.map(async (scanId, si) => {
         console.log(`[Scan] Waiting for harness scan ${si + 1}/${scanIds.length}: ${scanId}`);
         return await waitForScanCompletion(
-          config.brightToken,
-          config.brightHostname,
+          config,
           scanId,
           (status, issues) => {
             console.log(`[Scan] Harness scan ${si + 1}: ${status} — ${issues} issue(s)`);
@@ -1084,23 +1025,11 @@ async function runScanLoop(
 
     // Fetch findings
     const findings = await fetchFindings(
-      config.brightToken,
-      config.brightHostname,
+      config,
       scanIds,
     );
 
-    const bySev: Record<string, number> = {};
-    for (const f of findings) {
-      bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
-    }
-    const sevSummary = Object.entries(bySev)
-      .sort(
-        ([a], [b]) =>
-          ["Critical", "High", "Medium", "Low"].indexOf(a) -
-          ["Critical", "High", "Medium", "Low"].indexOf(b),
-      )
-      .map(([sev, count]) => `${count} ${sev}`)
-      .join(", ");
+    const sevSummary = buildSeveritySummary(findings);
 
     await progress.phaseDetail(
       "scan",
@@ -1134,9 +1063,9 @@ async function runScanLoop(
     );
   } finally {
     await killProcess(repeater.process);
-    await stopRunningScans(config.brightToken, config.brightHostname, allScanIds);
+    await stopRunningScans(config, allScanIds);
     if (repeater.repeaterId) {
-      await deleteRepeater(config.brightToken, config.brightHostname, repeater.repeaterId);
+      await deleteRepeater(config, repeater.repeaterId);
     }
   }
 }
@@ -1154,15 +1083,9 @@ function buildSummaryTable(
     });
   }
   // Sort: Critical first, then High, Medium, Low; Fixed last within each severity
-  const sevOrder: Record<string, number> = {
-    Critical: 0,
-    High: 1,
-    Medium: 2,
-    Low: 3,
-  };
   summaries.sort((a, b) => {
-    const sa = sevOrder[a.severity] ?? 4;
-    const sb = sevOrder[b.severity] ?? 4;
+    const sa = SEVERITY_ORDER[a.severity] ?? 4;
+    const sb = SEVERITY_ORDER[b.severity] ?? 4;
     if (sa !== sb) return sa - sb;
     if (a.status !== b.status) return a.status === "Open" ? -1 : 1;
     return 0;
@@ -1267,14 +1190,13 @@ function killProcess(proc: ChildProcess | undefined): Promise<void> {
 }
 
 async function stopRunningScans(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   scanIds: string[],
 ): Promise<void> {
   if (scanIds.length === 0) return;
 
   const headers = {
-    Authorization: `Api-Key ${brightToken}`,
+    Authorization: `Api-Key ${api.brightToken}`,
     "Content-Type": "application/json",
   };
 
@@ -1282,7 +1204,7 @@ async function stopRunningScans(
     scanIds.map(async (scanId) => {
       // Check current status first
       const statusRes = await fetch(
-        `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`,
+        `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`,
         { headers },
       );
       if (!statusRes.ok) return;
@@ -1293,7 +1215,7 @@ async function stopRunningScans(
 
       console.log(`[Cleanup] Stopping scan ${scanId} (status: ${scan.status})`);
       const stopRes = await fetch(
-        `https://${brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/lifecycle`,
+        `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/lifecycle`,
         {
           method: "PUT",
           headers,
@@ -1318,17 +1240,16 @@ async function stopRunningScans(
 }
 
 async function deleteRepeater(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   repeaterId: string,
 ): Promise<void> {
   try {
     console.log(`[Cleanup] Deleting repeater ${repeaterId}`);
     const res = await fetch(
-      `https://${brightHostname}/api/v1/repeaters/${encodeURIComponent(repeaterId)}`,
+      `https://${api.brightHostname}/api/v1/repeaters/${encodeURIComponent(repeaterId)}`,
       {
         method: "DELETE",
-        headers: { Authorization: `Api-Key ${brightToken}` },
+        headers: { Authorization: `Api-Key ${api.brightToken}` },
       },
     );
     if (res.ok || res.status === 204) {
@@ -1355,15 +1276,13 @@ async function verifyAndRepairAuth(
   repoPath: string,
   techStack: TechStack,
   authObjectId: string,
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   allFixes: SecurityFix[],
   model?: string,
 ): Promise<boolean> {
   // First, test the auth object directly via Bright API
   const testResult = await testAuthObject(
-    brightToken,
-    brightHostname,
+    api,
     authObjectId,
   );
   if (testResult.passed) {
@@ -1492,8 +1411,7 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
 
       // Retest
       const retest = await testAuthObject(
-        brightToken,
-        brightHostname,
+        api,
         authObjectId,
       );
       if (retest.passed) {

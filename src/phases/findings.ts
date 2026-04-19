@@ -1,4 +1,5 @@
-import type { Finding } from "../types.js";
+import type { Finding, BrightApiContext } from "../types.js";
+import { findingKey } from "../utils.js";
 
 /**
  * Fetches issues discovered during the current run's scans via the Bright REST
@@ -7,18 +8,17 @@ import type { Finding } from "../types.js";
  * run found.
  */
 export async function fetchFindings(
-  brightToken: string,
-  brightHostname: string,
+  api: BrightApiContext,
   scanIds: string[],
 ): Promise<Finding[]> {
   const findings: Finding[] = [];
   const seen = new Set<string>();
 
   for (const scanId of scanIds) {
-    const issues = await fetchScanIssues(brightToken, brightHostname, scanId);
+    const issues = await fetchScanIssues(api, scanId);
     for (const issue of issues) {
       // Deduplicate across scan groups (same project-issue can surface in multiple scans)
-      const key = `${issue.name}::${issue.url}::${issue.method}`;
+      const key = findingKey({ name: issue.name, method: issue.method ?? "GET", url: issue.url ?? "" });
       if (seen.has(key)) continue;
       seen.add(key);
 
@@ -53,15 +53,14 @@ interface ScanIssue {
 }
 
 async function fetchScanIssues(
-  brightToken: string,
-  hostname: string,
+  api: BrightApiContext,
   scanId: string,
 ): Promise<ScanIssue[]> {
-  const url = `https://${hostname}/api/v1/scans/${encodeURIComponent(scanId)}/issues`;
+  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/issues`;
   console.log(`[Findings] Fetching issues for scan ${scanId}`);
 
   const res = await fetch(url, {
-    headers: { Authorization: `Api-Key ${brightToken}` },
+    headers: { Authorization: `Api-Key ${api.brightToken}` },
   });
 
   if (!res.ok) {

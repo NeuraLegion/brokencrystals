@@ -1021,7 +1021,7 @@ Reply with the JSON object.`,
       infraTools,
       trackingHandler,
       model,
-      20,
+      30,
     );
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
 
