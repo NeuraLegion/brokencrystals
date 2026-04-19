@@ -9,6 +9,8 @@ import {
   createToolHandler,
   convertMcpToolsToOpenAI,
   createMcpToolHandler,
+  webSearchTools,
+  createWebSearchHandler,
 } from "../tools.js";
 import { formatTechStack, extractJson, runShellCommand, toErrorMessage } from "../utils.js";
 import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt } from "../prompts/auth.js";
@@ -912,6 +914,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     return `Unknown tool: ${name}`;
   };
 
+  const webHandler = createWebSearchHandler(repoPath);
   const combinedHandler: ToolHandler = async (name, args) => {
     if (
       name === "create_auth" ||
@@ -923,6 +926,10 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
       name === "run_command_in_docker"
     ) {
       return customHandler(name, args);
+    }
+    // Web search tools
+    if (name === "search_web" || name === "fetch_url") {
+      return webHandler(name, args);
     }
     // Codebase tools (search_files, read_file, list_files)
     if (
@@ -936,7 +943,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
   };
 
   const baseCodeHandler = createToolHandler(repoPath);
-  const allTools = [...codebaseTools, ...mcpToolsDefs, ...customTools];
+  const allTools = [...codebaseTools, ...mcpToolsDefs, ...customTools, ...webSearchTools];
 
   // Resolve protected endpoint path for test URL
   const resolvedPath = detection.protectedEndpointPath
@@ -1064,6 +1071,7 @@ async function seedTestUser(
 
   const seedTools: ChatCompletionTool[] = [
     ...codebaseTools,
+    ...webSearchTools,
     {
       type: "function",
       function: {
@@ -1128,6 +1136,7 @@ async function seedTestUser(
   ];
 
   const baseCodeHandler = createToolHandler(repoPath);
+  const seedWebHandler = createWebSearchHandler(repoPath);
   const handler: ToolHandler = async (name, args) => {
     if (name === "run_command" || name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
@@ -1156,6 +1165,9 @@ async function seedTestUser(
     }
     if (name === "probe_url") {
       return probeUrl(args);
+    }
+    if (name === "search_web" || name === "fetch_url") {
+      return seedWebHandler(name, args);
     }
     return baseCodeHandler(name, args);
   };

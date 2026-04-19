@@ -325,18 +325,10 @@ export function createInfraToolHandler(repoPath: string, onHint?: (hint: string)
         return probeUrl(args);
       }
 
-      case "search_web": {
-        const query = String(args.query ?? "").trim();
-        if (!query) return "Error: query parameter is required";
-        console.log(`[Tool] search_web: ${query}`);
-        return searchWeb(query);
-      }
-
+      case "search_web":
       case "fetch_url": {
-        const url = String(args.url ?? "").trim();
-        if (!url) return "Error: url parameter is required";
-        console.log(`[Tool] fetch_url: ${url.slice(0, 200)}`);
-        return fetchUrlContent(url, repoPath);
+        const webHandler = createWebSearchHandler(repoPath);
+        return webHandler(name, args);
       }
 
       default:
@@ -615,6 +607,31 @@ const fetchUrlTool: ChatCompletionTool = {
     },
   },
 };
+
+/** Web search + URL fetch tool definitions — reusable across phases */
+export const webSearchTools: ChatCompletionTool[] = [searchWebTool, fetchUrlTool];
+
+/**
+ * Create a tool handler for search_web and fetch_url.
+ * Pass repoPath so large fetched pages are saved to .bright-fetched-page.txt.
+ */
+export function createWebSearchHandler(repoPath: string): ToolHandler {
+  return async (name: string, args: Record<string, unknown>) => {
+    if (name === "search_web") {
+      const query = String(args.query ?? "").trim();
+      if (!query) return "Error: query parameter is required";
+      console.log(`[Tool] search_web: ${query}`);
+      return searchWeb(query);
+    }
+    if (name === "fetch_url") {
+      const url = String(args.url ?? "").trim();
+      if (!url) return "Error: url parameter is required";
+      console.log(`[Tool] fetch_url: ${url.slice(0, 200)}`);
+      return fetchUrlContent(url, repoPath);
+    }
+    return `Unknown tool: ${name}`;
+  };
+}
 
 const probeUrlTool: ChatCompletionTool = {
   type: "function",

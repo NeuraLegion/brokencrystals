@@ -35660,17 +35660,10 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
       case "probe_url": {
         return probeUrl(args);
       }
-      case "search_web": {
-        const query = String(args.query ?? "").trim();
-        if (!query) return "Error: query parameter is required";
-        console.log(`[Tool] search_web: ${query}`);
-        return searchWeb(query);
-      }
+      case "search_web":
       case "fetch_url": {
-        const url2 = String(args.url ?? "").trim();
-        if (!url2) return "Error: url parameter is required";
-        console.log(`[Tool] fetch_url: ${url2.slice(0, 200)}`);
-        return fetchUrlContent(url2, repoPath);
+        const webHandler = createWebSearchHandler(repoPath);
+        return webHandler(name, args);
       }
       default:
         return baseHandler(name, args);
@@ -35879,6 +35872,24 @@ var fetchUrlTool = {
     }
   }
 };
+var webSearchTools = [searchWebTool, fetchUrlTool];
+function createWebSearchHandler(repoPath) {
+  return async (name, args) => {
+    if (name === "search_web") {
+      const query = String(args.query ?? "").trim();
+      if (!query) return "Error: query parameter is required";
+      console.log(`[Tool] search_web: ${query}`);
+      return searchWeb(query);
+    }
+    if (name === "fetch_url") {
+      const url2 = String(args.url ?? "").trim();
+      if (!url2) return "Error: url parameter is required";
+      console.log(`[Tool] fetch_url: ${url2.slice(0, 200)}`);
+      return fetchUrlContent(url2, repoPath);
+    }
+    return `Unknown tool: ${name}`;
+  };
+}
 var probeUrlTool = {
   type: "function",
   function: {
@@ -38328,6 +38339,8 @@ ${credentialNote}
 - **run_command_on_host** \u2014 Run shell commands on the host (docker ps, docker logs, etc.).
 - **run_command_in_docker** \u2014 Run commands inside a Docker container (create users, inspect environment).
 - **read_file / search_files / list_files** \u2014 Inspect the codebase to understand auth flow.
+- **search_web** \u2014 Search the internet for how this app handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough.
+- **fetch_url** \u2014 Fetch full content of a web page (e.g. app documentation, Stack Overflow answer). Large pages are saved to .bright-fetched-page.txt \u2014 use read_file to see full content.
 - **create_auth** \u2014 Create a Bright auth object. This is the ONLY way to properly test login \u2014 it handles cookies, CSRF, redirects correctly.
 - **test_auth_object** \u2014 Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** \u2014 Delete a broken auth object to recreate with different settings.
@@ -38430,6 +38443,8 @@ Create a user with these exact credentials:
 - **run_command_in_docker** \u2014 Run commands inside a Docker container (create users, framework CLI)
 - **probe_url** \u2014 Make HTTP requests to the running app
 - **read_file / search_files / list_files** \u2014 Inspect the codebase
+- **search_web** \u2014 Search the internet for how to create users in this specific framework. Use when the codebase doesn't make user creation obvious or when initial attempts fail with unfamiliar errors.
+- **fetch_url** \u2014 Fetch full content of a web page (docs, Stack Overflow). Large pages are saved to .bright-fetched-page.txt \u2014 use read_file to see full content.
 
 ## Strategy
 1. Find the Docker container: run_command_on_host("docker ps --format '{{.ID}} {{.Names}} {{.Image}}'")
@@ -39121,9 +39136,13 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     }
     return `Unknown tool: ${name}`;
   };
+  const webHandler = createWebSearchHandler(repoPath);
   const combinedHandler = async (name, args) => {
     if (name === "create_auth" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
       return customHandler(name, args);
+    }
+    if (name === "search_web" || name === "fetch_url") {
+      return webHandler(name, args);
     }
     if (name === "search_files" || name === "read_file" || name === "list_files") {
       return baseCodeHandler(name, args);
@@ -39131,7 +39150,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     return mcpHandler(name, args);
   };
   const baseCodeHandler = createToolHandler(repoPath);
-  const allTools = [...codebaseTools, ...mcpToolsDefs, ...customTools];
+  const allTools = [...codebaseTools, ...mcpToolsDefs, ...customTools, ...webSearchTools];
   const resolvedPath = detection.protectedEndpointPath ? detection.protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1") : "/";
   const testUrl = `${baseUrl}${resolvedPath}`;
   const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext);
@@ -39210,6 +39229,7 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model) {
   console.log("[Auth] Starting seed user sub-phase...");
   const seedTools = [
     ...codebaseTools,
+    ...webSearchTools,
     {
       type: "function",
       function: {
@@ -39270,6 +39290,7 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model) {
     }
   ];
   const baseCodeHandler = createToolHandler(repoPath);
+  const seedWebHandler = createWebSearchHandler(repoPath);
   const handler = async (name, args) => {
     if (name === "run_command" || name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
@@ -39296,6 +39317,9 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model) {
     }
     if (name === "probe_url") {
       return probeUrl2(args);
+    }
+    if (name === "search_web" || name === "fetch_url") {
+      return seedWebHandler(name, args);
     }
     return baseCodeHandler(name, args);
   };

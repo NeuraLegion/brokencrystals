@@ -143,6 +143,8 @@ ${credentialNote}
 - **run_command_on_host** — Run shell commands on the host (docker ps, docker logs, etc.).
 - **run_command_in_docker** — Run commands inside a Docker container (create users, inspect environment).
 - **read_file / search_files / list_files** — Inspect the codebase to understand auth flow.
+- **search_web** — Search the internet for how this app handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough.
+- **fetch_url** — Fetch full content of a web page (e.g. app documentation, Stack Overflow answer). Large pages are saved to .bright-fetched-page.txt — use read_file to see full content.
 - **create_auth** — Create a Bright auth object. This is the ONLY way to properly test login — it handles cookies, CSRF, redirects correctly.
 - **test_auth_object** — Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** — Delete a broken auth object to recreate with different settings.
@@ -255,6 +257,8 @@ Create a user with these exact credentials:
 - **run_command_in_docker** — Run commands inside a Docker container (create users, framework CLI)
 - **probe_url** — Make HTTP requests to the running app
 - **read_file / search_files / list_files** — Inspect the codebase
+- **search_web** — Search the internet for how to create users in this specific framework. Use when the codebase doesn't make user creation obvious or when initial attempts fail with unfamiliar errors.
+- **fetch_url** — Fetch full content of a web page (docs, Stack Overflow). Large pages are saved to .bright-fetched-page.txt — use read_file to see full content.
 
 ## Strategy
 1. Find the Docker container: run_command_on_host("docker ps --format '{{.ID}} {{.Names}} {{.Image}}'")
