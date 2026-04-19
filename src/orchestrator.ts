@@ -1,9 +1,9 @@
 import { gitCommitAndPush } from "./platform.js";
 import { execFileSync, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
-import type { OrchestratorContext, SecurityFix, Finding, DiscoveredEndpoint } from "./types.js";
+import type { OrchestratorContext, SecurityFix, Finding, DiscoveredEndpoint, TechStack, StartupConfig } from "./types.js";
 import { ProgressReporter, type FindingSummary } from "./progress.js";
-import { formatTechStack } from "./utils.js";
+import { formatTechStack, toErrorMessage } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import {
   discoverEndpointsViaSwagger,
@@ -39,11 +39,17 @@ import {
 } from "./phases/scan.js";
 import { fetchFindings } from "./phases/findings.js";
 import { generateFixes, applyFixes } from "./phases/fix.js";
-import { chatWithTools } from "./inference.js";
+import { runFunctionHarness, cleanupHarnessInfra, type HarnessResult } from "./phases/harness.js";
+import { chatWithTools, type ModelSelector } from "./inference.js";
 import { codebaseTools, createToolHandler } from "./tools.js";
 
 const MAX_ITERATIONS = 5;
 const MAX_FIX_REPAIR_ATTEMPTS = 2;
+
+/** Dedup key for findings — same vuln type + method + URL = same finding */
+function findingKey(f: { name: string; method: string; url: string }): string {
+  return `${f.name}::${f.method}::${f.url}`;
+}
 
 export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   const { repoPath, platform, llm, bright, config } = ctx;
@@ -51,6 +57,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
   let appProcess: ChildProcess | undefined;
   let repeater: RepeaterHandle | undefined;
+  let harnessResult: HarnessResult | undefined;
   const allScanIds: string[] = [];
   const allFindings = new Map<string, FindingSummary>(); // dedupKey → summary
   const fixedKeys = new Set<string>();
@@ -62,15 +69,40 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       "Detecting tech stack and starting the application",
     );
     const techStack = await detectTechStack(
-      llm,
       repoPath,
-      config.modelSelector.current(),
     );
     await progress.phaseDetail(
       "startup",
       "tech_stack",
       `Tech stack: ${formatTechStack(techStack)}`,
     );
+
+    // ----- Function harness mode: skip full app startup -----
+    if (config.runMode === "function") {
+      console.log("[Engine] Running in function harness mode");
+      await progress.phaseStart(
+        "harness",
+        "Running function harness mode — wrapping critical functions for scanning",
+      );
+      try {
+        harnessResult = await runFunctionHarness(llm, repoPath, techStack, config.modelSelector);
+        appProcess = harnessResult.process;
+      } catch (err) {
+        const msg = toErrorMessage(err);
+        console.error(`[Harness] Function harness failed: ${msg}`);
+        await progress.phaseStart("done", `Function harness mode failed: ${msg}`);
+        return;
+      }
+      await progress.phaseDetail(
+        "harness",
+        "ready",
+        `Harness running with ${harnessResult.endpoints.length} endpoint(s) on port ${harnessResult.config.port}`,
+      );
+      // Jump into scanning with harness endpoints (no auth needed)
+      return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+    }
+
+    // ----- Full mode: standard app startup -----
 
     // Early check: if there's no way to build from source, abort.
     if (!canBuildFromSource(repoPath)) {
@@ -82,13 +114,46 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       return;
     }
 
-    const startup = await startApplicationWithRetries(
-      llm,
-      repoPath,
-      techStack,
-      undefined,
-      config.modelSelector,
-    );
+    let startup: StartupResult;
+    try {
+      startup = await startApplicationWithRetries(
+        llm,
+        repoPath,
+        techStack,
+        undefined,
+        config.modelSelector,
+      );
+    } catch (startupErr) {
+      const msg = toErrorMessage(startupErr);
+      console.warn(`[Engine] Full app startup failed: ${msg}`);
+
+      // In dynamic mode, no harness fallback — fail hard
+      if (config.runMode === "dynamic") {
+        await progress.phaseStart("done", `Application startup failed: ${msg}`);
+        return;
+      }
+
+      // Full mode: fall back to function harness
+      console.log("[Engine] Falling back to function harness mode...");
+      await progress.phaseDetail(
+        "startup",
+        "fallback",
+        "Full app startup failed — falling back to function harness mode",
+      );
+      try {
+        harnessResult = await runFunctionHarness(llm, repoPath, techStack, config.modelSelector);
+        appProcess = harnessResult.process;
+        await progress.phaseDetail(
+          "startup",
+          "harness_ready",
+          `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`,
+        );
+        return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+      } catch (harnessErr) {
+        console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
+        throw startupErr; // Throw original error
+      }
+    }
     appProcess = startup.process;
     const startupConfig = startup.config;
     const baseUrl = `http://localhost:${startupConfig.port}`;
@@ -98,7 +163,99 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       `Application running at ${baseUrl}`,
     );
 
-    // ----- Phase 2: Swagger / OpenAPI discovery -----
+    // ----- Phase 2: Setup Bright project + repeater -----
+    await progress.phaseStart(
+      "setup",
+      "Setting up Bright security scanner and Repeater",
+    );
+
+    const projectId = config.brightProjectId;
+    if (!projectId) {
+      throw new Error(
+        "No Bright project ID configured. Set BRIGHT_PROJECT_ID environment variable.",
+      );
+    }
+    console.log(`[Setup] Using Bright project: ${projectId}`);
+
+    repeater = await setupRepeater(
+      projectId,
+      config.brightToken,
+      config.brightHostname,
+    );
+    await progress.phaseDetail(
+      "setup",
+      "repeater",
+      `Repeater connected: ${repeater.repeaterId}`,
+    );
+
+    // ----- Phase 3: Auth configuration (fail fast — before expensive EP analysis) -----
+    await progress.phaseStart("auth", "Detecting authentication requirements");
+
+    // Build a lightweight context summary (no endpoints yet)
+    const preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
+
+    const authResult = await detectAndConfigureAuth(
+      llm,
+      bright,
+      repoPath,
+      techStack,
+      projectId,
+      baseUrl,
+      repeater.repeaterId,
+      config.brightToken,
+      config.brightHostname,
+      config.modelSelector.current(),
+      preAuthContext,
+    );
+    await progress.phaseDetail(
+      "auth",
+      "auth_done",
+      authResult.authObjectId
+        ? `Auth configured (object ${authResult.authObjectId})`
+        : "No authentication required",
+    );
+
+    // If auth was detected but failed to configure
+    if (authResult.authFailed) {
+      if (config.runMode === "dynamic") {
+        // Dynamic mode: auth is critical — fail the run
+        console.error("[Engine] Auth configuration failed — aborting (dynamic mode requires working auth)");
+        await progress.phaseDetail(
+          "auth",
+          "auth_failed",
+          "Auth configuration failed — cannot scan without authentication in dynamic mode",
+        );
+        throw new Error("Auth configuration failed: the application requires authentication but we could not configure it. Aborting.");
+      } else {
+        // Full mode: fall back to function harness
+        console.warn("[Engine] Auth configuration failed — falling back to function harness mode");
+        await progress.phaseDetail(
+          "auth",
+          "fallback",
+          "Auth failed — falling back to function harness mode (no auth needed)",
+        );
+        try {
+          await killProcess(appProcess);
+          harnessResult = await runFunctionHarness(llm, repoPath, techStack, config.modelSelector);
+          appProcess = harnessResult.process;
+          await progress.phaseDetail(
+            "auth",
+            "harness_ready",
+            `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`,
+          );
+          return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+        } catch (harnessErr) {
+          console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
+          await progress.phaseStart(
+            "done",
+            "Authentication and function harness both failed. Cannot scan.",
+          );
+          return;
+        }
+      }
+    }
+
+    // ----- Phase 4: Swagger / OpenAPI discovery -----
     await progress.phaseStart(
       "swagger",
       "Probing for OpenAPI/Swagger spec",
@@ -125,7 +282,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
     }
 
-    // ----- Phase 3: Static analysis (always runs — fills gaps, enriches params) -----
+    // ----- Phase 5: Static analysis (always runs — fills gaps, enriches params) -----
     await progress.phaseStart(
       "analyze",
       "Analyzing source code for endpoints and parameters",
@@ -169,64 +326,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       return;
     }
 
-    // ----- Phase 4: Setup Bright project + repeater -----
-    await progress.phaseStart(
-      "setup",
-      "Setting up Bright security scanner and Repeater",
-    );
-
-    const projectId = config.brightProjectId;
-    if (!projectId) {
-      throw new Error(
-        "No Bright project ID configured. Set BRIGHT_PROJECT_ID environment variable.",
-      );
-    }
-    console.log(`[Setup] Using Bright project: ${projectId}`);
-
-    repeater = await setupRepeater(
-      llm,
-      bright,
-      projectId,
-      config.brightToken,
-      config.brightHostname,
-    );
-    await progress.phaseDetail(
-      "setup",
-      "repeater",
-      `Repeater connected: ${repeater.repeaterId}`,
-    );
-
-    // ----- Phase 5: Auth configuration -----
-    await progress.phaseStart("auth", "Detecting authentication requirements");
-    const authResult = await detectAndConfigureAuth(
-      llm,
-      bright,
-      repoPath,
-      techStack,
-      endpoints,
-      projectId,
-      baseUrl,
-      repeater.repeaterId,
-      config.brightToken,
-      config.brightHostname,
-      config.modelSelector.current(),
-    );
-    await progress.phaseDetail(
-      "auth",
-      "auth_result",
-      authResult.hasAuth
-        ? `Auth configured: ${authResult.authObjectId}`
-        : "No auth required",
-    );
-
-    // If auth was detected but failed to configure, abort — scans without auth are useless
-    if (authResult.authFailed) {
-      await progress.phaseStart(
-        "done",
-        "Authentication is required but could not be configured. Cannot run meaningful scans without working auth.",
-      );
-      return;
-    }
+    // Build full context summary for downstream phases (fix generation)
+    const contextSummary = buildContextSummary(techStack, startupConfig, endpoints, swaggerEndpoints.length);
 
     // ----- Phase 6: Register entrypoints -----
     await progress.phaseStart(
@@ -432,7 +533,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
 
       // --- Verify app is alive before scanning ---
-      const appAlive = await checkAppHealth(startupConfig.port);
+      const appAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
       if (!appAlive) {
         console.warn(
           `[Scan] App is unreachable on port ${startupConfig.port} — restarting before scan`,
@@ -533,7 +634,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       if (anyFailed) {
         // Check if the failure is caused by the app being down
-        const stillAlive = await checkAppHealth(startupConfig.port);
+        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning — attempting restart and retry",
@@ -609,9 +710,6 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
 
       // Track all findings — mark previously-seen ones as fixed if they didn't reappear
-      const findingKey = (f: { name: string; method: string; url: string }) =>
-        `${f.name}::${f.method}::${f.url}`;
-
       if (iteration > 0) {
         const currentKeys = new Set(findings.map(findingKey));
         for (const key of allFindings.keys()) {
@@ -691,6 +789,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             [finding],
             allFixes,
             config.modelSelector.current(),
+            contextSummary,
           );
         } catch (err) {
           console.error(
@@ -853,6 +952,191 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       await bright.close();
     } catch {
       // Ignore
+    }
+
+    // Clean up harness infra (standalone DB containers)
+    if (harnessResult) {
+      cleanupHarnessInfra(repoPath);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Simplified scan loop for function-harness mode (no auth, no fix/rebuild)
+// ---------------------------------------------------------------------------
+async function runScanLoop(
+  ctx: OrchestratorContext,
+  progress: ProgressReporter,
+  techStack: Awaited<ReturnType<typeof detectTechStack>>,
+  harnessResult: HarnessResult,
+  allScanIds: string[],
+  allFindings: Map<string, FindingSummary>,
+  fixedKeys: Set<string>,
+): Promise<void> {
+  const { llm, bright, config } = ctx;
+  const projectId = config.brightProjectId;
+  if (!projectId) {
+    throw new Error("No Bright project ID configured. Set BRIGHT_PROJECT_ID.");
+  }
+
+  const baseUrl = `http://localhost:${harnessResult.config.port}`;
+
+  // Setup repeater
+  await progress.phaseStart("setup", "Setting up Bright Repeater for harness scan");
+  const repeater = await setupRepeater(
+    projectId,
+    config.brightToken,
+    config.brightHostname,
+  );
+  await progress.phaseDetail("setup", "repeater", `Repeater connected: ${repeater.repeaterId}`);
+
+  try {
+    // Register harness endpoints (no auth)
+    await progress.phaseStart("entrypoints", "Registering harness endpoints");
+    const registered = await registerEntrypoints(
+      bright,
+      projectId,
+      harnessResult.endpoints,
+      baseUrl,
+      repeater.repeaterId,
+      undefined, // no auth
+    );
+    await progress.phaseDetail(
+      "entrypoints",
+      "registered",
+      `Registered ${registered.length} harness entrypoints`,
+    );
+
+    if (registered.length === 0) {
+      await progress.phaseStart("done", "No harness entrypoints could be registered.");
+      return;
+    }
+
+    const liveEndpoints = registered.map((r) => r.endpoint);
+    const entrypointIds = registered.map((r) => r.entrypointId);
+
+    // Select tests
+    await progress.phaseStart("test_selection", "Selecting security tests for harness endpoints");
+    const scanGroups = await selectTestsPerEndpoint(
+      llm,
+      bright,
+      liveEndpoints,
+      entrypointIds,
+      techStack,
+      false, // no auth
+      config.modelSelector.current(),
+    );
+    await progress.phaseDetail(
+      "test_selection",
+      "selected",
+      `Created ${scanGroups.length} scan group(s)`,
+    );
+
+    // Run scans
+    await progress.phaseStart("scan", "Running security scans on harness endpoints");
+    const scanIds: string[] = [];
+    for (const [gi, group] of scanGroups.entries()) {
+      try {
+        const scanId = await runSecurityScan(
+          projectId,
+          group.entrypointIds,
+          repeater.repeaterId,
+          group.tests,
+          config.brightToken,
+          config.brightHostname,
+          `Harness Scan — Group ${gi + 1}`,
+          group.hasPathParams,
+        );
+        scanIds.push(scanId);
+        allScanIds.push(scanId);
+      } catch (err) {
+        console.error(`[Scan] Failed to start harness scan group ${gi + 1}: ${err}`);
+      }
+    }
+
+    if (scanIds.length === 0) {
+      await progress.phaseStart("scan_error", "All harness scan launches failed.");
+      return;
+    }
+
+    // Wait for completion
+    const scanResults = await Promise.allSettled(
+      scanIds.map(async (scanId, si) => {
+        console.log(`[Scan] Waiting for harness scan ${si + 1}/${scanIds.length}: ${scanId}`);
+        return await waitForScanCompletion(
+          config.brightToken,
+          config.brightHostname,
+          scanId,
+          (status, issues) => {
+            console.log(`[Scan] Harness scan ${si + 1}: ${status} — ${issues} issue(s)`);
+          },
+        );
+      }),
+    );
+
+    for (const [si, result] of scanResults.entries()) {
+      if (result.status === "rejected") {
+        console.error(`[Scan] Error in harness scan ${scanIds[si]}: ${result.reason}`);
+      } else if (isFailureStatus(result.value)) {
+        console.error(`[Scan] Harness scan ${scanIds[si]} ended with status: ${result.value}`);
+      }
+    }
+
+    // Fetch findings
+    const findings = await fetchFindings(
+      config.brightToken,
+      config.brightHostname,
+      scanIds,
+    );
+
+    const bySev: Record<string, number> = {};
+    for (const f of findings) {
+      bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
+    }
+    const sevSummary = Object.entries(bySev)
+      .sort(
+        ([a], [b]) =>
+          ["Critical", "High", "Medium", "Low"].indexOf(a) -
+          ["Critical", "High", "Medium", "Low"].indexOf(b),
+      )
+      .map(([sev, count]) => `${count} ${sev}`)
+      .join(", ");
+
+    await progress.phaseDetail(
+      "scan",
+      "findings",
+      findings.length > 0
+        ? `Harness scan complete — ${findings.length} vulnerabilities found (${sevSummary})`
+        : "Harness scan complete — no vulnerabilities found",
+    );
+
+    for (const f of findings) {
+      const key = findingKey(f);
+      if (!allFindings.has(key)) {
+        allFindings.set(key, {
+          name: f.name,
+          severity: f.severity,
+          url: f.url,
+          method: f.method,
+          status: "Open",
+        });
+      }
+    }
+
+    buildSummaryTable(progress, allFindings, fixedKeys);
+    await progress.updatePrDescription();
+
+    await progress.phaseStart(
+      "done",
+      findings.length > 0
+        ? `Function harness scan found ${findings.length} vulnerability(ies). Review findings in Bright dashboard.`
+        : "Function harness scan completed — no vulnerabilities found.",
+    );
+  } finally {
+    await killProcess(repeater.process);
+    await stopRunningScans(config.brightToken, config.brightHostname, allScanIds);
+    if (repeater.repeaterId) {
+      await deleteRepeater(config.brightToken, config.brightHostname, repeater.repeaterId);
     }
   }
 }
@@ -1069,7 +1353,7 @@ const MAX_AUTH_REPAIR_ATTEMPTS = 3;
 async function verifyAndRepairAuth(
   llm: Parameters<typeof chatWithTools>[0],
   repoPath: string,
-  techStack: import("./types.js").TechStack,
+  techStack: TechStack,
   authObjectId: string,
   brightToken: string,
   brightHostname: string,
@@ -1235,13 +1519,13 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
 async function bisectAndRevertBrokenFixes(
   llm: Parameters<typeof chatWithTools>[0],
   repoPath: string,
-  techStack: import("./types.js").TechStack,
+  techStack: TechStack,
   startupConfig: StartupResult["config"],
   containerLogs: string,
   commitCount: number,
   allFixes: SecurityFix[],
   model?: string,
-  modelSelector?: import("./inference.js").ModelSelector,
+  modelSelector?: ModelSelector,
 ): Promise<boolean> {
   if (commitCount <= 0) return false;
 
@@ -1341,7 +1625,7 @@ async function bisectAndRevertBrokenFixes(
 async function diagnoseAndRepairBrokenFix(
   llm: Parameters<typeof chatWithTools>[0],
   repoPath: string,
-  techStack: import("./types.js").TechStack,
+  techStack: TechStack,
   containerLogs: string,
   appliedFixes: SecurityFix[],
   model?: string,
@@ -1409,7 +1693,7 @@ Respond with a JSON array of file fixes:
     if (files.length === 0) return [];
 
     // Use a dummy Finding to satisfy the SecurityFix type
-    const dummyFinding: import("./types.js").Finding = {
+    const dummyFinding: Finding = {
       id: "repair",
       name: "Build repair",
       severity: "High",
@@ -1467,4 +1751,42 @@ const CREDENTIAL_FIELD_RE =
 
 function hasCredentialFields(body: string): boolean {
   return CREDENTIAL_FIELD_RE.test(body);
+}
+
+/**
+ * Build a concise summary of what previous phases learned about the application.
+ * Injected into downstream phase prompts so the LLM starts with context rather
+ * than re-discovering everything from scratch.
+ */
+function buildContextSummary(
+  techStack: TechStack,
+  startupConfig: StartupConfig,
+  endpoints: DiscoveredEndpoint[],
+  swaggerEndpointCount: number,
+): string {
+  const stack = formatTechStack(techStack);
+  const methods = new Map<string, number>();
+  for (const ep of endpoints) {
+    methods.set(ep.method, (methods.get(ep.method) ?? 0) + 1);
+  }
+  const methodBreakdown = [...methods.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([m, c]) => `${m}:${c}`)
+    .join(", ");
+
+  const lines = [
+    `Tech stack: ${stack}`,
+    `Deployment: ${startupConfig.docker ? "Docker" : "native"} on port ${startupConfig.port}`,
+    `Startup command: ${startupConfig.command}`,
+  ];
+  if (endpoints.length > 0) {
+    lines.push(`Endpoints: ${endpoints.length} total (${methodBreakdown})`);
+  }
+  if (swaggerEndpointCount > 0) {
+    lines.push(`OpenAPI spec available (${swaggerEndpointCount} endpoints from spec)`);
+  }
+  if (techStack.databases.length > 0) {
+    lines.push(`Databases: ${techStack.databases.join(", ")}`);
+  }
+  return lines.join("\n");
 }

@@ -6,8 +6,6 @@ export interface RepeaterHandle {
 }
 
 export async function setupRepeater(
-  _llm: unknown,
-  _bright: unknown,
   projectId: string,
   brightToken: string,
   brightHostname: string,
@@ -91,8 +89,6 @@ async function waitForRepeaterReady(
       resolve();
     }, timeoutMs);
 
-    let exited = false;
-
     function cleanup() {
       clearTimeout(timer);
       proc.stdout?.removeListener("data", onData);
@@ -109,7 +105,6 @@ async function waitForRepeaterReady(
     }
 
     function onExit(code: number | null) {
-      exited = true;
       console.warn(
         `[Repeater] Process exited with code ${code} before connecting`,
       );

@@ -18,6 +18,7 @@ export async function generateFixes(
   findings: Finding[],
   previousFixes: SecurityFix[],
   model?: string,
+  contextSummary?: string,
 ): Promise<SecurityFix[]> {
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
@@ -36,6 +37,9 @@ export async function generateFixes(
 
     // Step 1: Taint analysis
     const taintMessages = taintAnalysisPrompt(stackStr, finding);
+    if (contextSummary && taintMessages[0]?.role === "system" && typeof taintMessages[0].content === "string") {
+      taintMessages[0].content += `\n\nApplication context:\n${contextSummary}`;
+    }
     const taintAnalysis = await chatWithTools(
       llm,
       taintMessages,

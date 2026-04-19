@@ -5937,7 +5937,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve4.call(this, root, ref);
+      let _sch = resolve5.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
         const { schemaId } = this.opts;
@@ -5964,7 +5964,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve4(root, ref) {
+    function resolve5(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -6539,55 +6539,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve4(baseURI, relativeURI, options) {
+    function resolve5(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative2, options, skipNormalization) {
+    function resolveComponent(base, relative, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse3(serialize(base, options), options);
-        relative2 = parse3(serialize(relative2, options), options);
+        relative = parse3(serialize(relative, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative2.scheme) {
-        target.scheme = relative2.scheme;
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (!options.tolerant && relative.scheme) {
+        target.scheme = relative.scheme;
+        target.userinfo = relative.userinfo;
+        target.host = relative.host;
+        target.port = relative.port;
+        target.path = removeDotSegments(relative.path || "");
+        target.query = relative.query;
       } else {
-        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-          target.userinfo = relative2.userinfo;
-          target.host = relative2.host;
-          target.port = relative2.port;
-          target.path = removeDotSegments(relative2.path || "");
-          target.query = relative2.query;
+        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
+          target.userinfo = relative.userinfo;
+          target.host = relative.host;
+          target.port = relative.port;
+          target.path = removeDotSegments(relative.path || "");
+          target.query = relative.query;
         } else {
-          if (!relative2.path) {
+          if (!relative.path) {
             target.path = base.path;
-            if (relative2.query !== void 0) {
-              target.query = relative2.query;
+            if (relative.query !== void 0) {
+              target.query = relative.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative2.path[0] === "/") {
-              target.path = removeDotSegments(relative2.path);
+            if (relative.path[0] === "/") {
+              target.path = removeDotSegments(relative.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative2.path;
+                target.path = "/" + relative.path;
               } else if (!base.path) {
-                target.path = relative2.path;
+                target.path = relative.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative2.query;
+            target.query = relative.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -6595,7 +6595,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative2.fragment;
+      target.fragment = relative.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -6766,7 +6766,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize2,
-      resolve: resolve4,
+      resolve: resolve5,
       resolveComponent,
       equal,
       serialize,
@@ -9760,7 +9760,7 @@ var require_tree_kill = __commonJS({
   "node_modules/tree-kill/index.js"(exports, module) {
     "use strict";
     var childProcess = __require("child_process");
-    var spawn3 = childProcess.spawn;
+    var spawn4 = childProcess.spawn;
     var exec = childProcess.exec;
     module.exports = function(pid, signal, callback) {
       if (typeof signal === "function" && callback === void 0) {
@@ -9785,7 +9785,7 @@ var require_tree_kill = __commonJS({
           break;
         case "darwin":
           buildProcessTree(pid, tree, pidsToProcess, function(parentPid) {
-            return spawn3("pgrep", ["-P", parentPid]);
+            return spawn4("pgrep", ["-P", parentPid]);
           }, function() {
             killAll(tree, signal, callback);
           });
@@ -9797,7 +9797,7 @@ var require_tree_kill = __commonJS({
         //     break;
         default:
           buildProcessTree(pid, tree, pidsToProcess, function(parentPid) {
-            return spawn3("ps", ["-o", "pid", "--no-headers", "--ppid", parentPid]);
+            return spawn4("ps", ["-o", "pid", "--no-headers", "--ppid", parentPid]);
           }, function() {
             killAll(tree, signal, callback);
           });
@@ -10806,7 +10806,7 @@ function consumeBody() {
   let accum = [];
   let accumBytes = 0;
   let abort = false;
-  return new Body.Promise(function(resolve4, reject) {
+  return new Body.Promise(function(resolve5, reject) {
     let resTimeout;
     if (_this4.timeout) {
       resTimeout = setTimeout(function() {
@@ -10840,7 +10840,7 @@ function consumeBody() {
       }
       clearTimeout(resTimeout);
       try {
-        resolve4(Buffer.concat(accum, accumBytes));
+        resolve5(Buffer.concat(accum, accumBytes));
       } catch (err) {
         reject(new FetchError(`Could not create Buffer from response body for ${_this4.url}: ${err.message}`, "system", err));
       }
@@ -11515,7 +11515,7 @@ function fetch3(url2, opts) {
     throw new Error("native promise missing, set fetch.Promise to your favorite alternative");
   }
   Body.Promise = fetch3.Promise;
-  return new fetch3.Promise(function(resolve4, reject) {
+  return new fetch3.Promise(function(resolve5, reject) {
     const request = new Request2(url2, opts);
     const options = getNodeRequestOptions(request);
     const send = (options.protocol === "https:" ? https : http).request;
@@ -11648,7 +11648,7 @@ function fetch3(url2, opts) {
               requestOpts.body = void 0;
               requestOpts.headers.delete("content-length");
             }
-            resolve4(fetch3(new Request2(locationURL, requestOpts)));
+            resolve5(fetch3(new Request2(locationURL, requestOpts)));
             finalize();
             return;
         }
@@ -11669,7 +11669,7 @@ function fetch3(url2, opts) {
       const codings = headers.get("Content-Encoding");
       if (!request.compress || request.method === "HEAD" || codings === null || res.statusCode === 204 || res.statusCode === 304) {
         response = new Response3(body, response_options);
-        resolve4(response);
+        resolve5(response);
         return;
       }
       const zlibOptions = {
@@ -11679,7 +11679,7 @@ function fetch3(url2, opts) {
       if (codings == "gzip" || codings == "x-gzip") {
         body = body.pipe(zlib.createGunzip(zlibOptions));
         response = new Response3(body, response_options);
-        resolve4(response);
+        resolve5(response);
         return;
       }
       if (codings == "deflate" || codings == "x-deflate") {
@@ -11691,12 +11691,12 @@ function fetch3(url2, opts) {
             body = body.pipe(zlib.createInflateRaw());
           }
           response = new Response3(body, response_options);
-          resolve4(response);
+          resolve5(response);
         });
         raw.on("end", function() {
           if (!response) {
             response = new Response3(body, response_options);
-            resolve4(response);
+            resolve5(response);
           }
         });
         return;
@@ -11704,11 +11704,11 @@ function fetch3(url2, opts) {
       if (codings == "br" && typeof zlib.createBrotliDecompress === "function") {
         body = body.pipe(zlib.createBrotliDecompress());
         response = new Response3(body, response_options);
-        resolve4(response);
+        resolve5(response);
         return;
       }
       response = new Response3(body, response_options);
-      resolve4(response);
+      resolve5(response);
     });
     writeToStream(req, request);
   });
@@ -12758,8 +12758,8 @@ function _addRequestID(value, response) {
 }
 var APIPromise = class _APIPromise extends Promise {
   constructor(responsePromise, parseResponse2 = defaultParseResponse) {
-    super((resolve4) => {
-      resolve4(null);
+    super((resolve5) => {
+      resolve5(null);
     });
     this.responsePromise = responsePromise;
     this.parseResponse = parseResponse2;
@@ -13334,7 +13334,7 @@ var startsWithSchemeRegexp = /^[a-z][a-z0-9+.-]*:/i;
 var isAbsoluteURL = (url2) => {
   return startsWithSchemeRegexp.test(url2);
 };
-var sleep = (ms) => new Promise((resolve4) => setTimeout(resolve4, ms));
+var sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
 var validatePositiveInteger = (name, n) => {
   if (typeof n !== "number" || !Number.isInteger(n)) {
     throw new OpenAIError(`${name} must be an integer`);
@@ -13767,12 +13767,12 @@ var EventStream = class {
     _EventStream_errored.set(this, false);
     _EventStream_aborted.set(this, false);
     _EventStream_catchingPromiseCreated.set(this, false);
-    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve4, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve4, "f");
+    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve5, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve5, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectConnectedPromise, reject, "f");
     }), "f");
-    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve4, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve4, "f");
+    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve5, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve5, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectEndPromise, reject, "f");
     }), "f");
     __classPrivateFieldGet5(this, _EventStream_connectedPromise, "f").catch(() => {
@@ -13856,11 +13856,11 @@ var EventStream = class {
    *   const message = await stream.emitted('message') // rejects if the stream errors
    */
   emitted(event) {
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       __classPrivateFieldSet4(this, _EventStream_catchingPromiseCreated, true, "f");
       if (event !== "error")
         this.once("error", reject);
-      this.once(event, resolve4);
+      this.once(event, resolve5);
     });
   }
   async done() {
@@ -14013,7 +14013,7 @@ var AssistantStream = class _AssistantStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve4, reject) => readQueue.push({ resolve: resolve4, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -15631,7 +15631,7 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve4, reject) => readQueue.push({ resolve: resolve4, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -17282,7 +17282,7 @@ var ResponseStream = class _ResponseStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve4, reject) => readQueue.push({ resolve: resolve4, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
         }
         const event = pushQueue.shift();
         return { value: event, done: false };
@@ -18123,19 +18123,22 @@ function loadConfig() {
   const brightMcpUrl = process.env.BRIGHT_MCP_URL;
   const brightHostname = process.env.BRIGHT_HOSTNAME ?? (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
+  const runMode = process.env.RUN_MODE ?? "full";
   const models = (process.env.AI_MODEL ?? DEFAULT_MODEL).split(",").map((s) => s.trim()).filter(Boolean);
   const modelSelector = new ModelSelector(models);
   const inferenceUrl = process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceProvider = detectProvider(inferenceUrl);
   console.log(`[Config] AI model(s): ${modelSelector}`);
   console.log(`[Config] Inference provider: ${inferenceProvider}`);
+  console.log(`[Config] Run mode: ${runMode}`);
   return {
     brightToken,
     brightHostname,
     brightMcpUrl,
     brightProjectId,
     inferenceProvider,
-    modelSelector
+    modelSelector,
+    runMode
   };
 }
 function requireEnv(name) {
@@ -18147,8 +18150,9 @@ function requireEnv(name) {
 }
 
 // src/utils.ts
+import { execSync } from "child_process";
 function sleep2(ms) {
-  return new Promise((resolve4) => setTimeout(resolve4, ms));
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function formatTechStack(techStack) {
   const stack = [...techStack.languages, ...techStack.frameworks].join(", ");
@@ -18160,16 +18164,205 @@ function formatTechStack(techStack) {
 function toErrorMessage(err) {
   return err instanceof Error ? err.message : String(err);
 }
+function toDetailedErrorMessage(err) {
+  if (err instanceof Error) {
+    const execErr = err;
+    if (execErr.stderr || execErr.stdout) {
+      const stderr = String(execErr.stderr ?? "").trim();
+      const stdout = String(execErr.stdout ?? "").trim();
+      const combined = [stdout, stderr].filter(Boolean).join("\n");
+      if (combined.length > 0) {
+        if (combined.length <= 6e3) {
+          return `${err.message}
+${combined}`;
+        }
+        const head = combined.slice(0, 2500);
+        const tail = combined.slice(-3e3);
+        return `${err.message}
+${head}
+
+... (${combined.length - 5500} chars omitted) ...
+
+${tail}`;
+      }
+    }
+    return err.message;
+  }
+  return String(err);
+}
 function extractJson(text) {
   const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
   if (codeBlockMatch) {
     return codeBlockMatch[1].trim();
   }
-  const jsonMatch = text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
-  if (jsonMatch) {
-    return jsonMatch[1];
+  const start = text.search(/[\[{]/);
+  if (start === -1) return text;
+  const open = text[start];
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === open) depth++;
+    else if (ch === close) {
+      depth--;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
   }
-  return text;
+  return text.slice(start);
+}
+function isDangerousCommand(command) {
+  const SAFE_HOST_COMMANDS = /* @__PURE__ */ new Set([
+    "cat",
+    "ls",
+    "head",
+    "tail",
+    "grep",
+    "find",
+    "wc",
+    // read-only inspection
+    "chmod",
+    "chown",
+    // permission fixes
+    "sed",
+    "awk",
+    // text transforms
+    "cp",
+    "mv",
+    "mkdir",
+    "touch",
+    "ln",
+    // file operations
+    "echo",
+    "printf",
+    "tee",
+    // output/write
+    "git",
+    // version control
+    "npm",
+    "npx",
+    "pnpm",
+    "yarn",
+    "bun",
+    // JS package managers
+    "bundle",
+    "gem",
+    "rake",
+    // Ruby
+    "pip",
+    "pip3",
+    "python",
+    "python3",
+    // Python
+    "go",
+    "cargo",
+    "mvn",
+    "gradle",
+    "sbt",
+    // Other build tools
+    "make",
+    "cmake",
+    // Build systems
+    "env",
+    "which",
+    "command",
+    "type",
+    "test",
+    "true",
+    // Shell builtins
+    "sh",
+    "bash",
+    "zsh",
+    // Subshells (for -c "...")
+    "curl",
+    "wget",
+    // HTTP (for healthchecks)
+    "kill",
+    "pkill",
+    // Process management
+    "sleep",
+    "date",
+    // Utilities
+    "node"
+    // Node.js
+  ]);
+  function getFirstWord(segment) {
+    return segment.trim().replace(/^(\w+=\S+\s+)*/, "").split(/\s+/)[0]?.toLowerCase() ?? "";
+  }
+  const topWord = getFirstWord(command);
+  if (topWord === "docker" || topWord === "docker-compose") {
+    return false;
+  }
+  const segments = command.split(/\s*(?:\||&&|\|\|)\s*/);
+  for (const seg of segments) {
+    if (!seg.trim()) continue;
+    const word = getFirstWord(seg);
+    if (word === "docker" || word === "docker-compose") continue;
+    if (!SAFE_HOST_COMMANDS.has(word)) return true;
+  }
+  if (/\b(curl|wget)\b.*\|\s*(sh|bash|zsh)\b/i.test(command)) {
+    return true;
+  }
+  if (/\brm\s+-rf\s+[/~]/i.test(command)) {
+    return true;
+  }
+  return false;
+}
+function runShellCommand(repoPath, command, timeoutMs = 6e4) {
+  if (isDangerousCommand(command)) {
+    return "Error: dangerous command blocked";
+  }
+  try {
+    const output = execSync(command, {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: timeoutMs,
+      maxBuffer: 5 * 1024 * 1024,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    const result = output.trim();
+    return result.length > 1e4 ? result.slice(-1e4) + "\n... [truncated]" : result || "(no output)";
+  } catch (err) {
+    if (err && typeof err === "object" && "stderr" in err) {
+      const errObj = err;
+      const stderr = String(errObj.stderr ?? "").trim();
+      const stdout = String(errObj.stdout ?? "").trim();
+      return `Command failed:
+${stdout}
+${stderr}`.slice(-5e3);
+    }
+    return `Command failed: ${toErrorMessage(err)}`;
+  }
+}
+function extractCodeBlock(text) {
+  const match2 = text.match(
+    /```(?:dockerfile|docker|Dockerfile|ruby|python|javascript|typescript|sh|bash|go|java|scala|kotlin|csharp|cs)?\s*\n([\s\S]*?)```/i
+  );
+  if (match2) return match2[1].trimEnd() + "\n";
+  const lines = text.split("\n");
+  const dockerLines = lines.filter(
+    (l) => /^(FROM|RUN|COPY|ADD|WORKDIR|EXPOSE|CMD|ENTRYPOINT|ENV|ARG|LABEL|VOLUME|USER|HEALTHCHECK|SHELL|STOPSIGNAL|ONBUILD)\s/i.test(
+      l.trim()
+    ) || l.trim() === "" || l.trim().startsWith("#")
+  );
+  if (dockerLines.length >= 3) return dockerLines.join("\n") + "\n";
+  return null;
 }
 
 // node_modules/zod/v4/core/core.js
@@ -24183,7 +24376,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve4) => setTimeout(resolve4, pollInterval));
+        await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -24200,7 +24393,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -24278,7 +24471,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve4(parseResult.data);
+            resolve5(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -24539,12 +24732,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve4, interval);
+      const timeoutId = setTimeout(resolve5, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -26743,7 +26936,7 @@ var SSEClientTransport = class {
   }
   _startOrAuth() {
     const fetchImpl = this?._eventSourceInit?.fetch ?? this._fetch ?? fetch;
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       this._eventSource = new EventSource(this._url.href, {
         ...this._eventSourceInit,
         fetch: async (url2, init2) => {
@@ -26764,7 +26957,7 @@ var SSEClientTransport = class {
       this._abortController = new AbortController();
       this._eventSource.onerror = (event) => {
         if (event.code === 401 && this._authProvider) {
-          this._authThenStart().then(resolve4, reject);
+          this._authThenStart().then(resolve5, reject);
           return;
         }
         const error2 = new SseError(event.code, event.message, event);
@@ -26786,7 +26979,7 @@ var SSEClientTransport = class {
           void this.close();
           return;
         }
-        resolve4();
+        resolve5();
       });
       this._eventSource.onmessage = (event) => {
         const messageEvent = event;
@@ -27328,7 +27521,7 @@ async function createBrightMcpClient(config2) {
   }
   let cachedSchemas = null;
   function isSessionError(err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = toErrorMessage(err);
     return msg.includes("Session not found") || msg.includes("session expired") || msg.includes("Connection closed") || msg.includes("Not connected");
   }
   let reconnectPromise = null;
@@ -27342,7 +27535,7 @@ async function createBrightMcpClient(config2) {
         await client.close();
       } catch (err) {
         console.warn(
-          `[MCP] Error closing old client: ${err instanceof Error ? err.message : String(err)}`
+          `[MCP] Error closing old client: ${toErrorMessage(err)}`
         );
       }
       cachedSchemas = null;
@@ -27355,7 +27548,7 @@ async function createBrightMcpClient(config2) {
         } catch (err) {
           lastErr = err;
           console.warn(
-            `[MCP] Reconnect attempt ${i + 1}/3 failed: ${err instanceof Error ? err.message : String(err)}`
+            `[MCP] Reconnect attempt ${i + 1}/3 failed: ${toErrorMessage(err)}`
           );
           if (i < 2) await new Promise((r) => setTimeout(r, 2e3 * (i + 1)));
         }
@@ -27414,7 +27607,7 @@ async function createBrightMcpClient(config2) {
         await reconnect();
         return callMcpToolRawImpl(name, args, true);
       }
-      return `Error from Bright API: ${err instanceof Error ? err.message : String(err)}`;
+      return `Error from Bright API: ${toErrorMessage(err)}`;
     }
     const contentArr = Array.isArray(result.content) ? result.content : [];
     const text = contentArr.filter(
@@ -30734,10 +30927,10 @@ var Minipass = class extends EventEmitter {
    * Return a void Promise that resolves once the stream ends.
    */
   async promise() {
-    return new Promise((resolve4, reject) => {
+    return new Promise((resolve5, reject) => {
       this.on(DESTROYED, () => reject(new Error("stream destroyed")));
       this.on("error", (er) => reject(er));
-      this.on("end", () => resolve4());
+      this.on("end", () => resolve5());
     });
   }
   /**
@@ -30761,7 +30954,7 @@ var Minipass = class extends EventEmitter {
         return Promise.resolve({ done: false, value: res });
       if (this[EOF])
         return stop();
-      let resolve4;
+      let resolve5;
       let reject;
       const onerr = (er) => {
         this.off("data", ondata);
@@ -30775,19 +30968,19 @@ var Minipass = class extends EventEmitter {
         this.off("end", onend);
         this.off(DESTROYED, ondestroy);
         this.pause();
-        resolve4({ value, done: !!this[EOF] });
+        resolve5({ value, done: !!this[EOF] });
       };
       const onend = () => {
         this.off("error", onerr);
         this.off("data", ondata);
         this.off(DESTROYED, ondestroy);
         stop();
-        resolve4({ done: true, value: void 0 });
+        resolve5({ done: true, value: void 0 });
       };
       const ondestroy = () => onerr(new Error("stream destroyed"));
       return new Promise((res2, rej) => {
         reject = rej;
-        resolve4 = res2;
+        resolve5 = res2;
         this.once(DESTROYED, ondestroy);
         this.once("error", onerr);
         this.once("end", onend);
@@ -31763,9 +31956,9 @@ var PathBase = class {
     if (this.#asyncReaddirInFlight) {
       await this.#asyncReaddirInFlight;
     } else {
-      let resolve4 = () => {
+      let resolve5 = () => {
       };
-      this.#asyncReaddirInFlight = new Promise((res) => resolve4 = res);
+      this.#asyncReaddirInFlight = new Promise((res) => resolve5 = res);
       try {
         for (const e of await this.#fs.promises.readdir(fullpath, {
           withFileTypes: true
@@ -31778,7 +31971,7 @@ var PathBase = class {
         children.provisional = 0;
       }
       this.#asyncReaddirInFlight = void 0;
-      resolve4();
+      resolve5();
     }
     return children.slice(0, children.provisional);
   }
@@ -32840,10 +33033,10 @@ var Ignore = class {
   ignored(p) {
     const fullpath = p.fullpath();
     const fullpaths = `${fullpath}/`;
-    const relative2 = p.relative() || ".";
-    const relatives = `${relative2}/`;
+    const relative = p.relative() || ".";
+    const relatives = `${relative}/`;
     for (const m of this.relative) {
-      if (m.match(relative2) || m.match(relatives))
+      if (m.match(relative) || m.match(relatives))
         return true;
     }
     for (const m of this.absolute) {
@@ -32854,9 +33047,9 @@ var Ignore = class {
   }
   childrenIgnored(p) {
     const fullpath = p.fullpath() + "/";
-    const relative2 = (p.relative() || ".") + "/";
+    const relative = (p.relative() || ".") + "/";
     for (const m of this.relativeChildren) {
-      if (m.match(relative2))
+      if (m.match(relative))
         return true;
     }
     for (const m of this.absoluteChildren) {
@@ -33676,7 +33869,7 @@ var glob = Object.assign(glob_, {
 glob.glob = glob;
 
 // src/phases/analyze.ts
-async function detectTechStack(_llm, repoPath, _model) {
+async function detectTechStack(repoPath) {
   return detectTechStackFromFiles(repoPath);
 }
 async function detectTechStackFromFiles(repoPath) {
@@ -34165,7 +34358,9 @@ var GLOB_IGNORE = [
   // not backend API endpoints
   "**/frontend/**",
   "**/client/**",
-  "**/app/assets/**"
+  "**/app/assets/**",
+  "**/assets/javascripts/**",
+  "**/plugins/**/assets/**"
 ];
 async function findControllerFiles(repoPath) {
   const files = /* @__PURE__ */ new Set();
@@ -34867,80 +35062,125 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
     );
   }
   const handleTool = createBodyExtractionToolHandler(repoPath);
-  for (let idx = 0; idx < needsLlm.length; idx++) {
-    const ep = needsLlm[idx];
-    console.log(
-      `[Analyze] Param extraction [${idx + 1}/${needsLlm.length}]: ${ep.method} ${ep.path} (${ep.filePath})`
-    );
-    const fullPath = resolve(repoPath, ep.filePath);
+  const byFile = /* @__PURE__ */ new Map();
+  for (const ep of needsLlm) {
+    const key = ep.filePath;
+    if (!byFile.has(key)) byFile.set(key, []);
+    byFile.get(key).push(ep);
+  }
+  let processedCount = 0;
+  const BATCH_SIZE = 15;
+  for (const [filePath, fileEndpoints] of byFile) {
+    const fullPath = resolve(repoPath, filePath);
     let content;
     try {
       content = readFileSync(fullPath, "utf-8");
     } catch {
-      enriched.push(ep);
+      enriched.push(...fileEndpoints);
+      processedCount += fileEndpoints.length;
       continue;
     }
-    const anchor = ep.path.replace(/^\//, "").split("/")[0] || ep.method;
-    const snippet = extractSnippet(content, anchor);
-    const totalLines = content.split("\n").length;
-    const needsBody = ["POST", "PUT", "PATCH"].includes(
-      ep.method.toUpperCase()
-    );
-    const hasPathParams = /[:{}]/.test(ep.path);
-    const messages = [
-      {
-        role: "system",
-        content: `You are an API analyst. Given a code snippet for a ${ep.method} endpoint, determine the parameters with realistic sample values.
+    for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += BATCH_SIZE) {
+      const batch = fileEndpoints.slice(batchStart, batchStart + BATCH_SIZE);
+      processedCount += batch.length;
+      console.log(
+        `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`
+      );
+      const anchors = new Set(
+        batch.flatMap((ep) => {
+          const parts = ep.path.replace(/^\//, "").split("/");
+          return [parts[0], parts[1]].filter(Boolean);
+        })
+      );
+      let combinedSnippet = "";
+      for (const anchor of anchors) {
+        const snip = extractSnippet(content, anchor);
+        if (snip && !combinedSnippet.includes(snip)) {
+          combinedSnippet += (combinedSnippet ? "\n...\n" : "") + snip;
+        }
+      }
+      if (!combinedSnippet) {
+        combinedSnippet = content.split("\n").slice(0, 120).map((l, i) => `${i + 1}: ${l}`).join("\n");
+      }
+      const totalLines = content.split("\n").length;
+      const endpointList = batch.map(
+        (ep, i) => `[${i}] ${ep.method} ${ep.path}${["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()) ? " (needs body)" : ""}${/[:{}]/.test(ep.path) ? " (has path params)" : ""}`
+      ).join("\n");
+      const messages = [
+        {
+          role: "system",
+          content: `You are an API analyst. Given code snippets and a list of endpoints, determine the parameters for EACH endpoint with realistic sample values.
 
 You have tools to inspect more code:
 - read_lines: read specific line ranges from any file
 - find_type: search for a class/interface/DTO definition by name
 
-Use these tools to look up referenced DTOs, request models, or schemas. Return your final answer as JSON:
-{"body": "<json string or empty>", "contentType": "application/json or empty", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}`
-      },
-      {
-        role: "user",
-        content: `Endpoint: ${ep.method} ${ep.path}
-File: ${ep.filePath} (${totalLines} lines total)
+Return a JSON array with one entry per endpoint (matching the [index]):
+[{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
 
+For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params (:id, {id}), provide realistic values.`
+        },
+        {
+          role: "user",
+          content: `Endpoints from ${filePath} (${totalLines} lines):
+${endpointList}
+
+Relevant code:
 \`\`\`
-${snippet}
+${combinedSnippet.slice(0, 6e3)}
 \`\`\`
 
-${needsBody ? `This is a ${ep.method} endpoint \u2014 provide a realistic request body with field names and sample values. DO NOT return an empty body "{}".` : ""}
-${hasPathParams ? `This endpoint has path parameters. Provide realistic values for each path param (e.g. a GUID for :id, a slug for :name).` : ""}
-If you see a DTO/model type referenced, use find_type to look it up. Return JSON with body, contentType, queryParams, and pathParams.`
-      }
-    ];
-    try {
-      const response = await chatWithTools(
-        llm,
-        messages,
-        bodyExtractionTools,
-        handleTool,
-        model,
-        5
-      );
-      const parsed = JSON.parse(extractJson(response));
-      let resolvedPath = ep.path;
-      if (parsed.pathParams && typeof parsed.pathParams === "object") {
-        for (const [param, value] of Object.entries(parsed.pathParams)) {
-          resolvedPath = resolvedPath.replace(`:${param}`, String(value)).replace(`{${param}}`, String(value));
+Look up any referenced DTOs/models. Return a JSON array with params for each endpoint index.`
         }
+      ];
+      try {
+        const response = await chatWithTools(
+          llm,
+          messages,
+          bodyExtractionTools,
+          handleTool,
+          model,
+          5
+        );
+        const parsed = JSON.parse(extractJson(response));
+        const entries = Array.isArray(parsed) ? parsed : Array.isArray(parsed.endpoints) ? parsed.endpoints : [parsed];
+        for (const entry of entries) {
+          const idx = typeof entry.index === "number" ? entry.index : 0;
+          const ep = batch[idx] ?? batch[0];
+          if (!ep) continue;
+          let resolvedPath = ep.path;
+          if (entry.pathParams && typeof entry.pathParams === "object") {
+            for (const [param, value] of Object.entries(entry.pathParams)) {
+              resolvedPath = resolvedPath.replace(`:${param}`, String(value)).replace(`{${param}}`, String(value));
+            }
+          }
+          enriched.push({
+            ...ep,
+            path: resolvedPath,
+            queryParams: entry.queryParams?.length > 0 ? entry.queryParams : ep.queryParams,
+            body: entry.body ? typeof entry.body === "string" ? entry.body : JSON.stringify(entry.body) : void 0,
+            contentType: entry.contentType || void 0
+          });
+        }
+        const coveredIndices = new Set(
+          entries.filter((e) => typeof e.index === "number").map((e) => e.index)
+        );
+        for (let i = 0; i < batch.length; i++) {
+          if (!coveredIndices.has(i) && entries.length !== 1) {
+            enriched.push(batch[i]);
+          }
+        }
+        if (entries.length === 1 && typeof entries[0].index !== "number" && batch.length > 1) {
+          for (let i = 1; i < batch.length; i++) {
+            enriched.push(batch[i]);
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `[Analyze] Failed batch param extraction for ${filePath}: ${err}`
+        );
+        enriched.push(...batch);
       }
-      enriched.push({
-        ...ep,
-        path: resolvedPath,
-        queryParams: parsed.queryParams?.length > 0 ? parsed.queryParams : ep.queryParams,
-        body: parsed.body || void 0,
-        contentType: parsed.contentType || void 0
-      });
-    } catch (err) {
-      console.warn(
-        `[Analyze] Failed to identify params for ${ep.method} ${ep.path}: ${err}`
-      );
-      enriched.push(ep);
     }
   }
   return enriched;
@@ -35129,7 +35369,7 @@ async function discoverEndpointsViaSwagger(baseUrl) {
 // src/phases/startup.ts
 import {
   spawn,
-  execSync as execSync2,
+  execSync as execSync3,
   execFileSync as execFileSync4
 } from "child_process";
 import { createInterface } from "readline";
@@ -35138,7 +35378,7 @@ import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync
 // src/tools.ts
 import { readFileSync as readFileSync2, existsSync as existsSync3, statSync, writeFileSync } from "fs";
 import { resolve as resolve2 } from "path";
-import { execFileSync as execFileSync3, execSync } from "child_process";
+import { execFileSync as execFileSync3, execSync as execSync2 } from "child_process";
 var codebaseTools = [
   {
     type: "function",
@@ -35180,17 +35420,21 @@ var codebaseTools = [
     type: "function",
     function: {
       name: "search_files",
-      description: "Search file contents for a text pattern using grep. Returns matching lines with file paths and line numbers.",
+      description: "Search file contents for a pattern using grep. Returns matching lines with file paths and line numbers. Supports both fixed text and regex patterns.",
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "Search string (fixed text, not regex)"
+            description: "Search pattern (fixed text by default, or regex if regex=true)"
           },
           glob: {
             type: "string",
             description: 'Optional glob to restrict search to certain files (e.g. "*.ts")'
+          },
+          regex: {
+            type: "boolean",
+            description: "If true, treat query as a regular expression instead of fixed text. Useful for searching patterns like 'authenticate|authorize|login'."
           }
         },
         required: ["query"],
@@ -35243,6 +35487,7 @@ function createToolHandler(repoPath) {
       case "search_files": {
         const query = String(args.query ?? "");
         const fileGlob = args.glob ? String(args.glob) : void 0;
+        const useRegex = args.regex === true;
         try {
           const grepArgs = [
             "-rn",
@@ -35256,7 +35501,7 @@ function createToolHandler(repoPath) {
             "--exclude-dir=vendor",
             "--exclude-dir=.data",
             "--exclude-dir=data",
-            "-F",
+            ...useRegex ? ["-E"] : ["-F"],
             "--",
             query,
             "."
@@ -35304,17 +35549,17 @@ var writeFileTool = {
     }
   }
 };
-var runCommandTool = {
+var runCommandOnHostTool = {
   type: "function",
   function: {
-    name: "run_command",
-    description: "Run a shell command in the repository directory and return its output. Use for diagnostics (docker logs, docker ps, ls, cat) or small fixes (sed, chmod). Commands are killed after 30 seconds.",
+    name: "run_command_on_host",
+    description: "Run a shell command on the HOST machine (not inside a Docker container). Use for host-level diagnostics (docker ps, docker logs, docker inspect, ls, cat), builds (docker build, docker compose build), or small file fixes (sed, chmod). Commands are killed after 120 seconds.",
     parameters: {
       type: "object",
       properties: {
         command: {
           type: "string",
-          description: `Shell command to run (e.g. "docker logs discourse_dev --tail 50", "sed -i 's/-it/-i/g' bin/docker/exec")`
+          description: `Host shell command (e.g. "docker logs myapp --tail 50", "docker build -t myapp .", "sed -i 's/old/new/g' config.yml")`
         }
       },
       required: ["command"],
@@ -35322,7 +35567,29 @@ var runCommandTool = {
     }
   }
 };
-function createInfraToolHandler(repoPath) {
+var runCommandInDockerTool = {
+  type: "function",
+  function: {
+    name: "run_command_in_docker",
+    description: "Run a command INSIDE a Docker container. Use this to inspect the container environment, check what's installed, read logs, test commands, or create seed data. Automatically wraps the command with 'docker exec' (running container) or 'docker run --rm' (image). Commands are killed after 120 seconds.",
+    parameters: {
+      type: "object",
+      properties: {
+        container: {
+          type: "string",
+          description: 'Container name/ID (for running containers) or image name (to start a temporary container). e.g. "bright-app-local", "myapp-web-1", "abc123def"'
+        },
+        command: {
+          type: "string",
+          description: `Command to run inside the container (e.g. "which pnpm", "rails runner 'User.create!(...)'", "cat /app/config/database.yml", "ps aux")`
+        }
+      },
+      required: ["container", "command"],
+      additionalProperties: false
+    }
+  }
+};
+function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
   const baseHandler = createDockerfileToolHandler(repoPath);
   return async (name, args) => {
     switch (name) {
@@ -35336,34 +35603,55 @@ function createInfraToolHandler(repoPath) {
           writeFileSync(filePath, content);
           return `Written ${content.length} bytes to ${args.path}`;
         } catch (err) {
-          return `Error writing file: ${err instanceof Error ? err.message : String(err)}`;
+          return `Error writing file: ${toErrorMessage(err)}`;
         }
       }
-      case "run_command": {
+      case "run_command":
+      case "run_command_on_host": {
         const command = String(args.command ?? "");
-        if (/\brm\s+-rf\s+[/~]|:\(\)\{|fork\s*bomb|mkfs|dd\s+if=/i.test(command)) {
-          return "Error: dangerous command blocked";
-        }
-        try {
-          const output = execSync(command, {
-            cwd: repoPath,
-            encoding: "utf-8",
-            timeout: 3e4,
-            maxBuffer: 5 * 1024 * 1024,
-            stdio: ["pipe", "pipe", "pipe"]
-          });
-          const result = output.trim();
-          return result.length > 1e4 ? result.slice(-1e4) + "\n... [truncated]" : result || "(no output)";
-        } catch (err) {
-          if (err && typeof err === "object" && "stderr" in err) {
-            const stderr = String(err.stderr).trim();
-            const stdout = String(err.stdout).trim();
-            return `Command failed:
-${stdout}
-${stderr}`.slice(-5e3);
+        console.log(`[Tool] run_command_on_host: ${command.slice(0, 200)}`);
+        return runShellCommand(repoPath, command, 12e4);
+      }
+      case "run_command_in_docker": {
+        const container = String(args.container ?? "");
+        const cmd = String(args.command ?? "");
+        console.log(`[Tool] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+        const isRunning = (() => {
+          try {
+            const out = execSync2(
+              `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+              { encoding: "utf-8", timeout: 5e3 }
+            ).trim();
+            return out === "true";
+          } catch {
+            return false;
           }
-          return `Command failed: ${err instanceof Error ? err.message : String(err)}`;
-        }
+        })();
+        const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
+        return runShellCommand(repoPath, dockerCmd, 12e4);
+      }
+      case "wait": {
+        const seconds = Math.min(60, Math.max(1, Number(args.seconds ?? 10)));
+        console.log(`[Tool] wait: ${seconds}s`);
+        await new Promise((r) => setTimeout(r, seconds * 1e3));
+        return `Waited ${seconds} seconds`;
+      }
+      case "save_hint": {
+        const hint = String(args.hint ?? "").trim();
+        if (!hint) return "Error: hint cannot be empty";
+        console.log(`[Tool] save_hint: ${hint.slice(0, 200)}`);
+        if (onHint) onHint(hint);
+        return `Hint saved: "${hint.slice(0, 100)}". It will be available to the next repair attempt.`;
+      }
+      case "remove_hint": {
+        const hint = String(args.hint ?? "").trim();
+        if (!hint) return "Error: hint cannot be empty";
+        console.log(`[Tool] remove_hint: ${hint.slice(0, 200)}`);
+        if (onRemoveHint) onRemoveHint(hint);
+        return `Hint removed (if it existed). Remaining hints will be shown to the next attempt.`;
+      }
+      case "probe_url": {
+        return probeUrl(args);
       }
       default:
         return baseHandler(name, args);
@@ -35388,11 +35676,100 @@ var verifyDockerImageTool = {
     }
   }
 };
+var waitTool = {
+  type: "function",
+  function: {
+    name: "wait",
+    description: "Wait for a specified number of seconds. Use this when services need time to start up before checking again. Max 60 seconds.",
+    parameters: {
+      type: "object",
+      properties: {
+        seconds: {
+          type: "number",
+          description: "Number of seconds to wait (1-60)"
+        }
+      },
+      required: ["seconds"],
+      additionalProperties: false
+    }
+  }
+};
+var saveHintTool = {
+  type: "function",
+  function: {
+    name: "save_hint",
+    description: "Save an important discovery or hint for the NEXT repair attempt. Use this when you learn something critical about how this application works (e.g. 'App reads DB settings from config/database.yml, not from DATABASE_URL', 'The app needs Redis on port 6379'). These hints survive across repair iterations so the next attempt doesn't have to rediscover the same facts.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "A concise factual statement about the application's configuration, dependencies, or behavior. Should be actionable for the next repair attempt."
+        }
+      },
+      required: ["hint"],
+      additionalProperties: false
+    }
+  }
+};
+var removeHintTool = {
+  type: "function",
+  function: {
+    name: "remove_hint",
+    description: "Remove a previously saved hint that turned out to be WRONG or MISLEADING. Use this when you discover that a hint from a previous attempt led to a failure or was based on incorrect assumptions. Pass the exact hint text (or a substring) to remove it.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "The exact text (or substring) of the hint to remove."
+        }
+      },
+      required: ["hint"],
+      additionalProperties: false
+    }
+  }
+};
+var probeUrlTool = {
+  type: "function",
+  function: {
+    name: "probe_url",
+    description: "Make an HTTP request to a URL and return the status code, headers, and response body. Use this to check if the application is responding, diagnose 500 errors, test endpoints, etc.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Full URL to probe (e.g. http://localhost:3000/)"
+        },
+        method: {
+          type: "string",
+          description: "HTTP method (GET, POST, PUT, etc.). Defaults to GET."
+        },
+        headers: {
+          type: "string",
+          description: `Optional JSON object of headers (e.g. '{"Content-Type": "application/json"}')`
+        },
+        body: {
+          type: "string",
+          description: "Optional request body for POST/PUT requests"
+        }
+      },
+      required: ["url"],
+      additionalProperties: false
+    }
+  }
+};
 var infraTools = [
   ...codebaseTools,
   verifyDockerImageTool,
   writeFileTool,
-  runCommandTool
+  runCommandOnHostTool,
+  runCommandInDockerTool,
+  waitTool,
+  probeUrlTool,
+  saveHintTool,
+  removeHintTool
 ];
 var dockerfileTools = [
   ...codebaseTools,
@@ -35410,6 +35787,54 @@ async function verifyDockerImage(imageRef) {
     return res.ok;
   } catch {
     return true;
+  }
+}
+async function probeUrl(args) {
+  const url2 = String(args.url ?? "");
+  if (!url2) return "Error: url parameter is required";
+  const method = String(args.method ?? "GET").toUpperCase();
+  let extraHeaders = {};
+  if (args.headers) {
+    try {
+      extraHeaders = JSON.parse(String(args.headers));
+    } catch {
+      return "Error: invalid JSON in headers parameter";
+    }
+  }
+  const fetchOpts = {
+    method,
+    headers: {
+      Accept: "application/json, text/html, */*",
+      ...extraHeaders
+    },
+    redirect: "manual",
+    signal: AbortSignal.timeout(15e3)
+  };
+  if (args.body && (method === "POST" || method === "PUT" || method === "PATCH")) {
+    fetchOpts.body = String(args.body);
+  }
+  try {
+    console.log(`[Tool] probe_url: ${method} ${url2}`);
+    const res = await fetch(url2, fetchOpts);
+    const status = res.status;
+    const headerLines = [];
+    for (const [k, v] of res.headers.entries()) {
+      const lk = k.toLowerCase();
+      if (lk === "content-type" || lk === "location" || lk === "set-cookie" || lk === "www-authenticate" || lk === "x-csrf-token") {
+        headerLines.push(`${k}: ${v}`);
+      }
+    }
+    const bodyText = await res.text().catch(() => "");
+    const bodyPreview = bodyText.length > 2e3 ? bodyText.slice(0, 2e3) + "\n... [truncated]" : bodyText;
+    const parts = [`HTTP ${status}`];
+    if (headerLines.length > 0) parts.push(headerLines.join("\n"));
+    parts.push(bodyPreview || "(empty body)");
+    console.log(`[Tool] probe_url result: ${status}`);
+    return parts.join("\n\n");
+  } catch (err) {
+    const msg = toErrorMessage(err);
+    console.log(`[Tool] probe_url error: ${msg}`);
+    return `Error: ${msg}`;
   }
 }
 function createDockerfileToolHandler(repoPath) {
@@ -35447,6 +35872,51 @@ async function validateDockerfileImages(dockerfile) {
   }
   return missing;
 }
+async function findAlternativeImage(badRef) {
+  const [imagePart, badTag = "latest"] = badRef.split(":");
+  const candidates = [];
+  if (badTag.endsWith("-slim")) {
+    candidates.push(`${imagePart}:${badTag.replace(/-slim$/, "")}`);
+  } else {
+    candidates.push(`${imagePart}:${badTag}-slim`);
+  }
+  const parts = badTag.split("-");
+  if (parts.length >= 3) {
+    candidates.push(`${imagePart}:${parts[0]}-${parts[parts.length - 1]}`);
+    candidates.push(`${imagePart}:${parts[0]}`);
+  }
+  if (parts.length >= 2) {
+    candidates.push(`${imagePart}:${parts[0]}`);
+  }
+  const versionMatch = badTag.match(/^(\d+\.\d+)/);
+  if (versionMatch) {
+    candidates.push(`${imagePart}:${versionMatch[1]}`);
+  }
+  const seen = /* @__PURE__ */ new Set([badRef]);
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (await verifyDockerImage(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+async function fixDockerfileImages(dockerfile) {
+  const missing = await validateDockerfileImages(dockerfile);
+  if (missing.length === 0) return dockerfile;
+  let patched = dockerfile;
+  for (const bad of missing) {
+    const alt = await findAlternativeImage(bad);
+    if (alt) {
+      console.log(`[Startup] Auto-fixing Docker image: ${bad} \u2192 ${alt}`);
+      patched = patched.split(bad).join(alt);
+    } else {
+      console.warn(`[Startup] No alternative found for Docker image: ${bad}`);
+    }
+  }
+  return patched;
+}
 function convertMcpToolsToOpenAI(schemas) {
   return schemas.map((schema) => ({
     type: "function",
@@ -35468,72 +35938,45 @@ function identifyStartupPrompt(techStack) {
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files and list directories.
+      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files, list directories, search code, run shell commands, and write files.
 
-If the tech stack description says "(service: <path>)", focus on building and running THAT specific service. It was selected as the best candidate for security testing in a monorepo. Build/publish commands should target that service's project file, and the port should match that service.
+If the tech stack description says "(service: <path>)", focus on running THAT specific service.
 
-Check for (in priority order):
-1. Docker Compose files (compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml) \u2014 **ALWAYS prefer Docker when a suitable compose file exists.** Docker avoids Node version incompatibilities, native module build issues, and missing system dependencies.
-2. Dockerfile with "docker build -t <name> . && docker run -d -p <port>:<port> <name>" \u2014 use this when a Dockerfile exists but no suitable compose file is available.
-3. package.json scripts (start, dev, serve)
-4. Makefile targets
-5. README instructions
-6. Python manage.py / wsgi.py
-7. Go main.go
-8. Gemfile + config.ru (Rails)
+## Guidelines
+- **BUILD FROM SOURCE using a Dockerfile** \u2014 the main application MUST be built via "docker build" or "docker compose build" from a Dockerfile in the repo. The goal is to test THIS repository's code as built from source.
+- **NEVER use pre-made dev containers** \u2014 reject any approach that pulls a pre-built image for the main application (e.g. scripts that do "docker pull <image>" or "docker run <prebuilt-image>"). Scripts like bin/docker/boot_dev, d/boot_dev, or similar convenience scripts typically pull pre-made dev images rather than building from source \u2014 DO NOT use them.
+- **Read compose files** before using them \u2014 skip CI/test-only compose files. If a compose file references a pre-built external image for the app service (not a local build context), do NOT use it as-is \u2014 either override with a local build or create your own Dockerfile.
+- If no suitable Dockerfile exists, use **write_file** to create one \u2014 do NOT use heredocs or inline cat in commands
+- Dependency services (postgres, redis, memcached, elasticsearch, etc.) can use their standard upstream images.
+- For full-stack apps, use the **backend API port** (not the frontend dev server)
+- This runs in an automated CI environment \u2014 no TTY/interactive prompts available
+- Read README, Dockerfile, compose files, package.json, Makefile etc. to determine the right approach
+- Use run_command_on_host for diagnostics (e.g. docker ps, docker logs, checking ports) if needed
 
-CRITICAL COMPOSE FILE RULES:
-- SKIP compose files that are clearly for CI/testing: docker-compose.test.yml, docker-compose.ci.yml, docker-compose.e2e.yml. These run tests and exit \u2014 they do NOT keep the app running.
-- READ the compose file contents before using it. If it contains a "sut" (system-under-test) service or a service that runs test commands and exits, do NOT use that compose file.
-- If the ONLY compose files are test/CI files, fall back to "docker build" + "docker run" using the Dockerfile instead.
-- Prefer compose files named: compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml, docker-compose.local.yml.
-
-IMPORTANT: If the project has Docker files (Dockerfile or compose), you MUST use Docker. Do NOT attempt a native (non-Docker) startup when Docker files are present \u2014 the app likely depends on databases, caches, or other services that won't be available natively. If no suitable compose file exists but a Dockerfile does, use "docker build" + "docker run".
-
-DOCKER WRAPPER SCRIPTS (e.g. bin/docker/boot_dev, d/rails, d/boot_dev):
-- Some projects (like Discourse) use shell scripts that internally run "docker exec -it". The "-it" flag requires a TTY which is NOT available in CI/automated environments.
-- If using such scripts, add prerequisites to strip -it flags BEFORE running them:
-  e.g. "find d/ bin/ -type f -exec sed -i 's/ -it / -i /g; s/ --tty//g' {} +"
-- Alternatively, call docker exec directly without -t instead of using the wrapper scripts.
-- Rails projects inside Docker containers need database setup. Add a prerequisite to run "docker exec <container> bin/rails db:create db:migrate" AFTER the container is running but BEFORE the Rails server starts.
-
-PORT SELECTION for full-stack apps (e.g. Rails + Ember CLI, Django + React):
-- For security scanning, ALWAYS use the BACKEND API port (e.g. Rails on 3000, Django on 8000), NOT the frontend dev server port (e.g. Ember CLI on 4200, Webpack on 3001).
-- The backend serves HTTP API endpoints that the security scanner needs to test.
-- The frontend dev server is just a hot-reload proxy \u2014 scanning it tests nothing useful.
-
-For Docker Compose: use "docker compose -f <file> up -d" as the command and set docker=true. Parse the compose file to find the exposed port.
-
-For Dockerfile (no compose): use "docker build -t app ." as prerequisite and "docker run -d -p <port>:<port> app" as command. Set docker=true. Parse the Dockerfile EXPOSE directive or application config to find the port.
-
-Determine:
-1. Prerequisites to run first (npm install, pip install, docker compose build, etc.)
-2. The startup command
-3. The port the application listens on
-4. Whether it uses Docker
-5. Required environment variables (provide sensible defaults for local dev)
-
-CRITICAL: "prerequisites" and "command" MUST be executable shell commands \u2014 NOT descriptions or explanations. They will be run directly via /bin/sh.
-  WRONG: "Ensure Docker and Docker Compose are installed"
-  RIGHT: "docker compose build"
-  WRONG: "Create a .env file with the required variables"
-  RIGHT: "cp .env.example .env"
-If Docker is used and the compose file handles everything, set prerequisites to an empty array [].`
-    },
-    {
-      role: "user",
-      content: `Analyze this repository and determine how to start the application locally.
-
-Use the tools to inspect package.json, Dockerfile, docker-compose.yml, compose.yml, Makefile, README, and other config files.
+## Command structure rules
+- **command** = the single command that starts the app (e.g. "docker compose up -d" or "docker run -d ...")
+- **prerequisites** = build steps that run before command (e.g. ["docker compose build", "docker build -t myapp ."])
+- NEVER combine build + run into one command with && \u2014 use prerequisites for builds
+- NEVER use heredocs (<<EOF), multi-line strings, or inline file creation in command or prerequisites \u2014 use write_file instead
+- Each prerequisite and the command must be a single, simple shell command
+- **CRITICAL**: The command runs ON THE HOST shell, not inside a container. If the app uses tools that only exist in the Docker image (e.g. bundle, rails, pnpm, node), the command MUST be "docker run ..." or "docker compose up ..." \u2014 NEVER a bare "bundle exec ..." or "node server.js" when docker=true.
+- **IMPORTANT**: Do NOT mix "docker run" and "docker compose" approaches. Either use docker compose for EVERYTHING (services + app) OR use manual "docker run" for everything. If you use "docker compose up -d" as the command, dependency services (postgres, redis) must be defined in the compose file \u2014 NOT started via "docker run" in prerequisites. Prerequisites should only contain build steps like "docker compose build".
 
 Return a JSON object:
 {
-  "command": "npm start",
+  "command": "docker compose up -d",
   "port": 3000,
-  "prerequisites": ["npm install"],
-  "envVars": { "NODE_ENV": "development", "PORT": "3000" },
-  "docker": false
-}`
+  "prerequisites": ["docker compose build"],
+  "envVars": { "NODE_ENV": "development" },
+  "docker": true,
+  "healthCheckPath": "/health"
+}
+
+- **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated health/status endpoint like "/health", "/srv/status", or "/api/health".`
+    },
+    {
+      role: "user",
+      content: `Analyze this repository and determine how to start the application locally. Use the tools to explore the project structure and config files. Return the JSON object.`
     }
   ];
 }
@@ -35541,28 +35984,21 @@ function rebuildStartupPrompt(techStack, previousConfig) {
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer restarting a ${techStack} application after source code was modified (security fixes were applied). The application was previously running with a known config. You have tools to read files and list directories.
+      content: `You are a DevOps engineer restarting a ${techStack} application after source code was modified (security fixes were applied). The application was previously running with a known config. You have tools to read files, list directories, run shell commands, and write files.
 
 Your job is to determine the REBUILD + RESTART procedure that ensures the running application reflects the new source code. This is critical \u2014 if you skip the rebuild step, the app will run stale code and the fixes won't take effect.
 
-Consider the deployment method from the previous config and adapt accordingly:
+The config MUST include a build step that compiles/packages the local source code into the running application:
+- Docker: use "docker build" or "docker compose build" / "docker compose up --build"
+- Native: use the project's build command (npm run build, bundle exec rake assets:precompile, go build, mvn package, etc.)
+- NEVER use scripts that pull pre-built images (bin/docker/boot_dev, etc.) \u2014 they ignore source changes
+- If the previous config used a pre-built image or a script that doesn't build from source, you MUST change the approach to build from source
 
-**Docker Compose**: Use --build flag to force image rebuild (e.g. "docker compose -f <file> up --build -d"). Without --build, Docker will reuse cached images with the OLD code.
-**Dockerfile (standalone)**: Rebuild the image with "docker build" then re-run. Include --no-cache only if the Dockerfile copies source code in early layers.
-**Native Node.js/Python/Go/etc.**: Run the appropriate build step as a prerequisite:
-  - Node.js: "npm run build" or "npx tsc" if there's a build step, then "npm start"
-  - Python: usually no build needed, just restart
-  - Go: "go build" before running
-  - Java/Kotlin: "mvn package" or "gradle build"
-**Makefile**: Check for a "build" or "rebuild" target
-**Helm/K8s**: Not applicable for local restarts \u2014 fall back to Docker or native
+Use the tools to inspect the project's build configuration and determine the appropriate rebuild strategy based on the deployment method.
 
-IMPORTANT: Keep the same port and environment variables from the previous config unless you have a specific reason to change them.
-
-CRITICAL: "prerequisites" and "command" MUST be executable shell commands \u2014 NOT descriptions or explanations. They will be run directly via /bin/sh.
-  WRONG: "Rebuild the Docker images"
-  RIGHT: "docker compose -f compose.local.yml build"
-If Docker Compose with --build handles everything, set prerequisites to an empty array [].`
+Key principles:
+- Keep the same port and environment variables unless you have a specific reason to change them
+- All prerequisites and commands must be executable shell commands (run via /bin/sh)`
     },
     {
       role: "user",
@@ -35579,33 +36015,42 @@ Return a JSON object:
   "port": 3000,
   "prerequisites": [],
   "envVars": {},
-  "docker": true
+  "docker": true,
+  "healthCheckPath": "/health"
 }`
     }
   ];
 }
-function retryStartupPrompt(techStack, previousConfig, errorOutput, attempt) {
+function retryStartupPrompt(techStack, previousConfig, errorOutput, attempt, allPreviousAttempts, hints) {
+  const historySection = allPreviousAttempts && allPreviousAttempts.length > 1 ? `
+
+Full attempt history:
+${allPreviousAttempts.map((a, i) => `Attempt ${i + 1}: ${a.config}
+Error: ${a.error.slice(-500)}`).join("\n\n")}` : "";
+  const hintsSection = hints && hints.length > 0 ? `
+
+Hints discovered by previous repair attempts (use these \u2014 they save investigation time):
+${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}` : "";
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer troubleshooting a failed application startup for a ${techStack} repository. The previous startup attempt failed. You have tools to read files and list directories.
+      content: `You are a DevOps engineer troubleshooting a failed application startup for a ${techStack} repository. The previous startup attempt failed. You have tools to read files, list directories, search code, run shell commands, and write files.
 
-Analyze the error and determine an alternative way to start the application. Common strategies:
-- If npm install failed due to native modules or Node version issues, try Docker instead
-- If Docker Compose failed, check for alternative compose files (compose.local.yml, docker-compose.dev.yml)
-- If a port conflict occurred, try a different port
-- If missing environment variables, check .env.example or README for required values
-- If build failed, check if there's a pre-built option or different build command
-- "cannot attach stdin to a TTY" \u2192 the wrapper scripts use "docker exec -it". Call docker exec directly WITHOUT -t, or strip -it flags from the scripts as a prerequisite: find d/ bin/ -type f -exec sed -i 's/ -it / -i /g' {} +
-- "database does not exist" / "relation does not exist" \u2192 add a prerequisite: docker exec <container> bin/rails db:create db:migrate (or the equivalent for the framework)
-- For full-stack apps (Rails+Ember, Django+React), use the BACKEND port (e.g. Rails=3000) NOT the frontend dev server port (e.g. Ember CLI=4200). The security scanner needs the API, not the frontend proxy.
+Analyze the error and determine an alternative way to start the application. Use the tools to investigate the project structure, read config files, run diagnostics (docker logs, docker ps, etc.), and understand the root cause.
 
-IMPORTANT: Do NOT repeat the same approach that already failed. Try a fundamentally different strategy.
-
-CRITICAL: "prerequisites" and "command" MUST be executable shell commands \u2014 NOT descriptions or explanations. They will be run directly via /bin/sh.
-  WRONG: "Use the local compose file instead"
-  RIGHT: "docker compose -f compose.local.yml build"
-If Docker Compose handles everything, set prerequisites to an empty array [].`
+Key principles:
+- Do NOT repeat the same approach that already failed \u2014 try a fundamentally different strategy
+- **BUILD FROM SOURCE using a Dockerfile** \u2014 the main application MUST be built via "docker build" or "docker compose build", not a pre-built external image. NEVER use convenience scripts (bin/docker/boot_dev, d/boot_dev, etc.) that pull pre-made dev containers.
+- If no Dockerfile exists, use **write_file** to create one \u2014 do NOT use heredocs or inline cat in commands
+- Dependency services (postgres, redis, etc.) can use upstream images
+- **command** = single command that starts the app. **prerequisites** = build steps. NEVER combine with &&
+- **CRITICAL**: The command runs ON THE HOST shell, not inside a container. If the app uses tools that only exist in the Docker image (e.g. bundle, rails, pnpm, node), the command MUST be "docker run ..." or "docker compose up ..." \u2014 NEVER a bare "bundle exec ..." or "node server.js" when docker=true.
+- **IMPORTANT**: Do NOT mix "docker run" and "docker compose" approaches. Either use docker compose for EVERYTHING (services + app) OR use manual "docker run" for everything. If you use "docker compose up -d" as the command, dependency services must be in the compose file \u2014 NOT started via "docker run" in prerequisites. Prerequisites should only contain build steps.
+- NEVER use heredocs (<<EOF) or multi-line strings in command/prerequisites \u2014 use write_file instead
+- This runs in an automated CI environment \u2014 no TTY/interactive prompts available
+- For full-stack apps, use the backend API port (not the frontend dev server)
+- Use **save_hint** to record important discoveries for future attempts
+- Use **remove_hint** to delete hints from previous attempts that turned out to be wrong or misleading`
     },
     {
       role: "user",
@@ -35615,9 +36060,9 @@ Previous config tried:
 ${previousConfig}
 
 Error output (last 2000 chars):
-${errorOutput.slice(-2e3)}
+${errorOutput.slice(-2e3)}${historySection}${hintsSection}
 
-Use the tools to investigate and find an alternative startup approach.
+Use the tools to investigate the root cause and find an alternative startup approach.
 
 Return a JSON object with the new approach:
 {
@@ -35625,8 +36070,11 @@ Return a JSON object with the new approach:
   "port": 3000,
   "prerequisites": [],
   "envVars": {},
-  "docker": true
-}`
+  "docker": true,
+  "healthCheckPath": "/health"
+}
+
+- **healthCheckPath** (optional): if the root route returns errors during boot, use a dedicated health endpoint.`
     }
   ];
 }
@@ -35634,50 +36082,19 @@ Return a JSON object with the new approach:
 // src/prompts/generate-dockerfile.ts
 var FRAMEWORK_HINTS = [
   {
-    keywords: ["scala", "sbt", "play framework"],
-    hint: `- For Scala/sbt projects, use the "sbtscala/scala-sbt" image (e.g. sbtscala/scala-sbt:eclipse-temurin-21.0.6_7_1.10.11_3.6.4). Verify the exact tag with verify_docker_image.
-- Large Scala projects need extra heap: ENV SBT_OPTS="-J-Xmx4g -J-XX:+UseG1GC" before running sbt.
-- If the project also has a Node.js/pnpm UI build, use a separate stage FROM node:<version>-bookworm-slim for the UI, and copy the built UI assets into the sbt build stage.
-- Check the project's .node-version or package.json engines field for the required Node.js version.
-- Run sbt commands (e.g. "sbt stage" or "sbt dist") to produce the build output.
-- The runtime stage can use eclipse-temurin:<version>-jre for a smaller image.
-- For Play Framework apps, start with "-Dconfig.resource=application.conf" and "-Dlogger.resource=logback.xml" (or logger.prod.xml if it exists) to avoid dev-mode file-not-found errors. Check conf/ for available logger config files.`
-  },
-  {
-    keywords: ["elixir", "phoenix"],
-    hint: `- For Elixir/Phoenix projects, use the official "elixir" image for the build stage and "debian:bookworm-slim" or "alpine" for runtime.
-- Install hex and rebar: RUN mix local.hex --force && mix local.rebar --force
-- Compile with MIX_ENV=prod: RUN mix deps.get --only prod && mix compile && mix phx.digest && mix release`
-  },
-  {
-    keywords: [".net", "c#", "aspnet", "dotnet"],
-    hint: `- For .NET projects, use "mcr.microsoft.com/dotnet/sdk" for build and "mcr.microsoft.com/dotnet/aspnet" for runtime. Verify the exact tags with verify_docker_image.
-- If the project uses Node.js for front-end assets, install Node.js via apt-get or a separate build stage.
-- IMPORTANT: For multi-project solutions, find and publish the correct runnable web API project. Do NOT publish orchestrator projects (AppHost, ServiceDefaults, Aspire) \u2014 they are not standalone deployable services.
-- Look for projects with "WebApp", "API", "Server", or "Web" in their name that reference ASP.NET Core.
-- If there's a global.json, use the exact SDK version it specifies. If using a preview/RC SDK not yet on MCR, install it via the dotnet-install.sh script instead of using the MCR image tag.
-- Use "dotnet publish <project>.csproj -c Release -o /app/publish" and verify the output .dll exists.`
-  },
-  {
-    keywords: ["java", "maven", "gradle", "spring"],
-    hint: `- For Java projects, use eclipse-temurin or amazoncorretto for the JDK build stage.
-- For Maven: RUN mvn package -DskipTests. For Gradle: RUN gradle build -x test.
-- Use a JRE image for the runtime stage.`
+    keywords: ["ruby", "rails"],
+    hint: `- Rails apps with JavaScript frontends need BOTH Ruby AND Node.js/pnpm in the same build environment. Prefer a single-stage Dockerfile for dev/test.
+- If the project has bin/docker/ scripts, those use "docker exec -it" which fails in CI \u2014 call commands directly instead.
+- Native extensions (psych, nokogiri) need dev headers: libyaml-dev, libxml2-dev, libxslt-dev, build-essential.`
   },
   {
     keywords: ["typescript", "node", "express", "nestjs", "next"],
-    hint: `- TypeScript's "tsc" exits with non-zero even when "--noEmitOnError false" is set (it still reports type errors to stderr). Always append "|| true" to any tsc RUN command so the Docker build continues despite type-check warnings.
-- Prefer "npm run build" or the project's own build script over raw tsc when possible.
-- In monorepo/Nx multi-stage Dockerfiles, the runtime stage's package.json (from the build output) often has different dependencies than the root package-lock.json. Use "npm install" instead of "npm ci" in the runtime stage to avoid lock-file mismatch errors.
-- Monorepo postinstall scripts often fail inside Docker (e.g. "Failed to process project graph", nx/lerna/turbo errors). Use "npm ci --ignore-scripts" to skip postinstall hooks, then run only needed post-install steps separately (e.g. "RUN npx patch-package || true").`
+    hint: `- TypeScript's "tsc" may exit non-zero even with "--noEmitOnError false". Append "|| true" if it's just type warnings.
+- In monorepos, read pnpm-workspace.yaml or package.json workspaces to understand the project structure before writing COPY lines.`
   },
   {
-    keywords: ["ruby", "rails", "sinatra", "rack"],
-    hint: `- For Ruby on Rails projects that ship with bin/docker/ wrapper scripts (e.g. Discourse), those scripts use "docker exec -it" which fails in CI. The Dockerfile should NOT use those scripts \u2014 instead call commands directly.
-- Rails apps need a running PostgreSQL/MySQL database before starting. Include "bin/rails db:create db:migrate" as part of the startup or prerequisites.
-- Use the official ruby:<version> or the project's own dev Docker image if available.
-- For bundler: RUN bundle install --without development test.
-- Start with: CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0", "-p", "3000"].`
+    keywords: [".net", "c#", "aspnet", "dotnet"],
+    hint: `- For multi-project solutions, find and publish the correct runnable web API project, not orchestrators (AppHost, ServiceDefaults, Aspire).`
   }
 ];
 function getFrameworkHints(techStack) {
@@ -35693,31 +36110,26 @@ function generateDockerfilePrompt(techStack) {
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer. Generate a Dockerfile for a ${techStack} project so it can be built and run in a Docker container.
+      content: `You are a DevOps engineer. Generate a Dockerfile for a ${techStack} project so it can be built and run in a Docker container for DEVELOPMENT/TESTING (not production).
 
-If the tech stack description says "(service: <path>)", this is a monorepo. Build and run THAT specific service. The Dockerfile should restore/build only that service (and its dependencies), not the entire repo. For .NET: "dotnet publish <path>/<name>.csproj". For Node.js: focus on that package's build script.
+If the tech stack description says "(service: <path>)", this is a monorepo. Build and run THAT specific service.
 
-You have tools to read files and list directories. Use them to inspect the project's dependency and configuration files (package.json, requirements.txt, .csproj, go.mod, Gemfile, pom.xml, Cargo.toml, build.sbt, project/build.properties, etc.) to determine:
-1. The language runtime and version needed
-2. How dependencies are installed
-3. Any build steps required (compilation, transpilation, etc.)
-4. The application entry point / start command
-5. The port the application listens on (check config files, source code, and README)
+You have tools to read files, list directories, and verify Docker image tags. Use them to inspect:
+1. Dependency manifests (package.json, Gemfile, requirements.txt, .csproj, go.mod, pom.xml, etc.)
+2. Build configuration and scripts
+3. The application entry point and port
+4. Monorepo structure (pnpm-workspace.yaml, package.json workspaces, etc.)
 
-IMPORTANT: You have a verify_docker_image tool. ALWAYS call it to verify that a base image:tag exists on Docker Hub BEFORE including it in a FROM line. If the image does not exist, try alternative tags until you find one that does.
+IMPORTANT: Use verify_docker_image to check that base image:tag EXISTS before including it in a FROM line.
 
-Generate a Dockerfile that:
-- Uses an appropriate official base image with a specific version tag (VERIFIED via the tool)
-- Sets a WORKDIR
-- Copies dependency manifests first and installs dependencies (for layer caching)
-- Copies the rest of the source code using "COPY . ." (do NOT cherry-pick individual directories \u2014 you will miss required source files)
-- Installs git (apt-get install -y git) if any build step or postinstall script may call git
-- Runs any necessary build steps
-- EXPOSEs the correct port
-- Sets CMD to start the application
-- For compiled languages (Go, Java, C#, Rust, Scala), use a multi-stage build to keep the final image small
-- Use .dockerignore-friendly patterns: copy manifests first for caching, then "COPY . ." for everything else
-- For multi-project/microservice repos, build the main web-facing API server (NOT orchestrators, test projects, or CLI tools)${frameworkHints}
+Principles:
+- BUILD FROM SOURCE. All compilation, asset building, and dependency installation must happen from the local source code inside the container. Never rely on downloading pre-built artifacts, binaries, or asset bundles from external URLs during the build.
+- Prefer a SINGLE-STAGE Dockerfile. Multi-stage adds complexity that often breaks (missing tools/files across stages). Only use multi-stage if you have a clear reason.
+- If the project needs BOTH a backend runtime (Ruby, Python, etc.) AND a JS build tool (Node, pnpm, etc.), install them ALL in the same stage. Asset compilation steps (e.g. rake assets:precompile) often shell out to node/pnpm \u2014 they must be available.
+- Use "COPY . ." for source code instead of cherry-picking individual directories \u2014 you will miss required files.
+- Copy dependency manifests FIRST and install dependencies for layer caching, then COPY the rest.
+- Install git if any build step might need it.
+- EXPOSE the correct port and set CMD to start the application.${frameworkHints}
 
 Return ONLY the Dockerfile content inside a single fenced code block. No explanation outside the code block.`
     },
@@ -35729,7 +36141,26 @@ Return ONLY the Dockerfile content inside a single fenced code block. No explana
 }
 
 // src/phases/startup.ts
-var MAX_STARTUP_ATTEMPTS = 5;
+var MAX_STARTUP_ATTEMPTS = parseInt(process.env.MAX_STARTUP_ATTEMPTS ?? "10", 10);
+function printStartupStats(stats) {
+  const total = stats.reduce((s, a) => s + a.durationMs, 0);
+  console.log(`
+[Startup] ===== Startup Statistics =====`);
+  console.log(`[Startup] Total attempts: ${stats.length}/${MAX_STARTUP_ATTEMPTS}`);
+  console.log(`[Startup] Total time: ${(total / 1e3).toFixed(1)}s`);
+  for (const s of stats) {
+    const dur = (s.durationMs / 1e3).toFixed(1);
+    const model = s.model ? ` [${s.model}]` : "";
+    console.log(
+      `[Startup]   #${s.attempt} ${s.strategy}${model} \u2192 ${s.result} (${dur}s) \u2014 ${s.command.slice(0, 80)}`
+    );
+    if (s.errorSummary) {
+      console.log(`[Startup]      error: ${s.errorSummary.slice(0, 150)}`);
+    }
+  }
+  console.log(`[Startup] ================================
+`);
+}
 function isSourceCodeError(errorMsg, previousErrors) {
   if (/OutOfMemoryError|out of memory/i.test(errorMsg)) return false;
   if (/FileNotFoundException.*conf\//i.test(errorMsg)) return false;
@@ -35787,7 +36218,7 @@ function canBuildFromSource(repoPath) {
   ];
   if (buildIndicators.some((f) => existsSync4(`${repoPath}/${f}`))) return true;
   try {
-    const entries = execSync2("ls -1", {
+    const entries = execSync3("ls -1", {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: 5e3
@@ -35809,57 +36240,106 @@ function canBuildFromSource(repoPath) {
 async function startApplicationWithRetries(llm, repoPath, techStack, previousStartup, modelSelector) {
   cleanupDocker(repoPath);
   const stackStr = formatTechStack(techStack);
-  const handleTool = createToolHandler(repoPath);
   const attemptErrors = [];
+  const startupHints = [];
+  const stats = [];
+  let dockerfileRepaired = false;
+  let infraRepaired = false;
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
+    const attemptStart = Date.now();
     let config2;
+    let strategy;
     if (attempt === 1 && previousStartup) {
+      strategy = "rebuild";
+      console.log("[Startup] Strategy: rebuild (source changed)");
       config2 = await rebuildStartupConfig(
         llm,
         repoPath,
         stackStr,
-        handleTool,
         previousStartup,
         modelSelector?.current()
       );
     } else if (attempt === 1) {
+      strategy = "initial";
+      console.log("[Startup] Strategy: initial identification");
       config2 = await identifyStartupConfig(
         llm,
         repoPath,
         stackStr,
-        handleTool,
         modelSelector?.current()
       );
     } else {
       modelSelector?.escalate();
-      const dockerfileOnly = attempt === 2 && previousStartup?.docker && usesPrebuiltImage(previousStartup.command) ? buildDockerfileOnlyConfig(repoPath, previousStartup) : null;
-      if (dockerfileOnly) {
-        console.log("[Startup] Compose failed \u2014 trying Dockerfile-only build");
-        config2 = dockerfileOnly;
+      if (dockerfileRepaired || infraRepaired) {
+        const prev = attemptErrors[attemptErrors.length - 1];
+        strategy = dockerfileRepaired ? "retry-after-dockerfile-repair" : "retry-after-infra-repair";
+        console.log(`[Startup] ${dockerfileRepaired ? "Dockerfile" : "Infrastructure"} was repaired \u2014 retrying same config`);
+        config2 = prev.config;
+        dockerfileRepaired = false;
+        infraRepaired = false;
       } else {
+        strategy = "llm-retry";
+        console.log("[Startup] Strategy: asking LLM for new approach after failure");
         const prev = attemptErrors[attemptErrors.length - 1];
         config2 = await retryStartupConfig(
           llm,
           repoPath,
           stackStr,
-          handleTool,
           prev.config,
           prev.error,
           attempt,
-          modelSelector?.current()
+          modelSelector?.current(),
+          attemptErrors.map((a) => ({
+            config: JSON.stringify(a.config, null, 2),
+            error: a.error
+          })),
+          startupHints
         );
-        if (previousStartup && config2.docker && usesPrebuiltImage(config2.command)) {
-          const fromSource = buildFromSourceConfig(repoPath, previousStartup) ?? buildDockerfileOnlyConfig(repoPath, previousStartup);
-          if (fromSource) {
-            console.log(
-              `[Startup] LLM suggested pre-built image \u2014 overriding with source build`
-            );
-            config2 = fromSource;
-          }
-        }
       }
     }
-    config2 = sanitizeStartupConfig(repoPath, config2);
+    if (!config2.docker) {
+      config2 = ensureToolsAvailable(repoPath, config2);
+    }
+    if (config2.docker && !configBuildsFromSource(config2)) {
+      console.warn(
+        `[Startup] Config uses pre-built image without build step \u2014 forcing docker build from source`
+      );
+      const imageName = "bright-app-local";
+      config2 = {
+        command: `docker run --name ${imageName} -p ${config2.port}:${config2.port} -d ${imageName}`,
+        port: config2.port,
+        prerequisites: [`docker build -t ${imageName} .`],
+        envVars: config2.envVars,
+        docker: true
+      };
+    }
+    if (config2.docker && !commandRunsInDocker(config2.command)) {
+      const imageName = extractImageName(config2) ?? "discourse-local";
+      console.warn(
+        `[Startup] Command "${config2.command.slice(0, 60)}" is not wrapped in docker run \u2014 auto-wrapping for image ${imageName}`
+      );
+      config2 = {
+        ...config2,
+        command: `docker run --name ${imageName} -p ${config2.port}:${config2.port} -d ${imageName} ${config2.command}`
+      };
+    }
+    if (/docker\s+compose/.test(config2.command) && config2.prerequisites?.length) {
+      const original = config2.prerequisites;
+      const cleaned = original.flatMap(
+        (cmd) => cmd.split(/\s*&&\s*/).filter((part) => {
+          const trimmed = part.trim();
+          if (/docker\s+run\s/.test(trimmed) && /\s-d[\s$]/.test(trimmed)) {
+            console.warn(`[Startup] Removing conflicting prerequisite: ${trimmed.slice(0, 80)}`);
+            return false;
+          }
+          return trimmed.length > 0;
+        })
+      ).filter((cmd) => cmd.length > 0);
+      if (cleaned.length !== original.length || cleaned.join("") !== original.join("")) {
+        config2 = { ...config2, prerequisites: cleaned };
+        console.log(`[Startup] Cleaned prerequisites: ${cleaned.map((c3) => c3.slice(0, 60)).join(" ; ")}`);
+      }
+    }
     if (config2.docker && !existsSync4(`${repoPath}/Dockerfile`)) {
       console.log(
         "[Startup] No Dockerfile found \u2014 generating one for this project"
@@ -35868,64 +36348,203 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         llm,
         repoPath,
         stackStr,
-        handleTool,
         modelSelector?.current()
       );
-      if (usesPrebuiltImage(config2.command)) {
-        const fromSource = buildFromSourceConfig(repoPath, config2) ?? buildDockerfileOnlyConfig(repoPath, config2);
-        if (fromSource) {
-          console.log(
-            "[Startup] Switching to source build with generated Dockerfile"
-          );
-          config2 = fromSource;
-        }
-      }
+    }
+    const usesCompose = /docker\s+compose/.test(
+      [...config2.prerequisites ?? [], config2.command].join(" ")
+    );
+    if (usesCompose && !findComposeFile(repoPath)) {
+      console.log("[Startup] No compose file found \u2014 generating one from Dockerfile");
+      generateComposeFile(repoPath, config2);
     }
     console.log(
       `[Startup] Attempt ${attempt}/${MAX_STARTUP_ATTEMPTS}: ${config2.docker ? "Docker" : "native"} \u2014 ${config2.command}`
     );
+    if (config2.prerequisites?.length) {
+      console.log(`[Startup]   prerequisites: ${config2.prerequisites.join(" && ")}`);
+    }
+    if (config2.postStartCommands?.length) {
+      console.log(`[Startup]   post-start: ${config2.postStartCommands.join(" && ")}`);
+    }
+    if (config2.envVars && Object.keys(config2.envVars).length) {
+      console.log(`[Startup]   env: ${Object.keys(config2.envVars).join(", ")}`);
+    }
+    console.log(`[Startup]   port: ${config2.port}`);
+    if (config2.healthCheckPath) {
+      console.log(`[Startup]   health-check: ${config2.healthCheckPath}`);
+    }
     try {
-      const proc2 = await startApplication(repoPath, config2);
+      const analyzeLogsFn = async (logs) => {
+        const resp = await llm.chat.completions.create({
+          model: modelSelector?.current() ?? "gpt-4o-mini",
+          max_completion_tokens: 200,
+          messages: [
+            {
+              role: "system",
+              content: `You are analyzing Docker container logs during application startup. Determine if the app is making progress toward being ready or if there's a fatal error that will never resolve.
+
+Respond with EXACTLY one JSON object:
+{"status": "progress" | "fatal" | "unknown", "summary": "<one sentence>"}
+
+- "progress": logs show active work \u2014 migrations running, assets compiling, dependencies installing, database seeding, server starting up
+- "fatal": logs show an unrecoverable error \u2014 connection refused to a required service, missing database, permission denied, syntax error, crash loop
+- "unknown": can't tell from the logs`
+            },
+            {
+              role: "user",
+              content: `Container logs (last 40 lines):
+\`\`\`
+${logs.slice(-3e3)}
+\`\`\``
+            }
+          ]
+        });
+        try {
+          const text = resp.choices[0]?.message.content ?? "";
+          const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+          return {
+            status: json.status === "progress" || json.status === "fatal" ? json.status : "unknown",
+            summary: String(json.summary ?? "").slice(0, 200) || "no summary"
+          };
+        } catch {
+          return { status: "unknown", summary: "failed to parse AI response" };
+        }
+      };
+      const analyzeResponseFn = async (status, body) => {
+        const resp = await llm.chat.completions.create({
+          model: modelSelector?.current() ?? "gpt-4o-mini",
+          max_completion_tokens: 200,
+          messages: [
+            {
+              role: "system",
+              content: `You are checking if a web application's HTTP response indicates a healthy, working application.
+
+Respond with EXACTLY one JSON object:
+{"healthy": true/false, "reason": "<one sentence explanation>"}
+
+HEALTHY responses: actual app content (HTML pages with real content, JSON API responses, login forms, dashboards, etc.)
+UNHEALTHY responses: error pages, setup/configuration required pages, "service unavailable", proxy errors, framework boilerplate errors, "CLI required" messages, blank pages with only error info, database migration needed pages, or any response that indicates the app is NOT ready for normal use.
+
+Be strict: if the response looks like an error or setup page rather than the actual working application, mark it unhealthy.`
+            },
+            {
+              role: "user",
+              content: `HTTP ${status} response body:
+\`\`\`
+${body}
+\`\`\``
+            }
+          ]
+        });
+        try {
+          const text = resp.choices[0]?.message.content ?? "";
+          const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+          return {
+            healthy: json.healthy === true,
+            reason: String(json.reason ?? "").slice(0, 200) || "no reason given"
+          };
+        } catch {
+          return { healthy: true, reason: "failed to parse AI response \u2014 assuming healthy" };
+        }
+      };
+      const proc2 = await startApplication(repoPath, config2, analyzeLogsFn, analyzeResponseFn);
       console.log(
         `[Startup] Application started successfully on attempt ${attempt}`
       );
+      stats.push({
+        attempt,
+        strategy,
+        command: config2.command,
+        model: modelSelector?.current(),
+        durationMs: Date.now() - attemptStart,
+        result: "success"
+      });
+      if (stats.length > 1) printStartupStats(stats);
       modelSelector?.reset();
       return { process: proc2, config: config2 };
     } catch (err) {
       const errorMsg = toErrorMessage(err);
+      const detailedError = toDetailedErrorMessage(err);
       console.error(`[Startup] Attempt ${attempt} failed: ${errorMsg}`);
-      attemptErrors.push({ config: config2, error: errorMsg });
+      attemptErrors.push({ config: config2, error: detailedError });
+      const isDockerBuildError = config2.docker && existsSync4(`${repoPath}/Dockerfile`) && /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(detailedError);
+      const isTimeoutError = /did not start on port.*within/i.test(detailedError);
       const previousErrorMsgs = attemptErrors.slice(0, -1).map((a) => a.error);
-      if (isSourceCodeError(errorMsg, previousErrorMsgs)) {
+      const isCompilationError = isSourceCodeError(detailedError, previousErrorMsgs);
+      const isCrash = /exited unexpectedly|exited with code/i.test(detailedError);
+      const result = isCompilationError ? "compilation" : isDockerBuildError ? "build_error" : isTimeoutError ? "timeout" : isCrash ? "crash" : "error";
+      stats.push({
+        attempt,
+        strategy,
+        command: config2.command,
+        model: modelSelector?.current(),
+        durationMs: Date.now() - attemptStart,
+        result,
+        errorSummary: errorMsg
+      });
+      if (isCompilationError) {
         console.error(
           "[Startup] Build failed due to source code compilation errors on consecutive attempts \u2014 this is not a Dockerfile issue. Aborting retries."
         );
         break;
       }
       if (attempt < MAX_STARTUP_ATTEMPTS) {
-        const isDockerBuildError = config2.docker && existsSync4(`${repoPath}/Dockerfile`) && /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(errorMsg);
+        if (attempt > 1) modelSelector?.escalate();
+        console.log(`[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`);
         if (isDockerBuildError) {
           await repairDockerBuild(
             llm,
             repoPath,
-            errorMsg,
-            handleTool,
-            modelSelector?.current()
+            detailedError,
+            modelSelector?.current(),
+            attemptErrors.slice(0, -1).map((a) => a.error),
+            startupHints
           );
+          dockerfileRepaired = true;
         } else {
-          await repairInfrastructure(
+          const infraResult = await repairInfrastructure(
             llm,
             repoPath,
             config2,
-            errorMsg,
-            modelSelector?.current()
+            detailedError,
+            modelSelector?.current(),
+            attemptErrors.slice(0, -1).map((a) => a.error),
+            startupHints
           );
+          if (infraResult.command || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath) {
+            if (infraResult.command) {
+              console.log(`[Startup] Repair LLM overrode command: ${infraResult.command}`);
+              config2 = { ...config2, command: infraResult.command };
+            }
+            if (infraResult.postStartCommands?.length) {
+              config2 = {
+                ...config2,
+                postStartCommands: [...config2.postStartCommands ?? [], ...infraResult.postStartCommands]
+              };
+            }
+            if (infraResult.addEnvVars) {
+              config2 = {
+                ...config2,
+                envVars: { ...config2.envVars ?? {}, ...infraResult.addEnvVars }
+              };
+            }
+            if (infraResult.healthCheckPath) {
+              config2 = { ...config2, healthCheckPath: infraResult.healthCheckPath };
+            }
+            attemptErrors[attemptErrors.length - 1] = { config: config2, error: detailedError };
+          }
+          const isPrereqFailure = /Command failed:.*\nprerequisite/i.test(detailedError) || /prerequisite.*failed|Running prerequisite/i.test(detailedError) || /command not found|not found.*command/i.test(detailedError);
+          const repairModifiedConfig = !!(infraResult.command || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.madeFileChanges);
+          if (repairModifiedConfig || !isTimeoutError && !isPrereqFailure && !isCrash) {
+            infraRepaired = true;
+          }
         }
       }
       if (config2.docker) {
         try {
-          execSync2(
-            "docker compose down 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
+          execSync3(
+            "docker compose down -v 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
             { cwd: repoPath, stdio: "ignore", timeout: 3e4 }
           );
         } catch {
@@ -35933,102 +36552,86 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
       }
     }
   }
-  const lastError = attemptErrors[attemptErrors.length - 1];
+  printStartupStats(stats);
+  if (startupHints.length > 0) {
+    console.log(`[Startup] Accumulated hints (${startupHints.length}):`);
+    for (const hint of startupHints) {
+      console.log(`[Startup]   - ${hint}`);
+    }
+  }
   const summary = attemptErrors.map((a, i) => `  Attempt ${i + 1} (${a.config.command}): ${a.error}`).join("\n");
   throw new Error(
-    `Failed to start application after ${MAX_STARTUP_ATTEMPTS} attempts:
+    `Failed to start application after ${attemptErrors.length} attempts:
 ${summary}`
   );
 }
-async function identifyStartupConfig(llm, repoPath, stackStr, handleTool, model) {
+async function identifyStartupConfig(llm, repoPath, stackStr, model) {
   const messages = identifyStartupPrompt(stackStr);
+  const infraHandler = createInfraToolHandler(repoPath);
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
-    handleTool,
+    infraTools,
+    infraHandler,
     model
   );
   return parseStartupConfig(response);
 }
-async function rebuildStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig, model) {
-  if (previousConfig.docker && usesPrebuiltImage(previousConfig.command)) {
-    const fromSource = buildFromSourceConfig(repoPath, previousConfig);
-    if (fromSource) {
-      console.log(
-        `[Startup] Previous startup used pre-built image \u2014 switching to build-from-source`
-      );
-      return fromSource;
-    }
-  }
+async function rebuildStartupConfig(llm, repoPath, stackStr, previousConfig, model) {
   const messages = rebuildStartupPrompt(
     stackStr,
     JSON.stringify(previousConfig, null, 2)
   );
+  const infraHandler = createInfraToolHandler(repoPath);
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
-    handleTool,
+    infraTools,
+    infraHandler,
     model
   );
   return parseStartupConfig(response);
 }
-function usesPrebuiltImage(command) {
-  if (/docker\s+compose/.test(command) && command.includes("--build"))
-    return false;
-  const runMatch = command.match(/docker\s+run\s+.*?\s+(\S+)\s*$/);
-  if (runMatch) {
-    const image = runMatch[1];
-    if (image.includes("/") || image.includes(":")) return true;
-  }
+function configBuildsFromSource(config2) {
+  const all = [...config2.prerequisites ?? [], config2.command].join(" ");
+  if (/docker\s+(build|compose\s+build)/.test(all)) return true;
+  if (/docker\s+compose/.test(all) && all.includes("--build")) return true;
+  if (/\b(npm run build|yarn build|pnpm build|go build|mvn\s|gradle\s|cargo build|dotnet build|make\b|bundle exec rake)/.test(all)) return true;
   return false;
 }
-function composeUsesPrebuiltImages(repoPath, composeFile) {
-  let content;
-  try {
-    content = readFileSync3(`${repoPath}/${composeFile}`, "utf-8");
-  } catch {
-    return false;
-  }
-  const imageRe = /^\s+image:\s*(\S+)/gm;
-  const buildRe = /^\s+build:/gm;
-  const hasRegistryImage = (() => {
-    let m;
-    while ((m = imageRe.exec(content)) !== null) {
-      const img = m[1].replace(/["']/g, "");
-      if (img.includes("/")) return true;
-    }
-    return false;
-  })();
-  if (!hasRegistryImage) return false;
-  return !buildRe.test(content);
+function commandRunsInDocker(command) {
+  const trimmed = command.trim();
+  return /^docker\s+(run|exec|compose)\b/.test(trimmed);
 }
-function patchComposeForSourceBuild(repoPath, composeFile) {
-  const filePath = `${repoPath}/${composeFile}`;
-  let content;
-  try {
-    content = readFileSync3(filePath, "utf-8");
-  } catch {
-    return;
+function extractImageName(config2) {
+  for (const cmd of config2.prerequisites ?? []) {
+    const m = cmd.match(/docker\s+build\s+.*-t\s+(\S+)/);
+    if (m) return m[1];
   }
-  const infraPatterns = /\b(mongo|postgres|mysql|mariadb|redis|rabbitmq|memcached|elasticsearch|minio|nats|kafka|zookeeper|consul|vault|nginx|traefik|caddy|haproxy)\b/i;
-  const patched = content.replace(
-    /^(\s+)image:\s*(\S+)\s*$/gm,
-    (match2, indent, image) => {
-      const cleanImage = image.replace(/["']/g, "");
-      if (cleanImage.includes("/") && !infraPatterns.test(cleanImage)) {
-        return `${indent}build: .`;
-      }
-      return match2;
-    }
-  );
-  if (patched !== content) {
-    writeFileSync2(filePath, patched);
-    console.log(
-      `[Startup] Replaced pre-built image in ${composeFile} with build: .`
-    );
-  }
+  return void 0;
+}
+function findComposeFile(repoPath) {
+  const candidates = [
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml"
+  ];
+  return candidates.find((f) => existsSync4(`${repoPath}/${f}`));
+}
+function generateComposeFile(repoPath, config2) {
+  const port = config2.port || 3e3;
+  const envLines = Object.entries(config2.envVars ?? {}).map(([k, v]) => `      ${k}: "${v}"`).join("\n");
+  const content = `services:
+  app:
+    build: .
+    ports:
+      - "${port}:${port}"
+${envLines ? `    environment:
+${envLines}
+` : ""}`;
+  writeFileSync2(`${repoPath}/compose.yml`, content);
+  console.log(`[Startup] Generated compose.yml (port ${port})`);
 }
 function validateComposeBuildContexts(repoPath, composeFile) {
   const filePath = `${repoPath}/${composeFile}`;
@@ -36062,7 +36665,7 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   }
   return true;
 }
-async function repairDockerBuild(llm, repoPath, buildError, handleTool, model) {
+async function repairDockerBuild(llm, repoPath, buildError, model, previousErrors, hints) {
   const dockerfilePath = `${repoPath}/Dockerfile`;
   let currentDockerfile;
   try {
@@ -36070,80 +36673,102 @@ async function repairDockerBuild(llm, repoPath, buildError, handleTool, model) {
   } catch {
     return;
   }
-  const truncatedError = buildError.length > 3e3 ? buildError.slice(-3e3) : buildError;
+  const errorLogPath = `${repoPath}/.bright-build-error.log`;
+  writeFileSync2(errorLogPath, buildError, "utf-8");
+  const errorLines = buildError.split("\n");
+  console.log(`[Startup] Repair input: error ${errorLines.length} lines (written to .bright-build-error.log), Dockerfile lines=${currentDockerfile.split("\n").length}`);
+  let errorSection;
+  if (errorLines.length <= 100) {
+    errorSection = `Build output:
+\`\`\`
+${buildError}
+\`\`\``;
+  } else {
+    const headLines = errorLines.slice(0, 40).join("\n");
+    const tailLines = errorLines.slice(-60).join("\n");
+    errorSection = `First 40 lines of build output:
+\`\`\`
+${headLines}
+\`\`\`
+
+Last 60 lines:
+\`\`\`
+${tailLines}
+\`\`\`
+
+(Full log: ${errorLines.length} lines in .bright-build-error.log \u2014 use read_file if you need the middle)`;
+  }
   const messages = [
     {
       role: "system",
       content: `You are a Docker expert. A Docker build just failed. Your job is to fix the Dockerfile.
 
-You have tools to read any file in the repository. Use them to understand what the project needs (package.json, .csproj, go.mod, requirements.txt, build configs, etc.).
+You have tools to:
+- **read_file / list_files / search_files** \u2014 inspect any file in the repository
+- **run_command_on_host** \u2014 run shell commands on the host (ls, find, cat, docker inspect, docker build, etc.)
+- **run_command_in_docker** \u2014 run commands inside a Docker container or image (check installed tools, read config files, test commands)
+- **verify_docker_image** \u2014 check if a Docker image:tag exists on Docker Hub before using it in FROM lines
 
-IMPORTANT: You have a verify_docker_image tool. ALWAYS call it to verify that any base image:tag you use in FROM lines exists on Docker Hub. If an image does not exist, try alternative tags until you find one that does.
-
-Common issues and fixes:
-- "npm/node: not found" in .NET builds \u2192 add RUN apt-get install nodejs npm before dotnet publish
-- corepack signature errors \u2192 add ENV COREPACK_INTEGRITY_KEYS=0 and RUN npm install -g corepack@latest
-- "git: not found" \u2192 add RUN apt-get update && apt-get install -y --no-install-recommends git in the stage that needs it
-- Missing system dependencies \u2192 add apt-get install for the needed packages
-- Wrong base image version \u2192 verify the correct tag with verify_docker_image, then switch
-- Build context / COPY failures \u2192 fix paths or remove COPY lines for files that don't exist
-- "Not found: type X" / compilation errors after COPY \u2192 the source code is incomplete. Replace individual COPY lines with "COPY . ." to ensure all source directories are included
-- OutOfMemoryError during compilation \u2192 add ENV SBT_OPTS="-J-Xmx4g -J-XX:+UseG1GC" (for sbt) or ENV MAVEN_OPTS="-Xmx4g" (for Maven) or ENV GRADLE_OPTS="-Xmx4g" (for Gradle) BEFORE the build command
-- Container crashes with "FileNotFoundException" for config files \u2192 check conf/ for available config files, use prod-mode flags (e.g. -Dconfig.resource=application.conf -Dlogger.resource=logback.xml) in CMD
-- .NET AppHost/Aspire orchestrator projects cannot be published standalone \u2192 find a real web API project (Catalog.API, WebApp, etc.) and publish that instead
-- dotnet publish succeeds but COPY --from=build fails with "not found" \u2192 the publish output path is wrong. List the build stage output to find where files actually went
-- Permission issues \u2192 add appropriate RUN chmod/chown
-- "tsc" exits with non-zero even when "--noEmitOnError false" is set (it still reports type errors) \u2192 append "|| true" to the tsc RUN command so the Docker build continues despite type warnings
-- "npm ci" fails with "package.json and package-lock.json are in sync" / "Missing: <pkg> from lock file" \u2192 the runtime stage is using a built sub-project's package.json that doesn't match the root lockfile. Replace "npm ci" with "npm install" in that stage (or copy the sub-project's own lock file if it exists)
-- "npm ci" postinstall fails with "Failed to process project graph" or monorepo tooling errors (nx, lerna, turbo, patch-package) \u2192 use "npm ci --ignore-scripts" to skip postinstall hooks, then run only the specific scripts needed (e.g. "RUN npx patch-package" separately). The full monorepo graph is NOT needed inside Docker when building a single service.
+APPROACH:
+1. Read the error carefully. Identify the exact failing command and what it's missing.
+2. Use tools to investigate \u2014 read the scripts/files referenced in the error, check what files exist, understand the project structure.
+3. Fix the ROOT CAUSE. Don't just suppress errors \u2014 understand WHY the command failed.
+4. If the error is in a multi-stage build, check whether a later stage is missing tools/files from an earlier stage. Consider collapsing to a single stage.
+5. This Dockerfile is for DEVELOPMENT/TESTING, not production. Prefer simplicity over optimization \u2014 a single stage with all tools is better than a fragile multi-stage build.
+6. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
+7. Always verify base image tags exist with verify_docker_image before using them.
 
 Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`
     },
     {
       role: "user",
-      content: `The Docker build failed with this error:
+      content: `The Docker build failed.
 
-\`\`\`
-${truncatedError}
-\`\`\`
+${errorSection}
 
 Current Dockerfile:
 \`\`\`dockerfile
 ${currentDockerfile}
 \`\`\`
-
-Use the tools to inspect relevant project files, then return a COMPLETE fixed Dockerfile.`
+${previousErrors && previousErrors.length > 0 ? `
+Previous failed attempts and their errors (do NOT repeat the same mistakes):
+${previousErrors.map((e, i) => `--- Attempt ${i + 1} ---
+${e.slice(-500)}`).join("\n")}
+` : ""}${hints && hints.length > 0 ? `
+Hints from previous attempts:
+${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
+` : ""}
+Use the tools to inspect relevant project files (and read_file on .bright-build-error.log if you need more of the build output), then return a COMPLETE fixed Dockerfile.`
     }
   ];
   try {
     console.log("[Startup] Asking LLM to repair Dockerfile...");
-    const dockerHandler = createDockerfileToolHandler(repoPath);
+    const infraHandler = createInfraToolHandler(repoPath);
     const response = await chatWithTools(
       llm,
       messages,
-      dockerfileTools,
-      dockerHandler,
+      infraTools,
+      infraHandler,
       model,
-      12
+      20
     );
-    const fixedDockerfile = extractCodeBlock(response);
-    if (!fixedDockerfile) {
+    const fixedRaw = extractCodeBlock(response);
+    if (!fixedRaw) {
       console.warn("[Startup] LLM did not return a valid Dockerfile repair");
       return;
     }
-    if (!fixedDockerfile.includes("FROM ") || !/(?:RUN|CMD|ENTRYPOINT)\s/.test(fixedDockerfile)) {
+    if (!fixedRaw.includes("FROM ") || !/(?:RUN|CMD|ENTRYPOINT)\s/.test(fixedRaw)) {
       console.warn("[Startup] LLM returned an invalid Dockerfile \u2014 skipping");
       return;
     }
-    const missing = await validateDockerfileImages(fixedDockerfile);
-    if (missing.length > 0) {
-      console.warn(
-        `[Startup] Repaired Dockerfile references non-existent images: ${missing.join(", ")}`
-      );
+    const fixedDockerfile = await fixDockerfileImages(fixedRaw);
+    if (fixedDockerfile !== fixedRaw) {
+      console.log("[Startup] Auto-fixed invalid Docker image tags in repaired Dockerfile");
     }
     writeFileSync2(dockerfilePath, fixedDockerfile, "utf-8");
+    const changed = fixedDockerfile !== currentDockerfile;
     console.log(
-      `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines)`
+      `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes detected"})`
     );
   } catch (err) {
     console.warn(
@@ -36151,33 +36776,80 @@ Use the tools to inspect relevant project files, then return a COMPLETE fixed Do
     );
   }
 }
-async function repairInfrastructure(llm, repoPath, config2, errorOutput, model) {
-  const truncatedError = errorOutput.length > 4e3 ? errorOutput.slice(-4e3) : errorOutput;
+async function repairInfrastructure(llm, repoPath, config2, errorOutput, model, previousErrors, hints) {
+  const errorLogPath = `${repoPath}/.bright-build-error.log`;
+  writeFileSync2(errorLogPath, errorOutput, "utf-8");
+  const errorLines = errorOutput.split("\n");
+  let errorSection;
+  if (errorLines.length <= 100) {
+    errorSection = `Error output:
+\`\`\`
+${errorOutput}
+\`\`\``;
+  } else {
+    const headLines = errorLines.slice(0, 40).join("\n");
+    const tailLines = errorLines.slice(-60).join("\n");
+    errorSection = `First 40 lines (root cause is often here):
+\`\`\`
+${headLines}
+\`\`\`
+
+Last 60 lines:
+\`\`\`
+${tailLines}
+\`\`\`
+
+(Full log: ${errorLines.length} lines in .bright-build-error.log \u2014 use read_file if you need the middle)`;
+  }
   const messages = [
     {
       role: "system",
       content: `You are a DevOps engineer fixing a failed application startup. You have tools to:
-- read_file / list_files / search_files \u2014 inspect the repository
-- write_file \u2014 modify shell scripts, compose files, config files, etc.
-- run_command \u2014 run diagnostic or repair commands (docker logs, sed, chmod, etc.)
-- verify_docker_image \u2014 check if a Docker image exists
+- **read_file / list_files / search_files** \u2014 inspect the repository
+- **write_file** \u2014 modify shell scripts, compose files, config files, etc.
+- **run_command_on_host** \u2014 run diagnostic or repair commands on the host (docker logs, docker ps, sed, chmod, find, etc.)
+- **run_command_in_docker** \u2014 run commands inside the application container (check installed tools, read config, test commands, inspect processes)
+- **probe_url** \u2014 make an HTTP request and see the full response (status, headers, body). Use this to check what the app returns, diagnose 500 errors, test if endpoints work.
+- **verify_docker_image** \u2014 check if a Docker image exists
+- **wait** \u2014 wait for a specified number of seconds (use when services need time to start up)
+- **save_hint** \u2014 save an important discovery for the NEXT repair attempt (e.g. "app reads DB config from config/database.yml not DATABASE_URL", "needs Redis on port 6379"). Use this whenever you learn something non-obvious about how this app works.
+- **remove_hint** \u2014 remove a previously saved hint that turned out to be WRONG or MISLEADING. If you see hints that led to this failure, remove them.
 
-The application failed to start. Your job is to fix the root cause so the SAME startup command can succeed on the next attempt.
+IMPORTANT: When the error output shows a stack trace without a clear error message, the ACTUAL exception is likely at the top \u2014 read .bright-container-logs.txt and .bright-build-error.log (full logs) to find the real error. Do NOT guess from truncated stack traces.
 
-Common issues you should fix:
-- "cannot attach stdin to a TTY-enabled container" \u2192 find and patch scripts that use "docker exec -it" or "docker run -it" to remove the -t flag. Use sed or write_file.
-- "database does not exist" \u2192 run the database creation command (e.g. docker exec <container> bin/rails db:create db:migrate)
-- Compose service errors ("has neither an image nor a build context") \u2192 edit the compose file to comment out or remove the broken service
-- Permission denied \u2192 chmod +x the script, or fix file permissions
-- Missing .env file \u2192 copy from .env.example or create a minimal one
-- Missing config files \u2192 create them with sensible defaults
-- Port already in use \u2192 kill the old process
+IMPORTANT: The startup command runs ON THE HOST, not inside a container. If the command uses a tool like pnpm/node/rails that only exists inside the Docker image, the command must be wrapped with 'docker run' or 'docker exec'.
 
-IMPORTANT:
-- Do NOT change the startup command itself \u2014 only fix the files/environment so the same command works.
-- Make targeted, minimal fixes. Don't rewrite entire files unless necessary.
-- Run diagnostic commands first to understand the problem, then apply fixes.
-- After fixing, verify the fix worked if possible (e.g. re-read the patched file).`
+APPROACH:
+1. Read the error carefully. Identify the exact failing command and what it needs.
+2. If the error mentions HTTP 500 or similar, use **probe_url** to see the full error response from the app \u2014 it often contains the exact problem (e.g. "Migrations are pending", "database does not exist").
+3. If hints from previous attempts are provided, evaluate them critically \u2014 remove any that are wrong or led to this failure.
+4. Use run_command_on_host for host-level diagnostics (docker ps, docker logs, docker inspect).
+5. Use run_command_in_docker to inspect what's available INSIDE the container (which pnpm, ps aux, cat /app/config.yml).
+6. Fix the ROOT CAUSE with targeted changes \u2014 fix config files, scripts, compose files, environment so the startup command can succeed.
+7. After fixing, verify your changes (e.g. re-read the patched file, run a diagnostic command, use probe_url to test the app).
+8. Before finishing, call save_hint for any important discoveries about this app's configuration or behavior.
+
+IMPORTANT DATABASE TIPS:
+- Docker volumes are automatically cleaned between attempts (docker compose down -v), so stale data from a previous image won't persist.
+- If a migration fails because of a missing PostgreSQL extension (e.g. pgvector), first check if you can REMOVE the plugin that requires it (e.g. delete/rename its directory under plugins/) rather than installing the extension. Removing an optional plugin is often simpler than fixing extension availability.
+- If the app crashes with "No such file or directory" for a tool (e.g. brotli, wkhtmltopdf), install it in the Dockerfile or set an env var to disable the feature that needs it.
+
+RESPONSE FORMAT:
+After fixing the issue, reply with a JSON object describing what changed:
+\`\`\`json
+{
+  "summary": "Brief description of what you fixed",
+  "command": "docker run --name myapp -p 3000:3000 -d myapp-image bundle exec rails server",
+  "postStartCommands": ["docker compose exec app rails db:create db:migrate"],
+  "addEnvVars": {"DATABASE_URL": "postgres://..."},
+  "healthCheckPath": "/srv/status"
+}
+\`\`\`
+- **command**: override the startup command if the current one is fundamentally wrong (e.g. bare "bundle exec" on the host when it should be "docker run ... bundle exec"). Only set this if the command itself needs to change.
+- **postStartCommands**: commands that must run AFTER the app containers start but BEFORE the health check (e.g. DB migrations, cache warmup, seeding). These run on the HOST. If the command must run inside a container, wrap it with 'docker compose exec <service>' or 'docker exec <container>'.
+- **addEnvVars**: environment variables to add/override for the next startup attempt.
+- **healthCheckPath**: if the app's root route ("/") returns errors but a different endpoint is healthy (e.g. "/health", "/srv/status"), specify it here so the health check uses that path instead.
+- Omit fields that don't apply \u2014 just include "summary" if you only edited files.`
     },
     {
       role: "user",
@@ -36187,201 +36859,99 @@ Command: ${config2.command}
 Prerequisites: ${JSON.stringify(config2.prerequisites)}
 Docker: ${config2.docker}
 
-Error output:
-\`\`\`
-${truncatedError}
-\`\`\`
-
-Investigate the root cause using the tools, then fix it. Reply with a brief summary of what you fixed.`
+${errorSection}
+${previousErrors && previousErrors.length > 0 ? `
+Previous failed attempts and their errors (do NOT repeat the same fixes):
+${previousErrors.map((e, i) => `--- Attempt ${i + 1} ---
+${e.slice(-500)}`).join("\n")}
+` : ""}${hints && hints.length > 0 ? `
+Hints from previous repair attempts (use these \u2014 they were discovered through investigation):
+${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
+` : ""}
+Investigate the root cause using the tools, then fix it. IMPORTANT FILES:
+- .bright-build-error.log \u2014 full error output from the failed command
+- .bright-container-logs.txt \u2014 full Docker container logs (ALL containers, not truncated)
+If the error below only shows a stack trace without the actual exception, read these files FIRST to find the real error message at the top.
+Reply with the JSON object.`
     }
   ];
   try {
     console.log("[Startup] Asking LLM to repair infrastructure...");
-    const infraHandler = createInfraToolHandler(repoPath);
+    const onHint = (hint) => {
+      if (hints && !hints.includes(hint)) hints.push(hint);
+    };
+    const onRemoveHint = (hint) => {
+      if (hints) {
+        const idx = hints.findIndex((h) => h.includes(hint) || hint.includes(h));
+        if (idx !== -1) {
+          console.log(`[Startup] Hint removed: ${hints[idx].slice(0, 100)}`);
+          hints.splice(idx, 1);
+        }
+      }
+    };
+    const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
+    let usedMutatingTools = false;
+    const trackingHandler = async (name, args) => {
+      const result2 = await infraHandler(name, args);
+      if (name === "write_file" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
+        usedMutatingTools = true;
+      }
+      return result2;
+    };
     const response = await chatWithTools(
       llm,
       messages,
       infraTools,
-      infraHandler,
+      trackingHandler,
       model,
-      15
-      // generous tool turns for diagnosis + repair
+      20
     );
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
+    const result = parseInfraRepairResult(response);
+    if (usedMutatingTools) {
+      result.madeFileChanges = true;
+      console.log(`[Startup] Infra repair used mutating tools (write_file/run_command)`);
+    }
+    return result;
   } catch (err) {
     console.warn(
       `[Startup] Infrastructure repair failed: ${err instanceof Error ? err.message : err}`
     );
+    return {};
   }
 }
-function findMissingEnvFiles(repoPath, composeFile) {
+function parseInfraRepairResult(response) {
   try {
-    const content = readFileSync3(`${repoPath}/${composeFile}`, "utf8");
-    const missing = [];
-    for (const m of content.matchAll(/env_file:\s+(?!-)(\S+)/g)) {
-      const file = m[1].replace(/["']/g, "");
-      if (file && !existsSync4(`${repoPath}/${file}`)) missing.push(file);
-    }
-    for (const m of content.matchAll(/env_file:\s*\n((?:\s+-\s+\S+\n?)+)/g)) {
-      for (const item of m[1].matchAll(/^\s+-\s+(\S+)/gm)) {
-        const file = item[1].replace(/["']/g, "");
-        if (file && !existsSync4(`${repoPath}/${file}`)) missing.push(file);
-      }
-    }
-    return [...new Set(missing)];
-  } catch {
-    return [];
-  }
-}
-function sanitizeComposeTemplateVars(repoPath, config2) {
-  const filesToCheck = /* @__PURE__ */ new Set();
-  for (const m of config2.command.matchAll(/-f\s+(\S+)/g)) {
-    filesToCheck.add(m[1]);
-  }
-  const cdMatch = config2.command.match(/cd\s+(\S+)\s*&&/);
-  const dirs = [""];
-  if (cdMatch) dirs.push(cdMatch[1]);
-  const defaultNames = [
-    "docker-compose.yml",
-    "compose.yml",
-    "docker-compose.local.yml",
-    "compose.local.yml",
-    "docker-compose.dev.yml",
-    "compose.dev.yml",
-    "docker-compose.override.yml",
-    "compose.override.yml"
-  ];
-  for (const dir of dirs) {
-    for (const name of defaultNames) {
-      filesToCheck.add(dir ? `${dir}/${name}` : name);
-    }
-  }
-  for (const cf of filesToCheck) {
-    const filePath = cf.startsWith("/") ? cf : `${repoPath}/${cf}`;
-    if (!existsSync4(filePath)) continue;
-    let content;
-    try {
-      content = readFileSync3(filePath, "utf8");
-    } catch {
-      continue;
-    }
-    const sanitized = content.replace(
-      /\$\{TEMPLATE_\w*PORT\w*\}|(?<!\$)\bTEMPLATE_\w*PORT\w*\b|\$TEMPLATE_\w*PORT\w*/g,
-      String(config2.port)
-    );
-    if (sanitized !== content) {
-      writeFileSync2(filePath, sanitized);
-      console.log(
-        `[Startup] Replaced template port placeholder(s) in ${cf} with ${config2.port}`
+    const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) ?? response.match(/(\{[\s\S]*\})/);
+    if (!jsonMatch?.[1]) return {};
+    const parsed = JSON.parse(jsonMatch[1]);
+    const result = {};
+    if (Array.isArray(parsed.postStartCommands) && parsed.postStartCommands.length > 0) {
+      result.postStartCommands = parsed.postStartCommands.filter(
+        (cmd) => typeof cmd === "string" && cmd.length > 0
       );
+      if (result.postStartCommands.length > 0) {
+        console.log(`[Startup] Infra repair added post-start commands: ${result.postStartCommands.join(", ")}`);
+      }
     }
-  }
-}
-function populateMissingEnvFile(repoPath, composeFile, envFile) {
-  const composePath = `${repoPath}/${composeFile}`;
-  const envPath = `${repoPath}/${envFile}`;
-  let content;
-  try {
-    content = readFileSync3(composePath, "utf8");
+    if (parsed.addEnvVars && typeof parsed.addEnvVars === "object") {
+      result.addEnvVars = parsed.addEnvVars;
+      console.log(`[Startup] Infra repair added env vars: ${Object.keys(result.addEnvVars).join(", ")}`);
+    }
+    if (typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath) {
+      result.healthCheckPath = parsed.healthCheckPath;
+      console.log(`[Startup] Infra repair set health check path: ${result.healthCheckPath}`);
+    }
+    if (typeof parsed.command === "string" && parsed.command) {
+      result.command = parsed.command;
+      console.log(`[Startup] Infra repair overrode command: ${result.command}`);
+    }
+    return result;
   } catch {
-    writeFileSync2(envPath, "");
-    return;
+    return {};
   }
-  const lines = [];
-  const added = /* @__PURE__ */ new Set();
-  const addVar = (name, value) => {
-    if (!added.has(name)) {
-      lines.push(`${name}=${value}`);
-      added.add(name);
-    }
-  };
-  const dbDefaults = {
-    MYSQL_ROOT_PASSWORD: "bright_test",
-    MYSQL_DATABASE: "app",
-    MYSQL_USER: "app",
-    MYSQL_PASSWORD: "bright_test",
-    MYSQL_ALLOW_EMPTY_PASSWORD: "yes",
-    POSTGRES_PASSWORD: "bright_test",
-    POSTGRES_DB: "app",
-    POSTGRES_USER: "postgres",
-    MONGO_INITDB_ROOT_USERNAME: "root",
-    MONGO_INITDB_ROOT_PASSWORD: "bright_test"
-  };
-  for (const m of content.matchAll(/\$\{(\w+)\}/g)) {
-    const name = m[1];
-    if (dbDefaults[name]) addVar(name, dbDefaults[name]);
-  }
-  for (const m of content.matchAll(
-    /^\s+(MYSQL_\w+|POSTGRES_\w+|MONGO_\w+):/gm
-  )) {
-    const name = m[1];
-    if (dbDefaults[name] && !added.has(name)) addVar(name, dbDefaults[name]);
-  }
-  if (/image:\s*.*mysql/i.test(content) && !added.has("MYSQL_ROOT_PASSWORD")) {
-    addVar("MYSQL_ROOT_PASSWORD", "bright_test");
-    addVar("MYSQL_ALLOW_EMPTY_PASSWORD", "yes");
-  }
-  if (/image:\s*.*postgres/i.test(content) && !added.has("POSTGRES_PASSWORD")) {
-    addVar("POSTGRES_PASSWORD", "bright_test");
-  }
-  console.log(
-    `[Startup] Created ${envFile} with ${lines.length} default variable(s)`
-  );
-  writeFileSync2(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
 }
-function buildFromSourceConfig(repoPath, previousConfig) {
-  const hasDockerfile = existsSync4(`${repoPath}/Dockerfile`);
-  if (!hasDockerfile) return null;
-  const port = previousConfig.port;
-  const imageName = "bright-app-local";
-  const composeFiles = [
-    "docker-compose.yml",
-    "compose.yml",
-    "docker-compose.local.yml",
-    "compose.local.yml",
-    "docker-compose.dev.yml",
-    "compose.dev.yml"
-  ];
-  for (const cf of composeFiles) {
-    if (existsSync4(`${repoPath}/${cf}`)) {
-      if (!validateComposeBuildContexts(repoPath, cf)) {
-        console.log(`[Startup] Skipping ${cf} \u2014 build context directory missing`);
-        continue;
-      }
-      const missingEnvFiles = findMissingEnvFiles(repoPath, cf);
-      for (const envFile of missingEnvFiles) {
-        populateMissingEnvFile(repoPath, cf, envFile);
-      }
-      return {
-        command: `docker compose -f ${cf} up --build -d`,
-        port,
-        prerequisites: [],
-        envVars: previousConfig.envVars,
-        docker: true
-      };
-    }
-  }
-  return {
-    command: `docker run --name ${imageName} -p ${port}:${port} -d ${imageName}`,
-    port,
-    prerequisites: [`docker build -t ${imageName} .`],
-    envVars: previousConfig.envVars,
-    docker: true
-  };
-}
-function buildDockerfileOnlyConfig(repoPath, previousConfig) {
-  if (!existsSync4(`${repoPath}/Dockerfile`)) return null;
-  const port = previousConfig.port;
-  const imageName = "bright-app-local";
-  return {
-    command: `docker run --name ${imageName} -p ${port}:${port} -d ${imageName}`,
-    port,
-    prerequisites: [`docker build -t ${imageName} .`],
-    envVars: previousConfig.envVars ?? {},
-    docker: true
-  };
-}
-async function generateDockerfile(llm, repoPath, stackStr, handleTool, model) {
+async function generateDockerfile(llm, repoPath, stackStr, model) {
   const dockerHandler = createDockerfileToolHandler(repoPath);
   const messages = generateDockerfilePrompt(stackStr);
   const response = await chatWithTools(
@@ -36391,56 +36961,55 @@ async function generateDockerfile(llm, repoPath, stackStr, handleTool, model) {
     dockerHandler,
     model
   );
-  const content = extractCodeBlock(response);
-  if (!content) {
+  const contentRaw = extractCodeBlock(response);
+  if (!contentRaw) {
     throw new Error(
       "Failed to generate a valid Dockerfile \u2014 LLM did not return a code block"
     );
   }
-  const missing = await validateDockerfileImages(content);
-  if (missing.length > 0) {
-    console.warn(
-      `[Startup] Dockerfile references non-existent images: ${missing.join(", ")}`
-    );
+  const content = await fixDockerfileImages(contentRaw);
+  if (content !== contentRaw) {
+    console.log("[Startup] Auto-fixed invalid Docker image tags in generated Dockerfile");
   }
   writeFileSync2(`${repoPath}/Dockerfile`, content);
   console.log(
     `[Startup] Generated Dockerfile (${content.split("\n").length} lines)`
   );
 }
-function extractCodeBlock(text) {
-  const match2 = text.match(
-    /```(?:dockerfile|docker|Dockerfile)?\s*\n([\s\S]*?)```/i
-  );
-  if (match2) return match2[1].trimEnd() + "\n";
-  const lines = text.split("\n");
-  const dockerLines = lines.filter(
-    (l) => /^(FROM|RUN|COPY|ADD|WORKDIR|EXPOSE|CMD|ENTRYPOINT|ENV|ARG|LABEL|VOLUME|USER|HEALTHCHECK|SHELL|STOPSIGNAL|ONBUILD)\s/i.test(
-      l.trim()
-    ) || l.trim() === "" || l.trim().startsWith("#")
-  );
-  if (dockerLines.length >= 3) return dockerLines.join("\n") + "\n";
-  return null;
-}
-async function retryStartupConfig(llm, repoPath, stackStr, handleTool, previousConfig, errorOutput, attempt, model) {
+async function retryStartupConfig(llm, repoPath, stackStr, previousConfig, errorOutput, attempt, model, allPreviousAttempts, hints) {
   const messages = retryStartupPrompt(
     stackStr,
     JSON.stringify(previousConfig, null, 2),
     errorOutput,
-    attempt
+    attempt,
+    allPreviousAttempts,
+    hints
   );
+  const onHint = (hint) => {
+    if (hints && !hints.includes(hint)) hints.push(hint);
+  };
+  const onRemoveHint = (hint) => {
+    if (hints) {
+      const idx = hints.findIndex((h) => h.includes(hint) || hint.includes(h));
+      if (idx !== -1) {
+        console.log(`[Startup] Hint removed: ${hints[idx].slice(0, 100)}`);
+        hints.splice(idx, 1);
+      }
+    }
+  };
+  const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
-    handleTool,
+    infraTools,
+    infraHandler,
     model
   );
   return parseStartupConfig(response);
 }
 function parseStartupConfig(response) {
   try {
-    const jsonStr = extractJson2(response);
+    const jsonStr = extractJson(response);
     const parsed = JSON.parse(jsonStr);
     const prerequisites = (parsed.prerequisites ?? []).filter(
       (cmd) => typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd)
@@ -36455,7 +37024,8 @@ function parseStartupConfig(response) {
       port: parsed.port ?? 3e3,
       prerequisites,
       envVars,
-      docker: parsed.docker ?? false
+      docker: parsed.docker ?? false,
+      ...typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath ? { healthCheckPath: parsed.healthCheckPath } : {}
     };
   } catch {
     return {
@@ -36496,7 +37066,7 @@ function unshallowIfNeeded(repoPath) {
   );
   if (!needsHistory) {
     try {
-      const out = execSync2(
+      const out = execSync3(
         "grep -rl 'Nerdbank.GitVersioning\\|GitVersion' --include='*.csproj' --include='*.props' . 2>/dev/null | head -1",
         { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
       ).trim();
@@ -36509,7 +37079,7 @@ function unshallowIfNeeded(repoPath) {
     "[Startup] Detected shallow clone with git-based versioning \u2014 fetching full history"
   );
   try {
-    execSync2(
+    execSync3(
       "git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true",
       {
         cwd: repoPath,
@@ -36558,112 +37128,43 @@ function looksLikeCommand(s) {
   }
   return true;
 }
-function sanitizeStartupConfig(repoPath, config2) {
-  if (config2.docker && /docker\s+compose/.test(config2.command)) {
-    const composeFile = extractComposeFilePath(config2.command);
-    if (composeFile) {
-      if (/\btemplates?\b|\bscaffold/i.test(composeFile)) {
-        console.log(
-          `[Startup] Rejecting compose in template dir: ${composeFile} \u2014 using root Dockerfile`
-        );
-        return fallbackToDockerfile(repoPath, config2);
-      }
-      const fullPath = `${repoPath}/${composeFile}`;
-      if (existsSync4(fullPath) && !validateComposeBuildContexts(repoPath, composeFile)) {
-        console.log(
-          `[Startup] Rejecting compose with missing build context: ${composeFile} \u2014 using root Dockerfile`
-        );
-        return fallbackToDockerfile(repoPath, config2);
-      }
-      if (existsSync4(fullPath) && composeUsesPrebuiltImages(repoPath, composeFile) && existsSync4(`${repoPath}/Dockerfile`)) {
-        patchComposeForSourceBuild(repoPath, composeFile);
-        if (!config2.command.includes("--build")) {
-          config2 = {
-            ...config2,
-            command: config2.command.replace(
-              /up\s/,
-              "up --build "
-            )
-          };
-        }
-        console.log(
-          `[Startup] Patched compose to build from source instead of pulling pre-built image`
-        );
-      }
-    }
-  }
-  if (!config2.docker) {
-    const knownTools = [
-      { re: /\bdotnet\b/, name: "dotnet" },
-      { re: /\bsbt\b/, name: "sbt" },
-      { re: /\bgo\s+(build|run|mod)\b/, name: "go" },
-      { re: /\bmvn\b/, name: "mvn" },
-      { re: /\bgradle\b/, name: "gradle" },
-      { re: /\bcargo\b/, name: "cargo" },
-      { re: /\bpip\s+install\b/, name: "pip" },
-      { re: /\bbundle\s+(install|exec)\b/, name: "bundle" },
-      { re: /\bmix\s/, name: "mix" }
-    ];
-    const scriptMatch = config2.command.match(/\.\/([\w.-]+\.sh)\b/);
-    if (scriptMatch) {
-      try {
-        const scriptContent = readFileSync3(
-          `${repoPath}/${scriptMatch[1]}`,
-          "utf-8"
-        ).slice(0, 2e3);
-        for (const { re, name } of knownTools) {
-          if (re.test(scriptContent) && !isToolAvailable(name)) {
-            console.log(
-              `[Startup] Script ${scriptMatch[1]} requires "${name}" which is not on host \u2014 switching to Docker`
-            );
-            return fallbackToDockerfile(repoPath, config2);
-          }
-        }
-      } catch {
-      }
-    }
-    const fullCommand = [
-      ...config2.prerequisites,
-      config2.command
-    ].join(" ");
-    for (const { re, name } of knownTools) {
-      if (re.test(fullCommand) && !isToolAvailable(name)) {
-        console.log(
-          `[Startup] "${name}" not found on host \u2014 switching to Docker build`
-        );
-        return fallbackToDockerfile(repoPath, config2);
-      }
+function ensureToolsAvailable(repoPath, config2) {
+  const knownTools = [
+    { re: /\bdotnet\b/, name: "dotnet" },
+    { re: /\bsbt\b/, name: "sbt" },
+    { re: /\bgo\s+(build|run|mod)\b/, name: "go" },
+    { re: /\bmvn\b/, name: "mvn" },
+    { re: /\bgradle\b/, name: "gradle" },
+    { re: /\bcargo\b/, name: "cargo" },
+    { re: /\bpip\s+install\b/, name: "pip" },
+    { re: /\bbundle\s+(install|exec)\b/, name: "bundle" },
+    { re: /\bmix\s/, name: "mix" }
+  ];
+  const fullCommand = [...config2.prerequisites, config2.command].join(" ");
+  for (const { re, name } of knownTools) {
+    if (re.test(fullCommand) && !isToolAvailable(name)) {
+      console.log(
+        `[Startup] "${name}" not found on host \u2014 switching to Docker build`
+      );
+      const imageName = "bright-app-local";
+      return {
+        command: `docker run --name ${imageName} -p ${config2.port}:${config2.port} -d ${imageName}`,
+        port: config2.port,
+        prerequisites: [`docker build -t ${imageName} .`],
+        envVars: config2.envVars,
+        docker: true
+      };
     }
   }
   return config2;
 }
-function extractComposeFilePath(command) {
-  const fMatch = command.match(/-f\s+(\S+)/);
-  if (fMatch) {
-    const file = fMatch[1];
-    if (!/\.ya?ml$/i.test(file)) return null;
-    return file;
-  }
-  const cdMatch = command.match(/cd\s+(\S+)\s*&&/);
-  if (cdMatch) {
-    return `${cdMatch[1]}/docker-compose.yml`;
-  }
-  if (/docker\s+compose/.test(command)) {
-    return "docker-compose.yml";
-  }
-  return null;
-}
-function fallbackToDockerfile(repoPath, config2) {
-  const fromSource = buildFromSourceConfig(repoPath, config2) ?? buildDockerfileOnlyConfig(repoPath, config2);
-  if (fromSource) return fromSource;
-  const imageName = "bright-app-local";
-  return {
-    command: `docker build -t ${imageName} . && docker run -d -p ${config2.port}:${config2.port} --name ${imageName} ${imageName}`,
-    port: config2.port,
-    prerequisites: [],
-    envVars: config2.envVars,
-    docker: true
-  };
+function injectComposeEnvFlags(cmd, envVars) {
+  if (!envVars || Object.keys(envVars).length === 0) return cmd;
+  const eFlags = Object.entries(envVars).map(([k, v]) => `-e ${k}='${v.replace(/'/g, "'\\''")}'`).join(" ");
+  return cmd.replace(
+    /docker\s+compose\s+(run\s+(?:--rm\s+)?|exec\s+(?:-T\s+)?)/g,
+    (match2) => `${match2}${eFlags} `
+  );
 }
 function stripDockerTtyFlags(cmd) {
   return cmd.replace(
@@ -36695,7 +37196,7 @@ function patchScriptTtyFlags(repoPath, config2) {
   for (const dir of scriptDirs) {
     let files;
     try {
-      files = execSync2(`find "${dir}" -maxdepth 2 -type f 2>/dev/null`, {
+      files = execSync3(`find "${dir}" -maxdepth 2 -type f 2>/dev/null`, {
         encoding: "utf-8",
         timeout: 5e3
       }).trim().split("\n").filter(Boolean);
@@ -36720,15 +37221,14 @@ function patchScriptTtyFlags(repoPath, config2) {
 }
 function isToolAvailable(name) {
   try {
-    execSync2(`command -v ${name}`, { stdio: "pipe", timeout: 5e3 });
+    execSync3(`command -v ${name}`, { stdio: "pipe", timeout: 5e3 });
     return true;
   } catch {
     return false;
   }
 }
-async function startApplication(repoPath, config2) {
+async function startApplication(repoPath, config2, analyzeLogsFn, analyzeResponseFn) {
   if (config2.docker && /docker\s+compose/.test(config2.command)) {
-    sanitizeComposeTemplateVars(repoPath, config2);
     const composeFileMatch = config2.command.match(/-f\s+(\S+)/);
     const cdMatch = config2.command.match(/cd\s+(\S+)\s*&&/);
     const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : null);
@@ -36748,14 +37248,7 @@ async function startApplication(repoPath, config2) {
   for (let cmd of config2.prerequisites) {
     cmd = stripDockerTtyFlags(cmd);
     console.log(`[Startup] Running prerequisite: ${cmd}`);
-    execSync2(cmd, {
-      cwd: repoPath,
-      stdio: "pipe",
-      timeout: 3e5,
-      maxBuffer: 50 * 1024 * 1024,
-      // 50 MB — large installs produce lots of output
-      env: { ...process.env, ...config2.envVars }
-    });
+    await runPrerequisite(cmd, repoPath, config2.envVars);
   }
   const env = { ...process.env, ...config2.envVars };
   let command = stripDockerTtyFlags(config2.command);
@@ -36773,10 +37266,14 @@ async function startApplication(repoPath, config2) {
     shell: true
   });
   const outputLines = [];
+  const detectedContainerIds = [];
   if (child.stdout) {
     const rl = createInterface({ input: child.stdout });
     rl.on("line", (line) => {
       outputLines.push(line);
+      if (/^[0-9a-f]{64}$/.test(line.trim())) {
+        detectedContainerIds.push(line.trim());
+      }
       console.log(`[App] ${line}`);
     });
   }
@@ -36790,12 +37287,23 @@ async function startApplication(repoPath, config2) {
   const earlyExitPromise = new Promise((_, reject) => {
     child.on("exit", (code) => {
       if (code !== null && code !== 0) {
-        reject(
-          new Error(
-            `Process exited with code ${code}. Output:
-${outputLines.slice(-30).join("\n")}`
-          )
-        );
+        const head = outputLines.slice(0, 30).join("\n");
+        const tail = outputLines.slice(-30).join("\n");
+        const containerLogs = config2.docker ? captureDockerLogs(repoPath, 50) : "";
+        const parts = [`Process exited with code ${code}.`];
+        if (outputLines.length > 60) {
+          parts.push(`First 30 lines:
+${head}`, `Last 30 lines:
+${tail}`);
+        } else {
+          parts.push(`Output:
+${outputLines.join("\n")}`);
+        }
+        if (containerLogs && containerLogs !== "No container logs available.") {
+          parts.push(`Container logs:
+${containerLogs}`);
+        }
+        reject(new Error(parts.join("\n\n")));
       }
     });
     child.on("error", (err) => {
@@ -36803,33 +37311,45 @@ ${outputLines.slice(-30).join("\n")}`
     });
   });
   if (config2.docker && command.includes("--wait")) {
-    const composeExitPromise = new Promise((resolve4, reject) => {
+    const composeExitPromise = new Promise((resolve5, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("docker compose --wait timed out after 300s"));
       }, 3e5);
       child.on("exit", (code) => {
         clearTimeout(timer);
-        if (code === 0) resolve4();
-        else
-          reject(
-            new Error(
-              `docker compose exited with code ${code}. Output:
-${outputLines.slice(-30).join("\n")}`
-            )
-          );
+        if (code === 0) resolve5();
+        else {
+          const head = outputLines.slice(0, 30).join("\n");
+          const tail = outputLines.slice(-30).join("\n");
+          const containerLogs = captureDockerLogs(repoPath, 50);
+          const parts = [`docker compose exited with code ${code}.`];
+          if (outputLines.length > 60) {
+            parts.push(`First 30 lines:
+${head}`, `Last 30 lines:
+${tail}`);
+          } else {
+            parts.push(`Output:
+${outputLines.join("\n")}`);
+          }
+          if (containerLogs && containerLogs !== "No container logs available.") {
+            parts.push(`Container logs:
+${containerLogs}`);
+          }
+          reject(new Error(parts.join("\n\n")));
+        }
       });
     });
     try {
       await Promise.race([composeExitPromise, earlyExitPromise]);
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = toErrorMessage(err);
       if (errMsg.includes("unhealthy") || errMsg.includes("exited with code") || errMsg.includes("invalid compose project")) {
         console.warn(
           `[Startup] docker compose --wait failed (${errMsg.slice(0, 200)}), falling back to port check...`
         );
         logDockerFailure(repoPath);
         try {
-          await waitForPort(config2.port, 6e4);
+          await waitForPort(config2.port, 6e4, config2.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
           console.log(
             `[Startup] Port ${config2.port} is reachable despite --wait failure`
           );
@@ -36844,48 +37364,266 @@ ${outputLines.slice(-30).join("\n")}`
       throw err;
     }
     console.log("[Startup] Docker Compose services healthy, checking port...");
-    await waitForPort(config2.port, 12e4);
-  } else {
-    const portTimeoutMs = config2.docker ? 18e4 : 9e4;
-    const containerName = command.match(/--name\s+(\S+)/)?.[1];
-    const containerCrashPromise = containerName ? pollContainerAlive(containerName, portTimeoutMs) : new Promise(() => {
-    });
+    await runPostStartCommands(config2, repoPath);
+    if (config2.postStartCommands?.length) {
+      try {
+        const appState = execSync3(
+          "docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null || true",
+          { cwd: repoPath, encoding: "utf-8", timeout: 1e4 }
+        ).trim();
+        const appExited = appState.split("\n").some(
+          (l) => /app.*exited/i.test(l) || /web.*exited/i.test(l)
+        );
+        if (appExited) {
+          console.log("[Startup] App container crashed during post-start \u2014 restarting it with migrated DB...");
+          execSync3("docker compose up -d --no-deps app 2>/dev/null || docker compose up -d --no-deps web 2>/dev/null || true", {
+            cwd: repoPath,
+            stdio: "pipe",
+            timeout: 3e4
+          });
+          await sleep2(3e3);
+        }
+      } catch {
+      }
+    }
+    const composeCrashPromise = pollComposeContainersAlive(repoPath, 12e4);
     try {
       await Promise.race([
-        waitForPort(config2.port, portTimeoutMs),
+        waitForPort(config2.port, 12e4, config2.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
+        composeCrashPromise
+      ]);
+    } catch (err) {
+      logDockerFailure(repoPath);
+      const appContainer = findComposeAppContainer(repoPath);
+      if (appContainer) {
+        const diagnostics = gatherContainerDiagnostics(appContainer);
+        if (diagnostics) {
+          throw new Error(`${toErrorMessage(err)}
+
+Container diagnostics:
+${diagnostics}`);
+        }
+      }
+      throw err;
+    }
+  } else {
+    const portTimeoutMs = config2.docker ? 18e4 : 9e4;
+    if (config2.postStartCommands?.length) {
+      await sleep2(5e3);
+      await runPostStartCommands(config2, repoPath);
+    }
+    const containerName = command.match(/--name\s+(\S+)/)?.[1];
+    const resolveContainerId = () => containerName ?? detectedContainerIds[detectedContainerIds.length - 1];
+    let logTailer;
+    const startLogTail = () => {
+      const cid = resolveContainerId();
+      if (!cid || logTailer) return;
+      try {
+        logTailer = spawn("docker", ["logs", "-f", "--tail", "0", cid], {
+          stdio: ["ignore", "pipe", "pipe"]
+        });
+        if (logTailer.stdout) {
+          const rl = createInterface({ input: logTailer.stdout });
+          rl.on("line", (line) => console.log(`[Container] ${line}`));
+        }
+        if (logTailer.stderr) {
+          const rl = createInterface({ input: logTailer.stderr });
+          rl.on("line", (line) => console.log(`[Container] ${line}`));
+        }
+        logTailer.on("error", () => {
+        });
+      } catch {
+      }
+    };
+    setTimeout(startLogTail, 2e3);
+    const containerCrashPromise = containerName ? pollContainerAlive(containerName, portTimeoutMs) : (async () => {
+      await sleep2(3e3);
+      startLogTail();
+      const cid = resolveContainerId();
+      if (cid) return pollContainerAlive(cid, portTimeoutMs);
+      return new Promise(() => {
+      });
+    })();
+    try {
+      await Promise.race([
+        waitForPort(config2.port, portTimeoutMs, config2.healthCheckPath, config2.docker ? repoPath : void 0, analyzeLogsFn, analyzeResponseFn),
         earlyExitPromise,
         containerCrashPromise
       ]);
     } catch (err) {
       if (config2.docker) logDockerFailure(repoPath);
-      if (containerName) {
-        try {
-          const logs = execSync2(
-            `docker logs ${containerName} 2>&1 | tail -30`,
-            { encoding: "utf-8", timeout: 1e4 }
-          ).trim();
-          if (logs) {
-            const origMsg = err instanceof Error ? err.message : String(err);
-            throw new Error(`${origMsg}
+      const cid = resolveContainerId();
+      if (cid) {
+        const diagnostics = gatherContainerDiagnostics(cid);
+        if (diagnostics) {
+          const origMsg = toErrorMessage(err);
+          if (child.exitCode === null) child.kill("SIGTERM");
+          throw new Error(`${origMsg}
 
-Container logs:
-${logs}`);
-          }
-        } catch (logErr) {
-          if (logErr instanceof Error && logErr.message.includes("Container logs:")) throw logErr;
+Container diagnostics:
+${diagnostics}`);
         }
       }
       if (child.exitCode === null) {
         child.kill("SIGTERM");
       }
       throw err;
+    } finally {
+      if (logTailer && logTailer.exitCode === null) {
+        logTailer.kill("SIGTERM");
+      }
     }
   }
   return child;
 }
+async function runPostStartCommands(config2, repoPath) {
+  if (!config2.postStartCommands?.length) return;
+  for (let cmd of config2.postStartCommands) {
+    cmd = injectComposeEnvFlags(cmd, config2.envVars);
+    console.log(`[Startup] Running post-start command: ${cmd}`);
+    try {
+      const output = execSync3(cmd, {
+        cwd: repoPath,
+        encoding: "utf-8",
+        timeout: 12e4,
+        maxBuffer: 50 * 1024 * 1024,
+        env: { ...process.env, ...config2.envVars }
+      });
+      const lines = output.trim().split("\n");
+      const tail = lines.slice(-5).join("\n");
+      if (tail) console.log(`[Startup] Post-start output (last 5 lines):
+${tail}`);
+    } catch (err) {
+      const errMsg = toErrorMessage(err);
+      console.warn(`[Startup] Post-start command failed: ${errMsg}`);
+      if (/not running|is not running|no such container/i.test(errMsg)) {
+        const fallbackCmd = cmd.replace(/docker\s+compose\s+exec\s+(-T\s+)?/g, "docker compose run --rm ").replace(/docker\s+exec\s+(-it?\s+)?(\S+)/g, "docker compose run --rm app");
+        if (fallbackCmd !== cmd) {
+          console.log(`[Startup] Container dead \u2014 retrying with 'run --rm': ${fallbackCmd}`);
+          try {
+            const output = execSync3(fallbackCmd, {
+              cwd: repoPath,
+              encoding: "utf-8",
+              timeout: 18e4,
+              maxBuffer: 50 * 1024 * 1024,
+              env: { ...process.env, ...config2.envVars }
+            });
+            const lines = output.trim().split("\n");
+            const tail = lines.slice(-5).join("\n");
+            if (tail) console.log(`[Startup] Post-start output (last 5 lines):
+${tail}`);
+          } catch (retryErr) {
+            console.warn(`[Startup] Fallback post-start also failed: ${toErrorMessage(retryErr)}`);
+          }
+        }
+      }
+    }
+  }
+}
+function runPrerequisite(cmd, cwd, envVars) {
+  return new Promise((resolve5, reject) => {
+    const child = spawn("sh", ["-c", cmd], {
+      cwd,
+      env: { ...process.env, ...envVars },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    const outputLines = [];
+    let lastProgressLog = Date.now();
+    const progressInterval = 3e4;
+    let lastLine = "";
+    const onLine = (line) => {
+      outputLines.push(line);
+      lastLine = line;
+      if (Date.now() - lastProgressLog > progressInterval) {
+        lastProgressLog = Date.now();
+        const elapsed = Math.round((Date.now() - startTime) / 1e3);
+        console.log(
+          `[Startup] Prerequisite still running (${elapsed}s): ${lastLine.slice(0, 200)}`
+        );
+      }
+    };
+    if (child.stdout) {
+      const rl = createInterface({ input: child.stdout });
+      rl.on("line", onLine);
+    }
+    if (child.stderr) {
+      const rl = createInterface({ input: child.stderr });
+      rl.on("line", onLine);
+    }
+    const startTime = Date.now();
+    const timeoutMs = 6e5;
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 5e3);
+      const tail = outputLines.slice(-20).join("\n");
+      reject(
+        new Error(
+          `Prerequisite timed out after ${timeoutMs / 1e3}s: ${cmd}
+
+Last output:
+${tail}`
+        )
+      );
+    }, timeoutMs);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(new Error(`Prerequisite failed to start: ${err.message}`));
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        const elapsed = Math.round((Date.now() - startTime) / 1e3);
+        console.log(`[Startup] Prerequisite completed in ${elapsed}s`);
+        resolve5();
+      } else {
+        const tail = outputLines.slice(-30).join("\n");
+        reject(
+          new Error(
+            `Command failed: ${cmd}
+Exit code: ${code}
+
+${tail}`
+          )
+        );
+      }
+    });
+  });
+}
+function gatherContainerDiagnostics(containerId) {
+  const sections = [];
+  const run = (cmd, label, timeout = 5e3) => {
+    try {
+      const out = execSync3(cmd, { encoding: "utf-8", timeout }).trim();
+      if (out) sections.push(`${label}:
+${out}`);
+    } catch {
+    }
+  };
+  run(`docker port ${containerId}`, "Port mappings");
+  run(
+    `docker inspect --format='{{json .NetworkSettings.Ports}}' ${containerId}`,
+    "Network port config"
+  );
+  run(
+    `docker exec ${containerId} ps aux 2>&1 | head -30`,
+    "Processes inside container",
+    1e4
+  );
+  run(
+    `docker logs ${containerId} 2>&1 | tail -50`,
+    "Container stdout/stderr (last 50 lines)",
+    1e4
+  );
+  run(
+    `docker exec ${containerId} bash -c 'for f in /app/log/*.log /src/log/*.log /var/log/app/*.log /tmp/*.log; do [ -f "$f" ] && echo "=== $f ===" && tail -20 "$f"; done' 2>&1 | head -80`,
+    "Application logs inside container",
+    1e4
+  );
+  return sections.join("\n\n") || "";
+}
 function logDockerFailure(repoPath) {
   try {
-    const ps = execSync2(
+    const ps = execSync3(
       "docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true",
       {
         cwd: repoPath,
@@ -36895,7 +37633,7 @@ function logDockerFailure(repoPath) {
     ).trim();
     if (ps) console.log(`[Startup] Docker container status:
 ${ps}`);
-    const logs = execSync2("docker compose logs --tail=40 2>/dev/null || true", {
+    const logs = execSync3("docker compose logs --tail=40 2>/dev/null || true", {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: 15e3
@@ -36908,30 +37646,234 @@ ${logs.slice(-3e3)}`
   } catch {
   }
 }
-async function waitForPort(port, timeoutMs) {
+async function waitForPort(port, timeoutMs, healthCheckPath = "/", repoPath, analyzeLogsFn, analyzeResponseFn) {
   const start = Date.now();
   const interval = 2e3;
+  let lastStatus;
+  let lastBody = "";
+  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
+  let lastLogSnapshot = "";
+  let lastLogCheckTime = 0;
+  const logCheckInterval = 2e4;
+  let analysisInFlight = false;
+  let fatalDiagnosis = "";
+  let consecutive500s = 0;
+  const max500sBeforeFail = 5;
+  let responseAnalysisDone = false;
   while (Date.now() - start < timeoutMs) {
+    if (fatalDiagnosis) {
+      let errMsg2 = `Application failed on port ${port}: ${fatalDiagnosis}`;
+      if (lastStatus) errMsg2 += ` (last HTTP status: ${lastStatus})`;
+      if (lastBody && lastBody !== fatalDiagnosis) errMsg2 += `
+
+HTTP response body:
+${lastBody}`;
+      if (repoPath) {
+        const logs = getContainerLogTail(repoPath, 40);
+        if (logs) errMsg2 += `
+
+Container logs:
+${logs}`;
+      }
+      throw new Error(errMsg2);
+    }
     try {
-      const response = await fetch(`http://localhost:${port}/`, {
-        method: "HEAD",
+      const response = await fetch(`http://localhost:${port}${probePath}`, {
+        method: "GET",
         signal: AbortSignal.timeout(3e3)
       });
-      if (response) return;
+      lastStatus = response.status;
+      if (response.status < 500) {
+        consecutive500s = 0;
+        let responseBody = "";
+        try {
+          responseBody = await response.text();
+        } catch {
+        }
+        if (analyzeResponseFn && !responseAnalysisDone && responseBody.length > 0) {
+          responseAnalysisDone = true;
+          const bodyPreview = responseBody.length > 3e3 ? responseBody.slice(0, 3e3) + "..." : responseBody;
+          try {
+            const result = await analyzeResponseFn(response.status, bodyPreview);
+            if (!result.healthy) {
+              console.log(`[Startup] AI response analysis: UNHEALTHY \u2014 ${result.reason}`);
+              let errMsg2 = `Application on port ${port} returned HTTP ${response.status} but response is not healthy: ${result.reason}`;
+              errMsg2 += `
+
+HTTP response body:
+${bodyPreview}`;
+              if (repoPath) {
+                const logs = getContainerLogTail(repoPath, 40);
+                if (logs) errMsg2 += `
+
+Container logs:
+${logs}`;
+              }
+              throw new Error(errMsg2);
+            }
+            console.log(`[Startup] AI response analysis: healthy \u2014 ${result.reason}`);
+          } catch (err) {
+            if (err instanceof Error && err.message.startsWith("Application on port")) throw err;
+            console.log(`[Startup] AI response analysis failed, accepting response as healthy`);
+          }
+        }
+        return;
+      }
+      try {
+        const text = await response.text();
+        lastBody = extractErrorFromHtml(text);
+      } catch {
+      }
+      consecutive500s++;
+      if (consecutive500s >= max500sBeforeFail) {
+        let errMsg2 = `Application returning HTTP ${response.status} persistently on port ${port}`;
+        if (lastBody) errMsg2 += `
+
+HTTP ${response.status} response body:
+${lastBody}`;
+        if (repoPath) {
+          const logs = getContainerLogTail(repoPath, 40);
+          if (logs) errMsg2 += `
+
+Container logs:
+${logs}`;
+        }
+        throw new Error(errMsg2);
+      }
+      console.log(
+        `[Startup] Port ${port} responding with HTTP ${response.status} (${consecutive500s}/${max500sBeforeFail}) \u2014 will fail fast if persistent...`
+      );
     } catch {
+    }
+    if (repoPath && !analysisInFlight && Date.now() - lastLogCheckTime > logCheckInterval) {
+      const snapshot = getContainerLogTail(repoPath, 40);
+      if (snapshot && snapshot !== lastLogSnapshot) {
+        lastLogSnapshot = snapshot;
+        lastLogCheckTime = Date.now();
+        if (analyzeLogsFn) {
+          analysisInFlight = true;
+          analyzeLogsFn(snapshot).then((result) => {
+            analysisInFlight = false;
+            if (result.status === "progress") {
+              console.log(`[Startup] AI log analysis: still progressing \u2014 ${result.summary}`);
+            } else if (result.status === "fatal") {
+              console.log(`[Startup] AI log analysis: fatal \u2014 ${result.summary}`);
+              fatalDiagnosis = result.summary;
+            } else {
+              console.log(`[Startup] AI log analysis: ${result.summary}`);
+            }
+          }).catch(() => {
+            analysisInFlight = false;
+          });
+        } else {
+          lastLogCheckTime = Date.now();
+          console.log(`[Startup] Container logs are updating (no AI analysis available)`);
+        }
+      }
     }
     await sleep2(interval);
   }
-  throw new Error(
-    `Application did not start on port ${port} within ${timeoutMs / 1e3}s`
-  );
+  let errMsg = `Application did not start on port ${port} within ${timeoutMs / 1e3}s`;
+  if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
+  if (lastBody) errMsg += `
+
+HTTP 500 response body:
+${lastBody}`;
+  if (repoPath) {
+    const finalLogs = getContainerLogTail(repoPath, 40);
+    if (finalLogs) errMsg += `
+
+Container logs (last 40 lines):
+${finalLogs}`;
+  }
+  throw new Error(errMsg);
+}
+function getContainerLogTail(repoPath, lines = 30) {
+  try {
+    return execSync3(
+      `docker compose logs --tail=${lines} 2>/dev/null || true`,
+      { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+function extractErrorFromHtml(html) {
+  const patterns = [
+    // Rails: "Migrations are pending", exception messages
+    /(?:exception|error)[^<]*<[^>]*>([^<]{10,1000})/i,
+    /<h1[^>]*>([^<]+)<\/h1>/i,
+    /<title>([^<]+)<\/title>/i
+  ];
+  const matches = [];
+  for (const p of patterns) {
+    const m = html.match(p);
+    if (m?.[1]) matches.push(m[1].trim());
+  }
+  const plain = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+  if (matches.length > 0) {
+    return matches.join(" | ") + "\n" + plain.slice(0, 500);
+  }
+  return plain.slice(0, 800);
+}
+async function pollComposeContainersAlive(repoPath, timeoutMs) {
+  const start = Date.now();
+  await sleep2(3e3);
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const ps = execSync3(
+        "docker compose ps -a --format '{{.Name}} {{.State}}' 2>/dev/null || true",
+        { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
+      ).trim();
+      if (ps) {
+        for (const line of ps.split("\n")) {
+          const [name, state] = line.trim().split(/\s+/);
+          if (!name || !state) continue;
+          if (/^(postgres|redis|mysql|mongo|memcached|rabbitmq|elasticsearch|kafka|zookeeper)/i.test(name)) continue;
+          if (state === "exited" || state === "dead") {
+            let exitInfo = "";
+            try {
+              exitInfo = execSync3(
+                `docker inspect --format='{{.State.ExitCode}}' ${name} 2>/dev/null`,
+                { encoding: "utf-8", timeout: 5e3 }
+              ).trim();
+            } catch {
+            }
+            throw new Error(
+              `Compose container "${name}" crashed (state: ${state}${exitInfo ? `, exit code: ${exitInfo}` : ""})`
+            );
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("crashed")) throw err;
+    }
+    await sleep2(3e3);
+  }
+  throw new Error("Compose container health poll timed out");
+}
+function findComposeAppContainer(repoPath) {
+  try {
+    const ps = execSync3(
+      "docker compose ps -a --format '{{.Name}}' 2>/dev/null || true",
+      { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
+    ).trim();
+    if (!ps) return void 0;
+    const infra = /^(postgres|redis|mysql|mongo|memcached|rabbitmq|elasticsearch|kafka|zookeeper)/i;
+    for (const name of ps.split("\n")) {
+      if (name.trim() && !infra.test(name.trim())) return name.trim();
+    }
+    return ps.split("\n")[0]?.trim() || void 0;
+  } catch {
+    return void 0;
+  }
 }
 async function pollContainerAlive(containerName, timeoutMs) {
   const start = Date.now();
   await sleep2(3e3);
   while (Date.now() - start < timeoutMs) {
     try {
-      const status = execSync2(
+      const status = execSync3(
         `docker inspect --format='{{.State.Status}}' ${containerName} 2>/dev/null`,
         { encoding: "utf-8", timeout: 5e3 }
       ).trim();
@@ -36949,113 +37891,362 @@ async function pollContainerAlive(containerName, timeoutMs) {
   }
   throw new Error(`Container health poll timed out`);
 }
-async function checkAppHealth(port) {
+async function checkAppHealth(port, healthCheckPath = "/") {
+  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
   try {
-    await fetch(`http://localhost:${port}/`, {
-      method: "HEAD",
+    const res = await fetch(`http://localhost:${port}${probePath}`, {
+      method: "GET",
       signal: AbortSignal.timeout(5e3)
     });
-    return true;
+    return res.status < 500;
   } catch {
     return false;
   }
 }
-function extractJson2(text) {
-  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
-  if (codeBlockMatch) return codeBlockMatch[1].trim();
-  const jsonMatch = text.match(/(\{[\s\S]*\})/);
-  if (jsonMatch) return jsonMatch[1];
-  return text;
-}
 function cleanupDocker(repoPath) {
   try {
-    const running = execSync2("docker ps -q", {
-      encoding: "utf-8",
-      timeout: 1e4
-    }).trim();
-    if (running) {
-      console.log("[Startup] Stopping all running Docker containers...");
-      execSync2("docker stop $(docker ps -q)", {
-        stdio: "pipe",
-        timeout: 6e4
-      });
-    }
-    const stopped = execSync2("docker ps -aq", {
-      encoding: "utf-8",
-      timeout: 1e4
-    }).trim();
-    if (stopped) {
-      console.log("[Startup] Removing stopped Docker containers...");
-      execSync2("docker rm -f $(docker ps -aq)", {
-        stdio: "pipe",
-        timeout: 3e4
-      });
-    }
-    execSync2(
-      "docker compose down 2>/dev/null; docker compose -f compose.local.yml down 2>/dev/null || true",
+    execSync3(
+      "docker compose down --remove-orphans 2>/dev/null; docker compose -f compose.local.yml down --remove-orphans 2>/dev/null || true",
       { cwd: repoPath, stdio: "pipe", timeout: 3e4 }
     );
+    const projectName = repoPath.split("/").pop() ?? "";
+    if (projectName) {
+      const projectContainers = execSync3(
+        `docker ps -aq --filter "label=com.docker.compose.project=${projectName}" 2>/dev/null || true`,
+        { encoding: "utf-8", timeout: 1e4 }
+      ).trim();
+      if (projectContainers) {
+        console.log("[Startup] Removing project Docker containers...");
+        execSync3(`docker rm -f ${projectContainers}`, {
+          stdio: "pipe",
+          timeout: 3e4
+        });
+      }
+    }
   } catch {
   }
 }
 function captureDockerLogs(repoPath, tailLines = 80) {
   const logs = [];
+  const containerNames = [];
   try {
     const containers = execFileSync4(
       "docker",
       ["compose", "ps", "-a", "--format", "{{.Name}}"],
       { cwd: repoPath, encoding: "utf-8", timeout: 1e4 }
     ).trim().split("\n").filter(Boolean);
-    for (const name of containers) {
-      try {
-        const containerLog = execFileSync4(
-          "docker",
-          ["logs", "--tail", String(tailLines), name],
-          { encoding: "utf-8", timeout: 1e4 }
-        );
-        if (containerLog.trim()) {
-          logs.push(`=== ${name} ===
-${containerLog.trim()}`);
-        }
-      } catch {
-      }
-    }
+    containerNames.push(...containers);
   } catch {
     try {
       const allContainers = execFileSync4(
         "docker",
-        ["ps", "-a", "--format", "{{.Names}}", "--filter", "name=nodejs"],
+        ["ps", "-a", "--format", "{{.Names}}", "--last", "5"],
         { encoding: "utf-8", timeout: 1e4 }
       ).trim().split("\n").filter(Boolean);
-      for (const name of allContainers) {
-        try {
-          const containerLog = execFileSync4(
-            "docker",
-            ["logs", "--tail", String(tailLines), name],
-            { encoding: "utf-8", timeout: 1e4 }
-          );
-          if (containerLog.trim()) {
-            logs.push(`=== ${name} ===
+      containerNames.push(...allContainers);
+    } catch {
+    }
+  }
+  for (const name of containerNames) {
+    try {
+      const containerLog = execFileSync4(
+        "docker",
+        ["logs", name],
+        { encoding: "utf-8", timeout: 15e3, maxBuffer: 10 * 1024 * 1024 }
+      );
+      if (containerLog.trim()) {
+        logs.push(`=== ${name} ===
 ${containerLog.trim()}`);
-          }
-        } catch {
-        }
       }
     } catch {
     }
   }
-  return logs.join("\n\n") || "No container logs available.";
+  if (logs.length === 0) return "No container logs available.";
+  const fullLogs = logs.join("\n\n");
+  try {
+    writeFileSync2(`${repoPath}/.bright-container-logs.txt`, fullLogs, "utf-8");
+  } catch {
+  }
+  const lines = fullLogs.split("\n");
+  if (lines.length <= tailLines) return fullLogs;
+  const headCount = Math.floor(tailLines * 0.4);
+  const tailCount = tailLines - headCount;
+  const head = lines.slice(0, headCount).join("\n");
+  const tail = lines.slice(-tailCount).join("\n");
+  return `${head}
+
+... (${lines.length - tailLines} lines omitted \u2014 full logs in .bright-container-logs.txt) ...
+
+${tail}`;
 }
 
 // src/phases/auth.ts
-async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoints, projectId, baseUrl, repeaterId, brightToken, brightHostname, model) {
+import { execSync as execSync4 } from "child_process";
+
+// src/prompts/auth.ts
+function detectAuthPrompt(stackStr, baseUrl, contextSummary) {
+  const contextBlock = contextSummary ? `
+
+Application context from previous phases:
+${contextSummary}
+` : "";
+  return [
+    {
+      role: "system",
+      content: `You are a security analyst examining a ${stackStr} application. Your task is to determine how the app authenticates users and extract the exact details needed to configure a DAST scanner.${contextBlock}
+
+You have codebase tools (read_file, list_files, search_files) AND a **probe_url** tool to make HTTP requests to the RUNNING application.
+
+## Investigation steps:
+
+1. **Probe the live app first** \u2014 use probe_url to hit a few endpoints and check responses:
+   - GET ${baseUrl}/ \u2014 check if it redirects to login or returns HTML with login forms
+   - GET ${baseUrl}/session/current.json or /api/me or /api/user \u2014 check for 401/403
+   - GET ${baseUrl}/admin \u2014 check for 401/403/302
+   This immediately tells you if auth is required, even for complex apps.
+
+2. **Find the login endpoint** \u2014 search for auth controllers, login routes, sign-in handlers. IMPORTANT: distinguish between the HTML login PAGE (e.g. /login) and the API endpoint that PROCESSES credentials (e.g. POST /session, POST /api/auth/login). Read the handler code to determine:
+   - The exact API endpoint that processes login (NOT the page that renders the login form)
+   - The exact request body field names (e.g. "user", "email", "username", "password")
+   - How the token/session is returned: response body field, response header, or Set-Cookie
+   - Whether it's session-based (cookies), JWT (token in body/header), or API key
+   For loginEndpoint, always use the API endpoint path. If unsure, probe POST to candidate endpoints to find the one that accepts credentials.
+
+3. **Find real credentials** \u2014 search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials \u2014 only use values found in the actual codebase. If none found, set loginBody to null.
+
+4. **Find the registration endpoint** (if applicable) \u2014 if no seeded users exist, find a signup/register route and build a registerBody with consistent test credentials.
+
+5. **Identify a protected endpoint** \u2014 find a route with auth middleware applied (e.g. before_action, @login_required, passport.authenticate) that returns 401/403/302 when unauthenticated. Use probe_url to VERIFY it actually requires auth.
+
+CRITICAL: NEVER conclude "requiresAuth: false" based only on code analysis. You MUST probe the live app first. Most web apps require authentication \u2014 if the homepage loads without auth, probe API/admin/user endpoints too.
+
+Base URL: ${baseUrl}`
+    },
+    {
+      role: "user",
+      content: `Analyze the authentication for this app.
+
+Search the codebase and read files before answering.
+
+Return a JSON object:
+{
+  "requiresAuth": true/false,
+  "authType": "jwt" | "session" | "api_key" | "basic" | "oauth" | "none",
+  "loginEndpoint": "/api/auth/login" or null,
+  "loginMethod": "POST" or null,
+  "loginBody": "{\\"user\\":\\"actual-user\\",\\"password\\":\\"actual-pass\\"}" or null,
+  "loginContentType": "json" | "form" | "xml",
+  "tokenLocation": "body" | "header" | "cookie",
+  "tokenFieldPath": "token" or "authorization" or null,
+  "tokenEmbedLocation": "header" | "cookie" | "query",
+  "headerName": "Authorization" or null,
+  "headerPrefix": "Bearer " or "" or null,
+  "cookieName": "session" or null,
+  "queryParamName": "token" or null,
+  "reauthIndicator": "status" | "redirect" | "body",
+  "reauthBodyPattern": "regex pattern" or null,
+  "protectedEndpointPath": "/api/protected" or null,
+  "registerEndpoint": "/register" or null,
+  "registerMethod": "POST" or null,
+  "registerBody": "email=test@test.com&password=pass" or null,
+  "notes": "brief description"
+}
+
+Key rules:
+- loginBody values MUST come from seed data, env vars, or code you actually read
+- If no credentials found but registration exists, invent consistent test credentials for both registerBody and loginBody
+- loginBody format must match loginContentType: URL-encoded for "form", JSON for "json"
+- tokenLocation: read the login handler to determine if token is in response body, header, or cookie
+- protectedEndpointPath: find a route with auth middleware in the codebase and confirm it requires authentication`
+    }
+  ];
+}
+function configureAuthPrompt(baseUrl, testUrl, detection, userConfirmed, preProbeContext) {
+  const authStyle = detection.authType === "session" ? "session" : detection.authType === "jwt" ? "jwt" : detection.authType === "api_key" ? "api_key" : "session";
+  const credentialNote = userConfirmed ? `
+A test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.` : `
+No confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work \u2014 if auth tests fail, try creating a user via run_command_in_docker.`;
+  return [
+    {
+      role: "system",
+      content: `You are an expert at configuring Bright DAST authentication objects. Your job is to create a working auth object and verify it passes all tests. You have many rounds available \u2014 use ALL of them. Do NOT give up early.
+
+## Context
+- Base URL: ${baseUrl}
+- Auth type: ${detection.authType} (use authStyle="${authStyle}")
+- Login: ${detection.loginMethod ?? "POST"} ${detection.loginEndpoint ?? "unknown"}
+- Login body: ${detection.loginBody ?? "unknown"}
+- Content type: ${detection.loginContentType}
+- Token: ${detection.tokenLocation} \u2192 embed via ${detection.tokenEmbedLocation}
+- Token field: ${detection.tokenFieldPath ?? "unknown"}
+- Cookie: ${detection.cookieName ?? "none"}
+- Reauth: ${detection.reauthIndicator}
+- Suggested test URL: ${testUrl}
+${credentialNote}
+
+## Available tools
+- **probe_url** \u2014 Make HTTP requests to the running app. Use for DISCOVERY: finding real endpoints, checking response formats, understanding what the app returns. Cookies are tracked automatically across calls.
+- **run_command_on_host** \u2014 Run shell commands on the host (docker ps, docker logs, etc.).
+- **run_command_in_docker** \u2014 Run commands inside a Docker container (create users, inspect environment).
+- **read_file / search_files / list_files** \u2014 Inspect the codebase to understand auth flow.
+- **create_auth** \u2014 Create a Bright auth object. This is the ONLY way to properly test login \u2014 it handles cookies, CSRF, redirects correctly.
+- **test_auth_object** \u2014 Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
+- **delete_auth_object** \u2014 Delete a broken auth object to recreate with different settings.
+
+## Workflow
+
+### Step 1: Discover the REAL login API endpoint
+The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API endpoint that processes credentials.
+1. Check the pre-probe results \u2014 if loginEndpoint is marked as "HTML page", do NOT use it as loginUrl
+2. Look for "Candidate API login" entries in the pre-probe \u2014 those are the real API endpoints
+3. If unsure, probe POST to common API patterns with an empty body \u2014 403/422/400 means it's the right endpoint (rejected creds), 404 means wrong:
+   - POST ${baseUrl}/session
+   - POST ${baseUrl}/api/session
+   - POST ${baseUrl}/api/auth/login
+   - POST ${baseUrl}/auth/sign_in
+4. Also search the codebase: search for route definitions that handle POST login/session
+
+### Step 2: Discover test URL candidates using probe_url
+1. Probe several .json endpoints WITHOUT auth to find ones that return different content when authenticated:
+   - Endpoints returning 401/403 are ideal testUrls
+   - Endpoints returning 200 with "login_required" or "not_logged_in" in the body need reauthStrategy='body'
+   - Endpoints returning 200 with the same content regardless of auth are USELESS as testUrls \u2014 skip them
+   - Endpoints returning 404 are USELESS \u2014 skip them
+2. Note down exactly what the unauthenticated response looks like (status, body pattern) for each candidate
+
+### Step 3: Create auth object and use test_auth_object to verify
+1. Call create_auth with your best parameters \u2014 use the REAL API endpoint as loginUrl (NOT an HTML page)
+2. Call test_auth_object \u2014 this is the source of truth
+3. Read the test results carefully for EACH stage:
+
+   **If "validation" fails** ("did not match any auth triggers"):
+   \u2192 The testUrl returns the same response regardless of auth. The Bright platform cannot distinguish auth/unauth.
+   \u2192 Fix: pick a DIFFERENT testUrl. Use probe_url to find one where authenticated vs unauthenticated responses differ.
+   \u2192 If no endpoint returns 401/403, use reauthStrategy='body' with a reauthBodyPattern that matches the UNAUTHENTICATED body.
+
+   **If "authentication" fails**:
+   \u2192 The login request itself failed. Possible causes:
+   - Wrong loginUrl (HTML page instead of API endpoint)
+   - Wrong credentials
+   - Missing CSRF token \u2014 add csrfUrl
+   - Wrong loginBody format (json vs form mismatch)
+   \u2192 Fix: probe the login endpoint to understand what it expects, then recreate.
+
+   **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
+   \u2192 Login succeeded but the test request was still unauthenticated. The session/token wasn't applied.
+   \u2192 This often means: login returned cookies but the Bright platform didn't replay them correctly, OR the app needs a specific cookie/header flow.
+   \u2192 Fix: try different testUrl, try reauthStrategy='body' instead of status, check if the app needs additional headers.
+
+4. Delete the failed auth object and try a DIFFERENT approach. Change one thing at a time:
+   - Different loginUrl (API vs HTML)
+   - Different testUrl
+   - Different reauthStrategy (status \u2192 body \u2192 redirect)
+   - Different loginBody format (json vs form)
+   - Add/remove csrfUrl
+
+## CRITICAL PERSISTENCE RULES
+- **NEVER respond with "FAILED" until you have exhausted ALL of the following strategies:**
+  1. At least 3 different loginUrl candidates (the detected one + API alternatives)
+  2. At least 3 different testUrl candidates
+  3. Both reauthStrategy='status' and reauthStrategy='body' with reauthBodyPattern
+  4. Both json and form loginContentType
+  5. With and without csrfUrl
+- **After each failed test_auth_object, analyze the specific failure stage and change your approach accordingly.**
+- **Use probe_url between attempts to gather more data** \u2014 probe new endpoints, check response formats, search the codebase for auth routes.
+- **You have 50 rounds. Use them ALL before giving up.** Each create/test/delete cycle takes ~3 rounds. You can try 15+ different configurations.
+- When all stages pass, respond with ONLY the auth object ID. If you truly exhausted everything, respond "FAILED".`
+    },
+    {
+      role: "user",
+      content: `Create and test a working auth object for this application. Return only the auth object ID when it passes.${preProbeContext ? `
+
+## Pre-probe results (already fetched for you)
+${preProbeContext}` : ""}`
+    }
+  ];
+}
+function seedUserPrompt(baseUrl, detection) {
+  const loginInfo = detection.loginEndpoint ? `- Login endpoint: ${detection.loginMethod ?? "POST"} ${detection.loginEndpoint}` : "";
+  const bodyInfo = detection.loginBody ? `- Detected login body format: ${detection.loginBody}` : "";
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. Your ONLY mission is to create a test user in the running application so that DAST authentication can work.
+
+## Context
+- Base URL: ${baseUrl}
+- Auth type: ${detection.authType}
+${loginInfo}
+${bodyInfo}
+
+## Target credentials
+Create a user with these exact credentials:
+- username: bright_test
+- email: bright@test.com
+- password: BrightTest123!
+- Make the user an admin/superuser if possible
+
+## Tools available
+- **run_command_on_host** \u2014 Run shell commands on the host (docker ps, docker logs, etc.)
+- **run_command_in_docker** \u2014 Run commands inside a Docker container (create users, framework CLI)
+- **probe_url** \u2014 Make HTTP requests to the running app
+- **read_file / search_files / list_files** \u2014 Inspect the codebase
+
+## Strategy
+1. Find the Docker container: run_command_on_host("docker ps --format '{{.ID}} {{.Names}} {{.Image}}'")
+2. Research how to create users in this app:
+   - search_files for User model, schema, migration
+   - read_file on the User model to understand required fields, validations, password hashing
+   - Check the framework (Gemfile, package.json, requirements.txt, etc.)
+3. Create the user via docker exec + framework CLI. Common patterns:
+   - **Rails**: run_command_in_docker(container: "<id>", command: "cd /src && RAILS_ENV=development bundle exec rails runner "u = User.new(username: :bright_test, email: :bright@test.com, password: :BrightTest123!, admin: true, active: true, approved: true); u.save!(validate: false)"")
+   - **Django**: run_command_in_docker(container: "<id>", command: "python manage.py shell -c "from django.contrib.auth.models import User; User.objects.create_superuser('bright_test', 'bright@test.com', 'BrightTest123!')"")
+   - **Laravel**: run_command_in_docker(container: "<id>", command: "php artisan tinker --execute="\\App\\Models\\User::create(['name'=>'bright','email'=>'bright@test.com','password'=>Hash::make('BrightTest123!')])"")
+   - **Node/Express**: run_command_in_docker(container: "<id>", command: "node -e "const db = require('./models'); db.User.create({...})"")
+4. If the first attempt fails, READ the error message, then:
+   - Read the User model source code to understand required fields and validations
+   - Try save!(validate: false) or equivalent to bypass validations
+   - Try alternative CLI commands (e.g. "bundle exec rake" vs "rails runner")
+   - Try the app's built-in admin/seed commands
+   - Try raw SQL: docker exec <db-container> psql -U postgres -d <dbname> -c "INSERT INTO users..."
+5. VERIFY the user exists:
+   - Run a query: docker exec <id> ... "puts User.find_by(username: 'bright_test').present?"
+   - Or probe the login endpoint to confirm credentials work
+
+## Output
+When the user is created and verified, respond with ONLY this JSON:
+{"success": true, "username": "bright_test", "password": "BrightTest123!", "email": "bright@test.com"}
+
+If you exhausted all approaches and cannot create a user, respond with:
+{"success": false, "reason": "brief explanation"}
+
+## Rules
+- Be persistent. Try at least 5 different approaches before giving up.
+- Read error messages carefully \u2014 they tell you what fields are missing or what format is expected.
+- When docker exec fails, check if the container is running and which shell/tools are available.
+- Do NOT give up after one failure. Adapt and retry.`
+    },
+    {
+      role: "user",
+      content: "Create a test user in the running application. Return the JSON result."
+    }
+  ];
+}
+
+// src/phases/auth.ts
+var CONTENT_TYPE_MAP = {
+  json: "application/json",
+  form: "application/x-www-form-urlencoded",
+  xml: "application/xml"
+};
+async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectId, baseUrl, repeaterId, brightToken, brightHostname, model, contextSummary) {
   const detection = await detectAuthFromCode(
     llm,
     repoPath,
     techStack,
-    endpoints,
     baseUrl,
-    model
+    model,
+    contextSummary
   );
   if (!detection.requiresAuth) {
     console.log("[Auth] No auth required");
@@ -37070,19 +38261,54 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
   console.log(
     `[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`
   );
-  await registerUser(baseUrl, detection);
-  const authObjectId = await createAuthViaMcp(
-    llm,
-    bright,
-    repoPath,
-    detection,
-    projectId,
-    baseUrl,
-    repeaterId,
-    brightToken,
-    brightHostname,
-    model
-  );
+  let registrationOk = await registerUser(baseUrl, detection);
+  let seededCredentials;
+  if (!registrationOk) {
+    seededCredentials = await seedTestUser(llm, repoPath, baseUrl, detection, model);
+    if (seededCredentials?.success) {
+      registrationOk = true;
+      detection.loginBody = JSON.stringify({
+        login: seededCredentials.username,
+        password: seededCredentials.password
+      });
+    }
+  }
+  const probeContext = await preProbeForAuth(baseUrl, detection);
+  const MAX_AUTH_ATTEMPTS = 3;
+  let authObjectId;
+  const allAttemptLogs = [];
+  for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
+    let attemptContext = probeContext;
+    if (allAttemptLogs.length > 0) {
+      attemptContext += "\n\n## Previous attempt failures\nLearn from these mistakes. Do NOT repeat the same configurations.\n\n" + allAttemptLogs.join("\n\n---\n\n");
+    }
+    console.log(`[Auth] Auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS}...`);
+    const result = await createAuthViaMcp(
+      llm,
+      bright,
+      repoPath,
+      detection,
+      registrationOk,
+      projectId,
+      baseUrl,
+      repeaterId,
+      brightToken,
+      brightHostname,
+      model,
+      attemptContext
+    );
+    if (result.authId) {
+      authObjectId = result.authId;
+      break;
+    }
+    if (result.attemptLog.length > 0) {
+      allAttemptLogs.push(`### Attempt ${attempt} failures:
+${result.attemptLog.join("\n")}`);
+    }
+    if (attempt < MAX_AUTH_ATTEMPTS) {
+      console.log(`[Auth] Attempt ${attempt} failed \u2014 retrying with accumulated context...`);
+    }
+  }
   const registration = detection.registerEndpoint && detection.registerBody ? {
     baseUrl,
     endpoint: detection.registerEndpoint,
@@ -37102,184 +38328,37 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, endpoint
     registration
   };
 }
-async function detectAuthFromCode(llm, repoPath, techStack, endpoints, baseUrl, model) {
+async function detectAuthFromCode(llm, repoPath, techStack, baseUrl, model, contextSummary) {
   const stackStr = formatTechStack(techStack);
-  const endpointsTool = {
+  const codeHandler = createToolHandler(repoPath);
+  _probeCookieJar = {};
+  const probeToolDef = {
     type: "function",
     function: {
-      name: "list_endpoints",
-      description: `Browse the ${endpoints.length} discovered API endpoints. Returns endpoints in pages of 50. Each entry shows METHOD, path, and source file.`,
+      name: "probe_url",
+      description: "Make an HTTP request to the RUNNING application and see the response (status, headers, body). Use this to verify auth requirements \u2014 e.g. GET a protected endpoint and check for 401/403/302/login_required.",
       parameters: {
         type: "object",
         properties: {
-          from: {
-            type: "number",
-            description: "Start index (0-based). Default 0."
-          },
-          to: {
-            type: "number",
-            description: `End index (exclusive). Default 50. Max ${endpoints.length}.`
-          },
-          filter: {
-            type: "string",
-            description: "Optional substring filter \u2014 only return endpoints whose path or file contains this string (e.g. 'auth', 'login', 'session', 'user')."
-          }
+          url: { type: "string", description: "Full URL (e.g. http://localhost:3000/admin)" },
+          method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
+          headers: { type: "string", description: `JSON headers, e.g. '{"Accept":"application/json"}'` },
+          body: { type: "string", description: "Request body for POST/PUT" }
         },
-        required: [],
+        required: ["url"],
         additionalProperties: false
       }
     }
   };
-  const baseHandler = createToolHandler(repoPath);
   const handler = async (name, args) => {
-    if (name === "list_endpoints") {
-      const from = Math.max(0, Number(args.from ?? 0));
-      const to = Math.min(endpoints.length, Number(args.to ?? from + 50));
-      const filter2 = args.filter ? String(args.filter).toLowerCase() : null;
-      let slice = endpoints.slice(from, to);
-      if (filter2) {
-        slice = endpoints.filter(
-          (ep) => ep.path.toLowerCase().includes(filter2) || ep.filePath.toLowerCase().includes(filter2)
-        );
-        if (slice.length > 100) slice = slice.slice(0, 100);
-      }
-      const lines = slice.map(
-        (ep) => `${ep.method} ${ep.path} (${ep.filePath})`
-      );
-      return lines.length > 0 ? lines.join("\n") + `
-(${endpoints.length} total endpoints)` : "No endpoints match that filter.";
-    }
-    return baseHandler(name, args);
+    if (name === "probe_url") return probeUrl2(args);
+    return codeHandler(name, args);
   };
-  const authTools = [...codebaseTools, endpointsTool];
-  const first20 = endpoints.slice(0, 20).map((ep) => `${ep.method} ${ep.path} (${ep.filePath})`).join("\n");
-  const endpointSummary = first20 + (endpoints.length > 20 ? `
-... (${endpoints.length} total \u2014 use the list_endpoints tool with filter="auth" or filter="login" to find auth-related endpoints)` : "");
-  const messages = [
-    {
-      role: "system",
-      content: `You are a security analyst examining a ${stackStr} application. Your task is to determine how the app authenticates users and extract the exact details needed to configure a DAST scanner.
-
-You have codebase tools (read_file, list_files, search_files) to analyze source code.
-
-STEP 1 \u2014 Find the login endpoint:
-- Search for auth controllers, login routes, sign-in handlers
-- Read the login handler to find the exact request body field names (e.g. "user", "email", "username")
-- IMPORTANT: Read the login CONTROLLER/HANDLER code (not just the service) and check HOW the token is returned:
-  a) Does the handler call res.set(), res.header(), response.header(), or set a header like "authorization"? \u2192 tokenLocation = "header", tokenFieldPath = the header name in lowercase (e.g. "authorization")
-  b) Does the handler return a JSON body containing a token field (e.g. { token: jwt })? \u2192 tokenLocation = "body", tokenFieldPath = the field name
-  c) If the handler calls something like res.header('authorization', token) or response.set('authorization', ...), that means tokenLocation = "header", NOT "body"
-  d) Does the app use session-based auth (cookies)? \u2192 tokenLocation = "cookie". Common in Rails (session[:user_id]), Django (request.session), Express (req.session)
-- You MUST search for "res.header", "res.set", "response.header", "setHeader" in the auth controller to check this
-
-FRAMEWORK-SPECIFIC AUTH DETECTION:
-- **Rails**: Search for "before_action :authenticate", "devise", "current_user", "session[:", "warden", "ApplicationController" inheriting auth. Rails apps almost ALWAYS require auth \u2014 look at ApplicationController for before_action filters. Discourse uses session-based auth with CSRF tokens.
-- **Django**: Search for "@login_required", "IsAuthenticated", "SessionAuthentication", "AUTHENTICATION_BACKENDS"
-- **Express/Node**: Search for "passport", "jwt", "express-jwt", "isAuthenticated", "auth middleware"
-- **Spring Boot**: Search for "SecurityFilterChain", "@PreAuthorize", "WebSecurityConfigurerAdapter"
-- **ASP.NET**: Search for "[Authorize]", "AddAuthentication", "UseAuthentication"
-If the app uses ANY of these patterns, set requiresAuth to TRUE even if some endpoints are public.
-
-STEP 2 \u2014 Find REAL credentials (THIS IS CRITICAL):
-You MUST actually read these files to find credentials. Do NOT skip this step:
-1. search_files for "password" in docker-compose*.yml, .env*, seed*, fixture*, init*
-2. Read docker-compose.yml \u2014 look for environment variables with DEFAULT_USER, ADMIN_PASSWORD, etc.
-3. Read .env, .env.example, .env.local, .env.development \u2014 look for user/password values
-4. search_files for "createUser", "insert.*user", "seed", "admin" in *.ts, *.js, *.sql files
-5. Read any seed/migration/fixture files you find
-6. Read README.md \u2014 look for default credentials section
-7. search_files for "password" or "credentials" in config files
-
-If you cannot find credentials after reading ALL of the above, set loginBody to null.
-NEVER invent credentials. NEVER use "admin@example.com", "correctpassword", "admin123", "password123", or any other made-up value.
-Only use credentials you found by reading actual files in the codebase.
-
-STEP 3 \u2014 Find the exact JSON field names for the login request body:
-- Read the DTO/schema/validation for the login endpoint
-- The field names might be "user", "email", "username", "login" \u2014 use EXACTLY what the code expects
-- The password field might be "password", "pass", "passwd" \u2014 use EXACTLY what the code expects
-
-STEP 4 \u2014 Find the user registration/signup endpoint (if applicable):
-- Many apps (especially demo/test apps) have NO seeded users \u2014 you MUST register one before logging in
-- Search for registration/signup routes (e.g. POST /register, POST /signup, POST /api/auth/register)
-- Read the registration handler to find the EXACT field names (email, username, password, cpassword, name, etc.)
-- Build a registerBody using the SAME credentials from loginBody, plus any extra required fields
-- For extra fields like "name", use a reasonable value like "Test User"
-- For "cpassword" or "confirmPassword" fields, use the same password value
-- If the app seeds users in DB migrations/fixtures and registration is NOT needed, set registerEndpoint to null
-
-Base URL: ${baseUrl}`
-    },
-    {
-      role: "user",
-      content: `Analyze the authentication for this app.
-
-Known endpoints (these are REAL endpoints that exist in the app):
-${endpointSummary}
-
-You MUST search the codebase and READ files before answering. Do NOT guess \u2014 actually look at the code.
-
-Return ONLY a JSON object with these exact fields:
-{
-  "requiresAuth": true/false,
-  "authType": "jwt" | "session" | "api_key" | "basic" | "oauth" | "none",
-  "loginEndpoint": "/api/auth/login" or null,
-  "loginMethod": "POST" or null,
-  "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "loginContentType": "json" | "form" | "xml",
-  "tokenLocation": "body" | "header" | "cookie",
-  "tokenFieldPath": "token" or "authorization" or "session_id" or null,
-  "tokenEmbedLocation": "header" | "cookie" | "query",
-  "headerName": "Authorization" or "X-API-Key" or null,
-  "headerPrefix": "Bearer " or "" or null,
-  "cookieName": "session" or "JSESSIONID" or null,
-  "queryParamName": "token" or "api_key" or null,
-  "reauthIndicator": "status" | "redirect" | "body",
-  "reauthBodyPattern": "regex pattern" or null,
-  "protectedEndpointPath": "/api/some/protected/path" or null,
-  "registerEndpoint": "/register" or "/signup" or null,
-  "registerMethod": "POST" or null,
-  "registerBody": "email=test@test.com&password=pass&username=user&name=Test+User&cpassword=pass" or null,
-  "notes": "brief description including where you found the credentials"
-}
-
-CRITICAL RULES:
-- "loginBody" field names MUST match what the login endpoint handler expects (read the code!)
-- "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
-- If you cannot find real credentials BUT a registration endpoint exists, invent a consistent set of test credentials used in BOTH registerBody and loginBody (e.g. username=testuser, password=TestPass123, email=test@test.com)
-- If you cannot find credentials AND there is no registration endpoint, set "loginBody" to null
-- "loginBody" FORMAT: when "loginContentType" is "form", use URL-encoded format like "username=value&password=value" \u2014 NOT JSON. When "json", use JSON like '{"username":"value","password":"value"}'
-- "loginContentType": "json" for JSON APIs, "form" for HTML form login (application/x-www-form-urlencoded), "xml" for SOAP/XML auth
-- "tokenLocation": "body" if token is in JSON response body, "header" if in a response header, "cookie" if set via Set-Cookie. READ THE LOGIN HANDLER CODE!
-- "tokenFieldPath": for body \u2192 dot-path to the token field. For header \u2192 header name in lowercase. For cookie \u2192 cookie name.
-- "tokenEmbedLocation": "header" for Authorization/Bearer, "cookie" if the app reads auth from cookies, "query" if token goes in URL query params
-- "cookieName": set this if tokenEmbedLocation is "cookie" \u2014 the cookie name the app expects
-- "queryParamName": set this if tokenEmbedLocation is "query" \u2014 the query param name
-- "reauthIndicator": How the app signals an expired/invalid session:
-  - "status" \u2192 returns 401/403 status codes (most common for APIs)
-  - "redirect" \u2192 returns 301/302 redirect to a login page (common for web apps with server-side rendering)
-  - "body" \u2192 returns 200 OK but with an error message in the response body (common for GraphQL or apps that don't use proper HTTP status codes)
-- "reauthBodyPattern": Only set when reauthIndicator is "body". A regex pattern that matches the body content indicating auth failure (e.g. "session.expired|login.required|unauthorized"). Set to null for "status" or "redirect" (redirects have no body, only a Location header).
-- "protectedEndpointPath" MUST be an endpoint that requires authentication. When accessed WITHOUT the auth token it should:
-  - Return 401/403 (for API-style apps with reauthIndicator "status")
-  - OR redirect to the login page (for server-rendered apps with reauthIndicator "redirect")
-  To verify:
-  1. Pick a candidate from the Known endpoints list above
-  2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) \u2014 e.g. /learn is better than /learn/vulnerability/:vuln
-  3. Read its route definition and handler code
-  4. Confirm it has auth middleware/guard applied (e.g. isAuthenticated, @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
-  5. If the route has NO auth guard or the guard is optional, pick a DIFFERENT endpoint
-  6. Do NOT pick endpoints that return 200 for unauthenticated requests (e.g. public pages, public APIs)
-  7. Do NOT invent endpoints \u2014 pick from the list above
-- "registerEndpoint": set if the app has a registration/signup endpoint and NO seeded users. null if users are pre-seeded.
-- "registerBody": form-encoded or JSON body for registration, using the SAME credentials as loginBody plus any extra required fields (name, email, cpassword, etc.)
-- "registerMethod": usually "POST"`
-    }
-  ];
+  const messages = detectAuthPrompt(stackStr, baseUrl, contextSummary);
   const response = await chatWithTools(
     llm,
     messages,
-    authTools,
+    [...codebaseTools, probeToolDef],
     handler,
     model,
     40
@@ -37371,14 +38450,27 @@ async function createAuthViaRestApi(brightToken, brightHostname, projectId, repe
     return postAuthObject(brightToken, brightHostname, body2);
   }
   const isSession = authStyle === "session";
-  const reauthTriggers = isSession ? [
-    {
-      type: "TRIGGER",
-      location: "header",
-      name: "Location",
-      patterns: ["login"]
-    }
-  ] : [{ type: "TRIGGER", location: "status", statuses: [401, 403] }];
+  const reauthStrat = params.reauthStrategy ?? (isSession ? "both" : "status");
+  let reauthTriggers;
+  if (reauthStrat === "body" && params.reauthBodyPattern) {
+    reauthTriggers = [
+      { type: "TRIGGER", location: "body", patterns: [params.reauthBodyPattern] }
+    ];
+  } else if (reauthStrat === "redirect") {
+    reauthTriggers = [
+      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] }
+    ];
+  } else if (reauthStrat === "both") {
+    reauthTriggers = [
+      { type: "TRIGGER", location: "status", statuses: [401, 403] },
+      { type: "OR" },
+      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] }
+    ];
+  } else {
+    reauthTriggers = [
+      { type: "TRIGGER", location: "status", statuses: [401, 403] }
+    ];
+  }
   const embedders = [];
   if (!isSession && params.tokenFieldPath) {
     const lastSegment = params.tokenFieldPath.includes(".") ? params.tokenFieldPath.split(".").pop() : params.tokenFieldPath;
@@ -37393,6 +38485,12 @@ async function createAuthViaRestApi(brightToken, brightHostname, projectId, repe
     });
   }
   const redirectOpts = isSession ? { followRedirects: false, maxRedirects: 0, changeMethodOnRedirect: false } : {};
+  if (params.csrfUrl && !params.csrfExtractPattern) {
+    const detectedPattern = await autoProbeCsrf(params.csrfUrl);
+    if (detectedPattern) {
+      params.csrfExtractPattern = detectedPattern;
+    }
+  }
   const body = {
     name: `Engine Auth \u2014 ${authStyle}`,
     projectId,
@@ -37403,49 +38501,94 @@ async function createAuthViaRestApi(brightToken, brightHostname, projectId, repe
         method: "GET",
         url: testUrl,
         protocol: "http",
-        bodyType: "clear_text",
-        ...redirectOpts
+        bodyType: "clear_text"
+        // Test request should follow redirects normally — only login steps
+        // need followRedirects:false to capture raw Set-Cookie on 302
       }
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
     reauthTriggers,
     config: {
       multistep: {
-        steps: [
-          {
-            name: "login",
-            request: {
-              method: "POST",
-              url: loginUrl,
-              protocol: "http",
-              headers: [
-                {
-                  name: "Content-Type",
-                  value: contentType,
-                  type: "clear_text",
-                  mergeStrategy: "replace"
-                }
-              ],
-              bodyType: "clear_text",
-              body: normalizedBody,
-              ...redirectOpts
-            },
-            successResponseDetection: [
-              {
-                type: "status",
-                statuses: isSession ? [200, 201, 302] : [200, 201]
-              }
-            ]
-          }
-        ],
+        steps: buildLoginSteps({
+          csrfUrl: params.csrfUrl,
+          csrfHeaderName: params.csrfHeaderName,
+          csrfExtractPattern: params.csrfExtractPattern,
+          loginUrl,
+          contentType,
+          normalizedBody,
+          isSession,
+          redirectOpts
+        }),
         ...embedders.length > 0 ? { embedders } : {}
       }
     }
   };
   console.log(
-    `[Auth] Creating ${authStyle} auth via REST API \u2014 login: ${loginUrl}, test: ${testUrl}`
+    `[Auth] Creating ${authStyle} auth via REST API \u2014 login: ${loginUrl}, test: ${testUrl}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`
   );
   return postAuthObject(brightToken, brightHostname, body);
+}
+function buildLoginSteps(opts) {
+  const steps = [];
+  if (opts.csrfUrl) {
+    steps.push({
+      name: "get_csrf",
+      request: {
+        method: "GET",
+        url: opts.csrfUrl,
+        protocol: "http",
+        headers: [
+          {
+            name: "Accept",
+            value: "application/json",
+            type: "clear_text",
+            mergeStrategy: "replace"
+          }
+        ],
+        bodyType: "clear_text",
+        ...opts.redirectOpts
+      },
+      successResponseDetection: [{ type: "status", statuses: [200] }]
+    });
+  }
+  const loginHeaders = [
+    {
+      name: "Content-Type",
+      value: opts.contentType,
+      type: "clear_text",
+      mergeStrategy: "replace"
+    }
+  ];
+  if (opts.csrfUrl) {
+    const headerName = opts.csrfHeaderName || "X-CSRF-Token";
+    const extractPattern = opts.csrfExtractPattern || '"csrf"\\s*:\\s*"([^"]*)"';
+    loginHeaders.push({
+      name: headerName,
+      value: `{{ auth_object.stages.get_csrf.response.body | match: /${extractPattern}/ }}`,
+      type: "clear_text",
+      mergeStrategy: "replace"
+    });
+  }
+  steps.push({
+    name: "login",
+    request: {
+      method: "POST",
+      url: opts.loginUrl,
+      protocol: "http",
+      headers: loginHeaders,
+      bodyType: "clear_text",
+      body: opts.normalizedBody,
+      ...opts.redirectOpts
+    },
+    successResponseDetection: [
+      {
+        type: "status",
+        statuses: opts.isSession ? [200, 201, 302] : [200, 201]
+      }
+    ]
+  });
+  return steps;
 }
 async function postAuthObject(brightToken, brightHostname, body) {
   try {
@@ -37468,34 +38611,38 @@ async function postAuthObject(brightToken, brightHostname, body) {
     return { error: `Request failed: ${err}` };
   }
 }
-async function createAuthViaMcp(llm, bright, _repoPath, detection, projectId, baseUrl, repeaterId, brightToken, brightHostname, model) {
+async function createAuthViaMcp(llm, bright, repoPath, detection, registrationOk, projectId, baseUrl, repeaterId, brightToken, brightHostname, model, preProbeContext) {
+  _probeCookieJar = {};
   const mcpSchemas = await bright.getMcpToolSchemas(["getAuth", "listAuths"]);
   const mcpToolsDefs = convertMcpToolsToOpenAI(mcpSchemas);
   const mcpHandler = createMcpToolHandler(bright);
+  const attemptLog = [];
   const customTools = [
     {
       type: "function",
       function: {
         name: "create_auth",
         description: `Create a Bright auth object with all the correct settings pre-configured.
-For session/cookie auth: automatically disables redirect following, uses header Location reauthTrigger, no embedder needed.
-For JWT auth: automatically uses status 401/403 reauthTrigger, adds Bearer header embedder.
-For API key: creates a static header auth object.`,
+For session/cookie auth: disables redirect following, uses combined status+redirect reauthTrigger, no embedder needed.
+For JWT auth: uses status 401/403 reauthTrigger, adds Bearer header embedder.
+For API key: creates a static header auth object.
+Supports CSRF token extraction: set csrfUrl to add a GET step that fetches the token before login.
+For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reauthStrategy='body' with reauthBodyPattern to detect unauthenticated responses by matching the response body.`,
         parameters: {
           type: "object",
           properties: {
             authStyle: {
               type: "string",
               enum: ["session", "jwt", "api_key"],
-              description: "The authentication style: 'session' for cookie/session-based (Express+Passport, form login with 302 redirects), 'jwt' for JSON Web Token, 'api_key' for static API key header"
+              description: "The authentication style: 'session' for cookie/session-based, 'jwt' for JSON Web Token, 'api_key' for static API key header"
             },
             loginUrl: {
               type: "string",
-              description: "Full URL for the login endpoint (e.g. http://localhost:9090/login)"
+              description: "Full URL for the login endpoint (e.g. http://localhost:3000/session)"
             },
             loginBody: {
               type: "string",
-              description: `Login request body. For form: 'username=user&password=pass'. For JSON: '{"email":"user","password":"pass"}'`
+              description: `Login request body. For form: 'login=user&password=pass'. For JSON: '{"login":"user","password":"pass"}'`
             },
             loginContentType: {
               type: "string",
@@ -37504,7 +38651,28 @@ For API key: creates a static header auth object.`,
             },
             testUrl: {
               type: "string",
-              description: "Full URL to a protected endpoint used to verify auth works (e.g. http://localhost:9090/learn)"
+              description: "Full URL to a protected endpoint. Best: returns 401/403 without auth. If no endpoint returns 401/403, pick one that returns DIFFERENT content when authenticated (e.g. a .json endpoint with 'current_user' field). Prefer .json API endpoints over HTML/SPA routes."
+            },
+            csrfUrl: {
+              type: "string",
+              description: "(Session auth) URL that returns a CSRF token in JSON body. The token is extracted via regex and sent as X-CSRF-Token header on the login request. E.g. http://localhost:3000/session/csrf. IMPORTANT: probe_url the csrfUrl first to verify the response body format, then set csrfExtractPattern if the default regex doesn't match."
+            },
+            csrfHeaderName: {
+              type: "string",
+              description: "(Session auth) HTTP header name to send the CSRF token in. Default: 'X-CSRF-Token'. Some frameworks use 'X-XSRF-Token' or 'csrf-token'."
+            },
+            csrfExtractPattern: {
+              type: "string",
+              description: `(Session auth) Regex pattern to extract the CSRF token from the csrfUrl response body. Must have exactly one capture group for the token value. Default: '"csrf"\\s*:\\s*"([^"]*)"' which matches JSON like {"csrf":"token"}. If the CSRF endpoint returns a different format, probe it first and set a matching pattern. Examples: '"token"\\s*:\\s*"([^"]*)"' for {"token":"..."}, 'content="([^"]*)"' for HTML meta tag.`
+            },
+            reauthStrategy: {
+              type: "string",
+              enum: ["status", "redirect", "both", "body"],
+              description: "How to detect expired auth. 'status' = 401/403 codes (APIs), 'redirect' = Location header containing 'login' (server-rendered), 'both' = status OR redirect (default for session), 'body' = match a regex pattern in the response body (for apps that always return 200). When 'body', set reauthBodyPattern. Use probe_url to check what the app returns without auth to decide."
+            },
+            reauthBodyPattern: {
+              type: "string",
+              description: `(When reauthStrategy='body') A regex pattern that matches the UNAUTHENTICATED response body. When the test URL's body matches this, Bright re-authenticates. E.g. 'login_required|current_user.*null' or '"is_admin"\\s*:\\s*false'. First probe the testUrl WITHOUT auth to see what the unauthenticated body looks like, then pick a pattern that matches it but NOT the authenticated response.`
             },
             tokenFieldPath: {
               type: "string",
@@ -37565,10 +38733,83 @@ For API key: creates a static header auth object.`,
           additionalProperties: false
         }
       }
+    },
+    {
+      type: "function",
+      function: {
+        name: "probe_url",
+        description: "Make an HTTP request to the running application and return the actual response (status, headers, body preview). Cookies from set-cookie responses are automatically stored and sent on subsequent requests (browser-like). Use this BEFORE creating an auth object to: (1) find the right test URL by checking which endpoints return 401/403 without auth, (2) check if CSRF tokens are needed (look for csrf meta tags or /session/csrf endpoint), (3) verify login endpoint exists (non-404 response). For full login testing, use create_auth + test_auth_object instead.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "Full URL to probe (e.g. http://localhost:3000/admin/plugins.json)"
+            },
+            method: {
+              type: "string",
+              enum: ["GET", "POST", "PUT", "DELETE"],
+              description: "HTTP method. Default: GET"
+            },
+            headers: {
+              type: "string",
+              description: `JSON object of headers to send, e.g. '{"Content-Type":"application/json","X-CSRF-Token":"abc"}'`
+            },
+            body: {
+              type: "string",
+              description: "Request body for POST/PUT"
+            }
+          },
+          required: ["url"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_command_on_host",
+        description: "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and other host-level diagnostics. Commands are killed after 30 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: `Host shell command (e.g. "docker ps --format '{{.ID}} {{.Image}}'", "curl -v http://localhost:3000/session/csrf")`
+            }
+          },
+          required: ["command"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_command_in_docker",
+        description: "Run a command INSIDE a Docker container. Use to create test users (rails runner, python manage.py), inspect the app environment, or run framework CLI commands. Commands are killed after 30 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            container: {
+              type: "string",
+              description: 'Container name or ID (e.g. "bright-app-local", "abc123")'
+            },
+            command: {
+              type: "string",
+              description: `Command to run inside the container (e.g. "rails runner 'User.create!(...)'", "python manage.py createsuperuser --noinput")`
+            }
+          },
+          required: ["container", "command"],
+          additionalProperties: false
+        }
+      }
     }
   ];
+  let lastCreateArgs = {};
   const customHandler = async (name, args) => {
     if (name === "create_auth") {
+      lastCreateArgs = { ...args };
       const result = await createAuthViaRestApi(
         brightToken,
         brightHostname,
@@ -37580,12 +38821,20 @@ For API key: creates a static header auth object.`,
           loginBody: String(args.loginBody),
           loginContentType: String(args.loginContentType),
           testUrl: String(args.testUrl),
+          csrfUrl: args.csrfUrl ? String(args.csrfUrl) : void 0,
+          csrfHeaderName: args.csrfHeaderName ? String(args.csrfHeaderName) : void 0,
+          csrfExtractPattern: args.csrfExtractPattern ? String(args.csrfExtractPattern) : void 0,
+          reauthStrategy: args.reauthStrategy ? String(args.reauthStrategy) : void 0,
+          reauthBodyPattern: args.reauthBodyPattern ? String(args.reauthBodyPattern) : void 0,
           tokenFieldPath: args.tokenFieldPath ? String(args.tokenFieldPath) : void 0,
           headerName: args.headerName ? String(args.headerName) : void 0,
           headerValue: args.headerValue ? String(args.headerValue) : void 0
         }
       );
-      if (result.error) return JSON.stringify({ error: result.error });
+      if (result.error) {
+        attemptLog.push(`- create_auth(loginUrl=${args.loginUrl}, testUrl=${args.testUrl}, authStyle=${args.authStyle}, reauthStrategy=${args.reauthStrategy ?? "default"}) \u2192 ERROR: ${result.error}`);
+        return JSON.stringify({ error: result.error });
+      }
       return JSON.stringify({ authObjectId: result.id });
     }
     if (name === "test_auth_object") {
@@ -37594,6 +38843,11 @@ For API key: creates a static header auth object.`,
         brightHostname,
         String(args.authObjectId)
       );
+      const summary = JSON.stringify(result);
+      const configSummary = `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
+      if (!result.passed) {
+        attemptLog.push(`- create_auth(${configSummary}) \u2192 test FAILED: ${result.summary ?? summary.slice(0, 300)}`);
+      }
       return JSON.stringify(result);
     }
     if (name === "delete_auth_object") {
@@ -37604,67 +38858,48 @@ For API key: creates a static header auth object.`,
       );
       return "Deleted successfully";
     }
+    if (name === "probe_url") {
+      return probeUrl2(args);
+    }
+    if (name === "run_command" || name === "run_command_on_host") {
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth] run_command_on_host: ${cmd.slice(0, 200)}`);
+      return runShellCommand(repoPath, cmd);
+    }
+    if (name === "run_command_in_docker") {
+      const container = String(args.container ?? "");
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      const isRunning = (() => {
+        try {
+          const out = execSync4(
+            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+            { encoding: "utf-8", timeout: 5e3 }
+          ).trim();
+          return out === "true";
+        } catch {
+          return false;
+        }
+      })();
+      const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
+      return runShellCommand(repoPath, dockerCmd);
+    }
     return `Unknown tool: ${name}`;
   };
   const combinedHandler = async (name, args) => {
-    if (name === "create_auth" || name === "test_auth_object" || name === "delete_auth_object") {
+    if (name === "create_auth" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
       return customHandler(name, args);
+    }
+    if (name === "search_files" || name === "read_file" || name === "list_files") {
+      return baseCodeHandler(name, args);
     }
     return mcpHandler(name, args);
   };
-  const allTools = [...mcpToolsDefs, ...customTools];
+  const baseCodeHandler = createToolHandler(repoPath);
+  const allTools = [...codebaseTools, ...mcpToolsDefs, ...customTools];
   const resolvedPath = detection.protectedEndpointPath ? detection.protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1") : "/";
   const testUrl = `${baseUrl}${resolvedPath}`;
-  const systemPrompt = `You are an expert at configuring Bright DAST authentication objects.
-
-## Context
-- Base URL: ${baseUrl}
-- App auth type: ${detection.authType}
-- Login endpoint: ${detection.loginEndpoint ?? "unknown"}
-- Login method: ${detection.loginMethod ?? "POST"}
-- Login body: ${detection.loginBody ?? "unknown"}
-- Login content type: ${detection.loginContentType}
-- Token location: ${detection.tokenLocation}
-- Token field path: ${detection.tokenFieldPath ?? "unknown"}
-- Token embed location: ${detection.tokenEmbedLocation}
-- Cookie name: ${detection.cookieName ?? "none"}
-- Reauth indicator: ${detection.reauthIndicator}
-- Protected endpoint (test URL): ${testUrl}
-
-## Your task
-Create a working auth object and test it. Follow these steps:
-
-1. **Optionally inspect existing auth objects** using listAuths/getAuth to learn from previous configurations.
-   - Clean up any broken ones with delete_auth_object.
-
-2. **Create the auth object** using create_auth. This tool handles redirect settings, reauthTriggers, and embedders automatically based on authStyle:
-   - \`session\` \u2014 for cookie/session auth (Express+Passport, form login, 302 redirects). Disables redirect following, uses header Location reauthTrigger.
-   - \`jwt\` \u2014 for JWT token auth. Uses status 401/403 reauthTrigger, adds Bearer header embedder.
-   - \`api_key\` \u2014 for static API key header auth.
-
-3. **Test it** using test_auth_object.
-
-4. **If the test fails**, analyze the error:
-   - "authentication" failure \u2192 wrong credentials in loginBody. Delete and recreate with corrected credentials.
-   - "authorization" failure \u2192 the test URL or auth configuration is wrong. Try a different testUrl or check credentials.
-   - "validation" failure \u2192 reauthTriggers didn't match. This is handled automatically by the tool, so the issue is likely credentials or testUrl.
-   Repeat up to 10 times.
-
-5. **When all stages pass**, respond with ONLY the auth object ID (nothing else).
-
-## Key rules
-- authStyle "${detection.authType === "session" ? "session" : detection.authType === "jwt" ? "jwt" : detection.authType === "api_key" ? "api_key" : "session"}" based on detected auth type
-- loginContentType: "${detection.loginContentType}" \u2014 for "form" use URL-encoded body like "username=user&password=pass", for "json" use JSON
-- loginBody values MUST use the exact credentials from the detection context above
-- testUrl should be a protected endpoint that requires auth
-- If you cannot make it work after 10 attempts, return "FAILED"`;
-  const messages = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content: "Create and test a working auth object for this application. Return only the auth object ID when it passes."
-    }
-  ];
+  const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext);
   console.log("[Auth] Starting auth configuration with custom tools...");
   const response = await chatWithTools(
     llm,
@@ -37675,22 +38910,16 @@ Create a working auth object and test it. Follow these steps:
     50
   );
   const trimmed = response.trim();
-  if (trimmed === "FAILED" || trimmed.length === 0) {
-    console.error("[Auth] LLM could not configure auth");
-    return void 0;
+  const authId = parseAuthResponse(trimmed);
+  if (!authId) {
+    console.error(`[Auth] LLM could not configure auth (response: ${trimmed.slice(0, 200)})`);
   }
-  const idMatch = trimmed.match(/[0-9a-f]{24}|[0-9a-f-]{36}/i);
-  return idMatch ? idMatch[0] : trimmed;
+  return { authId, attemptLog };
 }
 async function registerUser(baseUrl, detection) {
-  if (!detection.registerEndpoint || !detection.registerBody) return;
+  if (!detection.registerEndpoint || !detection.registerBody) return false;
   const url2 = `${baseUrl}${detection.registerEndpoint}`;
-  const contentTypeMap = {
-    json: "application/json",
-    form: "application/x-www-form-urlencoded",
-    xml: "application/xml"
-  };
-  const ct = contentTypeMap[detection.loginContentType] ?? "application/json";
+  const ct = CONTENT_TYPE_MAP[detection.loginContentType] ?? "application/json";
   const body = normalizeBody(
     detection.registerBody,
     detection.loginContentType
@@ -37708,20 +38937,21 @@ async function registerUser(baseUrl, detection) {
       signal: AbortSignal.timeout(15e3)
     });
     console.log(`[Auth] Registration response: ${res.status}`);
+    if (res.status >= 400) {
+      const body2 = await res.text().catch(() => "");
+      if (body2) console.log(`[Auth] Registration error: ${body2.slice(0, 300)}`);
+    }
+    return res.status >= 200 && res.status < 400;
   } catch (err) {
     console.warn(
       `[Auth] Registration call failed (user may already exist): ${err}`
     );
+    return false;
   }
 }
 async function reRegisterUser(registration) {
-  const contentTypeMap = {
-    json: "application/json",
-    form: "application/x-www-form-urlencoded",
-    xml: "application/xml"
-  };
   const url2 = `${registration.baseUrl}${registration.endpoint}`;
-  const ct = contentTypeMap[registration.contentType] ?? "application/json";
+  const ct = CONTENT_TYPE_MAP[registration.contentType] ?? "application/json";
   const body = normalizeBody(registration.body, registration.contentType);
   try {
     console.log(
@@ -37739,6 +38969,115 @@ async function reRegisterUser(registration) {
     console.warn(
       `[Auth] Re-registration failed (user may already exist): ${err}`
     );
+  }
+}
+async function seedTestUser(llm, repoPath, baseUrl, detection, model) {
+  console.log("[Auth] Starting seed user sub-phase...");
+  const seedTools = [
+    ...codebaseTools,
+    {
+      type: "function",
+      function: {
+        name: "run_command_on_host",
+        description: "Run a shell command on the HOST machine. Use for docker ps, docker logs, and host-level diagnostics. Timeout: 60 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: `Host shell command (e.g. "docker ps --format '{{.ID}} {{.Image}}'")`
+            }
+          },
+          required: ["command"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_command_in_docker",
+        description: "Run a command INSIDE a Docker container. Use to create test users via framework CLI (rails runner, python manage.py, etc.). Timeout: 60 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            container: {
+              type: "string",
+              description: 'Container name or ID (e.g. "bright-app-local", "abc123")'
+            },
+            command: {
+              type: "string",
+              description: `Command to run inside the container (e.g. "rails runner 'User.create!(...)'", "python manage.py createsuperuser")`
+            }
+          },
+          required: ["container", "command"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "probe_url",
+        description: "Make an HTTP request to the running app. Use to verify the user was created by testing login.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "Full URL to probe" },
+            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
+            headers: { type: "string", description: `JSON headers, e.g. '{"Content-Type":"application/json"}'` },
+            body: { type: "string", description: "Request body for POST/PUT" }
+          },
+          required: ["url"],
+          additionalProperties: false
+        }
+      }
+    }
+  ];
+  const baseCodeHandler = createToolHandler(repoPath);
+  const handler = async (name, args) => {
+    if (name === "run_command" || name === "run_command_on_host") {
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:Seed] run_command_on_host: ${cmd.slice(0, 200)}`);
+      return runShellCommand(repoPath, cmd);
+    }
+    if (name === "run_command_in_docker") {
+      const container = String(args.container ?? "");
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:Seed] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      const isRunning = (() => {
+        try {
+          const out = execSync4(
+            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+            { encoding: "utf-8", timeout: 5e3 }
+          ).trim();
+          return out === "true";
+        } catch {
+          return false;
+        }
+      })();
+      const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
+      return runShellCommand(repoPath, dockerCmd);
+    }
+    if (name === "probe_url") {
+      return probeUrl2(args);
+    }
+    return baseCodeHandler(name, args);
+  };
+  const messages = seedUserPrompt(baseUrl, detection);
+  const response = await chatWithTools(llm, messages, seedTools, handler, model, 30);
+  try {
+    const json = extractJson(response);
+    const result = JSON.parse(json);
+    if (result.success) {
+      console.log(`[Auth:Seed] User created: ${result.username} / ${result.email}`);
+      return result;
+    }
+    console.warn(`[Auth:Seed] Failed to create user: ${result.reason ?? "unknown"}`);
+    return void 0;
+  } catch {
+    console.warn(`[Auth:Seed] Could not parse seed result: ${response.slice(0, 200)}`);
+    return void 0;
   }
 }
 async function testAuthObject(brightToken, brightHostname, authObjectId) {
@@ -37790,7 +39129,7 @@ async function testAuthObject(brightToken, brightHostname, authObjectId) {
       const allPassed = results.every((r) => r.status === "success");
       return { passed: allPassed, summary: lines.join("\n") };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = toErrorMessage(err);
       console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, retryDelayMs));
@@ -37836,88 +39175,359 @@ async function deleteAuthObject(brightToken, brightHostname, authObjectId) {
     console.warn(`[Auth] Failed to delete auth object: ${err}`);
   }
 }
+var FALSE_ESCAPE_RE = /no\s*auth|auth.*not\s*required|auth.*skipped|does\s*not\s*require|doesn['']t\s*require|no\s*authentication/i;
+function parseAuthResponse(trimmed) {
+  if (trimmed === "FAILED" || trimmed.length === 0) {
+    return void 0;
+  }
+  if (FALSE_ESCAPE_RE.test(trimmed)) {
+    console.warn(`[Auth] Detected false "no auth" escape from LLM \u2014 treating as FAILED`);
+    return void 0;
+  }
+  const idMatch = trimmed.match(/[0-9a-f]{24}|[0-9a-f-]{36}/i);
+  return idMatch ? idMatch[0] : void 0;
+}
+var COMMON_CSRF_KEYS = [
+  "csrf",
+  "_csrf",
+  "csrfToken",
+  "csrf_token",
+  "authenticity_token",
+  "token",
+  "X-CSRF-Token",
+  "_token"
+];
+async function autoProbeCsrf(csrfUrl) {
+  try {
+    console.log(`[Auth] Auto-probing CSRF URL: ${csrfUrl}`);
+    const res = await fetch(csrfUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(1e4)
+    });
+    const body = await res.text();
+    try {
+      const json = JSON.parse(body);
+      for (const key of COMMON_CSRF_KEYS) {
+        if (typeof json[key] === "string" && json[key].length > 10) {
+          const pattern = `"${key}"\\s*:\\s*"([^"]+)"`;
+          console.log(`[Auth] Auto-detected CSRF pattern: ${pattern} (key="${key}", sample="${json[key].slice(0, 20)}...")`);
+          return pattern;
+        }
+      }
+      for (const [topKey, topVal] of Object.entries(json)) {
+        if (topVal && typeof topVal === "object") {
+          for (const key of COMMON_CSRF_KEYS) {
+            if (typeof topVal[key] === "string" && topVal[key].length > 10) {
+              const pattern = `"${key}"\\s*:\\s*"([^"]+)"`;
+              console.log(`[Auth] Auto-detected CSRF pattern (nested in ${topKey}): ${pattern}`);
+              return pattern;
+            }
+          }
+        }
+      }
+    } catch {
+      const metaMatch = body.match(/<meta\s+name=["']csrf-token["']\s+content=["']([^"']+)["']/i);
+      if (metaMatch) {
+        const pattern = `<meta\\s+name=["']csrf-token["']\\s+content=["']([^"']+)["']`;
+        console.log(`[Auth] Auto-detected CSRF from HTML meta tag`);
+        return pattern;
+      }
+    }
+    console.log(`[Auth] Could not auto-detect CSRF pattern from ${csrfUrl}`);
+    return void 0;
+  } catch (err) {
+    console.warn(`[Auth] CSRF auto-probe failed: ${toErrorMessage(err)}`);
+    return void 0;
+  }
+}
+async function preProbeForAuth(baseUrl, detection) {
+  const lines = [];
+  if (detection.authType === "session" && detection.loginEndpoint) {
+    const csrfCandidates = [
+      `${baseUrl}/session/csrf`,
+      // Discourse
+      `${baseUrl}/csrf`
+      // generic
+    ];
+    for (const csrfUrl of csrfCandidates) {
+      try {
+        const res = await fetch(csrfUrl, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(8e3)
+        });
+        const body = await res.text();
+        if (res.status === 200 && body.length > 0) {
+          const preview = body.length > 500 ? body.slice(0, 500) + "..." : body;
+          lines.push(`### CSRF probe: GET ${csrfUrl} \u2192 ${res.status}
+\`\`\`
+${preview}
+\`\`\``);
+          break;
+        }
+      } catch {
+      }
+    }
+  }
+  if (detection.loginEndpoint) {
+    const loginUrl = `${baseUrl}${detection.loginEndpoint}`;
+    try {
+      const getRes = await fetch(loginUrl, {
+        method: "GET",
+        headers: { Accept: "text/html, application/json, */*" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8e3)
+      });
+      const getBody = await getRes.text();
+      const ct = getRes.headers.get("content-type") ?? "";
+      const isHtml = ct.includes("html") || getBody.trimStart().startsWith("<");
+      const preview = getBody.length > 1e3 ? getBody.slice(0, 1e3) + "..." : getBody;
+      const loginType = isHtml ? "HTML page (NOT an API endpoint)" : "API endpoint";
+      lines.push(`### Login endpoint probe: GET ${loginUrl} \u2192 ${getRes.status} (${loginType})
+Content-Type: ${ct}
+\`\`\`
+${preview}
+\`\`\``);
+      if (isHtml) {
+        const actionMatch = getBody.match(/action=["']([^"']+)["']/i);
+        const apiCandidates = /* @__PURE__ */ new Set();
+        if (actionMatch?.[1]) {
+          const action = actionMatch[1];
+          apiCandidates.add(action.startsWith("http") ? action : `${baseUrl}${action}`);
+        }
+        const path2 = detection.loginEndpoint.replace(/^\//, "");
+        for (const candidate of [
+          `${baseUrl}/session`,
+          `${baseUrl}/api/session`,
+          `${baseUrl}/api/auth/login`,
+          `${baseUrl}/api/login`,
+          `${baseUrl}/auth/sign_in`
+        ]) {
+          apiCandidates.add(candidate);
+        }
+        for (const apiUrl of apiCandidates) {
+          try {
+            const apiRes = await fetch(apiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: "{}",
+              redirect: "manual",
+              signal: AbortSignal.timeout(8e3)
+            });
+            const apiBody = await apiRes.text();
+            const apiPreview = apiBody.length > 500 ? apiBody.slice(0, 500) + "..." : apiBody;
+            const looksLikeApi = apiRes.status !== 404 && !apiBody.trimStart().startsWith("<");
+            if (looksLikeApi) {
+              lines.push(`### Candidate API login: POST ${apiUrl} \u2192 ${apiRes.status} (likely real login endpoint)
+\`\`\`
+${apiPreview}
+\`\`\``);
+            }
+          } catch {
+          }
+        }
+        lines.push(`
+**WARNING**: The detected loginEndpoint "${detection.loginEndpoint}" is an HTML page, NOT the API endpoint. Use the real API endpoint found above as loginUrl in create_auth.`);
+      }
+    } catch {
+    }
+  }
+  const candidateTestUrls = /* @__PURE__ */ new Set();
+  if (detection.protectedEndpointPath) {
+    const resolved = detection.protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1");
+    candidateTestUrls.add(`${baseUrl}${resolved}`);
+  }
+  candidateTestUrls.add(`${baseUrl}/notifications.json`);
+  candidateTestUrls.add(`${baseUrl}/session/current.json`);
+  for (const url2 of candidateTestUrls) {
+    try {
+      const res = await fetch(url2, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8e3)
+      });
+      const body = await res.text();
+      const preview = body.length > 300 ? body.slice(0, 300) + "..." : body;
+      lines.push(`### Test URL probe: GET ${url2} \u2192 ${res.status}
+\`\`\`
+${preview}
+\`\`\``);
+    } catch {
+    }
+  }
+  if (lines.length === 0) {
+    return "";
+  }
+  console.log(`[Auth] Pre-probed ${lines.length} endpoints for LLM context`);
+  return lines.join("\n\n");
+}
+var _probeCookieJar = {};
+async function probeUrl2(args) {
+  const url2 = String(args.url ?? "");
+  const method = String(args.method ?? "GET").toUpperCase();
+  let extraHeaders = {};
+  if (args.headers) {
+    try {
+      extraHeaders = JSON.parse(String(args.headers));
+    } catch {
+      return "Error: invalid JSON in headers parameter";
+    }
+  }
+  const jarCookieStr = Object.entries(_probeCookieJar).map(([k, v]) => `${k}=${v}`).join("; ");
+  const fetchOpts = {
+    method,
+    headers: {
+      Accept: "application/json, text/html, */*",
+      ...jarCookieStr && !extraHeaders.Cookie && !extraHeaders.cookie ? { Cookie: jarCookieStr } : {},
+      ...extraHeaders
+    },
+    redirect: "manual",
+    signal: AbortSignal.timeout(15e3)
+  };
+  if (args.body && (method === "POST" || method === "PUT")) {
+    fetchOpts.body = String(args.body);
+  }
+  try {
+    console.log(`[Auth] Probing ${method} ${url2}`);
+    const res = await fetch(url2, fetchOpts);
+    try {
+      const setCookies = res.headers.getSetCookie?.() ?? [];
+      for (const sc of setCookies) {
+        const pair = sc.split(";")[0]?.trim();
+        if (pair) {
+          const eqIdx = pair.indexOf("=");
+          if (eqIdx > 0) {
+            _probeCookieJar[pair.slice(0, eqIdx)] = pair.slice(eqIdx + 1);
+          }
+        }
+      }
+    } catch {
+    }
+    const status = res.status;
+    const headerLines = [];
+    for (const [k, v] of res.headers.entries()) {
+      const lk = k.toLowerCase();
+      if (lk === "content-type" || lk === "location" || lk === "set-cookie" || lk === "x-csrf-token" || lk === "www-authenticate" || lk.startsWith("x-discourse")) {
+        headerLines.push(`${k}: ${v}`);
+      }
+    }
+    const bodyText = await res.text().catch(() => "");
+    const bodyPreview = bodyText.length > 2e3 ? bodyText.slice(0, 2e3) + "\n... [truncated]" : bodyText;
+    const parts = [`HTTP ${status}`];
+    if (headerLines.length > 0) parts.push(headerLines.join("\n"));
+    parts.push(bodyPreview || "(empty body)");
+    console.log(`[Auth] Probe result: ${status}`);
+    return parts.join("\n\n");
+  } catch (err) {
+    const msg = toErrorMessage(err);
+    return `Error: ${msg}`;
+  }
+}
 
 // src/phases/entrypoints.ts
 var CONFLICT_MSG = "already exists";
 async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeaterId, authObjectId) {
   const registered = [];
+  let failedUploads = 0;
   for (const ep of endpoints) {
-    const path2 = resolvePath(ep.path);
-    let fullUrl = `${baseUrl}${path2}`;
-    const method = normalizeMethod(ep.method);
-    if (ep.queryParams && ep.queryParams.length > 0) {
-      const params = new URLSearchParams(
-        ep.queryParams.map((p) => [p.name, p.value])
-      );
-      fullUrl += `?${params.toString()}`;
-    }
-    console.log(
-      `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
-    );
-    const request = {
-      method,
-      url: fullUrl
-    };
-    const needsBody = ["POST", "PUT", "PATCH"].includes(method);
-    const contentType = ep.contentType ?? (needsBody ? "application/json" : void 0);
-    if (ep.headers || contentType) {
-      const headers = { ...ep.headers ?? {} };
-      if (contentType && !headers["Content-Type"]) {
-        headers["Content-Type"] = [contentType];
-      }
-      request.headers = headers;
-    }
-    if (needsBody) {
-      request.body = sanitizeBody(ep.body ?? "{}");
-    }
-    const args = { projectId, request, repeaterId };
-    if (authObjectId) {
-      args.authObjectId = authObjectId;
-    }
     try {
-      const result = await bright.callMcpToolRaw("addEntrypoint", args);
-      let epId;
-      try {
-        const parsed = JSON.parse(result);
-        epId = parsed.entrypointId ?? parsed.id;
-      } catch {
-      }
-      if (epId) {
-        registered.push({ endpoint: ep, entrypointId: epId });
-      } else if (result.includes(CONFLICT_MSG)) {
-        const existingId = await findExistingEntrypoint(
-          bright,
-          projectId,
-          fullUrl,
-          method
+      const path2 = resolvePath(ep.path);
+      if (!isScannablePath(path2)) {
+        console.warn(
+          `[Entrypoints] Skipping junk path: ${ep.path} (resolved: ${path2})`
         );
-        if (existingId) {
-          console.log(
-            `[Entrypoints] Reusing existing EP ${existingId} for ${method} ${fullUrl}`
+        continue;
+      }
+      let fullUrl = `${baseUrl}${path2}`;
+      try {
+        new URL(fullUrl);
+      } catch {
+        console.warn(
+          `[Entrypoints] Skipping malformed URL: ${fullUrl} (from path "${ep.path}")`
+        );
+        continue;
+      }
+      const method = normalizeMethod(ep.method);
+      if (ep.queryParams && ep.queryParams.length > 0) {
+        const params = new URLSearchParams(
+          ep.queryParams.map((p) => [p.name, p.value])
+        );
+        fullUrl += `?${params.toString()}`;
+      }
+      console.log(
+        `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
+      );
+      const request = {
+        method,
+        url: fullUrl
+      };
+      const needsBody = ["POST", "PUT", "PATCH"].includes(method);
+      const contentType = ep.contentType ?? (needsBody ? "application/json" : void 0);
+      if (ep.headers || contentType) {
+        const headers = { ...ep.headers ?? {} };
+        if (contentType && !headers["Content-Type"]) {
+          headers["Content-Type"] = [contentType];
+        }
+        request.headers = headers;
+      }
+      if (needsBody) {
+        request.body = sanitizeBody(ep.body ?? "{}");
+      }
+      const args = { projectId, request, repeaterId };
+      if (authObjectId) {
+        args.authObjectId = authObjectId;
+      }
+      {
+        const result = await bright.callMcpToolRaw("addEntrypoint", args);
+        let epId;
+        try {
+          const parsed = JSON.parse(result);
+          epId = parsed.entrypointId ?? parsed.id;
+        } catch {
+        }
+        if (epId) {
+          registered.push({ endpoint: ep, entrypointId: epId });
+        } else if (result.includes(CONFLICT_MSG)) {
+          const existingId = await findExistingEntrypoint(
+            bright,
+            projectId,
+            fullUrl,
+            method
           );
-          registered.push({ endpoint: ep, entrypointId: existingId });
+          if (existingId) {
+            console.log(
+              `[Entrypoints] Reusing existing EP ${existingId} for ${method} ${fullUrl}`
+            );
+            registered.push({ endpoint: ep, entrypointId: existingId });
+          } else {
+            console.warn(
+              `[Entrypoints] Conflict but could not find existing EP for ${method} ${fullUrl}`
+            );
+          }
+        } else if (result.startsWith("Error")) {
+          failedUploads++;
+          console.error(
+            `[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`
+          );
         } else {
+          failedUploads++;
           console.warn(
-            `[Entrypoints] Conflict but could not find existing EP for ${method} ${fullUrl}`
+            `[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`
           );
         }
-      } else if (result.startsWith("Error")) {
-        console.error(
-          `[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`
-        );
-      } else {
-        console.warn(
-          `[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`
-        );
       }
     } catch (err) {
       console.error(
-        `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`
+        `[Entrypoints] Failed ${ep.method} ${ep.path}: ${toErrorMessage(err)}`
       );
     }
   }
   console.log(
-    `[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints`
+    `[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints` + (failedUploads > 0 ? ` (${failedUploads} rejected by API)` : "")
   );
   return registered;
 }
@@ -37944,7 +39554,24 @@ async function findExistingEntrypoint(bright, projectId, url2, method) {
   }
 }
 function resolvePath(path2) {
-  return path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1");
+  let resolved = path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
+  if (resolved && !resolved.startsWith("/")) {
+    resolved = "/" + resolved;
+  }
+  return resolved;
+}
+var JUNK_URL_PATTERNS = [
+  /[#$]?\{/,
+  // leftover template interpolation
+  /<%/,
+  // ERB tags
+  /\(\d+\)/,
+  // Rails route constraint like (42)
+  /\s/
+  // whitespace in path
+];
+function isScannablePath(path2) {
+  return !JUNK_URL_PATTERNS.some((re) => re.test(path2));
 }
 async function verifyEntrypointAuth(bright, projectId, entrypointId) {
   try {
@@ -38032,6 +39659,9 @@ async function deleteEntrypoint(brightToken, brightHostname, projectId, entrypoi
   }
 }
 function sanitizeBody(body) {
+  if (typeof body !== "string") {
+    return body ? JSON.stringify(body) : "{}";
+  }
   try {
     const parsed = JSON.parse(body);
     return JSON.stringify(parsed);
@@ -38060,7 +39690,7 @@ function normalizeMethod(method) {
 
 // src/phases/repeater.ts
 import { spawn as spawn2 } from "child_process";
-async function setupRepeater(_llm, _bright, projectId, brightToken, brightHostname) {
+async function setupRepeater(projectId, brightToken, brightHostname) {
   const name = `engine-${Date.now()}`;
   const res = await fetch(`https://${brightHostname}/api/v1/repeaters`, {
     method: "POST",
@@ -38118,15 +39748,14 @@ async function setupRepeater(_llm, _bright, projectId, brightToken, brightHostna
   return { repeaterId, process: proc2 };
 }
 async function waitForRepeaterReady(proc2, timeoutMs) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     const timer = setTimeout(() => {
       console.warn(
         "[Repeater] Timed out waiting for connection \u2014 proceeding anyway"
       );
       cleanup();
-      resolve4();
+      resolve5();
     }, timeoutMs);
-    let exited = false;
     function cleanup() {
       clearTimeout(timer);
       proc2.stdout?.removeListener("data", onData);
@@ -38136,22 +39765,21 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
       const text = d.toString();
       if (/connect(ed|ion established)|started/i.test(text)) {
         cleanup();
-        resolve4();
+        resolve5();
       }
     }
     function onExit(code) {
-      exited = true;
       console.warn(
         `[Repeater] Process exited with code ${code} before connecting`
       );
       cleanup();
-      resolve4();
+      resolve5();
     }
     proc2.stdout?.on("data", onData);
     proc2.on("exit", onExit);
     if (proc2.exitCode !== null) {
       cleanup();
-      resolve4();
+      resolve5();
     }
   });
 }
@@ -38352,7 +39980,7 @@ async function runScanViaRest(brightToken, brightHostname, projectId, entrypoint
         body: JSON.stringify(body)
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = toErrorMessage(err);
       console.warn(
         `[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`
       );
@@ -38619,11 +40247,8 @@ function generateFixPrompt(techStack, finding, taintAnalysis, affectedFiles, pre
       content: `You are a security engineer fixing vulnerabilities in a ${techStack} application. Generate secure code fixes that properly remediate the vulnerability without breaking functionality.
 
 Guidelines:
-- Use parameterized queries for SQL injection
-- Use proper output encoding/escaping for XSS
-- Use allowlists for command injection and path traversal
-- Validate and sanitize all user inputs at the boundary
-- Follow the framework's built-in security features
+- Follow the framework's built-in security features and best practices
+- Validate and sanitize user inputs at the boundary
 - Preserve the existing code style and patterns
 - Only modify what is necessary to fix the vulnerability`
     },
@@ -38659,10 +40284,7 @@ Return a JSON object with the fixed file contents:
     });
     messages.push({
       role: "user",
-      content: `The previous fix attempt did not resolve the vulnerability \u2014 the DAST scan still found the same issue. Please generate a more thorough fix. The vulnerability may require a different approach, such as:
-- A different sanitization method
-- Fixing the issue at a different layer (middleware vs handler)
-- Addressing additional code paths that were missed
+      content: `The previous fix attempt did not resolve the vulnerability \u2014 the DAST scan still found the same issue. Analyze why the previous fix was insufficient and generate a more thorough fix using a different approach.
 
 Return the fix in the same JSON format.`
     });
@@ -38691,7 +40313,7 @@ var fixResultSchema = {
 };
 
 // src/phases/fix.ts
-async function generateFixes(llm, repoPath, techStack, findings, previousFixes, model) {
+async function generateFixes(llm, repoPath, techStack, findings, previousFixes, model, contextSummary) {
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
   const fixes = [];
@@ -38701,6 +40323,12 @@ async function generateFixes(llm, repoPath, techStack, findings, previousFixes, 
       (f) => f.vulnerability.name === finding.name && f.vulnerability.url === finding.url && !f.verified
     );
     const taintMessages = taintAnalysisPrompt(stackStr, finding);
+    if (contextSummary && taintMessages[0]?.role === "system" && typeof taintMessages[0].content === "string") {
+      taintMessages[0].content += `
+
+Application context:
+${contextSummary}`;
+    }
     const taintAnalysis = await chatWithTools(
       llm,
       taintMessages,
@@ -38775,14 +40403,1059 @@ function safeReadFile(fullPath) {
   }
 }
 
+// src/phases/harness.ts
+import { execSync as execSync5, spawn as spawn3 } from "child_process";
+import { writeFileSync as writeFileSync4, existsSync as existsSync5, readFileSync as readFileSync5 } from "fs";
+import { resolve as resolve4 } from "path";
+import { createInterface as createInterface2 } from "readline";
+
+// src/prompts/harness.ts
+function identifyHarnessTargetsPrompt(techStack) {
+  return [
+    {
+      role: "system",
+      content: `You are a security engineer performing data-flow analysis on a ${techStack} codebase to identify functions that can be security-tested in **isolation** \u2014 WITHOUT the full application framework running.
+
+## Your goal
+Find **service-layer and utility functions** (NOT controller actions) that:
+1. Accept user-controlled input (directly or indirectly)
+2. Perform a security-sensitive operation (DB query, file I/O, HTTP request, XML parse, shell exec, template render, redirect, deserialization)
+3. Can be called with **minimal** infrastructure \u2014 ideally ZERO framework boot
+
+## CRITICAL: Target the RIGHT level
+The key principle is to find functions CLOSE TO the dangerous operation, not high-level controllers.
+
+### Bootstrapping tiers (prefer lower tiers)
+- **Tier 1 (best)** \u2014 No framework boot required. Just \`require\`/\`import\` the specific file. Pure computation, URL validation, path construction, query string building, XML parsing, template rendering.
+- **Tier 2 (good)** \u2014 Needs DB connection only. Can initialize an ORM connection directly without booting the full framework. Service methods that build/execute queries.
+- **Tier 3 (avoid)** \u2014 Needs full framework boot (all initializers, middleware, caches, config). Controller actions, anything requiring full app context.
+
+### Why this matters
+Controller actions (e.g. SearchController#query) require the ENTIRE framework to boot \u2014 database, Redis, all initializers, config loading, migration checks, etc. This makes harnessing brittle and complex.
+Service/utility methods (e.g. Search.execute(term), FileHelper.download(url)) can often be called by requiring just their file + any direct dependencies \u2014 no framework boot needed.
+
+## How to find targets \u2014 data flow analysis
+1. **Start from routes**: Read routing config to find HTTP endpoints.
+2. **Trace THROUGH controllers**: Don't stop at the controller \u2014 follow the call chain deeper.
+3. **Find the security-critical function**: The service, model, or utility method that ACTUALLY does the dangerous operation with user input.
+4. **Verify it can be required standalone**: Check the file's imports \u2014 does it pull in the entire framework or just specific modules?
+
+## What makes a GOOD target
+- A search service method that takes a query string and builds a SQL query (e.g. \`Search.execute(term)\`, \`UserSearch.new(term).search\`)
+- A URL/file utility that fetches from or validates user-provided URLs (e.g. \`FileHelper.download_url(url)\`, \`UrlHelper.validate(url)\`)
+- A path construction method (e.g. \`Upload.get_path(sha, extension)\`)
+- An XML/JSON parser that processes user content (e.g. \`XmlParser.parse(body)\`)
+- A query builder or scope method (e.g. \`Topic.search_by_title(term)\`)
+- A content sanitizer/renderer (e.g. \`PrettyText.cook(raw_markdown)\`)
+- A method that constructs shell commands from user input
+
+## What makes a BAD target
+- **Controller actions** (e.g. SearchController#query, UploadsController#create) \u2014 require full framework boot
+- Low-level ORM primitives (User.find, Model.save) \u2014 no input-handling context
+- Auth middleware \u2014 can't test meaningfully
+- Functions requiring a dozen services initialized
+- Trivial getters/setters
+
+## Infrastructure classification
+For each function, determine what it needs. Be precise \u2014 "db" means it DIRECTLY uses the database, not that some caller somewhere needs a DB.
+- "none" \u2014 pure computation, no external deps (string parsing, URL construction, XML parsing)
+- "filesystem" \u2014 needs local file access
+- "db" \u2014 directly queries/writes to database
+- "http" \u2014 makes outbound HTTP requests
+
+## Vulnerability mapping
+- DB queries \u2192 sqli
+- HTML/template output \u2192 xss
+- File path construction \u2192 lfi
+- URL fetching \u2192 ssrf, rfi
+- XML parsing \u2192 xxe
+- Shell command building \u2192 osi
+- Redirect URL handling \u2192 unvalidated_redirect
+- Deserialization \u2192 proto_pollution, mass_assignment
+- File upload processing \u2192 file_upload
+
+## Required files
+For each target, list the MINIMAL set of require/import statements needed to call it \u2014 NOT the full framework bootstrap. Read the target file's actual imports to determine this.
+
+## Output format
+Return a JSON array of targets:
+[
+  {
+    "name": "execute",
+    "file": "lib/search.rb",
+    "className": "Search",
+    "params": [{"name": "term", "type": "string", "sample": "test query"}],
+    "deps": ["db"],
+    "vulnTypes": ["sqli"],
+    "httpMethod": "GET",
+    "description": "Executes search with user-provided term, builds SQL query",
+    "requireStatements": ["require_relative 'lib/search'"],
+    "tier": 2
+  }
+]
+
+## Rules
+- Return 5-15 targets, prioritized by: Tier 1 > Tier 2 >> Tier 3, then by security impact
+- **NO controller actions** \u2014 always go at least one level deeper into services/utilities
+- Each target must be a REAL function found in the codebase
+- Include the exact file path
+- Only include functions you've verified exist by reading the source code
+- Include the \`tier\` field (1, 2, or 3) and \`requireStatements\` for each target`
+    },
+    {
+      role: "user",
+      content: "Analyze this codebase for security-critical service/utility functions (NOT controller actions) that can be tested via a lightweight harness. Trace data flow from routes through controllers into the actual service/utility methods. Read the source files to verify each target can be required with minimal framework bootstrapping. Return the JSON array of targets."
+    }
+  ];
+}
+function generateHarnessPrompt(techStack, targets, infraInfo) {
+  const targetList = targets.map(
+    (t, i) => {
+      const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+      return `${i + 1}. ${t.className}.${t.name}(${t.params.map((p) => p.name).join(", ")}) \u2014 file: ${t.file}
+   Deps: ${t.deps.join(", ")} | Vulns: ${t.vulnTypes.join(", ")} | Method: ${t.httpMethod}
+   Route: /harness/${pathSlug}
+   Params: ${JSON.stringify(t.params)}
+   Desc: ${t.description}
+   Tier: ${t.tier ?? "unknown"} | Requires: ${JSON.stringify(t.requireStatements ?? [])}`;
+    }
+  ).join("\n");
+  return [
+    {
+      role: "system",
+      content: `You are a security engineer generating a lightweight HTTP harness server for a ${techStack} project. The harness wraps specific functions so Bright's DAST engine can scan them without the full application running.
+
+## Targets to wrap
+${targetList}
+
+## Infrastructure available
+${infraInfo}
+
+## Key requirements
+
+1. **Minimal bootstrapping**: Each target has a \`tier\` and \`requireStatements\`. Tier 1 = no framework boot (just require the files). Tier 2 = DB connection only (no full framework). Tier 3 = avoid.
+
+2. **Harness HTTP server**: Use a minimal framework (Sinatra for Ruby, Express for Node.js, Flask for Python) \u2014 NOT the app's own framework.
+
+3. **Exact route paths**: Each target has a "Route:" field \u2014 use that EXACT path. The scanner registers these paths, so they must match.
+
+4. **Response content type**: ALL endpoints MUST respond with \`text/plain\` (not text/html). The harness wraps backend functions, not HTML views. Returning HTML causes false-positive XSS/CSS injection findings.
+
+5. **Resilient loading**: The harness MUST NOT crash if a target fails to load. Wrap each require/import in error handling. Skip failed targets, log a warning, and keep serving the ones that loaded.
+
+6. **Error handling**: Catch exceptions in route handlers and return 500 with the error message. Add a \`GET /health\` that returns 200.
+
+7. **Port**: Listen on PORT env var, defaulting to 3001.
+
+## IMPORTANT: Read the actual source files
+Before writing the harness, READ the target source files to understand their real imports, class structure, and how to call them. Don't guess \u2014 verify. The harness will run inside Docker with the project source at /app.
+
+## Output
+Return the complete harness file inside a single fenced code block with the language tag.
+After the code block, return a JSON object:
+{"startCommand": "ruby harness.rb", "harnessFileName": "harness.rb", "docker": true}
+
+- **startCommand**: the shell command to start the harness server
+- **harnessFileName**: the filename to save the harness code as (e.g. harness.rb, harness.js, harness.py)
+- **docker**: whether it should run inside Docker
+
+For Docker-based projects where the deps are inside a container, the harness should also run inside that container. For native projects, run directly.`
+    },
+    {
+      role: "user",
+      content: "Read the source files for each target function to understand their imports, dependencies, and how to instantiate/call them with MINIMAL bootstrapping. Avoid full framework boot if at all possible. Generate the harness server."
+    }
+  ];
+}
+function identifyInfraPrompt(techStack) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. Given a ${techStack} project, identify the MINIMAL infrastructure services (databases, caches) needed to run backend logic \u2014 NOT the web server itself.
+
+## What to look for
+1. Docker Compose files (compose.yml, docker-compose.yml, etc.) \u2014 find database and cache services
+2. Database config files (database.yml, .env, config/database.py, knexfile, etc.) \u2014 find connection strings
+3. README \u2014 setup instructions for databases
+
+## What to extract
+For each required service:
+- Service name from compose file
+- Docker image and tag used
+- Port mapping
+- Environment variables needed
+- Volume mounts (if any)
+
+## Output format
+Return a JSON object:
+{
+  "composeFile": "docker-compose.yml" | null,
+  "services": [
+    {
+      "name": "postgres",
+      "image": "postgres:15",
+      "ports": ["5432:5432"],
+      "env": {"POSTGRES_PASSWORD": "dev", "POSTGRES_DB": "myapp_dev"},
+      "essential": true
+    }
+  ],
+  "migrationCommand": "bundle exec rails db:create db:migrate" | "npm run migration:up" | null,
+  "envVars": {"DATABASE_URL": "postgres://..."}
+}
+
+## Rules
+- Only include data stores (PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, etc.)
+- Do NOT include web servers, reverse proxies, frontend dev servers, or the app itself
+- Mark services as essential=true if they're needed for basic DB operations, essential=false if optional (e.g. Elasticsearch for search features)
+- If a compose service uses \`build:\` instead of \`image:\`, identify the underlying database software and use the standard Docker Hub image (e.g. postgres:16, redis:7-alpine, mysql:8)
+- Always include port mappings. If the compose file doesn't map ports, use the standard default ports (e.g. 5432:5432 for PostgreSQL, 6379:6379 for Redis, 3306:3306 for MySQL)
+- If no compose file exists but database config references a service, note it
+- Prefer extracting from existing compose files rather than guessing`
+    },
+    {
+      role: "user",
+      content: "Analyze this project's infrastructure requirements. Read compose files, database configs, and environment files. Return the minimal infrastructure needed for running backend logic."
+    }
+  ];
+}
+function harnessDockerfileRepairPrompt(error2, currentDockerfile, harnessCode, harnessFileName) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. A harness server (\`${harnessFileName}\`) failed to build inside Docker. Diagnose the error and fix the Dockerfile.
+
+The error may be a missing gem/package, wrong environment variable, missing source files, or permission issue. Read the harness code and project files to understand what's needed.
+
+IMPORTANT: If the error is a **database connection issue** (connection refused, no password supplied) or a **harness code bug** (NameError, NoMethodError, SyntaxError in the harness file), return the current Dockerfile unchanged \u2014 those are handled separately.
+
+Use your tools to read project files as needed, then return the complete fixed Dockerfile inside a fenced code block.`
+    },
+    {
+      role: "user",
+      content: `The harness failed with:
+\`\`\`
+${error2}
+\`\`\`
+
+Current Dockerfile:
+\`\`\`dockerfile
+${currentDockerfile}
+\`\`\`
+
+Harness code:
+\`\`\`
+${harnessCode}
+\`\`\`
+
+Read project files as needed, then return the fixed Dockerfile.`
+    }
+  ];
+}
+function standaloneHarnessDockerfilePrompt(techStack, harnessCode, harnessFileName, startCommand, port, targets) {
+  const targetSummary = targets.map((t) => `- ${t.className}.${t.name} (${t.file}) \u2014 deps: ${t.deps.join(",")} \u2014 tier: ${t.tier ?? "?"}`).join("\n");
+  const allFiles = [...new Set(targets.map((t) => t.file))];
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. Create a **self-contained** Dockerfile for a security-scanning harness.
+
+## Approach
+The harness targets low-level service/utility functions that do NOT need the full application framework. Instead of building the entire app, create a lightweight image with:
+1. A stock runtime image (e.g. \`ruby:3.4\`, \`node:20\`, \`python:3.12\`)
+2. ONLY the specific source files the harness needs
+3. ONLY the minimal dependencies those files require
+
+## Tech stack: ${techStack}
+
+## Target functions
+${targetSummary}
+
+## Files the harness code imports/requires
+${allFiles.map((f) => `- ${f}`).join("\n")}
+
+## Harness file: ${harnessFileName}
+## Start command: ${startCommand}
+## Port: ${port}
+
+## What to do
+1. Start FROM a stock runtime image (small \u2014 use slim/alpine variants if available)
+2. Read the harness code and target files to understand their \`require\`/\`import\` statements
+3. Install only the gems/packages the harness and target files actually need (sinatra, pg, activerecord, etc.)
+4. \`COPY . /app\` \u2014 copy the full project source to preserve all transitive require chains. This is safe because we don't run \`bundle install\` or build assets.
+5. COPY the harness file into the image
+6. DO NOT run \`bundle install\`, \`npm install\`, or build frontend assets
+7. For Ruby: set \`ENV RUBYLIB=/app/lib\` so bare \`require 'filename'\` finds project files in lib/
+
+## For Ruby targets specifically:
+- **Set \`ENV BUNDLE_GEMFILE=""\`** to prevent Bundler from interfering
+- **Set \`ENV RUBYLIB=/app/lib\`** so bare \`require 'some_file'\` finds project files in lib/
+- Use \`gem install sinatra activesupport\` (+ other needed gems) directly \u2014 NOT Bundler with the project's Gemfile
+- If targets need ActiveRecord/ActiveSupport, install those gems directly too
+- **Always \`COPY . /app\`** \u2014 tracing individual file dependencies is fragile; just copy the whole project source. The image stays small because we don't run \`bundle install\` or build assets.
+- Set WORKDIR /app
+
+## Important
+- The image stays small because we skip \`bundle install\`/\`npm install\`/asset compilation \u2014 just source files + a few gems
+- For Ruby: always set both \`ENV BUNDLE_GEMFILE=""\` and \`ENV RUBYLIB=/app/lib\`
+- If a target file requires Rails-internal modules, install just the specific gem (e.g. \`gem install activerecord activesupport\`)
+
+Return ONLY the complete Dockerfile inside a fenced code block.`
+    },
+    {
+      role: "user",
+      content: `Here is the harness code:
+
+\`\`\`
+${harnessCode}
+\`\`\`
+
+Read the target files to trace all required files and dependencies, then generate a minimal self-contained Dockerfile.`
+    }
+  ];
+}
+function harnessCodeRepairPrompt(harnessCode, harnessFileName, endpointErrors, targets) {
+  const errorSummary = endpointErrors.map((e) => `${e.method} ${e.path} \u2192 ${e.status}
+  ${e.body}`).join("\n\n");
+  const targetSummary = targets.map((t) => `- ${t.className}.${t.name} (${t.file}) \u2014 deps: ${t.deps.join(",")} \u2014 tier: ${t.tier ?? "?"}`).join("\n");
+  return [
+    {
+      role: "system",
+      content: `You are a security engineer fixing a harness server. The harness wraps backend functions for DAST scanning.
+
+## Harness file: ${harnessFileName}
+
+## Target functions
+${targetSummary}
+
+## Errors encountered
+${errorSummary}
+
+## Your task
+Diagnose the root cause of each error by reading the target source files and their dependencies. Fix the harness code.
+
+Key principles:
+- Read the actual source files to understand what each target needs
+- If a dependency is a framework module not needed for the core computation (logging, events, metrics), stub it minimally
+- If a require path is wrong, find the correct one by reading the project structure
+- Do NOT remove endpoints \u2014 fix them
+- The harness runs in Docker at /app with the full project source available
+
+Return the complete fixed harness file inside a single fenced code block with the language tag.`
+    },
+    {
+      role: "user",
+      content: `Current harness code:
+
+\`\`\`
+${harnessCode}
+\`\`\`
+
+Read the source files for the failing targets. Diagnose the root cause of each error and fix the harness code. Return the complete fixed harness file.`
+    }
+  ];
+}
+
+// src/phases/harness.ts
+async function runFunctionHarness(llm, repoPath, techStack, modelSelector) {
+  const stackStr = formatTechStack(techStack);
+  const handleTool = createToolHandler(repoPath);
+  console.log("[Harness] Analyzing infrastructure requirements...");
+  const infraInfo = await identifyInfra(llm, repoPath, stackStr, handleTool, modelSelector.current());
+  console.log("[Harness] Starting minimal infrastructure...");
+  await startMinimalInfra(repoPath, infraInfo);
+  console.log("[Harness] Identifying critical functions for harness scanning...");
+  let targets = await identifyTargets(llm, repoPath, stackStr, handleTool, modelSelector.current());
+  if (targets.length === 0 && modelSelector.escalate()) {
+    console.log("[Harness] No targets found \u2014 retrying with stronger model...");
+    targets = await identifyTargets(llm, repoPath, stackStr, handleTool, modelSelector.current());
+    modelSelector.reset();
+  }
+  if (targets.length === 0) {
+    throw new Error("No suitable functions found for harness-based scanning");
+  }
+  console.log(`[Harness] Identified ${targets.length} target function(s):`);
+  for (const t of targets) {
+    console.log(`[Harness]   ${t.className}.${t.name} \u2014 tier ${t.tier ?? "?"} \u2014 ${t.vulnTypes.join(", ")} \u2014 deps: ${t.deps.join(", ")}`);
+  }
+  const tier3Count = targets.filter((t) => (t.tier ?? 3) >= 3).length;
+  if (tier3Count > 0) {
+    console.log(`[Harness] Dropping ${tier3Count} tier-3 target(s) (full framework boot not available in harness mode)`);
+    targets = targets.filter((t) => (t.tier ?? 3) < 3);
+  }
+  if (targets.length === 0) {
+    throw new Error("No tier 1/2 targets found \u2014 all identified functions require full framework boot");
+  }
+  let proc2;
+  let harnessConfig;
+  let activeTargets = targets;
+  let healthyPaths = /* @__PURE__ */ new Set();
+  for (const attempt of ["all", "tier1-only"]) {
+    if (attempt === "tier1-only") {
+      const tier1Only = targets.filter((t) => t.tier === 1);
+      if (tier1Only.length === 0 || tier1Only.length === activeTargets.length) {
+        throw new Error("Harness failed to build or start after all repair attempts");
+      }
+      console.log(`[Harness] Retrying with ${tier1Only.length} tier-1 targets only (no external deps)...`);
+      activeTargets = tier1Only;
+      modelSelector.reset();
+    }
+    console.log("[Harness] Generating harness server...");
+    harnessConfig = await generateHarness(
+      llm,
+      repoPath,
+      stackStr,
+      activeTargets,
+      infraInfo,
+      handleTool,
+      modelSelector.current()
+    );
+    console.log("[Harness] Building and starting harness server...");
+    let harnessResult;
+    try {
+      harnessResult = await startHarness(
+        repoPath,
+        llm,
+        stackStr,
+        harnessConfig,
+        infraInfo,
+        handleTool,
+        modelSelector,
+        activeTargets
+      );
+      proc2 = harnessResult.process;
+      healthyPaths = harnessResult.healthyPaths;
+      break;
+    } catch (err) {
+      console.warn(`[Harness] Harness failed (${attempt}): ${toErrorMessage(err)}`);
+      if (attempt === "tier1-only") {
+        throw err;
+      }
+    }
+  }
+  const discoveredEndpoints = harnessConfig.endpoints.filter((ep) => healthyPaths.has(ep.path)).map(
+    (ep) => ({
+      method: ep.method,
+      path: ep.path,
+      filePath: ep.target.file,
+      body: ep.sampleBody ?? null,
+      contentType: ep.contentType,
+      // For GET endpoints, expose params as query params so the scanner has injection points
+      queryParams: ep.method === "GET" && ep.target.params.length > 0 ? ep.target.params.map((p) => ({
+        name: p.name,
+        value: typeof p.sample === "string" ? p.sample : JSON.stringify(p.sample)
+      })) : void 0
+    })
+  );
+  if (discoveredEndpoints.length === 0) {
+    throw new Error("No healthy harness endpoints \u2014 all targets failed to load or returned errors");
+  }
+  console.log(`[Harness] Registering ${discoveredEndpoints.length}/${harnessConfig.endpoints.length} healthy endpoints`);
+  return { process: proc2, config: harnessConfig, endpoints: discoveredEndpoints };
+}
+async function identifyInfra(llm, repoPath, stackStr, handleTool, model) {
+  const messages = identifyInfraPrompt(stackStr);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 15);
+  try {
+    const parsed = JSON.parse(extractJson(response));
+    const envVars = parsed.envVars ?? {};
+    const services = parsed.services ?? [];
+    const hasPostgres = services.some((s) => /postgres/i.test(s.name) || /postgres/i.test(s.image));
+    const hasMysql = services.some((s) => /mysql|mariadb/i.test(s.name) || /mysql|mariadb/i.test(s.image));
+    const hasRedis = services.some((s) => /redis/i.test(s.name) || /redis/i.test(s.image));
+    if (hasPostgres) {
+      for (const svc of services) {
+        if (/postgres/i.test(svc.name) || /postgres/i.test(svc.image)) {
+          svc.env.POSTGRES_HOST_AUTH_METHOD = "trust";
+          if (svc.env.POSTGRES_PASSWORD && !envVars.PGPASSWORD) {
+            envVars.PGPASSWORD = svc.env.POSTGRES_PASSWORD;
+          }
+        }
+      }
+      for (const key of ["DB_HOST", "DATABASE_HOST", "PGHOST", "DISCOURSE_DB_HOST"]) {
+        if (!envVars[key]) envVars[key] = "localhost";
+      }
+    }
+    if (hasMysql) {
+      for (const svc of services) {
+        if (/mysql|mariadb/i.test(svc.name) || /mysql|mariadb/i.test(svc.image)) {
+          svc.env.MYSQL_ALLOW_EMPTY_PASSWORD = "yes";
+        }
+      }
+      for (const key of ["DB_HOST", "DATABASE_HOST", "MYSQL_HOST"]) {
+        if (!envVars[key]) envVars[key] = "localhost";
+      }
+    }
+    if (hasRedis) {
+      for (const key of ["REDIS_HOST", "DISCOURSE_REDIS_HOST"]) {
+        if (!envVars[key]) envVars[key] = "localhost";
+      }
+    }
+    return {
+      composeFile: parsed.composeFile ?? null,
+      services,
+      migrationCommand: parsed.migrationCommand ?? null,
+      envVars
+    };
+  } catch {
+    console.warn("[Harness] Could not parse infra response, assuming no infra needed");
+    return { composeFile: null, services: [], migrationCommand: null, envVars: {} };
+  }
+}
+async function startMinimalInfra(repoPath, infra) {
+  if (infra.services.length === 0) {
+    console.log("[Harness] No infrastructure services needed");
+    return;
+  }
+  cleanupDocker(repoPath);
+  const essentialServices = infra.services.filter((s) => s.essential);
+  if (essentialServices.length === 0) {
+    console.log("[Harness] No essential infrastructure services");
+    return;
+  }
+  if (infra.composeFile && existsSync5(resolve4(repoPath, infra.composeFile))) {
+    const serviceNames = essentialServices.map((s) => s.name).join(" ");
+    const cmd = `docker compose -f ${infra.composeFile} up -d ${serviceNames}`;
+    console.log(`[Harness] Starting infra: ${cmd}`);
+    try {
+      execSync5(cmd, {
+        cwd: repoPath,
+        stdio: "pipe",
+        timeout: 12e4,
+        env: { ...process.env, ...infra.envVars }
+      });
+    } catch (err) {
+      console.warn(`[Harness] Compose infra start failed: ${toErrorMessage(err)}`);
+      await startServicesStandalone(essentialServices);
+    }
+  } else {
+    await startServicesStandalone(essentialServices);
+  }
+  console.log("[Harness] Waiting for infrastructure to be ready...");
+  await sleep2(5e3);
+}
+var DEFAULT_SERVICE_IMAGES = {
+  postgres: { image: "postgres:16", ports: ["5432:5432"] },
+  postgresql: { image: "postgres:16", ports: ["5432:5432"] },
+  db: { image: "postgres:16", ports: ["5432:5432"] },
+  mysql: { image: "mysql:8", ports: ["3306:3306"] },
+  mariadb: { image: "mariadb:11", ports: ["3306:3306"] },
+  redis: { image: "redis:7-alpine", ports: ["6379:6379"] },
+  mongo: { image: "mongo:7", ports: ["27017:27017"] },
+  mongodb: { image: "mongo:7", ports: ["27017:27017"] },
+  elasticsearch: { image: "elasticsearch:8.13.0", ports: ["9200:9200"] }
+};
+async function startServicesStandalone(services) {
+  for (const svc of services) {
+    let image = svc.image;
+    let ports = svc.ports;
+    if (!image || image === "null") {
+      const defaults3 = DEFAULT_SERVICE_IMAGES[svc.name.toLowerCase()];
+      if (defaults3) {
+        image = defaults3.image;
+        if (!ports || ports.length === 0) ports = defaults3.ports;
+        console.log(`[Harness] Using default image for ${svc.name}: ${image}`);
+      } else {
+        console.warn(`[Harness] Skipping ${svc.name} \u2014 no image specified and no known default`);
+        continue;
+      }
+    }
+    if (!ports || ports.length === 0) {
+      console.warn(`[Harness] Skipping ${svc.name} \u2014 no port mapping`);
+      continue;
+    }
+    const envFlags = Object.entries(svc.env).map(([k, v]) => `-e ${k}=${v}`).join(" ");
+    const portFlags = ports.map((p) => `-p ${p}`).join(" ");
+    const cmd = `docker run -d --name harness_${svc.name} ${portFlags} ${envFlags} ${image}`;
+    console.log(`[Harness] Starting standalone: ${cmd}`);
+    try {
+      execSync5(cmd, { stdio: "pipe", timeout: 6e4 });
+    } catch (err) {
+      console.warn(`[Harness] Failed to start ${svc.name}: ${toErrorMessage(err)}`);
+    }
+  }
+}
+async function identifyTargets(llm, repoPath, stackStr, handleTool, model) {
+  const messages = identifyHarnessTargetsPrompt(stackStr);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 30);
+  try {
+    const parsed = JSON.parse(extractJson(response));
+    if (!Array.isArray(parsed)) {
+      console.warn("[Harness] Expected array of targets, got:", typeof parsed);
+      return [];
+    }
+    const valid = parsed.filter((t) => {
+      if (!t.name || !t.file || !t.className || !t.params || !t.vulnTypes) {
+        console.warn(`[Harness] Skipping invalid target: ${JSON.stringify(t).slice(0, 200)}`);
+        return false;
+      }
+      if (!existsSync5(resolve4(repoPath, String(t.file)))) {
+        console.warn(`[Harness] Skipping target with missing file: ${t.file}`);
+        return false;
+      }
+      return true;
+    });
+    for (const t of valid) {
+      if (t.tier === void 0) {
+        const depSet = new Set(t.deps);
+        if (depSet.size === 0 || depSet.size === 1 && depSet.has("none")) {
+          t.tier = 1;
+        } else {
+          t.tier = 2;
+        }
+        console.log(`[Harness] Auto-inferred tier ${t.tier} for ${t.className}.${t.name} (deps: ${t.deps.join(", ")})`);
+      }
+    }
+    return valid;
+  } catch (err) {
+    console.error(`[Harness] Failed to parse targets: ${toErrorMessage(err)}`);
+    return [];
+  }
+}
+async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTool, model) {
+  const infraDescription = infra.services.length > 0 ? `Services running: ${infra.services.filter((s) => s.essential).map((s) => `${s.name} (${s.image})`).join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}` : "No infrastructure services \u2014 all targets are stateless or use local file system only.";
+  const messages = generateHarnessPrompt(stackStr, targets, infraDescription);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 20);
+  const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
+  if (!codeMatch) {
+    throw new Error("LLM did not return a code block for the harness");
+  }
+  const language = codeMatch[1];
+  const harnessCode = codeMatch[2];
+  const jsonMatch = response.match(/```[\s\S]*?```\s*(\{[\s\S]*?\})/);
+  let startCommand = "";
+  let docker = false;
+  let harnessFileName = "";
+  if (jsonMatch) {
+    try {
+      const meta = JSON.parse(jsonMatch[1]);
+      startCommand = meta.startCommand ?? "";
+      docker = meta.docker ?? false;
+      harnessFileName = meta.harnessFileName ?? "";
+    } catch {
+    }
+  }
+  if (!harnessFileName) {
+    const extMap = {
+      ruby: ".rb",
+      javascript: ".js",
+      typescript: ".ts",
+      python: ".py",
+      go: ".go",
+      csharp: ".cs",
+      java: ".java",
+      php: ".php"
+    };
+    const ext2 = extMap[language] ?? "." + language;
+    harnessFileName = `harness${ext2}`;
+  }
+  const harnessPath = resolve4(repoPath, harnessFileName);
+  if (!startCommand) {
+    const cmdMap = {
+      ".rb": `ruby ${harnessFileName}`,
+      ".js": `node ${harnessFileName}`,
+      ".ts": `npx tsx ${harnessFileName}`,
+      ".py": `python ${harnessFileName}`,
+      ".go": `go run ${harnessFileName}`
+    };
+    const ext2 = harnessFileName.slice(harnessFileName.lastIndexOf("."));
+    startCommand = cmdMap[ext2] ?? `node ${harnessFileName}`;
+  }
+  writeFileSync4(harnessPath, harnessCode, "utf-8");
+  console.log(`[Harness] Wrote harness to ${harnessFileName} (${harnessCode.length} bytes)`);
+  const endpoints = targets.map((t) => {
+    const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    const sampleBody = t.httpMethod === "GET" ? void 0 : JSON.stringify(
+      Object.fromEntries(t.params.map((p) => [p.name, p.sample]))
+    );
+    return {
+      method: t.httpMethod,
+      path: `/harness/${pathSlug}`,
+      target: t,
+      sampleBody,
+      contentType: t.httpMethod === "GET" ? void 0 : "application/json"
+    };
+  });
+  return {
+    harnessFile: harnessPath,
+    startCommand,
+    port: 3001,
+    docker,
+    endpoints
+  };
+}
+var HARNESS_IMAGE = "bright-harness-local";
+var HARNESS_CONTAINER = "bright-harness-local";
+async function startHarness(repoPath, llm, techStack, config2, infraInfo, handleTool, modelSelector, targets) {
+  const maxTier = Math.max(...targets.map((t) => t.tier ?? 2));
+  console.log(`[Harness] All targets are tier \u2264${maxTier} \u2014 skipping full app build, using stock runtime image`);
+  ensureDockerIgnore(repoPath);
+  const harnessFileName = config2.harnessFile.split("/").pop();
+  let harnessCode = readFileSync5(config2.harnessFile, "utf-8");
+  const harnessDockerfilePath = resolve4(repoPath, "Dockerfile.harness");
+  console.log("[Harness] Generating Dockerfile.harness via LLM...");
+  const genMessages = standaloneHarnessDockerfilePrompt(
+    techStack,
+    harnessCode,
+    harnessFileName,
+    config2.startCommand,
+    config2.port,
+    targets.map((t) => ({
+      file: t.file,
+      className: t.className,
+      name: t.name,
+      deps: t.deps,
+      tier: t.tier,
+      requireStatements: t.requireStatements
+    }))
+  );
+  const genResponse = await chatWithTools(
+    llm,
+    genMessages,
+    codebaseTools,
+    handleTool,
+    modelSelector.current(),
+    10
+  );
+  let harnessDockerfileContent = extractCodeBlock(genResponse);
+  if (!harnessDockerfileContent) {
+    console.warn("[Harness] LLM did not return a Dockerfile block, retrying...");
+    modelSelector.escalate();
+    const retryResponse = await chatWithTools(
+      llm,
+      genMessages,
+      codebaseTools,
+      handleTool,
+      modelSelector.current(),
+      10
+    );
+    harnessDockerfileContent = extractCodeBlock(retryResponse);
+    if (!harnessDockerfileContent) {
+      throw new Error("LLM failed to generate Dockerfile.harness after retry");
+    }
+  }
+  writeFileSync4(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
+  console.log(`[Harness] Generated Dockerfile.harness (${harnessDockerfileContent.split("\n").length} lines)`);
+  const MAX_HARNESS_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_HARNESS_ATTEMPTS; attempt++) {
+    console.log(`[Harness] Building harness image (attempt ${attempt + 1}/${MAX_HARNESS_ATTEMPTS})...`);
+    try {
+      execSync5(`docker build -t ${HARNESS_IMAGE} -f Dockerfile.harness .`, {
+        cwd: repoPath,
+        stdio: "pipe",
+        timeout: 12e4
+      });
+    } catch (err) {
+      const errMsg = extractExecError(err);
+      console.warn(`[Harness] Harness image build failed (attempt ${attempt + 1})`);
+      if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
+        await repairHarnessDockerfile(
+          llm,
+          repoPath,
+          errMsg,
+          harnessCode,
+          harnessFileName,
+          handleTool,
+          modelSelector
+        );
+      }
+      continue;
+    }
+    try {
+      execSync5(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
+        stdio: "ignore",
+        timeout: 1e4
+      });
+    } catch {
+    }
+    const envFlags = ["-e", `PORT=${config2.port}`];
+    for (const [k, v] of Object.entries(infraInfo.envVars)) {
+      envFlags.push("-e", `${k}=${v}`);
+    }
+    const dockerArgs = [
+      "run",
+      "--rm",
+      "--name",
+      HARNESS_CONTAINER,
+      "--network",
+      "host",
+      ...envFlags,
+      HARNESS_IMAGE
+    ];
+    console.log(`[Harness] Starting container: docker ${dockerArgs.join(" ")}`);
+    const child = spawn3("docker", dockerArgs, {
+      cwd: repoPath,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true
+    });
+    try {
+      await waitForHarnessHealthy(child, config2.port);
+      const probeResult = await probeEndpoints(config2.port, config2.endpoints);
+      const { errors: probeErrors, healthyPaths } = probeResult;
+      const totalEps = config2.endpoints.length;
+      if (probeErrors.length > 0) {
+        console.warn(
+          `[Harness] ${probeErrors.length}/${totalEps} endpoints returned errors after probe`
+        );
+      }
+      if (healthyPaths.size > 0) {
+        console.log(
+          `[Harness] ${healthyPaths.size}/${totalEps} endpoints healthy \u2014 proceeding`
+        );
+        return { process: child, healthyPaths };
+      }
+      child.kill();
+      if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
+        await repairHarnessCode(
+          llm,
+          repoPath,
+          config2,
+          probeErrors,
+          targets,
+          handleTool,
+          modelSelector
+        );
+        harnessCode = readFileSync5(config2.harnessFile, "utf-8");
+      }
+      continue;
+    } catch (err) {
+      child.kill();
+      const errStr = toErrorMessage(err);
+      console.warn(`[Harness] Harness startup failed (attempt ${attempt + 1}): ${errStr}`);
+      if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
+        if (isHarnessCodeError(errStr)) {
+          console.log("[Harness] Error is in harness code, not Dockerfile \u2014 repairing harness...");
+          await repairHarnessCode(
+            llm,
+            repoPath,
+            config2,
+            [{ method: "STARTUP", path: "/", status: 0, body: errStr }],
+            targets,
+            handleTool,
+            modelSelector
+          );
+          harnessCode = readFileSync5(config2.harnessFile, "utf-8");
+        } else {
+          await repairHarnessDockerfile(
+            llm,
+            repoPath,
+            errStr,
+            harnessCode,
+            harnessFileName,
+            handleTool,
+            modelSelector
+          );
+        }
+      }
+    }
+  }
+  throw new Error("Harness failed to build or start after all repair attempts");
+}
+function isHarnessCodeError(error2) {
+  const codeErrorPatterns = [
+    /NameError.*undefined.*(?:variable|method)/i,
+    /NoMethodError.*undefined method/i,
+    /cannot infer basepath/i,
+    /SyntaxError/i,
+    /undefined method.*for main/i,
+    /undefined local variable.*for main/i,
+    /harness\.\w+:\d+:in/i
+    // stack trace pointing to harness file
+  ];
+  return codeErrorPatterns.some((p) => p.test(error2));
+}
+function extractExecError(err) {
+  let errMsg = toErrorMessage(err);
+  if (err && typeof err === "object") {
+    const errObj = err;
+    const stderr = errObj.stderr instanceof Buffer ? errObj.stderr.toString() : "";
+    const stdout = errObj.stdout instanceof Buffer ? errObj.stdout.toString() : "";
+    if (stderr || stdout) {
+      errMsg = [stdout, stderr].filter(Boolean).join("\n").trim();
+    }
+  }
+  return errMsg;
+}
+async function repairHarnessDockerfile(llm, repoPath, error2, harnessCode, harnessFileName, handleTool, modelSelector) {
+  const dockerfilePath = resolve4(repoPath, "Dockerfile.harness");
+  let currentDockerfile;
+  try {
+    currentDockerfile = readFileSync5(dockerfilePath, "utf-8");
+  } catch {
+    return;
+  }
+  modelSelector.escalate();
+  const truncatedError = error2.length > 3e3 ? error2.slice(-3e3) : error2;
+  const messages = harnessDockerfileRepairPrompt(
+    truncatedError,
+    currentDockerfile,
+    harnessCode,
+    harnessFileName
+  );
+  try {
+    console.log("[Harness] Asking LLM to repair Dockerfile.harness...");
+    const response = await chatWithTools(
+      llm,
+      messages,
+      codebaseTools,
+      handleTool,
+      modelSelector.current(),
+      20
+    );
+    const fixed = extractCodeBlock(response);
+    if (!fixed) {
+      console.warn("[Harness] LLM did not return a valid Dockerfile.harness repair");
+      return;
+    }
+    const changed = fixed !== currentDockerfile;
+    writeFileSync4(dockerfilePath, fixed, "utf-8");
+    console.log(
+      `[Harness] LLM repaired Dockerfile.harness (${fixed.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
+    );
+  } catch (err) {
+    console.warn(`[Harness] Dockerfile.harness repair failed: ${toErrorMessage(err)}`);
+  }
+}
+async function probeEndpoints(port, endpoints) {
+  const errors = [];
+  const healthyPaths = /* @__PURE__ */ new Set();
+  const baseUrl = `http://localhost:${port}`;
+  for (const ep of endpoints) {
+    try {
+      const sampleValue = (v) => typeof v === "string" ? v : JSON.stringify(v);
+      const url2 = ep.method === "GET" && ep.target.params.length > 0 ? `${baseUrl}${ep.path}?${new URLSearchParams(
+        ep.target.params.map((p) => [p.name, sampleValue(p.sample)])
+      ).toString()}` : `${baseUrl}${ep.path}`;
+      const opts = {
+        method: ep.method,
+        signal: AbortSignal.timeout(1e4)
+      };
+      if (ep.method !== "GET" && ep.sampleBody) {
+        opts.headers = { "Content-Type": "application/json" };
+        opts.body = ep.sampleBody;
+      }
+      const res = await fetch(url2, opts);
+      if (res.status >= 200 && res.status < 400) {
+        console.log(`[Harness:probe] ${ep.method} ${ep.path} \u2192 ${res.status} OK`);
+        healthyPaths.add(ep.path);
+      } else {
+        const body = await res.text().catch(() => "(could not read body)");
+        const truncated = body.length > 500 ? body.slice(0, 500) + "..." : body;
+        console.warn(`[Harness:probe] ${ep.method} ${ep.path} \u2192 ${res.status}: ${truncated}`);
+        errors.push({ method: ep.method, path: ep.path, status: res.status, body: truncated });
+      }
+    } catch (err) {
+      const msg = toErrorMessage(err);
+      console.warn(`[Harness:probe] ${ep.method} ${ep.path} \u2192 error: ${msg}`);
+      errors.push({ method: ep.method, path: ep.path, status: 0, body: msg });
+    }
+  }
+  return { errors, healthyPaths };
+}
+async function repairHarnessCode(llm, repoPath, config2, probeErrors, targets, handleTool, modelSelector) {
+  const harnessCode = readFileSync5(config2.harnessFile, "utf-8");
+  const harnessFileName = config2.harnessFile.split("/").pop();
+  modelSelector.escalate();
+  const messages = harnessCodeRepairPrompt(harnessCode, harnessFileName, probeErrors, targets);
+  try {
+    console.log("[Harness] Asking LLM to repair harness code based on probe errors...");
+    const response = await chatWithTools(
+      llm,
+      messages,
+      codebaseTools,
+      handleTool,
+      modelSelector.current(),
+      20
+    );
+    const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
+    if (!codeMatch) {
+      console.warn("[Harness] LLM did not return a code block for harness repair");
+      return;
+    }
+    const fixedCode = codeMatch[2];
+    const changed = fixedCode !== harnessCode;
+    writeFileSync4(config2.harnessFile, fixedCode, "utf-8");
+    console.log(
+      `[Harness] LLM repaired harness code (${fixedCode.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
+    );
+  } catch (err) {
+    console.warn(`[Harness] Harness code repair failed: ${toErrorMessage(err)}`);
+  }
+}
+async function waitForHarnessHealthy(child, port) {
+  const outputLines = [];
+  if (child.stdout) {
+    const rl = createInterface2({ input: child.stdout });
+    rl.on("line", (line) => {
+      outputLines.push(line);
+      console.log(`[Harness:out] ${line}`);
+    });
+  }
+  if (child.stderr) {
+    const rl = createInterface2({ input: child.stderr });
+    rl.on("line", (line) => {
+      outputLines.push(`ERR: ${line}`);
+      console.error(`[Harness:err] ${line}`);
+    });
+  }
+  const startTime = Date.now();
+  const timeout = 12e4;
+  let ready = false;
+  while (Date.now() - startTime < timeout) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        `Harness process exited with code ${child.exitCode}. Output:
+${outputLines.slice(-20).join("\n")}`
+      );
+    }
+    try {
+      const res = await fetch(`http://localhost:${port}/health`, {
+        signal: AbortSignal.timeout(3e3)
+      });
+      if (res.ok) {
+        ready = true;
+        break;
+      }
+    } catch {
+    }
+    await sleep2(2e3);
+  }
+  if (!ready) {
+    child.kill();
+    throw new Error(
+      `Harness did not become healthy within ${timeout / 1e3}s. Output:
+${outputLines.slice(-30).join("\n")}`
+    );
+  }
+  console.log(`[Harness] Server healthy on port ${port}`);
+  return child;
+}
+function cleanupHarnessInfra(repoPath) {
+  try {
+    execSync5(
+      `docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`,
+      { stdio: "ignore", timeout: 15e3 }
+    );
+    execSync5(
+      "docker rm -f $(docker ps -aq --filter name=harness_) 2>/dev/null || true",
+      { stdio: "ignore", timeout: 15e3 }
+    );
+  } catch {
+  }
+  cleanupDocker(repoPath);
+}
+
 // src/orchestrator.ts
 var MAX_ITERATIONS = 5;
 var MAX_FIX_REPAIR_ATTEMPTS = 2;
+function findingKey(f) {
+  return `${f.name}::${f.method}::${f.url}`;
+}
 async function runOrchestrator(ctx) {
   const { repoPath, platform, llm, bright, config: config2 } = ctx;
   const progress = new ProgressReporter(platform);
   let appProcess;
   let repeater;
+  let harnessResult;
   const allScanIds = [];
   const allFindings = /* @__PURE__ */ new Map();
   const fixedKeys = /* @__PURE__ */ new Set();
@@ -38792,15 +41465,35 @@ async function runOrchestrator(ctx) {
       "Detecting tech stack and starting the application"
     );
     const techStack = await detectTechStack(
-      llm,
-      repoPath,
-      config2.modelSelector.current()
+      repoPath
     );
     await progress.phaseDetail(
       "startup",
       "tech_stack",
       `Tech stack: ${formatTechStack(techStack)}`
     );
+    if (config2.runMode === "function") {
+      console.log("[Engine] Running in function harness mode");
+      await progress.phaseStart(
+        "harness",
+        "Running function harness mode \u2014 wrapping critical functions for scanning"
+      );
+      try {
+        harnessResult = await runFunctionHarness(llm, repoPath, techStack, config2.modelSelector);
+        appProcess = harnessResult.process;
+      } catch (err) {
+        const msg = toErrorMessage(err);
+        console.error(`[Harness] Function harness failed: ${msg}`);
+        await progress.phaseStart("done", `Function harness mode failed: ${msg}`);
+        return;
+      }
+      await progress.phaseDetail(
+        "harness",
+        "ready",
+        `Harness running with ${harnessResult.endpoints.length} endpoint(s) on port ${harnessResult.config.port}`
+      );
+      return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+    }
     if (!canBuildFromSource(repoPath)) {
       await progress.phaseStart(
         "done",
@@ -38808,13 +41501,42 @@ async function runOrchestrator(ctx) {
       );
       return;
     }
-    const startup = await startApplicationWithRetries(
-      llm,
-      repoPath,
-      techStack,
-      void 0,
-      config2.modelSelector
-    );
+    let startup;
+    try {
+      startup = await startApplicationWithRetries(
+        llm,
+        repoPath,
+        techStack,
+        void 0,
+        config2.modelSelector
+      );
+    } catch (startupErr) {
+      const msg = toErrorMessage(startupErr);
+      console.warn(`[Engine] Full app startup failed: ${msg}`);
+      if (config2.runMode === "dynamic") {
+        await progress.phaseStart("done", `Application startup failed: ${msg}`);
+        return;
+      }
+      console.log("[Engine] Falling back to function harness mode...");
+      await progress.phaseDetail(
+        "startup",
+        "fallback",
+        "Full app startup failed \u2014 falling back to function harness mode"
+      );
+      try {
+        harnessResult = await runFunctionHarness(llm, repoPath, techStack, config2.modelSelector);
+        appProcess = harnessResult.process;
+        await progress.phaseDetail(
+          "startup",
+          "harness_ready",
+          `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`
+        );
+        return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+      } catch (harnessErr) {
+        console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
+        throw startupErr;
+      }
+    }
     appProcess = startup.process;
     const startupConfig = startup.config;
     const baseUrl = `http://localhost:${startupConfig.port}`;
@@ -38823,6 +41545,83 @@ async function runOrchestrator(ctx) {
       "app_running",
       `Application running at ${baseUrl}`
     );
+    await progress.phaseStart(
+      "setup",
+      "Setting up Bright security scanner and Repeater"
+    );
+    const projectId = config2.brightProjectId;
+    if (!projectId) {
+      throw new Error(
+        "No Bright project ID configured. Set BRIGHT_PROJECT_ID environment variable."
+      );
+    }
+    console.log(`[Setup] Using Bright project: ${projectId}`);
+    repeater = await setupRepeater(
+      projectId,
+      config2.brightToken,
+      config2.brightHostname
+    );
+    await progress.phaseDetail(
+      "setup",
+      "repeater",
+      `Repeater connected: ${repeater.repeaterId}`
+    );
+    await progress.phaseStart("auth", "Detecting authentication requirements");
+    const preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
+    const authResult = await detectAndConfigureAuth(
+      llm,
+      bright,
+      repoPath,
+      techStack,
+      projectId,
+      baseUrl,
+      repeater.repeaterId,
+      config2.brightToken,
+      config2.brightHostname,
+      config2.modelSelector.current(),
+      preAuthContext
+    );
+    await progress.phaseDetail(
+      "auth",
+      "auth_done",
+      authResult.authObjectId ? `Auth configured (object ${authResult.authObjectId})` : "No authentication required"
+    );
+    if (authResult.authFailed) {
+      if (config2.runMode === "dynamic") {
+        console.error("[Engine] Auth configuration failed \u2014 aborting (dynamic mode requires working auth)");
+        await progress.phaseDetail(
+          "auth",
+          "auth_failed",
+          "Auth configuration failed \u2014 cannot scan without authentication in dynamic mode"
+        );
+        throw new Error("Auth configuration failed: the application requires authentication but we could not configure it. Aborting.");
+      } else {
+        console.warn("[Engine] Auth configuration failed \u2014 falling back to function harness mode");
+        await progress.phaseDetail(
+          "auth",
+          "fallback",
+          "Auth failed \u2014 falling back to function harness mode (no auth needed)"
+        );
+        try {
+          await killProcess(appProcess);
+          harnessResult = await runFunctionHarness(llm, repoPath, techStack, config2.modelSelector);
+          appProcess = harnessResult.process;
+          await progress.phaseDetail(
+            "auth",
+            "harness_ready",
+            `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`
+          );
+          return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+        } catch (harnessErr) {
+          console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
+          await progress.phaseStart(
+            "done",
+            "Authentication and function harness both failed. Cannot scan."
+          );
+          return;
+        }
+      }
+    }
     await progress.phaseStart(
       "swagger",
       "Probing for OpenAPI/Swagger spec"
@@ -38884,55 +41683,7 @@ async function runOrchestrator(ctx) {
       );
       return;
     }
-    await progress.phaseStart(
-      "setup",
-      "Setting up Bright security scanner and Repeater"
-    );
-    const projectId = config2.brightProjectId;
-    if (!projectId) {
-      throw new Error(
-        "No Bright project ID configured. Set BRIGHT_PROJECT_ID environment variable."
-      );
-    }
-    console.log(`[Setup] Using Bright project: ${projectId}`);
-    repeater = await setupRepeater(
-      llm,
-      bright,
-      projectId,
-      config2.brightToken,
-      config2.brightHostname
-    );
-    await progress.phaseDetail(
-      "setup",
-      "repeater",
-      `Repeater connected: ${repeater.repeaterId}`
-    );
-    await progress.phaseStart("auth", "Detecting authentication requirements");
-    const authResult = await detectAndConfigureAuth(
-      llm,
-      bright,
-      repoPath,
-      techStack,
-      endpoints,
-      projectId,
-      baseUrl,
-      repeater.repeaterId,
-      config2.brightToken,
-      config2.brightHostname,
-      config2.modelSelector.current()
-    );
-    await progress.phaseDetail(
-      "auth",
-      "auth_result",
-      authResult.hasAuth ? `Auth configured: ${authResult.authObjectId}` : "No auth required"
-    );
-    if (authResult.authFailed) {
-      await progress.phaseStart(
-        "done",
-        "Authentication is required but could not be configured. Cannot run meaningful scans without working auth."
-      );
-      return;
-    }
+    const contextSummary = buildContextSummary(techStack, startupConfig, endpoints, swaggerEndpoints.length);
     await progress.phaseStart(
       "entrypoints",
       "Registering API endpoints for scanning"
@@ -39099,7 +41850,7 @@ async function runOrchestrator(ctx) {
           }
         }
       }
-      const appAlive = await checkAppHealth(startupConfig.port);
+      const appAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
       if (!appAlive) {
         console.warn(
           `[Scan] App is unreachable on port ${startupConfig.port} \u2014 restarting before scan`
@@ -39191,7 +41942,7 @@ async function runOrchestrator(ctx) {
         }
       }
       if (anyFailed) {
-        const stillAlive = await checkAppHealth(startupConfig.port);
+        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart and retry"
@@ -39251,7 +42002,6 @@ async function runOrchestrator(ctx) {
         "findings",
         findings.length > 0 ? `Round ${iteration + 1} complete \u2014 ${findings.length} vulnerabilities found (${sevSummary})` : `Round ${iteration + 1} complete \u2014 no vulnerabilities found`
       );
-      const findingKey = (f) => `${f.name}::${f.method}::${f.url}`;
       if (iteration > 0) {
         const currentKeys = new Set(findings.map(findingKey));
         for (const key of allFindings.keys()) {
@@ -39315,7 +42065,8 @@ async function runOrchestrator(ctx) {
             techStack,
             [finding],
             allFixes,
-            config2.modelSelector.current()
+            config2.modelSelector.current(),
+            contextSummary
           );
         } catch (err) {
           console.error(
@@ -39456,6 +42207,148 @@ async function runOrchestrator(ctx) {
       await bright.close();
     } catch {
     }
+    if (harnessResult) {
+      cleanupHarnessInfra(repoPath);
+    }
+  }
+}
+async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys) {
+  const { llm, bright, config: config2 } = ctx;
+  const projectId = config2.brightProjectId;
+  if (!projectId) {
+    throw new Error("No Bright project ID configured. Set BRIGHT_PROJECT_ID.");
+  }
+  const baseUrl = `http://localhost:${harnessResult.config.port}`;
+  await progress.phaseStart("setup", "Setting up Bright Repeater for harness scan");
+  const repeater = await setupRepeater(
+    projectId,
+    config2.brightToken,
+    config2.brightHostname
+  );
+  await progress.phaseDetail("setup", "repeater", `Repeater connected: ${repeater.repeaterId}`);
+  try {
+    await progress.phaseStart("entrypoints", "Registering harness endpoints");
+    const registered = await registerEntrypoints(
+      bright,
+      projectId,
+      harnessResult.endpoints,
+      baseUrl,
+      repeater.repeaterId,
+      void 0
+      // no auth
+    );
+    await progress.phaseDetail(
+      "entrypoints",
+      "registered",
+      `Registered ${registered.length} harness entrypoints`
+    );
+    if (registered.length === 0) {
+      await progress.phaseStart("done", "No harness entrypoints could be registered.");
+      return;
+    }
+    const liveEndpoints = registered.map((r) => r.endpoint);
+    const entrypointIds = registered.map((r) => r.entrypointId);
+    await progress.phaseStart("test_selection", "Selecting security tests for harness endpoints");
+    const scanGroups = await selectTestsPerEndpoint(
+      llm,
+      bright,
+      liveEndpoints,
+      entrypointIds,
+      techStack,
+      false,
+      // no auth
+      config2.modelSelector.current()
+    );
+    await progress.phaseDetail(
+      "test_selection",
+      "selected",
+      `Created ${scanGroups.length} scan group(s)`
+    );
+    await progress.phaseStart("scan", "Running security scans on harness endpoints");
+    const scanIds = [];
+    for (const [gi, group] of scanGroups.entries()) {
+      try {
+        const scanId = await runSecurityScan(
+          projectId,
+          group.entrypointIds,
+          repeater.repeaterId,
+          group.tests,
+          config2.brightToken,
+          config2.brightHostname,
+          `Harness Scan \u2014 Group ${gi + 1}`,
+          group.hasPathParams
+        );
+        scanIds.push(scanId);
+        allScanIds.push(scanId);
+      } catch (err) {
+        console.error(`[Scan] Failed to start harness scan group ${gi + 1}: ${err}`);
+      }
+    }
+    if (scanIds.length === 0) {
+      await progress.phaseStart("scan_error", "All harness scan launches failed.");
+      return;
+    }
+    const scanResults = await Promise.allSettled(
+      scanIds.map(async (scanId, si) => {
+        console.log(`[Scan] Waiting for harness scan ${si + 1}/${scanIds.length}: ${scanId}`);
+        return await waitForScanCompletion(
+          config2.brightToken,
+          config2.brightHostname,
+          scanId,
+          (status, issues) => {
+            console.log(`[Scan] Harness scan ${si + 1}: ${status} \u2014 ${issues} issue(s)`);
+          }
+        );
+      })
+    );
+    for (const [si, result] of scanResults.entries()) {
+      if (result.status === "rejected") {
+        console.error(`[Scan] Error in harness scan ${scanIds[si]}: ${result.reason}`);
+      } else if (isFailureStatus(result.value)) {
+        console.error(`[Scan] Harness scan ${scanIds[si]} ended with status: ${result.value}`);
+      }
+    }
+    const findings = await fetchFindings(
+      config2.brightToken,
+      config2.brightHostname,
+      scanIds
+    );
+    const bySev = {};
+    for (const f of findings) {
+      bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
+    }
+    const sevSummary = Object.entries(bySev).sort(
+      ([a], [b]) => ["Critical", "High", "Medium", "Low"].indexOf(a) - ["Critical", "High", "Medium", "Low"].indexOf(b)
+    ).map(([sev, count]) => `${count} ${sev}`).join(", ");
+    await progress.phaseDetail(
+      "scan",
+      "findings",
+      findings.length > 0 ? `Harness scan complete \u2014 ${findings.length} vulnerabilities found (${sevSummary})` : "Harness scan complete \u2014 no vulnerabilities found"
+    );
+    for (const f of findings) {
+      const key = findingKey(f);
+      if (!allFindings.has(key)) {
+        allFindings.set(key, {
+          name: f.name,
+          severity: f.severity,
+          url: f.url,
+          method: f.method,
+          status: "Open"
+        });
+      }
+    }
+    buildSummaryTable(progress, allFindings, fixedKeys);
+    await progress.updatePrDescription();
+    await progress.phaseStart(
+      "done",
+      findings.length > 0 ? `Function harness scan found ${findings.length} vulnerability(ies). Review findings in Bright dashboard.` : "Function harness scan completed \u2014 no vulnerabilities found."
+    );
+  } finally {
+    await killProcess(repeater.process);
+    await stopRunningScans(config2.brightToken, config2.brightHostname, allScanIds);
+    if (repeater.repeaterId) {
+      await deleteRepeater(config2.brightToken, config2.brightHostname, repeater.repeaterId);
+    }
   }
 }
 function buildSummaryTable(progress, allFindings, fixedKeys) {
@@ -39535,12 +42428,12 @@ function mergeQueryParams(a, b) {
   return merged.length > 0 ? merged : void 0;
 }
 function killProcess(proc2) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     if (!proc2 || !proc2.pid) {
-      resolve4();
+      resolve5();
       return;
     }
-    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve4());
+    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve5());
   });
 }
 async function stopRunningScans(brightToken, brightHostname, scanIds) {
@@ -39925,6 +42818,29 @@ function isUserMutationPath(pathLower) {
 var CREDENTIAL_FIELD_RE = /\b(password|passwd|new_password|newPassword|currentPassword|current_password|oldPassword|old_password)\b/i;
 function hasCredentialFields(body) {
   return CREDENTIAL_FIELD_RE.test(body);
+}
+function buildContextSummary(techStack, startupConfig, endpoints, swaggerEndpointCount) {
+  const stack = formatTechStack(techStack);
+  const methods = /* @__PURE__ */ new Map();
+  for (const ep of endpoints) {
+    methods.set(ep.method, (methods.get(ep.method) ?? 0) + 1);
+  }
+  const methodBreakdown = [...methods.entries()].sort((a, b) => b[1] - a[1]).map(([m, c3]) => `${m}:${c3}`).join(", ");
+  const lines = [
+    `Tech stack: ${stack}`,
+    `Deployment: ${startupConfig.docker ? "Docker" : "native"} on port ${startupConfig.port}`,
+    `Startup command: ${startupConfig.command}`
+  ];
+  if (endpoints.length > 0) {
+    lines.push(`Endpoints: ${endpoints.length} total (${methodBreakdown})`);
+  }
+  if (swaggerEndpointCount > 0) {
+    lines.push(`OpenAPI spec available (${swaggerEndpointCount} endpoints from spec)`);
+  }
+  if (techStack.databases.length > 0) {
+    lines.push(`Databases: ${techStack.databases.join(", ")}`);
+  }
+  return lines.join("\n");
 }
 
 // src/index.ts

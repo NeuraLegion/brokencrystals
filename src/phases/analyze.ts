@@ -12,9 +12,7 @@ import { extractJson } from "../utils.js";
 // ---------------------------------------------------------------------------
 
 export async function detectTechStack(
-  _llm: OpenAI,
   repoPath: string,
-  _model?: string,
 ): Promise<TechStack> {
   return detectTechStackFromFiles(repoPath);
 }
@@ -678,6 +676,8 @@ const GLOB_IGNORE = [
   "**/frontend/**",
   "**/client/**",
   "**/app/assets/**",
+  "**/assets/javascripts/**",
+  "**/plugins/**/assets/**",
 ];
 
 async function findControllerFiles(repoPath: string): Promise<string[]> {
@@ -1640,7 +1640,7 @@ export async function discoverEndpoints(
     }
   }
 
-  // LLM calls for endpoints that need param/body enrichment
+  // LLM calls for endpoints that need param/body enrichment — BATCHED by file
   if (needsLlm.length > 0) {
     console.log(
       `[Analyze] Using LLM for param extraction on ${needsLlm.length} endpoints (body + path params)`,
@@ -1648,89 +1648,161 @@ export async function discoverEndpoints(
   }
   const handleTool = createBodyExtractionToolHandler(repoPath);
 
-  for (let idx = 0; idx < needsLlm.length; idx++) {
-    const ep = needsLlm[idx];
-    console.log(
-      `[Analyze] Param extraction [${idx + 1}/${needsLlm.length}]: ${ep.method} ${ep.path} (${ep.filePath})`,
-    );
-    const fullPath = resolve(repoPath, ep.filePath);
+  // Group endpoints by source file for batched LLM calls
+  const byFile = new Map<string, DiscoveredEndpoint[]>();
+  for (const ep of needsLlm) {
+    const key = ep.filePath;
+    if (!byFile.has(key)) byFile.set(key, []);
+    byFile.get(key)!.push(ep);
+  }
+
+  let processedCount = 0;
+  const BATCH_SIZE = 15; // Max endpoints per LLM call
+
+  for (const [filePath, fileEndpoints] of byFile) {
+    const fullPath = resolve(repoPath, filePath);
     let content: string;
     try {
       content = readFileSync(fullPath, "utf-8");
     } catch {
-      enriched.push(ep);
+      enriched.push(...fileEndpoints);
+      processedCount += fileEndpoints.length;
       continue;
     }
 
-    // Extract a small snippet around the endpoint method, not the whole file
-    const anchor = ep.path.replace(/^\//, "").split("/")[0] || ep.method;
-    const snippet = extractSnippet(content, anchor);
-    const totalLines = content.split("\n").length;
+    // Process in batches of BATCH_SIZE
+    for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += BATCH_SIZE) {
+      const batch = fileEndpoints.slice(batchStart, batchStart + BATCH_SIZE);
+      processedCount += batch.length;
+      console.log(
+        `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`,
+      );
 
-    const needsBody = ["POST", "PUT", "PATCH"].includes(
-      ep.method.toUpperCase(),
-    );
-    const hasPathParams = /[:{}]/.test(ep.path);
+      // Build a combined snippet — use the first path segment of each endpoint as anchor
+      const anchors = new Set(
+        batch.flatMap((ep) => {
+          const parts = ep.path.replace(/^\//, "").split("/");
+          return [parts[0], parts[1]].filter(Boolean);
+        }),
+      );
+      let combinedSnippet = "";
+      for (const anchor of anchors) {
+        const snip = extractSnippet(content, anchor);
+        if (snip && !combinedSnippet.includes(snip)) {
+          combinedSnippet += (combinedSnippet ? "\n...\n" : "") + snip;
+        }
+      }
+      if (!combinedSnippet) {
+        // Fallback: first 120 lines
+        combinedSnippet = content
+          .split("\n")
+          .slice(0, 120)
+          .map((l, i) => `${i + 1}: ${l}`)
+          .join("\n");
+      }
+      const totalLines = content.split("\n").length;
 
-    const messages = [
-      {
-        role: "system" as const,
-        content: `You are an API analyst. Given a code snippet for a ${ep.method} endpoint, determine the parameters with realistic sample values.
+      const endpointList = batch
+        .map(
+          (ep, i) =>
+            `[${i}] ${ep.method} ${ep.path}${["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()) ? " (needs body)" : ""}${/[:{}]/.test(ep.path) ? " (has path params)" : ""}`,
+        )
+        .join("\n");
+
+      const messages = [
+        {
+          role: "system" as const,
+          content: `You are an API analyst. Given code snippets and a list of endpoints, determine the parameters for EACH endpoint with realistic sample values.
 
 You have tools to inspect more code:
 - read_lines: read specific line ranges from any file
 - find_type: search for a class/interface/DTO definition by name
 
-Use these tools to look up referenced DTOs, request models, or schemas. Return your final answer as JSON:
-{"body": "<json string or empty>", "contentType": "application/json or empty", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}`,
-      },
-      {
-        role: "user" as const,
-        content: `Endpoint: ${ep.method} ${ep.path}
-File: ${ep.filePath} (${totalLines} lines total)
+Return a JSON array with one entry per endpoint (matching the [index]):
+[{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
 
+For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params (:id, {id}), provide realistic values.`,
+        },
+        {
+          role: "user" as const,
+          content: `Endpoints from ${filePath} (${totalLines} lines):
+${endpointList}
+
+Relevant code:
 \`\`\`
-${snippet}
+${combinedSnippet.slice(0, 6000)}
 \`\`\`
 
-${needsBody ? `This is a ${ep.method} endpoint — provide a realistic request body with field names and sample values. DO NOT return an empty body "{}".` : ""}
-${hasPathParams ? `This endpoint has path parameters. Provide realistic values for each path param (e.g. a GUID for :id, a slug for :name).` : ""}
-If you see a DTO/model type referenced, use find_type to look it up. Return JSON with body, contentType, queryParams, and pathParams.`,
-      },
-    ];
+Look up any referenced DTOs/models. Return a JSON array with params for each endpoint index.`,
+        },
+      ];
 
-    try {
-      const response = await chatWithTools(
-        llm,
-        messages,
-        bodyExtractionTools,
-        handleTool,
-        model,
-        5,
-      );
-      const parsed = JSON.parse(extractJson(response));
-      // Substitute path params into the URL
-      let resolvedPath = ep.path;
-      if (parsed.pathParams && typeof parsed.pathParams === "object") {
-        for (const [param, value] of Object.entries(parsed.pathParams)) {
-          resolvedPath = resolvedPath
-            .replace(`:${param}`, String(value))
-            .replace(`{${param}}`, String(value));
+      try {
+        const response = await chatWithTools(
+          llm,
+          messages,
+          bodyExtractionTools,
+          handleTool,
+          model,
+          5,
+        );
+        const parsed = JSON.parse(extractJson(response));
+        const entries = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed.endpoints)
+            ? parsed.endpoints
+            : [parsed]; // single object fallback
+
+        for (const entry of entries) {
+          const idx = typeof entry.index === "number" ? entry.index : 0;
+          const ep = batch[idx] ?? batch[0];
+          if (!ep) continue;
+
+          let resolvedPath = ep.path;
+          if (entry.pathParams && typeof entry.pathParams === "object") {
+            for (const [param, value] of Object.entries(entry.pathParams)) {
+              resolvedPath = resolvedPath
+                .replace(`:${param}`, String(value))
+                .replace(`{${param}}`, String(value));
+            }
+          }
+          enriched.push({
+            ...ep,
+            path: resolvedPath,
+            queryParams:
+              entry.queryParams?.length > 0
+                ? entry.queryParams
+                : ep.queryParams,
+            body: entry.body
+              ? (typeof entry.body === "string" ? entry.body : JSON.stringify(entry.body))
+              : undefined,
+            contentType: entry.contentType || undefined,
+          });
         }
+
+        // Add any batch entries that weren't covered by the LLM response
+        const coveredIndices = new Set(
+          entries
+            .filter((e: { index?: number }) => typeof e.index === "number")
+            .map((e: { index: number }) => e.index),
+        );
+        for (let i = 0; i < batch.length; i++) {
+          if (!coveredIndices.has(i) && entries.length !== 1) {
+            enriched.push(batch[i]);
+          }
+        }
+        // If only one entry returned without index, skip adding duplicates
+        if (entries.length === 1 && typeof entries[0].index !== "number" && batch.length > 1) {
+          for (let i = 1; i < batch.length; i++) {
+            enriched.push(batch[i]);
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `[Analyze] Failed batch param extraction for ${filePath}: ${err}`,
+        );
+        enriched.push(...batch);
       }
-      enriched.push({
-        ...ep,
-        path: resolvedPath,
-        queryParams:
-          parsed.queryParams?.length > 0 ? parsed.queryParams : ep.queryParams,
-        body: parsed.body || undefined,
-        contentType: parsed.contentType || undefined,
-      });
-    } catch (err) {
-      console.warn(
-        `[Analyze] Failed to identify params for ${ep.method} ${ep.path}: ${err}`,
-      );
-      enriched.push(ep);
     }
   }
 

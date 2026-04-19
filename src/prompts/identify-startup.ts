@@ -6,72 +6,45 @@ export function identifyStartupPrompt(
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files and list directories.
+      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files, list directories, search code, run shell commands, and write files.
 
-If the tech stack description says "(service: <path>)", focus on building and running THAT specific service. It was selected as the best candidate for security testing in a monorepo. Build/publish commands should target that service's project file, and the port should match that service.
+If the tech stack description says "(service: <path>)", focus on running THAT specific service.
 
-Check for (in priority order):
-1. Docker Compose files (compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml) — **ALWAYS prefer Docker when a suitable compose file exists.** Docker avoids Node version incompatibilities, native module build issues, and missing system dependencies.
-2. Dockerfile with "docker build -t <name> . && docker run -d -p <port>:<port> <name>" — use this when a Dockerfile exists but no suitable compose file is available.
-3. package.json scripts (start, dev, serve)
-4. Makefile targets
-5. README instructions
-6. Python manage.py / wsgi.py
-7. Go main.go
-8. Gemfile + config.ru (Rails)
+## Guidelines
+- **BUILD FROM SOURCE using a Dockerfile** — the main application MUST be built via "docker build" or "docker compose build" from a Dockerfile in the repo. The goal is to test THIS repository's code as built from source.
+- **NEVER use pre-made dev containers** — reject any approach that pulls a pre-built image for the main application (e.g. scripts that do "docker pull <image>" or "docker run <prebuilt-image>"). Scripts like bin/docker/boot_dev, d/boot_dev, or similar convenience scripts typically pull pre-made dev images rather than building from source — DO NOT use them.
+- **Read compose files** before using them — skip CI/test-only compose files. If a compose file references a pre-built external image for the app service (not a local build context), do NOT use it as-is — either override with a local build or create your own Dockerfile.
+- If no suitable Dockerfile exists, use **write_file** to create one — do NOT use heredocs or inline cat in commands
+- Dependency services (postgres, redis, memcached, elasticsearch, etc.) can use their standard upstream images.
+- For full-stack apps, use the **backend API port** (not the frontend dev server)
+- This runs in an automated CI environment — no TTY/interactive prompts available
+- Read README, Dockerfile, compose files, package.json, Makefile etc. to determine the right approach
+- Use run_command_on_host for diagnostics (e.g. docker ps, docker logs, checking ports) if needed
 
-CRITICAL COMPOSE FILE RULES:
-- SKIP compose files that are clearly for CI/testing: docker-compose.test.yml, docker-compose.ci.yml, docker-compose.e2e.yml. These run tests and exit — they do NOT keep the app running.
-- READ the compose file contents before using it. If it contains a "sut" (system-under-test) service or a service that runs test commands and exits, do NOT use that compose file.
-- If the ONLY compose files are test/CI files, fall back to "docker build" + "docker run" using the Dockerfile instead.
-- Prefer compose files named: compose.yml, docker-compose.yml, compose.local.yml, docker-compose.dev.yml, docker-compose.local.yml.
-
-IMPORTANT: If the project has Docker files (Dockerfile or compose), you MUST use Docker. Do NOT attempt a native (non-Docker) startup when Docker files are present — the app likely depends on databases, caches, or other services that won't be available natively. If no suitable compose file exists but a Dockerfile does, use "docker build" + "docker run".
-
-DOCKER WRAPPER SCRIPTS (e.g. bin/docker/boot_dev, d/rails, d/boot_dev):
-- Some projects (like Discourse) use shell scripts that internally run "docker exec -it". The "-it" flag requires a TTY which is NOT available in CI/automated environments.
-- If using such scripts, add prerequisites to strip -it flags BEFORE running them:
-  e.g. "find d/ bin/ -type f -exec sed -i 's/ -it / -i /g; s/ --tty//g' {} +"
-- Alternatively, call docker exec directly without -t instead of using the wrapper scripts.
-- Rails projects inside Docker containers need database setup. Add a prerequisite to run "docker exec <container> bin/rails db:create db:migrate" AFTER the container is running but BEFORE the Rails server starts.
-
-PORT SELECTION for full-stack apps (e.g. Rails + Ember CLI, Django + React):
-- For security scanning, ALWAYS use the BACKEND API port (e.g. Rails on 3000, Django on 8000), NOT the frontend dev server port (e.g. Ember CLI on 4200, Webpack on 3001).
-- The backend serves HTTP API endpoints that the security scanner needs to test.
-- The frontend dev server is just a hot-reload proxy — scanning it tests nothing useful.
-
-For Docker Compose: use "docker compose -f <file> up -d" as the command and set docker=true. Parse the compose file to find the exposed port.
-
-For Dockerfile (no compose): use "docker build -t app ." as prerequisite and "docker run -d -p <port>:<port> app" as command. Set docker=true. Parse the Dockerfile EXPOSE directive or application config to find the port.
-
-Determine:
-1. Prerequisites to run first (npm install, pip install, docker compose build, etc.)
-2. The startup command
-3. The port the application listens on
-4. Whether it uses Docker
-5. Required environment variables (provide sensible defaults for local dev)
-
-CRITICAL: "prerequisites" and "command" MUST be executable shell commands — NOT descriptions or explanations. They will be run directly via /bin/sh.
-  WRONG: "Ensure Docker and Docker Compose are installed"
-  RIGHT: "docker compose build"
-  WRONG: "Create a .env file with the required variables"
-  RIGHT: "cp .env.example .env"
-If Docker is used and the compose file handles everything, set prerequisites to an empty array [].`,
-    },
-    {
-      role: "user",
-      content: `Analyze this repository and determine how to start the application locally.
-
-Use the tools to inspect package.json, Dockerfile, docker-compose.yml, compose.yml, Makefile, README, and other config files.
+## Command structure rules
+- **command** = the single command that starts the app (e.g. "docker compose up -d" or "docker run -d ...")
+- **prerequisites** = build steps that run before command (e.g. ["docker compose build", "docker build -t myapp ."])
+- NEVER combine build + run into one command with && — use prerequisites for builds
+- NEVER use heredocs (<<EOF), multi-line strings, or inline file creation in command or prerequisites — use write_file instead
+- Each prerequisite and the command must be a single, simple shell command
+- **CRITICAL**: The command runs ON THE HOST shell, not inside a container. If the app uses tools that only exist in the Docker image (e.g. bundle, rails, pnpm, node), the command MUST be "docker run ..." or "docker compose up ..." — NEVER a bare "bundle exec ..." or "node server.js" when docker=true.
+- **IMPORTANT**: Do NOT mix "docker run" and "docker compose" approaches. Either use docker compose for EVERYTHING (services + app) OR use manual "docker run" for everything. If you use "docker compose up -d" as the command, dependency services (postgres, redis) must be defined in the compose file — NOT started via "docker run" in prerequisites. Prerequisites should only contain build steps like "docker compose build".
 
 Return a JSON object:
 {
-  "command": "npm start",
+  "command": "docker compose up -d",
   "port": 3000,
-  "prerequisites": ["npm install"],
-  "envVars": { "NODE_ENV": "development", "PORT": "3000" },
-  "docker": false
-}`,
+  "prerequisites": ["docker compose build"],
+  "envVars": { "NODE_ENV": "development" },
+  "docker": true,
+  "healthCheckPath": "/health"
+}
+
+- **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated health/status endpoint like "/health", "/srv/status", or "/api/health".`,
+    },
+    {
+      role: "user",
+      content: `Analyze this repository and determine how to start the application locally. Use the tools to explore the project structure and config files. Return the JSON object.`,
     },
   ];
 }
@@ -83,28 +56,21 @@ export function rebuildStartupPrompt(
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer restarting a ${techStack} application after source code was modified (security fixes were applied). The application was previously running with a known config. You have tools to read files and list directories.
+      content: `You are a DevOps engineer restarting a ${techStack} application after source code was modified (security fixes were applied). The application was previously running with a known config. You have tools to read files, list directories, run shell commands, and write files.
 
 Your job is to determine the REBUILD + RESTART procedure that ensures the running application reflects the new source code. This is critical — if you skip the rebuild step, the app will run stale code and the fixes won't take effect.
 
-Consider the deployment method from the previous config and adapt accordingly:
+The config MUST include a build step that compiles/packages the local source code into the running application:
+- Docker: use "docker build" or "docker compose build" / "docker compose up --build"
+- Native: use the project's build command (npm run build, bundle exec rake assets:precompile, go build, mvn package, etc.)
+- NEVER use scripts that pull pre-built images (bin/docker/boot_dev, etc.) — they ignore source changes
+- If the previous config used a pre-built image or a script that doesn't build from source, you MUST change the approach to build from source
 
-**Docker Compose**: Use --build flag to force image rebuild (e.g. "docker compose -f <file> up --build -d"). Without --build, Docker will reuse cached images with the OLD code.
-**Dockerfile (standalone)**: Rebuild the image with "docker build" then re-run. Include --no-cache only if the Dockerfile copies source code in early layers.
-**Native Node.js/Python/Go/etc.**: Run the appropriate build step as a prerequisite:
-  - Node.js: "npm run build" or "npx tsc" if there's a build step, then "npm start"
-  - Python: usually no build needed, just restart
-  - Go: "go build" before running
-  - Java/Kotlin: "mvn package" or "gradle build"
-**Makefile**: Check for a "build" or "rebuild" target
-**Helm/K8s**: Not applicable for local restarts — fall back to Docker or native
+Use the tools to inspect the project's build configuration and determine the appropriate rebuild strategy based on the deployment method.
 
-IMPORTANT: Keep the same port and environment variables from the previous config unless you have a specific reason to change them.
-
-CRITICAL: "prerequisites" and "command" MUST be executable shell commands — NOT descriptions or explanations. They will be run directly via /bin/sh.
-  WRONG: "Rebuild the Docker images"
-  RIGHT: "docker compose -f compose.local.yml build"
-If Docker Compose with --build handles everything, set prerequisites to an empty array [].`,
+Key principles:
+- Keep the same port and environment variables unless you have a specific reason to change them
+- All prerequisites and commands must be executable shell commands (run via /bin/sh)`,
     },
     {
       role: "user",
@@ -121,7 +87,8 @@ Return a JSON object:
   "port": 3000,
   "prerequisites": [],
   "envVars": {},
-  "docker": true
+  "docker": true,
+  "healthCheckPath": "/health"
 }`,
     },
   ];
@@ -132,28 +99,37 @@ export function retryStartupPrompt(
   previousConfig: string,
   errorOutput: string,
   attempt: number,
+  allPreviousAttempts?: Array<{ config: string; error: string }>,
+  hints?: string[],
 ): ChatCompletionMessageParam[] {
+  const historySection = allPreviousAttempts && allPreviousAttempts.length > 1
+    ? `\n\nFull attempt history:\n${allPreviousAttempts.map((a, i) => `Attempt ${i + 1}: ${a.config}\nError: ${a.error.slice(-500)}`).join("\n\n")}`
+    : "";
+
+  const hintsSection = hints && hints.length > 0
+    ? `\n\nHints discovered by previous repair attempts (use these — they save investigation time):\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}`
+    : "";
+
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer troubleshooting a failed application startup for a ${techStack} repository. The previous startup attempt failed. You have tools to read files and list directories.
+      content: `You are a DevOps engineer troubleshooting a failed application startup for a ${techStack} repository. The previous startup attempt failed. You have tools to read files, list directories, search code, run shell commands, and write files.
 
-Analyze the error and determine an alternative way to start the application. Common strategies:
-- If npm install failed due to native modules or Node version issues, try Docker instead
-- If Docker Compose failed, check for alternative compose files (compose.local.yml, docker-compose.dev.yml)
-- If a port conflict occurred, try a different port
-- If missing environment variables, check .env.example or README for required values
-- If build failed, check if there's a pre-built option or different build command
-- "cannot attach stdin to a TTY" → the wrapper scripts use "docker exec -it". Call docker exec directly WITHOUT -t, or strip -it flags from the scripts as a prerequisite: find d/ bin/ -type f -exec sed -i 's/ -it / -i /g' {} +
-- "database does not exist" / "relation does not exist" → add a prerequisite: docker exec <container> bin/rails db:create db:migrate (or the equivalent for the framework)
-- For full-stack apps (Rails+Ember, Django+React), use the BACKEND port (e.g. Rails=3000) NOT the frontend dev server port (e.g. Ember CLI=4200). The security scanner needs the API, not the frontend proxy.
+Analyze the error and determine an alternative way to start the application. Use the tools to investigate the project structure, read config files, run diagnostics (docker logs, docker ps, etc.), and understand the root cause.
 
-IMPORTANT: Do NOT repeat the same approach that already failed. Try a fundamentally different strategy.
-
-CRITICAL: "prerequisites" and "command" MUST be executable shell commands — NOT descriptions or explanations. They will be run directly via /bin/sh.
-  WRONG: "Use the local compose file instead"
-  RIGHT: "docker compose -f compose.local.yml build"
-If Docker Compose handles everything, set prerequisites to an empty array [].`,
+Key principles:
+- Do NOT repeat the same approach that already failed — try a fundamentally different strategy
+- **BUILD FROM SOURCE using a Dockerfile** — the main application MUST be built via "docker build" or "docker compose build", not a pre-built external image. NEVER use convenience scripts (bin/docker/boot_dev, d/boot_dev, etc.) that pull pre-made dev containers.
+- If no Dockerfile exists, use **write_file** to create one — do NOT use heredocs or inline cat in commands
+- Dependency services (postgres, redis, etc.) can use upstream images
+- **command** = single command that starts the app. **prerequisites** = build steps. NEVER combine with &&
+- **CRITICAL**: The command runs ON THE HOST shell, not inside a container. If the app uses tools that only exist in the Docker image (e.g. bundle, rails, pnpm, node), the command MUST be "docker run ..." or "docker compose up ..." — NEVER a bare "bundle exec ..." or "node server.js" when docker=true.
+- **IMPORTANT**: Do NOT mix "docker run" and "docker compose" approaches. Either use docker compose for EVERYTHING (services + app) OR use manual "docker run" for everything. If you use "docker compose up -d" as the command, dependency services must be in the compose file — NOT started via "docker run" in prerequisites. Prerequisites should only contain build steps.
+- NEVER use heredocs (<<EOF) or multi-line strings in command/prerequisites — use write_file instead
+- This runs in an automated CI environment — no TTY/interactive prompts available
+- For full-stack apps, use the backend API port (not the frontend dev server)
+- Use **save_hint** to record important discoveries for future attempts
+- Use **remove_hint** to delete hints from previous attempts that turned out to be wrong or misleading`,
     },
     {
       role: "user",
@@ -163,9 +139,9 @@ Previous config tried:
 ${previousConfig}
 
 Error output (last 2000 chars):
-${errorOutput.slice(-2000)}
+${errorOutput.slice(-2000)}${historySection}${hintsSection}
 
-Use the tools to investigate and find an alternative startup approach.
+Use the tools to investigate the root cause and find an alternative startup approach.
 
 Return a JSON object with the new approach:
 {
@@ -173,8 +149,11 @@ Return a JSON object with the new approach:
   "port": 3000,
   "prerequisites": [],
   "envVars": {},
-  "docker": true
-}`,
+  "docker": true,
+  "healthCheckPath": "/health"
+}
+
+- **healthCheckPath** (optional): if the root route returns errors during boot, use a dedicated health endpoint.`,
     },
   ];
 }

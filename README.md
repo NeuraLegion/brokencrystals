@@ -19,9 +19,9 @@ The workflow follows a multi-phase scan-fix-validate loop, repeating up to 5 pas
 ```
 src/
 ├── index.ts                  # Entry point
-├── orchestrator.ts           # Main 8-step workflow
+├── orchestrator.ts           # Main workflow + harness scan loop
 ├── mcp-client.ts            # Bright API wrapper
-├── inference.ts             # LLM chat utilities
+├── inference.ts             # LLM chat utilities + model escalation
 ├── tools.ts                 # Codebase analysis tools (read, list, search)
 ├── config.ts                # Configuration loading
 ├── progress.ts              # GitHub Engine progress reporter
@@ -31,25 +31,29 @@ src/
 ├── phases/                  # Workflow phases
 │   ├── analyze.ts          # 1. Tech stack & endpoint discovery
 │   ├── startup.ts          # 2. Start application locally
+│   ├── swagger.ts          # 2b. OpenAPI/Swagger spec discovery
 │   ├── repeater.ts         # 3. Bright Repeater setup
 │   ├── auth.ts             # 4. Auth detection & configuration (multistep)
 │   ├── entrypoints.ts      # 5. Register endpoints with Bright
 │   ├── test-selection.ts   # 6. Per-endpoint security test selection
 │   ├── scan.ts             # 7. Run security scans (programmatic)
 │   ├── findings.ts         # 8. Fetch vulnerability findings
-│   └── fix.ts              # 9. Generate, apply & validate fixes
+│   ├── fix.ts              # 9. Generate, apply & validate fixes
+│   └── harness.ts          # Function harness mode (fallback / standalone)
 │
 └── prompts/                # LLM prompts & schemas
-    ├── detect-tech-stack.ts
     ├── discover-endpoints.ts
     ├── identify-startup.ts
-    ├── detect-auth.ts
-    └── generate-fix.ts
+    ├── generate-fix.ts
+    ├── generate-dockerfile.ts
+    └── harness.ts           # Prompts for function harness pipeline
 ```
 
 ## Workflow
 
-The orchestrator executes the following workflow, repeating the scan-fix loop up to 5 times:
+The orchestrator executes the following workflow, repeating the scan-fix loop up to 5 times.
+
+In **function harness mode** (`RUN_MODE=function`) or when full startup/auth fails, the engine falls back to wrapping critical functions in a lightweight HTTP server for scanning — see [Function Harness Mode](#function-harness-mode) below.
 
 ### Phase 1: Analyze Repository
 
@@ -63,9 +67,19 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 
 - **Component**: `phases/startup.ts`
 - Analyzes startup config (scripts, env vars, prerequisites, Docker)
+- Generates a Dockerfile if needed (`prompts/generate-dockerfile.ts`)
 - Runs prerequisites (npm install, pip install, etc.)
 - Spawns the application process and waits for it to become ready
+- **Fallback**: If startup fails, automatically falls back to function harness mode
 - **Output**: Application running on localhost
+
+### Phase 2b: Swagger / OpenAPI Discovery
+
+- **Component**: `phases/swagger.ts`
+- Probes for OpenAPI/Swagger spec (common paths + codebase hints)
+- Merges spec-derived endpoints with static analysis results
+- Swagger endpoints are authoritative for paths; static analysis fills in sample values
+- **Output**: Enriched endpoint list
 
 ### Phase 3: Setup Repeater
 
@@ -128,6 +142,7 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 
 - Kills application and repeater processes
 - Deletes the repeater from Bright to avoid stale entries
+- Cleans up function harness infrastructure (standalone DB/Redis containers)
 - Closes MCP connection
 
 ### Loop Strategy
@@ -138,6 +153,18 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
   - All scan launches fail → exit with error
   - Fix breaks app and can't be repaired → revert and report
   - Max iterations reached → exit with remaining vulnerabilities reported
+
+### Function Harness Mode
+
+When enabled directly (`RUN_MODE=function`) or triggered as a fallback (startup failure, auth failure), the engine bypasses full application startup and instead:
+
+1. **Identify infrastructure** — Reads compose files to find minimal services (DB, Redis) needed by the app's model layer
+2. **Start minimal infra** — Spins up only the essential services and runs migrations
+3. **Identify targets** — LLM performs data-flow analysis to find security-critical functions (SQL queries, file I/O, command execution, deserialization, template rendering, etc.)
+4. **Generate harness** — LLM generates a single-file HTTP server (Sinatra/Express/Flask) that boots the framework model layer and wraps each target function as an endpoint
+5. **Scan** — Registers harness endpoints with Bright (no auth needed) and runs security scans
+
+This allows scanning applications that are difficult to start fully (complex infrastructure, interactive setup, broken builds) while still testing real code paths against real databases.
 
 ## Prerequisites
 
@@ -183,6 +210,14 @@ The orchestrator executes the following workflow, repeating the scan-fix loop up
 | `GITHUB_PLATFORM_API_TOKEN` | No       | Platform API token                  |
 | `GITHUB_PLATFORM_API_URL`   | No       | Platform API URL                    |
 | `GITHUB_JOB_NONCE`          | No       | Optional job nonce                  |
+
+#### Run Mode
+
+| Variable   | Required | Description                                                                                                                                                 |
+| ---------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RUN_MODE` | No       | `full` (default) — start the full application and scan. `function` — skip full startup, wrap critical functions in a lightweight HTTP harness and scan those |
+
+In `full` mode, if startup or auth fails, the engine automatically falls back to function harness mode.
 
 #### Standalone Mode
 
@@ -384,14 +419,16 @@ Run `./engine-cli run --help` for all available options.
 
 ## Key Features
 
-✅ **Automated Discovery** — Finds HTTP endpoints via code analysis
+✅ **Automated Discovery** — Finds HTTP endpoints via code analysis + Swagger/OpenAPI specs
 ✅ **Auth Detection** — Auto-detects JWT, API keys, sessions, OAuth with multistep login flows
 ✅ **Per-Endpoint Test Selection** — LLM selects relevant security tests per endpoint
 ✅ **Local Execution** — Starts your app locally for realistic scanning
+✅ **Function Harness Mode** — Falls back to wrapping critical functions when full startup fails
 ✅ **Repeater Integration** — Supports private/internal networks, auto-cleanup on exit
 ✅ **Multi-pass Validation** — Up to 5 iterations of scan → fix → validate
 ✅ **Fix Recovery** — Detects when fixes break the app, repairs or reverts automatically
-✅ **LLM-Driven Fixes** — GPT-4o generates contextual patches with taint analysis
+✅ **LLM-Driven Fixes** — Contextual patches with taint analysis via configurable models
+✅ **Model Escalation** — Auto-upgrades to stronger models on failure (e.g. `gpt-5.4-mini,gpt-5.4`)
 ✅ **GitHub Integration** — Reports progress via Copilot Engine API
 
 ## Troubleshooting
@@ -402,7 +439,9 @@ Check Bright dashboard at [app.brightsec.com](https://app.brightsec.com). The 30
 
 ### Application Won't Start
 
-Ensure prerequisites run correctly:
+The engine will automatically fall back to **function harness mode** when startup fails. If you want to skip startup entirely, set `RUN_MODE=function`.
+
+To debug startup issues:
 
 - Check `startup.ts` LLM output for detected startup command
 - Manually verify `npm start` or equivalent works in the cloned repo
@@ -410,7 +449,7 @@ Ensure prerequisites run correctly:
 
 ### Auth Detection Failed
 
-If the LLM can't detect auth, you can manually configure it in Bright dashboard before running the scan. The engine uses Bright's **multistep** auth type with NexTemplate interpolation — avoid the simpler "header" type for login-based auth.
+If the LLM can't detect auth, the engine will fall back to **function harness mode** (scanning without auth). You can also manually configure auth in Bright dashboard before running the scan. The engine uses Bright's **multistep** auth type with NexTemplate interpolation — avoid the simpler "header" type for login-based auth.
 
 ### Entrypoint Conflicts
 

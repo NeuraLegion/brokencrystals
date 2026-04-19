@@ -18,10 +18,31 @@ export async function registerEntrypoints(
   authObjectId?: string,
 ): Promise<RegisteredEntrypoint[]> {
   const registered: RegisteredEntrypoint[] = [];
+  let failedUploads = 0;
 
   for (const ep of endpoints) {
+    try {
     const path = resolvePath(ep.path);
+
+    // Skip URLs that are clearly not real endpoints (template leftovers, etc.)
+    if (!isScannablePath(path)) {
+      console.warn(
+        `[Entrypoints] Skipping junk path: ${ep.path} (resolved: ${path})`,
+      );
+      continue;
+    }
+
     let fullUrl = `${baseUrl}${path}`;
+
+    // Validate the URL — skip malformed endpoints from LLM hallucinations
+    try {
+      new URL(fullUrl);
+    } catch {
+      console.warn(
+        `[Entrypoints] Skipping malformed URL: ${fullUrl} (from path "${ep.path}")`,
+      );
+      continue;
+    }
 
     // Normalize non-standard HTTP methods (e.g. GRAPHQL_QUERY → POST)
     const method = normalizeMethod(ep.method);
@@ -69,7 +90,7 @@ export async function registerEntrypoints(
       args.authObjectId = authObjectId;
     }
 
-    try {
+    {
       const result = await bright.callMcpToolRaw("addEntrypoint", args);
 
       // Parse the entrypoint ID from the response
@@ -102,23 +123,27 @@ export async function registerEntrypoints(
           );
         }
       } else if (result.startsWith("Error")) {
+        failedUploads++;
         console.error(
           `[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`,
         );
       } else {
+        failedUploads++;
         console.warn(
           `[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`,
         );
       }
+    }
     } catch (err) {
       console.error(
-        `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`,
+        `[Entrypoints] Failed ${ep.method} ${ep.path}: ${toErrorMessage(err)}`,
       );
     }
   }
 
   console.log(
-    `[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints`,
+    `[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints` +
+      (failedUploads > 0 ? ` (${failedUploads} rejected by API)` : ""),
   );
   return registered;
 }
@@ -155,7 +180,39 @@ async function findExistingEntrypoint(
 }
 
 function resolvePath(path: string): string {
-  return path.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1");
+  let resolved = path
+    .replace(/:(\w+)/g, "1")
+    .replace(/\{(\w+)\}/g, "1")
+    // Ruby interpolation: #{...}
+    .replace(/#\{[^}]*\}/g, "placeholder")
+    // JS/TS template literals: ${...}
+    .replace(/\$\{[^}]*\}/g, "placeholder")
+    // ERB tags: <%= ... %>
+    .replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
+  // Ensure path starts with / so URL concatenation doesn't break
+  if (resolved && !resolved.startsWith("/")) {
+    resolved = "/" + resolved;
+  }
+  return resolved;
+}
+
+/**
+ * Patterns that indicate the URL is not a real, scannable endpoint.
+ * These come from LLM hallucinations or raw source code extraction.
+ */
+const JUNK_URL_PATTERNS = [
+  /[#$]?\{/, // leftover template interpolation
+  /<%/, // ERB tags
+  /\(\d+\)/, // Rails route constraint like (42)
+  /\s/, // whitespace in path
+];
+
+/**
+ * Return true if the path looks like a real, scannable endpoint.
+ * Filters out template interpolation leftovers and other junk.
+ */
+function isScannablePath(path: string): boolean {
+  return !JUNK_URL_PATTERNS.some((re) => re.test(path));
 }
 
 /**
@@ -284,7 +341,11 @@ async function deleteEntrypoint(
  * with literal newlines inside string values, which breaks JSON parsing on the
  * receiving end ("Unexpected token \\n in JSON at position …").
  */
-function sanitizeBody(body: string): string {
+function sanitizeBody(body: unknown): string {
+  if (typeof body !== "string") {
+    // LLM sometimes returns body as an object instead of a JSON string
+    return body ? JSON.stringify(body) : "{}";
+  }
   try {
     // Parse and re-serialize → collapses formatting and properly escapes
     // any characters that need escaping inside string values.

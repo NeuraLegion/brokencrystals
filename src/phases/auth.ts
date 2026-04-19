@@ -1,7 +1,8 @@
 import type OpenAI from "openai";
-import type { TechStack, DiscoveredEndpoint } from "../types.js";
+import type { TechStack } from "../types.js";
 import type { BrightMcpClient } from "../mcp-client.js";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import { execSync } from "child_process";
 import { chatWithTools, type ToolHandler } from "../inference.js";
 import {
   codebaseTools,
@@ -9,7 +10,14 @@ import {
   convertMcpToolsToOpenAI,
   createMcpToolHandler,
 } from "../tools.js";
-import { formatTechStack, extractJson } from "../utils.js";
+import { formatTechStack, extractJson, runShellCommand, toErrorMessage } from "../utils.js";
+import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt } from "../prompts/auth.js";
+
+const CONTENT_TYPE_MAP: Record<string, string> = {
+  json: "application/json",
+  form: "application/x-www-form-urlencoded",
+  xml: "application/xml",
+};
 
 export interface AuthResult {
   /** Single auth object ID for the whole app, or undefined if no auth. */
@@ -49,22 +57,22 @@ export async function detectAndConfigureAuth(
   bright: BrightMcpClient,
   repoPath: string,
   techStack: TechStack,
-  endpoints: DiscoveredEndpoint[],
   projectId: string,
   baseUrl: string,
   repeaterId: string,
   brightToken: string,
   brightHostname: string,
   model?: string,
+  contextSummary?: string,
 ): Promise<AuthResult> {
   // Phase 1: Detect auth from source code
   const detection = await detectAuthFromCode(
     llm,
     repoPath,
     techStack,
-    endpoints,
     baseUrl,
     model,
+    contextSummary,
   );
 
   if (!detection.requiresAuth) {
@@ -82,22 +90,70 @@ export async function detectAndConfigureAuth(
     `[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`,
   );
 
-  // Phase 2: Register a test user locally if the app has no seeded users
-  await registerUser(baseUrl, detection);
+  // Phase 2: Try quick HTTP registration if the detection found a registration endpoint
+  let registrationOk = await registerUser(baseUrl, detection);
 
-  // Phase 3: Let the LLM create + test + fix the auth object via MCP tools
-  const authObjectId = await createAuthViaMcp(
-    llm,
-    bright,
-    repoPath,
-    detection,
-    projectId,
-    baseUrl,
-    repeaterId,
-    brightToken,
-    brightHostname,
-    model,
-  );
+  // Phase 3: If no confirmed user, run the seed user sub-phase (dedicated LLM session)
+  let seededCredentials: SeedUserResult | undefined;
+  if (!registrationOk) {
+    seededCredentials = await seedTestUser(llm, repoPath, baseUrl, detection, model);
+    if (seededCredentials?.success) {
+      registrationOk = true;
+      // Update detection with the seeded credentials so configureAuth uses them
+      detection.loginBody = JSON.stringify({
+        login: seededCredentials.username,
+        password: seededCredentials.password,
+      });
+    }
+  }
+
+  // Phase 4: Let the LLM create + test + fix the auth object via MCP tools
+  //   Pre-probe the app to give the LLM real data instead of forcing it to guess
+  const probeContext = await preProbeForAuth(baseUrl, detection);
+
+  const MAX_AUTH_ATTEMPTS = 3;
+  let authObjectId: string | undefined;
+  const allAttemptLogs: string[] = [];
+
+  for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
+    // Build context from previous failures
+    let attemptContext = probeContext;
+    if (allAttemptLogs.length > 0) {
+      attemptContext += "\n\n## Previous attempt failures\n"
+        + "Learn from these mistakes. Do NOT repeat the same configurations.\n\n"
+        + allAttemptLogs.join("\n\n---\n\n");
+    }
+
+    console.log(`[Auth] Auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS}...`);
+    const result = await createAuthViaMcp(
+      llm,
+      bright,
+      repoPath,
+      detection,
+      registrationOk,
+      projectId,
+      baseUrl,
+      repeaterId,
+      brightToken,
+      brightHostname,
+      model,
+      attemptContext,
+    );
+
+    if (result.authId) {
+      authObjectId = result.authId;
+      break;
+    }
+
+    // Capture what was tried and what failed for the next attempt
+    if (result.attemptLog.length > 0) {
+      allAttemptLogs.push(`### Attempt ${attempt} failures:\n${result.attemptLog.join("\n")}`);
+    }
+
+    if (attempt < MAX_AUTH_ATTEMPTS) {
+      console.log(`[Auth] Attempt ${attempt} failed — retrying with accumulated context...`);
+    }
+  }
 
   // Build registration info for re-use after app restarts
   const registration =
@@ -156,207 +212,47 @@ async function detectAuthFromCode(
   llm: OpenAI,
   repoPath: string,
   techStack: TechStack,
-  endpoints: DiscoveredEndpoint[],
   baseUrl: string,
   model?: string,
+  contextSummary?: string,
 ): Promise<AuthDetection> {
   const stackStr = formatTechStack(techStack);
+  const codeHandler = createToolHandler(repoPath);
 
-  // Give LLM a brief summary + a tool to paginate through endpoints on demand
-  const endpointsTool: ChatCompletionTool = {
+  // Give the detection LLM both codebase tools AND probe_url so it can
+  // verify its conclusion against the live app instead of guessing.
+  _probeCookieJar = {};
+  const probeToolDef: ChatCompletionTool = {
     type: "function",
     function: {
-      name: "list_endpoints",
-      description: `Browse the ${endpoints.length} discovered API endpoints. Returns endpoints in pages of 50. Each entry shows METHOD, path, and source file.`,
+      name: "probe_url",
+      description:
+        "Make an HTTP request to the RUNNING application and see the response (status, headers, body). Use this to verify auth requirements — e.g. GET a protected endpoint and check for 401/403/302/login_required.",
       parameters: {
         type: "object",
         properties: {
-          from: {
-            type: "number",
-            description: "Start index (0-based). Default 0.",
-          },
-          to: {
-            type: "number",
-            description: `End index (exclusive). Default 50. Max ${endpoints.length}.`,
-          },
-          filter: {
-            type: "string",
-            description:
-              "Optional substring filter — only return endpoints whose path or file contains this string (e.g. 'auth', 'login', 'session', 'user').",
-          },
+          url: { type: "string", description: "Full URL (e.g. http://localhost:3000/admin)" },
+          method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
+          headers: { type: "string", description: 'JSON headers, e.g. \'{"Accept":"application/json"}\'' },
+          body: { type: "string", description: "Request body for POST/PUT" },
         },
-        required: [],
+        required: ["url"],
         additionalProperties: false,
       },
     },
   };
 
-  const baseHandler = createToolHandler(repoPath);
-  const handler: typeof baseHandler = async (name, args) => {
-    if (name === "list_endpoints") {
-      const from = Math.max(0, Number(args.from ?? 0));
-      const to = Math.min(endpoints.length, Number(args.to ?? from + 50));
-      const filter = args.filter ? String(args.filter).toLowerCase() : null;
-
-      let slice = endpoints.slice(from, to);
-      if (filter) {
-        slice = endpoints.filter(
-          (ep) =>
-            ep.path.toLowerCase().includes(filter) ||
-            ep.filePath.toLowerCase().includes(filter),
-        );
-        if (slice.length > 100) slice = slice.slice(0, 100);
-      }
-      const lines = slice.map(
-        (ep) => `${ep.method} ${ep.path} (${ep.filePath})`,
-      );
-      return lines.length > 0
-        ? lines.join("\n") +
-            `\n(${endpoints.length} total endpoints)`
-        : "No endpoints match that filter.";
-    }
-    return baseHandler(name, args);
+  const handler: ToolHandler = async (name, args) => {
+    if (name === "probe_url") return probeUrl(args);
+    return codeHandler(name, args);
   };
 
-  const authTools: ChatCompletionTool[] = [...codebaseTools, endpointsTool];
-
-  // Show a brief initial summary so the LLM knows the shape of the app
-  const first20 = endpoints
-    .slice(0, 20)
-    .map((ep) => `${ep.method} ${ep.path} (${ep.filePath})`)
-    .join("\n");
-  const endpointSummary =
-    first20 +
-    (endpoints.length > 20
-      ? `\n... (${endpoints.length} total — use the list_endpoints tool with filter="auth" or filter="login" to find auth-related endpoints)`
-      : "");
-
-  const messages: Parameters<typeof chatWithTools>[1] = [
-    {
-      role: "system",
-      content: `You are a security analyst examining a ${stackStr} application. Your task is to determine how the app authenticates users and extract the exact details needed to configure a DAST scanner.
-
-You have codebase tools (read_file, list_files, search_files) to analyze source code.
-
-STEP 1 — Find the login endpoint:
-- Search for auth controllers, login routes, sign-in handlers
-- Read the login handler to find the exact request body field names (e.g. "user", "email", "username")
-- IMPORTANT: Read the login CONTROLLER/HANDLER code (not just the service) and check HOW the token is returned:
-  a) Does the handler call res.set(), res.header(), response.header(), or set a header like "authorization"? → tokenLocation = "header", tokenFieldPath = the header name in lowercase (e.g. "authorization")
-  b) Does the handler return a JSON body containing a token field (e.g. { token: jwt })? → tokenLocation = "body", tokenFieldPath = the field name
-  c) If the handler calls something like res.header('authorization', token) or response.set('authorization', ...), that means tokenLocation = "header", NOT "body"
-  d) Does the app use session-based auth (cookies)? → tokenLocation = "cookie". Common in Rails (session[:user_id]), Django (request.session), Express (req.session)
-- You MUST search for "res.header", "res.set", "response.header", "setHeader" in the auth controller to check this
-
-FRAMEWORK-SPECIFIC AUTH DETECTION:
-- **Rails**: Search for "before_action :authenticate", "devise", "current_user", "session[:", "warden", "ApplicationController" inheriting auth. Rails apps almost ALWAYS require auth — look at ApplicationController for before_action filters. Discourse uses session-based auth with CSRF tokens.
-- **Django**: Search for "@login_required", "IsAuthenticated", "SessionAuthentication", "AUTHENTICATION_BACKENDS"
-- **Express/Node**: Search for "passport", "jwt", "express-jwt", "isAuthenticated", "auth middleware"
-- **Spring Boot**: Search for "SecurityFilterChain", "@PreAuthorize", "WebSecurityConfigurerAdapter"
-- **ASP.NET**: Search for "[Authorize]", "AddAuthentication", "UseAuthentication"
-If the app uses ANY of these patterns, set requiresAuth to TRUE even if some endpoints are public.
-
-STEP 2 — Find REAL credentials (THIS IS CRITICAL):
-You MUST actually read these files to find credentials. Do NOT skip this step:
-1. search_files for "password" in docker-compose*.yml, .env*, seed*, fixture*, init*
-2. Read docker-compose.yml — look for environment variables with DEFAULT_USER, ADMIN_PASSWORD, etc.
-3. Read .env, .env.example, .env.local, .env.development — look for user/password values
-4. search_files for "createUser", "insert.*user", "seed", "admin" in *.ts, *.js, *.sql files
-5. Read any seed/migration/fixture files you find
-6. Read README.md — look for default credentials section
-7. search_files for "password" or "credentials" in config files
-
-If you cannot find credentials after reading ALL of the above, set loginBody to null.
-NEVER invent credentials. NEVER use "admin@example.com", "correctpassword", "admin123", "password123", or any other made-up value.
-Only use credentials you found by reading actual files in the codebase.
-
-STEP 3 — Find the exact JSON field names for the login request body:
-- Read the DTO/schema/validation for the login endpoint
-- The field names might be "user", "email", "username", "login" — use EXACTLY what the code expects
-- The password field might be "password", "pass", "passwd" — use EXACTLY what the code expects
-
-STEP 4 — Find the user registration/signup endpoint (if applicable):
-- Many apps (especially demo/test apps) have NO seeded users — you MUST register one before logging in
-- Search for registration/signup routes (e.g. POST /register, POST /signup, POST /api/auth/register)
-- Read the registration handler to find the EXACT field names (email, username, password, cpassword, name, etc.)
-- Build a registerBody using the SAME credentials from loginBody, plus any extra required fields
-- For extra fields like "name", use a reasonable value like "Test User"
-- For "cpassword" or "confirmPassword" fields, use the same password value
-- If the app seeds users in DB migrations/fixtures and registration is NOT needed, set registerEndpoint to null
-
-Base URL: ${baseUrl}`,
-    },
-    {
-      role: "user",
-      content: `Analyze the authentication for this app.
-
-Known endpoints (these are REAL endpoints that exist in the app):
-${endpointSummary}
-
-You MUST search the codebase and READ files before answering. Do NOT guess — actually look at the code.
-
-Return ONLY a JSON object with these exact fields:
-{
-  "requiresAuth": true/false,
-  "authType": "jwt" | "session" | "api_key" | "basic" | "oauth" | "none",
-  "loginEndpoint": "/api/auth/login" or null,
-  "loginMethod": "POST" or null,
-  "loginBody": "{\\"user\\":\\"actual-user-from-code\\",\\"password\\":\\"actual-pass-from-code\\"}" or null,
-  "loginContentType": "json" | "form" | "xml",
-  "tokenLocation": "body" | "header" | "cookie",
-  "tokenFieldPath": "token" or "authorization" or "session_id" or null,
-  "tokenEmbedLocation": "header" | "cookie" | "query",
-  "headerName": "Authorization" or "X-API-Key" or null,
-  "headerPrefix": "Bearer " or "" or null,
-  "cookieName": "session" or "JSESSIONID" or null,
-  "queryParamName": "token" or "api_key" or null,
-  "reauthIndicator": "status" | "redirect" | "body",
-  "reauthBodyPattern": "regex pattern" or null,
-  "protectedEndpointPath": "/api/some/protected/path" or null,
-  "registerEndpoint": "/register" or "/signup" or null,
-  "registerMethod": "POST" or null,
-  "registerBody": "email=test@test.com&password=pass&username=user&name=Test+User&cpassword=pass" or null,
-  "notes": "brief description including where you found the credentials"
-}
-
-CRITICAL RULES:
-- "loginBody" field names MUST match what the login endpoint handler expects (read the code!)
-- "loginBody" credential values MUST come from seed data, env vars, docker-compose, or code you actually read
-- If you cannot find real credentials BUT a registration endpoint exists, invent a consistent set of test credentials used in BOTH registerBody and loginBody (e.g. username=testuser, password=TestPass123, email=test@test.com)
-- If you cannot find credentials AND there is no registration endpoint, set "loginBody" to null
-- "loginBody" FORMAT: when "loginContentType" is "form", use URL-encoded format like "username=value&password=value" — NOT JSON. When "json", use JSON like '{"username":"value","password":"value"}'
-- "loginContentType": "json" for JSON APIs, "form" for HTML form login (application/x-www-form-urlencoded), "xml" for SOAP/XML auth
-- "tokenLocation": "body" if token is in JSON response body, "header" if in a response header, "cookie" if set via Set-Cookie. READ THE LOGIN HANDLER CODE!
-- "tokenFieldPath": for body → dot-path to the token field. For header → header name in lowercase. For cookie → cookie name.
-- "tokenEmbedLocation": "header" for Authorization/Bearer, "cookie" if the app reads auth from cookies, "query" if token goes in URL query params
-- "cookieName": set this if tokenEmbedLocation is "cookie" — the cookie name the app expects
-- "queryParamName": set this if tokenEmbedLocation is "query" — the query param name
-- "reauthIndicator": How the app signals an expired/invalid session:
-  - "status" → returns 401/403 status codes (most common for APIs)
-  - "redirect" → returns 301/302 redirect to a login page (common for web apps with server-side rendering)
-  - "body" → returns 200 OK but with an error message in the response body (common for GraphQL or apps that don't use proper HTTP status codes)
-- "reauthBodyPattern": Only set when reauthIndicator is "body". A regex pattern that matches the body content indicating auth failure (e.g. "session.expired|login.required|unauthorized"). Set to null for "status" or "redirect" (redirects have no body, only a Location header).
-- "protectedEndpointPath" MUST be an endpoint that requires authentication. When accessed WITHOUT the auth token it should:
-  - Return 401/403 (for API-style apps with reauthIndicator "status")
-  - OR redirect to the login page (for server-rendered apps with reauthIndicator "redirect")
-  To verify:
-  1. Pick a candidate from the Known endpoints list above
-  2. STRONGLY PREFER endpoints with NO path parameters (no :id, :email, etc.) — e.g. /learn is better than /learn/vulnerability/:vuln
-  3. Read its route definition and handler code
-  4. Confirm it has auth middleware/guard applied (e.g. isAuthenticated, @UseGuards, passport.authenticate, jwt required, AuthGuard, etc.)
-  5. If the route has NO auth guard or the guard is optional, pick a DIFFERENT endpoint
-  6. Do NOT pick endpoints that return 200 for unauthenticated requests (e.g. public pages, public APIs)
-  7. Do NOT invent endpoints — pick from the list above
-- "registerEndpoint": set if the app has a registration/signup endpoint and NO seeded users. null if users are pre-seeded.
-- "registerBody": form-encoded or JSON body for registration, using the SAME credentials as loginBody plus any extra required fields (name, email, cpassword, etc.)
-- "registerMethod": usually "POST"`,
-    },
-  ];
+  const messages = detectAuthPrompt(stackStr, baseUrl, contextSummary);
 
   const response = await chatWithTools(
     llm,
     messages,
-    authTools,
+    [...codebaseTools, probeToolDef],
     handler,
     model,
     40,
@@ -439,6 +335,11 @@ async function createAuthViaRestApi(
     tokenFieldPath?: string;
     headerName?: string;
     headerValue?: string;
+    csrfUrl?: string;
+    csrfHeaderName?: string;
+    csrfExtractPattern?: string;
+    reauthStrategy?: string;
+    reauthBodyPattern?: string;
   },
 ): Promise<{ id?: string; error?: string }> {
   const { authStyle, loginUrl, loginBody, loginContentType, testUrl } = params;
@@ -483,17 +384,28 @@ async function createAuthViaRestApi(
   // --- Session or JWT: multistep auth ---
   const isSession = authStyle === "session";
 
-  // reauthTriggers: header Location for session, status 401/403 for JWT
-  const reauthTriggers = isSession
-    ? [
-        {
-          type: "TRIGGER",
-          location: "header",
-          name: "Location",
-          patterns: ["login"],
-        },
-      ]
-    : [{ type: "TRIGGER", location: "status", statuses: [401, 403] }];
+  // reauthTriggers — default to "both" for session (status OR redirect), status for JWT
+  const reauthStrat = params.reauthStrategy ?? (isSession ? "both" : "status");
+  let reauthTriggers: Record<string, unknown>[];
+  if (reauthStrat === "body" && params.reauthBodyPattern) {
+    reauthTriggers = [
+      { type: "TRIGGER", location: "body", patterns: [params.reauthBodyPattern] },
+    ];
+  } else if (reauthStrat === "redirect") {
+    reauthTriggers = [
+      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] },
+    ];
+  } else if (reauthStrat === "both") {
+    reauthTriggers = [
+      { type: "TRIGGER", location: "status", statuses: [401, 403] },
+      { type: "OR" },
+      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] },
+    ];
+  } else {
+    reauthTriggers = [
+      { type: "TRIGGER", location: "status", statuses: [401, 403] },
+    ];
+  }
 
   // Embedders: none for session (Bright auto-replays cookies), bearer header for JWT
   const embedders: Record<string, unknown>[] = [];
@@ -517,6 +429,14 @@ async function createAuthViaRestApi(
     ? { followRedirects: false, maxRedirects: 0, changeMethodOnRedirect: false }
     : {};
 
+  // --- Auto-probe CSRF URL to detect the correct extract pattern ---
+  if (params.csrfUrl && !params.csrfExtractPattern) {
+    const detectedPattern = await autoProbeCsrf(params.csrfUrl);
+    if (detectedPattern) {
+      params.csrfExtractPattern = detectedPattern;
+    }
+  }
+
   const body: Record<string, unknown> = {
     name: `Engine Auth — ${authStyle}`,
     projectId,
@@ -528,49 +448,118 @@ async function createAuthViaRestApi(
         url: testUrl,
         protocol: "http",
         bodyType: "clear_text",
-        ...redirectOpts,
+        // Test request should follow redirects normally — only login steps
+        // need followRedirects:false to capture raw Set-Cookie on 302
       },
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
     reauthTriggers,
     config: {
       multistep: {
-        steps: [
-          {
-            name: "login",
-            request: {
-              method: "POST",
-              url: loginUrl,
-              protocol: "http",
-              headers: [
-                {
-                  name: "Content-Type",
-                  value: contentType,
-                  type: "clear_text",
-                  mergeStrategy: "replace",
-                },
-              ],
-              bodyType: "clear_text",
-              body: normalizedBody,
-              ...redirectOpts,
-            },
-            successResponseDetection: [
-              {
-                type: "status",
-                statuses: isSession ? [200, 201, 302] : [200, 201],
-              },
-            ],
-          },
-        ],
+        steps: buildLoginSteps({
+          csrfUrl: params.csrfUrl,
+          csrfHeaderName: params.csrfHeaderName,
+          csrfExtractPattern: params.csrfExtractPattern,
+          loginUrl,
+          contentType,
+          normalizedBody,
+          isSession,
+          redirectOpts,
+        }),
         ...(embedders.length > 0 ? { embedders } : {}),
       },
     },
   };
 
   console.log(
-    `[Auth] Creating ${authStyle} auth via REST API — login: ${loginUrl}, test: ${testUrl}`,
+    `[Auth] Creating ${authStyle} auth via REST API — login: ${loginUrl}, test: ${testUrl}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`,
   );
   return postAuthObject(brightToken, brightHostname, body);
+}
+
+/**
+ * Build the multistep login steps array. When csrfUrl is provided, prepends
+ * a GET step that fetches a CSRF token and injects it into the POST login step
+ * via NexTemplate.
+ */
+function buildLoginSteps(opts: {
+  csrfUrl?: string;
+  csrfHeaderName?: string;
+  csrfExtractPattern?: string;
+  loginUrl: string;
+  contentType: string;
+  normalizedBody: string;
+  isSession: boolean;
+  redirectOpts: Record<string, unknown>;
+}): Record<string, unknown>[] {
+  const steps: Record<string, unknown>[] = [];
+
+  // Optional CSRF extraction step
+  if (opts.csrfUrl) {
+    steps.push({
+      name: "get_csrf",
+      request: {
+        method: "GET",
+        url: opts.csrfUrl,
+        protocol: "http",
+        headers: [
+          {
+            name: "Accept",
+            value: "application/json",
+            type: "clear_text",
+            mergeStrategy: "replace",
+          },
+        ],
+        bodyType: "clear_text",
+        ...opts.redirectOpts,
+      },
+      successResponseDetection: [{ type: "status", statuses: [200] }],
+    });
+  }
+
+  // Login step headers
+  const loginHeaders: Record<string, unknown>[] = [
+    {
+      name: "Content-Type",
+      value: opts.contentType,
+      type: "clear_text",
+      mergeStrategy: "replace",
+    },
+  ];
+
+  // Inject CSRF token from previous step via NexTemplate
+  if (opts.csrfUrl) {
+    const headerName = opts.csrfHeaderName || "X-CSRF-Token";
+    const extractPattern = opts.csrfExtractPattern || '"csrf"\\s*:\\s*"([^"]*)"';
+    loginHeaders.push({
+      name: headerName,
+      value:
+        `{{ auth_object.stages.get_csrf.response.body | match: /${extractPattern}/ }}`,
+      type: "clear_text",
+      mergeStrategy: "replace",
+    });
+  }
+
+  steps.push({
+    name: "login",
+    request: {
+      method: "POST",
+      url: opts.loginUrl,
+      protocol: "http",
+      headers: loginHeaders,
+      bodyType: "clear_text",
+      body: opts.normalizedBody,
+      ...opts.redirectOpts,
+    },
+    successResponseDetection: [
+      {
+        type: "status",
+        statuses: opts.isSession ? [200, 201, 302] : [200, 201],
+      },
+    ],
+  });
+
+  return steps;
 }
 
 async function postAuthObject(
@@ -602,19 +591,25 @@ async function postAuthObject(
 async function createAuthViaMcp(
   llm: OpenAI,
   bright: BrightMcpClient,
-  _repoPath: string,
+  repoPath: string,
   detection: AuthDetection,
+  registrationOk: boolean,
   projectId: string,
   baseUrl: string,
   repeaterId: string,
   brightToken: string,
   brightHostname: string,
   model?: string,
-): Promise<string | undefined> {
+  preProbeContext?: string,
+): Promise<{ authId: string | undefined; attemptLog: string[] }> {
   // MCP tools for inspection only (listAuths, getAuth)
+  _probeCookieJar = {};
   const mcpSchemas = await bright.getMcpToolSchemas(["getAuth", "listAuths"]);
   const mcpToolsDefs = convertMcpToolsToOpenAI(mcpSchemas);
   const mcpHandler = createMcpToolHandler(bright);
+
+  // Track what was tried and what failed for cross-attempt learning
+  const attemptLog: string[] = [];
 
   // Custom tools that wrap our programmatic REST API calls
   const customTools: ChatCompletionTool[] = [
@@ -623,9 +618,11 @@ async function createAuthViaMcp(
       function: {
         name: "create_auth",
         description: `Create a Bright auth object with all the correct settings pre-configured.
-For session/cookie auth: automatically disables redirect following, uses header Location reauthTrigger, no embedder needed.
-For JWT auth: automatically uses status 401/403 reauthTrigger, adds Bearer header embedder.
-For API key: creates a static header auth object.`,
+For session/cookie auth: disables redirect following, uses combined status+redirect reauthTrigger, no embedder needed.
+For JWT auth: uses status 401/403 reauthTrigger, adds Bearer header embedder.
+For API key: creates a static header auth object.
+Supports CSRF token extraction: set csrfUrl to add a GET step that fetches the token before login.
+For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reauthStrategy='body' with reauthBodyPattern to detect unauthenticated responses by matching the response body.`,
         parameters: {
           type: "object",
           properties: {
@@ -633,17 +630,17 @@ For API key: creates a static header auth object.`,
               type: "string",
               enum: ["session", "jwt", "api_key"],
               description:
-                "The authentication style: 'session' for cookie/session-based (Express+Passport, form login with 302 redirects), 'jwt' for JSON Web Token, 'api_key' for static API key header",
+                "The authentication style: 'session' for cookie/session-based, 'jwt' for JSON Web Token, 'api_key' for static API key header",
             },
             loginUrl: {
               type: "string",
               description:
-                "Full URL for the login endpoint (e.g. http://localhost:9090/login)",
+                "Full URL for the login endpoint (e.g. http://localhost:3000/session)",
             },
             loginBody: {
               type: "string",
               description:
-                'Login request body. For form: \'username=user&password=pass\'. For JSON: \'{"email":"user","password":"pass"}\'',
+                'Login request body. For form: \'login=user&password=pass\'. For JSON: \'{"login":"user","password":"pass"}\'',
             },
             loginContentType: {
               type: "string",
@@ -654,7 +651,33 @@ For API key: creates a static header auth object.`,
             testUrl: {
               type: "string",
               description:
-                "Full URL to a protected endpoint used to verify auth works (e.g. http://localhost:9090/learn)",
+                "Full URL to a protected endpoint. Best: returns 401/403 without auth. If no endpoint returns 401/403, pick one that returns DIFFERENT content when authenticated (e.g. a .json endpoint with 'current_user' field). Prefer .json API endpoints over HTML/SPA routes.",
+            },
+            csrfUrl: {
+              type: "string",
+              description:
+                "(Session auth) URL that returns a CSRF token in JSON body. The token is extracted via regex and sent as X-CSRF-Token header on the login request. E.g. http://localhost:3000/session/csrf. IMPORTANT: probe_url the csrfUrl first to verify the response body format, then set csrfExtractPattern if the default regex doesn't match.",
+            },
+            csrfHeaderName: {
+              type: "string",
+              description:
+                "(Session auth) HTTP header name to send the CSRF token in. Default: 'X-CSRF-Token'. Some frameworks use 'X-XSRF-Token' or 'csrf-token'.",
+            },
+            csrfExtractPattern: {
+              type: "string",
+              description:
+                "(Session auth) Regex pattern to extract the CSRF token from the csrfUrl response body. Must have exactly one capture group for the token value. Default: '\"csrf\"\\s*:\\s*\"([^\"]*)\"' which matches JSON like {\"csrf\":\"token\"}. If the CSRF endpoint returns a different format, probe it first and set a matching pattern. Examples: '\"token\"\\s*:\\s*\"([^\"]*)\"' for {\"token\":\"...\"}, 'content=\"([^\"]*)\"' for HTML meta tag.",
+            },
+            reauthStrategy: {
+              type: "string",
+              enum: ["status", "redirect", "both", "body"],
+              description:
+                "How to detect expired auth. 'status' = 401/403 codes (APIs), 'redirect' = Location header containing 'login' (server-rendered), 'both' = status OR redirect (default for session), 'body' = match a regex pattern in the response body (for apps that always return 200). When 'body', set reauthBodyPattern. Use probe_url to check what the app returns without auth to decide.",
+            },
+            reauthBodyPattern: {
+              type: "string",
+              description:
+                "(When reauthStrategy='body') A regex pattern that matches the UNAUTHENTICATED response body. When the test URL's body matches this, Bright re-authenticates. E.g. 'login_required|current_user.*null' or '\"is_admin\"\\s*:\\s*false'. First probe the testUrl WITHOUT auth to see what the unauthenticated body looks like, then pick a pattern that matches it but NOT the authenticated response.",
             },
             tokenFieldPath: {
               type: "string",
@@ -721,10 +744,92 @@ For API key: creates a static header auth object.`,
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "probe_url",
+        description:
+          "Make an HTTP request to the running application and return the actual response (status, headers, body preview). Cookies from set-cookie responses are automatically stored and sent on subsequent requests (browser-like). Use this BEFORE creating an auth object to: (1) find the right test URL by checking which endpoints return 401/403 without auth, (2) check if CSRF tokens are needed (look for csrf meta tags or /session/csrf endpoint), (3) verify login endpoint exists (non-404 response). For full login testing, use create_auth + test_auth_object instead.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description:
+                "Full URL to probe (e.g. http://localhost:3000/admin/plugins.json)",
+            },
+            method: {
+              type: "string",
+              enum: ["GET", "POST", "PUT", "DELETE"],
+              description: "HTTP method. Default: GET",
+            },
+            headers: {
+              type: "string",
+              description:
+                'JSON object of headers to send, e.g. \'{"Content-Type":"application/json","X-CSRF-Token":"abc"}\'',
+            },
+            body: {
+              type: "string",
+              description: "Request body for POST/PUT",
+            },
+          },
+          required: ["url"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_command_on_host",
+        description:
+          "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and other host-level diagnostics. Commands are killed after 30 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description:
+                'Host shell command (e.g. "docker ps --format \'{{.ID}} {{.Image}}\'", "curl -v http://localhost:3000/session/csrf")',
+            },
+          },
+          required: ["command"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_command_in_docker",
+        description:
+          "Run a command INSIDE a Docker container. Use to create test users (rails runner, python manage.py), inspect the app environment, or run framework CLI commands. Commands are killed after 30 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            container: {
+              type: "string",
+              description:
+                'Container name or ID (e.g. "bright-app-local", "abc123")',
+            },
+            command: {
+              type: "string",
+              description:
+                'Command to run inside the container (e.g. "rails runner \'User.create!(...)\'", "python manage.py createsuperuser --noinput")',
+            },
+          },
+          required: ["container", "command"],
+          additionalProperties: false,
+        },
+      },
+    },
   ];
+
+  let lastCreateArgs: Record<string, unknown> = {};
 
   const customHandler: ToolHandler = async (name, args) => {
     if (name === "create_auth") {
+      lastCreateArgs = { ...args };
       const result = await createAuthViaRestApi(
         brightToken,
         brightHostname,
@@ -736,6 +841,19 @@ For API key: creates a static header auth object.`,
           loginBody: String(args.loginBody),
           loginContentType: String(args.loginContentType),
           testUrl: String(args.testUrl),
+          csrfUrl: args.csrfUrl ? String(args.csrfUrl) : undefined,
+          csrfHeaderName: args.csrfHeaderName
+            ? String(args.csrfHeaderName)
+            : undefined,
+          csrfExtractPattern: args.csrfExtractPattern
+            ? String(args.csrfExtractPattern)
+            : undefined,
+          reauthStrategy: args.reauthStrategy
+            ? String(args.reauthStrategy)
+            : undefined,
+          reauthBodyPattern: args.reauthBodyPattern
+            ? String(args.reauthBodyPattern)
+            : undefined,
           tokenFieldPath: args.tokenFieldPath
             ? String(args.tokenFieldPath)
             : undefined,
@@ -743,7 +861,10 @@ For API key: creates a static header auth object.`,
           headerValue: args.headerValue ? String(args.headerValue) : undefined,
         },
       );
-      if (result.error) return JSON.stringify({ error: result.error });
+      if (result.error) {
+        attemptLog.push(`- create_auth(loginUrl=${args.loginUrl}, testUrl=${args.testUrl}, authStyle=${args.authStyle}, reauthStrategy=${args.reauthStrategy ?? "default"}) → ERROR: ${result.error}`);
+        return JSON.stringify({ error: result.error });
+      }
       return JSON.stringify({ authObjectId: result.id });
     }
     if (name === "test_auth_object") {
@@ -752,6 +873,12 @@ For API key: creates a static header auth object.`,
         brightHostname,
         String(args.authObjectId),
       );
+      // Log the test result with the create_auth params that produced this auth object
+      const summary = JSON.stringify(result);
+      const configSummary = `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
+      if (!result.passed) {
+        attemptLog.push(`- create_auth(${configSummary}) → test FAILED: ${result.summary ?? summary.slice(0, 300)}`);
+      }
       return JSON.stringify(result);
     }
     if (name === "delete_auth_object") {
@@ -762,6 +889,34 @@ For API key: creates a static header auth object.`,
       );
       return "Deleted successfully";
     }
+    if (name === "probe_url") {
+      return probeUrl(args);
+    }
+    if (name === "run_command" || name === "run_command_on_host") {
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth] run_command_on_host: ${cmd.slice(0, 200)}`);
+      return runShellCommand(repoPath, cmd);
+    }
+    if (name === "run_command_in_docker") {
+      const container = String(args.container ?? "");
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      const isRunning = (() => {
+        try {
+          const out = execSync(
+            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+            { encoding: "utf-8", timeout: 5_000 },
+          ).trim();
+          return out === "true";
+        } catch {
+          return false;
+        }
+      })();
+      const dockerCmd = isRunning
+        ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
+        : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
+      return runShellCommand(repoPath, dockerCmd);
+    }
     return `Unknown tool: ${name}`;
   };
 
@@ -769,14 +924,27 @@ For API key: creates a static header auth object.`,
     if (
       name === "create_auth" ||
       name === "test_auth_object" ||
-      name === "delete_auth_object"
+      name === "delete_auth_object" ||
+      name === "probe_url" ||
+      name === "run_command" ||
+      name === "run_command_on_host" ||
+      name === "run_command_in_docker"
     ) {
       return customHandler(name, args);
+    }
+    // Codebase tools (search_files, read_file, list_files)
+    if (
+      name === "search_files" ||
+      name === "read_file" ||
+      name === "list_files"
+    ) {
+      return baseCodeHandler(name, args);
     }
     return mcpHandler(name, args);
   };
 
-  const allTools = [...mcpToolsDefs, ...customTools];
+  const baseCodeHandler = createToolHandler(repoPath);
+  const allTools = [...codebaseTools, ...mcpToolsDefs, ...customTools];
 
   // Resolve protected endpoint path for test URL
   const resolvedPath = detection.protectedEndpointPath
@@ -786,58 +954,7 @@ For API key: creates a static header auth object.`,
     : "/";
   const testUrl = `${baseUrl}${resolvedPath}`;
 
-  const systemPrompt = `You are an expert at configuring Bright DAST authentication objects.
-
-## Context
-- Base URL: ${baseUrl}
-- App auth type: ${detection.authType}
-- Login endpoint: ${detection.loginEndpoint ?? "unknown"}
-- Login method: ${detection.loginMethod ?? "POST"}
-- Login body: ${detection.loginBody ?? "unknown"}
-- Login content type: ${detection.loginContentType}
-- Token location: ${detection.tokenLocation}
-- Token field path: ${detection.tokenFieldPath ?? "unknown"}
-- Token embed location: ${detection.tokenEmbedLocation}
-- Cookie name: ${detection.cookieName ?? "none"}
-- Reauth indicator: ${detection.reauthIndicator}
-- Protected endpoint (test URL): ${testUrl}
-
-## Your task
-Create a working auth object and test it. Follow these steps:
-
-1. **Optionally inspect existing auth objects** using listAuths/getAuth to learn from previous configurations.
-   - Clean up any broken ones with delete_auth_object.
-
-2. **Create the auth object** using create_auth. This tool handles redirect settings, reauthTriggers, and embedders automatically based on authStyle:
-   - \`session\` — for cookie/session auth (Express+Passport, form login, 302 redirects). Disables redirect following, uses header Location reauthTrigger.
-   - \`jwt\` — for JWT token auth. Uses status 401/403 reauthTrigger, adds Bearer header embedder.
-   - \`api_key\` — for static API key header auth.
-
-3. **Test it** using test_auth_object.
-
-4. **If the test fails**, analyze the error:
-   - "authentication" failure → wrong credentials in loginBody. Delete and recreate with corrected credentials.
-   - "authorization" failure → the test URL or auth configuration is wrong. Try a different testUrl or check credentials.
-   - "validation" failure → reauthTriggers didn't match. This is handled automatically by the tool, so the issue is likely credentials or testUrl.
-   Repeat up to 10 times.
-
-5. **When all stages pass**, respond with ONLY the auth object ID (nothing else).
-
-## Key rules
-- authStyle "${detection.authType === "session" ? "session" : detection.authType === "jwt" ? "jwt" : detection.authType === "api_key" ? "api_key" : "session"}" based on detected auth type
-- loginContentType: "${detection.loginContentType}" — for "form" use URL-encoded body like "username=user&password=pass", for "json" use JSON
-- loginBody values MUST use the exact credentials from the detection context above
-- testUrl should be a protected endpoint that requires auth
-- If you cannot make it work after 10 attempts, return "FAILED"`;
-
-  const messages: Parameters<typeof chatWithTools>[1] = [
-    { role: "system", content: systemPrompt },
-    {
-      role: "user",
-      content:
-        "Create and test a working auth object for this application. Return only the auth object ID when it passes.",
-    },
-  ];
+  const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext);
 
   console.log("[Auth] Starting auth configuration with custom tools...");
   const response = await chatWithTools(
@@ -850,14 +967,11 @@ Create a working auth object and test it. Follow these steps:
   );
 
   const trimmed = response.trim();
-  if (trimmed === "FAILED" || trimmed.length === 0) {
-    console.error("[Auth] LLM could not configure auth");
-    return undefined;
+  const authId = parseAuthResponse(trimmed);
+  if (!authId) {
+    console.error(`[Auth] LLM could not configure auth (response: ${trimmed.slice(0, 200)})`);
   }
-
-  // Extract auth object ID from response (may be a UUID or hex string)
-  const idMatch = trimmed.match(/[0-9a-f]{24}|[0-9a-f-]{36}/i);
-  return idMatch ? idMatch[0] : trimmed;
+  return { authId, attemptLog };
 }
 
 // ---------------------------------------------------------------------------
@@ -867,16 +981,11 @@ Create a working auth object and test it. Follow these steps:
 export async function registerUser(
   baseUrl: string,
   detection: AuthDetection,
-): Promise<void> {
-  if (!detection.registerEndpoint || !detection.registerBody) return;
+): Promise<boolean> {
+  if (!detection.registerEndpoint || !detection.registerBody) return false;
 
   const url = `${baseUrl}${detection.registerEndpoint}`;
-  const contentTypeMap: Record<string, string> = {
-    json: "application/json",
-    form: "application/x-www-form-urlencoded",
-    xml: "application/xml",
-  };
-  const ct = contentTypeMap[detection.loginContentType] ?? "application/json";
+  const ct = CONTENT_TYPE_MAP[detection.loginContentType] ?? "application/json";
   const body = normalizeBody(
     detection.registerBody,
     detection.loginContentType,
@@ -895,10 +1004,17 @@ export async function registerUser(
       signal: AbortSignal.timeout(15_000),
     });
     console.log(`[Auth] Registration response: ${res.status}`);
+    if (res.status >= 400) {
+      const body = await res.text().catch(() => "");
+      if (body) console.log(`[Auth] Registration error: ${body.slice(0, 300)}`);
+    }
+    // 2xx or 302 redirect = success; 4xx/5xx = failure
+    return res.status >= 200 && res.status < 400;
   } catch (err) {
     console.warn(
       `[Auth] Registration call failed (user may already exist): ${err}`,
     );
+    return false;
   }
 }
 
@@ -910,13 +1026,8 @@ export async function registerUser(
 export async function reRegisterUser(
   registration: NonNullable<AuthResult["registration"]>,
 ): Promise<void> {
-  const contentTypeMap: Record<string, string> = {
-    json: "application/json",
-    form: "application/x-www-form-urlencoded",
-    xml: "application/xml",
-  };
   const url = `${registration.baseUrl}${registration.endpoint}`;
-  const ct = contentTypeMap[registration.contentType] ?? "application/json";
+  const ct = CONTENT_TYPE_MAP[registration.contentType] ?? "application/json";
   const body = normalizeBody(registration.body, registration.contentType);
 
   try {
@@ -935,6 +1046,143 @@ export async function reRegisterUser(
     console.warn(
       `[Auth] Re-registration failed (user may already exist): ${err}`,
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Seed test user sub-phase — dedicated LLM session for user creation
+// ---------------------------------------------------------------------------
+
+interface SeedUserResult {
+  success: boolean;
+  username: string;
+  password: string;
+  email: string;
+  reason?: string;
+}
+
+async function seedTestUser(
+  llm: OpenAI,
+  repoPath: string,
+  baseUrl: string,
+  detection: AuthDetection,
+  model?: string,
+): Promise<SeedUserResult | undefined> {
+  console.log("[Auth] Starting seed user sub-phase...");
+
+  const seedTools: ChatCompletionTool[] = [
+    ...codebaseTools,
+    {
+      type: "function",
+      function: {
+        name: "run_command_on_host",
+        description:
+          "Run a shell command on the HOST machine. Use for docker ps, docker logs, and host-level diagnostics. Timeout: 60 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: 'Host shell command (e.g. "docker ps --format \'{{.ID}} {{.Image}}\'")',
+            },
+          },
+          required: ["command"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_command_in_docker",
+        description:
+          "Run a command INSIDE a Docker container. Use to create test users via framework CLI (rails runner, python manage.py, etc.). Timeout: 60 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            container: {
+              type: "string",
+              description: 'Container name or ID (e.g. "bright-app-local", "abc123")',
+            },
+            command: {
+              type: "string",
+              description: 'Command to run inside the container (e.g. "rails runner \'User.create!(...)\'", "python manage.py createsuperuser")',
+            },
+          },
+          required: ["container", "command"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "probe_url",
+        description:
+          "Make an HTTP request to the running app. Use to verify the user was created by testing login.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "Full URL to probe" },
+            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
+            headers: { type: "string", description: 'JSON headers, e.g. \'{"Content-Type":"application/json"}\'' },
+            body: { type: "string", description: "Request body for POST/PUT" },
+          },
+          required: ["url"],
+          additionalProperties: false,
+        },
+      },
+    },
+  ];
+
+  const baseCodeHandler = createToolHandler(repoPath);
+  const handler: ToolHandler = async (name, args) => {
+    if (name === "run_command" || name === "run_command_on_host") {
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:Seed] run_command_on_host: ${cmd.slice(0, 200)}`);
+      return runShellCommand(repoPath, cmd);
+    }
+    if (name === "run_command_in_docker") {
+      const container = String(args.container ?? "");
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:Seed] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      const isRunning = (() => {
+        try {
+          const out = execSync(
+            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+            { encoding: "utf-8", timeout: 5_000 },
+          ).trim();
+          return out === "true";
+        } catch {
+          return false;
+        }
+      })();
+      const dockerCmd = isRunning
+        ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
+        : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
+      return runShellCommand(repoPath, dockerCmd);
+    }
+    if (name === "probe_url") {
+      return probeUrl(args);
+    }
+    return baseCodeHandler(name, args);
+  };
+
+  const messages = seedUserPrompt(baseUrl, detection);
+  const response = await chatWithTools(llm, messages, seedTools, handler, model, 30);
+
+  try {
+    const json = extractJson(response);
+    const result = JSON.parse(json) as SeedUserResult;
+    if (result.success) {
+      console.log(`[Auth:Seed] User created: ${result.username} / ${result.email}`);
+      return result;
+    }
+    console.warn(`[Auth:Seed] Failed to create user: ${result.reason ?? "unknown"}`);
+    return undefined;
+  } catch {
+    console.warn(`[Auth:Seed] Could not parse seed result: ${response.slice(0, 200)}`);
+    return undefined;
   }
 }
 
@@ -1009,7 +1257,7 @@ export async function testAuthObject(
       const allPassed = results.every((r) => r.status === "success");
       return { passed: allPassed, summary: lines.join("\n") };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = toErrorMessage(err);
       console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, retryDelayMs));
@@ -1071,3 +1319,320 @@ async function deleteAuthObject(
     console.warn(`[Auth] Failed to delete auth object: ${err}`);
   }
 }
+
+// ---------------------------------------------------------------------------
+// parseAuthResponse — validates LLM response from the configure phase
+// ---------------------------------------------------------------------------
+
+const FALSE_ESCAPE_RE = /no\s*auth|auth.*not\s*required|auth.*skipped|does\s*not\s*require|doesn['']t\s*require|no\s*authentication/i;
+
+function parseAuthResponse(trimmed: string): string | undefined {
+  if (trimmed === "FAILED" || trimmed.length === 0) {
+    return undefined;
+  }
+  // Catch false "no auth required" responses — LLM may hallucinate
+  if (FALSE_ESCAPE_RE.test(trimmed)) {
+    console.warn(`[Auth] Detected false "no auth" escape from LLM — treating as FAILED`);
+    return undefined;
+  }
+  // Extract auth object ID from response (may be a UUID or hex string)
+  const idMatch = trimmed.match(/[0-9a-f]{24}|[0-9a-f-]{36}/i);
+  return idMatch ? idMatch[0] : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// autoProbeCsrf — fetches a CSRF URL and auto-detects the extraction pattern
+// ---------------------------------------------------------------------------
+
+const COMMON_CSRF_KEYS = [
+  "csrf",
+  "_csrf",
+  "csrfToken",
+  "csrf_token",
+  "authenticity_token",
+  "token",
+  "X-CSRF-Token",
+  "_token",
+];
+
+async function autoProbeCsrf(csrfUrl: string): Promise<string | undefined> {
+  try {
+    console.log(`[Auth] Auto-probing CSRF URL: ${csrfUrl}`);
+    const res = await fetch(csrfUrl, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = await res.text();
+
+    // Try to parse as JSON and find a known CSRF key
+    try {
+      const json = JSON.parse(body);
+      for (const key of COMMON_CSRF_KEYS) {
+        if (typeof json[key] === "string" && json[key].length > 10) {
+          const pattern = `"${key}"\\s*:\\s*"([^"]+)"`;
+          console.log(`[Auth] Auto-detected CSRF pattern: ${pattern} (key="${key}", sample="${json[key].slice(0, 20)}...")`);
+          return pattern;
+        }
+      }
+      // Check nested objects one level deep
+      for (const [topKey, topVal] of Object.entries(json)) {
+        if (topVal && typeof topVal === "object") {
+          for (const key of COMMON_CSRF_KEYS) {
+            if (typeof (topVal as Record<string, unknown>)[key] === "string" && ((topVal as Record<string, unknown>)[key] as string).length > 10) {
+              const pattern = `"${key}"\\s*:\\s*"([^"]+)"`;
+              console.log(`[Auth] Auto-detected CSRF pattern (nested in ${topKey}): ${pattern}`);
+              return pattern;
+            }
+          }
+        }
+      }
+    } catch {
+      // Not JSON — try HTML meta tag pattern
+      const metaMatch = body.match(/<meta\s+name=["']csrf-token["']\s+content=["']([^"']+)["']/i);
+      if (metaMatch) {
+        const pattern = `<meta\\s+name=["']csrf-token["']\\s+content=["']([^"']+)["']`;
+        console.log(`[Auth] Auto-detected CSRF from HTML meta tag`);
+        return pattern;
+      }
+    }
+    console.log(`[Auth] Could not auto-detect CSRF pattern from ${csrfUrl}`);
+    return undefined;
+  } catch (err) {
+    console.warn(`[Auth] CSRF auto-probe failed: ${toErrorMessage(err)}`);
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// preProbeForAuth — fetches key URLs before the LLM starts, providing context
+// ---------------------------------------------------------------------------
+
+async function preProbeForAuth(
+  baseUrl: string,
+  detection: AuthDetection,
+): Promise<string> {
+  const lines: string[] = [];
+
+  // 1. Probe the CSRF URL if session auth and we know the endpoint
+  if (detection.authType === "session" && detection.loginEndpoint) {
+    // Common CSRF endpoints for known frameworks
+    const csrfCandidates = [
+      `${baseUrl}/session/csrf`,    // Discourse
+      `${baseUrl}/csrf`,            // generic
+    ];
+    for (const csrfUrl of csrfCandidates) {
+      try {
+        const res = await fetch(csrfUrl, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(8_000),
+        });
+        const body = await res.text();
+        if (res.status === 200 && body.length > 0) {
+          const preview = body.length > 500 ? body.slice(0, 500) + "..." : body;
+          lines.push(`### CSRF probe: GET ${csrfUrl} → ${res.status}\n\`\`\`\n${preview}\n\`\`\``);
+          break; // Found a working CSRF endpoint
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  // 2. Probe the login endpoint to see if it's an HTML page or API
+  if (detection.loginEndpoint) {
+    const loginUrl = `${baseUrl}${detection.loginEndpoint}`;
+    try {
+      const getRes = await fetch(loginUrl, {
+        method: "GET",
+        headers: { Accept: "text/html, application/json, */*" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8_000),
+      });
+      const getBody = await getRes.text();
+      const ct = getRes.headers.get("content-type") ?? "";
+      const isHtml = ct.includes("html") || getBody.trimStart().startsWith("<");
+      const preview = getBody.length > 1000 ? getBody.slice(0, 1000) + "..." : getBody;
+      const loginType = isHtml ? "HTML page (NOT an API endpoint)" : "API endpoint";
+      lines.push(`### Login endpoint probe: GET ${loginUrl} → ${getRes.status} (${loginType})\nContent-Type: ${ct}\n\`\`\`\n${preview}\n\`\`\``);
+
+      // If it's HTML, look for form action to find the real API endpoint
+      if (isHtml) {
+        const actionMatch = getBody.match(/action=["']([^"']+)["']/i);
+        const apiCandidates = new Set<string>();
+        if (actionMatch?.[1]) {
+          const action = actionMatch[1];
+          apiCandidates.add(action.startsWith("http") ? action : `${baseUrl}${action}`);
+        }
+        // Common API login endpoint patterns
+        const path = detection.loginEndpoint.replace(/^\//, "");
+        for (const candidate of [
+          `${baseUrl}/session`,
+          `${baseUrl}/api/session`,
+          `${baseUrl}/api/auth/login`,
+          `${baseUrl}/api/login`,
+          `${baseUrl}/auth/sign_in`,
+        ]) {
+          apiCandidates.add(candidate);
+        }
+        for (const apiUrl of apiCandidates) {
+          try {
+            const apiRes = await fetch(apiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json" },
+              body: "{}",
+              redirect: "manual",
+              signal: AbortSignal.timeout(8_000),
+            });
+            const apiBody = await apiRes.text();
+            const apiPreview = apiBody.length > 500 ? apiBody.slice(0, 500) + "..." : apiBody;
+            // 403/422/400 with JSON body = likely the real API endpoint (it rejected empty creds)
+            const looksLikeApi = apiRes.status !== 404 && !apiBody.trimStart().startsWith("<");
+            if (looksLikeApi) {
+              lines.push(`### Candidate API login: POST ${apiUrl} → ${apiRes.status} (likely real login endpoint)\n\`\`\`\n${apiPreview}\n\`\`\``);
+            }
+          } catch { /* skip */ }
+        }
+        lines.push(`\n**WARNING**: The detected loginEndpoint "${detection.loginEndpoint}" is an HTML page, NOT the API endpoint. Use the real API endpoint found above as loginUrl in create_auth.`);
+      }
+    } catch { /* skip */ }
+  }
+
+  // 3. Probe candidate test URLs to find ones that differentiate auth/unauth
+  const candidateTestUrls = new Set<string>();
+  // Add the detected protected endpoint
+  if (detection.protectedEndpointPath) {
+    const resolved = detection.protectedEndpointPath
+      .replace(/:(\w+)/g, "1")
+      .replace(/\{(\w+)\}/g, "1");
+    candidateTestUrls.add(`${baseUrl}${resolved}`);
+  }
+  // Common .json endpoints
+  candidateTestUrls.add(`${baseUrl}/notifications.json`);
+  candidateTestUrls.add(`${baseUrl}/session/current.json`);
+
+  for (const url of candidateTestUrls) {
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(8_000),
+      });
+      const body = await res.text();
+      const preview = body.length > 300 ? body.slice(0, 300) + "..." : body;
+      lines.push(`### Test URL probe: GET ${url} → ${res.status}\n\`\`\`\n${preview}\n\`\`\``);
+    } catch { /* skip */ }
+  }
+
+  if (lines.length === 0) {
+    return "";
+  }
+
+  console.log(`[Auth] Pre-probed ${lines.length} endpoints for LLM context`);
+  return lines.join("\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// probe_url — HTTP probe for auth configuration LLM
+// Cookie jar persists cookies across probeUrl calls within a single auth phase.
+// ---------------------------------------------------------------------------
+
+let _probeCookieJar: Record<string, string> = {};
+
+async function probeUrl(args: Record<string, unknown>): Promise<string> {
+  const url = String(args.url ?? "");
+  const method = String(args.method ?? "GET").toUpperCase();
+
+  let extraHeaders: Record<string, string> = {};
+  if (args.headers) {
+    try {
+      extraHeaders = JSON.parse(String(args.headers));
+    } catch {
+      return "Error: invalid JSON in headers parameter";
+    }
+  }
+
+  // Build Cookie header from stored jar (explicit headers take precedence)
+  const jarCookieStr = Object.entries(_probeCookieJar)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+
+  const fetchOpts: RequestInit = {
+    method,
+    headers: {
+      Accept: "application/json, text/html, */*",
+      ...(jarCookieStr && !extraHeaders.Cookie && !extraHeaders.cookie
+        ? { Cookie: jarCookieStr }
+        : {}),
+      ...extraHeaders,
+    },
+    redirect: "manual",
+    signal: AbortSignal.timeout(15_000),
+  };
+
+  if (args.body && (method === "POST" || method === "PUT")) {
+    fetchOpts.body = String(args.body);
+  }
+
+  try {
+    console.log(`[Auth] Probing ${method} ${url}`);
+    const res = await fetch(url, fetchOpts);
+
+    // Store cookies from set-cookie response headers
+    try {
+      const setCookies: string[] =
+        (res.headers as any).getSetCookie?.() ?? [];
+      for (const sc of setCookies) {
+        const pair = sc.split(";")[0]?.trim();
+        if (pair) {
+          const eqIdx = pair.indexOf("=");
+          if (eqIdx > 0) {
+            _probeCookieJar[pair.slice(0, eqIdx)] = pair.slice(eqIdx + 1);
+          }
+        }
+      }
+    } catch {
+      /* ignore cookie parse errors */
+    }
+
+    const status = res.status;
+    const headerLines: string[] = [];
+    for (const [k, v] of res.headers.entries()) {
+      // Only include useful headers
+      const lk = k.toLowerCase();
+      if (
+        lk === "content-type" ||
+        lk === "location" ||
+        lk === "set-cookie" ||
+        lk === "x-csrf-token" ||
+        lk === "www-authenticate" ||
+        lk.startsWith("x-discourse")
+      ) {
+        headerLines.push(`${k}: ${v}`);
+      }
+    }
+
+    const bodyText = await res.text().catch(() => "");
+    // Truncate body but keep enough context
+    const bodyPreview =
+      bodyText.length > 2000
+        ? bodyText.slice(0, 2000) + "\n... [truncated]"
+        : bodyText;
+
+    const parts = [`HTTP ${status}`];
+    if (headerLines.length > 0) parts.push(headerLines.join("\n"));
+    parts.push(bodyPreview || "(empty body)");
+
+    console.log(`[Auth] Probe result: ${status}`);
+    return parts.join("\n\n");
+  } catch (err) {
+    const msg = toErrorMessage(err);
+    return `Error: ${msg}`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cookie jar / probeUrl helpers
+// ---------------------------------------------------------------------------

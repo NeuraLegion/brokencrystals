@@ -45,11 +45,8 @@ export function generateFixPrompt(
       content: `You are a security engineer fixing vulnerabilities in a ${techStack} application. Generate secure code fixes that properly remediate the vulnerability without breaking functionality.
 
 Guidelines:
-- Use parameterized queries for SQL injection
-- Use proper output encoding/escaping for XSS
-- Use allowlists for command injection and path traversal
-- Validate and sanitize all user inputs at the boundary
-- Follow the framework's built-in security features
+- Follow the framework's built-in security features and best practices
+- Validate and sanitize user inputs at the boundary
 - Preserve the existing code style and patterns
 - Only modify what is necessary to fix the vulnerability`,
     },
@@ -85,10 +82,7 @@ Return a JSON object with the fixed file contents:
     });
     messages.push({
       role: "user",
-      content: `The previous fix attempt did not resolve the vulnerability — the DAST scan still found the same issue. Please generate a more thorough fix. The vulnerability may require a different approach, such as:
-- A different sanitization method
-- Fixing the issue at a different layer (middleware vs handler)
-- Addressing additional code paths that were missed
+      content: `The previous fix attempt did not resolve the vulnerability — the DAST scan still found the same issue. Analyze why the previous fix was insufficient and generate a more thorough fix using a different approach.
 
 Return the fix in the same JSON format.`,
     });

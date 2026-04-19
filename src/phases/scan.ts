@@ -1,4 +1,4 @@
-import { sleep } from "../utils.js";
+import { sleep, toErrorMessage } from "../utils.js";
 
 const DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
 const PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
@@ -72,7 +72,7 @@ async function runScanViaRest(
       });
     } catch (err) {
       // TCP/network error — retry
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = toErrorMessage(err);
       console.warn(
         `[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`,
       );

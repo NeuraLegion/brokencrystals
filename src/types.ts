@@ -15,6 +15,7 @@ export interface EngineConfig {
   brightProjectId?: string;
   inferenceProvider: InferenceProvider;
   modelSelector: ModelSelector;
+  runMode: RunMode;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,10 @@ export interface StartupConfig {
   prerequisites: string[];
   envVars: Record<string, string>;
   docker: boolean;
+  /** Commands to run AFTER the app starts but BEFORE the health check (e.g. DB migrations) */
+  postStartCommands?: string[];
+  /** Path to probe for health checks instead of "/" (e.g. "/srv/status", "/health") */
+  healthCheckPath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,10 +89,68 @@ export interface SecurityFix {
 // Orchestrator context
 // ---------------------------------------------------------------------------
 
+export type RunMode = "full" | "dynamic" | "dynamic" | "function";
+
 export interface OrchestratorContext {
   repoPath: string;
   platform: Platform;
   llm: OpenAI;
   bright: BrightMcpClient;
   config: EngineConfig;
+}
+
+// ---------------------------------------------------------------------------
+// Function harness
+// ---------------------------------------------------------------------------
+
+/** A critical function identified by the LLM for harness-based scanning. */
+export interface HarnessTarget {
+  /** Function/method name (e.g. "fetch", "parse", "findOne") */
+  name: string;
+  /** File path relative to repo root */
+  file: string;
+  /** Class or module that contains the function (e.g. "FileService", "UploadsController") */
+  className: string;
+  /** Parameter names and sample values */
+  params: Array<{ name: string; type: string; sample: string }>;
+  /** What infrastructure this function needs */
+  deps: ("db" | "redis" | "filesystem" | "none" | "http")[];
+  /** Vulnerability types worth testing */
+  vulnTypes: string[];
+  /** The HTTP method for the harness endpoint */
+  httpMethod: "GET" | "POST" | "PUT";
+  /** Brief description of what the function does */
+  description: string;
+  /** Bootstrapping tier: 1=no framework, 2=DB only, 3=full framework */
+  tier?: 1 | 2 | 3;
+  /** Minimal require/import statements to load this target */
+  requireStatements?: string[];
+}
+
+/** Generated harness configuration. */
+export interface HarnessConfig {
+  /** Path to the generated harness file (absolute) */
+  harnessFile: string;
+  /** Command to start the harness server */
+  startCommand: string;
+  /** Port the harness listens on */
+  port: number;
+  /** Whether the harness runs inside Docker */
+  docker: boolean;
+  /** Endpoints exposed by the harness */
+  endpoints: HarnessEndpoint[];
+}
+
+/** A single endpoint in the generated harness. */
+export interface HarnessEndpoint {
+  /** HTTP method */
+  method: string;
+  /** Path (e.g. "/harness/file-fetch") */
+  path: string;
+  /** The HarnessTarget this endpoint wraps */
+  target: HarnessTarget;
+  /** Sample request body or query params */
+  sampleBody?: string;
+  /** Content type */
+  contentType?: string;
 }

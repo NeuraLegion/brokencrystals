@@ -8,17 +8,15 @@ import {
 import { createInterface } from "readline";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import type { TechStack, StartupConfig } from "../types.js";
-import { chatWithTools, type ModelSelector } from "../inference.js";
+import { chatWithTools, type ModelSelector, type ToolHandler } from "../inference.js";
 import {
-  codebaseTools,
-  createToolHandler,
   dockerfileTools,
   createDockerfileToolHandler,
-  validateDockerfileImages,
+  fixDockerfileImages,
   infraTools,
   createInfraToolHandler,
 } from "../tools.js";
-import { sleep, formatTechStack, toErrorMessage } from "../utils.js";
+import { sleep, formatTechStack, toErrorMessage, toDetailedErrorMessage, extractJson, extractCodeBlock } from "../utils.js";
 import {
   identifyStartupPrompt,
   rebuildStartupPrompt,
@@ -26,7 +24,36 @@ import {
 } from "../prompts/identify-startup.js";
 import { generateDockerfilePrompt } from "../prompts/generate-dockerfile.js";
 
-const MAX_STARTUP_ATTEMPTS = 5;
+const MAX_STARTUP_ATTEMPTS = parseInt(process.env.MAX_STARTUP_ATTEMPTS ?? "10", 10);
+
+/** Per-attempt stats for debugging startup failures */
+interface AttemptStat {
+  attempt: number;
+  strategy: string;
+  command: string;
+  model?: string;
+  durationMs: number;
+  result: "success" | "build_error" | "timeout" | "crash" | "compilation" | "error";
+  errorSummary?: string;
+}
+
+function printStartupStats(stats: AttemptStat[]): void {
+  const total = stats.reduce((s, a) => s + a.durationMs, 0);
+  console.log(`\n[Startup] ===== Startup Statistics =====`);
+  console.log(`[Startup] Total attempts: ${stats.length}/${MAX_STARTUP_ATTEMPTS}`);
+  console.log(`[Startup] Total time: ${(total / 1000).toFixed(1)}s`);
+  for (const s of stats) {
+    const dur = (s.durationMs / 1000).toFixed(1);
+    const model = s.model ? ` [${s.model}]` : "";
+    console.log(
+      `[Startup]   #${s.attempt} ${s.strategy}${model} → ${s.result} (${dur}s) — ${s.command.slice(0, 80)}`,
+    );
+    if (s.errorSummary) {
+      console.log(`[Startup]      error: ${s.errorSummary.slice(0, 150)}`);
+    }
+  }
+  console.log(`[Startup] ================================\n`);
+}
 
 /**
  * Detect build errors caused by source code compilation failures
@@ -154,82 +181,128 @@ export async function startApplicationWithRetries(
   cleanupDocker(repoPath);
 
   const stackStr = formatTechStack(techStack);
-  const handleTool = createToolHandler(repoPath);
   const attemptErrors: Array<{ config: StartupConfig; error: string }> = [];
+  const startupHints: string[] = [];
+  const stats: AttemptStat[] = [];
+  let dockerfileRepaired = false;
+  let infraRepaired = false;
 
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
+    const attemptStart = Date.now();
     let config: StartupConfig;
+    let strategy: string;
 
     if (attempt === 1 && previousStartup) {
-      // Source code changed — ask LLM to rebuild with the right strategy
+      strategy = "rebuild";
+      console.log("[Startup] Strategy: rebuild (source changed)");
       config = await rebuildStartupConfig(
         llm,
         repoPath,
         stackStr,
-        handleTool,
         previousStartup,
         modelSelector?.current(),
       );
     } else if (attempt === 1) {
+      strategy = "initial";
+      console.log("[Startup] Strategy: initial identification");
       config = await identifyStartupConfig(
         llm,
         repoPath,
         stackStr,
-        handleTool,
         modelSelector?.current(),
       );
     } else {
       // Escalate model on retry if available
       modelSelector?.escalate();
-      // If previous startup used a pre-built image and compose build-from-source
-      // failed, try Dockerfile-only build before falling back to LLM
-      const dockerfileOnly =
-        attempt === 2 &&
-        previousStartup?.docker &&
-        usesPrebuiltImage(previousStartup.command)
-          ? buildDockerfileOnlyConfig(repoPath, previousStartup)
-          : null;
-      if (dockerfileOnly) {
-        console.log("[Startup] Compose failed — trying Dockerfile-only build");
-        config = dockerfileOnly;
+
+      // If the Dockerfile or infra was repaired, retry with the same config
+      if (dockerfileRepaired || infraRepaired) {
+        const prev = attemptErrors[attemptErrors.length - 1];
+        strategy = dockerfileRepaired ? "retry-after-dockerfile-repair" : "retry-after-infra-repair";
+        console.log(`[Startup] ${dockerfileRepaired ? "Dockerfile" : "Infrastructure"} was repaired — retrying same config`);
+        config = prev.config;
+        dockerfileRepaired = false;
+        infraRepaired = false;
       } else {
+        strategy = "llm-retry";
+        console.log("[Startup] Strategy: asking LLM for new approach after failure");
         const prev = attemptErrors[attemptErrors.length - 1];
         config = await retryStartupConfig(
           llm,
           repoPath,
           stackStr,
-          handleTool,
           prev.config,
           prev.error,
           attempt,
           modelSelector?.current(),
+          attemptErrors.map((a) => ({
+            config: JSON.stringify(a.config, null, 2),
+            error: a.error,
+          })),
+          startupHints,
         );
-        // During rebuild (source changed), never fall back to a pre-built image —
-        // it would discard all fixes applied to the source code.
-        if (
-          previousStartup &&
-          config.docker &&
-          usesPrebuiltImage(config.command)
-        ) {
-          const fromSource =
-            buildFromSourceConfig(repoPath, previousStartup) ??
-            buildDockerfileOnlyConfig(repoPath, previousStartup);
-          if (fromSource) {
-            console.log(
-              `[Startup] LLM suggested pre-built image — overriding with source build`,
-            );
-            config = fromSource;
-          }
-        }
       }
     }
 
-    // --- Pre-validation: reject known-bad configs before wasting an attempt ---
-    config = sanitizeStartupConfig(repoPath, config);
+    // If the LLM chose native but required tools aren't on host, switch to Docker
+    if (!config.docker) {
+      config = ensureToolsAvailable(repoPath, config);
+    }
 
-    // Ensure a Dockerfile exists when Docker-based startup is requested.
-    // If the project has source code but no Dockerfile, generate one so
-    // Docker-based builds (and post-fix rebuilds) work.
+    // Guardrail: Docker config must include a build-from-source step.
+    // If the LLM returned a pre-built image approach, force docker build.
+    if (config.docker && !configBuildsFromSource(config)) {
+      console.warn(
+        `[Startup] Config uses pre-built image without build step — forcing docker build from source`,
+      );
+      const imageName = "bright-app-local";
+      config = {
+        command: `docker run --name ${imageName} -p ${config.port}:${config.port} -d ${imageName}`,
+        port: config.port,
+        prerequisites: [`docker build -t ${imageName} .`],
+        envVars: config.envVars,
+        docker: true,
+      };
+    }
+
+    // Guardrail: If docker config's command uses tools that only exist
+    // inside the container (bundle, rails, python, cargo, etc.) without
+    // being wrapped in docker run/exec, auto-wrap it so it runs in the image.
+    if (config.docker && !commandRunsInDocker(config.command)) {
+      const imageName = extractImageName(config) ?? "discourse-local";
+      console.warn(
+        `[Startup] Command "${config.command.slice(0, 60)}" is not wrapped in docker run — auto-wrapping for image ${imageName}`,
+      );
+      config = {
+        ...config,
+        command: `docker run --name ${imageName} -p ${config.port}:${config.port} -d ${imageName} ${config.command}`,
+      };
+    }
+
+    // Guardrail: If command is docker compose, strip any "docker run -d"
+    // from prerequisites — they conflict by binding the same ports.
+    // Only keep build/pull/network-create commands in prerequisites.
+    if (/docker\s+compose/.test(config.command) && config.prerequisites?.length) {
+      const original = config.prerequisites;
+      // Split chained commands (&&) and filter out docker run -d
+      const cleaned = original.flatMap(cmd =>
+        cmd.split(/\s*&&\s*/).filter(part => {
+          const trimmed = part.trim();
+          // Keep build commands, remove "docker run -d" service launchers
+          if (/docker\s+run\s/.test(trimmed) && /\s-d[\s$]/.test(trimmed)) {
+            console.warn(`[Startup] Removing conflicting prerequisite: ${trimmed.slice(0, 80)}`);
+            return false;
+          }
+          return trimmed.length > 0;
+        })
+      ).filter(cmd => cmd.length > 0);
+      if (cleaned.length !== original.length || cleaned.join("") !== original.join("")) {
+        config = { ...config, prerequisites: cleaned };
+        console.log(`[Startup] Cleaned prerequisites: ${cleaned.map(c => c.slice(0, 60)).join(" ; ")}`);
+      }
+    }
+
+    // Ensure a Dockerfile exists when Docker-based startup is requested
     if (config.docker && !existsSync(`${repoPath}/Dockerfile`)) {
       console.log(
         "[Startup] No Dockerfile found — generating one for this project",
@@ -238,42 +311,161 @@ export async function startApplicationWithRetries(
         llm,
         repoPath,
         stackStr,
-        handleTool,
         modelSelector?.current(),
       );
-      // Now that a Dockerfile exists, switch pre-built image configs to source builds
-      if (usesPrebuiltImage(config.command)) {
-        const fromSource =
-          buildFromSourceConfig(repoPath, config) ??
-          buildDockerfileOnlyConfig(repoPath, config);
-        if (fromSource) {
-          console.log(
-            "[Startup] Switching to source build with generated Dockerfile",
-          );
-          config = fromSource;
-        }
-      }
+    }
+
+    // Ensure a compose file exists when docker compose commands are used
+    const usesCompose = /docker\s+compose/.test(
+      [...(config.prerequisites ?? []), config.command].join(" "),
+    );
+    if (usesCompose && !findComposeFile(repoPath)) {
+      console.log("[Startup] No compose file found — generating one from Dockerfile");
+      generateComposeFile(repoPath, config);
     }
 
     console.log(
       `[Startup] Attempt ${attempt}/${MAX_STARTUP_ATTEMPTS}: ${config.docker ? "Docker" : "native"} — ${config.command}`,
     );
+    if (config.prerequisites?.length) {
+      console.log(`[Startup]   prerequisites: ${config.prerequisites.join(" && ")}`);
+    }
+    if (config.postStartCommands?.length) {
+      console.log(`[Startup]   post-start: ${config.postStartCommands.join(" && ")}`);
+    }
+    if (config.envVars && Object.keys(config.envVars).length) {
+      console.log(`[Startup]   env: ${Object.keys(config.envVars).join(", ")}`);
+    }
+    console.log(`[Startup]   port: ${config.port}`);
+    if (config.healthCheckPath) {
+      console.log(`[Startup]   health-check: ${config.healthCheckPath}`);
+    }
 
     try {
-      const proc = await startApplication(repoPath, config);
+      // Create LLM-powered log analyzer for health check waits
+      const analyzeLogsFn: LogAnalyzer = async (logs: string) => {
+        const resp = await llm.chat.completions.create({
+          model: modelSelector?.current() ?? "gpt-4o-mini",
+          max_completion_tokens: 200,
+          messages: [
+            {
+              role: "system",
+              content: `You are analyzing Docker container logs during application startup. Determine if the app is making progress toward being ready or if there's a fatal error that will never resolve.
+
+Respond with EXACTLY one JSON object:
+{"status": "progress" | "fatal" | "unknown", "summary": "<one sentence>"}
+
+- "progress": logs show active work — migrations running, assets compiling, dependencies installing, database seeding, server starting up
+- "fatal": logs show an unrecoverable error — connection refused to a required service, missing database, permission denied, syntax error, crash loop
+- "unknown": can't tell from the logs`,
+            },
+            {
+              role: "user",
+              content: `Container logs (last 40 lines):\n\`\`\`\n${logs.slice(-3000)}\n\`\`\``,
+            },
+          ],
+        });
+        try {
+          const text = resp.choices[0]?.message.content ?? "";
+          const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+          return {
+            status: json.status === "progress" || json.status === "fatal" ? json.status : "unknown",
+            summary: String(json.summary ?? "").slice(0, 200) || "no summary",
+          };
+        } catch {
+          return { status: "unknown" as const, summary: "failed to parse AI response" };
+        }
+      };
+
+      // Create LLM-powered HTTP response health analyzer
+      const analyzeResponseFn = async (status: number, body: string): Promise<{ healthy: boolean; reason: string }> => {
+        const resp = await llm.chat.completions.create({
+          model: modelSelector?.current() ?? "gpt-4o-mini",
+          max_completion_tokens: 200,
+          messages: [
+            {
+              role: "system",
+              content: `You are checking if a web application's HTTP response indicates a healthy, working application.
+
+Respond with EXACTLY one JSON object:
+{"healthy": true/false, "reason": "<one sentence explanation>"}
+
+HEALTHY responses: actual app content (HTML pages with real content, JSON API responses, login forms, dashboards, etc.)
+UNHEALTHY responses: error pages, setup/configuration required pages, "service unavailable", proxy errors, framework boilerplate errors, "CLI required" messages, blank pages with only error info, database migration needed pages, or any response that indicates the app is NOT ready for normal use.
+
+Be strict: if the response looks like an error or setup page rather than the actual working application, mark it unhealthy.`,
+            },
+            {
+              role: "user",
+              content: `HTTP ${status} response body:\n\`\`\`\n${body}\n\`\`\``,
+            },
+          ],
+        });
+        try {
+          const text = resp.choices[0]?.message.content ?? "";
+          const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+          return {
+            healthy: json.healthy === true,
+            reason: String(json.reason ?? "").slice(0, 200) || "no reason given",
+          };
+        } catch {
+          // If AI fails to parse, assume healthy to avoid false positives
+          return { healthy: true, reason: "failed to parse AI response — assuming healthy" };
+        }
+      };
+
+      const proc = await startApplication(repoPath, config, analyzeLogsFn, analyzeResponseFn);
       console.log(
         `[Startup] Application started successfully on attempt ${attempt}`,
       );
+      stats.push({
+        attempt,
+        strategy,
+        command: config.command,
+        model: modelSelector?.current(),
+        durationMs: Date.now() - attemptStart,
+        result: "success",
+      });
+      if (stats.length > 1) printStartupStats(stats);
       modelSelector?.reset();
       return { process: proc, config };
     } catch (err) {
       const errorMsg = toErrorMessage(err);
+      const detailedError = toDetailedErrorMessage(err);
       console.error(`[Startup] Attempt ${attempt} failed: ${errorMsg}`);
-      attemptErrors.push({ config, error: errorMsg });
+      attemptErrors.push({ config, error: detailedError });
+
+      // Classify the error for stats
+      const isDockerBuildError = config.docker &&
+        existsSync(`${repoPath}/Dockerfile`) &&
+        /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(detailedError);
+      const isTimeoutError = /did not start on port.*within/i.test(detailedError);
+      const previousErrorMsgs = attemptErrors.slice(0, -1).map((a) => a.error);
+      const isCompilationError = isSourceCodeError(detailedError, previousErrorMsgs);
+      const isCrash = /exited unexpectedly|exited with code/i.test(detailedError);
+
+      const result: AttemptStat["result"] = isCompilationError
+        ? "compilation"
+        : isDockerBuildError
+          ? "build_error"
+          : isTimeoutError
+            ? "timeout"
+            : isCrash
+              ? "crash"
+              : "error";
+
+      stats.push({
+        attempt,
+        strategy,
+        command: config.command,
+        model: modelSelector?.current(),
+        durationMs: Date.now() - attemptStart,
+        result,
+        errorSummary: errorMsg,
+      });
 
       // Detect source code compilation errors that Dockerfile repair can't fix
-      const previousErrorMsgs = attemptErrors.slice(0, -1).map((a) => a.error);
-      if (isSourceCodeError(errorMsg, previousErrorMsgs)) {
+      if (isCompilationError) {
         console.error(
           "[Startup] Build failed due to source code compilation errors on consecutive attempts — this is not a Dockerfile issue. Aborting retries.",
         );
@@ -283,37 +475,75 @@ export async function startApplicationWithRetries(
       // LLM-based repair when startup fails
       // Skip on the final attempt — repairs would never be tested
       if (attempt < MAX_STARTUP_ATTEMPTS) {
-        const isDockerBuildError = config.docker &&
-          existsSync(`${repoPath}/Dockerfile`) &&
-          /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(errorMsg);
+        // Escalate to stronger model after repeated failures
+        if (attempt > 1) modelSelector?.escalate();
+
+        console.log(`[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`);
 
         if (isDockerBuildError) {
-          // Dockerfile build failure — let LLM fix the Dockerfile
           await repairDockerBuild(
             llm,
             repoPath,
-            errorMsg,
-            handleTool,
+            detailedError,
             modelSelector?.current(),
+            attemptErrors.slice(0, -1).map((a) => a.error),
+            startupHints,
           );
+          dockerfileRepaired = true;
         } else {
-          // Infrastructure failure (TTY flags, missing DB, compose issues, permissions, etc.)
-          // Give the LLM write_file + run_command tools to fix the environment
-          await repairInfrastructure(
+          const infraResult = await repairInfrastructure(
             llm,
             repoPath,
             config,
-            errorMsg,
+            detailedError,
             modelSelector?.current(),
+            attemptErrors.slice(0, -1).map((a) => a.error),
+            startupHints,
           );
+          // Apply any config modifications from the repair LLM
+          if (infraResult.command || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath) {
+            if (infraResult.command) {
+              console.log(`[Startup] Repair LLM overrode command: ${infraResult.command}`);
+              config = { ...config, command: infraResult.command };
+            }
+            if (infraResult.postStartCommands?.length) {
+              config = {
+                ...config,
+                postStartCommands: [...(config.postStartCommands ?? []), ...infraResult.postStartCommands],
+              };
+            }
+            if (infraResult.addEnvVars) {
+              config = {
+                ...config,
+                envVars: { ...(config.envVars ?? {}), ...infraResult.addEnvVars },
+              };
+            }
+            if (infraResult.healthCheckPath) {
+              config = { ...config, healthCheckPath: infraResult.healthCheckPath };
+            }
+            // Update the last attempt's config so the retry uses the patched version
+            attemptErrors[attemptErrors.length - 1] = { config, error: detailedError };
+          }
+          // Reuse config only for non-timeout, non-prereq errors (e.g. compose typo, permission fix).
+          // Timeouts and prereq failures usually mean the fundamental approach is wrong —
+          // UNLESS the repair added new post-start commands (e.g. DB migrations) that could fix the issue.
+          const isPrereqFailure = /Command failed:.*\nprerequisite/i.test(detailedError) ||
+            /prerequisite.*failed|Running prerequisite/i.test(detailedError) ||
+            /command not found|not found.*command/i.test(detailedError);
+          const repairModifiedConfig = !!(infraResult.command || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.madeFileChanges);
+          if (repairModifiedConfig || (!isTimeoutError && !isPrereqFailure && !isCrash)) {
+            infraRepaired = true;
+          }
         }
       }
 
-      // Clean up any Docker containers from failed attempts
+      // Clean up any Docker containers AND volumes from failed attempts.
+      // Volumes MUST be removed — stale data from a previous DB image (e.g.
+      // postgres:17 → pgvector/pgvector:pg17) causes silent failures.
       if (config.docker) {
         try {
           execSync(
-            "docker compose down 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
+            "docker compose down -v 2>/dev/null; docker rm -f $(docker ps -aq) 2>/dev/null || true",
             { cwd: repoPath, stdio: "ignore", timeout: 30_000 },
           );
         } catch {
@@ -323,13 +553,21 @@ export async function startApplicationWithRetries(
     }
   }
 
-  const lastError = attemptErrors[attemptErrors.length - 1];
+  printStartupStats(stats);
+
+  if (startupHints.length > 0) {
+    console.log(`[Startup] Accumulated hints (${startupHints.length}):`);
+    for (const hint of startupHints) {
+      console.log(`[Startup]   - ${hint}`);
+    }
+  }
+
   const summary = attemptErrors
     .map((a, i) => `  Attempt ${i + 1} (${a.config.command}): ${a.error}`)
     .join("\n");
 
   throw new Error(
-    `Failed to start application after ${MAX_STARTUP_ATTEMPTS} attempts:\n${summary}`,
+    `Failed to start application after ${attemptErrors.length} attempts:\n${summary}`,
   );
 }
 
@@ -337,15 +575,15 @@ async function identifyStartupConfig(
   llm: OpenAI,
   repoPath: string,
   stackStr: string,
-  handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
   model?: string,
 ): Promise<StartupConfig> {
   const messages = identifyStartupPrompt(stackStr);
+  const infraHandler = createInfraToolHandler(repoPath);
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
-    handleTool,
+    infraTools,
+    infraHandler,
     model,
   );
   return parseStartupConfig(response);
@@ -355,144 +593,95 @@ async function rebuildStartupConfig(
   llm: OpenAI,
   repoPath: string,
   stackStr: string,
-  handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
   previousConfig: StartupConfig,
   model?: string,
 ): Promise<StartupConfig> {
-  // If the previous command used a pre-built Docker image (not built from source),
-  // we MUST switch to building from the repo's Dockerfile. Otherwise fixes applied
-  // to source code won't take effect — the pre-built image has the old code.
-  if (previousConfig.docker && usesPrebuiltImage(previousConfig.command)) {
-    const fromSource = buildFromSourceConfig(repoPath, previousConfig);
-    if (fromSource) {
-      console.log(
-        `[Startup] Previous startup used pre-built image — switching to build-from-source`,
-      );
-      return fromSource;
-    }
-  }
-
   const messages = rebuildStartupPrompt(
     stackStr,
     JSON.stringify(previousConfig, null, 2),
   );
+  const infraHandler = createInfraToolHandler(repoPath);
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
-    handleTool,
+    infraTools,
+    infraHandler,
     model,
   );
   return parseStartupConfig(response);
 }
 
 /**
- * Detect if a docker command uses a pre-built/remote image rather than
- * building from local source. Pre-built images contain the old code and
- * won't pick up source fixes.
- *
- * Examples of pre-built:
- *   docker run ... appsecco/dvna:sqlite
- *   docker run ... myrepo/myapp:latest
- *
- * Examples of source-built:
- *   docker compose -f docker-compose.yml up --build -d
- *   docker run ... app-local
+ * Check if a startup config includes a step that builds from local source.
+ * Used as a guardrail during rebuild to prevent running stale code.
  */
-function usesPrebuiltImage(command: string): boolean {
-  // "docker compose ... --build" rebuilds from source
-  if (/docker\s+compose/.test(command) && command.includes("--build"))
-    return false;
-
-  // "docker run ... <image>" — check if image looks like a registry image (contains / or :)
-  const runMatch = command.match(/docker\s+run\s+.*?\s+(\S+)\s*$/);
-  if (runMatch) {
-    const image = runMatch[1];
-    // Registry images contain "/" (org/repo) or ":" (tag like :latest, :sqlite)
-    // Local images built with "docker build -t name ." are usually just a simple name
-    if (image.includes("/") || image.includes(":")) return true;
-  }
-
+function configBuildsFromSource(config: StartupConfig): boolean {
+  const all = [...(config.prerequisites ?? []), config.command].join(" ");
+  // docker build, docker compose build, docker compose up --build
+  if (/docker\s+(build|compose\s+build)/.test(all)) return true;
+  if (/docker\s+compose/.test(all) && all.includes("--build")) return true;
+  // Native build commands
+  if (/\b(npm run build|yarn build|pnpm build|go build|mvn\s|gradle\s|cargo build|dotnet build|make\b|bundle exec rake)/.test(all)) return true;
   return false;
 }
 
 /**
- * Check if a compose file uses pre-built images instead of building from source.
- * Returns true if ANY service has `image:` with a registry reference but no `build:`.
- * We must build from source so that vulnerability fixes are included.
+ * Check if a command already runs inside a Docker container
+ * (i.e. starts with docker run, docker exec, docker compose, etc.)
  */
-function composeUsesPrebuiltImages(repoPath: string, composeFile: string): boolean {
-  let content: string;
-  try {
-    content = readFileSync(`${repoPath}/${composeFile}`, "utf-8");
-  } catch {
-    return false;
-  }
-
-  // Simple YAML parsing: look for services that have `image:` but no `build:`
-  // Split into service blocks by looking for top-level indentation patterns
-  const imageRe = /^\s+image:\s*(\S+)/gm;
-  const buildRe = /^\s+build:/gm;
-
-  const hasRegistryImage = (() => {
-    let m;
-    while ((m = imageRe.exec(content)) !== null) {
-      const img = m[1].replace(/["']/g, "");
-      // Registry images contain "/" (org/repo) or explicit tags
-      if (img.includes("/")) return true;
-    }
-    return false;
-  })();
-
-  // If no registry images found, compose is fine
-  if (!hasRegistryImage) return false;
-
-  // If there's at least one `build:` directive, the app service might build from source
-  // But if no build directive at all, it's definitely using pre-built images
-  return !buildRe.test(content);
+function commandRunsInDocker(command: string): boolean {
+  const trimmed = command.trim();
+  return /^docker\s+(run|exec|compose)\b/.test(trimmed);
 }
 
 /**
- * Patch a docker-compose file to build from the repo Dockerfile instead of
- * pulling a pre-built registry image. For app services with `image: org/repo:tag`,
- * replace the `image:` line with `build: .` so the local source code is used.
- * Database / infra images (mongo, postgres, redis, mysql, etc.) are left alone.
+ * Extract the Docker image name from a config's prerequisites.
+ * Looks for `docker build -t <name>` patterns.
  */
-function patchComposeForSourceBuild(repoPath: string, composeFile: string): void {
-  const filePath = `${repoPath}/${composeFile}`;
-  let content: string;
-  try {
-    content = readFileSync(filePath, "utf-8");
-  } catch {
-    return;
+function extractImageName(config: StartupConfig): string | undefined {
+  for (const cmd of config.prerequisites ?? []) {
+    const m = cmd.match(/docker\s+build\s+.*-t\s+(\S+)/);
+    if (m) return m[1];
   }
-
-  // Infrastructure images we should NOT replace
-  const infraPatterns =
-    /\b(mongo|postgres|mysql|mariadb|redis|rabbitmq|memcached|elasticsearch|minio|nats|kafka|zookeeper|consul|vault|nginx|traefik|caddy|haproxy)\b/i;
-
-  const patched = content.replace(
-    /^(\s+)image:\s*(\S+)\s*$/gm,
-    (match, indent: string, image: string) => {
-      const cleanImage = image.replace(/["']/g, "");
-      // Only patch registry images (contain "/") that aren't infra
-      if (cleanImage.includes("/") && !infraPatterns.test(cleanImage)) {
-        return `${indent}build: .`;
-      }
-      return match;
-    },
-  );
-
-  if (patched !== content) {
-    writeFileSync(filePath, patched);
-    console.log(
-      `[Startup] Replaced pre-built image in ${composeFile} with build: .`,
-    );
-  }
+  return undefined;
 }
 
 /**
- * Check that all `build:` context directories referenced in a compose file
+ * Find a compose file in the repo root. Returns the filename or undefined.
+ */
+function findComposeFile(repoPath: string): string | undefined {
+  const candidates = [
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    "compose.yml",
+    "compose.yaml",
+  ];
+  return candidates.find((f) => existsSync(`${repoPath}/${f}`));
+}
+
+/**
+ * Generate a minimal compose file from the existing Dockerfile and startup config.
+ * This avoids wasting an attempt when the LLM picks docker compose but no file exists.
+ */
+function generateComposeFile(repoPath: string, config: StartupConfig): void {
+  const port = config.port || 3000;
+  const envLines = Object.entries(config.envVars ?? {})
+    .map(([k, v]) => `      ${k}: "${v}"`)
+    .join("\n");
+
+  const content = `services:
+  app:
+    build: .
+    ports:
+      - "${port}:${port}"
+${envLines ? `    environment:\n${envLines}\n` : ""}`;
+
+  writeFileSync(`${repoPath}/compose.yml`, content);
+  console.log(`[Startup] Generated compose.yml (port ${port})`);
+}
+
+/**
+ * Check that all \`build:\` context directories referenced in a compose file
  * actually exist on disk. Returns false if any are missing.
  */
 function validateComposeBuildContexts(repoPath: string, composeFile: string): boolean {
@@ -546,12 +735,13 @@ function validateComposeBuildContexts(repoPath: string, composeFile: string): bo
  * and let it explore the codebase to produce a fixed Dockerfile.
  * This replaces brittle regex-based patching with a general-purpose fix.
  */
-async function repairDockerBuild(
+export async function repairDockerBuild(
   llm: OpenAI,
   repoPath: string,
   buildError: string,
-  handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
   model?: string,
+  previousErrors?: string[],
+  hints?: string[],
 ): Promise<void> {
   const dockerfilePath = `${repoPath}/Dockerfile`;
   let currentDockerfile: string;
@@ -561,91 +751,97 @@ async function repairDockerBuild(
     return;
   }
 
-  // Truncate error to avoid blowing up the context
-  const truncatedError = buildError.length > 3000
-    ? buildError.slice(-3000)
-    : buildError;
+  // Write full error to a file the LLM can read, show head+tail in the prompt
+  const errorLogPath = `${repoPath}/.bright-build-error.log`;
+  writeFileSync(errorLogPath, buildError, "utf-8");
+  const errorLines = buildError.split("\n");
+
+  console.log(`[Startup] Repair input: error ${errorLines.length} lines (written to .bright-build-error.log), Dockerfile lines=${currentDockerfile.split("\n").length}`);
+
+  let errorSection: string;
+  if (errorLines.length <= 100) {
+    errorSection = `Build output:\n\`\`\`\n${buildError}\n\`\`\``;
+  } else {
+    const headLines = errorLines.slice(0, 40).join("\n");
+    const tailLines = errorLines.slice(-60).join("\n");
+    errorSection = `First 40 lines of build output:\n\`\`\`\n${headLines}\n\`\`\`\n\nLast 60 lines:\n\`\`\`\n${tailLines}\n\`\`\`\n\n(Full log: ${errorLines.length} lines in .bright-build-error.log — use read_file if you need the middle)`;
+  }
 
   const messages: Array<{ role: "system" | "user"; content: string }> = [
     {
       role: "system",
       content: `You are a Docker expert. A Docker build just failed. Your job is to fix the Dockerfile.
 
-You have tools to read any file in the repository. Use them to understand what the project needs (package.json, .csproj, go.mod, requirements.txt, build configs, etc.).
+You have tools to:
+- **read_file / list_files / search_files** — inspect any file in the repository
+- **run_command_on_host** — run shell commands on the host (ls, find, cat, docker inspect, docker build, etc.)
+- **run_command_in_docker** — run commands inside a Docker container or image (check installed tools, read config files, test commands)
+- **verify_docker_image** — check if a Docker image:tag exists on Docker Hub before using it in FROM lines
 
-IMPORTANT: You have a verify_docker_image tool. ALWAYS call it to verify that any base image:tag you use in FROM lines exists on Docker Hub. If an image does not exist, try alternative tags until you find one that does.
-
-Common issues and fixes:
-- "npm/node: not found" in .NET builds → add RUN apt-get install nodejs npm before dotnet publish
-- corepack signature errors → add ENV COREPACK_INTEGRITY_KEYS=0 and RUN npm install -g corepack@latest
-- "git: not found" → add RUN apt-get update && apt-get install -y --no-install-recommends git in the stage that needs it
-- Missing system dependencies → add apt-get install for the needed packages
-- Wrong base image version → verify the correct tag with verify_docker_image, then switch
-- Build context / COPY failures → fix paths or remove COPY lines for files that don't exist
-- "Not found: type X" / compilation errors after COPY → the source code is incomplete. Replace individual COPY lines with "COPY . ." to ensure all source directories are included
-- OutOfMemoryError during compilation → add ENV SBT_OPTS="-J-Xmx4g -J-XX:+UseG1GC" (for sbt) or ENV MAVEN_OPTS="-Xmx4g" (for Maven) or ENV GRADLE_OPTS="-Xmx4g" (for Gradle) BEFORE the build command
-- Container crashes with "FileNotFoundException" for config files → check conf/ for available config files, use prod-mode flags (e.g. -Dconfig.resource=application.conf -Dlogger.resource=logback.xml) in CMD
-- .NET AppHost/Aspire orchestrator projects cannot be published standalone → find a real web API project (Catalog.API, WebApp, etc.) and publish that instead
-- dotnet publish succeeds but COPY --from=build fails with "not found" → the publish output path is wrong. List the build stage output to find where files actually went
-- Permission issues → add appropriate RUN chmod/chown
-- "tsc" exits with non-zero even when "--noEmitOnError false" is set (it still reports type errors) → append "|| true" to the tsc RUN command so the Docker build continues despite type warnings
-- "npm ci" fails with "package.json and package-lock.json are in sync" / "Missing: <pkg> from lock file" → the runtime stage is using a built sub-project's package.json that doesn't match the root lockfile. Replace "npm ci" with "npm install" in that stage (or copy the sub-project's own lock file if it exists)
-- "npm ci" postinstall fails with "Failed to process project graph" or monorepo tooling errors (nx, lerna, turbo, patch-package) → use "npm ci --ignore-scripts" to skip postinstall hooks, then run only the specific scripts needed (e.g. "RUN npx patch-package" separately). The full monorepo graph is NOT needed inside Docker when building a single service.
+APPROACH:
+1. Read the error carefully. Identify the exact failing command and what it's missing.
+2. Use tools to investigate — read the scripts/files referenced in the error, check what files exist, understand the project structure.
+3. Fix the ROOT CAUSE. Don't just suppress errors — understand WHY the command failed.
+4. If the error is in a multi-stage build, check whether a later stage is missing tools/files from an earlier stage. Consider collapsing to a single stage.
+5. This Dockerfile is for DEVELOPMENT/TESTING, not production. Prefer simplicity over optimization — a single stage with all tools is better than a fragile multi-stage build.
+6. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
+7. Always verify base image tags exist with verify_docker_image before using them.
 
 Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`,
     },
     {
       role: "user",
-      content: `The Docker build failed with this error:
+      content: `The Docker build failed.
 
-\`\`\`
-${truncatedError}
-\`\`\`
+${errorSection}
 
 Current Dockerfile:
 \`\`\`dockerfile
 ${currentDockerfile}
 \`\`\`
-
-Use the tools to inspect relevant project files, then return a COMPLETE fixed Dockerfile.`,
+${previousErrors && previousErrors.length > 0
+    ? `\nPrevious failed attempts and their errors (do NOT repeat the same mistakes):\n${previousErrors.map((e, i) => `--- Attempt ${i + 1} ---\n${e.slice(-500)}`).join("\n")}\n`
+    : ""}${hints && hints.length > 0
+    ? `\nHints from previous attempts:\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
+    : ""}
+Use the tools to inspect relevant project files (and read_file on .bright-build-error.log if you need more of the build output), then return a COMPLETE fixed Dockerfile.`,
     },
   ];
 
   try {
     console.log("[Startup] Asking LLM to repair Dockerfile...");
-    const dockerHandler = createDockerfileToolHandler(repoPath);
+    const infraHandler = createInfraToolHandler(repoPath);
     const response = await chatWithTools(
       llm,
       messages,
-      dockerfileTools,
-      dockerHandler,
+      infraTools,
+      infraHandler,
       model,
-      12,
+      20,
     );
 
-    const fixedDockerfile = extractCodeBlock(response);
-    if (!fixedDockerfile) {
+    const fixedRaw = extractCodeBlock(response);
+    if (!fixedRaw) {
       console.warn("[Startup] LLM did not return a valid Dockerfile repair");
       return;
     }
 
     // Sanity check: must contain FROM and at least one RUN/CMD
-    if (!fixedDockerfile.includes("FROM ") || !/(?:RUN|CMD|ENTRYPOINT)\s/.test(fixedDockerfile)) {
+    if (!fixedRaw.includes("FROM ") || !/(?:RUN|CMD|ENTRYPOINT)\s/.test(fixedRaw)) {
       console.warn("[Startup] LLM returned an invalid Dockerfile — skipping");
       return;
     }
 
-    // Post-validate: check all FROM images exist on Docker Hub
-    const missing = await validateDockerfileImages(fixedDockerfile);
-    if (missing.length > 0) {
-      console.warn(
-        `[Startup] Repaired Dockerfile references non-existent images: ${missing.join(", ")}`,
-      );
+    // Post-validate: auto-fix any FROM images that don't exist on Docker Hub
+    const fixedDockerfile = await fixDockerfileImages(fixedRaw);
+    if (fixedDockerfile !== fixedRaw) {
+      console.log("[Startup] Auto-fixed invalid Docker image tags in repaired Dockerfile");
     }
 
     writeFileSync(dockerfilePath, fixedDockerfile, "utf-8");
+    const changed = fixedDockerfile !== currentDockerfile;
     console.log(
-      `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines)`,
+      `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes detected"})`,
     );
   } catch (err) {
     console.warn(
@@ -665,42 +861,91 @@ Use the tools to inspect relevant project files, then return a COMPLETE fixed Do
  * give the LLM tools to diagnose and fix the infrastructure before the next
  * retry attempt. The LLM can read/write files and run shell commands.
  */
+interface InfraRepairResult {
+  /** Commands to run AFTER app starts but BEFORE health check (e.g. DB migrations inside container) */
+  postStartCommands?: string[];
+  /** Extra environment variables to merge into the startup config */
+  addEnvVars?: Record<string, string>;
+  /** Override health check path if the root route is unreliable (e.g. "/srv/status") */
+  healthCheckPath?: string;
+  /** Override the startup command itself (e.g. wrap bare command in 'docker run') */
+  command?: string;
+  /** True if the repair LLM used mutating tools (write_file, run_command, etc.) */
+  madeFileChanges?: boolean;
+}
+
 async function repairInfrastructure(
   llm: OpenAI,
   repoPath: string,
   config: StartupConfig,
   errorOutput: string,
   model?: string,
-): Promise<void> {
-  const truncatedError = errorOutput.length > 4000
-    ? errorOutput.slice(-4000)
-    : errorOutput;
+  previousErrors?: string[],
+  hints?: string[],
+): Promise<InfraRepairResult> {
+  // Write full error to a file the LLM can read, show head+tail in the prompt
+  const errorLogPath = `${repoPath}/.bright-build-error.log`;
+  writeFileSync(errorLogPath, errorOutput, "utf-8");
+  const errorLines = errorOutput.split("\n");
+
+  let errorSection: string;
+  if (errorLines.length <= 100) {
+    errorSection = `Error output:\n\`\`\`\n${errorOutput}\n\`\`\``;
+  } else {
+    const headLines = errorLines.slice(0, 40).join("\n");
+    const tailLines = errorLines.slice(-60).join("\n");
+    errorSection = `First 40 lines (root cause is often here):\n\`\`\`\n${headLines}\n\`\`\`\n\nLast 60 lines:\n\`\`\`\n${tailLines}\n\`\`\`\n\n(Full log: ${errorLines.length} lines in .bright-build-error.log — use read_file if you need the middle)`;
+  }
 
   const messages: Array<{ role: "system" | "user"; content: string }> = [
     {
       role: "system",
       content: `You are a DevOps engineer fixing a failed application startup. You have tools to:
-- read_file / list_files / search_files — inspect the repository
-- write_file — modify shell scripts, compose files, config files, etc.
-- run_command — run diagnostic or repair commands (docker logs, sed, chmod, etc.)
-- verify_docker_image — check if a Docker image exists
+- **read_file / list_files / search_files** — inspect the repository
+- **write_file** — modify shell scripts, compose files, config files, etc.
+- **run_command_on_host** — run diagnostic or repair commands on the host (docker logs, docker ps, sed, chmod, find, etc.)
+- **run_command_in_docker** — run commands inside the application container (check installed tools, read config, test commands, inspect processes)
+- **probe_url** — make an HTTP request and see the full response (status, headers, body). Use this to check what the app returns, diagnose 500 errors, test if endpoints work.
+- **verify_docker_image** — check if a Docker image exists
+- **wait** — wait for a specified number of seconds (use when services need time to start up)
+- **save_hint** — save an important discovery for the NEXT repair attempt (e.g. "app reads DB config from config/database.yml not DATABASE_URL", "needs Redis on port 6379"). Use this whenever you learn something non-obvious about how this app works.
+- **remove_hint** — remove a previously saved hint that turned out to be WRONG or MISLEADING. If you see hints that led to this failure, remove them.
 
-The application failed to start. Your job is to fix the root cause so the SAME startup command can succeed on the next attempt.
+IMPORTANT: When the error output shows a stack trace without a clear error message, the ACTUAL exception is likely at the top — read .bright-container-logs.txt and .bright-build-error.log (full logs) to find the real error. Do NOT guess from truncated stack traces.
 
-Common issues you should fix:
-- "cannot attach stdin to a TTY-enabled container" → find and patch scripts that use "docker exec -it" or "docker run -it" to remove the -t flag. Use sed or write_file.
-- "database does not exist" → run the database creation command (e.g. docker exec <container> bin/rails db:create db:migrate)
-- Compose service errors ("has neither an image nor a build context") → edit the compose file to comment out or remove the broken service
-- Permission denied → chmod +x the script, or fix file permissions
-- Missing .env file → copy from .env.example or create a minimal one
-- Missing config files → create them with sensible defaults
-- Port already in use → kill the old process
+IMPORTANT: The startup command runs ON THE HOST, not inside a container. If the command uses a tool like pnpm/node/rails that only exists inside the Docker image, the command must be wrapped with 'docker run' or 'docker exec'.
 
-IMPORTANT:
-- Do NOT change the startup command itself — only fix the files/environment so the same command works.
-- Make targeted, minimal fixes. Don't rewrite entire files unless necessary.
-- Run diagnostic commands first to understand the problem, then apply fixes.
-- After fixing, verify the fix worked if possible (e.g. re-read the patched file).`,
+APPROACH:
+1. Read the error carefully. Identify the exact failing command and what it needs.
+2. If the error mentions HTTP 500 or similar, use **probe_url** to see the full error response from the app — it often contains the exact problem (e.g. "Migrations are pending", "database does not exist").
+3. If hints from previous attempts are provided, evaluate them critically — remove any that are wrong or led to this failure.
+4. Use run_command_on_host for host-level diagnostics (docker ps, docker logs, docker inspect).
+5. Use run_command_in_docker to inspect what's available INSIDE the container (which pnpm, ps aux, cat /app/config.yml).
+6. Fix the ROOT CAUSE with targeted changes — fix config files, scripts, compose files, environment so the startup command can succeed.
+7. After fixing, verify your changes (e.g. re-read the patched file, run a diagnostic command, use probe_url to test the app).
+8. Before finishing, call save_hint for any important discoveries about this app's configuration or behavior.
+
+IMPORTANT DATABASE TIPS:
+- Docker volumes are automatically cleaned between attempts (docker compose down -v), so stale data from a previous image won't persist.
+- If a migration fails because of a missing PostgreSQL extension (e.g. pgvector), first check if you can REMOVE the plugin that requires it (e.g. delete/rename its directory under plugins/) rather than installing the extension. Removing an optional plugin is often simpler than fixing extension availability.
+- If the app crashes with "No such file or directory" for a tool (e.g. brotli, wkhtmltopdf), install it in the Dockerfile or set an env var to disable the feature that needs it.
+
+RESPONSE FORMAT:
+After fixing the issue, reply with a JSON object describing what changed:
+\`\`\`json
+{
+  "summary": "Brief description of what you fixed",
+  "command": "docker run --name myapp -p 3000:3000 -d myapp-image bundle exec rails server",
+  "postStartCommands": ["docker compose exec app rails db:create db:migrate"],
+  "addEnvVars": {"DATABASE_URL": "postgres://..."},
+  "healthCheckPath": "/srv/status"
+}
+\`\`\`
+- **command**: override the startup command if the current one is fundamentally wrong (e.g. bare "bundle exec" on the host when it should be "docker run ... bundle exec"). Only set this if the command itself needs to change.
+- **postStartCommands**: commands that must run AFTER the app containers start but BEFORE the health check (e.g. DB migrations, cache warmup, seeding). These run on the HOST. If the command must run inside a container, wrap it with 'docker compose exec <service>' or 'docker exec <container>'.
+- **addEnvVars**: environment variables to add/override for the next startup attempt.
+- **healthCheckPath**: if the app's root route ("/") returns errors but a different endpoint is healthy (e.g. "/health", "/srv/status"), specify it here so the health check uses that path instead.
+- Omit fields that don't apply — just include "summary" if you only edited files.`,
     },
     {
       role: "user",
@@ -710,31 +955,98 @@ Command: ${config.command}
 Prerequisites: ${JSON.stringify(config.prerequisites)}
 Docker: ${config.docker}
 
-Error output:
-\`\`\`
-${truncatedError}
-\`\`\`
-
-Investigate the root cause using the tools, then fix it. Reply with a brief summary of what you fixed.`,
+${errorSection}
+${previousErrors && previousErrors.length > 0
+    ? `\nPrevious failed attempts and their errors (do NOT repeat the same fixes):\n${previousErrors.map((e, i) => `--- Attempt ${i + 1} ---\n${e.slice(-500)}`).join("\n")}\n`
+    : ""}${hints && hints.length > 0
+    ? `\nHints from previous repair attempts (use these — they were discovered through investigation):\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
+    : ""}
+Investigate the root cause using the tools, then fix it. IMPORTANT FILES:
+- .bright-build-error.log — full error output from the failed command
+- .bright-container-logs.txt — full Docker container logs (ALL containers, not truncated)
+If the error below only shows a stack trace without the actual exception, read these files FIRST to find the real error message at the top.
+Reply with the JSON object.`,
     },
   ];
 
   try {
     console.log("[Startup] Asking LLM to repair infrastructure...");
-    const infraHandler = createInfraToolHandler(repoPath);
+    const onHint = (hint: string) => {
+      if (hints && !hints.includes(hint)) hints.push(hint);
+    };
+    const onRemoveHint = (hint: string) => {
+      if (hints) {
+        const idx = hints.findIndex((h) => h.includes(hint) || hint.includes(h));
+        if (idx !== -1) {
+          console.log(`[Startup] Hint removed: ${hints[idx].slice(0, 100)}`);
+          hints.splice(idx, 1);
+        }
+      }
+    };
+    const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
+    let usedMutatingTools = false;
+    const trackingHandler: ToolHandler = async (name, args) => {
+      const result = await infraHandler(name, args);
+      if (name === "write_file" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
+        usedMutatingTools = true;
+      }
+      return result;
+    };
     const response = await chatWithTools(
       llm,
       messages,
       infraTools,
-      infraHandler,
+      trackingHandler,
       model,
-      15, // generous tool turns for diagnosis + repair
+      20,
     );
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
+
+    // Parse config modifications from the LLM response
+    const result = parseInfraRepairResult(response);
+    if (usedMutatingTools) {
+      result.madeFileChanges = true;
+      console.log(`[Startup] Infra repair used mutating tools (write_file/run_command)`);
+    }
+    return result;
   } catch (err) {
     console.warn(
       `[Startup] Infrastructure repair failed: ${err instanceof Error ? err.message : err}`,
     );
+    return {};
+  }
+}
+
+function parseInfraRepairResult(response: string): InfraRepairResult {
+  try {
+    const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) ??
+      response.match(/(\{[\s\S]*\})/);
+    if (!jsonMatch?.[1]) return {};
+    const parsed = JSON.parse(jsonMatch[1]);
+    const result: InfraRepairResult = {};
+    if (Array.isArray(parsed.postStartCommands) && parsed.postStartCommands.length > 0) {
+      result.postStartCommands = parsed.postStartCommands.filter(
+        (cmd: unknown) => typeof cmd === "string" && cmd.length > 0,
+      );
+      if (result.postStartCommands!.length > 0) {
+        console.log(`[Startup] Infra repair added post-start commands: ${result.postStartCommands!.join(", ")}`);
+      }
+    }
+    if (parsed.addEnvVars && typeof parsed.addEnvVars === "object") {
+      result.addEnvVars = parsed.addEnvVars;
+      console.log(`[Startup] Infra repair added env vars: ${Object.keys(result.addEnvVars!).join(", ")}`);
+    }
+    if (typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath) {
+      result.healthCheckPath = parsed.healthCheckPath;
+      console.log(`[Startup] Infra repair set health check path: ${result.healthCheckPath}`);
+    }
+    if (typeof parsed.command === "string" && parsed.command) {
+      result.command = parsed.command;
+      console.log(`[Startup] Infra repair overrode command: ${result.command}`);
+    }
+    return result;
+  } catch {
+    return {};
   }
 }
 
@@ -742,254 +1054,15 @@ Investigate the root cause using the tools, then fix it. Reply with a brief summ
  * Scan a compose file for env_file references and return the names
  * of any files that do not exist on disk.
  */
-function findMissingEnvFiles(repoPath: string, composeFile: string): string[] {
-  try {
-    const content = readFileSync(`${repoPath}/${composeFile}`, "utf8");
-    const missing: string[] = [];
-    // Scalar form: env_file: vars.env
-    for (const m of content.matchAll(/env_file:\s+(?!-)(\S+)/g)) {
-      const file = m[1].replace(/["']/g, "");
-      if (file && !existsSync(`${repoPath}/${file}`)) missing.push(file);
-    }
-    // List form: env_file:\n  - vars.env
-    for (const m of content.matchAll(/env_file:\s*\n((?:\s+-\s+\S+\n?)+)/g)) {
-      for (const item of m[1].matchAll(/^\s+-\s+(\S+)/gm)) {
-        const file = item[1].replace(/["']/g, "");
-        if (file && !existsSync(`${repoPath}/${file}`)) missing.push(file);
-      }
-    }
-    return [...new Set(missing)];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Replace .NET template placeholders (e.g. TEMPLATE_PORT) in compose files
- * with the actual port from the startup config, so Docker can parse them.
- */
-function sanitizeComposeTemplateVars(
-  repoPath: string,
-  config: StartupConfig,
-): void {
-  // Collect compose file paths to check:
-  // 1. Files explicitly referenced via -f <path> in the command
-  // 2. Common compose filenames in the repo root and in any cd target dir
-  const filesToCheck = new Set<string>();
-
-  // Extract -f <path> references from the command
-  for (const m of config.command.matchAll(/-f\s+(\S+)/g)) {
-    filesToCheck.add(m[1]);
-  }
-
-  // Detect cd target directory (e.g. "cd templates/Foo && docker compose ...")
-  const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
-  const dirs = [""]; // repo root
-  if (cdMatch) dirs.push(cdMatch[1]);
-
-  const defaultNames = [
-    "docker-compose.yml",
-    "compose.yml",
-    "docker-compose.local.yml",
-    "compose.local.yml",
-    "docker-compose.dev.yml",
-    "compose.dev.yml",
-    "docker-compose.override.yml",
-    "compose.override.yml",
-  ];
-  for (const dir of dirs) {
-    for (const name of defaultNames) {
-      filesToCheck.add(dir ? `${dir}/${name}` : name);
-    }
-  }
-
-  for (const cf of filesToCheck) {
-    const filePath = cf.startsWith("/") ? cf : `${repoPath}/${cf}`;
-    if (!existsSync(filePath)) continue;
-
-    let content: string;
-    try {
-      content = readFileSync(filePath, "utf8");
-    } catch {
-      continue;
-    }
-
-    // Replace TEMPLATE_PORT (bare), ${TEMPLATE_PORT}, $TEMPLATE_PORT
-    // and similar .NET template vars like TEMPLATE_HTTPPORT, TEMPLATE_HTTPSPORT
-    const sanitized = content.replace(
-      /\$\{TEMPLATE_\w*PORT\w*\}|(?<!\$)\bTEMPLATE_\w*PORT\w*\b|\$TEMPLATE_\w*PORT\w*/g,
-      String(config.port),
-    );
-
-    if (sanitized !== content) {
-      writeFileSync(filePath, sanitized);
-      console.log(
-        `[Startup] Replaced template port placeholder(s) in ${cf} with ${config.port}`,
-      );
-    }
-  }
-}
-
-/**
- * Create a missing env file referenced by a compose manifest.
- * Reads the compose content to discover environment-variable references
- * (${VAR} syntax) and database images, then writes sensible defaults
- * so that compose can start without manual configuration.
- */
-function populateMissingEnvFile(
-  repoPath: string,
-  composeFile: string,
-  envFile: string,
-): void {
-  const composePath = `${repoPath}/${composeFile}`;
-  const envPath = `${repoPath}/${envFile}`;
-  let content: string;
-  try {
-    content = readFileSync(composePath, "utf8");
-  } catch {
-    // If compose file can't be read, just create an empty file
-    writeFileSync(envPath, "");
-    return;
-  }
-
-  const lines: string[] = [];
-  const added = new Set<string>();
-
-  const addVar = (name: string, value: string) => {
-    if (!added.has(name)) {
-      lines.push(`${name}=${value}`);
-      added.add(name);
-    }
-  };
-
-  // Defaults for common database env vars
-  const dbDefaults: Record<string, string> = {
-    MYSQL_ROOT_PASSWORD: "bright_test",
-    MYSQL_DATABASE: "app",
-    MYSQL_USER: "app",
-    MYSQL_PASSWORD: "bright_test",
-    MYSQL_ALLOW_EMPTY_PASSWORD: "yes",
-    POSTGRES_PASSWORD: "bright_test",
-    POSTGRES_DB: "app",
-    POSTGRES_USER: "postgres",
-    MONGO_INITDB_ROOT_USERNAME: "root",
-    MONGO_INITDB_ROOT_PASSWORD: "bright_test",
-  };
-
-  // Populate any ${VAR} references that match known DB vars
-  for (const m of content.matchAll(/\$\{(\w+)\}/g)) {
-    const name = m[1];
-    if (dbDefaults[name]) addVar(name, dbDefaults[name]);
-  }
-
-  // Also populate directly-referenced env vars like MYSQL_ROOT_PASSWORD: ...
-  for (const m of content.matchAll(
-    /^\s+(MYSQL_\w+|POSTGRES_\w+|MONGO_\w+):/gm,
-  )) {
-    const name = m[1];
-    if (dbDefaults[name] && !added.has(name)) addVar(name, dbDefaults[name]);
-  }
-
-  // If compose has a mysql/postgres image but we haven't added any credentials, add them
-  if (/image:\s*.*mysql/i.test(content) && !added.has("MYSQL_ROOT_PASSWORD")) {
-    addVar("MYSQL_ROOT_PASSWORD", "bright_test");
-    addVar("MYSQL_ALLOW_EMPTY_PASSWORD", "yes");
-  }
-  if (/image:\s*.*postgres/i.test(content) && !added.has("POSTGRES_PASSWORD")) {
-    addVar("POSTGRES_PASSWORD", "bright_test");
-  }
-
-  console.log(
-    `[Startup] Created ${envFile} with ${lines.length} default variable(s)`,
-  );
-  writeFileSync(envPath, lines.length > 0 ? lines.join("\n") + "\n" : "");
-}
-
-/**
- * Build a startup config that builds the Docker image from source and runs it.
- * Returns null if no Dockerfile is found.
- */
-function buildFromSourceConfig(
-  repoPath: string,
-  previousConfig: StartupConfig,
-): StartupConfig | null {
-  // Check for Dockerfile
-  const hasDockerfile = existsSync(`${repoPath}/Dockerfile`);
-  if (!hasDockerfile) return null;
-
-  const port = previousConfig.port;
-  const imageName = "bright-app-local";
-
-  // Check for docker-compose.yml — if it exists, prefer compose with --build
-  // Skip compose files in template directories (they're scaffolds, not working configs)
-  const composeFiles = [
-    "docker-compose.yml",
-    "compose.yml",
-    "docker-compose.local.yml",
-    "compose.local.yml",
-    "docker-compose.dev.yml",
-    "compose.dev.yml",
-  ];
-  for (const cf of composeFiles) {
-    if (existsSync(`${repoPath}/${cf}`)) {
-      if (!validateComposeBuildContexts(repoPath, cf)) {
-        console.log(`[Startup] Skipping ${cf} — build context directory missing`);
-        continue;
-      }
-      const missingEnvFiles = findMissingEnvFiles(repoPath, cf);
-      for (const envFile of missingEnvFiles) {
-        populateMissingEnvFile(repoPath, cf, envFile);
-      }
-      return {
-        command: `docker compose -f ${cf} up --build -d`,
-        port,
-        prerequisites: [],
-        envVars: previousConfig.envVars,
-        docker: true,
-      };
-    }
-  }
-
-  // Fall back to docker build + docker run
-  return {
-    command: `docker run --name ${imageName} -p ${port}:${port} -d ${imageName}`,
-    port,
-    prerequisites: [`docker build -t ${imageName} .`],
-    envVars: previousConfig.envVars,
-    docker: true,
-  };
-}
-
-/**
- * Build directly from Dockerfile, skipping compose files.
- * Used as fallback when compose build-from-source fails.
- */
-function buildDockerfileOnlyConfig(
-  repoPath: string,
-  previousConfig: StartupConfig,
-): StartupConfig | null {
-  if (!existsSync(`${repoPath}/Dockerfile`)) return null;
-  const port = previousConfig.port;
-  const imageName = "bright-app-local";
-  return {
-    command: `docker run --name ${imageName} -p ${port}:${port} -d ${imageName}`,
-    port,
-    prerequisites: [`docker build -t ${imageName} .`],
-    envVars: previousConfig.envVars ?? {},
-    docker: true,
-  };
-}
-
 /**
  * Generate a Dockerfile using the LLM when the project needs Docker-based
  * startup but no Dockerfile exists.  The LLM inspects the project's config
  * and source files via codebase tools to produce an appropriate Dockerfile.
  */
-async function generateDockerfile(
+export async function generateDockerfile(
   llm: OpenAI,
   repoPath: string,
   stackStr: string,
-  handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
   model?: string,
 ): Promise<void> {
   const dockerHandler = createDockerfileToolHandler(repoPath);
@@ -1002,19 +1075,17 @@ async function generateDockerfile(
     model,
   );
 
-  const content = extractCodeBlock(response);
-  if (!content) {
+  const contentRaw = extractCodeBlock(response);
+  if (!contentRaw) {
     throw new Error(
       "Failed to generate a valid Dockerfile — LLM did not return a code block",
     );
   }
 
-  // Post-validate: check all FROM images exist on Docker Hub
-  const missing = await validateDockerfileImages(content);
-  if (missing.length > 0) {
-    console.warn(
-      `[Startup] Dockerfile references non-existent images: ${missing.join(", ")}`,
-    );
+  // Post-validate: auto-fix any FROM images that don't exist on Docker Hub
+  const content = await fixDockerfileImages(contentRaw);
+  if (content !== contentRaw) {
+    console.log("[Startup] Auto-fixed invalid Docker image tags in generated Dockerfile");
   }
 
   writeFileSync(`${repoPath}/Dockerfile`, content);
@@ -1023,48 +1094,43 @@ async function generateDockerfile(
   );
 }
 
-function extractCodeBlock(text: string): string | null {
-  const match = text.match(
-    /```(?:dockerfile|docker|Dockerfile)?\s*\n([\s\S]*?)```/i,
-  );
-  if (match) return match[1].trimEnd() + "\n";
-
-  // Fallback: extract lines that look like Dockerfile instructions
-  const lines = text.split("\n");
-  const dockerLines = lines.filter(
-    (l) =>
-      /^(FROM|RUN|COPY|ADD|WORKDIR|EXPOSE|CMD|ENTRYPOINT|ENV|ARG|LABEL|VOLUME|USER|HEALTHCHECK|SHELL|STOPSIGNAL|ONBUILD)\s/i.test(
-        l.trim(),
-      ) ||
-      l.trim() === "" ||
-      l.trim().startsWith("#"),
-  );
-  if (dockerLines.length >= 3) return dockerLines.join("\n") + "\n";
-
-  return null;
-}
-
 async function retryStartupConfig(
   llm: OpenAI,
   repoPath: string,
   stackStr: string,
-  handleTool: (name: string, args: Record<string, unknown>) => Promise<string>,
   previousConfig: StartupConfig,
   errorOutput: string,
   attempt: number,
   model?: string,
+  allPreviousAttempts?: Array<{ config: string; error: string }>,
+  hints?: string[],
 ): Promise<StartupConfig> {
   const messages = retryStartupPrompt(
     stackStr,
     JSON.stringify(previousConfig, null, 2),
     errorOutput,
     attempt,
+    allPreviousAttempts,
+    hints,
   );
+  const onHint = (hint: string) => {
+    if (hints && !hints.includes(hint)) hints.push(hint);
+  };
+  const onRemoveHint = (hint: string) => {
+    if (hints) {
+      const idx = hints.findIndex((h) => h.includes(hint) || hint.includes(h));
+      if (idx !== -1) {
+        console.log(`[Startup] Hint removed: ${hints[idx].slice(0, 100)}`);
+        hints.splice(idx, 1);
+      }
+    }
+  };
+  const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
   const response = await chatWithTools(
     llm,
     messages,
-    codebaseTools,
-    handleTool,
+    infraTools,
+    infraHandler,
     model,
   );
   return parseStartupConfig(response);
@@ -1095,6 +1161,9 @@ function parseStartupConfig(response: string): StartupConfig {
       prerequisites,
       envVars,
       docker: parsed.docker ?? false,
+      ...(typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath
+        ? { healthCheckPath: parsed.healthCheckPath }
+        : {}),
     };
   } catch {
     return {
@@ -1188,7 +1257,7 @@ function unshallowIfNeeded(repoPath: string): void {
  * Ensure a .dockerignore exists and excludes common directories that cause
  * permission errors during docker build (e.g. data/postgres with 0700 perms).
  */
-function ensureDockerIgnore(repoPath: string): void {
+export function ensureDockerIgnore(repoPath: string): void {
   const ignorePath = `${repoPath}/.dockerignore`;
   const problematicDirs = ["data/", ".data/", "tmp/", "log/"];
   
@@ -1239,175 +1308,79 @@ function looksLikeCommand(s: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Pre-validate and fix startup configs before running
+// Pre-validate: check native tool availability
 // ---------------------------------------------------------------------------
 
 /**
- * Validate a startup config and rewrite it if problems are detected:
- * 1. Compose files in template dirs → fall back to root Dockerfile
- * 2. Compose files with missing build contexts → fall back to root Dockerfile
- * 3. Compose files using pre-built images → switch to build-from-source
- * 4. Native commands for tools not on host → switch to Docker
+ * If the LLM chose a native (non-Docker) startup but the required build tools
+ * aren't installed on the host, switch to a Docker-based approach.
+ * This is a fast check (~0.1s) that saves wasting a full attempt on a guaranteed failure.
  */
-function sanitizeStartupConfig(
+function ensureToolsAvailable(
   repoPath: string,
   config: StartupConfig,
 ): StartupConfig {
-  // --- Docker compose validation ---
-  if (config.docker && /docker\s+compose/.test(config.command)) {
-    const composeFile = extractComposeFilePath(config.command);
+  const knownTools = [
+    { re: /\bdotnet\b/, name: "dotnet" },
+    { re: /\bsbt\b/, name: "sbt" },
+    { re: /\bgo\s+(build|run|mod)\b/, name: "go" },
+    { re: /\bmvn\b/, name: "mvn" },
+    { re: /\bgradle\b/, name: "gradle" },
+    { re: /\bcargo\b/, name: "cargo" },
+    { re: /\bpip\s+install\b/, name: "pip" },
+    { re: /\bbundle\s+(install|exec)\b/, name: "bundle" },
+    { re: /\bmix\s/, name: "mix" },
+  ];
 
-    if (composeFile) {
-      // Reject compose files inside templates/ or scaffold directories
-      if (/\btemplates?\b|\bscaffold/i.test(composeFile)) {
-        console.log(
-          `[Startup] Rejecting compose in template dir: ${composeFile} — using root Dockerfile`,
-        );
-        return fallbackToDockerfile(repoPath, config);
-      }
+  const fullCommand = [...config.prerequisites, config.command].join(" ");
 
-      // Reject compose files with missing build contexts
-      const fullPath = `${repoPath}/${composeFile}`;
-      if (existsSync(fullPath) && !validateComposeBuildContexts(repoPath, composeFile)) {
-        console.log(
-          `[Startup] Rejecting compose with missing build context: ${composeFile} — using root Dockerfile`,
-        );
-        return fallbackToDockerfile(repoPath, config);
-      }
-
-      // Reject compose files that pull pre-built images instead of building.
-      // We must build from source so code fixes are included in the image.
-      // Patch the compose to build from the repo Dockerfile instead.
-      if (
-        existsSync(fullPath) &&
-        composeUsesPrebuiltImages(repoPath, composeFile) &&
-        existsSync(`${repoPath}/Dockerfile`)
-      ) {
-        patchComposeForSourceBuild(repoPath, composeFile);
-        // Ensure --build flag is present
-        if (!config.command.includes("--build")) {
-          config = {
-            ...config,
-            command: config.command.replace(
-              /up\s/,
-              "up --build ",
-            ),
-          };
-        }
-        console.log(
-          `[Startup] Patched compose to build from source instead of pulling pre-built image`,
-        );
-      }
-    }
-  }
-
-  // --- Native tool availability check ---
-  if (!config.docker) {
-    // Check if the primary build tool is available on the host
-    const knownTools = [
-      { re: /\bdotnet\b/, name: "dotnet" },
-      { re: /\bsbt\b/, name: "sbt" },
-      { re: /\bgo\s+(build|run|mod)\b/, name: "go" },
-      { re: /\bmvn\b/, name: "mvn" },
-      { re: /\bgradle\b/, name: "gradle" },
-      { re: /\bcargo\b/, name: "cargo" },
-      { re: /\bpip\s+install\b/, name: "pip" },
-      { re: /\bbundle\s+(install|exec)\b/, name: "bundle" },
-      { re: /\bmix\s/, name: "mix" },
-    ];
-    // Also check the lila.sh / build scripts that invoke tools internally
-    // by scanning their first few lines for tool references
-    const scriptMatch = config.command.match(/\.\/([\w.-]+\.sh)\b/);
-    if (scriptMatch) {
-      try {
-        const scriptContent = readFileSync(
-          `${repoPath}/${scriptMatch[1]}`,
-          "utf-8",
-        ).slice(0, 2000);
-        for (const { re, name } of knownTools) {
-          if (re.test(scriptContent) && !isToolAvailable(name)) {
-            console.log(
-              `[Startup] Script ${scriptMatch[1]} requires "${name}" which is not on host — switching to Docker`,
-            );
-            return fallbackToDockerfile(repoPath, config);
-          }
-        }
-      } catch { /* ignore */ }
-    }
-    const fullCommand = [
-      ...config.prerequisites,
-      config.command,
-    ].join(" ");
-
-    for (const { re, name } of knownTools) {
-      if (re.test(fullCommand) && !isToolAvailable(name)) {
-        console.log(
-          `[Startup] "${name}" not found on host — switching to Docker build`,
-        );
-        return fallbackToDockerfile(repoPath, config);
-      }
+  for (const { re, name } of knownTools) {
+    if (re.test(fullCommand) && !isToolAvailable(name)) {
+      console.log(
+        `[Startup] "${name}" not found on host — switching to Docker build`,
+      );
+      const imageName = "bright-app-local";
+      return {
+        command: `docker run --name ${imageName} -p ${config.port}:${config.port} -d ${imageName}`,
+        port: config.port,
+        prerequisites: [`docker build -t ${imageName} .`],
+        envVars: config.envVars,
+        docker: true,
+      };
     }
   }
 
   return config;
 }
 
-/** Extract the compose file path from a docker compose command */
-function extractComposeFilePath(command: string): string | null {
-  // -f path/to/docker-compose.yml
-  const fMatch = command.match(/-f\s+(\S+)/);
-  if (fMatch) {
-    const file = fMatch[1];
-    // Reject non-YAML files (e.g. README.md accidentally picked up)
-    if (!/\.ya?ml$/i.test(file)) return null;
-    return file;
-  }
-
-  // cd some/dir && docker compose up
-  const cdMatch = command.match(/cd\s+(\S+)\s*&&/);
-  if (cdMatch) {
-    // The compose file is in that directory
-    return `${cdMatch[1]}/docker-compose.yml`;
-  }
-
-  // No -f flag → docker compose uses docker-compose.yml or compose.yml in cwd
-  if (/docker\s+compose/.test(command)) {
-    return "docker-compose.yml"; // caller should check existence
-  }
-
-  return null;
-}
-
-/**
- * Fall back to a Docker build from the root Dockerfile.
- * Always returns a Docker config — if no Dockerfile exists yet, the caller
- * (retry loop) will generate one before running.
- */
-function fallbackToDockerfile(
-  repoPath: string,
-  config: StartupConfig,
-): StartupConfig {
-  // Try compose-based or Dockerfile-based source builds first
-  const fromSource =
-    buildFromSourceConfig(repoPath, config) ??
-    buildDockerfileOnlyConfig(repoPath, config);
-  if (fromSource) return fromSource;
-
-  // Return a Docker build+run config — Dockerfile will be generated if missing
-  const imageName = "bright-app-local";
-  return {
-    command: `docker build -t ${imageName} . && docker run -d -p ${config.port}:${config.port} --name ${imageName} ${imageName}`,
-    port: config.port,
-    prerequisites: [],
-    envVars: config.envVars,
-    docker: true,
-  };
-}
-
 /**
  * Strip -t / -it / --tty flags from docker exec / docker run commands.
  * We run non-interactively so TTY-enabled containers fail with
  * "cannot attach stdin to a TTY-enabled container".
+ *
+/**
+ * Inject `-e KEY=VALUE` flags into `docker compose run/exec` commands so
+ * env vars from config.envVars actually reach the container.  Host env vars
+ * don't automatically pass through to compose containers.
+ */
+function injectComposeEnvFlags(cmd: string, envVars: Record<string, string>): string {
+  if (!envVars || Object.keys(envVars).length === 0) return cmd;
+
+  // Build -e flags for all env vars (single-quote values to prevent shell expansion)
+  const eFlags = Object.entries(envVars)
+    .map(([k, v]) => `-e ${k}='${v.replace(/'/g, "'\\''")}'`)
+    .join(" ");
+
+  // Inject after `docker compose run [--rm]` or `docker compose exec [-T]`
+  return cmd.replace(
+    /docker\s+compose\s+(run\s+(?:--rm\s+)?|exec\s+(?:-T\s+)?)/g,
+    (match) => `${match}${eFlags} `,
+  );
+}
+
+/**
+ * Strip TTY flags from docker run/exec commands to prevent
+ * "cannot attach stdin" errors in non-interactive environments.
  *
  * Handles flags anywhere in the command, not just immediately after docker run:
  *   docker run --rm -it -p 3000:3000 → docker run --rm -i -p 3000:3000
@@ -1532,16 +1505,21 @@ function isToolAvailable(name: string): boolean {
   }
 }
 
+/** Callback for AI-powered log analysis during health check waits */
+type LogAnalyzer = (logs: string) => Promise<{ status: "progress" | "fatal" | "unknown"; summary: string }>;
+
+/** Callback for AI-powered HTTP response health analysis */
+type ResponseAnalyzer = (status: number, body: string) => Promise<{ healthy: boolean; reason: string }>;
+
 async function startApplication(
   repoPath: string,
   config: StartupConfig,
+  analyzeLogsFn?: LogAnalyzer,
+  analyzeResponseFn?: ResponseAnalyzer,
 ): Promise<ChildProcess> {
-  // Sanitize compose template placeholders (e.g. TEMPLATE_PORT from .NET templates)
+  // Validate build contexts — fail fast if a compose file references
+  // a non-existent directory (saves a full Docker build attempt)
   if (config.docker && /docker\s+compose/.test(config.command)) {
-    sanitizeComposeTemplateVars(repoPath, config);
-
-    // Validate build contexts — fail fast if a compose file references
-    // a non-existent directory (e.g. template scaffolds)
     const composeFileMatch = config.command.match(/-f\s+(\S+)/);
     const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
     const composeFile = composeFileMatch?.[1]
@@ -1572,13 +1550,7 @@ async function startApplication(
     // Strip TTY flags — we run non-interactively (no terminal attached)
     cmd = stripDockerTtyFlags(cmd);
     console.log(`[Startup] Running prerequisite: ${cmd}`);
-    execSync(cmd, {
-      cwd: repoPath,
-      stdio: "pipe",
-      timeout: 300_000,
-      maxBuffer: 50 * 1024 * 1024, // 50 MB — large installs produce lots of output
-      env: { ...process.env, ...config.envVars },
-    });
+    await runPrerequisite(cmd, repoPath, config.envVars);
   }
 
   // Build environment
@@ -1611,11 +1583,16 @@ async function startApplication(
 
   // Capture output for error reporting
   const outputLines: string[] = [];
+  const detectedContainerIds: string[] = [];
 
   if (child.stdout) {
     const rl = createInterface({ input: child.stdout });
     rl.on("line", (line) => {
       outputLines.push(line);
+      // `docker run -d` prints 64-char hex container IDs on stdout
+      if (/^[0-9a-f]{64}$/.test(line.trim())) {
+        detectedContainerIds.push(line.trim());
+      }
       console.log(`[App] ${line}`);
     });
   }
@@ -1631,11 +1608,19 @@ async function startApplication(
   const earlyExitPromise = new Promise<never>((_, reject) => {
     child.on("exit", (code) => {
       if (code !== null && code !== 0) {
-        reject(
-          new Error(
-            `Process exited with code ${code}. Output:\n${outputLines.slice(-30).join("\n")}`,
-          ),
-        );
+        const head = outputLines.slice(0, 30).join("\n");
+        const tail = outputLines.slice(-30).join("\n");
+        const containerLogs = config.docker ? captureDockerLogs(repoPath, 50) : "";
+        const parts = [`Process exited with code ${code}.`];
+        if (outputLines.length > 60) {
+          parts.push(`First 30 lines:\n${head}`, `Last 30 lines:\n${tail}`);
+        } else {
+          parts.push(`Output:\n${outputLines.join("\n")}`);
+        }
+        if (containerLogs && containerLogs !== "No container logs available.") {
+          parts.push(`Container logs:\n${containerLogs}`);
+        }
+        reject(new Error(parts.join("\n\n")));
       }
     });
     child.on("error", (err) => {
@@ -1653,12 +1638,21 @@ async function startApplication(
       child.on("exit", (code) => {
         clearTimeout(timer);
         if (code === 0) resolve();
-        else
-          reject(
-            new Error(
-              `docker compose exited with code ${code}. Output:\n${outputLines.slice(-30).join("\n")}`,
-            ),
-          );
+        else {
+          const head = outputLines.slice(0, 30).join("\n");
+          const tail = outputLines.slice(-30).join("\n");
+          const containerLogs = captureDockerLogs(repoPath, 50);
+          const parts = [`docker compose exited with code ${code}.`];
+          if (outputLines.length > 60) {
+            parts.push(`First 30 lines:\n${head}`, `Last 30 lines:\n${tail}`);
+          } else {
+            parts.push(`Output:\n${outputLines.join("\n")}`);
+          }
+          if (containerLogs && containerLogs !== "No container logs available.") {
+            parts.push(`Container logs:\n${containerLogs}`);
+          }
+          reject(new Error(parts.join("\n\n")));
+        }
       });
     });
 
@@ -1667,7 +1661,7 @@ async function startApplication(
     } catch (err) {
       // --wait fails if ANY container is unhealthy (e.g. watchtower, sidecars).
       // The app container itself may be fine — fall back to port check.
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = toErrorMessage(err);
       if (
         errMsg.includes("unhealthy") ||
         errMsg.includes("exited with code") ||
@@ -1678,7 +1672,7 @@ async function startApplication(
         );
         logDockerFailure(repoPath);
         try {
-          await waitForPort(config.port, 60_000);
+          await waitForPort(config.port, 60_000, config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
           console.log(
             `[Startup] Port ${config.port} is reachable despite --wait failure`,
           );
@@ -1698,50 +1692,321 @@ async function startApplication(
     // not that the app is serving HTTP.  Dev setups often run npm install or
     // wait-for-it inside the container, so allow generous time for the port.
     console.log("[Startup] Docker Compose services healthy, checking port...");
-    await waitForPort(config.port, 120_000);
+
+    // Run post-start commands (e.g. DB migrations) before the health check
+    await runPostStartCommands(config, repoPath);
+
+    // If the app container crashed (e.g. initializers hit unmigrated DB) but
+    // post-start commands ran successfully via `run --rm`, restart the app so
+    // it can boot against the now-migrated database.
+    if (config.postStartCommands?.length) {
+      try {
+        const appState = execSync(
+          "docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null || true",
+          { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
+        ).trim();
+        const appExited = appState.split("\n").some(
+          (l) => /app.*exited/i.test(l) || /web.*exited/i.test(l),
+        );
+        if (appExited) {
+          console.log("[Startup] App container crashed during post-start — restarting it with migrated DB...");
+          execSync("docker compose up -d --no-deps app 2>/dev/null || docker compose up -d --no-deps web 2>/dev/null || true", {
+            cwd: repoPath,
+            stdio: "pipe",
+            timeout: 30_000,
+          });
+          await sleep(3_000); // Give it a moment to start
+        }
+      } catch {
+        /* best effort */
+      }
+    }
+
+    // Poll compose containers for crashes alongside the port wait so we
+    // don't burn the full 120s when the app container exits immediately.
+    const composeCrashPromise = pollComposeContainersAlive(repoPath, 120_000);
+    try {
+      await Promise.race([
+        waitForPort(config.port, 120_000, config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
+        composeCrashPromise,
+      ]);
+    } catch (err) {
+      logDockerFailure(repoPath);
+      // Enrich with diagnostics from the crashed container
+      const appContainer = findComposeAppContainer(repoPath);
+      if (appContainer) {
+        const diagnostics = gatherContainerDiagnostics(appContainer);
+        if (diagnostics) {
+          throw new Error(`${toErrorMessage(err)}\n\nContainer diagnostics:\n${diagnostics}`);
+        }
+      }
+      throw err;
+    }
   } else {
     // Non-docker or docker without --wait
     const portTimeoutMs = config.docker ? 180_000 : 90_000;
 
+    // Run post-start commands (e.g. DB migrations) if any
+    if (config.postStartCommands?.length) {
+      // Give the app a moment to boot before running post-start commands
+      await sleep(5_000);
+      await runPostStartCommands(config, repoPath);
+    }
+
     // For `docker run -d`, the shell exits immediately with code 0 after
     // detaching the container.  The container may crash independently.
     // Poll for container health alongside the port check.
+    // Use --name if available, otherwise pick up container IDs from stdout.
     const containerName = command.match(/--name\s+(\S+)/)?.[1];
+
+    // Resolve the container identifier: explicit name > last detected ID from stdout
+    const resolveContainerId = (): string | undefined =>
+      containerName ?? detectedContainerIds[detectedContainerIds.length - 1];
+
+    // Stream logs from the app container so we see progress during port wait
+    let logTailer: ChildProcess | undefined;
+    const startLogTail = (): void => {
+      const cid = resolveContainerId();
+      if (!cid || logTailer) return;
+      try {
+        logTailer = spawn("docker", ["logs", "-f", "--tail", "0", cid], {
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        if (logTailer.stdout) {
+          const rl = createInterface({ input: logTailer.stdout });
+          rl.on("line", (line) => console.log(`[Container] ${line}`));
+        }
+        if (logTailer.stderr) {
+          const rl = createInterface({ input: logTailer.stderr });
+          rl.on("line", (line) => console.log(`[Container] ${line}`));
+        }
+        logTailer.on("error", () => {}); // ignore
+      } catch { /* ignore */ }
+    };
+
+    // Give the shell a moment to print container IDs, then start tailing
+    setTimeout(startLogTail, 2_000);
+
     const containerCrashPromise = containerName
       ? pollContainerAlive(containerName, portTimeoutMs)
-      : new Promise<never>(() => {}); // never resolves
+      : (async () => {
+          // Wait for the shell to print container IDs from docker run -d
+          await sleep(3_000);
+          // Also retry log tailing in case IDs arrived after the first attempt
+          startLogTail();
+          const cid = resolveContainerId();
+          if (cid) return pollContainerAlive(cid, portTimeoutMs);
+          return new Promise<never>(() => {});
+        })();
 
     try {
       await Promise.race([
-        waitForPort(config.port, portTimeoutMs),
+        waitForPort(config.port, portTimeoutMs, config.healthCheckPath, config.docker ? repoPath : undefined, analyzeLogsFn, analyzeResponseFn),
         earlyExitPromise,
         containerCrashPromise,
       ]);
     } catch (err) {
       if (config.docker) logDockerFailure(repoPath);
-      // Append container logs to the error for the LLM repair
-      if (containerName) {
-        try {
-          const logs = execSync(
-            `docker logs ${containerName} 2>&1 | tail -30`,
-            { encoding: "utf-8", timeout: 10_000 },
-          ).trim();
-          if (logs) {
-            const origMsg = err instanceof Error ? err.message : String(err);
-            throw new Error(`${origMsg}\n\nContainer logs:\n${logs}`);
-          }
-        } catch (logErr) {
-          if (logErr instanceof Error && logErr.message.includes("Container logs:")) throw logErr;
+      // Enrich error with container diagnostics so the repair LLM
+      // has full context (port mappings, processes, app logs inside container)
+      const cid = resolveContainerId();
+      if (cid) {
+        const diagnostics = gatherContainerDiagnostics(cid);
+        if (diagnostics) {
+          const origMsg = toErrorMessage(err);
+          if (child.exitCode === null) child.kill("SIGTERM");
+          throw new Error(`${origMsg}\n\nContainer diagnostics:\n${diagnostics}`);
         }
       }
       if (child.exitCode === null) {
         child.kill("SIGTERM");
       }
       throw err;
+    } finally {
+      if (logTailer && logTailer.exitCode === null) {
+        logTailer.kill("SIGTERM");
+      }
     }
   }
 
   return child;
+}
+
+/**
+ * Run post-start commands between app startup and the health check.
+ * These are commands like DB migrations that need the container running
+ * but must complete before the app can serve healthy responses.
+ */
+async function runPostStartCommands(config: StartupConfig, repoPath: string): Promise<void> {
+  if (!config.postStartCommands?.length) return;
+
+  for (let cmd of config.postStartCommands) {
+    // Inject env vars into docker compose run/exec commands so they reach
+    // the container (host env vars don't automatically pass through).
+    cmd = injectComposeEnvFlags(cmd, config.envVars);
+
+    console.log(`[Startup] Running post-start command: ${cmd}`);
+    try {
+      const output = execSync(cmd, {
+        cwd: repoPath,
+        encoding: "utf-8",
+        timeout: 120_000,
+        maxBuffer: 50 * 1024 * 1024,
+        env: { ...process.env, ...config.envVars },
+      });
+      const lines = output.trim().split("\n");
+      const tail = lines.slice(-5).join("\n");
+      if (tail) console.log(`[Startup] Post-start output (last 5 lines):\n${tail}`);
+    } catch (err) {
+      const errMsg = toErrorMessage(err);
+      console.warn(`[Startup] Post-start command failed: ${errMsg}`);
+
+      // If the container died, try `docker compose run --rm` as fallback.
+      // This handles the common case: app crashes on boot because DB isn't
+      // migrated yet, but migrations themselves can run in a fresh container.
+      if (/not running|is not running|no such container/i.test(errMsg)) {
+        const fallbackCmd = cmd
+          .replace(/docker\s+compose\s+exec\s+(-T\s+)?/g, "docker compose run --rm ")
+          .replace(/docker\s+exec\s+(-it?\s+)?(\S+)/g, "docker compose run --rm app");
+        if (fallbackCmd !== cmd) {
+          console.log(`[Startup] Container dead — retrying with 'run --rm': ${fallbackCmd}`);
+          try {
+            const output = execSync(fallbackCmd, {
+              cwd: repoPath,
+              encoding: "utf-8",
+              timeout: 180_000,
+              maxBuffer: 50 * 1024 * 1024,
+              env: { ...process.env, ...config.envVars },
+            });
+            const lines = output.trim().split("\n");
+            const tail = lines.slice(-5).join("\n");
+            if (tail) console.log(`[Startup] Post-start output (last 5 lines):\n${tail}`);
+          } catch (retryErr) {
+            console.warn(`[Startup] Fallback post-start also failed: ${toErrorMessage(retryErr)}`);
+          }
+        }
+      }
+      // Don't throw — let the health check determine if the app is working
+    }
+  }
+}
+
+/**
+ * Run a prerequisite command with real-time output streaming.
+ * Logs a progress summary every 30s so long-running commands (e.g. db:prepare)
+ * aren't a black box. Throws on non-zero exit or timeout.
+ */
+function runPrerequisite(
+  cmd: string,
+  cwd: string,
+  envVars: Record<string, string>,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("sh", ["-c", cmd], {
+      cwd,
+      env: { ...process.env, ...envVars },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const outputLines: string[] = [];
+    let lastProgressLog = Date.now();
+    const progressInterval = 30_000;
+    let lastLine = "";
+
+    const onLine = (line: string): void => {
+      outputLines.push(line);
+      lastLine = line;
+      // Periodic progress report
+      if (Date.now() - lastProgressLog > progressInterval) {
+        lastProgressLog = Date.now();
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(
+          `[Startup] Prerequisite still running (${elapsed}s): ${lastLine.slice(0, 200)}`,
+        );
+      }
+    };
+
+    if (child.stdout) {
+      const rl = createInterface({ input: child.stdout });
+      rl.on("line", onLine);
+    }
+    if (child.stderr) {
+      const rl = createInterface({ input: child.stderr });
+      rl.on("line", onLine);
+    }
+
+    const startTime = Date.now();
+    const timeoutMs = 600_000;
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 5_000);
+      const tail = outputLines.slice(-20).join("\n");
+      reject(
+        new Error(
+          `Prerequisite timed out after ${timeoutMs / 1000}s: ${cmd}\n\nLast output:\n${tail}`,
+        ),
+      );
+    }, timeoutMs);
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(new Error(`Prerequisite failed to start: ${err.message}`));
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(`[Startup] Prerequisite completed in ${elapsed}s`);
+        resolve();
+      } else {
+        const tail = outputLines.slice(-30).join("\n");
+        reject(
+          new Error(
+            `Command failed: ${cmd}\nExit code: ${code}\n\n${tail}`,
+          ),
+        );
+      }
+    });
+  });
+}
+
+/**
+ * Gather diagnostic information from a Docker container so the repair LLM
+ * gets rich context about why a container isn't serving on the expected port.
+ * Captures port mappings, processes, stdout/stderr, and application logs.
+ */
+function gatherContainerDiagnostics(containerId: string): string {
+  const sections: string[] = [];
+  const run = (cmd: string, label: string, timeout = 5_000): void => {
+    try {
+      const out = execSync(cmd, { encoding: "utf-8", timeout }).trim();
+      if (out) sections.push(`${label}:\n${out}`);
+    } catch { /* ignore */ }
+  };
+
+  run(`docker port ${containerId}`, "Port mappings");
+  run(
+    `docker inspect --format='{{json .NetworkSettings.Ports}}' ${containerId}`,
+    "Network port config",
+  );
+  run(
+    `docker exec ${containerId} ps aux 2>&1 | head -30`,
+    "Processes inside container",
+    10_000,
+  );
+  run(
+    `docker logs ${containerId} 2>&1 | tail -50`,
+    "Container stdout/stderr (last 50 lines)",
+    10_000,
+  );
+  run(
+    `docker exec ${containerId} bash -c 'for f in /app/log/*.log /src/log/*.log /var/log/app/*.log /tmp/*.log; do [ -f "$f" ] && echo "=== $f ===" && tail -20 "$f"; done' 2>&1 | head -80`,
+    "Application logs inside container",
+    10_000,
+  );
+
+  return sections.join("\n\n") || "";
 }
 
 function logDockerFailure(repoPath: string): void {
@@ -1770,26 +2035,276 @@ function logDockerFailure(repoPath: string): void {
   }
 }
 
-async function waitForPort(port: number, timeoutMs: number): Promise<void> {
+export async function waitForPort(
+  port: number,
+  timeoutMs: number,
+  healthCheckPath = "/",
+  repoPath?: string,
+  analyzeLogsFn?: (logs: string) => Promise<{ status: "progress" | "fatal" | "unknown"; summary: string }>,
+  analyzeResponseFn?: (status: number, body: string) => Promise<{ healthy: boolean; reason: string }>,
+): Promise<void> {
   const start = Date.now();
   const interval = 2_000;
+  let lastStatus: number | undefined;
+  let lastBody = "";
+  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
+  let lastLogSnapshot = "";
+  let lastLogCheckTime = 0;
+  const logCheckInterval = 20_000; // check container logs every 20s
+  let analysisInFlight = false;
+  let fatalDiagnosis = "";
+  let consecutive500s = 0;
+  const max500sBeforeFail = 5; // fail fast after 5 consecutive 500s (~10s)
+  let responseAnalysisDone = false; // only analyze once per health check cycle
 
   while (Date.now() - start < timeoutMs) {
+    // If the AI flagged a fatal error, stop waiting immediately
+    if (fatalDiagnosis) {
+      let errMsg = `Application failed on port ${port}: ${fatalDiagnosis}`;
+      if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
+      if (lastBody && lastBody !== fatalDiagnosis) errMsg += `\n\nHTTP response body:\n${lastBody}`;
+      if (repoPath) {
+        const logs = getContainerLogTail(repoPath, 40);
+        if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
+      }
+      throw new Error(errMsg);
+    }
+
     try {
-      const response = await fetch(`http://localhost:${port}/`, {
-        method: "HEAD",
+      const response = await fetch(`http://localhost:${port}${probePath}`, {
+        method: "GET",
         signal: AbortSignal.timeout(3_000),
       });
-      if (response) return;
+      lastStatus = response.status;
+      // Accept any non-server-error response as potentially healthy.
+      // But ask the AI to verify the response looks like a real working app.
+      if (response.status < 500) {
+        consecutive500s = 0;
+
+        // Read the body for AI analysis
+        let responseBody = "";
+        try {
+          responseBody = await response.text();
+        } catch { /* ignore */ }
+
+        // Ask AI if this response looks healthy (only once to avoid spamming)
+        if (analyzeResponseFn && !responseAnalysisDone && responseBody.length > 0) {
+          responseAnalysisDone = true;
+          const bodyPreview = responseBody.length > 3000 ? responseBody.slice(0, 3000) + "..." : responseBody;
+          try {
+            const result = await analyzeResponseFn(response.status, bodyPreview);
+            if (!result.healthy) {
+              console.log(`[Startup] AI response analysis: UNHEALTHY — ${result.reason}`);
+              let errMsg = `Application on port ${port} returned HTTP ${response.status} but response is not healthy: ${result.reason}`;
+              errMsg += `\n\nHTTP response body:\n${bodyPreview}`;
+              if (repoPath) {
+                const logs = getContainerLogTail(repoPath, 40);
+                if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
+              }
+              throw new Error(errMsg);
+            }
+            console.log(`[Startup] AI response analysis: healthy — ${result.reason}`);
+          } catch (err) {
+            // If the error is from our own throw above, re-throw it
+            if (err instanceof Error && err.message.startsWith("Application on port")) throw err;
+            // Otherwise AI analysis failed — fall through to accept
+            console.log(`[Startup] AI response analysis failed, accepting response as healthy`);
+          }
+        }
+
+        return;
+      }
+
+      // Always capture the 500 body — it contains the actual error
+      try {
+        const text = await response.text();
+        lastBody = extractErrorFromHtml(text);
+      } catch { /* ignore body read failure */ }
+
+      consecutive500s++;
+
+      // Fail fast on persistent 500s — the app is running but broken
+      if (consecutive500s >= max500sBeforeFail) {
+        let errMsg = `Application returning HTTP ${response.status} persistently on port ${port}`;
+        if (lastBody) errMsg += `\n\nHTTP ${response.status} response body:\n${lastBody}`;
+        if (repoPath) {
+          const logs = getContainerLogTail(repoPath, 40);
+          if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
+        }
+        throw new Error(errMsg);
+      }
+
+      console.log(
+        `[Startup] Port ${port} responding with HTTP ${response.status} (${consecutive500s}/${max500sBeforeFail}) — will fail fast if persistent...`,
+      );
     } catch {
       // Connection refused — server not ready yet
     }
+
+    // Periodically ask the LLM to analyze container logs
+    if (repoPath && !analysisInFlight && Date.now() - lastLogCheckTime > logCheckInterval) {
+      const snapshot = getContainerLogTail(repoPath, 40);
+      if (snapshot && snapshot !== lastLogSnapshot) {
+        lastLogSnapshot = snapshot;
+        lastLogCheckTime = Date.now();
+
+        if (analyzeLogsFn) {
+          analysisInFlight = true;
+          // Fire-and-forget the LLM call — don't block the poll loop.
+          // We capture the result and act on it in the next iteration.
+          analyzeLogsFn(snapshot)
+            .then((result) => {
+              analysisInFlight = false;
+              if (result.status === "progress") {
+                console.log(`[Startup] AI log analysis: still progressing — ${result.summary}`);
+              } else if (result.status === "fatal") {
+                console.log(`[Startup] AI log analysis: fatal — ${result.summary}`);
+                // Signal the poll loop to fail early on the next iteration
+                fatalDiagnosis = result.summary;
+              } else {
+                console.log(`[Startup] AI log analysis: ${result.summary}`);
+              }
+            })
+            .catch(() => { analysisInFlight = false; });
+        } else {
+          // No LLM available — just note that logs are changing
+          lastLogCheckTime = Date.now();
+          console.log(`[Startup] Container logs are updating (no AI analysis available)`);
+        }
+      }
+    }
+
     await sleep(interval);
   }
 
-  throw new Error(
-    `Application did not start on port ${port} within ${timeoutMs / 1000}s`,
-  );
+  let errMsg = `Application did not start on port ${port} within ${timeoutMs / 1000}s`;
+  if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
+  if (lastBody) errMsg += `\n\nHTTP 500 response body:\n${lastBody}`;
+  // Attach final container logs so the repair LLM has full context
+  if (repoPath) {
+    const finalLogs = getContainerLogTail(repoPath, 40);
+    if (finalLogs) errMsg += `\n\nContainer logs (last 40 lines):\n${finalLogs}`;
+  }
+  throw new Error(errMsg);
+}
+
+/**
+ * Grab the last N lines from the compose app container's logs.
+ */
+function getContainerLogTail(repoPath: string, lines = 30): string {
+  try {
+    return execSync(
+      `docker compose logs --tail=${lines} 2>/dev/null || true`,
+      { cwd: repoPath, encoding: "utf-8", timeout: 5_000 },
+    ).trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Extract meaningful error text from an HTML error page.
+ * Strips HTML tags and picks out the error/exception section.
+ */
+function extractErrorFromHtml(html: string): string {
+  // Try to find common framework error patterns first
+  const patterns = [
+    // Rails: "Migrations are pending", exception messages
+    /(?:exception|error)[^<]*<[^>]*>([^<]{10,1000})/i,
+    /<h1[^>]*>([^<]+)<\/h1>/i,
+    /<title>([^<]+)<\/title>/i,
+  ];
+  const matches: string[] = [];
+  for (const p of patterns) {
+    const m = html.match(p);
+    if (m?.[1]) matches.push(m[1].trim());
+  }
+
+  // Strip all HTML tags and collapse whitespace for a plain-text summary
+  const plain = html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (matches.length > 0) {
+    return matches.join(" | ") + "\n" + plain.slice(0, 500);
+  }
+  return plain.slice(0, 800);
+}
+
+/**
+ * Poll all Docker Compose containers and reject if the main app container
+ * (the one most likely to serve HTTP) exits.  This prevents waiting the full
+ * port-check timeout when a container crashes immediately on startup.
+ */
+async function pollComposeContainersAlive(
+  repoPath: string,
+  timeoutMs: number,
+): Promise<never> {
+  const start = Date.now();
+  await sleep(3_000); // give containers a moment to start
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const ps = execSync(
+        "docker compose ps -a --format '{{.Name}} {{.State}}' 2>/dev/null || true",
+        { cwd: repoPath, encoding: "utf-8", timeout: 5_000 },
+      ).trim();
+      if (ps) {
+        for (const line of ps.split("\n")) {
+          const [name, state] = line.trim().split(/\s+/);
+          if (!name || !state) continue;
+          // Skip infrastructure services — we only care about the app container
+          if (/^(postgres|redis|mysql|mongo|memcached|rabbitmq|elasticsearch|kafka|zookeeper)/i.test(name)) continue;
+          if (state === "exited" || state === "dead") {
+            // Grab the exit code for richer error context
+            let exitInfo = "";
+            try {
+              exitInfo = execSync(
+                `docker inspect --format='{{.State.ExitCode}}' ${name} 2>/dev/null`,
+                { encoding: "utf-8", timeout: 5_000 },
+              ).trim();
+            } catch { /* ignore */ }
+            throw new Error(
+              `Compose container "${name}" crashed (state: ${state}${exitInfo ? `, exit code: ${exitInfo}` : ""})`,
+            );
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("crashed")) throw err;
+      // docker compose ps failed — ignore and retry
+    }
+    await sleep(3_000);
+  }
+
+  // Should never reach here — waitForPort should resolve or reject first
+  throw new Error("Compose container health poll timed out");
+}
+
+/**
+ * Find the main app container name from a Docker Compose project.
+ * Returns the first non-infrastructure service container name.
+ */
+function findComposeAppContainer(repoPath: string): string | undefined {
+  try {
+    const ps = execSync(
+      "docker compose ps -a --format '{{.Name}}' 2>/dev/null || true",
+      { cwd: repoPath, encoding: "utf-8", timeout: 5_000 },
+    ).trim();
+    if (!ps) return undefined;
+    const infra = /^(postgres|redis|mysql|mongo|memcached|rabbitmq|elasticsearch|kafka|zookeeper)/i;
+    for (const name of ps.split("\n")) {
+      if (name.trim() && !infra.test(name.trim())) return name.trim();
+    }
+    // All containers are infra — return the first one
+    return ps.split("\n")[0]?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -1832,63 +2347,44 @@ async function pollContainerAlive(
  * Quick, non-throwing health check: returns true if the app responds on
  * the given port within a short timeout.
  */
-export async function checkAppHealth(port: number): Promise<boolean> {
+export async function checkAppHealth(port: number, healthCheckPath = "/"): Promise<boolean> {
+  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
   try {
-    await fetch(`http://localhost:${port}/`, {
-      method: "HEAD",
+    const res = await fetch(`http://localhost:${port}${probePath}`, {
+      method: "GET",
       signal: AbortSignal.timeout(5_000),
     });
-    return true;
+    // Server errors mean the process is listening but the app is broken
+    return res.status < 500;
   } catch {
     return false;
   }
 }
 
-function extractJson(text: string): string {
-  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
-  if (codeBlockMatch) return codeBlockMatch[1].trim();
-
-  const jsonMatch = text.match(/(\{[\s\S]*\})/);
-  if (jsonMatch) return jsonMatch[1];
-
-  return text;
-}
-
-function cleanupDocker(repoPath: string): void {
+export function cleanupDocker(repoPath: string): void {
   try {
-    // Stop all running containers to free ports
-    const running = execSync("docker ps -q", {
-      encoding: "utf-8",
-      timeout: 10_000,
-    }).trim();
-
-    if (running) {
-      console.log("[Startup] Stopping all running Docker containers...");
-      execSync("docker stop $(docker ps -q)", {
-        stdio: "pipe",
-        timeout: 60_000,
-      });
-    }
-
-    // Remove all stopped containers so `docker run --name X` won't conflict
-    const stopped = execSync("docker ps -aq", {
-      encoding: "utf-8",
-      timeout: 10_000,
-    }).trim();
-
-    if (stopped) {
-      console.log("[Startup] Removing stopped Docker containers...");
-      execSync("docker rm -f $(docker ps -aq)", {
-        stdio: "pipe",
-        timeout: 30_000,
-      });
-    }
-
-    // Also tear down any compose projects in the repo
+    // Tear down compose projects in the repo first (scoped to this project)
     execSync(
-      "docker compose down 2>/dev/null; docker compose -f compose.local.yml down 2>/dev/null || true",
+      "docker compose down --remove-orphans 2>/dev/null; docker compose -f compose.local.yml down --remove-orphans 2>/dev/null || true",
       { cwd: repoPath, stdio: "pipe", timeout: 30_000 },
     );
+
+    // Find and stop containers started by compose in this directory
+    // (docker compose labels them with the project directory name)
+    const projectName = repoPath.split("/").pop() ?? "";
+    if (projectName) {
+      const projectContainers = execSync(
+        `docker ps -aq --filter "label=com.docker.compose.project=${projectName}" 2>/dev/null || true`,
+        { encoding: "utf-8", timeout: 10_000 },
+      ).trim();
+      if (projectContainers) {
+        console.log("[Startup] Removing project Docker containers...");
+        execSync(`docker rm -f ${projectContainers}`, {
+          stdio: "pipe",
+          timeout: 30_000,
+        });
+      }
+    }
   } catch {
     // Docker may not be installed or no containers running — that's fine
   }
@@ -1896,10 +2392,12 @@ function cleanupDocker(repoPath: string): void {
 
 /**
  * Capture Docker container logs from the most recent compose run.
- * Returns the last N lines from all containers to help diagnose startup failures.
+ * Writes FULL logs to .bright-container-logs.txt so the repair LLM can
+ * read_file it. Returns a head+tail excerpt for inline error messages.
  */
 export function captureDockerLogs(repoPath: string, tailLines = 80): string {
   const logs: string[] = [];
+  const containerNames: string[] = [];
   try {
     // Get running and exited containers from compose
     const containers = execFileSync(
@@ -1910,50 +2408,56 @@ export function captureDockerLogs(repoPath: string, tailLines = 80): string {
       .trim()
       .split("\n")
       .filter(Boolean);
-
-    for (const name of containers) {
-      try {
-        const containerLog = execFileSync(
-          "docker",
-          ["logs", "--tail", String(tailLines), name],
-          { encoding: "utf-8", timeout: 10_000 },
-        );
-        if (containerLog.trim()) {
-          logs.push(`=== ${name} ===\n${containerLog.trim()}`);
-        }
-      } catch {
-        // Container may have been removed already
-      }
-    }
+    containerNames.push(...containers);
   } catch {
-    // docker compose ps failed — try docker logs for node-related containers
+    // docker compose ps failed — try recently created containers
     try {
       const allContainers = execFileSync(
         "docker",
-        ["ps", "-a", "--format", "{{.Names}}", "--filter", "name=nodejs"],
+        ["ps", "-a", "--format", "{{.Names}}", "--last", "5"],
         { encoding: "utf-8", timeout: 10_000 },
       )
         .trim()
         .split("\n")
         .filter(Boolean);
-
-      for (const name of allContainers) {
-        try {
-          const containerLog = execFileSync(
-            "docker",
-            ["logs", "--tail", String(tailLines), name],
-            { encoding: "utf-8", timeout: 10_000 },
-          );
-          if (containerLog.trim()) {
-            logs.push(`=== ${name} ===\n${containerLog.trim()}`);
-          }
-        } catch {
-          /* ignore */
-        }
-      }
+      containerNames.push(...allContainers);
     } catch {
       /* ignore */
     }
   }
-  return logs.join("\n\n") || "No container logs available.";
+
+  for (const name of containerNames) {
+    try {
+      // Capture FULL logs (no --tail) for the file dump
+      const containerLog = execFileSync(
+        "docker",
+        ["logs", name],
+        { encoding: "utf-8", timeout: 15_000, maxBuffer: 10 * 1024 * 1024 },
+      );
+      if (containerLog.trim()) {
+        logs.push(`=== ${name} ===\n${containerLog.trim()}`);
+      }
+    } catch {
+      // Container may have been removed already
+    }
+  }
+
+  if (logs.length === 0) return "No container logs available.";
+
+  const fullLogs = logs.join("\n\n");
+
+  // Write full logs to a file the repair LLM can read
+  try {
+    writeFileSync(`${repoPath}/.bright-container-logs.txt`, fullLogs, "utf-8");
+  } catch { /* best effort */ }
+
+  // Return head+tail excerpt for inline error context
+  const lines = fullLogs.split("\n");
+  if (lines.length <= tailLines) return fullLogs;
+
+  const headCount = Math.floor(tailLines * 0.4);
+  const tailCount = tailLines - headCount;
+  const head = lines.slice(0, headCount).join("\n");
+  const tail = lines.slice(-tailCount).join("\n");
+  return `${head}\n\n... (${lines.length - tailLines} lines omitted — full logs in .bright-container-logs.txt) ...\n\n${tail}`;
 }

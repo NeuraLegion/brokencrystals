@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { EngineConfig } from "./types.js";
+import { toErrorMessage } from "./utils.js";
 
 export interface McpToolSchema {
   name: string;
@@ -194,7 +195,7 @@ export async function createBrightMcpClient(
   let cachedSchemas: McpToolSchema[] | null = null;
 
   function isSessionError(err: unknown): boolean {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = toErrorMessage(err);
     return (
       msg.includes("Session not found") ||
       msg.includes("session expired") ||
@@ -216,7 +217,7 @@ export async function createBrightMcpClient(
         await client.close();
       } catch (err) {
         console.warn(
-          `[MCP] Error closing old client: ${err instanceof Error ? err.message : String(err)}`,
+          `[MCP] Error closing old client: ${toErrorMessage(err)}`,
         );
       }
       cachedSchemas = null;
@@ -231,7 +232,7 @@ export async function createBrightMcpClient(
         } catch (err) {
           lastErr = err;
           console.warn(
-            `[MCP] Reconnect attempt ${i + 1}/3 failed: ${err instanceof Error ? err.message : String(err)}`,
+            `[MCP] Reconnect attempt ${i + 1}/3 failed: ${toErrorMessage(err)}`,
           );
           if (i < 2) await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
         }
@@ -309,7 +310,7 @@ export async function createBrightMcpClient(
         await reconnect();
         return callMcpToolRawImpl(name, args, true);
       }
-      return `Error from Bright API: ${err instanceof Error ? err.message : String(err)}`;
+      return `Error from Bright API: ${toErrorMessage(err)}`;
     }
     const contentArr = Array.isArray(result.content) ? result.content : [];
     const text = contentArr

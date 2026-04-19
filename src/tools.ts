@@ -1,9 +1,10 @@
 import { readFileSync, existsSync, statSync, writeFileSync } from "fs";
-import { resolve, relative } from "path";
+import { resolve } from "path";
 import { glob } from "glob";
 import { execFileSync, execSync } from "child_process";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import type { ToolHandler } from "./inference.js";
+import { runShellCommand, toErrorMessage } from "./utils.js";
 import type { McpToolSchema, BrightMcpClient } from "./mcp-client.js";
 
 export const codebaseTools: ChatCompletionTool[] = [
@@ -52,18 +53,23 @@ export const codebaseTools: ChatCompletionTool[] = [
     function: {
       name: "search_files",
       description:
-        "Search file contents for a text pattern using grep. Returns matching lines with file paths and line numbers.",
+        "Search file contents for a pattern using grep. Returns matching lines with file paths and line numbers. Supports both fixed text and regex patterns.",
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "Search string (fixed text, not regex)",
+            description: "Search pattern (fixed text by default, or regex if regex=true)",
           },
           glob: {
             type: "string",
             description:
               'Optional glob to restrict search to certain files (e.g. "*.ts")',
+          },
+          regex: {
+            type: "boolean",
+            description:
+              "If true, treat query as a regular expression instead of fixed text. Useful for searching patterns like 'authenticate|authorize|login'.",
           },
         },
         required: ["query"],
@@ -121,6 +127,7 @@ export function createToolHandler(repoPath: string): ToolHandler {
       case "search_files": {
         const query = String(args.query ?? "");
         const fileGlob = args.glob ? String(args.glob) : undefined;
+        const useRegex = args.regex === true;
         try {
           const grepArgs = [
             "-rn",
@@ -134,7 +141,7 @@ export function createToolHandler(repoPath: string): ToolHandler {
             "--exclude-dir=vendor",
             "--exclude-dir=.data",
             "--exclude-dir=data",
-            "-F",
+            ...(useRegex ? ["-E"] : ["-F"]),
             "--",
             query,
             ".",
@@ -165,8 +172,9 @@ export function createToolHandler(repoPath: string): ToolHandler {
 }
 
 // ---------------------------------------------------------------------------
-// Infrastructure repair tools — write_file + run_command for fixing scripts,
-// compose files, configs, etc. between retry attempts.
+// Infrastructure repair tools — write_file + run_command_on_host +
+// run_command_in_docker for fixing scripts, compose files, configs, etc.
+// between retry attempts.
 // ---------------------------------------------------------------------------
 
 const writeFileTool: ChatCompletionTool = {
@@ -194,19 +202,19 @@ const writeFileTool: ChatCompletionTool = {
   },
 };
 
-const runCommandTool: ChatCompletionTool = {
+const runCommandOnHostTool: ChatCompletionTool = {
   type: "function",
   function: {
-    name: "run_command",
+    name: "run_command_on_host",
     description:
-      "Run a shell command in the repository directory and return its output. Use for diagnostics (docker logs, docker ps, ls, cat) or small fixes (sed, chmod). Commands are killed after 30 seconds.",
+      "Run a shell command on the HOST machine (not inside a Docker container). Use for host-level diagnostics (docker ps, docker logs, docker inspect, ls, cat), builds (docker build, docker compose build), or small file fixes (sed, chmod). Commands are killed after 120 seconds.",
     parameters: {
       type: "object",
       properties: {
         command: {
           type: "string",
           description:
-            'Shell command to run (e.g. "docker logs discourse_dev --tail 50", "sed -i \'s/-it/-i/g\' bin/docker/exec")',
+            'Host shell command (e.g. "docker logs myapp --tail 50", "docker build -t myapp .", "sed -i \'s/old/new/g\' config.yml")',
         },
       },
       required: ["command"],
@@ -215,9 +223,35 @@ const runCommandTool: ChatCompletionTool = {
   },
 };
 
+const runCommandInDockerTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "run_command_in_docker",
+    description:
+      "Run a command INSIDE a Docker container. Use this to inspect the container environment, check what's installed, read logs, test commands, or create seed data. Automatically wraps the command with 'docker exec' (running container) or 'docker run --rm' (image). Commands are killed after 120 seconds.",
+    parameters: {
+      type: "object",
+      properties: {
+        container: {
+          type: "string",
+          description:
+            'Container name/ID (for running containers) or image name (to start a temporary container). e.g. "bright-app-local", "myapp-web-1", "abc123def"',
+        },
+        command: {
+          type: "string",
+          description:
+            'Command to run inside the container (e.g. "which pnpm", "rails runner \'User.create!(...)\'", "cat /app/config/database.yml", "ps aux")',
+        },
+      },
+      required: ["container", "command"],
+      additionalProperties: false,
+    },
+  },
+};
+
 // infraTools is defined after verifyDockerImageTool below
 
-export function createInfraToolHandler(repoPath: string): ToolHandler {
+export function createInfraToolHandler(repoPath: string, onHint?: (hint: string) => void, onRemoveHint?: (hint: string) => void): ToolHandler {
   const baseHandler = createDockerfileToolHandler(repoPath);
   return async (name: string, args: Record<string, unknown>) => {
     switch (name) {
@@ -231,36 +265,64 @@ export function createInfraToolHandler(repoPath: string): ToolHandler {
           writeFileSync(filePath, content);
           return `Written ${content.length} bytes to ${args.path}`;
         } catch (err) {
-          return `Error writing file: ${err instanceof Error ? err.message : String(err)}`;
+          return `Error writing file: ${toErrorMessage(err)}`;
         }
       }
 
-      case "run_command": {
+      case "run_command":
+      case "run_command_on_host": {
         const command = String(args.command ?? "");
-        // Block dangerous commands
-        if (/\brm\s+-rf\s+[/~]|:\(\)\{|fork\s*bomb|mkfs|dd\s+if=/i.test(command)) {
-          return "Error: dangerous command blocked";
-        }
-        try {
-          const output = execSync(command, {
-            cwd: repoPath,
-            encoding: "utf-8",
-            timeout: 30_000,
-            maxBuffer: 5 * 1024 * 1024,
-            stdio: ["pipe", "pipe", "pipe"],
-          });
-          const result = output.trim();
-          return result.length > 10_000
-            ? result.slice(-10_000) + "\n... [truncated]"
-            : result || "(no output)";
-        } catch (err) {
-          if (err && typeof err === "object" && "stderr" in err) {
-            const stderr = String((err as { stderr: unknown }).stderr).trim();
-            const stdout = String((err as { stdout: unknown }).stdout).trim();
-            return `Command failed:\n${stdout}\n${stderr}`.slice(-5_000);
+        console.log(`[Tool] run_command_on_host: ${command.slice(0, 200)}`);
+        return runShellCommand(repoPath, command, 120_000);
+      }
+
+      case "run_command_in_docker": {
+        const container = String(args.container ?? "");
+        const cmd = String(args.command ?? "");
+        console.log(`[Tool] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+        // Determine if 'container' is a running container or an image
+        const isRunning = (() => {
+          try {
+            const out = execSync(
+              `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+              { encoding: "utf-8", timeout: 5_000 },
+            ).trim();
+            return out === "true";
+          } catch {
+            return false;
           }
-          return `Command failed: ${err instanceof Error ? err.message : String(err)}`;
-        }
+        })();
+        const dockerCmd = isRunning
+          ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
+          : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
+        return runShellCommand(repoPath, dockerCmd, 120_000);
+      }
+
+      case "wait": {
+        const seconds = Math.min(60, Math.max(1, Number(args.seconds ?? 10)));
+        console.log(`[Tool] wait: ${seconds}s`);
+        await new Promise((r) => setTimeout(r, seconds * 1000));
+        return `Waited ${seconds} seconds`;
+      }
+
+      case "save_hint": {
+        const hint = String(args.hint ?? "").trim();
+        if (!hint) return "Error: hint cannot be empty";
+        console.log(`[Tool] save_hint: ${hint.slice(0, 200)}`);
+        if (onHint) onHint(hint);
+        return `Hint saved: "${hint.slice(0, 100)}". It will be available to the next repair attempt.`;
+      }
+
+      case "remove_hint": {
+        const hint = String(args.hint ?? "").trim();
+        if (!hint) return "Error: hint cannot be empty";
+        console.log(`[Tool] remove_hint: ${hint.slice(0, 200)}`);
+        if (onRemoveHint) onRemoveHint(hint);
+        return `Hint removed (if it existed). Remaining hints will be shown to the next attempt.`;
+      }
+
+      case "probe_url": {
+        return probeUrl(args);
       }
 
       default:
@@ -294,12 +356,111 @@ const verifyDockerImageTool: ChatCompletionTool = {
   },
 };
 
-/** Codebase tools + write_file + run_command — for infrastructure repair between retries */
+const waitTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "wait",
+    description:
+      "Wait for a specified number of seconds. Use this when services need time to start up before checking again. Max 60 seconds.",
+    parameters: {
+      type: "object",
+      properties: {
+        seconds: {
+          type: "number",
+          description: "Number of seconds to wait (1-60)",
+        },
+      },
+      required: ["seconds"],
+      additionalProperties: false,
+    },
+  },
+};
+
+const saveHintTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "save_hint",
+    description:
+      "Save an important discovery or hint for the NEXT repair attempt. Use this when you learn something critical about how this application works (e.g. 'App reads DB settings from config/database.yml, not from DATABASE_URL', 'The app needs Redis on port 6379'). These hints survive across repair iterations so the next attempt doesn't have to rediscover the same facts.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description:
+            "A concise factual statement about the application's configuration, dependencies, or behavior. Should be actionable for the next repair attempt.",
+        },
+      },
+      required: ["hint"],
+      additionalProperties: false,
+    },
+  },
+};
+
+const removeHintTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "remove_hint",
+    description:
+      "Remove a previously saved hint that turned out to be WRONG or MISLEADING. Use this when you discover that a hint from a previous attempt led to a failure or was based on incorrect assumptions. Pass the exact hint text (or a substring) to remove it.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description:
+            "The exact text (or substring) of the hint to remove.",
+        },
+      },
+      required: ["hint"],
+      additionalProperties: false,
+    },
+  },
+};
+
+const probeUrlTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "probe_url",
+    description:
+      "Make an HTTP request to a URL and return the status code, headers, and response body. Use this to check if the application is responding, diagnose 500 errors, test endpoints, etc.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Full URL to probe (e.g. http://localhost:3000/)",
+        },
+        method: {
+          type: "string",
+          description: "HTTP method (GET, POST, PUT, etc.). Defaults to GET.",
+        },
+        headers: {
+          type: "string",
+          description: 'Optional JSON object of headers (e.g. \'{"Content-Type": "application/json"}\')',
+        },
+        body: {
+          type: "string",
+          description: "Optional request body for POST/PUT requests",
+        },
+      },
+      required: ["url"],
+      additionalProperties: false,
+    },
+  },
+};
+
+/** Codebase tools + write_file + run_command_on_host + run_command_in_docker + wait + save_hint — for infrastructure repair between retries */
 export const infraTools: ChatCompletionTool[] = [
   ...codebaseTools,
   verifyDockerImageTool,
   writeFileTool,
-  runCommandTool,
+  runCommandOnHostTool,
+  runCommandInDockerTool,
+  waitTool,
+  probeUrlTool,
+  saveHintTool,
+  removeHintTool,
 ];
 
 /** Codebase tools + Docker image verification — for Dockerfile generation/repair */
@@ -328,6 +489,70 @@ export async function verifyDockerImage(imageRef: string): Promise<boolean> {
   } catch {
     // Network error or timeout — assume it exists to avoid false negatives
     return true;
+  }
+}
+
+/**
+ * HTTP probe — make a request and return status, headers, and body preview.
+ * Used by infra repair and retry LLMs to diagnose HTTP issues (500 errors etc.)
+ */
+async function probeUrl(args: Record<string, unknown>): Promise<string> {
+  const url = String(args.url ?? "");
+  if (!url) return "Error: url parameter is required";
+  const method = String(args.method ?? "GET").toUpperCase();
+
+  let extraHeaders: Record<string, string> = {};
+  if (args.headers) {
+    try {
+      extraHeaders = JSON.parse(String(args.headers));
+    } catch {
+      return "Error: invalid JSON in headers parameter";
+    }
+  }
+
+  const fetchOpts: RequestInit = {
+    method,
+    headers: {
+      Accept: "application/json, text/html, */*",
+      ...extraHeaders,
+    },
+    redirect: "manual",
+    signal: AbortSignal.timeout(15_000),
+  };
+
+  if (args.body && (method === "POST" || method === "PUT" || method === "PATCH")) {
+    fetchOpts.body = String(args.body);
+  }
+
+  try {
+    console.log(`[Tool] probe_url: ${method} ${url}`);
+    const res = await fetch(url, fetchOpts);
+    const status = res.status;
+
+    const headerLines: string[] = [];
+    for (const [k, v] of res.headers.entries()) {
+      const lk = k.toLowerCase();
+      if (lk === "content-type" || lk === "location" || lk === "set-cookie" ||
+          lk === "www-authenticate" || lk === "x-csrf-token") {
+        headerLines.push(`${k}: ${v}`);
+      }
+    }
+
+    const bodyText = await res.text().catch(() => "");
+    const bodyPreview = bodyText.length > 2000
+      ? bodyText.slice(0, 2000) + "\n... [truncated]"
+      : bodyText;
+
+    const parts = [`HTTP ${status}`];
+    if (headerLines.length > 0) parts.push(headerLines.join("\n"));
+    parts.push(bodyPreview || "(empty body)");
+
+    console.log(`[Tool] probe_url result: ${status}`);
+    return parts.join("\n\n");
+  } catch (err) {
+    const msg = toErrorMessage(err);
+    console.log(`[Tool] probe_url error: ${msg}`);
+    return `Error: ${msg}`;
   }
 }
 
@@ -381,16 +606,80 @@ export async function validateDockerfileImages(
   return missing;
 }
 
+/**
+ * Try common tag variations for a Docker image until one is found on Docker Hub.
+ * Returns the first working tag, or null if none found.
+ */
+async function findAlternativeImage(badRef: string): Promise<string | null> {
+  const [imagePart, badTag = "latest"] = badRef.split(":");
+
+  // Generate candidates by trying common tag patterns
+  const candidates: string[] = [];
+
+  // Strip -slim suffix or add it
+  if (badTag.endsWith("-slim")) {
+    candidates.push(`${imagePart}:${badTag.replace(/-slim$/, "")}`);
+  } else {
+    candidates.push(`${imagePart}:${badTag}-slim`);
+  }
+
+  // Try without OS suffix (e.g. ruby:3.4-bookworm-slim → ruby:3.4-slim)
+  const parts = badTag.split("-");
+  if (parts.length >= 3) {
+    // e.g. ["3.4", "bookworm", "slim"] → try "3.4-slim", "3.4"
+    candidates.push(`${imagePart}:${parts[0]}-${parts[parts.length - 1]}`);
+    candidates.push(`${imagePart}:${parts[0]}`);
+  }
+  if (parts.length >= 2) {
+    // e.g. ["3.4", "bookworm"] → try "3.4"
+    candidates.push(`${imagePart}:${parts[0]}`);
+  }
+
+  // Try just major.minor
+  const versionMatch = badTag.match(/^(\d+\.\d+)/);
+  if (versionMatch) {
+    candidates.push(`${imagePart}:${versionMatch[1]}`);
+  }
+
+  // Deduplicate and exclude the original
+  const seen = new Set([badRef]);
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (await verifyDockerImage(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Validate all FROM images in a Dockerfile. For any that don't exist on Docker
+ * Hub, attempt to find a working alternative tag and replace inline.
+ * Returns the (possibly patched) Dockerfile content.
+ */
+export async function fixDockerfileImages(
+  dockerfile: string,
+): Promise<string> {
+  const missing = await validateDockerfileImages(dockerfile);
+  if (missing.length === 0) return dockerfile;
+
+  let patched = dockerfile;
+  for (const bad of missing) {
+    const alt = await findAlternativeImage(bad);
+    if (alt) {
+      console.log(`[Startup] Auto-fixing Docker image: ${bad} → ${alt}`);
+      patched = patched.split(bad).join(alt);
+    } else {
+      console.warn(`[Startup] No alternative found for Docker image: ${bad}`);
+    }
+  }
+  return patched;
+}
+
 // ---------------------------------------------------------------------------
 // MCP tool helpers — convert MCP schemas to OpenAI format & dispatch calls
 // ---------------------------------------------------------------------------
-
-const CODEBASE_TOOL_NAMES = new Set([
-  "read_file",
-  "list_files",
-  "search_files",
-  "verify_docker_image",
-]);
 
 export function convertMcpToolsToOpenAI(
   schemas: McpToolSchema[],
@@ -408,17 +697,5 @@ export function convertMcpToolsToOpenAI(
 export function createMcpToolHandler(bright: BrightMcpClient): ToolHandler {
   return async (name: string, args: Record<string, unknown>) => {
     return bright.callMcpToolRaw(name, args);
-  };
-}
-
-export function combineToolHandlers(
-  codebaseHandler: ToolHandler,
-  mcpHandler: ToolHandler,
-): ToolHandler {
-  return async (name: string, args: Record<string, unknown>) => {
-    if (CODEBASE_TOOL_NAMES.has(name)) {
-      return codebaseHandler(name, args);
-    }
-    return mcpHandler(name, args);
   };
 }

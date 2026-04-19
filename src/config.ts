@@ -1,4 +1,4 @@
-import type { EngineConfig } from "./types.js";
+import type { EngineConfig, RunMode } from "./types.js";
 import { ModelSelector, DEFAULT_MODEL, detectProvider } from "./inference.js";
 
 export function loadConfig(): EngineConfig {
@@ -8,6 +8,9 @@ export function loadConfig(): EngineConfig {
     process.env.BRIGHT_HOSTNAME ??
     (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
+
+  // RUN_MODE: "full" (default), "dynamic" (no harness fallback),, "dynamic" (no harness fallback), or "function"
+  const runMode = (process.env.RUN_MODE ?? "full") as RunMode;
 
   // AI_MODEL: single model or comma-separated escalation chain
   // e.g. "gpt-4.1-mini" or "gpt-4.1-mini,gpt-4.1,o3"
@@ -24,6 +27,7 @@ export function loadConfig(): EngineConfig {
 
   console.log(`[Config] AI model(s): ${modelSelector}`);
   console.log(`[Config] Inference provider: ${inferenceProvider}`);
+  console.log(`[Config] Run mode: ${runMode}`);
 
   return {
     brightToken,
@@ -32,6 +36,7 @@ export function loadConfig(): EngineConfig {
     brightProjectId,
     inferenceProvider,
     modelSelector,
+    runMode,
   };
 }
 
