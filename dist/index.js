@@ -38755,6 +38755,77 @@ If you exhausted all approaches and cannot create a user, respond with:
     }
   ];
 }
+function repairBrokenLoginPrompt(baseUrl, diagnostic) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer debugging a web application whose login endpoint is BROKEN (returning HTTP 500). Your mission is to diagnose and fix the issue so that login works.
+
+## Situation
+The application is running in Docker and serves pages, but the login endpoint crashes with a server error. This often happens when:
+1. **Setup wizard incomplete** \u2014 The app is in first-run mode and requires initial setup (admin registration, config wizard) before normal login works. Look for setup/install/wizard routes.
+2. **Database migrations missing** \u2014 Schema changes haven't been applied.
+3. **Missing configuration** \u2014 Required environment variables, secrets, or config files are absent.
+4. **Service dependencies** \u2014 A required service (Redis, Elasticsearch, etc.) is down or misconfigured.
+5. **Asset compilation** \u2014 Frontend assets not compiled, app in wrong mode (development vs production).
+
+## Pre-check diagnostic
+${diagnostic}
+
+## Tools available
+- **run_command_on_host** \u2014 Run shell commands on the host (docker ps, docker logs, docker exec, curl, etc.)
+- **run_command_in_docker** \u2014 Run commands inside a Docker container
+- **probe_url** \u2014 Make HTTP requests to the running app (cookies tracked across calls)
+- **read_file / search_files / list_files** \u2014 Inspect the application codebase
+- **search_web** \u2014 Search the internet for solutions specific to this app/framework
+- **fetch_url** \u2014 Fetch documentation pages
+
+## Strategy
+
+### 1. Gather information
+- Check container logs: \`docker logs <container> --tail 200\` for recent errors
+- Check the app's routes/pages for setup wizards:
+  - Probe GET ${baseUrl}/ and look for redirects to /setup, /install, /finish-installation, /wizard, etc.
+  - Probe common setup URLs: ${baseUrl}/setup, ${baseUrl}/install, ${baseUrl}/finish-installation/register
+  - Search codebase for setup/installation routes
+- Check database state: look for pending migrations, empty tables
+- Check service health: redis-cli ping, database connections, etc.
+
+### 2. Fix the issue
+Common fixes:
+- **Complete setup wizard**: POST to the setup endpoint with admin credentials (e.g. register an admin user through the setup form)
+- **Run migrations**: \`docker exec <container> <migration-command>\` (e.g., rails db:migrate, python manage.py migrate)
+- **Set environment variables**: Restart container with correct env vars
+- **Fix configuration**: Edit config files inside the container
+- **Install missing dependencies**: apt-get install, npm install, bundle install
+- **Restart services**: Restart the app process inside the container
+
+### 3. Verify the fix
+After each fix attempt:
+1. Probe the login endpoint again to check if it still returns 500
+2. If it now returns 200/302/403/422, the fix worked \u2192 success
+3. If still 500, check logs for the NEW error and try a different approach
+
+## Output
+When the login endpoint is functional (no longer returning 5xx), respond with:
+{"fixed": true, "action": "brief description of what you did"}
+
+If you exhausted all approaches, respond with:
+{"fixed": false, "reason": "brief explanation of what's wrong"}
+
+## Rules
+- Be persistent. Try at least 5 different diagnostic/fix approaches before giving up.
+- READ error messages and logs carefully \u2014 they tell you exactly what's wrong.
+- After each fix attempt, ALWAYS re-probe the login endpoint to verify.
+- Focus on making login FUNCTIONAL, not perfect. A 403 "bad CSRF" or 422 "invalid credentials" means the endpoint WORKS.
+- You have up to 30 rounds. Use them wisely \u2014 diagnose first, then fix.`
+    },
+    {
+      role: "user",
+      content: `The login endpoint is broken. Diagnose and fix the application. Base URL: ${baseUrl}`
+    }
+  ];
+}
 
 // src/phases/auth.ts
 var CONTENT_TYPE_MAP = {
@@ -38797,15 +38868,37 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectI
     }
   }
   const probeContext = await preProbeForAuth(baseUrl, detection);
-  const loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
+  let loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
   if (!loginCheck.functional) {
-    console.error("[Auth] Aborting auth: login endpoint is broken (HTTP 5xx)");
-    return {
-      authObjectId: void 0,
-      hasAuth: false,
-      authFailed: true,
-      registration: void 0
-    };
+    console.warn("[Auth] Login endpoint broken \u2014 attempting repair...");
+    const repaired = await repairBrokenLogin(
+      llm,
+      repoPath,
+      baseUrl,
+      loginCheck.diagnostic,
+      model
+    );
+    if (repaired) {
+      loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
+      if (!loginCheck.functional) {
+        console.error("[Auth] Login still broken after repair attempt \u2014 aborting auth");
+        return {
+          authObjectId: void 0,
+          hasAuth: false,
+          authFailed: true,
+          registration: void 0
+        };
+      }
+      console.log("[Auth] Login repaired successfully \u2014 proceeding with auth setup");
+    } else {
+      console.error("[Auth] Could not repair login endpoint \u2014 aborting auth");
+      return {
+        authObjectId: void 0,
+        hasAuth: false,
+        authFailed: true,
+        registration: void 0
+      };
+    }
   }
   const MAX_AUTH_ATTEMPTS = 3;
   let authObjectId;
@@ -39910,6 +40003,120 @@ ${preview}
   }
   console.log(`[Auth] Pre-probed ${lines.length} endpoints for LLM context`);
   return lines.join("\n\n");
+}
+async function repairBrokenLogin(llm, repoPath, baseUrl, diagnostic, model) {
+  console.log("[Auth] Starting login repair sub-phase...");
+  const repairTools = [
+    ...codebaseTools,
+    ...webSearchTools,
+    {
+      type: "function",
+      function: {
+        name: "run_command_on_host",
+        description: "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and host-level diagnostics. Timeout: 60 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: 'Host shell command (e.g. "docker logs bright-app-local --tail 200")'
+            }
+          },
+          required: ["command"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_command_in_docker",
+        description: "Run a command INSIDE a Docker container. Use to run migrations, edit config, restart services, complete setup wizards, etc. Timeout: 120 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            container: {
+              type: "string",
+              description: 'Container name or ID (e.g. "bright-app-local", "abc123")'
+            },
+            command: {
+              type: "string",
+              description: 'Command to run inside the container (e.g. "rails db:migrate", "python manage.py migrate")'
+            }
+          },
+          required: ["container", "command"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "probe_url",
+        description: "Make an HTTP request to the running app. Use to check if login is working after a fix attempt. Cookies are tracked across calls.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "Full URL to probe" },
+            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
+            headers: { type: "string", description: `JSON headers, e.g. '{"Accept":"application/json"}'` },
+            body: { type: "string", description: "Request body for POST/PUT" }
+          },
+          required: ["url"],
+          additionalProperties: false
+        }
+      }
+    }
+  ];
+  const baseCodeHandler = createToolHandler(repoPath);
+  const repairWebHandler = createWebSearchHandler(repoPath);
+  const handler = async (name, args) => {
+    if (name === "run_command" || name === "run_command_on_host") {
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:Repair] run_command_on_host: ${cmd.slice(0, 200)}`);
+      return runShellCommand(repoPath, cmd);
+    }
+    if (name === "run_command_in_docker") {
+      const container = String(args.container ?? "");
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:Repair] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      const isRunning = (() => {
+        try {
+          const out = execSync4(
+            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+            { encoding: "utf-8", timeout: 5e3 }
+          ).trim();
+          return out === "true";
+        } catch {
+          return false;
+        }
+      })();
+      const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
+      return runShellCommand(repoPath, dockerCmd, 12e4);
+    }
+    if (name === "probe_url") {
+      return probeUrl2(args);
+    }
+    if (name === "search_web" || name === "fetch_url") {
+      return repairWebHandler(name, args);
+    }
+    return baseCodeHandler(name, args);
+  };
+  const messages = repairBrokenLoginPrompt(baseUrl, diagnostic);
+  const response = await chatWithTools(llm, messages, repairTools, handler, model, 30);
+  try {
+    const json = extractJson(response);
+    const result = JSON.parse(json);
+    if (result.fixed) {
+      console.log(`[Auth:Repair] Login fixed: ${result.action ?? "unknown action"}`);
+      return true;
+    }
+    console.warn(`[Auth:Repair] Could not fix login: ${result.reason ?? "unknown"}`);
+    return false;
+  } catch {
+    console.warn(`[Auth:Repair] Could not parse repair result: ${response.slice(0, 200)}`);
+    return false;
+  }
 }
 async function preAuthLoginSanityCheck(baseUrl, detection) {
   if (!detection.loginEndpoint) {

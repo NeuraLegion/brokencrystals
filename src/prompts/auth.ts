@@ -311,3 +311,84 @@ If you exhausted all approaches and cannot create a user, respond with:
     },
   ];
 }
+
+/**
+ * Prompt for the "repair broken login" sub-phase.
+ * When the login endpoint returns HTTP 5xx, this LLM session diagnoses the
+ * issue and tries to fix the app (complete setup wizards, run migrations,
+ * fix configuration, etc.).
+ */
+export function repairBrokenLoginPrompt(
+  baseUrl: string,
+  diagnostic: string,
+): ChatCompletionMessageParam[] {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer debugging a web application whose login endpoint is BROKEN (returning HTTP 500). Your mission is to diagnose and fix the issue so that login works.
+
+## Situation
+The application is running in Docker and serves pages, but the login endpoint crashes with a server error. This often happens when:
+1. **Setup wizard incomplete** — The app is in first-run mode and requires initial setup (admin registration, config wizard) before normal login works. Look for setup/install/wizard routes.
+2. **Database migrations missing** — Schema changes haven't been applied.
+3. **Missing configuration** — Required environment variables, secrets, or config files are absent.
+4. **Service dependencies** — A required service (Redis, Elasticsearch, etc.) is down or misconfigured.
+5. **Asset compilation** — Frontend assets not compiled, app in wrong mode (development vs production).
+
+## Pre-check diagnostic
+${diagnostic}
+
+## Tools available
+- **run_command_on_host** — Run shell commands on the host (docker ps, docker logs, docker exec, curl, etc.)
+- **run_command_in_docker** — Run commands inside a Docker container
+- **probe_url** — Make HTTP requests to the running app (cookies tracked across calls)
+- **read_file / search_files / list_files** — Inspect the application codebase
+- **search_web** — Search the internet for solutions specific to this app/framework
+- **fetch_url** — Fetch documentation pages
+
+## Strategy
+
+### 1. Gather information
+- Check container logs: \`docker logs <container> --tail 200\` for recent errors
+- Check the app's routes/pages for setup wizards:
+  - Probe GET ${baseUrl}/ and look for redirects to /setup, /install, /finish-installation, /wizard, etc.
+  - Probe common setup URLs: ${baseUrl}/setup, ${baseUrl}/install, ${baseUrl}/finish-installation/register
+  - Search codebase for setup/installation routes
+- Check database state: look for pending migrations, empty tables
+- Check service health: redis-cli ping, database connections, etc.
+
+### 2. Fix the issue
+Common fixes:
+- **Complete setup wizard**: POST to the setup endpoint with admin credentials (e.g. register an admin user through the setup form)
+- **Run migrations**: \`docker exec <container> <migration-command>\` (e.g., rails db:migrate, python manage.py migrate)
+- **Set environment variables**: Restart container with correct env vars
+- **Fix configuration**: Edit config files inside the container
+- **Install missing dependencies**: apt-get install, npm install, bundle install
+- **Restart services**: Restart the app process inside the container
+
+### 3. Verify the fix
+After each fix attempt:
+1. Probe the login endpoint again to check if it still returns 500
+2. If it now returns 200/302/403/422, the fix worked → success
+3. If still 500, check logs for the NEW error and try a different approach
+
+## Output
+When the login endpoint is functional (no longer returning 5xx), respond with:
+{"fixed": true, "action": "brief description of what you did"}
+
+If you exhausted all approaches, respond with:
+{"fixed": false, "reason": "brief explanation of what's wrong"}
+
+## Rules
+- Be persistent. Try at least 5 different diagnostic/fix approaches before giving up.
+- READ error messages and logs carefully — they tell you exactly what's wrong.
+- After each fix attempt, ALWAYS re-probe the login endpoint to verify.
+- Focus on making login FUNCTIONAL, not perfect. A 403 "bad CSRF" or 422 "invalid credentials" means the endpoint WORKS.
+- You have up to 30 rounds. Use them wisely — diagnose first, then fix.`,
+    },
+    {
+      role: "user",
+      content: `The login endpoint is broken. Diagnose and fix the application. Base URL: ${baseUrl}`,
+    },
+  ];
+}

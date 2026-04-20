@@ -13,7 +13,7 @@ import {
   createWebSearchHandler,
 } from "../tools.js";
 import { formatTechStack, extractJson, runShellCommand, toErrorMessage } from "../utils.js";
-import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt } from "../prompts/auth.js";
+import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt, repairBrokenLoginPrompt } from "../prompts/auth.js";
 
 const CONTENT_TYPE_MAP: Record<string, string> = {
   json: "application/json",
@@ -113,15 +113,40 @@ export async function detectAndConfigureAuth(
   const probeContext = await preProbeForAuth(baseUrl, detection);
 
   // Phase 4.5: Sanity-check the login endpoint before burning LLM turns
-  const loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
+  let loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
   if (!loginCheck.functional) {
-    console.error("[Auth] Aborting auth: login endpoint is broken (HTTP 5xx)");
-    return {
-      authObjectId: undefined,
-      hasAuth: false,
-      authFailed: true,
-      registration: undefined,
-    };
+    // Login is broken (HTTP 5xx) — give the LLM a chance to fix the app
+    console.warn("[Auth] Login endpoint broken — attempting repair...");
+    const repaired = await repairBrokenLogin(
+      llm,
+      repoPath,
+      baseUrl,
+      loginCheck.diagnostic,
+      model,
+    );
+
+    if (repaired) {
+      // Re-run sanity check after repair
+      loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
+      if (!loginCheck.functional) {
+        console.error("[Auth] Login still broken after repair attempt — aborting auth");
+        return {
+          authObjectId: undefined,
+          hasAuth: false,
+          authFailed: true,
+          registration: undefined,
+        };
+      }
+      console.log("[Auth] Login repaired successfully — proceeding with auth setup");
+    } else {
+      console.error("[Auth] Could not repair login endpoint — aborting auth");
+      return {
+        authObjectId: undefined,
+        hasAuth: false,
+        authFailed: true,
+        registration: undefined,
+      };
+    }
   }
 
   const MAX_AUTH_ATTEMPTS = 3;
@@ -1559,6 +1584,142 @@ async function preProbeForAuth(
 
   console.log(`[Auth] Pre-probed ${lines.length} endpoints for LLM context`);
   return lines.join("\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// repairBrokenLogin — LLM session to diagnose and fix a broken login endpoint
+// ---------------------------------------------------------------------------
+
+async function repairBrokenLogin(
+  llm: OpenAI,
+  repoPath: string,
+  baseUrl: string,
+  diagnostic: string,
+  model?: string,
+): Promise<boolean> {
+  console.log("[Auth] Starting login repair sub-phase...");
+
+  // Same tools as seedTestUser — docker access, probing, codebase, web search
+  const repairTools: ChatCompletionTool[] = [
+    ...codebaseTools,
+    ...webSearchTools,
+    {
+      type: "function",
+      function: {
+        name: "run_command_on_host",
+        description:
+          "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and host-level diagnostics. Timeout: 60 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: 'Host shell command (e.g. "docker logs bright-app-local --tail 200")',
+            },
+          },
+          required: ["command"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_command_in_docker",
+        description:
+          "Run a command INSIDE a Docker container. Use to run migrations, edit config, restart services, complete setup wizards, etc. Timeout: 120 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            container: {
+              type: "string",
+              description: 'Container name or ID (e.g. "bright-app-local", "abc123")',
+            },
+            command: {
+              type: "string",
+              description: 'Command to run inside the container (e.g. "rails db:migrate", "python manage.py migrate")',
+            },
+          },
+          required: ["container", "command"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "probe_url",
+        description:
+          "Make an HTTP request to the running app. Use to check if login is working after a fix attempt. Cookies are tracked across calls.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "Full URL to probe" },
+            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
+            headers: { type: "string", description: 'JSON headers, e.g. \'{"Accept":"application/json"}\'' },
+            body: { type: "string", description: "Request body for POST/PUT" },
+          },
+          required: ["url"],
+          additionalProperties: false,
+        },
+      },
+    },
+  ];
+
+  const baseCodeHandler = createToolHandler(repoPath);
+  const repairWebHandler = createWebSearchHandler(repoPath);
+  const handler: ToolHandler = async (name, args) => {
+    if (name === "run_command" || name === "run_command_on_host") {
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:Repair] run_command_on_host: ${cmd.slice(0, 200)}`);
+      return runShellCommand(repoPath, cmd);
+    }
+    if (name === "run_command_in_docker") {
+      const container = String(args.container ?? "");
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:Repair] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      const isRunning = (() => {
+        try {
+          const out = execSync(
+            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+            { encoding: "utf-8", timeout: 5_000 },
+          ).trim();
+          return out === "true";
+        } catch {
+          return false;
+        }
+      })();
+      const dockerCmd = isRunning
+        ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
+        : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
+      // Longer timeout for repair ops (migrations can be slow)
+      return runShellCommand(repoPath, dockerCmd, 120_000);
+    }
+    if (name === "probe_url") {
+      return probeUrl(args);
+    }
+    if (name === "search_web" || name === "fetch_url") {
+      return repairWebHandler(name, args);
+    }
+    return baseCodeHandler(name, args);
+  };
+
+  const messages = repairBrokenLoginPrompt(baseUrl, diagnostic);
+  const response = await chatWithTools(llm, messages, repairTools, handler, model, 30);
+
+  try {
+    const json = extractJson(response);
+    const result = JSON.parse(json) as { fixed: boolean; action?: string; reason?: string };
+    if (result.fixed) {
+      console.log(`[Auth:Repair] Login fixed: ${result.action ?? "unknown action"}`);
+      return true;
+    }
+    console.warn(`[Auth:Repair] Could not fix login: ${result.reason ?? "unknown"}`);
+    return false;
+  } catch {
+    console.warn(`[Auth:Repair] Could not parse repair result: ${response.slice(0, 200)}`);
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
