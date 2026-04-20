@@ -82,6 +82,8 @@ export interface ProjectDiscovery {
   port: number;
   /** Recommended health check path */
   healthCheckPath?: string;
+  /** Setup steps to run after the app starts (e.g. complete a setup wizard) */
+  postStartSetup?: string[];
 }
 
 // ---------------------------------------------------------------------------

@@ -18,6 +18,8 @@ import {
   infraTools,
   createInfraToolHandler,
   verifyDockerImageTool,
+  webSearchTools,
+  createWebSearchHandler,
 } from "../tools.js";
 import { sleep, formatTechStack, toErrorMessage, toDetailedErrorMessage, extractJson, extractCodeBlock } from "../utils.js";
 import {
@@ -203,8 +205,21 @@ async function discoverProject(
 
   try {
     const messages = discoverProjectPrompt(stackStr);
-    const handler = createToolHandler(repoPath);
-    const response = await chatWithTools(llm, messages, [...codebaseTools, verifyDockerImageTool], handler, model);
+    const baseHandler = createToolHandler(repoPath);
+    const webHandler = createWebSearchHandler(repoPath);
+    const handler: ToolHandler = async (name, args) => {
+      if (name === "search_web" || name === "fetch_url") {
+        return webHandler(name, args);
+      }
+      return baseHandler(name, args);
+    };
+    const response = await chatWithTools(
+      llm,
+      messages,
+      [...codebaseTools, ...webSearchTools, verifyDockerImageTool],
+      handler,
+      model,
+    );
     const jsonStr = extractJson(response);
 
     let parsed: Record<string, unknown>;
@@ -233,6 +248,7 @@ async function discoverProject(
       buildNotes: Array.isArray(parsed.buildNotes) ? parsed.buildNotes.map(String) : [],
       port: typeof parsed.port === "number" ? parsed.port : 3000,
       healthCheckPath: typeof parsed.healthCheckPath === "string" ? parsed.healthCheckPath : undefined,
+      postStartSetup: Array.isArray(parsed.postStartSetup) ? parsed.postStartSetup.map(String) : undefined,
     };
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
@@ -243,6 +259,9 @@ async function discoverProject(
     }
     if (discovery.buildNotes.length) {
       console.log(`[Startup]   Build notes: ${discovery.buildNotes.length} items`);
+    }
+    if (discovery.postStartSetup?.length) {
+      console.log(`[Startup]   Post-start setup: ${discovery.postStartSetup.length} steps`);
     }
     console.log(`[Startup]   Port: ${discovery.port}, Health: ${discovery.healthCheckPath ?? "/"}`);
 
