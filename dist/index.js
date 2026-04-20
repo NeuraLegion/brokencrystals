@@ -36592,24 +36592,24 @@ Respond with EXACTLY one JSON object:
 {"healthy": true/false, "reason": "<one sentence explanation>"}
 
 Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
-- Setup wizards, installation pages, or "finish installation" screens
-- "CLI required", "Ember CLI", "proxy bypass", or development mode warnings
+- Pages that tell the user to run a command, set an environment variable, or edit a config file before the app works (e.g. "Ember CLI is Required", "run bin/setup", "set DATABASE_URL")
 - Error pages (500, 503, "something went wrong", stack traces)
 - "Service unavailable", "under maintenance", or placeholder pages
 - Database migration needed, pending migrations
 - Configuration required, environment variable missing
-- Framework default welcome pages (Rails welcome, Django debug, etc.)
+- Framework default welcome pages that are NOT real app UI (Rails "Yay! You're on Rails!", Django debug page, etc.)
 - Blank or nearly empty pages with just a title and no real content
-- Pages that tell the user to run a command or configure something before use
 - JSON error responses like {"error": ...} or {"errors": [...]}
 
-Mark as HEALTHY (healthy: true) ONLY if the response is clearly a WORKING application page:
-- A real login form that a user could actually fill out
+Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
+- A real login form, registration form, or sign-up page
 - A dashboard, feed, or content page with actual data
 - A JSON API response with real data (not an error)
 - A working application UI with navigation, content, and interactive elements
+- A web-based setup wizard or "finish installation" form where the user can register an admin account through the browser \u2014 this is a NORMAL first-run state and the application IS working correctly
+- Any page served by the application framework (not a raw web server error) that accepts user interaction
 
-When in doubt, mark as UNHEALTHY. It is better to trigger a repair cycle than to accept a broken app.`
+When in doubt about whether the app is running vs broken, check: does the page come from the application framework and accept user interaction? If yes \u2192 HEALTHY. If it just shows a static error or tells you to run commands \u2192 UNHEALTHY.`
             },
             {
               role: "user",
@@ -39689,128 +39689,132 @@ async function probeUrl2(args) {
 
 // src/phases/entrypoints.ts
 var CONFLICT_MSG = "already exists";
+var RATE_LIMIT_PATTERNS = /rate.?limit|too many req|429|throttl/i;
+var CONCURRENCY = 10;
 async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeaterId, authObjectId) {
+  const prepared = [];
+  for (const ep of endpoints) {
+    const path2 = resolvePath(ep.path);
+    if (!isScannablePath(path2)) {
+      console.warn(
+        `[Entrypoints] Skipping junk path: ${ep.path} (resolved: ${path2})`
+      );
+      continue;
+    }
+    let fullUrl = `${baseUrl}${path2}`;
+    try {
+      new URL(fullUrl);
+    } catch {
+      console.warn(
+        `[Entrypoints] Skipping malformed URL: ${fullUrl} (from path "${ep.path}")`
+      );
+      continue;
+    }
+    const method = normalizeMethod(ep.method);
+    if (ep.queryParams && ep.queryParams.length > 0) {
+      const params = new URLSearchParams(
+        ep.queryParams.map((p) => [p.name, p.value])
+      );
+      fullUrl += `?${params.toString()}`;
+    }
+    const request = { method, url: fullUrl };
+    const needsBody = ["POST", "PUT", "PATCH"].includes(method);
+    const contentType = ep.contentType ?? (needsBody ? "application/json" : void 0);
+    if (ep.headers || contentType) {
+      const headers = { ...ep.headers ?? {} };
+      if (contentType && !headers["Content-Type"]) {
+        headers["Content-Type"] = [contentType];
+      }
+      request.headers = headers;
+    }
+    if (needsBody) {
+      request.body = sanitizeBody(ep.body ?? "{}");
+    }
+    const args = { projectId, request, repeaterId };
+    if (authObjectId) {
+      args.authObjectId = authObjectId;
+    }
+    prepared.push({ ep, method, fullUrl, args });
+  }
+  console.log(
+    `[Entrypoints] Registering ${prepared.length} endpoints (${CONCURRENCY} concurrent)\u2026`
+  );
   const registered = [];
   let failedUploads = 0;
-  for (const ep of endpoints) {
+  let rateLimitPauseUntil = 0;
+  async function processOne(item) {
+    const { ep, method, fullUrl, args } = item;
+    const now = Date.now();
+    if (rateLimitPauseUntil > now) {
+      await sleep3(rateLimitPauseUntil - now);
+    }
+    console.log(
+      `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
+    );
     try {
-      const path2 = resolvePath(ep.path);
-      if (!isScannablePath(path2)) {
-        console.warn(
-          `[Entrypoints] Skipping junk path: ${ep.path} (resolved: ${path2})`
-        );
-        continue;
+      const result = await bright.callMcpToolRaw("addEntrypoint", args);
+      if (RATE_LIMIT_PATTERNS.test(result)) {
+        console.warn(`[Entrypoints] Rate limited \u2014 pausing 10s`);
+        rateLimitPauseUntil = Date.now() + 1e4;
+        await sleep3(1e4);
+        const retry = await bright.callMcpToolRaw("addEntrypoint", args);
+        handleResult(retry, ep, method, fullUrl);
+        return;
       }
-      let fullUrl = `${baseUrl}${path2}`;
-      try {
-        new URL(fullUrl);
-      } catch {
-        console.warn(
-          `[Entrypoints] Skipping malformed URL: ${fullUrl} (from path "${ep.path}")`
-        );
-        continue;
-      }
-      const method = normalizeMethod(ep.method);
-      if (ep.queryParams && ep.queryParams.length > 0) {
-        const params = new URLSearchParams(
-          ep.queryParams.map((p) => [p.name, p.value])
-        );
-        fullUrl += `?${params.toString()}`;
-      }
-      console.log(
-        `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
-      );
-      const request = {
-        method,
-        url: fullUrl
-      };
-      const needsBody = ["POST", "PUT", "PATCH"].includes(method);
-      const contentType = ep.contentType ?? (needsBody ? "application/json" : void 0);
-      if (ep.headers || contentType) {
-        const headers = { ...ep.headers ?? {} };
-        if (contentType && !headers["Content-Type"]) {
-          headers["Content-Type"] = [contentType];
-        }
-        request.headers = headers;
-      }
-      if (needsBody) {
-        request.body = sanitizeBody(ep.body ?? "{}");
-      }
-      const args = { projectId, request, repeaterId };
-      if (authObjectId) {
-        args.authObjectId = authObjectId;
-      }
-      {
-        const result = await bright.callMcpToolRaw("addEntrypoint", args);
-        let epId;
-        try {
-          const parsed = JSON.parse(result);
-          epId = parsed.entrypointId ?? parsed.id;
-        } catch {
-        }
-        if (epId) {
-          registered.push({ endpoint: ep, entrypointId: epId });
-        } else if (result.includes(CONFLICT_MSG)) {
-          const existingId = await findExistingEntrypoint(
-            bright,
-            projectId,
-            fullUrl,
-            method
-          );
-          if (existingId) {
-            console.log(
-              `[Entrypoints] Reusing existing EP ${existingId} for ${method} ${fullUrl}`
-            );
-            registered.push({ endpoint: ep, entrypointId: existingId });
-          } else {
-            console.warn(
-              `[Entrypoints] Conflict but could not find existing EP for ${method} ${fullUrl}`
-            );
-          }
-        } else if (result.startsWith("Error")) {
-          failedUploads++;
-          console.error(
-            `[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`
-          );
-        } else {
-          failedUploads++;
-          console.warn(
-            `[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`
-          );
-        }
-      }
+      handleResult(result, ep, method, fullUrl);
     } catch (err) {
       console.error(
-        `[Entrypoints] Failed ${ep.method} ${ep.path}: ${toErrorMessage(err)}`
+        `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`
       );
     }
   }
+  function handleResult(result, ep, method, fullUrl) {
+    let epId;
+    try {
+      const parsed = JSON.parse(result);
+      epId = parsed.entrypointId ?? parsed.id;
+    } catch {
+    }
+    if (epId) {
+      registered.push({ endpoint: ep, entrypointId: epId });
+    } else if (result.includes(CONFLICT_MSG)) {
+      console.log(
+        `[Entrypoints] EP already exists for ${method} ${fullUrl} \u2014 skipping`
+      );
+    } else {
+      failedUploads++;
+      if (result.startsWith("Error")) {
+        console.error(
+          `[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`
+        );
+      } else {
+        console.warn(
+          `[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`
+        );
+      }
+    }
+  }
+  await pMap(prepared, processOne, CONCURRENCY);
   console.log(
     `[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints` + (failedUploads > 0 ? ` (${failedUploads} rejected by API)` : "")
   );
   return registered;
 }
-async function findExistingEntrypoint(bright, projectId, url2, method) {
-  try {
-    const urlPath = new URL(url2).pathname;
-    const response = await bright.callMcpToolRaw("listEntrypoints", {
-      projectId,
-      q: urlPath,
-      method: [method.toUpperCase()],
-      limit: 10
-    });
-    const parsed = JSON.parse(response);
-    const items = Array.isArray(parsed) ? parsed : parsed.items ?? [];
-    const match2 = items.find(
-      (ep) => ep.url === url2 && ep.method?.toUpperCase() === method.toUpperCase()
-    );
-    return match2?.id;
-  } catch (err) {
-    console.error(
-      `[Entrypoints] Failed to look up existing EP: ${toErrorMessage(err)}`
-    );
-    return void 0;
-  }
+async function pMap(items, fn, concurrency) {
+  let idx = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (idx < items.length) {
+        const i = idx++;
+        await fn(items[i]);
+      }
+    }
+  );
+  await Promise.all(workers);
+}
+function sleep3(ms) {
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function resolvePath(path2) {
   let resolved = path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
@@ -39863,29 +39867,34 @@ async function verifyEntrypointAuth(bright, projectId, entrypointId) {
 async function pruneDeadEntrypoints(bright, projectId, entries, api) {
   const alive = [];
   const dead = [];
-  for (const entry of entries) {
-    try {
-      const raw = await bright.callMcpToolRaw("getEntrypoint", {
-        projectId,
-        entrypointId: entry.entrypointId
-      });
-      const data = JSON.parse(raw);
-      const status = data.response?.status ?? data.status;
-      if (status === 404) {
-        const url2 = data.request?.url ?? data.url ?? entry.entrypointId;
-        console.log(`[Entrypoints] \u2717 Removing 404 entrypoint: ${url2}`);
-        dead.push(entry.entrypointId);
-      } else {
+  console.log(
+    `[Entrypoints] Checking ${entries.length} entrypoints for 404s (${CONCURRENCY} concurrent)\u2026`
+  );
+  await pMap(
+    entries,
+    async (entry) => {
+      try {
+        const raw = await bright.callMcpToolRaw("getEntrypoint", {
+          projectId,
+          entrypointId: entry.entrypointId
+        });
+        const data = JSON.parse(raw);
+        const status = data.response?.status ?? data.status;
+        if (status === 404) {
+          const url2 = data.request?.url ?? data.url ?? entry.entrypointId;
+          console.log(`[Entrypoints] \u2717 Removing 404 entrypoint: ${url2}`);
+          dead.push(entry.entrypointId);
+        } else {
+          alive.push(entry);
+        }
+      } catch {
         alive.push(entry);
       }
-    } catch {
-      alive.push(entry);
-    }
-  }
+    },
+    CONCURRENCY
+  );
   await Promise.allSettled(
-    dead.map(
-      (epId) => deleteEntrypoint(api, projectId, epId)
-    )
+    dead.map((epId) => deleteEntrypoint(api, projectId, epId))
   );
   if (dead.length > 0) {
     console.log(

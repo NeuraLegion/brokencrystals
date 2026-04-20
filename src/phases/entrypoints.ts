@@ -3,6 +3,8 @@ import type { BrightMcpClient } from "../mcp-client.js";
 import { toErrorMessage } from "../utils.js";
 
 const CONFLICT_MSG = "already exists";
+const RATE_LIMIT_PATTERNS = /rate.?limit|too many req|429|throttl/i;
+const CONCURRENCY = 10;
 
 export interface RegisteredEntrypoint {
   endpoint: DiscoveredEndpoint;
@@ -17,14 +19,16 @@ export async function registerEntrypoints(
   repeaterId: string,
   authObjectId?: string,
 ): Promise<RegisteredEntrypoint[]> {
-  const registered: RegisteredEntrypoint[] = [];
-  let failedUploads = 0;
+  // Pre-process endpoints: validate, resolve paths, build request args
+  const prepared: {
+    ep: DiscoveredEndpoint;
+    method: string;
+    fullUrl: string;
+    args: Record<string, unknown>;
+  }[] = [];
 
   for (const ep of endpoints) {
-    try {
     const path = resolvePath(ep.path);
-
-    // Skip URLs that are clearly not real endpoints (template leftovers, etc.)
     if (!isScannablePath(path)) {
       console.warn(
         `[Entrypoints] Skipping junk path: ${ep.path} (resolved: ${path})`,
@@ -33,8 +37,6 @@ export async function registerEntrypoints(
     }
 
     let fullUrl = `${baseUrl}${path}`;
-
-    // Validate the URL — skip malformed endpoints from LLM hallucinations
     try {
       new URL(fullUrl);
     } catch {
@@ -44,10 +46,8 @@ export async function registerEntrypoints(
       continue;
     }
 
-    // Normalize non-standard HTTP methods (e.g. GRAPHQL_QUERY → POST)
     const method = normalizeMethod(ep.method);
 
-    // Append query params to the URL if present
     if (ep.queryParams && ep.queryParams.length > 0) {
       const params = new URLSearchParams(
         ep.queryParams.map((p) => [p.name, p.value]),
@@ -55,18 +55,7 @@ export async function registerEntrypoints(
       fullUrl += `?${params.toString()}`;
     }
 
-    console.log(
-      `[Entrypoints] Adding ${method} ${fullUrl}` +
-        (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]"),
-    );
-
-    // Build request object with all available data
-    const request: Record<string, unknown> = {
-      method,
-      url: fullUrl,
-    };
-
-    // Add headers — ensure Content-Type for POST/PUT/PATCH
+    const request: Record<string, unknown> = { method, url: fullUrl };
     const needsBody = ["POST", "PUT", "PATCH"].includes(method);
     const contentType =
       ep.contentType ?? (needsBody ? "application/json" : undefined);
@@ -79,67 +68,101 @@ export async function registerEntrypoints(
       request.headers = headers;
     }
 
-    // Add body for methods that expect one
     if (needsBody) {
       request.body = sanitizeBody(ep.body ?? "{}");
     }
 
-    // Build the full addEntrypoint args
     const args: Record<string, unknown> = { projectId, request, repeaterId };
     if (authObjectId) {
       args.authObjectId = authObjectId;
     }
 
-    {
+    prepared.push({ ep, method, fullUrl, args });
+  }
+
+  console.log(
+    `[Entrypoints] Registering ${prepared.length} endpoints (${CONCURRENCY} concurrent)…`,
+  );
+
+  // Shared state for concurrent workers
+  const registered: RegisteredEntrypoint[] = [];
+  let failedUploads = 0;
+  let rateLimitPauseUntil = 0;
+
+  async function processOne(item: (typeof prepared)[number]): Promise<void> {
+    const { ep, method, fullUrl, args } = item;
+
+    // Honor rate-limit pause
+    const now = Date.now();
+    if (rateLimitPauseUntil > now) {
+      await sleep(rateLimitPauseUntil - now);
+    }
+
+    console.log(
+      `[Entrypoints] Adding ${method} ${fullUrl}` +
+        (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]"),
+    );
+
+    try {
       const result = await bright.callMcpToolRaw("addEntrypoint", args);
 
-      // Parse the entrypoint ID from the response
-      let epId: string | undefined;
-      try {
-        const parsed = JSON.parse(result);
-        epId = parsed.entrypointId ?? parsed.id;
-      } catch {
-        // Response wasn't JSON — check for conflict
+      // Rate-limit detection — pause all workers
+      if (RATE_LIMIT_PATTERNS.test(result)) {
+        console.warn(`[Entrypoints] Rate limited — pausing 10s`);
+        rateLimitPauseUntil = Date.now() + 10_000;
+        await sleep(10_000);
+        // Retry once after rate-limit pause
+        const retry = await bright.callMcpToolRaw("addEntrypoint", args);
+        handleResult(retry, ep, method, fullUrl);
+        return;
       }
 
-      if (epId) {
-        registered.push({ endpoint: ep, entrypointId: epId });
-      } else if (result.includes(CONFLICT_MSG)) {
-        // EP already exists — look up the existing ID
-        const existingId = await findExistingEntrypoint(
-          bright,
-          projectId,
-          fullUrl,
-          method,
-        );
-        if (existingId) {
-          console.log(
-            `[Entrypoints] Reusing existing EP ${existingId} for ${method} ${fullUrl}`,
-          );
-          registered.push({ endpoint: ep, entrypointId: existingId });
-        } else {
-          console.warn(
-            `[Entrypoints] Conflict but could not find existing EP for ${method} ${fullUrl}`,
-          );
-        }
-      } else if (result.startsWith("Error")) {
-        failedUploads++;
+      handleResult(result, ep, method, fullUrl);
+    } catch (err) {
+      console.error(
+        `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`,
+      );
+    }
+  }
+
+  function handleResult(
+    result: string,
+    ep: DiscoveredEndpoint,
+    method: string,
+    fullUrl: string,
+  ): void {
+    let epId: string | undefined;
+    try {
+      const parsed = JSON.parse(result);
+      epId = parsed.entrypointId ?? parsed.id;
+    } catch {
+      // Response wasn't JSON — check for conflict
+    }
+
+    if (epId) {
+      registered.push({ endpoint: ep, entrypointId: epId });
+    } else if (result.includes(CONFLICT_MSG)) {
+      // Conflict: don't block on lookup — just count it and move on.
+      // The EP is already registered, so it's not lost.
+      console.log(
+        `[Entrypoints] EP already exists for ${method} ${fullUrl} — skipping`,
+      );
+    } else {
+      failedUploads++;
+      if (result.startsWith("Error")) {
         console.error(
           `[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`,
         );
       } else {
-        failedUploads++;
         console.warn(
           `[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`,
         );
       }
     }
-    } catch (err) {
-      console.error(
-        `[Entrypoints] Failed ${ep.method} ${ep.path}: ${toErrorMessage(err)}`,
-      );
-    }
   }
+
+  // Run with concurrency control
+  await pMap(prepared, processOne, CONCURRENCY);
 
   console.log(
     `[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints` +
@@ -148,35 +171,30 @@ export async function registerEntrypoints(
   return registered;
 }
 
-async function findExistingEntrypoint(
-  bright: BrightMcpClient,
-  projectId: string,
-  url: string,
-  method: string,
-): Promise<string | undefined> {
-  try {
-    // Extract path from URL for the search query
-    const urlPath = new URL(url).pathname;
-    const response = await bright.callMcpToolRaw("listEntrypoints", {
-      projectId,
-      q: urlPath,
-      method: [method.toUpperCase()],
-      limit: 10,
-    });
-    const parsed = JSON.parse(response);
-    const items = Array.isArray(parsed) ? parsed : (parsed.items ?? []);
-    // Find exact URL match
-    const match = items.find(
-      (ep: { url?: string; method?: string }) =>
-        ep.url === url && ep.method?.toUpperCase() === method.toUpperCase(),
-    );
-    return match?.id;
-  } catch (err) {
-    console.error(
-      `[Entrypoints] Failed to look up existing EP: ${toErrorMessage(err)}`,
-    );
-    return undefined;
-  }
+/**
+ * Execute async tasks with a concurrency limit.
+ * Workers pull from a shared index — keeps the pipeline saturated.
+ */
+async function pMap<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  concurrency: number,
+): Promise<void> {
+  let idx = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (idx < items.length) {
+        const i = idx++;
+        await fn(items[i]);
+      }
+    },
+  );
+  await Promise.all(workers);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function resolvePath(path: string): string {
@@ -266,33 +284,40 @@ export async function pruneDeadEntrypoints(
   const alive: RegisteredEntrypoint[] = [];
   const dead: string[] = [];
 
-  for (const entry of entries) {
-    try {
-      const raw = await bright.callMcpToolRaw("getEntrypoint", {
-        projectId,
-        entrypointId: entry.entrypointId,
-      });
-      const data = JSON.parse(raw);
-      const status = data.response?.status ?? data.status;
+  console.log(
+    `[Entrypoints] Checking ${entries.length} entrypoints for 404s (${CONCURRENCY} concurrent)…`,
+  );
 
-      if (status === 404) {
-        const url = data.request?.url ?? data.url ?? entry.entrypointId;
-        console.log(`[Entrypoints] ✗ Removing 404 entrypoint: ${url}`);
-        dead.push(entry.entrypointId);
-      } else {
+  // Check all entrypoints concurrently
+  await pMap(
+    entries,
+    async (entry) => {
+      try {
+        const raw = await bright.callMcpToolRaw("getEntrypoint", {
+          projectId,
+          entrypointId: entry.entrypointId,
+        });
+        const data = JSON.parse(raw);
+        const status = data.response?.status ?? data.status;
+
+        if (status === 404) {
+          const url = data.request?.url ?? data.url ?? entry.entrypointId;
+          console.log(`[Entrypoints] ✗ Removing 404 entrypoint: ${url}`);
+          dead.push(entry.entrypointId);
+        } else {
+          alive.push(entry);
+        }
+      } catch {
+        // If we can't check it, keep it — don't drop potentially valid EPs
         alive.push(entry);
       }
-    } catch {
-      // If we can't check it, keep it — don't drop potentially valid EPs
-      alive.push(entry);
-    }
-  }
+    },
+    CONCURRENCY,
+  );
 
   // Delete the dead entrypoints in parallel
   await Promise.allSettled(
-    dead.map((epId) =>
-      deleteEntrypoint(api, projectId, epId),
-    ),
+    dead.map((epId) => deleteEntrypoint(api, projectId, epId)),
   );
 
   if (dead.length > 0) {
