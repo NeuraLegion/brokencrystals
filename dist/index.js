@@ -38770,6 +38770,7 @@ Create a user with these exact credentials:
 4. If the first attempt fails, READ the error message, then:
    - Read the User model source code to understand required fields and validations
    - Try save!(validate: false) or equivalent to bypass validations
+   - **If you change the password to bypass validation, REMEMBER the new password \u2014 you must report it in the output**
    - Try alternative CLI commands (e.g. "bundle exec rake" vs "rails runner")
    - Try the app's built-in admin/seed commands
    - Try raw SQL: docker exec <db-container> psql -U postgres -d <dbname> -c "INSERT INTO users..."
@@ -38779,7 +38780,11 @@ Create a user with these exact credentials:
 
 ## Output
 When the user is created and verified, respond with ONLY this JSON:
-{"success": true, "username": "bright_test", "password": "BrightTest123!", "email": "bright@test.com"}
+{"success": true, "username": "bright_test", "password": "<ACTUAL_PASSWORD>", "email": "bright@test.com"}
+
+\u26A0\uFE0F CRITICAL: The "password" field MUST be the EXACT password that was saved to the database.
+If you had to modify the password to bypass validations (e.g. changed "BrightTest123!" to "BrightTest123!__" or any other variant), report the MODIFIED password \u2014 NOT the original target.
+The auth phase will use this password to log in. If it's wrong, authentication will silently fail.
 
 If you exhausted all approaches and cannot create a user, respond with:
 {"success": false, "reason": "brief explanation"}
@@ -38906,6 +38911,20 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectI
         login: seededCredentials.username,
         password: seededCredentials.password
       });
+      if (!detection.loginEndpoint) {
+        const discovered = await discoverLoginEndpoint(baseUrl);
+        if (discovered) {
+          detection.loginEndpoint = discovered;
+          console.log(`[Auth] Discovered login endpoint: ${discovered}`);
+        }
+      }
+      const credCheck = await verifySeededCredentials(baseUrl, seededCredentials, detection);
+      if (!credCheck.valid) {
+        console.warn(`[Auth:Seed] Credential verification failed: ${credCheck.reason}`);
+        console.warn("[Auth:Seed] The seed LLM may have changed the password \u2014 seeded password might not match");
+      } else {
+        console.log("[Auth:Seed] Credential verification passed \u2014 login works");
+      }
     }
   }
   const probeContext = await preProbeForAuth(baseUrl, detection);
@@ -40265,6 +40284,102 @@ Response: \`${preview}\``
     }
   }
   return { functional, diagnostic };
+}
+async function discoverLoginEndpoint(baseUrl) {
+  const candidates = [
+    "/session",
+    "/api/session",
+    "/api/auth/login",
+    "/auth/sign_in",
+    "/login",
+    "/api/login"
+  ];
+  for (const path2 of candidates) {
+    try {
+      const res = await fetch(`${baseUrl}${path2}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: "{}",
+        redirect: "manual",
+        signal: AbortSignal.timeout(5e3)
+      });
+      if (res.status !== 404) {
+        return path2;
+      }
+    } catch {
+    }
+  }
+  return null;
+}
+async function verifySeededCredentials(baseUrl, creds, detection) {
+  const loginEndpoint = detection.loginEndpoint ?? "/session";
+  const loginUrl = `${baseUrl}${loginEndpoint}`;
+  let csrfToken;
+  let sessionCookie;
+  const csrfCandidates = [`${baseUrl}/session/csrf`, `${baseUrl}/csrf`];
+  for (const csrfUrl of csrfCandidates) {
+    try {
+      const res = await fetch(csrfUrl, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(5e3)
+      });
+      if (res.status === 200) {
+        const body = await res.text();
+        const csrfMatch = body.match(/"csrf"\s*:\s*"([^"]*)"/);
+        if (csrfMatch?.[1]) csrfToken = csrfMatch[1];
+        const setCookies = res.headers.getSetCookie?.() ?? [];
+        for (const sc of setCookies) {
+          const pair = sc.split(";")[0]?.trim();
+          if (pair?.includes("=")) {
+            sessionCookie = (sessionCookie ? sessionCookie + "; " : "") + pair;
+          }
+        }
+        if (csrfToken) break;
+      }
+    } catch {
+    }
+  }
+  const formBody = `login=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
+  const headers = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    Accept: "application/json"
+  };
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  if (sessionCookie) headers["Cookie"] = sessionCookie;
+  try {
+    const res = await fetch(loginUrl, {
+      method: "POST",
+      headers,
+      body: formBody,
+      redirect: "manual",
+      signal: AbortSignal.timeout(1e4)
+    });
+    const body = await res.text();
+    if (res.status >= 500) {
+      return { valid: false, reason: `Login returned HTTP ${res.status} \u2014 app may be broken` };
+    }
+    if (/\b(error|invalid|incorrect|wrong|failed|denied)\b/i.test(body) && !/"current_user"/.test(body)) {
+      const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
+      return { valid: false, reason: `Login rejected credentials: ${preview}` };
+    }
+    if (res.status === 200 || res.status === 302) {
+      const setCookies = res.headers.getSetCookie?.() ?? [];
+      const hasSessionCookie = setCookies.some(
+        (c3) => /(_t|_session|session_id|token|jwt)/i.test(c3)
+      );
+      if (hasSessionCookie || res.status === 302) {
+        return { valid: true, reason: "Login succeeded with session cookie" };
+      }
+      if (/"user"/.test(body) || /"username"/.test(body)) {
+        return { valid: true, reason: "Login returned user data" };
+      }
+    }
+    return { valid: true, reason: `Login returned HTTP ${res.status} \u2014 assuming OK` };
+  } catch (err) {
+    return { valid: false, reason: `Login request failed: ${toErrorMessage(err)}` };
+  }
 }
 var _probeCookieJar = {};
 async function probeUrl2(args) {

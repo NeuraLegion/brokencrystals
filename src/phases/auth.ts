@@ -105,6 +105,25 @@ export async function detectAndConfigureAuth(
         login: seededCredentials.username,
         password: seededCredentials.password,
       });
+
+      // If detection didn't find a loginEndpoint, try common patterns so the
+      // sanity check and auth config have something to work with.
+      if (!detection.loginEndpoint) {
+        const discovered = await discoverLoginEndpoint(baseUrl);
+        if (discovered) {
+          detection.loginEndpoint = discovered;
+          console.log(`[Auth] Discovered login endpoint: ${discovered}`);
+        }
+      }
+
+      // Verify the seeded credentials actually work before burning LLM turns
+      const credCheck = await verifySeededCredentials(baseUrl, seededCredentials, detection);
+      if (!credCheck.valid) {
+        console.warn(`[Auth:Seed] Credential verification failed: ${credCheck.reason}`);
+        console.warn("[Auth:Seed] The seed LLM may have changed the password — seeded password might not match");
+      } else {
+        console.log("[Auth:Seed] Credential verification passed — login works");
+      }
     }
   }
 
@@ -1863,6 +1882,132 @@ async function preAuthLoginSanityCheck(
     }
   }
   return { functional, diagnostic };
+}
+
+// ---------------------------------------------------------------------------
+// discoverLoginEndpoint — try common login endpoint patterns to find one that
+// responds (non-404). Used when detection didn't find a loginEndpoint.
+// ---------------------------------------------------------------------------
+
+async function discoverLoginEndpoint(baseUrl: string): Promise<string | null> {
+  const candidates = [
+    "/session",
+    "/api/session",
+    "/api/auth/login",
+    "/auth/sign_in",
+    "/login",
+    "/api/login",
+  ];
+
+  for (const path of candidates) {
+    try {
+      const res = await fetch(`${baseUrl}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: "{}",
+        redirect: "manual",
+        signal: AbortSignal.timeout(5_000),
+      });
+      // 404 = endpoint doesn't exist. Anything else (200, 400, 403, 422) = it exists.
+      if (res.status !== 404) {
+        return path;
+      }
+    } catch { /* connection error — skip */ }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// verifySeededCredentials — after seeding, attempt an actual login to confirm
+// the reported credentials work. Catches the case where the seed LLM changed
+// the password but reported the original template value.
+// ---------------------------------------------------------------------------
+
+async function verifySeededCredentials(
+  baseUrl: string,
+  creds: SeedUserResult,
+  detection: AuthDetection,
+): Promise<{ valid: boolean; reason: string }> {
+  const loginEndpoint = detection.loginEndpoint ?? "/session";
+  const loginUrl = `${baseUrl}${loginEndpoint}`;
+
+  // Step 1: Try to get a CSRF token (many apps need this)
+  let csrfToken: string | undefined;
+  let sessionCookie: string | undefined;
+  const csrfCandidates = [`${baseUrl}/session/csrf`, `${baseUrl}/csrf`];
+  for (const csrfUrl of csrfCandidates) {
+    try {
+      const res = await fetch(csrfUrl, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (res.status === 200) {
+        const body = await res.text();
+        const csrfMatch = body.match(/"csrf"\s*:\s*"([^"]*)"/);
+        if (csrfMatch?.[1]) csrfToken = csrfMatch[1];
+        const setCookies: string[] = (res.headers as any).getSetCookie?.() ?? [];
+        for (const sc of setCookies) {
+          const pair = sc.split(";")[0]?.trim();
+          if (pair?.includes("=")) {
+            sessionCookie = (sessionCookie ? sessionCookie + "; " : "") + pair;
+          }
+        }
+        if (csrfToken) break;
+      }
+    } catch { /* skip */ }
+  }
+
+  // Step 2: Attempt login with form-encoded body (most common for session auth)
+  const formBody = `login=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    Accept: "application/json",
+  };
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  if (sessionCookie) headers["Cookie"] = sessionCookie;
+
+  try {
+    const res = await fetch(loginUrl, {
+      method: "POST",
+      headers,
+      body: formBody,
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = await res.text();
+
+    if (res.status >= 500) {
+      return { valid: false, reason: `Login returned HTTP ${res.status} — app may be broken` };
+    }
+
+    // Check for error indicators in the response body
+    if (/\b(error|invalid|incorrect|wrong|failed|denied)\b/i.test(body) && !/"current_user"/.test(body)) {
+      const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
+      return { valid: false, reason: `Login rejected credentials: ${preview}` };
+    }
+
+    // Check for success indicators
+    if (res.status === 200 || res.status === 302) {
+      // Look for session cookies in response
+      const setCookies: string[] = (res.headers as any).getSetCookie?.() ?? [];
+      const hasSessionCookie = setCookies.some(
+        (c: string) => /(_t|_session|session_id|token|jwt)/i.test(c),
+      );
+      if (hasSessionCookie || res.status === 302) {
+        return { valid: true, reason: "Login succeeded with session cookie" };
+      }
+      // 200 without session cookie — might be an error-in-200 we didn't catch
+      if (/"user"/.test(body) || /"username"/.test(body)) {
+        return { valid: true, reason: "Login returned user data" };
+      }
+    }
+
+    return { valid: true, reason: `Login returned HTTP ${res.status} — assuming OK` };
+  } catch (err) {
+    return { valid: false, reason: `Login request failed: ${toErrorMessage(err)}` };
+  }
 }
 
 // ---------------------------------------------------------------------------

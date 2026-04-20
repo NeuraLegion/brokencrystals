@@ -285,6 +285,7 @@ Create a user with these exact credentials:
 4. If the first attempt fails, READ the error message, then:
    - Read the User model source code to understand required fields and validations
    - Try save!(validate: false) or equivalent to bypass validations
+   - **If you change the password to bypass validation, REMEMBER the new password — you must report it in the output**
    - Try alternative CLI commands (e.g. "bundle exec rake" vs "rails runner")
    - Try the app's built-in admin/seed commands
    - Try raw SQL: docker exec <db-container> psql -U postgres -d <dbname> -c "INSERT INTO users..."
@@ -294,7 +295,11 @@ Create a user with these exact credentials:
 
 ## Output
 When the user is created and verified, respond with ONLY this JSON:
-{"success": true, "username": "bright_test", "password": "BrightTest123!", "email": "bright@test.com"}
+{"success": true, "username": "bright_test", "password": "<ACTUAL_PASSWORD>", "email": "bright@test.com"}
+
+⚠️ CRITICAL: The "password" field MUST be the EXACT password that was saved to the database.
+If you had to modify the password to bypass validations (e.g. changed "BrightTest123!" to "BrightTest123!__" or any other variant), report the MODIFIED password — NOT the original target.
+The auth phase will use this password to log in. If it's wrong, authentication will silently fail.
 
 If you exhausted all approaches and cannot create a user, respond with:
 {"success": false, "reason": "brief explanation"}
