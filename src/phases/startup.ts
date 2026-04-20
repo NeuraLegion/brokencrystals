@@ -288,28 +288,38 @@ async function generateComposeWithLLM(
   config: StartupConfig,
   model?: string,
 ): Promise<void> {
-  console.log("[Startup] Generating compose.yml with LLM (using project discovery)...");
+  const MAX_COMPOSE_GEN_RETRIES = 3;
   const t0 = Date.now();
 
-  try {
-    const hasDockerfile = existsSync(`${repoPath}/Dockerfile`);
-    const messages = generateComposePrompt(stackStr, discovery, hasDockerfile);
-    const handler = createToolHandler(repoPath);
-    const response = await chatWithTools(llm, messages, codebaseTools, handler, model);
-    const content = extractCodeBlock(response);
+  for (let attempt = 1; attempt <= MAX_COMPOSE_GEN_RETRIES; attempt++) {
+    console.log(`[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`);
+    try {
+      const hasDockerfile = existsSync(`${repoPath}/Dockerfile`);
+      const messages = generateComposePrompt(stackStr, discovery, hasDockerfile);
+      const handler = createToolHandler(repoPath);
+      const response = await chatWithTools(llm, messages, codebaseTools, handler, model);
+      const content = extractCodeBlock(response);
 
-    if (!content || content.length < 20) {
-      throw new Error("LLM returned empty or too-short compose content");
+      if (!content || content.length < 20) {
+        throw new Error("LLM returned empty or too-short compose content");
+      }
+
+      writeFileSync(`${repoPath}/compose.yml`, content);
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
+      console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
+      return; // success — done
+    } catch (err) {
+      console.warn(`[Startup] LLM compose generation attempt ${attempt} failed: ${toErrorMessage(err)}`);
+      if (attempt < MAX_COMPOSE_GEN_RETRIES) {
+        console.log(`[Startup] Retrying compose generation...`);
+      }
     }
-
-    writeFileSync(`${repoPath}/compose.yml`, content);
-    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
-    console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
-  } catch (err) {
-    console.warn(`[Startup] LLM compose generation failed (${toErrorMessage(err)}) — using template fallback`);
-    generateComposeFile(repoPath, config);
   }
+
+  // All retries exhausted — fall back to template
+  console.warn(`[Startup] All ${MAX_COMPOSE_GEN_RETRIES} compose generation attempts failed — using template fallback`);
+  generateComposeFile(repoPath, config);
 }
 
 export async function startApplicationWithRetries(
