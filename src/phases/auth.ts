@@ -490,6 +490,12 @@ async function createAuthViaRestApi(
   console.log(
     `[Auth] Creating ${authStyle} auth via REST API — login: ${loginUrl}, test: ${testUrl}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`,
   );
+  const steps = (body.config as Record<string, unknown>).multistep
+    ? ((body.config as Record<string, Record<string, unknown>>).multistep.steps as Record<string, unknown>[])
+    : undefined;
+  if (steps) {
+    console.log(`[Auth] Auth object steps: ${steps.map((s) => `${s.name}(${(s.request as Record<string, unknown>)?.method} ${(s.request as Record<string, unknown>)?.url})`).join(" → ")}`);
+  }
   return postAuthObject(api, body);
 }
 
@@ -527,7 +533,9 @@ function buildLoginSteps(opts: {
           },
         ],
         bodyType: "clear_text",
-        ...opts.redirectOpts,
+        // Do NOT spread redirectOpts here — followRedirects:false is for the
+        // login POST (to capture raw 302 + Set-Cookie). The CSRF GET should
+        // follow redirects normally so the token fetch succeeds.
       },
       successResponseDetection: [{ type: "status", statuses: [200] }],
     });
