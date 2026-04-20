@@ -64,6 +64,8 @@ export interface StartupConfig {
   postStartCommands?: string[];
   /** Path to probe for health checks instead of "/" (e.g. "/srv/status", "/health") */
   healthCheckPath?: string;
+  /** AI-generated summary of the health check response (e.g. "valid JSON forum data", "setup wizard page") */
+  healthCheckSummary?: string;
 }
 
 // ---------------------------------------------------------------------------

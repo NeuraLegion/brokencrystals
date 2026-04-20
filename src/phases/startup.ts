@@ -385,6 +385,9 @@ Respond with EXACTLY one JSON object:
         }
       };
 
+      // Capture health check reason so we can pass it forward to auth detection
+      let lastHealthReason = "";
+
       // Create LLM-powered HTTP response health analyzer
       const analyzeResponseFn = async (status: number, body: string): Promise<{ healthy: boolean; reason: string }> => {
         const resp = await llm.chat.completions.create({
@@ -427,10 +430,12 @@ When in doubt about whether the app is running vs broken, check: does the page c
         try {
           const text = resp.choices[0]?.message.content ?? "";
           const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
-          return {
+          const result = {
             healthy: json.healthy === true,
             reason: String(json.reason ?? "").slice(0, 200) || "no reason given",
           };
+          if (result.healthy) lastHealthReason = result.reason;
+          return result;
         } catch {
           // If AI fails to parse, assume healthy to avoid false positives
           return { healthy: true, reason: "failed to parse AI response — assuming healthy" };
@@ -451,6 +456,7 @@ When in doubt about whether the app is running vs broken, check: does the page c
       });
       if (stats.length > 1) printStartupStats(stats);
       modelSelector?.reset();
+      if (lastHealthReason) config.healthCheckSummary = lastHealthReason;
       return { process: proc, config };
     } catch (err) {
       const errorMsg = toErrorMessage(err);

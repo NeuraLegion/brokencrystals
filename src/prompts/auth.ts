@@ -37,26 +37,37 @@ You have codebase tools (read_file, list_files, search_files) AND a **probe_url*
 
 ## Investigation steps:
 
-1. **Probe the live app first** — use probe_url to hit a few endpoints and check responses:
-   - GET ${baseUrl}/ — check if it redirects to login or returns HTML with login forms
-   - GET ${baseUrl}/session/current.json or /api/me or /api/user — check for 401/403
-   - GET ${baseUrl}/admin — check for 401/403/302
-   This immediately tells you if auth is required, even for complex apps.
+1. **Search the codebase for auth mechanisms first** — look for:
+   - Authentication middleware, before_action filters, guards, decorators (@login_required, @auth, passport.authenticate, etc.)
+   - Login/session controllers, auth routes, token generation
+   - User models, password hashing, CSRF token generation
+   - Session configuration, cookie settings, JWT secret config
+   If the codebase has ANY of these → auth IS required. Proceed to find the login endpoint details.
 
-2. **Find the login endpoint** — search for auth controllers, login routes, sign-in handlers. IMPORTANT: distinguish between the HTML login PAGE (e.g. /login) and the API endpoint that PROCESSES credentials (e.g. POST /session, POST /api/auth/login). Read the handler code to determine:
+2. **Probe the live app to confirm and gather details** — use probe_url:
+   - GET ${baseUrl}/ — check the response. NOTE: Many apps (forums, wikis, CMS, blogs) serve PUBLIC pages without auth. A 200 response on the homepage does NOT mean auth is unnecessary.
+   - Search the codebase for actual protected routes (admin panels, user settings, API endpoints with auth middleware) and probe THOSE specific paths.
+   - Check for login/session endpoints found in the codebase (not generic guesses).
+
+3. **Find the login endpoint** — search for auth controllers, login routes, sign-in handlers. IMPORTANT: distinguish between the HTML login PAGE (e.g. /login) and the API endpoint that PROCESSES credentials (e.g. POST /session, POST /api/auth/login). Read the handler code to determine:
    - The exact API endpoint that processes login (NOT the page that renders the login form)
    - The exact request body field names (e.g. "user", "email", "username", "password")
    - How the token/session is returned: response body field, response header, or Set-Cookie
    - Whether it's session-based (cookies), JWT (token in body/header), or API key
    For loginEndpoint, always use the API endpoint path. If unsure, probe POST to candidate endpoints to find the one that accepts credentials.
 
-3. **Find real credentials** — search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials — only use values found in the actual codebase. If none found, set loginBody to null.
+4. **Find real credentials** — search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials — only use values found in the actual codebase. If none found, set loginBody to null.
 
-4. **Find the registration endpoint** (if applicable) — if no seeded users exist, find a signup/register route and build a registerBody with consistent test credentials.
+5. **Find the registration endpoint** (if applicable) — if no seeded users exist, find a signup/register route and build a registerBody with consistent test credentials.
 
-5. **Identify a protected endpoint** — find a route with auth middleware applied (e.g. before_action, @login_required, passport.authenticate) that returns 401/403/302 when unauthenticated. Use probe_url to VERIFY it actually requires auth.
+6. **Identify a protected endpoint** — find a route with auth middleware applied (e.g. before_action, @login_required, passport.authenticate) that returns 401/403/302 when unauthenticated. Use probe_url to VERIFY it actually requires auth.
 
-CRITICAL: NEVER conclude "requiresAuth: false" based only on code analysis. You MUST probe the live app first. Most web apps require authentication — if the homepage loads without auth, probe API/admin/user endpoints too.
+CRITICAL RULES:
+- If the codebase has authentication mechanisms (login controllers, session management, auth middleware, password hashing, CSRF tokens), then requiresAuth IS true — regardless of what HTTP probes return.
+- Many apps (forums, wikis, CMS, e-commerce) have public pages that return 200 without auth. This does NOT mean auth is unnecessary. These apps still need auth for admin, posting, user profiles, and API operations.
+- If probe responses return HTML when you requested JSON (Accept: application/json), the app may be serving a catch-all page (setup wizard, SPA shell). This does NOT mean the endpoint is unprotected.
+- If EVERY endpoint returns 200 with similar HTML content, the app is likely in a special state (setup wizard, SPA with client-side routing). Auth IS almost certainly still required.
+- Default to requiresAuth: true. Only set requiresAuth: false if you are CERTAIN the app has no auth at all (no login endpoint, no session management, no user model, no auth middleware anywhere in the codebase).
 
 Base URL: ${baseUrl}`,
     },

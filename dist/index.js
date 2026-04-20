@@ -36579,6 +36579,7 @@ ${logs.slice(-3e3)}
           return { status: "unknown", summary: "failed to parse AI response" };
         }
       };
+      let lastHealthReason = "";
       const analyzeResponseFn = async (status, body) => {
         const resp = await llm.chat.completions.create({
           model: modelSelector?.current() ?? "gpt-4o-mini",
@@ -36623,10 +36624,12 @@ ${body}
         try {
           const text = resp.choices[0]?.message.content ?? "";
           const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
-          return {
+          const result = {
             healthy: json.healthy === true,
             reason: String(json.reason ?? "").slice(0, 200) || "no reason given"
           };
+          if (result.healthy) lastHealthReason = result.reason;
+          return result;
         } catch {
           return { healthy: true, reason: "failed to parse AI response \u2014 assuming healthy" };
         }
@@ -36645,6 +36648,7 @@ ${body}
       });
       if (stats.length > 1) printStartupStats(stats);
       modelSelector?.reset();
+      if (lastHealthReason) config2.healthCheckSummary = lastHealthReason;
       return { process: proc2, config: config2 };
     } catch (err) {
       const errorMsg = toErrorMessage(err);
@@ -38249,26 +38253,37 @@ You have codebase tools (read_file, list_files, search_files) AND a **probe_url*
 
 ## Investigation steps:
 
-1. **Probe the live app first** \u2014 use probe_url to hit a few endpoints and check responses:
-   - GET ${baseUrl}/ \u2014 check if it redirects to login or returns HTML with login forms
-   - GET ${baseUrl}/session/current.json or /api/me or /api/user \u2014 check for 401/403
-   - GET ${baseUrl}/admin \u2014 check for 401/403/302
-   This immediately tells you if auth is required, even for complex apps.
+1. **Search the codebase for auth mechanisms first** \u2014 look for:
+   - Authentication middleware, before_action filters, guards, decorators (@login_required, @auth, passport.authenticate, etc.)
+   - Login/session controllers, auth routes, token generation
+   - User models, password hashing, CSRF token generation
+   - Session configuration, cookie settings, JWT secret config
+   If the codebase has ANY of these \u2192 auth IS required. Proceed to find the login endpoint details.
 
-2. **Find the login endpoint** \u2014 search for auth controllers, login routes, sign-in handlers. IMPORTANT: distinguish between the HTML login PAGE (e.g. /login) and the API endpoint that PROCESSES credentials (e.g. POST /session, POST /api/auth/login). Read the handler code to determine:
+2. **Probe the live app to confirm and gather details** \u2014 use probe_url:
+   - GET ${baseUrl}/ \u2014 check the response. NOTE: Many apps (forums, wikis, CMS, blogs) serve PUBLIC pages without auth. A 200 response on the homepage does NOT mean auth is unnecessary.
+   - Search the codebase for actual protected routes (admin panels, user settings, API endpoints with auth middleware) and probe THOSE specific paths.
+   - Check for login/session endpoints found in the codebase (not generic guesses).
+
+3. **Find the login endpoint** \u2014 search for auth controllers, login routes, sign-in handlers. IMPORTANT: distinguish between the HTML login PAGE (e.g. /login) and the API endpoint that PROCESSES credentials (e.g. POST /session, POST /api/auth/login). Read the handler code to determine:
    - The exact API endpoint that processes login (NOT the page that renders the login form)
    - The exact request body field names (e.g. "user", "email", "username", "password")
    - How the token/session is returned: response body field, response header, or Set-Cookie
    - Whether it's session-based (cookies), JWT (token in body/header), or API key
    For loginEndpoint, always use the API endpoint path. If unsure, probe POST to candidate endpoints to find the one that accepts credentials.
 
-3. **Find real credentials** \u2014 search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials \u2014 only use values found in the actual codebase. If none found, set loginBody to null.
+4. **Find real credentials** \u2014 search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials \u2014 only use values found in the actual codebase. If none found, set loginBody to null.
 
-4. **Find the registration endpoint** (if applicable) \u2014 if no seeded users exist, find a signup/register route and build a registerBody with consistent test credentials.
+5. **Find the registration endpoint** (if applicable) \u2014 if no seeded users exist, find a signup/register route and build a registerBody with consistent test credentials.
 
-5. **Identify a protected endpoint** \u2014 find a route with auth middleware applied (e.g. before_action, @login_required, passport.authenticate) that returns 401/403/302 when unauthenticated. Use probe_url to VERIFY it actually requires auth.
+6. **Identify a protected endpoint** \u2014 find a route with auth middleware applied (e.g. before_action, @login_required, passport.authenticate) that returns 401/403/302 when unauthenticated. Use probe_url to VERIFY it actually requires auth.
 
-CRITICAL: NEVER conclude "requiresAuth: false" based only on code analysis. You MUST probe the live app first. Most web apps require authentication \u2014 if the homepage loads without auth, probe API/admin/user endpoints too.
+CRITICAL RULES:
+- If the codebase has authentication mechanisms (login controllers, session management, auth middleware, password hashing, CSRF tokens), then requiresAuth IS true \u2014 regardless of what HTTP probes return.
+- Many apps (forums, wikis, CMS, e-commerce) have public pages that return 200 without auth. This does NOT mean auth is unnecessary. These apps still need auth for admin, posting, user profiles, and API operations.
+- If probe responses return HTML when you requested JSON (Accept: application/json), the app may be serving a catch-all page (setup wizard, SPA shell). This does NOT mean the endpoint is unprotected.
+- If EVERY endpoint returns 200 with similar HTML content, the app is likely in a special state (setup wizard, SPA with client-side routing). Auth IS almost certainly still required.
+- Default to requiresAuth: true. Only set requiresAuth: false if you are CERTAIN the app has no auth at all (no login endpoint, no session management, no user model, no auth middleware anywhere in the codebase).
 
 Base URL: ${baseUrl}`
     },
@@ -38603,23 +38618,24 @@ async function detectAuthFromCode(llm, repoPath, techStack, baseUrl, model, cont
       }
     }
   };
-  const handler = async (name, args) => {
-    if (name === "probe_url") return probeUrl2(args);
-    return codeHandler(name, args);
-  };
   const messages = detectAuthPrompt(stackStr, baseUrl, contextSummary);
+  const webHandler = createWebSearchHandler(repoPath);
   const response = await chatWithTools(
     llm,
     messages,
-    [...codebaseTools, probeToolDef],
-    handler,
+    [...codebaseTools, probeToolDef, ...webSearchTools],
+    (name, args) => {
+      if (name === "probe_url") return probeUrl2(args);
+      if (name === "search_web" || name === "fetch_url") return webHandler(name, args);
+      return codeHandler(name, args);
+    },
     model,
     40
   );
   try {
     const parsed = JSON.parse(extractJson(response));
     return {
-      requiresAuth: parsed.requiresAuth ?? false,
+      requiresAuth: parsed.requiresAuth ?? true,
       authType: parsed.authType ?? "none",
       loginEndpoint: parsed.loginEndpoint ?? null,
       loginMethod: parsed.loginMethod ?? "POST",
@@ -39678,6 +39694,13 @@ async function probeUrl2(args) {
     const bodyPreview = bodyText.length > 2e3 ? bodyText.slice(0, 2e3) + "\n... [truncated]" : bodyText;
     const parts = [`HTTP ${status}`];
     if (headerLines.length > 0) parts.push(headerLines.join("\n"));
+    const contentType = res.headers.get("content-type") ?? "";
+    const acceptHeader = fetchOpts.headers?.Accept ?? "";
+    if (contentType.includes("text/html") && acceptHeader.includes("application/json") && bodyText.includes("<html")) {
+      parts.push(
+        "\u26A0\uFE0F NOTE: This endpoint returned HTML content even though JSON was requested. This likely means the app is serving a catch-all page (setup wizard, SPA shell, or error page) rather than an actual API response. This does NOT indicate the endpoint is unprotected."
+      );
+    }
     parts.push(bodyPreview || "(empty body)");
     console.log(`[Auth] Probe result: ${status}`);
     return parts.join("\n\n");
@@ -43016,6 +43039,9 @@ function buildContextSummary(techStack, startupConfig, endpoints, swaggerEndpoin
     `Deployment: ${startupConfig.docker ? "Docker" : "native"} on port ${startupConfig.port}`,
     `Startup command: ${startupConfig.command}`
   ];
+  if (startupConfig.healthCheckSummary) {
+    lines.push(`Health check: ${startupConfig.healthCheckSummary}`);
+  }
   if (endpoints.length > 0) {
     lines.push(`Endpoints: ${endpoints.length} total (${methodBreakdown})`);
   }

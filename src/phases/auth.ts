@@ -242,18 +242,19 @@ async function detectAuthFromCode(
     },
   };
 
-  const handler: ToolHandler = async (name, args) => {
-    if (name === "probe_url") return probeUrl(args);
-    return codeHandler(name, args);
-  };
-
   const messages = detectAuthPrompt(stackStr, baseUrl, contextSummary);
+
+  const webHandler = createWebSearchHandler(repoPath);
 
   const response = await chatWithTools(
     llm,
     messages,
-    [...codebaseTools, probeToolDef],
-    handler,
+    [...codebaseTools, probeToolDef, ...webSearchTools],
+    (name, args) => {
+      if (name === "probe_url") return probeUrl(args);
+      if (name === "search_web" || name === "fetch_url") return webHandler(name, args);
+      return codeHandler(name, args);
+    },
     model,
     40,
   );
@@ -261,7 +262,7 @@ async function detectAuthFromCode(
   try {
     const parsed = JSON.parse(extractJson(response));
     return {
-      requiresAuth: parsed.requiresAuth ?? false,
+      requiresAuth: parsed.requiresAuth ?? true,
       authType: parsed.authType ?? "none",
       loginEndpoint: parsed.loginEndpoint ?? null,
       loginMethod: parsed.loginMethod ?? "POST",
@@ -1625,6 +1626,23 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
 
     const parts = [`HTTP ${status}`];
     if (headerLines.length > 0) parts.push(headerLines.join("\n"));
+
+    // Detect when endpoint returns HTML instead of JSON — common in
+    // setup wizards, SPAs, and apps that serve a catch-all HTML shell
+    const contentType = res.headers.get("content-type") ?? "";
+    const acceptHeader = (fetchOpts.headers as Record<string, string>)?.Accept ?? "";
+    if (
+      contentType.includes("text/html") &&
+      acceptHeader.includes("application/json") &&
+      bodyText.includes("<html")
+    ) {
+      parts.push(
+        "⚠️ NOTE: This endpoint returned HTML content even though JSON was requested. " +
+        "This likely means the app is serving a catch-all page (setup wizard, SPA shell, or error page) " +
+        "rather than an actual API response. This does NOT indicate the endpoint is unprotected.",
+      );
+    }
+
     parts.push(bodyPreview || "(empty body)");
 
     console.log(`[Auth] Probe result: ${status}`);

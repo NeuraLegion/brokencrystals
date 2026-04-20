@@ -1697,6 +1697,9 @@ function buildContextSummary(
     `Deployment: ${startupConfig.docker ? "Docker" : "native"} on port ${startupConfig.port}`,
     `Startup command: ${startupConfig.command}`,
   ];
+  if (startupConfig.healthCheckSummary) {
+    lines.push(`Health check: ${startupConfig.healthCheckSummary}`);
+  }
   if (endpoints.length > 0) {
     lines.push(`Endpoints: ${endpoints.length} total (${methodBreakdown})`);
   }
