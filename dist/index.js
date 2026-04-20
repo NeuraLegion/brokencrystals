@@ -36884,7 +36884,7 @@ Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
 - Database migration needed, pending migrations
 - Configuration required, environment variable missing
 - Framework default welcome pages that are NOT real app UI (Rails "Yay! You're on Rails!", Django debug page, etc.)
-- Blank or nearly empty pages with just a title and no real content
+- Blank or nearly empty pages with just a title and no real content (but NOT minimal health/status endpoints \u2014 those are valid, see HEALTHY list)
 - JSON error responses like {"error": ...} or {"errors": [...]}
 
 Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
@@ -36894,6 +36894,7 @@ Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
 - A working application UI with navigation, content, and interactive elements
 - A web-based setup wizard or "finish installation" form where the user can register an admin account through the browser \u2014 this is a NORMAL first-run state and the application IS working correctly
 - Any page served by the application framework (not a raw web server error) that accepts user interaction
+- A minimal health/status endpoint response such as "ok", "OK", "healthy", "pong", "alive", or a short JSON like {"status":"ok"} \u2014 these are VALID health responses even if the body is very short
 
 When in doubt about whether the app is running vs broken, check: does the page come from the application framework and accept user interaction? If yes \u2192 HEALTHY. If it just shows a static error or tells you to run commands \u2192 UNHEALTHY.`
             },
@@ -37899,7 +37900,8 @@ ${containerLogs}`);
       } catch {
       }
     }
-    const composeCrashPromise = pollComposeContainersAlive(repoPath, 3e5);
+    const maxPortWaitMs = 3e5 + MAX_PORT_WAIT_EXTENSIONS * PORT_WAIT_EXTENSION_MS;
+    const composeCrashPromise = pollComposeContainersAlive(repoPath, maxPortWaitMs);
     try {
       await Promise.race([
         waitForPort(config2.port, 3e5, config2.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
@@ -38159,6 +38161,8 @@ ${logs.slice(-3e3)}`
   } catch {
   }
 }
+var MAX_PORT_WAIT_EXTENSIONS = 5;
+var PORT_WAIT_EXTENSION_MS = 18e4;
 async function waitForPort(port, timeoutMs, healthCheckPath = "/", repoPath, analyzeLogsFn, analyzeResponseFn) {
   const start = Date.now();
   const interval = 2e3;
@@ -38175,8 +38179,6 @@ async function waitForPort(port, timeoutMs, healthCheckPath = "/", repoPath, ana
   let responseAnalysisDone = false;
   let progressCount = 0;
   let extensionsGranted = 0;
-  const maxExtensions = 5;
-  const extensionMs = 18e4;
   let effectiveTimeoutMs = timeoutMs;
   while (Date.now() - start < effectiveTimeoutMs) {
     if (fatalDiagnosis) {
@@ -38292,16 +38294,16 @@ ${logs}`;
       }
     }
     const remaining = effectiveTimeoutMs - (Date.now() - start);
-    if (remaining < 3e4 && progressCount > 0 && extensionsGranted < maxExtensions && analyzeLogsFn && repoPath) {
+    if (remaining < 3e4 && progressCount > 0 && extensionsGranted < MAX_PORT_WAIT_EXTENSIONS && analyzeLogsFn && repoPath) {
       const snapshot = getContainerLogTail(repoPath, 40);
       if (snapshot) {
         try {
           const result = await analyzeLogsFn(snapshot);
           if (result.status === "progress") {
             extensionsGranted++;
-            effectiveTimeoutMs += extensionMs;
-            const totalExtra = extensionsGranted * extensionMs / 1e3;
-            console.log(`[Startup] AI confirms app is still progressing \u2014 extending timeout by ${extensionMs / 1e3}s (extension ${extensionsGranted}/${maxExtensions}, +${totalExtra}s total)`);
+            effectiveTimeoutMs += PORT_WAIT_EXTENSION_MS;
+            const totalExtra = extensionsGranted * PORT_WAIT_EXTENSION_MS / 1e3;
+            console.log(`[Startup] AI confirms app is still progressing \u2014 extending timeout by ${PORT_WAIT_EXTENSION_MS / 1e3}s (extension ${extensionsGranted}/${MAX_PORT_WAIT_EXTENSIONS}, +${totalExtra}s total)`);
           }
         } catch {
         }

@@ -553,7 +553,7 @@ Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
 - Database migration needed, pending migrations
 - Configuration required, environment variable missing
 - Framework default welcome pages that are NOT real app UI (Rails "Yay! You're on Rails!", Django debug page, etc.)
-- Blank or nearly empty pages with just a title and no real content
+- Blank or nearly empty pages with just a title and no real content (but NOT minimal health/status endpoints — those are valid, see HEALTHY list)
 - JSON error responses like {"error": ...} or {"errors": [...]}
 
 Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
@@ -563,6 +563,7 @@ Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
 - A working application UI with navigation, content, and interactive elements
 - A web-based setup wizard or "finish installation" form where the user can register an admin account through the browser — this is a NORMAL first-run state and the application IS working correctly
 - Any page served by the application framework (not a raw web server error) that accepts user interaction
+- A minimal health/status endpoint response such as "ok", "OK", "healthy", "pong", "alive", or a short JSON like {"status":"ok"} — these are VALID health responses even if the body is very short
 
 When in doubt about whether the app is running vs broken, check: does the page come from the application framework and accept user interaction? If yes → HEALTHY. If it just shows a static error or tells you to run commands → UNHEALTHY.`,
             },
@@ -1949,7 +1950,11 @@ async function startApplication(
 
     // Poll compose containers for crashes alongside the port wait so we
     // don't burn the full 300s when the app container exits immediately.
-    const composeCrashPromise = pollComposeContainersAlive(repoPath, 300_000);
+    // Use a timeout that covers the max possible waitForPort duration
+    // (base + all extensions) so the crash poll never times out before
+    // waitForPort finishes.
+    const maxPortWaitMs = 300_000 + MAX_PORT_WAIT_EXTENSIONS * PORT_WAIT_EXTENSION_MS;
+    const composeCrashPromise = pollComposeContainersAlive(repoPath, maxPortWaitMs);
     try {
       await Promise.race([
         waitForPort(config.port, 300_000, config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
@@ -2260,6 +2265,11 @@ function logDockerFailure(repoPath: string): void {
   }
 }
 
+// Timeout extension constants — shared between waitForPort and pollComposeContainersAlive
+// so the crash poll doesn't time out before waitForPort finishes with extensions.
+const MAX_PORT_WAIT_EXTENSIONS = 5;
+const PORT_WAIT_EXTENSION_MS = 180_000; // 3 minutes per extension
+
 export async function waitForPort(
   port: number,
   timeoutMs: number,
@@ -2283,8 +2293,6 @@ export async function waitForPort(
   let responseAnalysisDone = false; // only analyze once per health check cycle
   let progressCount = 0; // how many times AI reported "still progressing"
   let extensionsGranted = 0;
-  const maxExtensions = 5; // allow up to 5 extensions (5 × 180s = 900s extra)
-  const extensionMs = 180_000; // 3 minutes per extension
   let effectiveTimeoutMs = timeoutMs;
 
   while (Date.now() - start < effectiveTimeoutMs) {
@@ -2409,16 +2417,16 @@ export async function waitForPort(
     // the deadline — avoids killing apps that are actively booting (e.g.
     // running database migrations).  Allow multiple extensions up to a cap.
     const remaining = effectiveTimeoutMs - (Date.now() - start);
-    if (remaining < 30_000 && progressCount > 0 && extensionsGranted < maxExtensions && analyzeLogsFn && repoPath) {
+    if (remaining < 30_000 && progressCount > 0 && extensionsGranted < MAX_PORT_WAIT_EXTENSIONS && analyzeLogsFn && repoPath) {
       const snapshot = getContainerLogTail(repoPath, 40);
       if (snapshot) {
         try {
           const result = await analyzeLogsFn(snapshot);
           if (result.status === "progress") {
             extensionsGranted++;
-            effectiveTimeoutMs += extensionMs;
-            const totalExtra = extensionsGranted * extensionMs / 1000;
-            console.log(`[Startup] AI confirms app is still progressing — extending timeout by ${extensionMs / 1000}s (extension ${extensionsGranted}/${maxExtensions}, +${totalExtra}s total)`);
+            effectiveTimeoutMs += PORT_WAIT_EXTENSION_MS;
+            const totalExtra = extensionsGranted * PORT_WAIT_EXTENSION_MS / 1000;
+            console.log(`[Startup] AI confirms app is still progressing — extending timeout by ${PORT_WAIT_EXTENSION_MS / 1000}s (extension ${extensionsGranted}/${MAX_PORT_WAIT_EXTENSIONS}, +${totalExtra}s total)`);
           }
         } catch { /* ignore analysis failure */ }
       }
