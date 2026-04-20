@@ -38731,8 +38731,10 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
 
 ### Step 3: Create auth object and use test_auth_object to verify
 1. Call create_auth with your best parameters \u2014 use the REAL API endpoint as loginUrl (NOT an HTML page)
-2. Call test_auth_object \u2014 this is the source of truth
-3. Read the test results carefully for EACH stage:
+2. Call test_auth_object \u2014 this is the source of truth. It returns FULL diagnostic data for each stage:
+   - **request**: method, URL, body sent
+   - **response**: HTTP status, body preview (first 800 chars), Set-Cookie headers, content-type
+3. Read the test results carefully for EACH stage \u2014 especially the **response body preview**:
 
    **If "validation" fails** ("did not match any auth triggers"):
    \u2192 The testUrl returns the same response regardless of auth. The Bright platform cannot distinguish auth/unauth.
@@ -38747,10 +38749,20 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Wrong loginBody format (json vs form mismatch)
    \u2192 Fix: probe the login endpoint to understand what it expects, then recreate.
 
+   **If "authentication" succeeds but response body is HTML (not JSON)**:
+   \u2192 The server returned 200 but with an HTML error/warning page instead of a real login response.
+   \u2192 This means login was NOT actually processed. Common causes:
+   - App running in dev mode and needs an environment variable (e.g. ALLOW_EMBER_CLI_PROXY_BYPASS=1)
+   - Server is redirecting to a setup/install page
+   \u2192 Fix: use run_command_in_docker or run_command_on_host to fix the app environment, then retest.
+
    **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
-   \u2192 Login succeeded but the test request was still unauthenticated. The session/token wasn't applied.
-   \u2192 This often means: login returned cookies but the Bright platform didn't replay them correctly, OR the app needs a specific cookie/header flow.
-   \u2192 Fix: try different testUrl, try reauthStrategy='body' instead of status, check if the app needs additional headers.
+   \u2192 Login appeared to succeed but the test request was still unauthenticated.
+   \u2192 **CHECK THE LOGIN RESPONSE** \u2014 look at the authentication stage's response body and Set-Cookie headers:
+     - If the login response body is HTML (not JSON), login did NOT actually work \u2014 fix the application first
+     - If the login response has no new Set-Cookie headers, the session wasn't established
+     - If the login response body contains error messages, credentials or format are wrong
+   \u2192 Fix: address the root cause found in the login response, try different testUrl, try reauthStrategy='body'.
 
 4. Delete the failed auth object and try a DIFFERENT approach. Change one thing at a time:
    - Different loginUrl (API vs HTML)
@@ -38758,6 +38770,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Different reauthStrategy (status \u2192 body \u2192 redirect)
    - Different loginBody format (json vs form)
    - Add/remove csrfUrl
+   - **Fix the application itself** if login responses show HTML error pages or misconfiguration
 
 ## CRITICAL PERSISTENCE RULES
 - **NEVER respond with "FAILED" until you have exhausted ALL of the following strategies:**
@@ -38766,7 +38779,8 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
   3. Both reauthStrategy='status' and reauthStrategy='body' with reauthBodyPattern
   4. Both json and form loginContentType
   5. With and without csrfUrl
-- **After each failed test_auth_object, analyze the specific failure stage and change your approach accordingly.**
+  6. **If login responses contain HTML error pages or misconfiguration warnings, fix the application** using run_command_in_docker/run_command_on_host before trying more auth configs
+- **After each failed test_auth_object, analyze the response body previews for EACH stage to understand the root cause.**
 - **Use probe_url between attempts to gather more data** \u2014 probe new endpoints, check response formats, search the codebase for auth routes.
 - **You have 50 rounds. Use them ALL before giving up.** Each create/test/delete cycle takes ~3 rounds. You can try 15+ different configurations.
 - When all stages pass, respond with ONLY the auth object ID. If you truly exhausted everything, respond "FAILED".`
@@ -39448,7 +39462,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
       type: "function",
       function: {
         name: "test_auth_object",
-        description: "Test a Bright auth object. Runs the login flow and checks if authentication + authorization succeed. Returns stage-by-stage results with pass/fail status and error messages.",
+        description: "Test a Bright auth object. Runs the full login flow and returns detailed stage-by-stage results including HTTP status codes, response body previews, Set-Cookie headers, and request details for each stage (validation, authentication, authorization). Use the response body previews to diagnose issues \u2014 e.g. if the login response contains HTML error pages instead of JSON, the application may need configuration fixes.",
         parameters: {
           type: "object",
           properties: {
@@ -39870,16 +39884,56 @@ async function testAuthObject(api, authObjectId) {
           summary: `HTTP ${res.status} \u2014 ${body.slice(0, 400)}`
         };
       }
-      const results = await res.json();
-      if (results.length === 0) {
+      const BODY_PREVIEW_LIMIT = 800;
+      const rawResults = await res.json();
+      if (rawResults.length === 0) {
         return { passed: false, summary: "No results returned" };
       }
-      const lines = results.map(
-        (r) => `stage=${r.stage} status=${r.status}${r.message ? ` \u2014 ${r.message}` : ""}`
+      const stages = rawResults.map((r) => {
+        const detail = {
+          stage: r.stage,
+          status: r.status
+        };
+        if (r.name) detail.name = r.name;
+        if (r.message) detail.message = r.message;
+        if (r.request) {
+          detail.request = {
+            method: r.request.method ?? "GET",
+            url: r.request.url ?? ""
+          };
+          if (r.request.body) {
+            detail.request.body = r.request.body.slice(0, BODY_PREVIEW_LIMIT);
+          }
+        }
+        if (r.response) {
+          const rawBody = r.response.body ?? "";
+          detail.response = {
+            status: r.response.status ?? 0,
+            bodyPreview: rawBody.slice(0, BODY_PREVIEW_LIMIT)
+          };
+          const hdrs = r.response.headers;
+          if (hdrs) {
+            const ct = hdrs["content-type"] ?? hdrs["Content-Type"];
+            if (ct) {
+              detail.response.contentType = Array.isArray(ct) ? ct[0] : ct;
+            }
+            const sc = hdrs["set-cookie"] ?? hdrs["Set-Cookie"];
+            if (sc) {
+              const cookies = Array.isArray(sc) ? sc : [sc];
+              detail.response.setCookie = cookies.map(
+                (c3) => c3.length > 120 ? c3.slice(0, 120) + "\u2026" : c3
+              );
+            }
+          }
+        }
+        return detail;
+      });
+      const lines = stages.map(
+        (s) => `${s.name ? `[${s.name}] ` : ""}stage=${s.stage} status=${s.status}${s.message ? ` \u2014 ${s.message}` : ""}${s.response ? ` (HTTP ${s.response.status}, ${s.response.contentType ?? "unknown"}, body=${s.response.bodyPreview.slice(0, 120)}\u2026)` : ""}`
       );
       for (const l of lines) console.log(`[Auth] Test: ${l}`);
-      const allPassed = results.every((r) => r.status === "success");
-      return { passed: allPassed, summary: lines.join("\n") };
+      const allPassed = rawResults.every((r) => r.status === "success");
+      return { passed: allPassed, summary: lines.join("\n"), stages };
     } catch (err) {
       const msg = toErrorMessage(err);
       console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);

@@ -38,9 +38,28 @@ export interface AuthResult {
   };
 }
 
+export interface AuthTestStageDetail {
+  stage: string;
+  status: string;
+  name?: string;
+  message?: string;
+  request?: {
+    method: string;
+    url: string;
+    body?: string;
+  };
+  response?: {
+    status: number;
+    bodyPreview: string;
+    setCookie?: string[];
+    contentType?: string;
+  };
+}
+
 export interface AuthTestResult {
   passed: boolean;
   summary: string;
+  stages?: AuthTestStageDetail[];
 }
 
 /**
@@ -777,7 +796,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
       function: {
         name: "test_auth_object",
         description:
-          "Test a Bright auth object. Runs the login flow and checks if authentication + authorization succeed. Returns stage-by-stage results with pass/fail status and error messages.",
+          "Test a Bright auth object. Runs the full login flow and returns detailed stage-by-stage results including HTTP status codes, response body previews, Set-Cookie headers, and request details for each stage (validation, authentication, authorization). Use the response body previews to diagnose issues — e.g. if the login response contains HTML error pages instead of JSON, the application may need configuration fixes.",
         parameters: {
           type: "object",
           properties: {
@@ -1310,24 +1329,91 @@ export async function testAuthObject(
         };
       }
 
-      const results = (await res.json()) as Array<{
+      const BODY_PREVIEW_LIMIT = 800;
+
+      const rawResults = (await res.json()) as Array<{
         stage: string;
         status: string;
+        name?: string;
         message?: string;
+        request?: {
+          method?: string;
+          url?: string;
+          body?: string;
+          headers?: Record<string, string>;
+        };
+        response?: {
+          status?: number;
+          body?: string;
+          headers?: Record<string, string | string[]>;
+        };
       }>;
 
-      if (results.length === 0) {
+      if (rawResults.length === 0) {
         return { passed: false, summary: "No results returned" };
       }
 
-      const lines = results.map(
-        (r) =>
-          `stage=${r.stage} status=${r.status}${r.message ? ` — ${r.message}` : ""}`,
+      // Build rich stage details for the LLM
+      const stages: AuthTestStageDetail[] = rawResults.map((r) => {
+        const detail: AuthTestStageDetail = {
+          stage: r.stage,
+          status: r.status,
+        };
+        if (r.name) detail.name = r.name;
+        if (r.message) detail.message = r.message;
+
+        if (r.request) {
+          detail.request = {
+            method: r.request.method ?? "GET",
+            url: r.request.url ?? "",
+          };
+          if (r.request.body) {
+            detail.request.body = r.request.body.slice(0, BODY_PREVIEW_LIMIT);
+          }
+        }
+
+        if (r.response) {
+          const rawBody = r.response.body ?? "";
+          detail.response = {
+            status: r.response.status ?? 0,
+            bodyPreview: rawBody.slice(0, BODY_PREVIEW_LIMIT),
+          };
+          // Extract Set-Cookie and Content-Type from response headers
+          const hdrs = r.response.headers;
+          if (hdrs) {
+            const ct =
+              hdrs["content-type"] ?? hdrs["Content-Type"];
+            if (ct) {
+              detail.response.contentType = Array.isArray(ct)
+                ? ct[0]
+                : ct;
+            }
+            const sc =
+              hdrs["set-cookie"] ?? hdrs["Set-Cookie"];
+            if (sc) {
+              // Trim long cookie values — keep name + first 80 chars
+              const cookies = Array.isArray(sc) ? sc : [sc];
+              detail.response.setCookie = cookies.map((c: string) =>
+                c.length > 120 ? c.slice(0, 120) + "…" : c,
+              );
+            }
+          }
+        }
+
+        return detail;
+      });
+
+      // Summary lines for logging
+      const lines = stages.map(
+        (s) =>
+          `${s.name ? `[${s.name}] ` : ""}stage=${s.stage} status=${s.status}` +
+          `${s.message ? ` — ${s.message}` : ""}` +
+          `${s.response ? ` (HTTP ${s.response.status}, ${s.response.contentType ?? "unknown"}, body=${s.response.bodyPreview.slice(0, 120)}…)` : ""}`,
       );
       for (const l of lines) console.log(`[Auth] Test: ${l}`);
 
-      const allPassed = results.every((r) => r.status === "success");
-      return { passed: allPassed, summary: lines.join("\n") };
+      const allPassed = rawResults.every((r) => r.status === "success");
+      return { passed: allPassed, summary: lines.join("\n"), stages };
     } catch (err) {
       const msg = toErrorMessage(err);
       console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);

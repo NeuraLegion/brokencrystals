@@ -183,8 +183,10 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
 
 ### Step 3: Create auth object and use test_auth_object to verify
 1. Call create_auth with your best parameters — use the REAL API endpoint as loginUrl (NOT an HTML page)
-2. Call test_auth_object — this is the source of truth
-3. Read the test results carefully for EACH stage:
+2. Call test_auth_object — this is the source of truth. It returns FULL diagnostic data for each stage:
+   - **request**: method, URL, body sent
+   - **response**: HTTP status, body preview (first 800 chars), Set-Cookie headers, content-type
+3. Read the test results carefully for EACH stage — especially the **response body preview**:
 
    **If "validation" fails** ("did not match any auth triggers"):
    → The testUrl returns the same response regardless of auth. The Bright platform cannot distinguish auth/unauth.
@@ -199,10 +201,20 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Wrong loginBody format (json vs form mismatch)
    → Fix: probe the login endpoint to understand what it expects, then recreate.
 
+   **If "authentication" succeeds but response body is HTML (not JSON)**:
+   → The server returned 200 but with an HTML error/warning page instead of a real login response.
+   → This means login was NOT actually processed. Common causes:
+   - App running in dev mode and needs an environment variable (e.g. ALLOW_EMBER_CLI_PROXY_BYPASS=1)
+   - Server is redirecting to a setup/install page
+   → Fix: use run_command_in_docker or run_command_on_host to fix the app environment, then retest.
+
    **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
-   → Login succeeded but the test request was still unauthenticated. The session/token wasn't applied.
-   → This often means: login returned cookies but the Bright platform didn't replay them correctly, OR the app needs a specific cookie/header flow.
-   → Fix: try different testUrl, try reauthStrategy='body' instead of status, check if the app needs additional headers.
+   → Login appeared to succeed but the test request was still unauthenticated.
+   → **CHECK THE LOGIN RESPONSE** — look at the authentication stage's response body and Set-Cookie headers:
+     - If the login response body is HTML (not JSON), login did NOT actually work — fix the application first
+     - If the login response has no new Set-Cookie headers, the session wasn't established
+     - If the login response body contains error messages, credentials or format are wrong
+   → Fix: address the root cause found in the login response, try different testUrl, try reauthStrategy='body'.
 
 4. Delete the failed auth object and try a DIFFERENT approach. Change one thing at a time:
    - Different loginUrl (API vs HTML)
@@ -210,6 +222,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Different reauthStrategy (status → body → redirect)
    - Different loginBody format (json vs form)
    - Add/remove csrfUrl
+   - **Fix the application itself** if login responses show HTML error pages or misconfiguration
 
 ## CRITICAL PERSISTENCE RULES
 - **NEVER respond with "FAILED" until you have exhausted ALL of the following strategies:**
@@ -218,7 +231,8 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
   3. Both reauthStrategy='status' and reauthStrategy='body' with reauthBodyPattern
   4. Both json and form loginContentType
   5. With and without csrfUrl
-- **After each failed test_auth_object, analyze the specific failure stage and change your approach accordingly.**
+  6. **If login responses contain HTML error pages or misconfiguration warnings, fix the application** using run_command_in_docker/run_command_on_host before trying more auth configs
+- **After each failed test_auth_object, analyze the response body previews for EACH stage to understand the root cause.**
 - **Use probe_url between attempts to gather more data** — probe new endpoints, check response formats, search the codebase for auth routes.
 - **You have 50 rounds. Use them ALL before giving up.** Each create/test/delete cycle takes ~3 rounds. You can try 15+ different configurations.
 - When all stages pass, respond with ONLY the auth object ID. If you truly exhausted everything, respond "FAILED".`,
