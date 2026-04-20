@@ -437,6 +437,25 @@ export async function startApplicationWithRetries(
       };
     }
 
+    // Guardrail: If discovery found companion services (DB, Redis, etc.)
+    // and the LLM chose standalone docker run instead of docker compose,
+    // force compose mode. Standalone docker run cannot provide the
+    // networking and service dependencies the app needs.
+    const usesComposeAlready = /docker\s+compose/.test(
+      [...(config.prerequisites ?? []), config.command].join(" "),
+    );
+    if (discovery && discovery.services.length > 0 && config.docker && !usesComposeAlready) {
+      const serviceNames = discovery.services.map(s => s.name).join(", ");
+      console.warn(
+        `[Startup] App needs companion services (${serviceNames}) but config uses standalone docker — forcing compose mode`,
+      );
+      config = {
+        ...config,
+        command: `docker compose up -d`,
+        prerequisites: ["docker compose build"],
+      };
+    }
+
     // Guardrail: If command is docker compose, strip any "docker run -d"
     // from prerequisites — they conflict by binding the same ports.
     // Only keep build/pull/network-create commands in prerequisites.

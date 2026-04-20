@@ -36779,6 +36779,20 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         command: `docker run --name ${imageName} -p ${config2.port}:${config2.port} -d ${imageName} ${config2.command}`
       };
     }
+    const usesComposeAlready = /docker\s+compose/.test(
+      [...config2.prerequisites ?? [], config2.command].join(" ")
+    );
+    if (discovery && discovery.services.length > 0 && config2.docker && !usesComposeAlready) {
+      const serviceNames = discovery.services.map((s) => s.name).join(", ");
+      console.warn(
+        `[Startup] App needs companion services (${serviceNames}) but config uses standalone docker \u2014 forcing compose mode`
+      );
+      config2 = {
+        ...config2,
+        command: `docker compose up -d`,
+        prerequisites: ["docker compose build"]
+      };
+    }
     if (/docker\s+compose/.test(config2.command) && config2.prerequisites?.length) {
       const original = config2.prerequisites;
       const cleaned = original.flatMap(
