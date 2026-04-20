@@ -1,4 +1,5 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
+import type { ProjectDiscovery } from "../types.js";
 
 /** Framework-specific Dockerfile hints keyed by lowercase tech-stack keywords. */
 const FRAMEWORK_HINTS: Array<{ keywords: string[]; hint: string }> = [
@@ -29,10 +30,42 @@ function getFrameworkHints(techStack: string): string {
     : "";
 }
 
+function getDiscoveryContext(discovery?: ProjectDiscovery): string {
+  if (!discovery) return "";
+
+  const parts: string[] = ["\n\n## Project Discovery (pre-analyzed infrastructure requirements)"];
+
+  if (discovery.services.length > 0) {
+    parts.push("Companion services this app needs (will be in Docker Compose, accessible by service name):");
+    for (const s of discovery.services) {
+      parts.push(`- **${s.name}** (${s.image}): ${s.reason}`);
+    }
+  }
+
+  if (discovery.configNotes.length > 0) {
+    parts.push("\nConfig file notes (patches needed for Docker networking):");
+    for (const note of discovery.configNotes) {
+      parts.push(`- ${note}`);
+    }
+    parts.push("\nIf any config files need patching for Docker networking, apply those changes IN the Dockerfile (e.g. RUN sed, or COPY a patched version) so the container works out of the box with the companion services.");
+  }
+
+  if (discovery.buildNotes.length > 0) {
+    parts.push("\nBuild notes:");
+    for (const note of discovery.buildNotes) {
+      parts.push(`- ${note}`);
+    }
+  }
+
+  return parts.join("\n");
+}
+
 export function generateDockerfilePrompt(
   techStack: string,
+  discovery?: ProjectDiscovery,
 ): ChatCompletionMessageParam[] {
   const frameworkHints = getFrameworkHints(techStack);
+  const discoveryContext = getDiscoveryContext(discovery);
   return [
     {
       role: "system",
@@ -55,7 +88,7 @@ Principles:
 - Use "COPY . ." for source code instead of cherry-picking individual directories — you will miss required files.
 - Copy dependency manifests FIRST and install dependencies for layer caching, then COPY the rest.
 - Install git if any build step might need it.
-- EXPOSE the correct port and set CMD to start the application.${frameworkHints}
+- EXPOSE the correct port and set CMD to start the application.${frameworkHints}${discoveryContext}
 
 Return ONLY the Dockerfile content inside a single fenced code block. No explanation outside the code block.`,
     },

@@ -341,7 +341,7 @@ export function createInfraToolHandler(repoPath: string, onHint?: (hint: string)
 // Docker image verification tool
 // ---------------------------------------------------------------------------
 
-const verifyDockerImageTool: ChatCompletionTool = {
+export const verifyDockerImageTool: ChatCompletionTool = {
   type: "function",
   function: {
     name: "verify_docker_image",

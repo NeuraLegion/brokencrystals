@@ -36267,8 +36267,33 @@ function getFrameworkHints(techStack) {
 Framework-specific guidance for this stack:
 ${hints.join("\n")}` : "";
 }
-function generateDockerfilePrompt(techStack) {
+function getDiscoveryContext(discovery) {
+  if (!discovery) return "";
+  const parts = ["\n\n## Project Discovery (pre-analyzed infrastructure requirements)"];
+  if (discovery.services.length > 0) {
+    parts.push("Companion services this app needs (will be in Docker Compose, accessible by service name):");
+    for (const s of discovery.services) {
+      parts.push(`- **${s.name}** (${s.image}): ${s.reason}`);
+    }
+  }
+  if (discovery.configNotes.length > 0) {
+    parts.push("\nConfig file notes (patches needed for Docker networking):");
+    for (const note of discovery.configNotes) {
+      parts.push(`- ${note}`);
+    }
+    parts.push("\nIf any config files need patching for Docker networking, apply those changes IN the Dockerfile (e.g. RUN sed, or COPY a patched version) so the container works out of the box with the companion services.");
+  }
+  if (discovery.buildNotes.length > 0) {
+    parts.push("\nBuild notes:");
+    for (const note of discovery.buildNotes) {
+      parts.push(`- ${note}`);
+    }
+  }
+  return parts.join("\n");
+}
+function generateDockerfilePrompt(techStack, discovery) {
   const frameworkHints = getFrameworkHints(techStack);
+  const discoveryContext = getDiscoveryContext(discovery);
   return [
     {
       role: "system",
@@ -36291,13 +36316,155 @@ Principles:
 - Use "COPY . ." for source code instead of cherry-picking individual directories \u2014 you will miss required files.
 - Copy dependency manifests FIRST and install dependencies for layer caching, then COPY the rest.
 - Install git if any build step might need it.
-- EXPOSE the correct port and set CMD to start the application.${frameworkHints}
+- EXPOSE the correct port and set CMD to start the application.${frameworkHints}${discoveryContext}
 
 Return ONLY the Dockerfile content inside a single fenced code block. No explanation outside the code block.`
     },
     {
       role: "user",
       content: `Analyze this project and generate a Dockerfile for it. Use the tools to inspect the project's files and determine the right configuration.`
+    }
+  ];
+}
+
+// src/prompts/discover-project.ts
+function discoverProjectPrompt(techStack) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer analyzing a ${techStack} project to understand its infrastructure requirements BEFORE containerizing it.
+
+Your goal: thoroughly investigate the codebase to identify ALL services, dependencies, and configuration needed to run this application in Docker containers.
+
+## What to investigate
+
+Use the tools to inspect the following (in order):
+
+1. **Dependency manifests** \u2014 Gemfile, package.json, requirements.txt, go.mod, pom.xml, .csproj, etc.
+   Look for database drivers (pg, mysql2, redis, elasticsearch-ruby, etc.), cache libraries, queue systems.
+
+2. **Configuration files** \u2014 database.yml, .env.example, config/*.conf, application.properties, settings.py, etc.
+   Identify what services the app connects to and what hostnames/ports it expects.
+   Pay special attention to how the app resolves database/cache hostnames \u2014 some frameworks read from config files (e.g. Rails database.yml), others from environment variables, others from framework-specific config (e.g. discourse.conf).
+
+3. **Docker/compose files** \u2014 existing Dockerfiles, docker-compose*.yml, .dockerignore.
+   Check if they reference services or special images.
+
+4. **Plugins/extensions** \u2014 plugin directories, extension manifests.
+   Plugins often add infrastructure requirements (e.g. a search plugin needs Elasticsearch, an AI plugin needs pgvector).
+
+5. **README/docs** \u2014 setup instructions often list required services.
+
+## Service image selection
+
+Choose the RIGHT Docker image for each service:
+- If the app needs PostgreSQL extensions (pgvector, PostGIS, etc.), use a specialized image (e.g. \`pgvector/pgvector:pg16\` instead of \`postgres:16\`)
+- Prefer Alpine variants for smaller images when available (e.g. \`redis:7-alpine\`)
+- Use a specific major version tag, not \`latest\`
+
+## Config notes
+
+For each config file that needs modification for Docker networking, note:
+- The file path
+- What needs to change (e.g. "add host: db to development section", "set redis_host=redis")
+- Why (e.g. "without explicit host, Rails defaults to Unix socket which won't work in Docker")
+
+## Output
+
+Return a JSON object:
+{
+  "services": [
+    {
+      "name": "db",
+      "image": "postgres:16-alpine",
+      "reason": "Gemfile includes 'pg' gem",
+      "environment": {"POSTGRES_USER": "postgres", "POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "app_development"},
+      "port": 5432
+    },
+    {
+      "name": "redis",
+      "image": "redis:7-alpine",
+      "reason": "Gemfile includes 'redis' gem, config references redis_host",
+      "port": 6379
+    }
+  ],
+  "configNotes": [
+    "config/database.yml: development section has no 'host' key \u2014 must add 'host: db' for Docker networking (without it Rails defaults to Unix socket)",
+    "config/app.conf: set redis_host=redis for Docker service discovery"
+  ],
+  "appEnvironment": {
+    "RAILS_ENV": "development",
+    "DATABASE_URL": "postgres://postgres:postgres@db:5432/app_development"
+  },
+  "buildNotes": [
+    "Uses pnpm workspaces \u2014 needs pnpm 10+",
+    "Has AI plugin requiring pgvector PostgreSQL extension"
+  ],
+  "port": 3000,
+  "healthCheckPath": "/"
+}
+
+Rules:
+- Only include services the app ACTUALLY needs based on code evidence \u2014 don't guess
+- The "name" field is the Docker Compose service name (used for DNS: app connects to "db", "redis", etc.)
+- appEnvironment should only include vars the APP container needs, not service containers
+- Be specific in configNotes \u2014 mention exact file paths and what to change
+- If you find NO required services (e.g. a simple Node app with SQLite), return an empty services array`
+    },
+    {
+      role: "user",
+      content: `Analyze this project's infrastructure requirements. Use the tools to explore dependency files, config files, plugins, and documentation. Return the JSON discovery object.`
+    }
+  ];
+}
+
+// src/prompts/generate-compose.ts
+function generateComposePrompt(techStack, discovery, hasDockerfile) {
+  const discoveryJson = JSON.stringify(discovery, null, 2);
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. Generate a Docker Compose file for a ${techStack} project based on the infrastructure discovery below.
+
+## Project Discovery
+${discoveryJson}
+
+## Requirements
+
+Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that includes:
+
+1. **App service**:
+   - ${hasDockerfile ? "`build: .` (Dockerfile already exists)" : "`build: .` (a Dockerfile will be generated separately)"}
+   - Maps port ${discovery.port}
+   - Sets all environment variables from appEnvironment
+   - Depends on all other services with \`condition: service_healthy\` (or \`service_started\` if no healthcheck)
+   - Sets \`stdin_open: true\` and \`tty: true\` for container stability
+
+2. **Companion services** (from discovery):
+   - Use the exact images specified in the discovery
+   - Set environment variables as specified
+   - Add health checks for databases and caches:
+     - PostgreSQL: \`pg_isready -U <user>\`
+     - MySQL: \`mysqladmin ping -h localhost\`
+     - Redis: \`redis-cli ping\`
+     - MongoDB: \`mongosh --eval "db.adminCommand('ping')"\`
+     - Elasticsearch: \`curl -f http://localhost:9200/_cluster/health\`
+   - Use named volumes for data persistence (e.g. \`db-data:/var/lib/postgresql/data\`)
+
+3. **Config patching** (from configNotes):
+   - If config files need modification for Docker networking, add the necessary environment variables or volume mounts
+   - Prefer environment variables over file modifications when the framework supports it
+
+4. **Networking**:
+   - All services share the default compose network \u2014 they reference each other by service name (e.g. app connects to "db" on port 5432)
+
+## Output
+
+Return ONLY the compose.yml content inside a single fenced code block (\`\`\`yaml ... \`\`\`). No explanation outside the code block.`
+    },
+    {
+      role: "user",
+      content: `Generate the Docker Compose file based on the discovery data. Use the tools to verify any details if needed.`
     }
   ];
 }
@@ -36405,6 +36572,76 @@ function canBuildFromSource(repoPath) {
   }
   return false;
 }
+async function discoverProject(llm, repoPath, stackStr, model) {
+  console.log("[Startup] Running project discovery \u2014 analyzing infrastructure requirements...");
+  const t0 = Date.now();
+  try {
+    const messages = discoverProjectPrompt(stackStr);
+    const handler = createToolHandler(repoPath);
+    const response = await chatWithTools(llm, messages, [...codebaseTools, verifyDockerImageTool], handler, model);
+    const jsonStr = extractJson(response);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      console.warn("[Startup] Discovery returned unparseable JSON \u2014 skipping");
+      return void 0;
+    }
+    if (!parsed || !Array.isArray(parsed.services)) {
+      console.warn("[Startup] Discovery returned invalid structure \u2014 skipping");
+      return void 0;
+    }
+    const discovery = {
+      services: (parsed.services ?? []).map((s) => ({
+        name: String(s.name ?? ""),
+        image: String(s.image ?? ""),
+        reason: String(s.reason ?? ""),
+        environment: s.environment,
+        port: typeof s.port === "number" ? s.port : void 0
+      })).filter((s) => s.name && s.image),
+      configNotes: Array.isArray(parsed.configNotes) ? parsed.configNotes.map(String) : [],
+      appEnvironment: typeof parsed.appEnvironment === "object" && parsed.appEnvironment ? parsed.appEnvironment : {},
+      buildNotes: Array.isArray(parsed.buildNotes) ? parsed.buildNotes.map(String) : [],
+      port: typeof parsed.port === "number" ? parsed.port : 3e3,
+      healthCheckPath: typeof parsed.healthCheckPath === "string" ? parsed.healthCheckPath : void 0
+    };
+    const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
+    console.log(`[Startup] Discovery completed in ${elapsed}s:`);
+    console.log(`[Startup]   Services: ${discovery.services.map((s) => `${s.name} (${s.image})`).join(", ") || "none"}`);
+    if (discovery.configNotes.length) {
+      console.log(`[Startup]   Config notes: ${discovery.configNotes.length} items`);
+    }
+    if (discovery.buildNotes.length) {
+      console.log(`[Startup]   Build notes: ${discovery.buildNotes.length} items`);
+    }
+    console.log(`[Startup]   Port: ${discovery.port}, Health: ${discovery.healthCheckPath ?? "/"}`);
+    return discovery;
+  } catch (err) {
+    console.warn(`[Startup] Discovery failed (${toErrorMessage(err)}) \u2014 continuing without it`);
+    return void 0;
+  }
+}
+async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config2, model) {
+  console.log("[Startup] Generating compose.yml with LLM (using project discovery)...");
+  const t0 = Date.now();
+  try {
+    const hasDockerfile = existsSync4(`${repoPath}/Dockerfile`);
+    const messages = generateComposePrompt(stackStr, discovery, hasDockerfile);
+    const handler = createToolHandler(repoPath);
+    const response = await chatWithTools(llm, messages, codebaseTools, handler, model);
+    const content = extractCodeBlock(response);
+    if (!content || content.length < 20) {
+      throw new Error("LLM returned empty or too-short compose content");
+    }
+    writeFileSync2(`${repoPath}/compose.yml`, content);
+    const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
+    const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
+    console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
+  } catch (err) {
+    console.warn(`[Startup] LLM compose generation failed (${toErrorMessage(err)}) \u2014 using template fallback`);
+    generateComposeFile(repoPath, config2);
+  }
+}
 async function startApplicationWithRetries(llm, repoPath, techStack, previousStartup, modelSelector) {
   cleanupDocker(repoPath);
   const stackStr = formatTechStack(techStack);
@@ -36413,6 +36650,10 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
   const stats = [];
   let dockerfileRepaired = false;
   let infraRepaired = false;
+  let discovery;
+  if (!previousStartup) {
+    discovery = await discoverProject(llm, repoPath, stackStr, modelSelector?.current());
+  }
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
     const attemptStart = Date.now();
     let config2;
@@ -36516,15 +36757,20 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         llm,
         repoPath,
         stackStr,
-        modelSelector?.current()
+        modelSelector?.current(),
+        discovery
       );
     }
     const usesCompose = /docker\s+compose/.test(
       [...config2.prerequisites ?? [], config2.command].join(" ")
     );
     if (usesCompose && !findComposeFile(repoPath)) {
-      console.log("[Startup] No compose file found \u2014 generating one from Dockerfile");
-      generateComposeFile(repoPath, config2);
+      if (discovery && discovery.services.length > 0) {
+        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config2, modelSelector?.current());
+      } else {
+        console.log("[Startup] No compose file found \u2014 generating one from Dockerfile (no discovery available)");
+        generateComposeFile(repoPath, config2);
+      }
     }
     console.log(
       `[Startup] Attempt ${attempt}/${MAX_STARTUP_ATTEMPTS}: ${config2.docker ? "Docker" : "native"} \u2014 ${config2.command}`
@@ -37161,9 +37407,9 @@ function parseInfraRepairResult(response) {
     return {};
   }
 }
-async function generateDockerfile(llm, repoPath, stackStr, model) {
+async function generateDockerfile(llm, repoPath, stackStr, model, discovery) {
   const dockerHandler = createDockerfileToolHandler(repoPath);
-  const messages = generateDockerfilePrompt(stackStr);
+  const messages = generateDockerfilePrompt(stackStr, discovery);
   const response = await chatWithTools(
     llm,
     messages,

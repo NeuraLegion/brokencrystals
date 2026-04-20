@@ -7,14 +7,17 @@ import {
 } from "child_process";
 import { createInterface } from "readline";
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import type { TechStack, StartupConfig } from "../types.js";
+import type { TechStack, StartupConfig, ProjectDiscovery } from "../types.js";
 import { chatWithTools, type ModelSelector, type ToolHandler } from "../inference.js";
 import {
+  codebaseTools,
+  createToolHandler,
   dockerfileTools,
   createDockerfileToolHandler,
   fixDockerfileImages,
   infraTools,
   createInfraToolHandler,
+  verifyDockerImageTool,
 } from "../tools.js";
 import { sleep, formatTechStack, toErrorMessage, toDetailedErrorMessage, extractJson, extractCodeBlock } from "../utils.js";
 import {
@@ -23,6 +26,8 @@ import {
   retryStartupPrompt,
 } from "../prompts/identify-startup.js";
 import { generateDockerfilePrompt } from "../prompts/generate-dockerfile.js";
+import { discoverProjectPrompt } from "../prompts/discover-project.js";
+import { generateComposePrompt } from "../prompts/generate-compose.js";
 
 const MAX_STARTUP_ATTEMPTS = parseInt(process.env.MAX_STARTUP_ATTEMPTS ?? "10", 10);
 
@@ -178,6 +183,116 @@ export interface StartupResult {
   config: StartupConfig;
 }
 
+// ---------------------------------------------------------------------------
+// Project discovery — LLM-based infrastructure analysis
+// ---------------------------------------------------------------------------
+
+/**
+ * Run the LLM project discovery phase: explore the codebase to identify
+ * required services, config patches, env vars, and build notes.
+ * This runs ONCE before the attempt loop to inform Dockerfile + compose generation.
+ */
+async function discoverProject(
+  llm: OpenAI,
+  repoPath: string,
+  stackStr: string,
+  model?: string,
+): Promise<ProjectDiscovery | undefined> {
+  console.log("[Startup] Running project discovery — analyzing infrastructure requirements...");
+  const t0 = Date.now();
+
+  try {
+    const messages = discoverProjectPrompt(stackStr);
+    const handler = createToolHandler(repoPath);
+    const response = await chatWithTools(llm, messages, [...codebaseTools, verifyDockerImageTool], handler, model);
+    const jsonStr = extractJson(response);
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      console.warn("[Startup] Discovery returned unparseable JSON — skipping");
+      return undefined;
+    }
+
+    if (!parsed || !Array.isArray(parsed.services)) {
+      console.warn("[Startup] Discovery returned invalid structure — skipping");
+      return undefined;
+    }
+
+    const discovery: ProjectDiscovery = {
+      services: (parsed.services ?? []).map((s: Record<string, unknown>) => ({
+        name: String(s.name ?? ""),
+        image: String(s.image ?? ""),
+        reason: String(s.reason ?? ""),
+        environment: s.environment as Record<string, string> | undefined,
+        port: typeof s.port === "number" ? s.port : undefined,
+      })).filter((s: { name: string; image: string }) => s.name && s.image),
+      configNotes: Array.isArray(parsed.configNotes) ? parsed.configNotes.map(String) : [],
+      appEnvironment: typeof parsed.appEnvironment === "object" && parsed.appEnvironment ? parsed.appEnvironment as Record<string, string> : {},
+      buildNotes: Array.isArray(parsed.buildNotes) ? parsed.buildNotes.map(String) : [],
+      port: typeof parsed.port === "number" ? parsed.port : 3000,
+      healthCheckPath: typeof parsed.healthCheckPath === "string" ? parsed.healthCheckPath : undefined,
+    };
+
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[Startup] Discovery completed in ${elapsed}s:`);
+    console.log(`[Startup]   Services: ${discovery.services.map(s => `${s.name} (${s.image})`).join(", ") || "none"}`);
+    if (discovery.configNotes.length) {
+      console.log(`[Startup]   Config notes: ${discovery.configNotes.length} items`);
+    }
+    if (discovery.buildNotes.length) {
+      console.log(`[Startup]   Build notes: ${discovery.buildNotes.length} items`);
+    }
+    console.log(`[Startup]   Port: ${discovery.port}, Health: ${discovery.healthCheckPath ?? "/"}`);
+
+    return discovery;
+  } catch (err) {
+    console.warn(`[Startup] Discovery failed (${toErrorMessage(err)}) — continuing without it`);
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// LLM-based Docker Compose generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate a compose.yml using LLM + project discovery results.
+ * Falls back to the simple template if the LLM fails.
+ */
+async function generateComposeWithLLM(
+  llm: OpenAI,
+  repoPath: string,
+  stackStr: string,
+  discovery: ProjectDiscovery,
+  config: StartupConfig,
+  model?: string,
+): Promise<void> {
+  console.log("[Startup] Generating compose.yml with LLM (using project discovery)...");
+  const t0 = Date.now();
+
+  try {
+    const hasDockerfile = existsSync(`${repoPath}/Dockerfile`);
+    const messages = generateComposePrompt(stackStr, discovery, hasDockerfile);
+    const handler = createToolHandler(repoPath);
+    const response = await chatWithTools(llm, messages, codebaseTools, handler, model);
+    const content = extractCodeBlock(response);
+
+    if (!content || content.length < 20) {
+      throw new Error("LLM returned empty or too-short compose content");
+    }
+
+    writeFileSync(`${repoPath}/compose.yml`, content);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
+    console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
+  } catch (err) {
+    console.warn(`[Startup] LLM compose generation failed (${toErrorMessage(err)}) — using template fallback`);
+    generateComposeFile(repoPath, config);
+  }
+}
+
 export async function startApplicationWithRetries(
   llm: OpenAI,
   repoPath: string,
@@ -194,6 +309,12 @@ export async function startApplicationWithRetries(
   const stats: AttemptStat[] = [];
   let dockerfileRepaired = false;
   let infraRepaired = false;
+
+  // Run project discovery ONCE before the attempt loop (skip for rebuilds — we already know what works)
+  let discovery: ProjectDiscovery | undefined;
+  if (!previousStartup) {
+    discovery = await discoverProject(llm, repoPath, stackStr, modelSelector?.current());
+  }
 
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
     const attemptStart = Date.now();
@@ -320,6 +441,7 @@ export async function startApplicationWithRetries(
         repoPath,
         stackStr,
         modelSelector?.current(),
+        discovery,
       );
     }
 
@@ -328,8 +450,12 @@ export async function startApplicationWithRetries(
       [...(config.prerequisites ?? []), config.command].join(" "),
     );
     if (usesCompose && !findComposeFile(repoPath)) {
-      console.log("[Startup] No compose file found — generating one from Dockerfile");
-      generateComposeFile(repoPath, config);
+      if (discovery && discovery.services.length > 0) {
+        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current());
+      } else {
+        console.log("[Startup] No compose file found — generating one from Dockerfile (no discovery available)");
+        generateComposeFile(repoPath, config);
+      }
     }
 
     console.log(
@@ -1118,9 +1244,10 @@ export async function generateDockerfile(
   repoPath: string,
   stackStr: string,
   model?: string,
+  discovery?: ProjectDiscovery,
 ): Promise<void> {
   const dockerHandler = createDockerfileToolHandler(repoPath);
-  const messages = generateDockerfilePrompt(stackStr);
+  const messages = generateDockerfilePrompt(stackStr, discovery);
   const response = await chatWithTools(
     llm,
     messages,

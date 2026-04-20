@@ -51,6 +51,40 @@ export interface DiscoveredEndpoint {
 }
 
 // ---------------------------------------------------------------------------
+// Project discovery — LLM-based infrastructure analysis
+// ---------------------------------------------------------------------------
+
+/** A companion service the application requires (database, cache, queue, etc.) */
+export interface DiscoveredService {
+  /** Service name used in compose (e.g. "db", "redis", "elasticsearch") */
+  name: string;
+  /** Docker image to use (e.g. "pgvector/pgvector:pg16", "redis:7-alpine") */
+  image: string;
+  /** Why this service is needed */
+  reason: string;
+  /** Environment variables for the service container */
+  environment?: Record<string, string>;
+  /** Port the service listens on */
+  port?: number;
+}
+
+/** Output of the LLM project discovery phase */
+export interface ProjectDiscovery {
+  /** Companion services the app depends on */
+  services: DiscoveredService[];
+  /** Config files that need patching for Docker networking */
+  configNotes: string[];
+  /** Environment variables the app container needs */
+  appEnvironment: Record<string, string>;
+  /** Notes about special build requirements */
+  buildNotes: string[];
+  /** Application port */
+  port: number;
+  /** Recommended health check path */
+  healthCheckPath?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
 
