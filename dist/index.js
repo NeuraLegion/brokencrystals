@@ -38797,11 +38797,22 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectI
     }
   }
   const probeContext = await preProbeForAuth(baseUrl, detection);
+  const loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
+  if (!loginCheck.functional) {
+    console.error("[Auth] Aborting auth: login endpoint is broken (HTTP 5xx)");
+    return {
+      authObjectId: void 0,
+      hasAuth: false,
+      authFailed: true,
+      registration: void 0
+    };
+  }
   const MAX_AUTH_ATTEMPTS = 3;
   let authObjectId;
   const allAttemptLogs = [];
+  const fullProbeContext = loginCheck.diagnostic ? probeContext + "\n\n" + loginCheck.diagnostic : probeContext;
   for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
-    let attemptContext = probeContext;
+    let attemptContext = fullProbeContext;
     if (allAttemptLogs.length > 0) {
       attemptContext += "\n\n## Previous attempt failures\nLearn from these mistakes. Do NOT repeat the same configurations.\n\n" + allAttemptLogs.join("\n\n---\n\n");
     }
@@ -39893,6 +39904,113 @@ ${preview}
   }
   console.log(`[Auth] Pre-probed ${lines.length} endpoints for LLM context`);
   return lines.join("\n\n");
+}
+async function preAuthLoginSanityCheck(baseUrl, detection) {
+  if (!detection.loginEndpoint) {
+    return { functional: true, diagnostic: "" };
+  }
+  const loginUrl = `${baseUrl}${detection.loginEndpoint}`;
+  const lines = [];
+  let csrfToken;
+  let sessionCookie;
+  let functional = true;
+  if (detection.authType === "session") {
+    const csrfCandidates = [
+      `${baseUrl}/session/csrf`,
+      `${baseUrl}/csrf`
+    ];
+    for (const csrfUrl of csrfCandidates) {
+      try {
+        const res = await fetch(csrfUrl, {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(8e3)
+        });
+        const body = await res.text();
+        if (res.status === 200 && !body.trimStart().startsWith("<")) {
+          const csrfMatch = body.match(/"csrf"\s*:\s*"([^"]*)"/);
+          if (csrfMatch?.[1]) {
+            csrfToken = csrfMatch[1];
+          }
+          const setCookies = res.headers.getSetCookie?.() ?? [];
+          for (const sc of setCookies) {
+            const pair = sc.split(";")[0]?.trim();
+            if (pair?.includes("=")) {
+              sessionCookie = (sessionCookie ? sessionCookie + "; " : "") + pair;
+            }
+          }
+          break;
+        } else if (res.status >= 500) {
+          lines.push(`\u26A0\uFE0F CSRF endpoint ${csrfUrl} returned HTTP ${res.status} \u2014 the app's session system may be broken.`);
+          functional = false;
+        }
+      } catch {
+      }
+    }
+  }
+  const loginBody = detection.loginBody ?? "{}";
+  {
+    const headers = {
+      "Content-Type": detection.loginContentType === "form" ? "application/x-www-form-urlencoded" : "application/json",
+      Accept: "application/json"
+    };
+    if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+    if (sessionCookie) headers["Cookie"] = sessionCookie;
+    try {
+      const res = await fetch(loginUrl, {
+        method: "POST",
+        headers,
+        body: loginBody,
+        redirect: "manual",
+        signal: AbortSignal.timeout(1e4)
+      });
+      const body = await res.text();
+      const preview = body.length > 300 ? body.slice(0, 300) + "..." : body;
+      if (res.status >= 500) {
+        functional = false;
+        lines.push(
+          `\u{1F6A8} **LOGIN ENDPOINT BROKEN**: POST ${loginUrl} \u2192 HTTP ${res.status}
+Response: \`${preview}\`
+The application's login is crashing with a server error. This is NOT an auth configuration issue \u2014 the app itself is broken. Auth configuration cannot succeed until the app's login works.`
+        );
+      } else if (res.status === 403 && body.includes("CSRF")) {
+        lines.push(
+          `### Login sanity check: POST ${loginUrl} \u2192 ${res.status} (CSRF required)
+The login endpoint is functional but requires a valid CSRF token. Response: \`${preview}\``
+        );
+      } else if (res.status === 200 || res.status === 201 || res.status === 302) {
+        const hasError = /error|invalid|incorrect|failed/i.test(body);
+        if (hasError) {
+          lines.push(
+            `### Login sanity check: POST ${loginUrl} \u2192 ${res.status} (credentials rejected)
+The login endpoint is functional but rejected the credentials. Response: \`${preview}\``
+          );
+        } else {
+          lines.push(
+            `### Login sanity check: POST ${loginUrl} \u2192 ${res.status} \u2705 Login works!`
+          );
+        }
+      } else {
+        lines.push(
+          `### Login sanity check: POST ${loginUrl} \u2192 ${res.status}
+Response: \`${preview}\``
+        );
+      }
+    } catch (err) {
+      lines.push(
+        `### Login sanity check: POST ${loginUrl} \u2192 connection error: ${toErrorMessage(err)}`
+      );
+    }
+  }
+  const diagnostic = lines.join("\n\n");
+  if (diagnostic) {
+    console.log(`[Auth] Login sanity check: ${functional ? "functional" : "BROKEN"}`);
+    if (!functional) {
+      console.error(`[Auth] Login endpoint is broken \u2014 app may be in an unstable state`);
+    }
+  }
+  return { functional, diagnostic };
 }
 var _probeCookieJar = {};
 async function probeUrl2(args) {
