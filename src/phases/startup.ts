@@ -399,24 +399,24 @@ Respond with EXACTLY one JSON object:
 {"healthy": true/false, "reason": "<one sentence explanation>"}
 
 Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
-- Setup wizards, installation pages, or "finish installation" screens
-- "CLI required", "Ember CLI", "proxy bypass", or development mode warnings
+- Pages that tell the user to run a command, set an environment variable, or edit a config file before the app works (e.g. "Ember CLI is Required", "run bin/setup", "set DATABASE_URL")
 - Error pages (500, 503, "something went wrong", stack traces)
 - "Service unavailable", "under maintenance", or placeholder pages
 - Database migration needed, pending migrations
 - Configuration required, environment variable missing
-- Framework default welcome pages (Rails welcome, Django debug, etc.)
+- Framework default welcome pages that are NOT real app UI (Rails "Yay! You're on Rails!", Django debug page, etc.)
 - Blank or nearly empty pages with just a title and no real content
-- Pages that tell the user to run a command or configure something before use
 - JSON error responses like {"error": ...} or {"errors": [...]}
 
-Mark as HEALTHY (healthy: true) ONLY if the response is clearly a WORKING application page:
-- A real login form that a user could actually fill out
+Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
+- A real login form, registration form, or sign-up page
 - A dashboard, feed, or content page with actual data
 - A JSON API response with real data (not an error)
 - A working application UI with navigation, content, and interactive elements
+- A web-based setup wizard or "finish installation" form where the user can register an admin account through the browser — this is a NORMAL first-run state and the application IS working correctly
+- Any page served by the application framework (not a raw web server error) that accepts user interaction
 
-When in doubt, mark as UNHEALTHY. It is better to trigger a repair cycle than to accept a broken app.`,
+When in doubt about whether the app is running vs broken, check: does the page come from the application framework and accept user interaction? If yes → HEALTHY. If it just shows a static error or tells you to run commands → UNHEALTHY.`,
             },
             {
               role: "user",
