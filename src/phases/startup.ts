@@ -942,11 +942,17 @@ You have tools to:
 APPROACH:
 1. Read the error carefully. Identify the exact failing command and what it's missing.
 2. Use tools to investigate — read the scripts/files referenced in the error, check what files exist, understand the project structure.
-3. Fix the ROOT CAUSE. Don't just suppress errors — understand WHY the command failed.
-4. If the error is in a multi-stage build, check whether a later stage is missing tools/files from an earlier stage. Consider collapsing to a single stage.
-5. This Dockerfile is for DEVELOPMENT/TESTING, not production. Prefer simplicity over optimization — a single stage with all tools is better than a fragile multi-stage build.
-6. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
-7. Always verify base image tags exist with verify_docker_image before using them.
+3. **TEST before committing to a fix.** Use run_command_in_docker to test commands against the base image BEFORE rewriting the Dockerfile. For example:
+   - \`docker run --rm <base_image> apt-cache search <package>\` to find correct package names
+   - \`docker run --rm <base_image> which <tool>\` to check what's already installed
+   - \`docker run --rm <base_image> cat /etc/os-release\` to check the OS/distro
+   - \`docker run --rm <base_image> bash -c "apt-get update && apt-get install -y <package>"\` to verify a package installs correctly
+   This avoids wasting a full rebuild cycle on a wrong guess.
+4. Fix the ROOT CAUSE. Don't just suppress errors — understand WHY the command failed.
+5. If the error is in a multi-stage build, check whether a later stage is missing tools/files from an earlier stage. Consider collapsing to a single stage.
+6. This Dockerfile is for DEVELOPMENT/TESTING, not production. Prefer simplicity over optimization — a single stage with all tools is better than a fragile multi-stage build.
+7. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
+8. Always verify base image tags exist with verify_docker_image before using them.
 
 Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`,
     },
