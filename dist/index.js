@@ -38129,7 +38129,9 @@ async function waitForPort(port, timeoutMs, healthCheckPath = "/", repoPath, ana
   const max500sBeforeFail = 5;
   let responseAnalysisDone = false;
   let progressCount = 0;
-  let timeoutExtended = false;
+  let extensionsGranted = 0;
+  const maxExtensions = 5;
+  const extensionMs = 18e4;
   let effectiveTimeoutMs = timeoutMs;
   while (Date.now() - start < effectiveTimeoutMs) {
     if (fatalDiagnosis) {
@@ -38245,16 +38247,16 @@ ${logs}`;
       }
     }
     const remaining = effectiveTimeoutMs - (Date.now() - start);
-    if (remaining < 3e4 && progressCount > 0 && !timeoutExtended && analyzeLogsFn && repoPath) {
+    if (remaining < 3e4 && progressCount > 0 && extensionsGranted < maxExtensions && analyzeLogsFn && repoPath) {
       const snapshot = getContainerLogTail(repoPath, 40);
       if (snapshot) {
         try {
           const result = await analyzeLogsFn(snapshot);
           if (result.status === "progress") {
-            timeoutExtended = true;
-            const extensionMs = 18e4;
+            extensionsGranted++;
             effectiveTimeoutMs += extensionMs;
-            console.log(`[Startup] AI confirms app is still progressing \u2014 extending timeout by ${extensionMs / 1e3}s`);
+            const totalExtra = extensionsGranted * extensionMs / 1e3;
+            console.log(`[Startup] AI confirms app is still progressing \u2014 extending timeout by ${extensionMs / 1e3}s (extension ${extensionsGranted}/${maxExtensions}, +${totalExtra}s total)`);
           }
         } catch {
         }
@@ -38263,7 +38265,7 @@ ${logs}`;
     await sleep2(interval);
   }
   let errMsg = `Application did not start on port ${port} within ${effectiveTimeoutMs / 1e3}s`;
-  if (timeoutExtended) errMsg += ` (extended from ${timeoutMs / 1e3}s because app was progressing)`;
+  if (extensionsGranted > 0) errMsg += ` (extended ${extensionsGranted}x from ${timeoutMs / 1e3}s because app was progressing)`;
   if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
   if (lastBody) errMsg += `
 

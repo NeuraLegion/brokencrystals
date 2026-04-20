@@ -2257,7 +2257,9 @@ export async function waitForPort(
   const max500sBeforeFail = 5; // fail fast after 5 consecutive 500s (~10s)
   let responseAnalysisDone = false; // only analyze once per health check cycle
   let progressCount = 0; // how many times AI reported "still progressing"
-  let timeoutExtended = false; // only extend once
+  let extensionsGranted = 0;
+  const maxExtensions = 5; // allow up to 5 extensions (5 × 180s = 900s extra)
+  const extensionMs = 180_000; // 3 minutes per extension
   let effectiveTimeoutMs = timeoutMs;
 
   while (Date.now() - start < effectiveTimeoutMs) {
@@ -2378,19 +2380,20 @@ export async function waitForPort(
       }
     }
 
-    // If approaching timeout and the AI has been reporting progress, ask once
-    // whether to extend — avoids killing apps that are actively booting.
+    // If approaching timeout and the AI has been reporting progress, extend
+    // the deadline — avoids killing apps that are actively booting (e.g.
+    // running database migrations).  Allow multiple extensions up to a cap.
     const remaining = effectiveTimeoutMs - (Date.now() - start);
-    if (remaining < 30_000 && progressCount > 0 && !timeoutExtended && analyzeLogsFn && repoPath) {
+    if (remaining < 30_000 && progressCount > 0 && extensionsGranted < maxExtensions && analyzeLogsFn && repoPath) {
       const snapshot = getContainerLogTail(repoPath, 40);
       if (snapshot) {
         try {
           const result = await analyzeLogsFn(snapshot);
           if (result.status === "progress") {
-            timeoutExtended = true;
-            const extensionMs = 180_000;
+            extensionsGranted++;
             effectiveTimeoutMs += extensionMs;
-            console.log(`[Startup] AI confirms app is still progressing — extending timeout by ${extensionMs / 1000}s`);
+            const totalExtra = extensionsGranted * extensionMs / 1000;
+            console.log(`[Startup] AI confirms app is still progressing — extending timeout by ${extensionMs / 1000}s (extension ${extensionsGranted}/${maxExtensions}, +${totalExtra}s total)`);
           }
         } catch { /* ignore analysis failure */ }
       }
@@ -2400,7 +2403,7 @@ export async function waitForPort(
   }
 
   let errMsg = `Application did not start on port ${port} within ${effectiveTimeoutMs / 1000}s`;
-  if (timeoutExtended) errMsg += ` (extended from ${timeoutMs / 1000}s because app was progressing)`;
+  if (extensionsGranted > 0) errMsg += ` (extended ${extensionsGranted}x from ${timeoutMs / 1000}s because app was progressing)`;
   if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
   if (lastBody) errMsg += `\n\nHTTP 500 response body:\n${lastBody}`;
   // Attach final container logs so the repair LLM has full context
