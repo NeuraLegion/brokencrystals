@@ -38044,8 +38044,10 @@ ${tail}`);
   }
 }
 function runPrerequisite(cmd, cwd, envVars) {
-  const isBuildCmd = /\b(docker\s+(compose\s+)?build|npm\s+run\s+build|make\b|bundle\s+install)/i.test(cmd);
-  const timeoutMs = isBuildCmd ? 18e5 : 6e5;
+  const BASE_TIMEOUT_MS = 6e5;
+  const EXTENSION_MS = 3e5;
+  const MAX_EXTENSIONS = 5;
+  const STALL_THRESHOLD_MS = 6e4;
   return new Promise((resolve5, reject) => {
     const child = spawn("sh", ["-c", cmd], {
       cwd,
@@ -38056,9 +38058,11 @@ function runPrerequisite(cmd, cwd, envVars) {
     let lastProgressLog = Date.now();
     const progressInterval = 3e4;
     let lastLine = "";
+    let lastOutputTime = Date.now();
     const onLine = (line) => {
       outputLines.push(line);
       lastLine = line;
+      lastOutputTime = Date.now();
       if (Date.now() - lastProgressLog > progressInterval) {
         lastProgressLog = Date.now();
         const elapsed = Math.round((Date.now() - startTime) / 1e3);
@@ -38076,26 +38080,51 @@ function runPrerequisite(cmd, cwd, envVars) {
       rl.on("line", onLine);
     }
     const startTime = Date.now();
-    console.log(`[Startup] Prerequisite timeout: ${timeoutMs / 1e3}s${isBuildCmd ? " (build command detected)" : ""}`);
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 5e3);
-      const tail = outputLines.slice(-20).join("\n");
-      reject(
-        new Error(
-          `Prerequisite timed out after ${timeoutMs / 1e3}s: ${cmd}
+    let effectiveTimeoutMs = BASE_TIMEOUT_MS;
+    let extensionsGranted = 0;
+    let settled = false;
+    const extensionCheck = setInterval(() => {
+      if (settled) return;
+      const elapsed = Date.now() - startTime;
+      const remaining = effectiveTimeoutMs - elapsed;
+      if (remaining < 6e4 && extensionsGranted < MAX_EXTENSIONS) {
+        const sinceLastOutput = Date.now() - lastOutputTime;
+        if (sinceLastOutput < STALL_THRESHOLD_MS) {
+          extensionsGranted++;
+          effectiveTimeoutMs += EXTENSION_MS;
+          const totalExtra = extensionsGranted * EXTENSION_MS / 1e3;
+          console.log(
+            `[Startup] Prerequisite still producing output \u2014 extending timeout by ${EXTENSION_MS / 1e3}s (extension ${extensionsGranted}/${MAX_EXTENSIONS}, +${totalExtra}s total)`
+          );
+        } else {
+          console.log(`[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1e3)}s \u2014 will not extend`);
+        }
+      }
+      if (elapsed >= effectiveTimeoutMs) {
+        settled = true;
+        clearInterval(extensionCheck);
+        child.kill("SIGTERM");
+        setTimeout(() => child.kill("SIGKILL"), 5e3);
+        const tail = outputLines.slice(-20).join("\n");
+        let msg = `Prerequisite timed out after ${Math.round(elapsed / 1e3)}s: ${cmd}`;
+        if (extensionsGranted > 0) {
+          msg += ` (extended ${extensionsGranted}x from ${BASE_TIMEOUT_MS / 1e3}s because output was still flowing)`;
+        }
+        msg += `
 
 Last output:
-${tail}`
-        )
-      );
-    }, timeoutMs);
+${tail}`;
+        reject(new Error(msg));
+      }
+    }, 3e4);
     child.on("error", (err) => {
-      clearTimeout(timer);
+      settled = true;
+      clearInterval(extensionCheck);
       reject(new Error(`Prerequisite failed to start: ${err.message}`));
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      settled = true;
+      clearInterval(extensionCheck);
       if (code === 0) {
         const elapsed = Math.round((Date.now() - startTime) / 1e3);
         console.log(`[Startup] Prerequisite completed in ${elapsed}s`);

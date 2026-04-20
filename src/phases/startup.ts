@@ -2141,10 +2141,11 @@ function runPrerequisite(
   cwd: string,
   envVars: Record<string, string>,
 ): Promise<void> {
-  // Build commands (docker compose build, docker build, npm run build, make, etc.)
-  // install much heavier dependencies and need significantly more time.
-  const isBuildCmd = /\b(docker\s+(compose\s+)?build|npm\s+run\s+build|make\b|bundle\s+install)/i.test(cmd);
-  const timeoutMs = isBuildCmd ? 1_800_000 : 600_000; // 30min for builds, 10min otherwise
+  const BASE_TIMEOUT_MS = 600_000; // 10 min base
+  const EXTENSION_MS = 300_000;    // 5 min per extension
+  const MAX_EXTENSIONS = 5;        // up to 25 min extra → 35 min max
+  // "Still making progress" = new output appeared in the last 60s
+  const STALL_THRESHOLD_MS = 60_000;
 
   return new Promise((resolve, reject) => {
     const child = spawn("sh", ["-c", cmd], {
@@ -2157,10 +2158,12 @@ function runPrerequisite(
     let lastProgressLog = Date.now();
     const progressInterval = 30_000;
     let lastLine = "";
+    let lastOutputTime = Date.now();
 
     const onLine = (line: string): void => {
       outputLines.push(line);
       lastLine = line;
+      lastOutputTime = Date.now();
       // Periodic progress report
       if (Date.now() - lastProgressLog > progressInterval) {
         lastProgressLog = Date.now();
@@ -2181,25 +2184,59 @@ function runPrerequisite(
     }
 
     const startTime = Date.now();
-    console.log(`[Startup] Prerequisite timeout: ${timeoutMs / 1000}s${isBuildCmd ? " (build command detected)" : ""}`);
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 5_000);
-      const tail = outputLines.slice(-20).join("\n");
-      reject(
-        new Error(
-          `Prerequisite timed out after ${timeoutMs / 1000}s: ${cmd}\n\nLast output:\n${tail}`,
-        ),
-      );
-    }, timeoutMs);
+    let effectiveTimeoutMs = BASE_TIMEOUT_MS;
+    let extensionsGranted = 0;
+    let settled = false;
+
+    // Check every 30s if we're near the deadline and output is still flowing
+    const extensionCheck = setInterval(() => {
+      if (settled) return;
+      const elapsed = Date.now() - startTime;
+      const remaining = effectiveTimeoutMs - elapsed;
+
+      // Near the deadline? Check if we should extend.
+      if (remaining < 60_000 && extensionsGranted < MAX_EXTENSIONS) {
+        const sinceLastOutput = Date.now() - lastOutputTime;
+        if (sinceLastOutput < STALL_THRESHOLD_MS) {
+          // Output still flowing — extend
+          extensionsGranted++;
+          effectiveTimeoutMs += EXTENSION_MS;
+          const totalExtra = extensionsGranted * EXTENSION_MS / 1000;
+          console.log(
+            `[Startup] Prerequisite still producing output — extending timeout by ${EXTENSION_MS / 1000}s `
+            + `(extension ${extensionsGranted}/${MAX_EXTENSIONS}, +${totalExtra}s total)`,
+          );
+        } else {
+          // Output stalled — let it time out
+          console.log(`[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1000)}s — will not extend`);
+        }
+      }
+
+      // Hard timeout — kill it
+      if (elapsed >= effectiveTimeoutMs) {
+        settled = true;
+        clearInterval(extensionCheck);
+        child.kill("SIGTERM");
+        setTimeout(() => child.kill("SIGKILL"), 5_000);
+        const tail = outputLines.slice(-20).join("\n");
+        let msg = `Prerequisite timed out after ${Math.round(elapsed / 1000)}s: ${cmd}`;
+        if (extensionsGranted > 0) {
+          msg += ` (extended ${extensionsGranted}x from ${BASE_TIMEOUT_MS / 1000}s because output was still flowing)`;
+        }
+        msg += `\n\nLast output:\n${tail}`;
+        reject(new Error(msg));
+      }
+    }, 30_000);
 
     child.on("error", (err) => {
-      clearTimeout(timer);
+      settled = true;
+      clearInterval(extensionCheck);
       reject(new Error(`Prerequisite failed to start: ${err.message}`));
     });
 
     child.on("close", (code) => {
-      clearTimeout(timer);
+      settled = true;
+      clearInterval(extensionCheck);
       if (code === 0) {
         const elapsed = Math.round((Date.now() - startTime) / 1000);
         console.log(`[Startup] Prerequisite completed in ${elapsed}s`);
