@@ -38044,6 +38044,8 @@ ${tail}`);
   }
 }
 function runPrerequisite(cmd, cwd, envVars) {
+  const isBuildCmd = /\b(docker\s+(compose\s+)?build|npm\s+run\s+build|make\b|bundle\s+install)/i.test(cmd);
+  const timeoutMs = isBuildCmd ? 18e5 : 6e5;
   return new Promise((resolve5, reject) => {
     const child = spawn("sh", ["-c", cmd], {
       cwd,
@@ -38074,7 +38076,7 @@ function runPrerequisite(cmd, cwd, envVars) {
       rl.on("line", onLine);
     }
     const startTime = Date.now();
-    const timeoutMs = 6e5;
+    console.log(`[Startup] Prerequisite timeout: ${timeoutMs / 1e3}s${isBuildCmd ? " (build command detected)" : ""}`);
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
       setTimeout(() => child.kill("SIGKILL"), 5e3);

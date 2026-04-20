@@ -2141,6 +2141,11 @@ function runPrerequisite(
   cwd: string,
   envVars: Record<string, string>,
 ): Promise<void> {
+  // Build commands (docker compose build, docker build, npm run build, make, etc.)
+  // install much heavier dependencies and need significantly more time.
+  const isBuildCmd = /\b(docker\s+(compose\s+)?build|npm\s+run\s+build|make\b|bundle\s+install)/i.test(cmd);
+  const timeoutMs = isBuildCmd ? 1_800_000 : 600_000; // 30min for builds, 10min otherwise
+
   return new Promise((resolve, reject) => {
     const child = spawn("sh", ["-c", cmd], {
       cwd,
@@ -2176,7 +2181,7 @@ function runPrerequisite(
     }
 
     const startTime = Date.now();
-    const timeoutMs = 600_000;
+    console.log(`[Startup] Prerequisite timeout: ${timeoutMs / 1000}s${isBuildCmd ? " (build command detected)" : ""}`);
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
       setTimeout(() => child.kill("SIGKILL"), 5_000);
