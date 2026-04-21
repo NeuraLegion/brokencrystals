@@ -43004,7 +43004,7 @@ async function runOrchestrator(ctx) {
       "auth_done",
       authResult.authObjectId ? `Auth configured (object ${authResult.authObjectId})` : "No authentication required"
     );
-    const MAX_INFRA_BOUNCEBACKS = 2;
+    const MAX_INFRA_BOUNCEBACKS = 5;
     for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {
       if (!authResult.authFailed || !authResult.infraRepairHint) break;
       console.log(`[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} \u2014 repairing infrastructure`);

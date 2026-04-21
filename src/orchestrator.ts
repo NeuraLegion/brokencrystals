@@ -234,7 +234,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     );
 
     // If auth was detected but failed to configure
-    const MAX_INFRA_BOUNCEBACKS = 2;
+    const MAX_INFRA_BOUNCEBACKS = 5;
     for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {
       if (!authResult.authFailed || !authResult.infraRepairHint) break;
 
