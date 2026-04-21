@@ -38337,6 +38337,8 @@ async function waitForPort(port, timeoutMs, healthCheckPath = "/", repoPath, ana
   let fatalDiagnosis = "";
   let consecutive500s = 0;
   const max500sBeforeFail = 5;
+  let consecutiveConnFailures = 0;
+  let localhostBindingChecked = false;
   let responseAnalysisDone = false;
   let progressCount = 0;
   let extensionsGranted = 0;
@@ -38366,6 +38368,7 @@ ${logs}`;
       lastStatus = response.status;
       if (response.status < 500) {
         consecutive500s = 0;
+        consecutiveConnFailures = 0;
         let responseBody = "";
         try {
           responseBody = await response.text();
@@ -38427,6 +38430,30 @@ ${logs}`;
       );
     } catch (err) {
       if (err instanceof StartupFailedError) throw err;
+      consecutiveConnFailures++;
+      if (repoPath && !localhostBindingChecked && consecutiveConnFailures >= 10) {
+        localhostBindingChecked = true;
+        const binding = detectLocalhostBinding(repoPath, port);
+        if (binding?.boundToLocalhost) {
+          console.log(`[Startup] Detected localhost binding issue \u2014 app on port ${port} is bound to 127.0.0.1 inside container ${binding.containerId}`);
+          let errMsg2 = `Application is running inside the container but the server is bound to 127.0.0.1 (localhost only) on port ${port}. Docker port forwarding cannot reach it because traffic arrives on the container's external network interface, not loopback.
+
+FIX: The application must bind to 0.0.0.0 (all interfaces) instead of 127.0.0.1. Add the appropriate environment variable to the service in compose.yml. Common options:
+  - Rails/Puma: BINDING=0.0.0.0  or  add "-b 0.0.0.0" to the command
+  - Node.js/Express: HOST=0.0.0.0
+  - Django/Gunicorn: BIND=0.0.0.0:${port}
+  - Generic: HOST=0.0.0.0 or BIND_ADDRESS=0.0.0.0
+  - Or set command to include "--binding 0.0.0.0" / "--host 0.0.0.0" / "-b 0.0.0.0" as appropriate for the framework`;
+          if (repoPath) {
+            const logs = getContainerLogTail(repoPath, 40);
+            if (logs) errMsg2 += `
+
+Container logs:
+${logs}`;
+          }
+          throw new StartupFailedError(errMsg2);
+        }
+      }
     }
     if (repoPath && !analysisInFlight && Date.now() - lastLogCheckTime > logCheckInterval) {
       const snapshot = getContainerLogTail(repoPath, 40);
@@ -38562,6 +38589,41 @@ async function pollComposeContainersAlive(repoPath, timeoutMs) {
     await sleep2(3e3);
   }
   throw new Error("Compose container health poll timed out");
+}
+function detectLocalhostBinding(repoPath, port) {
+  const containerId = findComposeAppContainer(repoPath);
+  if (!containerId) return null;
+  try {
+    const raw = execSync3(
+      `docker exec ${containerId} cat /proc/net/tcp /proc/net/tcp6 2>/dev/null || true`,
+      { encoding: "utf-8", timeout: 5e3 }
+    ).trim();
+    if (!raw) return null;
+    const portHex = port.toString(16).toUpperCase().padStart(4, "0");
+    const lines = raw.split("\n").filter((l) => l.includes(`:${portHex} `));
+    if (lines.length === 0) return null;
+    const loopbackIPv4 = "0100007F";
+    const loopbackIPv6 = "00000000000000000000000001000000";
+    const allIPv4 = "00000000";
+    const allIPv6 = "00000000000000000000000000000000";
+    let hasListener = false;
+    let allOnLoopback = true;
+    for (const line of lines) {
+      const cols = line.trim().split(/\s+/);
+      if (cols.length < 4 || cols[3] !== "0A") continue;
+      hasListener = true;
+      const localAddr = cols[1]?.split(":")[0] ?? "";
+      if (localAddr !== loopbackIPv4 && localAddr !== loopbackIPv6 && localAddr !== allIPv4 && localAddr !== allIPv6) {
+        allOnLoopback = false;
+      } else if (localAddr === allIPv4 || localAddr === allIPv6) {
+        allOnLoopback = false;
+      }
+    }
+    if (!hasListener) return null;
+    return { boundToLocalhost: allOnLoopback, containerId };
+  } catch {
+    return null;
+  }
 }
 function findComposeAppContainer(repoPath) {
   try {

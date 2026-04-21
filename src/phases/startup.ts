@@ -2397,6 +2397,8 @@ export async function waitForPort(
   let fatalDiagnosis = "";
   let consecutive500s = 0;
   const max500sBeforeFail = 5; // fail fast after 5 consecutive 500s (~10s)
+  let consecutiveConnFailures = 0; // track connection refused / reset
+  let localhostBindingChecked = false; // only check once
   let responseAnalysisDone = false; // only analyze once per health check cycle
   let progressCount = 0; // how many times AI reported "still progressing"
   let extensionsGranted = 0;
@@ -2425,6 +2427,7 @@ export async function waitForPort(
       // But ask the AI to verify the response looks like a real working app.
       if (response.status < 500) {
         consecutive500s = 0;
+        consecutiveConnFailures = 0; // got a real response
 
         // Read the body for AI analysis
         let responseBody = "";
@@ -2489,6 +2492,33 @@ export async function waitForPort(
     } catch (err) {
       if (err instanceof StartupFailedError) throw err;
       // Connection refused / timeout — server not ready yet
+      consecutiveConnFailures++;
+
+      // After 10 consecutive connection failures (~20s) for Docker apps,
+      // check whether the server is bound to 127.0.0.1 inside the container
+      // — a very common Docker misconfiguration where the internal curl works
+      // but the host-side port mapping can't reach the app.
+      if (repoPath && !localhostBindingChecked && consecutiveConnFailures >= 10) {
+        localhostBindingChecked = true;
+        const binding = detectLocalhostBinding(repoPath, port);
+        if (binding?.boundToLocalhost) {
+          console.log(`[Startup] Detected localhost binding issue — app on port ${port} is bound to 127.0.0.1 inside container ${binding.containerId}`);
+          let errMsg = `Application is running inside the container but the server is bound to 127.0.0.1 (localhost only) on port ${port}. `
+            + `Docker port forwarding cannot reach it because traffic arrives on the container's external network interface, not loopback.\n\n`
+            + `FIX: The application must bind to 0.0.0.0 (all interfaces) instead of 127.0.0.1. `
+            + `Add the appropriate environment variable to the service in compose.yml. Common options:\n`
+            + `  - Rails/Puma: BINDING=0.0.0.0  or  add "-b 0.0.0.0" to the command\n`
+            + `  - Node.js/Express: HOST=0.0.0.0\n`
+            + `  - Django/Gunicorn: BIND=0.0.0.0:${port}\n`
+            + `  - Generic: HOST=0.0.0.0 or BIND_ADDRESS=0.0.0.0\n`
+            + `  - Or set command to include "--binding 0.0.0.0" / "--host 0.0.0.0" / "-b 0.0.0.0" as appropriate for the framework`;
+          if (repoPath) {
+            const logs = getContainerLogTail(repoPath, 40);
+            if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
+          }
+          throw new StartupFailedError(errMsg);
+        }
+      }
     }
 
     // Periodically ask the LLM to analyze container logs
@@ -2669,6 +2699,65 @@ async function pollComposeContainersAlive(
  * Find the main app container name from a Docker Compose project.
  * Returns the first non-infrastructure service container name.
  */
+/**
+ * Detect if the application inside a Docker container is bound to 127.0.0.1
+ * (localhost) only — making it unreachable via Docker port forwarding.
+ *
+ * Reads /proc/net/tcp inside the container to check the local address for
+ * the given port.  Returns a diagnostic object when the port IS listening
+ * but only on loopback; `null` when the check is inconclusive.
+ */
+function detectLocalhostBinding(
+  repoPath: string,
+  port: number,
+): { boundToLocalhost: boolean; containerId: string } | null {
+  const containerId = findComposeAppContainer(repoPath);
+  if (!containerId) return null;
+
+  try {
+    const raw = execSync(
+      `docker exec ${containerId} cat /proc/net/tcp /proc/net/tcp6 2>/dev/null || true`,
+      { encoding: "utf-8", timeout: 5_000 },
+    ).trim();
+    if (!raw) return null;
+
+    const portHex = port.toString(16).toUpperCase().padStart(4, "0");
+    const lines = raw.split("\n").filter((l) => l.includes(`:${portHex} `));
+    if (lines.length === 0) return null; // port not yet listening
+
+    // Check if ANY listener is on a non-loopback address
+    // IPv4 loopback: 0100007F  |  IPv4 all-interfaces: 00000000
+    // IPv6 loopback: 00000000000000000000000001000000  |  IPv6 all: 00000000000000000000000000000000
+    const loopbackIPv4 = "0100007F";
+    const loopbackIPv6 = "00000000000000000000000001000000";
+    const allIPv4 = "00000000";
+    const allIPv6 = "00000000000000000000000000000000";
+
+    let hasListener = false;
+    let allOnLoopback = true;
+
+    for (const line of lines) {
+      // Only look at LISTEN state (st = 0A)
+      const cols = line.trim().split(/\s+/);
+      if (cols.length < 4 || cols[3] !== "0A") continue;
+      hasListener = true;
+      const localAddr = cols[1]?.split(":")[0] ?? "";
+      if (localAddr !== loopbackIPv4 && localAddr !== loopbackIPv6
+          && localAddr !== allIPv4 && localAddr !== allIPv6) {
+        // Some other specific address — treat as non-loopback
+        allOnLoopback = false;
+      } else if (localAddr === allIPv4 || localAddr === allIPv6) {
+        allOnLoopback = false;
+      }
+    }
+
+    if (!hasListener) return null;
+    return { boundToLocalhost: allOnLoopback, containerId };
+  } catch {
+    return null;
+  }
+}
+
 function findComposeAppContainer(repoPath: string): string | undefined {
   try {
     const ps = execSync(
