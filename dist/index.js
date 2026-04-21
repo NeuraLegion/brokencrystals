@@ -42820,41 +42820,36 @@ async function runOrchestrator(ctx) {
           config2.modelSelector,
           repairHints
         );
-        if (repairedStartup.healthy) {
-          appProcess = repairedStartup.process;
-          startupConfig = repairedStartup.config;
-          baseUrl = `http://localhost:${startupConfig.port}`;
-          if (authResult.registration) await reRegisterUser(authResult.registration);
-          console.log(`[Engine] App restarted after infra repair \u2014 retrying auth`);
-          const retryAuthResult = await detectAndConfigureAuth(
-            llm,
-            bright,
-            repoPath,
-            techStack,
-            projectId,
-            baseUrl,
-            repeater.repeaterId,
-            config2,
-            config2.modelSelector.current(),
-            preAuthContext
+        appProcess = repairedStartup.process;
+        startupConfig = repairedStartup.config;
+        baseUrl = `http://localhost:${startupConfig.port}`;
+        if (authResult.registration) await reRegisterUser(authResult.registration);
+        console.log(`[Engine] App restarted after infra repair \u2014 retrying auth`);
+        const retryAuthResult = await detectAndConfigureAuth(
+          llm,
+          bright,
+          repoPath,
+          techStack,
+          projectId,
+          baseUrl,
+          repeater.repeaterId,
+          config2,
+          config2.modelSelector.current(),
+          preAuthContext
+        );
+        Object.assign(authResult, retryAuthResult);
+        if (retryAuthResult.authObjectId) {
+          console.log(`[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
+          await progress.phaseDetail(
+            "auth",
+            "auth_done",
+            `Auth configured after infra repair (object ${retryAuthResult.authObjectId})`
           );
-          Object.assign(authResult, retryAuthResult);
-          if (retryAuthResult.authObjectId) {
-            console.log(`[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
-            await progress.phaseDetail(
-              "auth",
-              "auth_done",
-              `Auth configured after infra repair (object ${retryAuthResult.authObjectId})`
-            );
-            break;
-          } else if (retryAuthResult.infraRepairHint) {
-            console.warn(`[Engine] Auth needs another infra repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`);
-          } else {
-            console.error("[Engine] Auth still failed after infra repair (not infra-related)");
-            break;
-          }
+          break;
+        } else if (retryAuthResult.infraRepairHint) {
+          console.warn(`[Engine] Auth needs another infra repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`);
         } else {
-          console.error("[Engine] App failed to restart after infra repair");
+          console.error("[Engine] Auth still failed after infra repair (not infra-related)");
           break;
         }
       } catch (bounceErr) {
