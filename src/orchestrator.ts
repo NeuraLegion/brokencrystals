@@ -1566,10 +1566,25 @@ async function bisectAndRevertBrokenFixes(
   }
 
   // Repair failed — bisect by reverting commits one at a time from newest to oldest
+  // Collect the fix commit SHAs first so we revert original commits, not revert-of-reverts
   console.log(`[Fix] Bisecting ${commitCount} fix commits to find the breaker`);
-  for (let i = 0; i < commitCount; i++) {
+  let fixShas: string[];
+  try {
+    fixShas = execFileSync("git", ["log", "--format=%H", `-${commitCount}`], {
+      cwd: repoPath,
+      encoding: "utf-8",
+    })
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+  } catch {
+    console.error("[Fix] Could not read commit log for bisect");
+    return false;
+  }
+
+  for (let i = 0; i < fixShas.length; i++) {
     try {
-      execFileSync("git", ["revert", "--no-edit", "HEAD"], {
+      execFileSync("git", ["revert", "--no-edit", fixShas[i]], {
         cwd: repoPath,
         stdio: "pipe",
       });

@@ -39225,7 +39225,7 @@ ${result.attemptLog.join("\n")}`);
     endpoint: detection.registerEndpoint,
     method: detection.registerMethod ?? "POST",
     body: detection.registerBody,
-    contentType: detection.loginContentType
+    contentType: detection.registerContentType ?? detection.loginContentType
   } : void 0;
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
@@ -39307,16 +39307,17 @@ async function detectAuthFromCode(llm, repoPath, techStack, baseUrl, model, cont
       registerEndpoint: parsed.registerEndpoint ?? null,
       registerMethod: parsed.registerMethod ?? "POST",
       registerBody: parsed.registerBody ?? null,
+      registerContentType: parsed.registerContentType ?? null,
       notes: parsed.notes ?? ""
     };
   } catch {
     console.warn(
-      "[Auth] Could not parse detection response:",
+      "[Auth] Could not parse detection response \u2014 defaulting to requiresAuth:true:",
       response.slice(0, 300)
     );
     return {
-      requiresAuth: false,
-      authType: "none",
+      requiresAuth: true,
+      authType: "session",
       loginEndpoint: null,
       loginMethod: null,
       loginBody: null,
@@ -39334,7 +39335,8 @@ async function detectAuthFromCode(llm, repoPath, techStack, baseUrl, model, cont
       registerEndpoint: null,
       registerMethod: null,
       registerBody: null,
-      notes: "Detection failed"
+      registerContentType: null,
+      notes: "Detection parse failed \u2014 assuming auth required"
     };
   }
 }
@@ -40671,6 +40673,9 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
         return { valid: true, reason: "Login returned user data" };
       }
     }
+    if (res.status >= 400) {
+      return { valid: false, reason: `Login returned HTTP ${res.status}` };
+    }
     return { valid: true, reason: `Login returned HTTP ${res.status} \u2014 assuming OK` };
   } catch (err) {
     return { valid: false, reason: `Login request failed: ${toErrorMessage(err)}` };
@@ -41203,8 +41208,10 @@ Return a JSON object with an array of entries, one per endpoint index.`
   }
   const groups = [];
   for (const [testsKey, { epIds, hasPathParams }] of groupMap) {
+    const tests = testsKey ? testsKey.split(",") : [];
+    if (tests.length === 0) continue;
     groups.push({
-      tests: testsKey.split(","),
+      tests,
       entrypointIds: epIds,
       hasPathParams
     });
@@ -43984,9 +43991,19 @@ async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfi
     }
   }
   console.log(`[Fix] Bisecting ${commitCount} fix commits to find the breaker`);
-  for (let i = 0; i < commitCount; i++) {
+  let fixShas;
+  try {
+    fixShas = execFileSync5("git", ["log", "--format=%H", `-${commitCount}`], {
+      cwd: repoPath,
+      encoding: "utf-8"
+    }).trim().split("\n").filter(Boolean);
+  } catch {
+    console.error("[Fix] Could not read commit log for bisect");
+    return false;
+  }
+  for (let i = 0; i < fixShas.length; i++) {
     try {
-      execFileSync5("git", ["revert", "--no-edit", "HEAD"], {
+      execFileSync5("git", ["revert", "--no-edit", fixShas[i]], {
         cwd: repoPath,
         stdio: "pipe"
       });

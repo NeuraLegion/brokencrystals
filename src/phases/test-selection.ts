@@ -140,8 +140,10 @@ Return a JSON object with an array of entries, one per endpoint index.`,
 
   const groups: ScanGroup[] = [];
   for (const [testsKey, { epIds, hasPathParams }] of groupMap) {
+    const tests = testsKey ? testsKey.split(",") : [];
+    if (tests.length === 0) continue; // Skip endpoints with no selected tests
     groups.push({
-      tests: testsKey.split(","),
+      tests,
       entrypointIds: epIds,
       hasPathParams,
     });

@@ -284,7 +284,7 @@ export async function detectAndConfigureAuth(
           endpoint: detection.registerEndpoint,
           method: detection.registerMethod ?? "POST",
           body: detection.registerBody,
-          contentType: detection.loginContentType,
+          contentType: detection.registerContentType ?? detection.loginContentType,
         }
       : undefined;
 
@@ -337,6 +337,7 @@ interface AuthDetection {
   registerEndpoint: string | null;
   registerMethod: string | null;
   registerBody: string | null;
+  registerContentType: "json" | "form" | "xml" | null;
   notes: string;
 }
 
@@ -413,16 +414,17 @@ async function detectAuthFromCode(
       registerEndpoint: parsed.registerEndpoint ?? null,
       registerMethod: parsed.registerMethod ?? "POST",
       registerBody: parsed.registerBody ?? null,
+      registerContentType: parsed.registerContentType ?? null,
       notes: parsed.notes ?? "",
     };
   } catch {
     console.warn(
-      "[Auth] Could not parse detection response:",
+      "[Auth] Could not parse detection response — defaulting to requiresAuth:true:",
       response.slice(0, 300),
     );
     return {
-      requiresAuth: false,
-      authType: "none",
+      requiresAuth: true,
+      authType: "session",
       loginEndpoint: null,
       loginMethod: null,
       loginBody: null,
@@ -440,7 +442,8 @@ async function detectAuthFromCode(
       registerEndpoint: null,
       registerMethod: null,
       registerBody: null,
-      notes: "Detection failed",
+      registerContentType: null,
+      notes: "Detection parse failed — assuming auth required",
     };
   }
 }
@@ -2172,6 +2175,11 @@ async function verifySeededCredentials(
       if (/"user"/.test(body) || /"username"/.test(body)) {
         return { valid: true, reason: "Login returned user data" };
       }
+    }
+
+    // Unhandled 4xx — credentials are likely invalid
+    if (res.status >= 400) {
+      return { valid: false, reason: `Login returned HTTP ${res.status}` };
     }
 
     return { valid: true, reason: `Login returned HTTP ${res.status} — assuming OK` };
