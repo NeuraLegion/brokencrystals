@@ -40147,10 +40147,24 @@ async function testAuthObject(api, authObjectId) {
         }
         if (r.response) {
           const rawBody = r.response.body ?? "";
+          const respCt = (() => {
+            const hdrs2 = r.response.headers;
+            if (!hdrs2) return "";
+            const ct = hdrs2["content-type"] ?? hdrs2["Content-Type"];
+            return (Array.isArray(ct) ? ct[0] : ct) ?? "";
+          })();
+          const isHtml = respCt.includes("html") || rawBody.trimStart().startsWith("<");
+          const previewText = isHtml ? stripHtmlForAnalysis(rawBody) : rawBody;
           detail.response = {
             status: r.response.status ?? 0,
-            bodyPreview: rawBody.slice(0, BODY_PREVIEW_LIMIT)
+            bodyPreview: previewText.slice(0, BODY_PREVIEW_LIMIT)
           };
+          if (r.status !== "success" && rawBody.length > BODY_PREVIEW_LIMIT) {
+            const saved = saveProbeBody(rawBody, respCt || "text/html");
+            if (saved) {
+              detail.response.bodyFile = saved;
+            }
+          }
           const hdrs = r.response.headers;
           if (hdrs) {
             const ct = hdrs["content-type"] ?? hdrs["Content-Type"];

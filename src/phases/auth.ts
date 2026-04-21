@@ -12,7 +12,7 @@ import {
   webSearchTools,
   createWebSearchHandler,
 } from "../tools.js";
-import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody } from "../utils.js";
+import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody, stripHtmlForAnalysis } from "../utils.js";
 import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt, repairBrokenLoginPrompt } from "../prompts/auth.js";
 
 const CONTENT_TYPE_MAP: Record<string, string> = {
@@ -57,6 +57,8 @@ export interface AuthTestStageDetail {
     bodyPreview: string;
     setCookie?: string[];
     contentType?: string;
+    /** Full error body saved to this file — use read_file to inspect */
+    bodyFile?: string;
   };
 }
 
@@ -1443,10 +1445,29 @@ export async function testAuthObject(
 
         if (r.response) {
           const rawBody = r.response.body ?? "";
+          const respCt = (() => {
+            const hdrs = r.response.headers;
+            if (!hdrs) return "";
+            const ct = hdrs["content-type"] ?? hdrs["Content-Type"];
+            return (Array.isArray(ct) ? ct[0] : ct) ?? "";
+          })();
+          // For HTML error responses, strip tags so the preview shows the
+          // actual error text (e.g. "No such file or directory - magick")
+          // instead of 800 chars of <head> boilerplate.
+          const isHtml = respCt.includes("html") || rawBody.trimStart().startsWith("<");
+          const previewText = isHtml ? stripHtmlForAnalysis(rawBody) : rawBody;
           detail.response = {
             status: r.response.status ?? 0,
-            bodyPreview: rawBody.slice(0, BODY_PREVIEW_LIMIT),
+            bodyPreview: previewText.slice(0, BODY_PREVIEW_LIMIT),
           };
+          // For failed stages with large bodies, save to file so the LLM
+          // can read_file for the full error context
+          if (r.status !== "success" && rawBody.length > BODY_PREVIEW_LIMIT) {
+            const saved = saveProbeBody(rawBody, respCt || "text/html");
+            if (saved) {
+              detail.response.bodyFile = saved;
+            }
+          }
           // Extract Set-Cookie and Content-Type from response headers
           const hdrs = r.response.headers;
           if (hdrs) {
