@@ -18372,7 +18372,7 @@ ${stderr}`.slice(-5e3);
 }
 function extractCodeBlock(text) {
   const match2 = text.match(
-    /```(?:dockerfile|docker|Dockerfile|ruby|python|javascript|typescript|sh|bash|go|java|scala|kotlin|csharp|cs)?\s*\n([\s\S]*?)```/i
+    /```(?:dockerfile|docker|Dockerfile|ruby|python|javascript|typescript|sh|bash|go|java|scala|kotlin|csharp|cs|yaml|yml|json|xml|toml|ini|conf|nginx|sql|text|plaintext|txt)?\s*\n([\s\S]*?)```/i
   );
   if (match2) return match2[1].trimEnd() + "\n";
   const lines = text.split("\n");
@@ -36441,8 +36441,13 @@ Rules:
 }
 
 // src/prompts/generate-compose.ts
-function generateComposePrompt(techStack, discovery, hasDockerfile) {
+function generateComposePrompt(techStack, discovery, hasDockerfile, hints) {
   const discoveryJson = JSON.stringify(discovery, null, 2);
+  const hintsSection = hints && hints.length > 0 ? `
+## Hints from previous attempts
+These were discovered through investigation \u2014 use them:
+${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
+` : "";
   return [
     {
       role: "system",
@@ -36450,7 +36455,7 @@ function generateComposePrompt(techStack, discovery, hasDockerfile) {
 
 ## Project Discovery
 ${discoveryJson}
-
+${hintsSection}
 ## Requirements
 
 Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that includes:
@@ -36660,14 +36665,14 @@ async function discoverProject(llm, repoPath, stackStr, model) {
     return void 0;
   }
 }
-async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config2, model) {
+async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config2, model, hints) {
   const MAX_COMPOSE_GEN_RETRIES = 3;
   const t0 = Date.now();
   for (let attempt = 1; attempt <= MAX_COMPOSE_GEN_RETRIES; attempt++) {
     console.log(`[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`);
     try {
       const hasDockerfile = existsSync4(`${repoPath}/Dockerfile`);
-      const messages = generateComposePrompt(stackStr, discovery, hasDockerfile);
+      const messages = generateComposePrompt(stackStr, discovery, hasDockerfile, hints);
       const handler = createToolHandler(repoPath);
       const response = await chatWithTools(llm, messages, codebaseTools, handler, model);
       const content = extractCodeBlock(response);
@@ -36700,6 +36705,23 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
   let discovery;
   if (!previousStartup) {
     discovery = await discoverProject(llm, repoPath, stackStr, modelSelector?.current());
+  }
+  if (discovery) {
+    for (const note of discovery.configNotes) {
+      startupHints.push(`[discovery] ${note}`);
+    }
+    for (const note of discovery.buildNotes) {
+      startupHints.push(`[discovery] ${note}`);
+    }
+    for (const step of discovery.postStartSetup ?? []) {
+      startupHints.push(`[discovery] Post-start: ${step}`);
+    }
+    for (const svc of discovery.services) {
+      startupHints.push(`[discovery] Service "${svc.name}" requires image: ${svc.image} \u2014 ${svc.reason}`);
+    }
+    if (startupHints.length > 0) {
+      console.log(`[Startup] Seeded ${startupHints.length} hints from discovery`);
+    }
   }
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
     const attemptStart = Date.now();
@@ -36827,7 +36849,7 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
     );
     if (usesCompose && !findComposeFile(repoPath)) {
       if (discovery && discovery.services.length > 0) {
-        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config2, modelSelector?.current());
+        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config2, modelSelector?.current(), startupHints);
       } else {
         console.log("[Startup] No compose file found \u2014 generating one from Dockerfile (no discovery available)");
         generateComposeFile(repoPath, config2);

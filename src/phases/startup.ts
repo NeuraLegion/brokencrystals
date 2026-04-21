@@ -287,6 +287,7 @@ async function generateComposeWithLLM(
   discovery: ProjectDiscovery,
   config: StartupConfig,
   model?: string,
+  hints?: string[],
 ): Promise<void> {
   const MAX_COMPOSE_GEN_RETRIES = 3;
   const t0 = Date.now();
@@ -295,7 +296,7 @@ async function generateComposeWithLLM(
     console.log(`[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`);
     try {
       const hasDockerfile = existsSync(`${repoPath}/Dockerfile`);
-      const messages = generateComposePrompt(stackStr, discovery, hasDockerfile);
+      const messages = generateComposePrompt(stackStr, discovery, hasDockerfile, hints);
       const handler = createToolHandler(repoPath);
       const response = await chatWithTools(llm, messages, codebaseTools, handler, model);
       const content = extractCodeBlock(response);
@@ -343,6 +344,25 @@ export async function startApplicationWithRetries(
   let discovery: ProjectDiscovery | undefined;
   if (!previousStartup) {
     discovery = await discoverProject(llm, repoPath, stackStr, modelSelector?.current());
+  }
+
+  // Seed startupHints from discovery findings so repair LLMs inherit them
+  if (discovery) {
+    for (const note of discovery.configNotes) {
+      startupHints.push(`[discovery] ${note}`);
+    }
+    for (const note of discovery.buildNotes) {
+      startupHints.push(`[discovery] ${note}`);
+    }
+    for (const step of discovery.postStartSetup ?? []) {
+      startupHints.push(`[discovery] Post-start: ${step}`);
+    }
+    for (const svc of discovery.services) {
+      startupHints.push(`[discovery] Service "${svc.name}" requires image: ${svc.image} — ${svc.reason}`);
+    }
+    if (startupHints.length > 0) {
+      console.log(`[Startup] Seeded ${startupHints.length} hints from discovery`);
+    }
   }
 
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
@@ -499,7 +519,7 @@ export async function startApplicationWithRetries(
     );
     if (usesCompose && !findComposeFile(repoPath)) {
       if (discovery && discovery.services.length > 0) {
-        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current());
+        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints);
       } else {
         console.log("[Startup] No compose file found — generating one from Dockerfile (no discovery available)");
         generateComposeFile(repoPath, config);

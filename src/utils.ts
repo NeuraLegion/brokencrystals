@@ -242,7 +242,7 @@ export function runShellCommand(
  */
 export function extractCodeBlock(text: string): string | null {
   const match = text.match(
-    /```(?:dockerfile|docker|Dockerfile|ruby|python|javascript|typescript|sh|bash|go|java|scala|kotlin|csharp|cs)?\s*\n([\s\S]*?)```/i,
+    /```(?:dockerfile|docker|Dockerfile|ruby|python|javascript|typescript|sh|bash|go|java|scala|kotlin|csharp|cs|yaml|yml|json|xml|toml|ini|conf|nginx|sql|text|plaintext|txt)?\s*\n([\s\S]*?)```/i,
   );
   if (match) return match[1].trimEnd() + "\n";
 

@@ -9,8 +9,13 @@ export function generateComposePrompt(
   techStack: string,
   discovery: ProjectDiscovery,
   hasDockerfile: boolean,
+  hints?: string[],
 ): ChatCompletionMessageParam[] {
   const discoveryJson = JSON.stringify(discovery, null, 2);
+
+  const hintsSection = hints && hints.length > 0
+    ? `\n## Hints from previous attempts\nThese were discovered through investigation — use them:\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
+    : "";
 
   return [
     {
@@ -19,7 +24,7 @@ export function generateComposePrompt(
 
 ## Project Discovery
 ${discoveryJson}
-
+${hintsSection}
 ## Requirements
 
 Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that includes:
