@@ -175,8 +175,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
     }
     appProcess = startup.process;
-    const startupConfig = startup.config;
-    const baseUrl = `http://localhost:${startupConfig.port}`;
+    let startupConfig = startup.config;
+    let baseUrl = `http://localhost:${startupConfig.port}`;
     await progress.phaseDetail(
       "startup",
       "app_running",
@@ -234,6 +234,83 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     );
 
     // If auth was detected but failed to configure
+    const MAX_INFRA_BOUNCEBACKS = 2;
+    for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {
+      if (!authResult.authFailed || !authResult.infraRepairHint) break;
+
+      // ----- Auth infra bounce-back: repair infra and retry auth -----
+      console.log(`[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} — repairing infrastructure`);
+      console.log(`[Engine] Hint: ${authResult.infraRepairHint.slice(0, 200)}`);
+      await progress.phaseDetail(
+        "auth",
+        "infra_repair",
+        `Bounce-back ${bounce}: ${authResult.infraRepairHint.slice(0, 120)}`,
+      );
+
+      try {
+        const repairHints = [
+          `[auth-infra-repair] ${authResult.infraRepairHint}`,
+          `[auth-infra-repair] The auth phase identified this infrastructure problem. Fix it in compose.yml/Dockerfile/environment and rebuild.`,
+        ];
+
+        await killProcess(appProcess);
+        const repairedStartup = await startApplicationWithRetries(
+          llm,
+          repoPath,
+          techStack,
+          startupConfig,
+          config.modelSelector,
+          repairHints,
+        );
+
+        if (repairedStartup.healthy) {
+          appProcess = repairedStartup.process;
+          startupConfig = repairedStartup.config;
+          baseUrl = `http://localhost:${startupConfig.port}`;
+          if (authResult.registration) await reRegisterUser(authResult.registration);
+          console.log(`[Engine] App restarted after infra repair — retrying auth`);
+
+          const retryAuthResult = await detectAndConfigureAuth(
+            llm,
+            bright,
+            repoPath,
+            techStack,
+            projectId,
+            baseUrl,
+            repeater.repeaterId,
+            config,
+            config.modelSelector.current(),
+            preAuthContext,
+          );
+
+          // Overwrite authResult so the loop re-checks infraRepairHint
+          Object.assign(authResult, retryAuthResult);
+
+          if (retryAuthResult.authObjectId) {
+            console.log(`[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
+            await progress.phaseDetail(
+              "auth",
+              "auth_done",
+              `Auth configured after infra repair (object ${retryAuthResult.authObjectId})`,
+            );
+            break;
+          } else if (retryAuthResult.infraRepairHint) {
+            console.warn(`[Engine] Auth needs another infra repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`);
+          } else {
+            console.error("[Engine] Auth still failed after infra repair (not infra-related)");
+            break; // Non-infra failure — no point bouncing again
+          }
+        } else {
+          console.error("[Engine] App failed to restart after infra repair");
+          break;
+        }
+      } catch (bounceErr) {
+        console.error(`[Engine] Auth infra bounce-back failed: ${toErrorMessage(bounceErr)}`);
+        break;
+      }
+    }
+
+    // After bounce-back (or if no bounce-back was needed), check final auth state
     if (authResult.authFailed) {
       if (config.runMode === "dynamic") {
         // Dynamic mode: auth is critical — fail the run

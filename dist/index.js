@@ -36694,7 +36694,7 @@ async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config
   console.warn(`[Startup] All ${MAX_COMPOSE_GEN_RETRIES} compose generation attempts failed \u2014 using template fallback`);
   generateComposeFile(repoPath, config2);
 }
-async function startApplicationWithRetries(llm, repoPath, techStack, previousStartup, modelSelector) {
+async function startApplicationWithRetries(llm, repoPath, techStack, previousStartup, modelSelector, externalHints) {
   cleanupDocker(repoPath);
   const stackStr = formatTechStack(techStack);
   const attemptErrors = [];
@@ -36722,6 +36722,12 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
     if (startupHints.length > 0) {
       console.log(`[Startup] Seeded ${startupHints.length} hints from discovery`);
     }
+  }
+  if (externalHints?.length) {
+    for (const hint of externalHints) {
+      startupHints.push(hint);
+    }
+    console.log(`[Startup] Injected ${externalHints.length} external hint(s)`);
   }
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
     const attemptStart = Date.now();
@@ -38808,7 +38814,17 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
 - **After each failed test_auth_object, analyze the response body previews for EACH stage to understand the root cause.**
 - **Use probe_url between attempts to gather more data** \u2014 probe new endpoints, check response formats, search the codebase for auth routes.
 - **You have 50 rounds. Use them ALL before giving up.** Each create/test/delete cycle takes ~3 rounds. You can try 15+ different configurations.
-- When all stages pass, respond with ONLY the auth object ID. If you truly exhausted everything, respond "FAILED".`
+
+## Response format
+- When all stages pass, respond with ONLY the auth object ID.
+- If the problem is an **infrastructure issue that requires restarting the application** (e.g. missing environment variable in docker-compose, wrong Dockerfile config, app needs to be rebuilt with different settings), respond with:
+  \`INFRA_REPAIR: <description of what needs to change>\`
+  Examples:
+  - \`INFRA_REPAIR: Add ALLOW_EMBER_CLI_PROXY_BYPASS=1 to the app service environment in compose.yml \u2014 without it, Discourse returns HTML for all API requests instead of processing them\`
+  - \`INFRA_REPAIR: The app's DATABASE_URL points to localhost but the DB is in a separate container \u2014 change it to postgres://db:5432 in compose.yml\`
+  - \`INFRA_REPAIR: The Rails app needs RAILS_ENV=production in compose.yml \u2014 development mode requires Ember CLI which is not available\`
+  Use INFRA_REPAIR when: you've identified the root cause, it requires changing compose.yml/Dockerfile/environment, and you CANNOT fix it from inside the running container (e.g. env vars set at startup, Docker build changes, service configuration). Do NOT use INFRA_REPAIR for auth config issues \u2014 only for app infrastructure problems.
+- If you truly exhausted everything and the problem is NOT infrastructure, respond "FAILED".`
     },
     {
       role: "user",
@@ -39056,6 +39072,7 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectI
   let authObjectId;
   const allAttemptLogs = [];
   const fullProbeContext = loginCheck.diagnostic ? probeContext + "\n\n" + loginCheck.diagnostic : probeContext;
+  let infraRepairHint;
   for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
     let attemptContext = fullProbeContext;
     if (allAttemptLogs.length > 0) {
@@ -39079,6 +39096,11 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectI
       authObjectId = result.authId;
       break;
     }
+    if (result.infraRepairHint) {
+      infraRepairHint = result.infraRepairHint;
+      console.log(`[Auth] Infrastructure repair requested \u2014 breaking out of auth loop`);
+      break;
+    }
     if (result.attemptLog.length > 0) {
       allAttemptLogs.push(`### Attempt ${attempt} failures:
 ${result.attemptLog.join("\n")}`);
@@ -39097,6 +39119,16 @@ ${result.attemptLog.join("\n")}`);
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
     return { authObjectId, hasAuth: true, authFailed: false, registration };
+  }
+  if (infraRepairHint) {
+    console.error(`[Auth] Failed \u2014 infrastructure repair needed: ${infraRepairHint.slice(0, 200)}`);
+    return {
+      authObjectId: void 0,
+      hasAuth: false,
+      authFailed: true,
+      registration,
+      infraRepairHint
+    };
   }
   console.error("[Auth] Failed to configure auth");
   return {
@@ -39696,6 +39728,11 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     50
   );
   const trimmed = response.trim();
+  const infraRepairHint = parseInfraRepairResponse(trimmed);
+  if (infraRepairHint) {
+    console.log(`[Auth] LLM requested infrastructure repair: ${infraRepairHint.slice(0, 200)}`);
+    return { authId: void 0, attemptLog, infraRepairHint };
+  }
   const authId = parseAuthResponse(trimmed);
   if (!authId) {
     console.error(`[Auth] LLM could not configure auth (response: ${trimmed.slice(0, 200)})`);
@@ -40005,6 +40042,13 @@ async function deleteAuthObject(api, authObjectId) {
   } catch (err) {
     console.warn(`[Auth] Failed to delete auth object: ${err}`);
   }
+}
+function parseInfraRepairResponse(trimmed) {
+  const match2 = trimmed.match(/^INFRA_REPAIR:\s*(.+)/s);
+  if (match2?.[1]) {
+    return match2[1].trim();
+  }
+  return void 0;
 }
 var FALSE_ESCAPE_RE = /no\s*auth|auth.*not\s*required|auth.*skipped|does\s*not\s*require|doesn['']t\s*require|no\s*authentication/i;
 function parseAuthResponse(trimmed) {
@@ -42706,8 +42750,8 @@ async function runOrchestrator(ctx) {
       }
     }
     appProcess = startup.process;
-    const startupConfig = startup.config;
-    const baseUrl = `http://localhost:${startupConfig.port}`;
+    let startupConfig = startup.config;
+    let baseUrl = `http://localhost:${startupConfig.port}`;
     await progress.phaseDetail(
       "startup",
       "app_running",
@@ -42752,6 +42796,72 @@ async function runOrchestrator(ctx) {
       "auth_done",
       authResult.authObjectId ? `Auth configured (object ${authResult.authObjectId})` : "No authentication required"
     );
+    const MAX_INFRA_BOUNCEBACKS = 2;
+    for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {
+      if (!authResult.authFailed || !authResult.infraRepairHint) break;
+      console.log(`[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} \u2014 repairing infrastructure`);
+      console.log(`[Engine] Hint: ${authResult.infraRepairHint.slice(0, 200)}`);
+      await progress.phaseDetail(
+        "auth",
+        "infra_repair",
+        `Bounce-back ${bounce}: ${authResult.infraRepairHint.slice(0, 120)}`
+      );
+      try {
+        const repairHints = [
+          `[auth-infra-repair] ${authResult.infraRepairHint}`,
+          `[auth-infra-repair] The auth phase identified this infrastructure problem. Fix it in compose.yml/Dockerfile/environment and rebuild.`
+        ];
+        await killProcess(appProcess);
+        const repairedStartup = await startApplicationWithRetries(
+          llm,
+          repoPath,
+          techStack,
+          startupConfig,
+          config2.modelSelector,
+          repairHints
+        );
+        if (repairedStartup.healthy) {
+          appProcess = repairedStartup.process;
+          startupConfig = repairedStartup.config;
+          baseUrl = `http://localhost:${startupConfig.port}`;
+          if (authResult.registration) await reRegisterUser(authResult.registration);
+          console.log(`[Engine] App restarted after infra repair \u2014 retrying auth`);
+          const retryAuthResult = await detectAndConfigureAuth(
+            llm,
+            bright,
+            repoPath,
+            techStack,
+            projectId,
+            baseUrl,
+            repeater.repeaterId,
+            config2,
+            config2.modelSelector.current(),
+            preAuthContext
+          );
+          Object.assign(authResult, retryAuthResult);
+          if (retryAuthResult.authObjectId) {
+            console.log(`[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
+            await progress.phaseDetail(
+              "auth",
+              "auth_done",
+              `Auth configured after infra repair (object ${retryAuthResult.authObjectId})`
+            );
+            break;
+          } else if (retryAuthResult.infraRepairHint) {
+            console.warn(`[Engine] Auth needs another infra repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`);
+          } else {
+            console.error("[Engine] Auth still failed after infra repair (not infra-related)");
+            break;
+          }
+        } else {
+          console.error("[Engine] App failed to restart after infra repair");
+          break;
+        }
+      } catch (bounceErr) {
+        console.error(`[Engine] Auth infra bounce-back failed: ${toErrorMessage(bounceErr)}`);
+        break;
+      }
+    }
     if (authResult.authFailed) {
       if (config2.runMode === "dynamic") {
         console.error("[Engine] Auth configuration failed \u2014 aborting (dynamic mode requires working auth)");

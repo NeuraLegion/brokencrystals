@@ -235,7 +235,17 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
 - **After each failed test_auth_object, analyze the response body previews for EACH stage to understand the root cause.**
 - **Use probe_url between attempts to gather more data** — probe new endpoints, check response formats, search the codebase for auth routes.
 - **You have 50 rounds. Use them ALL before giving up.** Each create/test/delete cycle takes ~3 rounds. You can try 15+ different configurations.
-- When all stages pass, respond with ONLY the auth object ID. If you truly exhausted everything, respond "FAILED".`,
+
+## Response format
+- When all stages pass, respond with ONLY the auth object ID.
+- If the problem is an **infrastructure issue that requires restarting the application** (e.g. missing environment variable in docker-compose, wrong Dockerfile config, app needs to be rebuilt with different settings), respond with:
+  \`INFRA_REPAIR: <description of what needs to change>\`
+  Examples:
+  - \`INFRA_REPAIR: Add ALLOW_EMBER_CLI_PROXY_BYPASS=1 to the app service environment in compose.yml — without it, Discourse returns HTML for all API requests instead of processing them\`
+  - \`INFRA_REPAIR: The app's DATABASE_URL points to localhost but the DB is in a separate container — change it to postgres://db:5432 in compose.yml\`
+  - \`INFRA_REPAIR: The Rails app needs RAILS_ENV=production in compose.yml — development mode requires Ember CLI which is not available\`
+  Use INFRA_REPAIR when: you've identified the root cause, it requires changing compose.yml/Dockerfile/environment, and you CANNOT fix it from inside the running container (e.g. env vars set at startup, Docker build changes, service configuration). Do NOT use INFRA_REPAIR for auth config issues — only for app infrastructure problems.
+- If you truly exhausted everything and the problem is NOT infrastructure, respond "FAILED".`,
     },
     {
       role: "user",

@@ -36,6 +36,10 @@ export interface AuthResult {
     body: string;
     contentType: string;
   };
+  /** When set, auth failed due to an infrastructure issue (e.g. missing env var,
+   *  app returning HTML instead of JSON). The orchestrator should repair
+   *  infrastructure, restart the app, and retry auth. */
+  infraRepairHint?: string;
 }
 
 export interface AuthTestStageDetail {
@@ -195,6 +199,8 @@ export async function detectAndConfigureAuth(
     ? probeContext + "\n\n" + loginCheck.diagnostic
     : probeContext;
 
+  let infraRepairHint: string | undefined;
+
   for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
     // Build context from previous failures
     let attemptContext = fullProbeContext;
@@ -224,6 +230,14 @@ export async function detectAndConfigureAuth(
       break;
     }
 
+    // If the LLM requests infrastructure repair, break immediately —
+    // retrying auth won't help until the app is fixed and restarted
+    if (result.infraRepairHint) {
+      infraRepairHint = result.infraRepairHint;
+      console.log(`[Auth] Infrastructure repair requested — breaking out of auth loop`);
+      break;
+    }
+
     // Capture what was tried and what failed for the next attempt
     if (result.attemptLog.length > 0) {
       allAttemptLogs.push(`### Attempt ${attempt} failures:\n${result.attemptLog.join("\n")}`);
@@ -249,6 +263,17 @@ export async function detectAndConfigureAuth(
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
     return { authObjectId, hasAuth: true, authFailed: false, registration };
+  }
+
+  if (infraRepairHint) {
+    console.error(`[Auth] Failed — infrastructure repair needed: ${infraRepairHint.slice(0, 200)}`);
+    return {
+      authObjectId: undefined,
+      hasAuth: false,
+      authFailed: true,
+      registration,
+      infraRepairHint,
+    };
   }
 
   console.error("[Auth] Failed to configure auth");
@@ -686,7 +711,7 @@ async function createAuthViaMcp(
   api: BrightApiContext,
   model?: string,
   preProbeContext?: string,
-): Promise<{ authId: string | undefined; attemptLog: string[] }> {
+): Promise<{ authId: string | undefined; attemptLog: string[]; infraRepairHint?: string }> {
   // MCP tools for inspection only (listAuths, getAuth)
   _probeCookieJar = {};
   const mcpSchemas = await bright.getMcpToolSchemas(["getAuth", "listAuths"]);
@@ -1054,6 +1079,14 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
   );
 
   const trimmed = response.trim();
+
+  // Check for infrastructure repair request before normal auth parsing
+  const infraRepairHint = parseInfraRepairResponse(trimmed);
+  if (infraRepairHint) {
+    console.log(`[Auth] LLM requested infrastructure repair: ${infraRepairHint.slice(0, 200)}`);
+    return { authId: undefined, attemptLog, infraRepairHint };
+  }
+
   const authId = parseAuthResponse(trimmed);
   if (!authId) {
     console.error(`[Auth] LLM could not configure auth (response: ${trimmed.slice(0, 200)})`);
@@ -1475,6 +1508,18 @@ async function deleteAuthObject(
   } catch (err) {
     console.warn(`[Auth] Failed to delete auth object: ${err}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// parseInfraRepairResponse — detect INFRA_REPAIR: signal from auth LLM
+// ---------------------------------------------------------------------------
+
+function parseInfraRepairResponse(trimmed: string): string | undefined {
+  const match = trimmed.match(/^INFRA_REPAIR:\s*(.+)/s);
+  if (match?.[1]) {
+    return match[1].trim();
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

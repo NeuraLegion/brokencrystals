@@ -329,6 +329,7 @@ export async function startApplicationWithRetries(
   techStack: TechStack,
   previousStartup?: StartupConfig,
   modelSelector?: ModelSelector,
+  externalHints?: string[],
 ): Promise<StartupResult> {
   // Clean up any running Docker containers to avoid port conflicts
   cleanupDocker(repoPath);
@@ -363,6 +364,14 @@ export async function startApplicationWithRetries(
     if (startupHints.length > 0) {
       console.log(`[Startup] Seeded ${startupHints.length} hints from discovery`);
     }
+  }
+
+  // Inject external hints (e.g. from auth infra bounce-back)
+  if (externalHints?.length) {
+    for (const hint of externalHints) {
+      startupHints.push(hint);
+    }
+    console.log(`[Startup] Injected ${externalHints.length} external hint(s)`);
   }
 
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt++) {
