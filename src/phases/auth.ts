@@ -143,7 +143,35 @@ export async function detectAndConfigureAuth(
       const credCheck = await verifySeededCredentials(baseUrl, seededCredentials, detection);
       if (!credCheck.valid) {
         console.warn(`[Auth:Seed] Credential verification failed: ${credCheck.reason}`);
-        console.warn("[Auth:Seed] The seed LLM may have changed the password — seeded password might not match");
+
+        // If user exists but isn't activated, re-run seed LLM with activation focus
+        if (credCheck.reason.startsWith("not_activated")) {
+          console.log("[Auth:Seed] User not activated — re-running seed with activation hint");
+          const activationResult = await seedTestUser(
+            llm, repoPath, baseUrl, detection, model,
+            `IMPORTANT: The test user "${seededCredentials.username}" was created but is NOT ACTIVATED. ` +
+            `The login endpoint returned: "not_activated". You MUST activate/confirm the user's email before returning. ` +
+            `Common methods: rails runner "User.find_by(email:'${seededCredentials.email ?? seededCredentials.username}')&.activate", ` +
+            `Django: User.objects.filter(email='...').update(is_active=True), ` +
+            `or update the database directly. Do NOT create a new user — just activate the existing one.`,
+          );
+          if (activationResult?.success) {
+            // Re-verify after activation
+            const recheck = await verifySeededCredentials(baseUrl, seededCredentials, detection);
+            if (recheck.valid) {
+              console.log("[Auth:Seed] Post-activation verification passed");
+            } else {
+              console.warn(`[Auth:Seed] Post-activation verification still failed: ${recheck.reason}`);
+              registrationOk = false;
+            }
+          } else {
+            console.warn("[Auth:Seed] Activation re-seed failed");
+            registrationOk = false;
+          }
+        } else {
+          console.warn("[Auth:Seed] The seed LLM may have changed the password — seeded password might not match");
+          registrationOk = false;
+        }
       } else {
         console.log("[Auth:Seed] Credential verification passed — login works");
       }
@@ -1187,6 +1215,7 @@ async function seedTestUser(
   baseUrl: string,
   detection: AuthDetection,
   model?: string,
+  activationHint?: string,
 ): Promise<SeedUserResult | undefined> {
   console.log("[Auth] Starting seed user sub-phase...");
 
@@ -1294,6 +1323,10 @@ async function seedTestUser(
   };
 
   const messages = seedUserPrompt(baseUrl, detection);
+  // If activation hint is provided, inject it as a high-priority user message
+  if (activationHint) {
+    messages.push({ role: "user", content: activationHint });
+  }
   const response = await chatWithTools(llm, messages, seedTools, handler, model, 30);
 
   try {
@@ -1515,7 +1548,8 @@ async function deleteAuthObject(
 // ---------------------------------------------------------------------------
 
 function parseInfraRepairResponse(trimmed: string): string | undefined {
-  const match = trimmed.match(/^INFRA_REPAIR:\s*(.+)/s);
+  // Permissive match — LLMs may prefix with explanation text or markdown
+  const match = trimmed.match(/INFRA_REPAIR:\s*(.+)/s);
   if (match?.[1]) {
     return match[1].trim();
   }
@@ -2114,6 +2148,11 @@ async function verifySeededCredentials(
     }
 
     // Check for error indicators in the response body
+    const isNotActivated = /not.activated|not.verified|email.confirm|must.confirm|activation.required|verify.your.email/i.test(body);
+    if (isNotActivated) {
+      const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
+      return { valid: false, reason: `not_activated: ${preview}` };
+    }
     if (/\b(error|invalid|incorrect|wrong|failed|denied)\b/i.test(body) && !/"current_user"/.test(body)) {
       const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
       return { valid: false, reason: `Login rejected credentials: ${preview}` };

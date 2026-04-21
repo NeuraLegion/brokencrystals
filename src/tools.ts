@@ -4,7 +4,7 @@ import { glob } from "glob";
 import { execFileSync, execSync } from "child_process";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import type { ToolHandler } from "./inference.js";
-import { runShellCommand, toErrorMessage, saveProbeBody } from "./utils.js";
+import { runShellCommand, toErrorMessage, saveProbeBody, PROBE_RESPONSE_DIR } from "./utils.js";
 import type { McpToolSchema, BrightMcpClient } from "./mcp-client.js";
 
 export const codebaseTools: ChatCompletionTool[] = [
@@ -83,8 +83,12 @@ export function createToolHandler(repoPath: string): ToolHandler {
   return async (name: string, args: Record<string, unknown>) => {
     switch (name) {
       case "read_file": {
-        const filePath = resolve(repoPath, String(args.path ?? ""));
-        if (!filePath.startsWith(repoPath)) {
+        const rawPath = String(args.path ?? "");
+        // Allow absolute paths to probe response directory (saved by probe_url)
+        const filePath = rawPath.startsWith("/")
+          ? resolve(rawPath)
+          : resolve(repoPath, rawPath);
+        if (!filePath.startsWith(repoPath) && !filePath.startsWith(PROBE_RESPONSE_DIR + "/")) {
           return "Error: path traversal attempt blocked";
         }
         if (!existsSync(filePath)) {

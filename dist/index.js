@@ -18154,7 +18154,8 @@ function requireEnv(name) {
 
 // src/utils.ts
 import { execSync } from "child_process";
-import { writeFileSync, mkdirSync as mkdirSync2 } from "fs";
+import { writeFileSync, mkdirSync as mkdirSync2, readFileSync, existsSync as existsSync2 } from "fs";
+import { join } from "path";
 var SEVERITY_ORDER = {
   Critical: 0,
   High: 1,
@@ -18395,22 +18396,60 @@ function stripHtmlForAnalysis(html) {
   ).replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s{2,}/g, " ").trim();
   return stripped;
 }
-var PROBE_DIR = "/tmp/bright_probe_responses";
+var PROBE_RESPONSE_DIR = "/tmp/bright_probe_responses";
 var _probeCounter = 0;
 function saveProbeBody(bodyText, contentType) {
   if (bodyText.length <= 2e3) return null;
   try {
-    mkdirSync2(PROBE_DIR, { recursive: true });
+    mkdirSync2(PROBE_RESPONSE_DIR, { recursive: true });
   } catch {
   }
   const ext2 = contentType.includes("json") ? "json" : contentType.includes("html") ? "html" : "txt";
-  const filePath = `${PROBE_DIR}/response_${++_probeCounter}.${ext2}`;
+  const filePath = `${PROBE_RESPONSE_DIR}/response_${++_probeCounter}.${ext2}`;
   try {
     writeFileSync(filePath, bodyText, "utf-8");
     return filePath;
   } catch {
     return null;
   }
+}
+function injectEnvVarsFromHint(repoPath, hint) {
+  const envPattern = /\b([A-Z][A-Z0-9_]{2,})=("([^"]*)"|'([^']*)'|(\S+))/g;
+  const envVars = [];
+  let m;
+  while ((m = envPattern.exec(hint)) !== null) {
+    const key = m[1];
+    const value = m[3] ?? m[4] ?? m[5];
+    envVars.push([key, value]);
+  }
+  if (envVars.length === 0) return [];
+  const composePaths = [
+    join(repoPath, "docker-compose.yml"),
+    join(repoPath, "docker-compose.yaml"),
+    join(repoPath, "compose.yml"),
+    join(repoPath, "compose.yaml")
+  ];
+  const composePath = composePaths.find((p) => existsSync2(p));
+  if (!composePath) return [];
+  let content = readFileSync(composePath, "utf-8");
+  const injected = [];
+  for (const [key, value] of envVars) {
+    if (content.includes(`${key}=`) || content.includes(`${key}:`)) continue;
+    const envBlockMatch = content.match(/^(\s*)environment:\s*$/m) ?? content.match(/^(\s*)environment:\s*\n/m);
+    if (envBlockMatch) {
+      const indent = envBlockMatch[1] + "  ";
+      const insertPos = (envBlockMatch.index ?? 0) + envBlockMatch[0].length;
+      const envLine = `${indent}- ${key}=${value}
+`;
+      content = content.slice(0, insertPos) + envLine + content.slice(insertPos);
+      injected.push(`${key}=${value}`);
+    }
+  }
+  if (injected.length > 0) {
+    writeFileSync(composePath, content, "utf-8");
+    console.log(`[Utils] Injected env vars into ${composePath}: ${injected.join(", ")}`);
+  }
+  return injected;
 }
 
 // node_modules/zod/v4/core/core.js
@@ -27869,7 +27908,7 @@ ${lines.join("\n")}`
 };
 
 // src/phases/analyze.ts
-import { readFileSync, existsSync as existsSync2 } from "fs";
+import { readFileSync as readFileSync2, existsSync as existsSync3 } from "fs";
 import { resolve, extname } from "path";
 import { execFileSync as execFileSync2 } from "child_process";
 
@@ -33911,10 +33950,10 @@ async function detectTechStackFromFiles(repoPath) {
   const languages = /* @__PURE__ */ new Set();
   const frameworks = /* @__PURE__ */ new Set();
   const databases = /* @__PURE__ */ new Set();
-  const has2 = (rel) => existsSync2(resolve(repoPath, rel));
+  const has2 = (rel) => existsSync3(resolve(repoPath, rel));
   const readJson = (rel) => {
     try {
-      return JSON.parse(readFileSync(resolve(repoPath, rel), "utf-8"));
+      return JSON.parse(readFileSync2(resolve(repoPath, rel), "utf-8"));
     } catch {
       return null;
     }
@@ -33950,12 +33989,12 @@ async function detectTechStackFromFiles(repoPath) {
     const readReqs = () => {
       for (const f of ["requirements.txt", "Pipfile"]) {
         try {
-          return readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
+          return readFileSync2(resolve(repoPath, f), "utf-8").toLowerCase();
         } catch {
         }
       }
       try {
-        return readFileSync(
+        return readFileSync2(
           resolve(repoPath, "pyproject.toml"),
           "utf-8"
         ).toLowerCase();
@@ -33974,7 +34013,7 @@ async function detectTechStackFromFiles(repoPath) {
   if (has2("Gemfile")) {
     languages.add("Ruby");
     try {
-      const gemfile = readFileSync(
+      const gemfile = readFileSync2(
         resolve(repoPath, "Gemfile"),
         "utf-8"
       ).toLowerCase();
@@ -33992,7 +34031,7 @@ async function detectTechStackFromFiles(repoPath) {
     const readBuild = () => {
       for (const f of ["pom.xml", "build.gradle", "build.gradle.kts"]) {
         try {
-          return readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
+          return readFileSync2(resolve(repoPath, f), "utf-8").toLowerCase();
         } catch {
         }
       }
@@ -34010,7 +34049,7 @@ async function detectTechStackFromFiles(repoPath) {
   if (has2("go.mod")) {
     languages.add("Go");
     try {
-      const gomod = readFileSync(
+      const gomod = readFileSync2(
         resolve(repoPath, "go.mod"),
         "utf-8"
       ).toLowerCase();
@@ -34030,7 +34069,7 @@ async function detectTechStackFromFiles(repoPath) {
     languages.add("C#");
     for (const f of csprojFiles.slice(0, 5)) {
       try {
-        const content = readFileSync(
+        const content = readFileSync2(
           resolve(repoPath, f),
           "utf-8"
         ).toLowerCase();
@@ -34046,7 +34085,7 @@ async function detectTechStackFromFiles(repoPath) {
   if (has2("Cargo.toml")) {
     languages.add("Rust");
     try {
-      const cargo = readFileSync(
+      const cargo = readFileSync2(
         resolve(repoPath, "Cargo.toml"),
         "utf-8"
       ).toLowerCase();
@@ -34060,7 +34099,7 @@ async function detectTechStackFromFiles(repoPath) {
     languages.add("Scala");
     if (!languages.has("Java")) languages.add("Java");
     try {
-      const sbt = readFileSync(resolve(repoPath, "build.sbt"), "utf-8").toLowerCase();
+      const sbt = readFileSync2(resolve(repoPath, "build.sbt"), "utf-8").toLowerCase();
       if (sbt.includes("play") || sbt.includes("playframework")) frameworks.add("Play Framework");
       if (sbt.includes("akka-http")) frameworks.add("Akka HTTP");
       if (sbt.includes("http4s")) frameworks.add("http4s");
@@ -34073,7 +34112,7 @@ async function detectTechStackFromFiles(repoPath) {
   if (has2("mix.exs")) {
     languages.add("Elixir");
     try {
-      const mix = readFileSync(resolve(repoPath, "mix.exs"), "utf-8").toLowerCase();
+      const mix = readFileSync2(resolve(repoPath, "mix.exs"), "utf-8").toLowerCase();
       if (mix.includes("phoenix")) frameworks.add("Phoenix");
       if (mix.includes("ecto")) databases.add("SQL (Ecto)");
     } catch {
@@ -34094,7 +34133,7 @@ async function detectTechStackFromFiles(repoPath) {
       "compose.yaml"
     ]) {
       try {
-        const content = readFileSync(
+        const content = readFileSync2(
           resolve(repoPath, f),
           "utf-8"
         ).toLowerCase();
@@ -34174,7 +34213,7 @@ async function selectServiceForTesting(repoPath, rootFrameworks) {
     "rush.json"
   ];
   const hasWorkspaceConfig = monorepoIndicators.some(
-    (f) => existsSync2(resolve(repoPath, f))
+    (f) => existsSync3(resolve(repoPath, f))
   );
   const csprojFiles = await glob("**/*.csproj", {
     cwd: repoPath,
@@ -34188,8 +34227,8 @@ async function selectServiceForTesting(repoPath, rootFrameworks) {
     cwd: repoPath,
     nodir: true
   });
-  const hasRootGemfile = existsSync2(resolve(repoPath, "Gemfile"));
-  const hasRootGoMod = existsSync2(resolve(repoPath, "go.mod"));
+  const hasRootGemfile = existsSync3(resolve(repoPath, "Gemfile"));
+  const hasRootGoMod = existsSync3(resolve(repoPath, "go.mod"));
   const isJsMonorepo = !hasRootGemfile && !hasRootGoMod && (hasWorkspaceConfig ? pkgJsonFiles.length > 2 : pkgJsonFiles.length > 3);
   const goMains = await glob("**/main.go", {
     cwd: repoPath,
@@ -34253,7 +34292,7 @@ async function scoreCandidate(repoPath, dir, name) {
   if (SKIP_PROJECT_PATTERNS.some((p) => p.test(name))) {
     return { path: dir, name, score: -100 };
   }
-  if (existsSync2(resolve(absDir, "Dockerfile")) || existsSync2(resolve(absDir, "dockerfile"))) {
+  if (existsSync3(resolve(absDir, "Dockerfile")) || existsSync3(resolve(absDir, "dockerfile"))) {
     score += 10;
   }
   if (PREFER_PROJECT_PATTERNS.some((p) => p.test(name))) {
@@ -34276,13 +34315,13 @@ async function scoreCandidate(repoPath, dir, name) {
     "mix.exs",
     "composer.json"
   ];
-  if (manifests.some((m) => existsSync2(resolve(absDir, m)))) score += 2;
+  if (manifests.some((m) => existsSync3(resolve(absDir, m)))) score += 2;
   return { path: dir, name, score };
 }
 async function scoreHttpFramework(absDir) {
   try {
     const pkg = JSON.parse(
-      readFileSync(resolve(absDir, "package.json"), "utf-8")
+      readFileSync2(resolve(absDir, "package.json"), "utf-8")
     );
     const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
     const httpPkgs = [
@@ -34303,7 +34342,7 @@ async function scoreHttpFramework(absDir) {
   });
   for (const f of csprojFiles) {
     try {
-      const content = readFileSync(resolve(absDir, f), "utf-8").toLowerCase();
+      const content = readFileSync2(resolve(absDir, f), "utf-8").toLowerCase();
       if (content.includes("microsoft.aspnetcore") || content.includes("aspnet")) {
         return 8;
       }
@@ -34312,7 +34351,7 @@ async function scoreHttpFramework(absDir) {
   }
   for (const f of ["requirements.txt", "pyproject.toml"]) {
     try {
-      const content = readFileSync(resolve(absDir, f), "utf-8").toLowerCase();
+      const content = readFileSync2(resolve(absDir, f), "utf-8").toLowerCase();
       if (content.includes("django") || content.includes("flask") || content.includes("fastapi")) {
         return 8;
       }
@@ -34320,7 +34359,7 @@ async function scoreHttpFramework(absDir) {
     }
   }
   try {
-    const gomod = readFileSync(
+    const gomod = readFileSync2(
       resolve(absDir, "go.mod"),
       "utf-8"
     ).toLowerCase();
@@ -34431,7 +34470,7 @@ async function extractFsBasedRoutes(repoPath, techStack) {
     for (const f of appApiFiles) {
       const route = "/" + f.replace(/^app\//, "").replace(/\/route\.\w+$/, "").replace(/\[\.\.\.(\w+)\]/g, ":$1*").replace(/\[(\w+)\]/g, ":$1");
       try {
-        const content = readFileSync(resolve(repoPath, f), "utf-8");
+        const content = readFileSync2(resolve(repoPath, f), "utf-8");
         const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"].filter(
           (m) => new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b`, "i").test(content)
         );
@@ -34468,7 +34507,7 @@ async function detectRoutePrefixes(repoPath) {
   for (const f of entryFiles) {
     let content;
     try {
-      content = readFileSync(resolve(repoPath, f), "utf-8");
+      content = readFileSync2(resolve(repoPath, f), "utf-8");
     } catch {
       continue;
     }
@@ -34796,7 +34835,7 @@ function createBodyExtractionToolHandler(repoPath) {
       const endLine = Number(args.end_line ?? startLine + 50);
       try {
         const fullPath = resolve(repoPath, file);
-        const content = readFileSync(fullPath, "utf-8");
+        const content = readFileSync2(fullPath, "utf-8");
         const lines = content.split("\n");
         const s = Math.max(0, startLine - 1);
         const e = Math.min(lines.length, endLine);
@@ -34825,7 +34864,7 @@ function createBodyExtractionToolHandler(repoPath) {
       );
       for (const f of files) {
         try {
-          const content = readFileSync(resolve(repoPath, f), "utf-8");
+          const content = readFileSync2(resolve(repoPath, f), "utf-8");
           const match2 = typeRe.exec(content);
           if (match2) {
             const lines = content.split("\n");
@@ -34895,7 +34934,7 @@ async function extractEndpointsViaLlm(llm, repoPath, files, handleTool, model) {
     const fullPath = resolve(repoPath, filePath);
     let content;
     try {
-      content = readFileSync(fullPath, "utf-8");
+      content = readFileSync2(fullPath, "utf-8");
     } catch {
       continue;
     }
@@ -34982,7 +35021,7 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
     const fullPath = resolve(repoPath, filePath);
     let content;
     try {
-      content = readFileSync(fullPath, "utf-8");
+      content = readFileSync2(fullPath, "utf-8");
     } catch {
       continue;
     }
@@ -35068,7 +35107,7 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
     const fullPath = resolve(repoPath, ep.filePath);
     let content;
     try {
-      content = readFileSync(fullPath, "utf-8");
+      content = readFileSync2(fullPath, "utf-8");
     } catch {
       enriched.push(ep);
       continue;
@@ -35109,7 +35148,7 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
     const fullPath = resolve(repoPath, filePath);
     let content;
     try {
-      content = readFileSync(fullPath, "utf-8");
+      content = readFileSync2(fullPath, "utf-8");
     } catch {
       enriched.push(...fileEndpoints);
       processedCount += fileEndpoints.length;
@@ -35408,10 +35447,10 @@ import {
   execFileSync as execFileSync4
 } from "child_process";
 import { createInterface } from "readline";
-import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
 
 // src/tools.ts
-import { readFileSync as readFileSync2, existsSync as existsSync3, statSync, writeFileSync as writeFileSync2 } from "fs";
+import { readFileSync as readFileSync3, existsSync as existsSync4, statSync, writeFileSync as writeFileSync2 } from "fs";
 import { resolve as resolve2 } from "path";
 import { execFileSync as execFileSync3, execSync as execSync2 } from "child_process";
 var codebaseTools = [
@@ -35482,17 +35521,18 @@ function createToolHandler(repoPath) {
   return async (name, args) => {
     switch (name) {
       case "read_file": {
-        const filePath = resolve2(repoPath, String(args.path ?? ""));
-        if (!filePath.startsWith(repoPath)) {
+        const rawPath = String(args.path ?? "");
+        const filePath = rawPath.startsWith("/") ? resolve2(rawPath) : resolve2(repoPath, rawPath);
+        if (!filePath.startsWith(repoPath) && !filePath.startsWith(PROBE_RESPONSE_DIR + "/")) {
           return "Error: path traversal attempt blocked";
         }
-        if (!existsSync3(filePath)) {
+        if (!existsSync4(filePath)) {
           return `Error: file not found: ${args.path}`;
         }
         if (statSync(filePath).isDirectory()) {
           return `Error: path is a directory, not a file: ${args.path}`;
         }
-        const content = readFileSync2(filePath, "utf-8");
+        const content = readFileSync3(filePath, "utf-8");
         if (content.length > 1e5) {
           return content.slice(0, 1e5) + "\n... [truncated]";
         }
@@ -36613,7 +36653,7 @@ function canBuildFromSource(repoPath) {
     "CMakeLists.txt",
     "meson.build"
   ];
-  if (buildIndicators.some((f) => existsSync4(`${repoPath}/${f}`))) return true;
+  if (buildIndicators.some((f) => existsSync5(`${repoPath}/${f}`))) return true;
   try {
     const entries = execSync3("ls -1", {
       cwd: repoPath,
@@ -36706,7 +36746,7 @@ async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config
   for (let attempt = 1; attempt <= MAX_COMPOSE_GEN_RETRIES; attempt++) {
     console.log(`[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`);
     try {
-      const hasDockerfile = existsSync4(`${repoPath}/Dockerfile`);
+      const hasDockerfile = existsSync5(`${repoPath}/Dockerfile`);
       const messages = generateComposePrompt(stackStr, discovery, hasDockerfile, hints);
       const handler = createToolHandler(repoPath);
       const response = await chatWithTools(llm, messages, codebaseTools, handler, model);
@@ -36873,7 +36913,7 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         console.log(`[Startup] Cleaned prerequisites: ${cleaned.map((c3) => c3.slice(0, 60)).join(" ; ")}`);
       }
     }
-    if (config2.docker && !existsSync4(`${repoPath}/Dockerfile`)) {
+    if (config2.docker && !existsSync5(`${repoPath}/Dockerfile`)) {
       console.log(
         "[Startup] No Dockerfile found \u2014 generating one for this project"
       );
@@ -37028,7 +37068,7 @@ ${body}
       const detailedError = toDetailedErrorMessage(err);
       console.error(`[Startup] Attempt ${attempt} failed: ${errorMsg}`);
       attemptErrors.push({ config: config2, error: detailedError });
-      const isDockerBuildError = config2.docker && existsSync4(`${repoPath}/Dockerfile`) && /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(detailedError);
+      const isDockerBuildError = config2.docker && existsSync5(`${repoPath}/Dockerfile`) && /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(detailedError);
       const isTimeoutError = /did not start on port.*within/i.test(detailedError);
       const previousErrorMsgs = attemptErrors.slice(0, -1).map((a) => a.error);
       const isCompilationError = isSourceCodeError(detailedError, previousErrorMsgs);
@@ -37181,7 +37221,7 @@ function findComposeFile(repoPath) {
     "compose.yml",
     "compose.yaml"
   ];
-  return candidates.find((f) => existsSync4(`${repoPath}/${f}`));
+  return candidates.find((f) => existsSync5(`${repoPath}/${f}`));
 }
 function generateComposeFile(repoPath, config2) {
   const port = config2.port || 3e3;
@@ -37201,7 +37241,7 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   const filePath = `${repoPath}/${composeFile}`;
   let content;
   try {
-    content = readFileSync3(filePath, "utf8");
+    content = readFileSync4(filePath, "utf8");
   } catch {
     return true;
   }
@@ -37222,7 +37262,7 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   for (const ctx of contexts) {
     if (ctx === "." || ctx === "./") continue;
     const resolved = ctx.startsWith("/") ? ctx : `${baseDir}/${ctx}`;
-    if (!existsSync4(resolved)) {
+    if (!existsSync5(resolved)) {
       console.warn(`[Startup] Compose ${composeFile}: build context "${ctx}" does not exist (${resolved})`);
       return false;
     }
@@ -37233,7 +37273,7 @@ async function repairDockerBuild(llm, repoPath, buildError, model, previousError
   const dockerfilePath = `${repoPath}/Dockerfile`;
   let currentDockerfile;
   try {
-    currentDockerfile = readFileSync3(dockerfilePath, "utf-8");
+    currentDockerfile = readFileSync4(dockerfilePath, "utf-8");
   } catch {
     return;
   }
@@ -37641,7 +37681,7 @@ function extractInlineEnvVars(command) {
 }
 function unshallowIfNeeded(repoPath) {
   const shallowFile = `${repoPath}/.git/shallow`;
-  if (!existsSync4(shallowFile)) return;
+  if (!existsSync5(shallowFile)) return;
   const versioningIndicators = [
     "Directory.Build.props",
     "version.json",
@@ -37651,7 +37691,7 @@ function unshallowIfNeeded(repoPath) {
     "GitVersion.yaml"
   ];
   const needsHistory = versioningIndicators.some(
-    (f) => existsSync4(`${repoPath}/${f}`)
+    (f) => existsSync5(`${repoPath}/${f}`)
   );
   if (!needsHistory) {
     try {
@@ -37687,11 +37727,11 @@ function ensureDockerIgnore(repoPath) {
   const problematicDirs = ["data/", ".data/", "tmp/", "log/"];
   let existing = "";
   try {
-    existing = readFileSync3(ignorePath, "utf-8");
+    existing = readFileSync4(ignorePath, "utf-8");
   } catch {
   }
   const linesToAdd = problematicDirs.filter(
-    (dir) => !existing.includes(dir) && existsSync4(`${repoPath}/${dir.replace(/\/$/, "")}`)
+    (dir) => !existing.includes(dir) && existsSync5(`${repoPath}/${dir.replace(/\/$/, "")}`)
   );
   if (linesToAdd.length === 0) return;
   const newContent = existing ? `${existing.trimEnd()}
@@ -37775,7 +37815,7 @@ function patchScriptTtyFlags(repoPath, config2) {
       if (/^\/(usr|bin|sbin)\//.test(candidate)) continue;
       if (candidate.includes(":")) continue;
       const fullPath = `${repoPath}/${candidate}`;
-      if (existsSync4(fullPath)) {
+      if (existsSync5(fullPath)) {
         const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
         scriptDirs.add(dir);
       }
@@ -37794,7 +37834,7 @@ function patchScriptTtyFlags(repoPath, config2) {
     }
     for (const filePath of files) {
       try {
-        const content = readFileSync3(filePath, "utf-8");
+        const content = readFileSync4(filePath, "utf-8");
         if (!/docker\s+(?:exec|run)/.test(content)) continue;
         const patched = content.replace(/^(\s*)-it(\s*\\?\s*)$/gm, "$1-i$2").replace(/\b(docker\s+(?:exec|run)\s+(?:[^\n]*?\s)?)-it\b/g, "$1-i").replace(/^(\s*)-t(\s*\\?\s*)$/gm, (_m, pre, post) => {
           return post.includes("\\") ? `${pre}${post}` : "";
@@ -37821,7 +37861,7 @@ async function startApplication(repoPath, config2, analyzeLogsFn, analyzeRespons
     const composeFileMatch = config2.command.match(/-f\s+(\S+)/);
     const cdMatch = config2.command.match(/cd\s+(\S+)\s*&&/);
     const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : null);
-    if (composeFile && existsSync4(`${repoPath}/${composeFile}`)) {
+    if (composeFile && existsSync5(`${repoPath}/${composeFile}`)) {
       if (!validateComposeBuildContexts(repoPath, composeFile)) {
         throw new Error(
           `Compose file ${composeFile} references a build context that does not exist. This is likely a template scaffold \u2014 try building from the root Dockerfile instead.`
@@ -39075,7 +39115,32 @@ async function detectAndConfigureAuth(llm, bright, repoPath, techStack, projectI
       const credCheck = await verifySeededCredentials(baseUrl, seededCredentials, detection);
       if (!credCheck.valid) {
         console.warn(`[Auth:Seed] Credential verification failed: ${credCheck.reason}`);
-        console.warn("[Auth:Seed] The seed LLM may have changed the password \u2014 seeded password might not match");
+        if (credCheck.reason.startsWith("not_activated")) {
+          console.log("[Auth:Seed] User not activated \u2014 re-running seed with activation hint");
+          const activationResult = await seedTestUser(
+            llm,
+            repoPath,
+            baseUrl,
+            detection,
+            model,
+            `IMPORTANT: The test user "${seededCredentials.username}" was created but is NOT ACTIVATED. The login endpoint returned: "not_activated". You MUST activate/confirm the user's email before returning. Common methods: rails runner "User.find_by(email:'${seededCredentials.email ?? seededCredentials.username}')&.activate", Django: User.objects.filter(email='...').update(is_active=True), or update the database directly. Do NOT create a new user \u2014 just activate the existing one.`
+          );
+          if (activationResult?.success) {
+            const recheck = await verifySeededCredentials(baseUrl, seededCredentials, detection);
+            if (recheck.valid) {
+              console.log("[Auth:Seed] Post-activation verification passed");
+            } else {
+              console.warn(`[Auth:Seed] Post-activation verification still failed: ${recheck.reason}`);
+              registrationOk = false;
+            }
+          } else {
+            console.warn("[Auth:Seed] Activation re-seed failed");
+            registrationOk = false;
+          }
+        } else {
+          console.warn("[Auth:Seed] The seed LLM may have changed the password \u2014 seeded password might not match");
+          registrationOk = false;
+        }
       } else {
         console.log("[Auth:Seed] Credential verification passed \u2014 login works");
       }
@@ -39840,7 +39905,7 @@ async function reRegisterUser(registration) {
     );
   }
 }
-async function seedTestUser(llm, repoPath, baseUrl, detection, model) {
+async function seedTestUser(llm, repoPath, baseUrl, detection, model, activationHint) {
   console.log("[Auth] Starting seed user sub-phase...");
   const seedTools = [
     ...codebaseTools,
@@ -39939,6 +40004,9 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model) {
     return baseCodeHandler(name, args);
   };
   const messages = seedUserPrompt(baseUrl, detection);
+  if (activationHint) {
+    messages.push({ role: "user", content: activationHint });
+  }
   const response = await chatWithTools(llm, messages, seedTools, handler, model, 30);
   try {
     const json = extractJson(response);
@@ -40090,7 +40158,7 @@ async function deleteAuthObject(api, authObjectId) {
   }
 }
 function parseInfraRepairResponse(trimmed) {
-  const match2 = trimmed.match(/^INFRA_REPAIR:\s*(.+)/s);
+  const match2 = trimmed.match(/INFRA_REPAIR:\s*(.+)/s);
   if (match2?.[1]) {
     return match2[1].trim();
   }
@@ -40581,6 +40649,11 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
     const body = await res.text();
     if (res.status >= 500) {
       return { valid: false, reason: `Login returned HTTP ${res.status} \u2014 app may be broken` };
+    }
+    const isNotActivated = /not.activated|not.verified|email.confirm|must.confirm|activation.required|verify.your.email/i.test(body);
+    if (isNotActivated) {
+      const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
+      return { valid: false, reason: `not_activated: ${preview}` };
     }
     if (/\b(error|invalid|incorrect|wrong|failed|denied)\b/i.test(body) && !/"current_user"/.test(body)) {
       const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
@@ -41464,7 +41537,7 @@ function normalizeSeverity(s) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
 import { resolve as resolve3, dirname } from "path";
 
 // src/prompts/generate-fix.ts
@@ -41643,7 +41716,7 @@ function extractFilePaths(text, repoPath) {
   while ((match2 = regex.exec(text)) !== null) {
     const p = match2[1].replace(/^\.\//, "");
     try {
-      readFileSync4(resolve3(repoPath, p));
+      readFileSync5(resolve3(repoPath, p));
       paths.add(p);
     } catch {
     }
@@ -41652,7 +41725,7 @@ function extractFilePaths(text, repoPath) {
 }
 function safeReadFile(fullPath) {
   try {
-    return readFileSync4(fullPath, "utf-8");
+    return readFileSync5(fullPath, "utf-8");
   } catch {
     return "";
   }
@@ -41660,7 +41733,7 @@ function safeReadFile(fullPath) {
 
 // src/phases/harness.ts
 import { execSync as execSync5, spawn as spawn3 } from "child_process";
-import { writeFileSync as writeFileSync5, existsSync as existsSync5, readFileSync as readFileSync5 } from "fs";
+import { writeFileSync as writeFileSync5, existsSync as existsSync6, readFileSync as readFileSync6 } from "fs";
 import { resolve as resolve4 } from "path";
 import { createInterface as createInterface2 } from "readline";
 
@@ -42167,7 +42240,7 @@ async function startMinimalInfra(repoPath, infra) {
     console.log("[Harness] No essential infrastructure services");
     return;
   }
-  if (infra.composeFile && existsSync5(resolve4(repoPath, infra.composeFile))) {
+  if (infra.composeFile && existsSync6(resolve4(repoPath, infra.composeFile))) {
     const serviceNames = essentialServices.map((s) => s.name).join(" ");
     const cmd = `docker compose -f ${infra.composeFile} up -d ${serviceNames}`;
     console.log(`[Harness] Starting infra: ${cmd}`);
@@ -42243,7 +42316,7 @@ async function identifyTargets(llm, repoPath, stackStr, handleTool, model) {
         console.warn(`[Harness] Skipping invalid target: ${JSON.stringify(t).slice(0, 200)}`);
         return false;
       }
-      if (!existsSync5(resolve4(repoPath, String(t.file)))) {
+      if (!existsSync6(resolve4(repoPath, String(t.file)))) {
         console.warn(`[Harness] Skipping target with missing file: ${t.file}`);
         return false;
       }
@@ -42345,7 +42418,7 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
   console.log(`[Harness] All targets are tier \u2264${maxTier} \u2014 skipping full app build, using stock runtime image`);
   ensureDockerIgnore(repoPath);
   const harnessFileName = config2.harnessFile.split("/").pop();
-  let harnessCode = readFileSync5(config2.harnessFile, "utf-8");
+  let harnessCode = readFileSync6(config2.harnessFile, "utf-8");
   const harnessDockerfilePath = resolve4(repoPath, "Dockerfile.harness");
   console.log("[Harness] Generating Dockerfile.harness via LLM...");
   const genMessages = standaloneHarnessDockerfilePrompt(
@@ -42469,7 +42542,7 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
           handleTool,
           modelSelector
         );
-        harnessCode = readFileSync5(config2.harnessFile, "utf-8");
+        harnessCode = readFileSync6(config2.harnessFile, "utf-8");
       }
       continue;
     } catch (err) {
@@ -42488,7 +42561,7 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
             handleTool,
             modelSelector
           );
-          harnessCode = readFileSync5(config2.harnessFile, "utf-8");
+          harnessCode = readFileSync6(config2.harnessFile, "utf-8");
         } else {
           await repairHarnessDockerfile(
             llm,
@@ -42534,7 +42607,7 @@ async function repairHarnessDockerfile(llm, repoPath, error2, harnessCode, harne
   const dockerfilePath = resolve4(repoPath, "Dockerfile.harness");
   let currentDockerfile;
   try {
-    currentDockerfile = readFileSync5(dockerfilePath, "utf-8");
+    currentDockerfile = readFileSync6(dockerfilePath, "utf-8");
   } catch {
     return;
   }
@@ -42607,7 +42680,7 @@ async function probeEndpoints(port, endpoints) {
   return { errors, healthyPaths };
 }
 async function repairHarnessCode(llm, repoPath, config2, probeErrors, targets, handleTool, modelSelector) {
-  const harnessCode = readFileSync5(config2.harnessFile, "utf-8");
+  const harnessCode = readFileSync6(config2.harnessFile, "utf-8");
   const harnessFileName = config2.harnessFile.split("/").pop();
   modelSelector.escalate();
   const messages = harnessCodeRepairPrompt(harnessCode, harnessFileName, probeErrors, targets);
@@ -42859,6 +42932,10 @@ async function runOrchestrator(ctx) {
         `Bounce-back ${bounce}: ${authResult.infraRepairHint.slice(0, 120)}`
       );
       try {
+        const injected = injectEnvVarsFromHint(repoPath, authResult.infraRepairHint);
+        if (injected.length > 0) {
+          console.log(`[Engine] Auto-injected env vars from hint: ${injected.join(", ")}`);
+        }
         const repairHints = [
           `[auth-infra-repair] ${authResult.infraRepairHint}`,
           `[auth-infra-repair] The auth phase identified this infrastructure problem. Fix it in compose.yml/Dockerfile/environment and rebuild.`

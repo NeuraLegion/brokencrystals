@@ -1,5 +1,6 @@
 import { execSync } from "child_process";
-import { writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
+import { join } from "path";
 
 // ---------------------------------------------------------------------------
 // Severity helpers (shared across orchestrator, findings, progress)
@@ -293,7 +294,7 @@ export function stripHtmlForAnalysis(html: string): string {
 // Save probe response body to temp file for LLM read_file access
 // ---------------------------------------------------------------------------
 
-const PROBE_DIR = "/tmp/bright_probe_responses";
+export const PROBE_RESPONSE_DIR = "/tmp/bright_probe_responses";
 let _probeCounter = 0;
 
 export function saveProbeBody(
@@ -303,13 +304,13 @@ export function saveProbeBody(
   if (bodyText.length <= 2000) return null;
 
   try {
-    mkdirSync(PROBE_DIR, { recursive: true });
+    mkdirSync(PROBE_RESPONSE_DIR, { recursive: true });
   } catch { /* ignore */ }
 
   const ext = contentType.includes("json") ? "json"
     : contentType.includes("html") ? "html"
     : "txt";
-  const filePath = `${PROBE_DIR}/response_${++_probeCounter}.${ext}`;
+  const filePath = `${PROBE_RESPONSE_DIR}/response_${++_probeCounter}.${ext}`;
 
   try {
     writeFileSync(filePath, bodyText, "utf-8");
@@ -317,4 +318,62 @@ export function saveProbeBody(
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Inject env vars from INFRA_REPAIR hint into docker-compose.yml
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse env var assignments from an INFRA_REPAIR hint string and inject them
+ * into the first service's `environment:` block in docker-compose.yml.
+ * Returns the list of injected KEY=VALUE pairs, or empty if nothing was done.
+ */
+export function injectEnvVarsFromHint(repoPath: string, hint: string): string[] {
+  // Match KEY=VALUE patterns (uppercase key, value can be quoted or unquoted)
+  const envPattern = /\b([A-Z][A-Z0-9_]{2,})=("([^"]*)"|'([^']*)'|(\S+))/g;
+  const envVars: Array<[string, string]> = [];
+  let m: RegExpExecArray | null;
+  while ((m = envPattern.exec(hint)) !== null) {
+    const key = m[1];
+    const value = m[3] ?? m[4] ?? m[5]; // captured from "...", '...', or bare
+    envVars.push([key, value]);
+  }
+
+  if (envVars.length === 0) return [];
+
+  const composePaths = [
+    join(repoPath, "docker-compose.yml"),
+    join(repoPath, "docker-compose.yaml"),
+    join(repoPath, "compose.yml"),
+    join(repoPath, "compose.yaml"),
+  ];
+
+  const composePath = composePaths.find((p) => existsSync(p));
+  if (!composePath) return [];
+
+  let content = readFileSync(composePath, "utf-8");
+  const injected: string[] = [];
+
+  for (const [key, value] of envVars) {
+    // Skip if already present in the compose file
+    if (content.includes(`${key}=`) || content.includes(`${key}:`)) continue;
+
+    // Find the first `environment:` block and append the variable
+    const envBlockMatch = content.match(/^(\s*)environment:\s*$/m)
+      ?? content.match(/^(\s*)environment:\s*\n/m);
+    if (envBlockMatch) {
+      const indent = envBlockMatch[1] + "  ";
+      const insertPos = (envBlockMatch.index ?? 0) + envBlockMatch[0].length;
+      const envLine = `${indent}- ${key}=${value}\n`;
+      content = content.slice(0, insertPos) + envLine + content.slice(insertPos);
+      injected.push(`${key}=${value}`);
+    }
+  }
+
+  if (injected.length > 0) {
+    writeFileSync(composePath, content, "utf-8");
+    console.log(`[Utils] Injected env vars into ${composePath}: ${injected.join(", ")}`);
+  }
+  return injected;
 }

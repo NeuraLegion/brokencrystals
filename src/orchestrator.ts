@@ -3,7 +3,7 @@ import { execFileSync, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
 import type { OrchestratorContext, SecurityFix, Finding, DiscoveredEndpoint, TechStack, StartupConfig, BrightApiContext } from "./types.js";
 import { ProgressReporter, type FindingSummary } from "./progress.js";
-import { formatTechStack, toErrorMessage, findingKey, buildSeveritySummary, SEVERITY_ORDER } from "./utils.js";
+import { formatTechStack, toErrorMessage, findingKey, buildSeveritySummary, SEVERITY_ORDER, injectEnvVarsFromHint } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import {
   discoverEndpointsViaSwagger,
@@ -248,6 +248,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
 
       try {
+        // C2: Programmatically inject env vars from hint before rebuilding
+        const injected = injectEnvVarsFromHint(repoPath, authResult.infraRepairHint);
+        if (injected.length > 0) {
+          console.log(`[Engine] Auto-injected env vars from hint: ${injected.join(", ")}`);
+        }
+
         const repairHints = [
           `[auth-infra-repair] ${authResult.infraRepairHint}`,
           `[auth-infra-repair] The auth phase identified this infrastructure problem. Fix it in compose.yml/Dockerfile/environment and rebuild.`,
