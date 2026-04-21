@@ -38709,7 +38709,7 @@ function configureAuthPrompt(baseUrl, testUrl, detection, userConfirmed, preProb
   const authStyle = detection.authType === "session" ? "session" : detection.authType === "jwt" ? "jwt" : detection.authType === "api_key" ? "api_key" : "session";
   const credentialNote = userConfirmed ? `
 A test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.` : `
-No confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work \u2014 if auth tests fail, try creating a user via run_command_in_docker.`;
+No confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work \u2014 if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
   return [
     {
       role: "system",
@@ -38730,8 +38730,8 @@ ${credentialNote}
 
 ## Available tools
 - **probe_url** \u2014 Make HTTP requests to the running app. Use for DISCOVERY: finding real endpoints, checking response formats, understanding what the app returns. Cookies are tracked automatically across calls.
-- **run_command_on_host** \u2014 Run shell commands on the host (docker ps, docker logs, etc.).
-- **run_command_in_docker** \u2014 Run commands inside a Docker container (create users, inspect environment).
+- **run_command_on_host** \u2014 \u26A0\uFE0F DIAGNOSTIC ONLY. Run read-only shell commands on the host (docker ps, docker logs, docker inspect, printenv). Do NOT restart, kill, or modify anything.
+- **run_command_in_docker** \u2014 \u26A0\uFE0F DIAGNOSTIC ONLY. Run read-only commands inside a Docker container (check user state, inspect environment, query database). Do NOT restart processes, kill PIDs, or modify config files.
 - **read_file / search_files / list_files** \u2014 Inspect the codebase to understand auth flow.
 - **search_web** \u2014 Search the internet for how this app handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough.
 - **fetch_url** \u2014 Fetch full content of a web page (e.g. app documentation, Stack Overflow answer). Large pages are saved to .bright-fetched-page.txt \u2014 use read_file to see full content.
@@ -38785,7 +38785,8 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    \u2192 This means login was NOT actually processed. Common causes:
    - App running in dev mode and needs an environment variable (e.g. ALLOW_EMBER_CLI_PROXY_BYPASS=1)
    - Server is redirecting to a setup/install page
-   \u2192 Fix: use run_command_in_docker or run_command_on_host to fix the app environment, then retest.
+   - User account not activated/confirmed (check with run_command_in_docker)
+   \u2192 Fix: Use run_command_on_host/run_command_in_docker to DIAGNOSE the root cause, then respond with INFRA_REPAIR if it requires a container restart or compose change.
 
    **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
    \u2192 Login appeared to succeed but the test request was still unauthenticated.
@@ -38801,7 +38802,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Different reauthStrategy (status \u2192 body \u2192 redirect)
    - Different loginBody format (json vs form)
    - Add/remove csrfUrl
-   - **Fix the application itself** if login responses show HTML error pages or misconfiguration
+   - **If the application itself is misconfigured**, diagnose with command tools and respond with INFRA_REPAIR
 
 ## CRITICAL PERSISTENCE RULES
 - **NEVER respond with "FAILED" until you have exhausted ALL of the following strategies:**
@@ -38810,7 +38811,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
   3. Both reauthStrategy='status' and reauthStrategy='body' with reauthBodyPattern
   4. Both json and form loginContentType
   5. With and without csrfUrl
-  6. **If login responses contain HTML error pages or misconfiguration warnings, fix the application** using run_command_in_docker/run_command_on_host before trying more auth configs
+  6. **If login responses contain HTML error pages or misconfiguration warnings**, diagnose with command tools and respond with INFRA_REPAIR \u2014 do NOT try to fix the app yourself (no killing processes, no restarting containers, no modifying files)
 - **After each failed test_auth_object, analyze the response body previews for EACH stage to understand the root cause.**
 - **Use probe_url between attempts to gather more data** \u2014 probe new endpoints, check response formats, search the codebase for auth routes.
 - **You have 50 rounds. Use them ALL before giving up.** Each create/test/delete cycle takes ~3 rounds. You can try 15+ different configurations.
@@ -38875,14 +38876,21 @@ Create a user with these exact credentials:
    - **Django**: run_command_in_docker(container: "<id>", command: "python manage.py shell -c "from django.contrib.auth.models import User; User.objects.create_superuser('bright_test', 'bright@test.com', 'BrightTest123!')"")
    - **Laravel**: run_command_in_docker(container: "<id>", command: "php artisan tinker --execute="\\App\\Models\\User::create(['name'=>'bright','email'=>'bright@test.com','password'=>Hash::make('BrightTest123!')])"")
    - **Node/Express**: run_command_in_docker(container: "<id>", command: "node -e "const db = require('./models'); db.User.create({...})"")
-4. If the first attempt fails, READ the error message, then:
+4. **CRITICAL \u2014 Activate/confirm the user account:**
+   Many apps require email verification before login works. After creating the user, you MUST ensure the account is fully activated:
+   - **Rails/Discourse**: run_command_in_docker to execute: "u = User.find_by(username: 'bright_test'); u.active = true; u.approved = true; u.save!(validate: false); u.email_tokens.each { |t| EmailToken.confirm(t.token) rescue nil }; u.user_emails.update_all(confirmed: true) rescue nil"
+   - **Django**: Ensure is_active=True (usually default for create_superuser)
+   - **Laravel**: Set email_verified_at = now()
+   - **General**: Look for email_confirmed, verified, activated, or similar fields and set them to true
+   - **Check**: After activation, verify with a query: "User.find_by(username: 'bright_test').active?" or equivalent
+5. If the first attempt fails, READ the error message, then:
    - Read the User model source code to understand required fields and validations
    - Try save!(validate: false) or equivalent to bypass validations
    - **If you change the password to bypass validation, REMEMBER the new password \u2014 you must report it in the output**
    - Try alternative CLI commands (e.g. "bundle exec rake" vs "rails runner")
    - Try the app's built-in admin/seed commands
    - Try raw SQL: docker exec <db-container> psql -U postgres -d <dbname> -c "INSERT INTO users..."
-5. VERIFY the user exists:
+6. VERIFY the user exists AND is activated:
    - Run a query: docker exec <id> ... "puts User.find_by(username: 'bright_test').present?"
    - Or probe the login endpoint to confirm credentials work
 
