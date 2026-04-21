@@ -18386,7 +18386,14 @@ function extractCodeBlock(text) {
   return null;
 }
 function stripHtmlForAnalysis(html) {
-  return html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s{2,}/g, " ").trim();
+  const stripped = html.replace(
+    /<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>[\s\S]*?<\/script>/gi,
+    (_m, src) => ` [script: ${src}] `
+  ).replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(
+    /<(app-root|consumer-root|next-root|nuxt|div\s+id\s*=\s*["'](?:root|app|__next|__nuxt)["'])[^>]*>/gi,
+    (_m, tag) => ` [SPA root: <${tag}>] `
+  ).replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s{2,}/g, " ").trim();
+  return stripped;
 }
 var PROBE_DIR = "/tmp/bright_probe_responses";
 var _probeCounter = 0;
@@ -36962,7 +36969,7 @@ Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
 - Database migration needed, pending migrations
 - Configuration required, environment variable missing
 - Framework default welcome pages that are NOT real app UI (Rails "Yay! You're on Rails!", Django debug page, etc.)
-- Blank or nearly empty pages with just a title and no real content (but NOT minimal health/status endpoints \u2014 those are valid, see HEALTHY list)
+- Blank or nearly empty pages with just a title and no real content (but NOT SPA shells with JavaScript bundles \u2014 those are valid, and NOT minimal health/status endpoints \u2014 those are also valid)
 - JSON error responses like {"error": ...} or {"errors": [...]}
 
 Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
@@ -36973,6 +36980,8 @@ Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
 - A web-based setup wizard or "finish installation" form where the user can register an admin account through the browser \u2014 this is a NORMAL first-run state and the application IS working correctly
 - Any page served by the application framework (not a raw web server error) that accepts user interaction
 - A minimal health/status endpoint response such as "ok", "OK", "healthy", "pong", "alive", or a short JSON like {"status":"ok"} \u2014 these are VALID health responses even if the body is very short
+- **A Single-Page Application (SPA) shell** \u2014 HTML with a root element like <app-root>, <consumer-root>, <div id="root">, <div id="app">, <next-root>, etc. and references to JavaScript bundles (main.js, chunk-*.js, vendor.js, runtime.js, polyfills.js). The HTML body appears minimal because the actual UI is rendered client-side by JavaScript. This is the CORRECT healthy response for Angular, React, Vue, Next.js, and other SPA frameworks \u2014 mark it HEALTHY.
+- **A page served by nginx/Apache/CDN** with proper assets (CSS, JS, fonts) and an app title \u2014 even if the body text looks empty after stripping HTML tags, the presence of bundled assets and a framework root element means the app is running correctly.
 
 When in doubt about whether the app is running vs broken, check: does the page come from the application framework and accept user interaction? If yes \u2192 HEALTHY. If it just shows a static error or tells you to run commands \u2192 UNHEALTHY.`
             },

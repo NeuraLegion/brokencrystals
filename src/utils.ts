@@ -268,9 +268,15 @@ export function extractCodeBlock(text: string): string | null {
 // ---------------------------------------------------------------------------
 
 export function stripHtmlForAnalysis(html: string): string {
-  return html
+  // Replace <script> blocks but preserve src attributes as markers (SPA detection)
+  const stripped = html
+    .replace(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>[\s\S]*?<\/script>/gi,
+      (_m, src: string) => ` [script: ${src}] `)
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
+    // Preserve custom elements / SPA root markers before stripping tags
+    .replace(/<(app-root|consumer-root|next-root|nuxt|div\s+id\s*=\s*["'](?:root|app|__next|__nuxt)["'])[^>]*>/gi,
+      (_m, tag: string) => ` [SPA root: <${tag}>] `)
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -280,6 +286,7 @@ export function stripHtmlForAnalysis(html: string): string {
     .replace(/&#39;/g, "'")
     .replace(/\s{2,}/g, " ")
     .trim();
+  return stripped;
 }
 
 // ---------------------------------------------------------------------------
