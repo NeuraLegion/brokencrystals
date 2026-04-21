@@ -1805,6 +1805,11 @@ async function startApplication(
   for (let cmd of config.prerequisites) {
     // Strip TTY flags — we run non-interactively (no terminal attached)
     cmd = stripDockerTtyFlags(cmd);
+    // Force plain progress output for Docker builds — BuildKit buffers output
+    // by default, causing our stall-detection to falsely time out active builds.
+    if (/docker\s+(compose\s+)?build/.test(cmd) && !cmd.includes("--progress")) {
+      cmd = cmd.replace(/(docker\s+(?:compose\s+)?build)/, "$1 --progress=plain");
+    }
     console.log(`[Startup] Running prerequisite: ${cmd}`);
     await runPrerequisite(cmd, repoPath, config.envVars);
   }

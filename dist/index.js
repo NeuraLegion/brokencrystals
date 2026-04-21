@@ -37793,6 +37793,9 @@ async function startApplication(repoPath, config2, analyzeLogsFn, analyzeRespons
   patchScriptTtyFlags(repoPath, config2);
   for (let cmd of config2.prerequisites) {
     cmd = stripDockerTtyFlags(cmd);
+    if (/docker\s+(compose\s+)?build/.test(cmd) && !cmd.includes("--progress")) {
+      cmd = cmd.replace(/(docker\s+(?:compose\s+)?build)/, "$1 --progress=plain");
+    }
     console.log(`[Startup] Running prerequisite: ${cmd}`);
     await runPrerequisite(cmd, repoPath, config2.envVars);
   }
