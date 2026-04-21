@@ -36898,19 +36898,35 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
     }
     if (/docker\s+compose/.test(config2.command) && config2.prerequisites?.length) {
       const original = config2.prerequisites;
+      const movedToPostStart = [];
       const cleaned = original.flatMap(
-        (cmd) => cmd.split(/\s*&&\s*/).filter((part) => {
+        (cmd) => cmd.split(/\s*&&\s*/).map((part) => {
           const trimmed = part.trim();
           if (/docker\s+run\s/.test(trimmed) && /\s-d[\s$]/.test(trimmed)) {
             console.warn(`[Startup] Removing conflicting prerequisite: ${trimmed.slice(0, 80)}`);
-            return false;
+            return "";
           }
-          return trimmed.length > 0;
-        })
+          if (/docker\s+compose\s+exec\b/.test(trimmed) || /docker\s+exec\b/.test(trimmed)) {
+            console.log(`[Startup] Moving exec prerequisite to post-start: ${trimmed.slice(0, 80)}`);
+            movedToPostStart.push(trimmed);
+            return "";
+          }
+          return trimmed;
+        }).filter((p) => p.length > 0)
       ).filter((cmd) => cmd.length > 0);
-      if (cleaned.length !== original.length || cleaned.join("") !== original.join("")) {
-        config2 = { ...config2, prerequisites: cleaned };
-        console.log(`[Startup] Cleaned prerequisites: ${cleaned.map((c3) => c3.slice(0, 60)).join(" ; ")}`);
+      if (movedToPostStart.length > 0 || cleaned.join("") !== original.join("")) {
+        const existingPostStart = config2.postStartCommands ?? [];
+        config2 = {
+          ...config2,
+          prerequisites: cleaned,
+          postStartCommands: [...movedToPostStart, ...existingPostStart]
+        };
+        if (movedToPostStart.length) {
+          console.log(`[Startup] Moved ${movedToPostStart.length} exec command(s) from prerequisites to post-start`);
+        }
+        if (cleaned.length < original.length) {
+          console.log(`[Startup] Cleaned prerequisites: ${cleaned.map((c3) => c3.slice(0, 60)).join(" ; ") || "(none)"}`);
+        }
       }
     }
     if (config2.docker && !existsSync5(`${repoPath}/Dockerfile`)) {

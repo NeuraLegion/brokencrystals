@@ -485,26 +485,44 @@ export async function startApplicationWithRetries(
       };
     }
 
-    // Guardrail: If command is docker compose, strip any "docker run -d"
-    // from prerequisites — they conflict by binding the same ports.
-    // Only keep build/pull/network-create commands in prerequisites.
+    // Guardrail: If command is docker compose, sanitize prerequisites:
+    // 1. Remove "docker run -d" — conflicts by binding the same ports.
+    // 2. Move "docker compose exec" commands to postStartCommands —
+    //    exec requires a running container, but prerequisites run
+    //    BEFORE "docker compose up".
     if (/docker\s+compose/.test(config.command) && config.prerequisites?.length) {
       const original = config.prerequisites;
-      // Split chained commands (&&) and filter out docker run -d
+      const movedToPostStart: string[] = [];
       const cleaned = original.flatMap(cmd =>
-        cmd.split(/\s*&&\s*/).filter(part => {
+        cmd.split(/\s*&&\s*/).map(part => {
           const trimmed = part.trim();
-          // Keep build commands, remove "docker run -d" service launchers
           if (/docker\s+run\s/.test(trimmed) && /\s-d[\s$]/.test(trimmed)) {
             console.warn(`[Startup] Removing conflicting prerequisite: ${trimmed.slice(0, 80)}`);
-            return false;
+            return "";
           }
-          return trimmed.length > 0;
-        })
+          // exec needs a running container → move to postStartCommands
+          if (/docker\s+compose\s+exec\b/.test(trimmed) || /docker\s+exec\b/.test(trimmed)) {
+            console.log(`[Startup] Moving exec prerequisite to post-start: ${trimmed.slice(0, 80)}`);
+            movedToPostStart.push(trimmed);
+            return "";
+          }
+          return trimmed;
+        }).filter(p => p.length > 0)
       ).filter(cmd => cmd.length > 0);
-      if (cleaned.length !== original.length || cleaned.join("") !== original.join("")) {
-        config = { ...config, prerequisites: cleaned };
-        console.log(`[Startup] Cleaned prerequisites: ${cleaned.map(c => c.slice(0, 60)).join(" ; ")}`);
+      if (movedToPostStart.length > 0 || cleaned.join("") !== original.join("")) {
+        const existingPostStart = config.postStartCommands ?? [];
+        // Prepend moved commands so they run before any existing post-start cmds
+        config = {
+          ...config,
+          prerequisites: cleaned,
+          postStartCommands: [...movedToPostStart, ...existingPostStart],
+        };
+        if (movedToPostStart.length) {
+          console.log(`[Startup] Moved ${movedToPostStart.length} exec command(s) from prerequisites to post-start`);
+        }
+        if (cleaned.length < original.length) {
+          console.log(`[Startup] Cleaned prerequisites: ${cleaned.map(c => c.slice(0, 60)).join(" ; ") || "(none)"}`);
+        }
       }
     }
 
