@@ -791,7 +791,7 @@ async function probeEndpoints(
       const url =
         ep.method === "GET" && ep.target.params.length > 0
           ? `${baseUrl}${ep.path}?${new URLSearchParams(
-              ep.target.params.map((p) => [p.name, sampleValue(p.sample)]),
+              ep.target.params.map((p): [string, string] => [p.name, sampleValue(p.sample)]),
             ).toString()}`
           : `${baseUrl}${ep.path}`;
 

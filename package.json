@@ -6,7 +6,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsup",
+    "build": "tsc --noEmit && tsup",
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/index.ts"
   },

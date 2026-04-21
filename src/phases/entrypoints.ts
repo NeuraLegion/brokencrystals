@@ -50,7 +50,7 @@ export async function registerEntrypoints(
 
     if (ep.queryParams && ep.queryParams.length > 0) {
       const params = new URLSearchParams(
-        ep.queryParams.map((p) => [p.name, p.value]),
+        ep.queryParams.map((p): [string, string] => [p.name, p.value]),
       );
       fullUrl += `?${params.toString()}`;
     }

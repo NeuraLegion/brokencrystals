@@ -71,7 +71,7 @@ async function fetchScanIssues(
     return [];
   }
 
-  const data: ScanIssue[] = await res.json();
+  const data: ScanIssue[] = (await res.json()) as ScanIssue[];
   console.log(`[Findings] Scan ${scanId}: ${data.length} issues`);
   return data;
 }
