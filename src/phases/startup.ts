@@ -21,7 +21,7 @@ import {
   webSearchTools,
   createWebSearchHandler,
 } from "../tools.js";
-import { sleep, formatTechStack, toErrorMessage, toDetailedErrorMessage, extractJson, extractCodeBlock } from "../utils.js";
+import { sleep, formatTechStack, toErrorMessage, toDetailedErrorMessage, extractJson, extractCodeBlock, stripHtmlForAnalysis } from "../utils.js";
 import {
   identifyStartupPrompt,
   rebuildStartupPrompt,
@@ -2433,7 +2433,12 @@ export async function waitForPort(
         // Ask AI if this response looks healthy (only once to avoid spamming)
         if (analyzeResponseFn && !responseAnalysisDone && responseBody.length > 0) {
           responseAnalysisDone = true;
-          const bodyPreview = responseBody.length > 3000 ? responseBody.slice(0, 3000) + "..." : responseBody;
+          // Strip HTML tags/scripts/styles so the AI sees actual text content
+          // (avoids wasting the 3000-char window on <head> CSS/JS noise)
+          const textContent = (response.headers.get("content-type") ?? "").includes("html")
+            ? stripHtmlForAnalysis(responseBody)
+            : responseBody;
+          const bodyPreview = textContent.length > 3000 ? textContent.slice(0, 3000) + "..." : textContent;
           try {
             const result = await analyzeResponseFn(response.status, bodyPreview);
             if (!result.healthy) {

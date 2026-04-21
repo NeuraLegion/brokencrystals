@@ -1,4 +1,5 @@
 import { execSync } from "child_process";
+import { writeFileSync, mkdirSync } from "fs";
 
 // ---------------------------------------------------------------------------
 // Severity helpers (shared across orchestrator, findings, progress)
@@ -259,4 +260,54 @@ export function extractCodeBlock(text: string): string | null {
   if (dockerLines.length >= 3) return dockerLines.join("\n") + "\n";
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// HTML text extraction — strip scripts/styles/tags, collapse whitespace
+// Used by startup health check to analyze HTML pages without truncation noise.
+// ---------------------------------------------------------------------------
+
+export function stripHtmlForAnalysis(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// ---------------------------------------------------------------------------
+// Save probe response body to temp file for LLM read_file access
+// ---------------------------------------------------------------------------
+
+const PROBE_DIR = "/tmp/bright_probe_responses";
+let _probeCounter = 0;
+
+export function saveProbeBody(
+  bodyText: string,
+  contentType: string,
+): string | null {
+  if (bodyText.length <= 2000) return null;
+
+  try {
+    mkdirSync(PROBE_DIR, { recursive: true });
+  } catch { /* ignore */ }
+
+  const ext = contentType.includes("json") ? "json"
+    : contentType.includes("html") ? "html"
+    : "txt";
+  const filePath = `${PROBE_DIR}/response_${++_probeCounter}.${ext}`;
+
+  try {
+    writeFileSync(filePath, bodyText, "utf-8");
+    return filePath;
+  } catch {
+    return null;
+  }
 }

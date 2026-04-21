@@ -18154,6 +18154,7 @@ function requireEnv(name) {
 
 // src/utils.ts
 import { execSync } from "child_process";
+import { writeFileSync, mkdirSync as mkdirSync2 } from "fs";
 var SEVERITY_ORDER = {
   Critical: 0,
   High: 1,
@@ -18383,6 +18384,26 @@ function extractCodeBlock(text) {
   );
   if (dockerLines.length >= 3) return dockerLines.join("\n") + "\n";
   return null;
+}
+function stripHtmlForAnalysis(html) {
+  return html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s{2,}/g, " ").trim();
+}
+var PROBE_DIR = "/tmp/bright_probe_responses";
+var _probeCounter = 0;
+function saveProbeBody(bodyText, contentType) {
+  if (bodyText.length <= 2e3) return null;
+  try {
+    mkdirSync2(PROBE_DIR, { recursive: true });
+  } catch {
+  }
+  const ext2 = contentType.includes("json") ? "json" : contentType.includes("html") ? "html" : "txt";
+  const filePath = `${PROBE_DIR}/response_${++_probeCounter}.${ext2}`;
+  try {
+    writeFileSync(filePath, bodyText, "utf-8");
+    return filePath;
+  } catch {
+    return null;
+  }
 }
 
 // node_modules/zod/v4/core/core.js
@@ -35380,10 +35401,10 @@ import {
   execFileSync as execFileSync4
 } from "child_process";
 import { createInterface } from "readline";
-import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync2 } from "fs";
+import { existsSync as existsSync4, readFileSync as readFileSync3, writeFileSync as writeFileSync3 } from "fs";
 
 // src/tools.ts
-import { readFileSync as readFileSync2, existsSync as existsSync3, statSync, writeFileSync } from "fs";
+import { readFileSync as readFileSync2, existsSync as existsSync3, statSync, writeFileSync as writeFileSync2 } from "fs";
 import { resolve as resolve2 } from "path";
 import { execFileSync as execFileSync3, execSync as execSync2 } from "child_process";
 var codebaseTools = [
@@ -35607,7 +35628,7 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
         }
         const content = String(args.content ?? "");
         try {
-          writeFileSync(filePath, content);
+          writeFileSync2(filePath, content);
           return `Written ${content.length} bytes to ${args.path}`;
         } catch (err) {
           return `Error writing file: ${toErrorMessage(err)}`;
@@ -35823,7 +35844,7 @@ async function fetchUrlContent(targetUrl, repoPath) {
     }
     if (repoPath) {
       const filePath = resolve2(repoPath, ".bright-fetched-page.txt");
-      writeFileSync(filePath, text, "utf-8");
+      writeFileSync2(filePath, text, "utf-8");
       const preview = text.slice(0, 800);
       return `Content saved to .bright-fetched-page.txt (${text.length} chars). Use read_file to see the full page.
 
@@ -35991,6 +36012,13 @@ async function probeUrl(args) {
     const parts = [`HTTP ${status}`];
     if (headerLines.length > 0) parts.push(headerLines.join("\n"));
     parts.push(bodyPreview || "(empty body)");
+    const contentType = res.headers.get("content-type") ?? "";
+    const savedPath = saveProbeBody(bodyText, contentType);
+    if (savedPath) {
+      parts.push(`
+\u{1F4C4} Full response body (${bodyText.length} bytes) saved to: ${savedPath}
+Use read_file to inspect for errors, setup instructions, or configuration requirements.`);
+    }
     console.log(`[Tool] probe_url result: ${status}`);
     return parts.join("\n\n");
   } catch (err) {
@@ -36679,7 +36707,7 @@ async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config
       if (!content || content.length < 20) {
         throw new Error("LLM returned empty or too-short compose content");
       }
-      writeFileSync2(`${repoPath}/compose.yml`, content);
+      writeFileSync3(`${repoPath}/compose.yml`, content);
       const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
       const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
       console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
@@ -37157,7 +37185,7 @@ function generateComposeFile(repoPath, config2) {
 ${envLines ? `    environment:
 ${envLines}
 ` : ""}`;
-  writeFileSync2(`${repoPath}/compose.yml`, content);
+  writeFileSync3(`${repoPath}/compose.yml`, content);
   console.log(`[Startup] Generated compose.yml (port ${port})`);
 }
 function validateComposeBuildContexts(repoPath, composeFile) {
@@ -37201,7 +37229,7 @@ async function repairDockerBuild(llm, repoPath, buildError, model, previousError
     return;
   }
   const errorLogPath = `${repoPath}/.bright-build-error.log`;
-  writeFileSync2(errorLogPath, buildError, "utf-8");
+  writeFileSync3(errorLogPath, buildError, "utf-8");
   const errorLines = buildError.split("\n");
   console.log(`[Startup] Repair input: error ${errorLines.length} lines (written to .bright-build-error.log), Dockerfile lines=${currentDockerfile.split("\n").length}`);
   let errorSection;
@@ -37298,7 +37326,7 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
     if (fixedDockerfile !== fixedRaw) {
       console.log("[Startup] Auto-fixed invalid Docker image tags in repaired Dockerfile");
     }
-    writeFileSync2(dockerfilePath, fixedDockerfile, "utf-8");
+    writeFileSync3(dockerfilePath, fixedDockerfile, "utf-8");
     const changed = fixedDockerfile !== currentDockerfile;
     console.log(
       `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes detected"})`
@@ -37311,7 +37339,7 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
 }
 async function repairInfrastructure(llm, repoPath, config2, errorOutput, model, previousErrors, hints) {
   const errorLogPath = `${repoPath}/.bright-build-error.log`;
-  writeFileSync2(errorLogPath, errorOutput, "utf-8");
+  writeFileSync3(errorLogPath, errorOutput, "utf-8");
   const errorLines = errorOutput.split("\n");
   let errorSection;
   if (errorLines.length <= 100) {
@@ -37523,7 +37551,7 @@ async function generateDockerfile(llm, repoPath, stackStr, model, discovery) {
   if (content !== contentRaw) {
     console.log("[Startup] Auto-fixed invalid Docker image tags in generated Dockerfile");
   }
-  writeFileSync2(`${repoPath}/Dockerfile`, content);
+  writeFileSync3(`${repoPath}/Dockerfile`, content);
   console.log(
     `[Startup] Generated Dockerfile (${content.split("\n").length} lines)`
   );
@@ -37663,7 +37691,7 @@ ${linesToAdd.join("\n")}
 ` : `# Added by bright-agent to avoid permission errors
 ${linesToAdd.join("\n")}
 `;
-  writeFileSync2(ignorePath, newContent);
+  writeFileSync3(ignorePath, newContent);
   console.log(
     `[Startup] Updated .dockerignore to exclude: ${linesToAdd.join(", ")}`
   );
@@ -37763,7 +37791,7 @@ function patchScriptTtyFlags(repoPath, config2) {
           return post.includes("\\") ? `${pre}${post}` : "";
         }).replace(/\s--tty\b/g, "");
         if (patched !== content) {
-          writeFileSync2(filePath, patched);
+          writeFileSync3(filePath, patched);
           console.log(`[Startup] Patched TTY flags in ${filePath.replace(repoPath + "/", "")}`);
         }
       } catch {
@@ -38296,7 +38324,8 @@ ${logs}`;
         }
         if (analyzeResponseFn && !responseAnalysisDone && responseBody.length > 0) {
           responseAnalysisDone = true;
-          const bodyPreview = responseBody.length > 3e3 ? responseBody.slice(0, 3e3) + "..." : responseBody;
+          const textContent = (response.headers.get("content-type") ?? "").includes("html") ? stripHtmlForAnalysis(responseBody) : responseBody;
+          const bodyPreview = textContent.length > 3e3 ? textContent.slice(0, 3e3) + "..." : textContent;
           try {
             const result = await analyzeResponseFn(response.status, bodyPreview);
             if (!result.healthy) {
@@ -38597,7 +38626,7 @@ ${containerLog.trim()}`);
   if (logs.length === 0) return "No container logs available.";
   const fullLogs = logs.join("\n\n");
   try {
-    writeFileSync2(`${repoPath}/.bright-container-logs.txt`, fullLogs, "utf-8");
+    writeFileSync3(`${repoPath}/.bright-container-logs.txt`, fullLogs, "utf-8");
   } catch {
   }
   const lines = fullLogs.split("\n");
@@ -40627,6 +40656,12 @@ async function probeUrl2(args) {
       );
     }
     parts.push(bodyPreview || "(empty body)");
+    const savedPath = saveProbeBody(bodyText, contentType);
+    if (savedPath) {
+      parts.push(`
+\u{1F4C4} Full response body (${bodyText.length} bytes) saved to: ${savedPath}
+Use read_file to inspect for errors, setup instructions, or configuration requirements.`);
+    }
     console.log(`[Auth] Probe result: ${status}`);
     return parts.join("\n\n");
   } catch (err) {
@@ -41420,7 +41455,7 @@ function normalizeSeverity(s) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync2 } from "fs";
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
 import { resolve as resolve3, dirname } from "path";
 
 // src/prompts/generate-fix.ts
@@ -41586,8 +41621,8 @@ function applyFixes(repoPath, fixes) {
   for (const fix of fixes) {
     for (const file of fix.files) {
       const fullPath = resolve3(repoPath, file.path);
-      mkdirSync2(dirname(fullPath), { recursive: true });
-      writeFileSync3(fullPath, file.content, "utf-8");
+      mkdirSync3(dirname(fullPath), { recursive: true });
+      writeFileSync4(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
   }
@@ -41616,7 +41651,7 @@ function safeReadFile(fullPath) {
 
 // src/phases/harness.ts
 import { execSync as execSync5, spawn as spawn3 } from "child_process";
-import { writeFileSync as writeFileSync4, existsSync as existsSync5, readFileSync as readFileSync5 } from "fs";
+import { writeFileSync as writeFileSync5, existsSync as existsSync5, readFileSync as readFileSync5 } from "fs";
 import { resolve as resolve4 } from "path";
 import { createInterface as createInterface2 } from "readline";
 
@@ -42271,7 +42306,7 @@ async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTo
     const ext2 = harnessFileName.slice(harnessFileName.lastIndexOf("."));
     startCommand = cmdMap[ext2] ?? `node ${harnessFileName}`;
   }
-  writeFileSync4(harnessPath, harnessCode, "utf-8");
+  writeFileSync5(harnessPath, harnessCode, "utf-8");
   console.log(`[Harness] Wrote harness to ${harnessFileName} (${harnessCode.length} bytes)`);
   const endpoints = targets.map((t) => {
     const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
@@ -42344,7 +42379,7 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
       throw new Error("LLM failed to generate Dockerfile.harness after retry");
     }
   }
-  writeFileSync4(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
+  writeFileSync5(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
   console.log(`[Harness] Generated Dockerfile.harness (${harnessDockerfileContent.split("\n").length} lines)`);
   const MAX_HARNESS_ATTEMPTS = 5;
   for (let attempt = 0; attempt < MAX_HARNESS_ATTEMPTS; attempt++) {
@@ -42518,7 +42553,7 @@ async function repairHarnessDockerfile(llm, repoPath, error2, harnessCode, harne
       return;
     }
     const changed = fixed !== currentDockerfile;
-    writeFileSync4(dockerfilePath, fixed, "utf-8");
+    writeFileSync5(dockerfilePath, fixed, "utf-8");
     console.log(
       `[Harness] LLM repaired Dockerfile.harness (${fixed.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
     );
@@ -42584,7 +42619,7 @@ async function repairHarnessCode(llm, repoPath, config2, probeErrors, targets, h
     }
     const fixedCode = codeMatch[2];
     const changed = fixedCode !== harnessCode;
-    writeFileSync4(config2.harnessFile, fixedCode, "utf-8");
+    writeFileSync5(config2.harnessFile, fixedCode, "utf-8");
     console.log(
       `[Harness] LLM repaired harness code (${fixedCode.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
     );

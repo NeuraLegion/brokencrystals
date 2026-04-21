@@ -4,7 +4,7 @@ import { glob } from "glob";
 import { execFileSync, execSync } from "child_process";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import type { ToolHandler } from "./inference.js";
-import { runShellCommand, toErrorMessage } from "./utils.js";
+import { runShellCommand, toErrorMessage, saveProbeBody } from "./utils.js";
 import type { McpToolSchema, BrightMcpClient } from "./mcp-client.js";
 
 export const codebaseTools: ChatCompletionTool[] = [
@@ -763,6 +763,13 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
     const parts = [`HTTP ${status}`];
     if (headerLines.length > 0) parts.push(headerLines.join("\n"));
     parts.push(bodyPreview || "(empty body)");
+
+    // Save full body to file when truncated — LLM can read_file for details
+    const contentType = res.headers.get("content-type") ?? "";
+    const savedPath = saveProbeBody(bodyText, contentType);
+    if (savedPath) {
+      parts.push(`\n📄 Full response body (${bodyText.length} bytes) saved to: ${savedPath}\nUse read_file to inspect for errors, setup instructions, or configuration requirements.`);
+    }
 
     console.log(`[Tool] probe_url result: ${status}`);
     return parts.join("\n\n");

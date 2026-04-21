@@ -12,7 +12,7 @@ import {
   webSearchTools,
   createWebSearchHandler,
 } from "../tools.js";
-import { formatTechStack, extractJson, runShellCommand, toErrorMessage } from "../utils.js";
+import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody } from "../utils.js";
 import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt, repairBrokenLoginPrompt } from "../prompts/auth.js";
 
 const CONTENT_TYPE_MAP: Record<string, string> = {
@@ -2222,7 +2222,6 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
     }
 
     const bodyText = await res.text().catch(() => "");
-    // Truncate body but keep enough context
     const bodyPreview =
       bodyText.length > 2000
         ? bodyText.slice(0, 2000) + "\n... [truncated]"
@@ -2248,6 +2247,12 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
     }
 
     parts.push(bodyPreview || "(empty body)");
+
+    // Save full body to file when truncated — LLM can read_file for details
+    const savedPath = saveProbeBody(bodyText, contentType);
+    if (savedPath) {
+      parts.push(`\n📄 Full response body (${bodyText.length} bytes) saved to: ${savedPath}\nUse read_file to inspect for errors, setup instructions, or configuration requirements.`);
+    }
 
     console.log(`[Auth] Probe result: ${status}`);
     return parts.join("\n\n");
