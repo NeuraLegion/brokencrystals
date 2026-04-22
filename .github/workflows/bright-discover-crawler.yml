@@ -1,0 +1,74 @@
+name: Bright Discovery - crawler
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "URL to crawl (must be reachable from GitHub runners)"
+        required: true
+        default: "https://brokencrystals.com/"
+      discovery_name:
+        description: "Discovery name shown in Bright"
+        required: false
+        default: "crawler discovery"
+      auth_object_id:
+        description: "Auth object ID (leave blank to use repo var BRIGHT_AUTH_OBJECT_ID, or blank for anonymous)"
+        required: false
+        default: ""
+      project_id:
+        description: "Bright project ID (leave blank to use repo var BRIGHT_PROJECT_ID)"
+        required: false
+        default: ""
+      crawl_parent_subdomains:
+        description: "Crawl parent path folders and subdomains"
+        required: false
+        default: "false"
+      wait_timeout_seconds:
+        description: "How long to wait for discovery to finish"
+        required: false
+        default: "1800"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: Crawler discovery
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve IDs
+        id: ids
+        run: |
+          PID="${{ inputs.project_id }}"
+          [ -z "$PID" ] && PID="${{ vars.BRIGHT_PROJECT_ID }}"
+          if [ -z "$PID" ]; then echo "::error::No project ID"; exit 1; fi
+          AID="${{ inputs.auth_object_id }}"
+          [ -z "$AID" ] && AID="${{ vars.BRIGHT_AUTH_OBJECT_ID }}"
+          echo "project=$PID" >> "$GITHUB_OUTPUT"
+          echo "auth=$AID" >> "$GITHUB_OUTPUT"
+          echo "Project: $PID; Auth: ${AID:-<anonymous>}"
+
+      - name: Start crawler discovery
+        id: start
+        uses: NeuraLegion/run-discovery@v1.1
+        with:
+          api_token: ${{ secrets.BRIGHT_TOKEN }}
+          name: ${{ inputs.discovery_name }} ${{ github.sha }}
+          project_id: ${{ steps.ids.outputs.project }}
+          auth_object_id: ${{ steps.ids.outputs.auth }}
+          discovery_types: |
+            ["crawler"]
+          crawler_urls: |
+            ["${{ inputs.target_url }}"]
+          crawl_parent_subdomains: ${{ inputs.crawl_parent_subdomains }}
+
+      - name: Show discovery URL
+        run: echo "Discovery - ${{ steps.start.outputs.url }}"
+
+      - name: Wait for discovery
+        uses: NeuraLegion/wait-for-discovery@v1
+        with:
+          api_token: ${{ secrets.BRIGHT_TOKEN }}
+          discovery_id: ${{ steps.start.outputs.id }}
+          project_id: ${{ steps.ids.outputs.project }}
+          timeout: ${{ inputs.wait_timeout_seconds }}

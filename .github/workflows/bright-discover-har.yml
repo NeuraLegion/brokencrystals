@@ -1,0 +1,107 @@
+name: Bright Discovery - HAR
+
+on:
+  workflow_dispatch:
+    inputs:
+      har_file_path:
+        description: "Path to the HAR file inside this repo"
+        required: true
+        default: ".bright/archives/brokencrystals.har"
+      discovery_name:
+        description: "Discovery name shown in Bright"
+        required: false
+        default: "HAR discovery"
+      auth_object_id:
+        description: "Auth object ID (leave blank to use repo var BRIGHT_AUTH_OBJECT_ID, or blank for anonymous)"
+        required: false
+        default: ""
+      project_id:
+        description: "Bright project ID (leave blank to use repo var BRIGHT_PROJECT_ID)"
+        required: false
+        default: ""
+      hosts_filter:
+        description: "Comma-separated list of hosts from the HAR to include (leave blank for all)"
+        required: false
+        default: ""
+      wait_timeout_seconds:
+        description: "How long to wait for discovery to finish"
+        required: false
+        default: "1800"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: HAR discovery
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve IDs and verify HAR
+        id: ids
+        run: |
+          PID="${{ inputs.project_id }}"
+          [ -z "$PID" ] && PID="${{ vars.BRIGHT_PROJECT_ID }}"
+          if [ -z "$PID" ]; then echo "::error::No project ID"; exit 1; fi
+          AID="${{ inputs.auth_object_id }}"
+          [ -z "$AID" ] && AID="${{ vars.BRIGHT_AUTH_OBJECT_ID }}"
+          if [ ! -f "${{ inputs.har_file_path }}" ]; then
+            echo "::error::HAR file not found: ${{ inputs.har_file_path }}"
+            exit 1
+          fi
+          echo "project=$PID" >> "$GITHUB_OUTPUT"
+          echo "auth=$AID" >> "$GITHUB_OUTPUT"
+
+      - name: Upload HAR to Bright
+        id: upload
+        env:
+          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+          PROJECT_ID: ${{ steps.ids.outputs.project }}
+          HAR_PATH: ${{ inputs.har_file_path }}
+        run: |
+          FILE_ID=$(docker run --rm \
+            -v "$PWD:/work" -w /work \
+            brightsec/cli:latest archive:upload \
+              --token "$BRIGHT_TOKEN" \
+              --project "$PROJECT_ID" \
+              --type har \
+              "$HAR_PATH" | tail -n1 | tr -d '\r\n')
+          if [ -z "$FILE_ID" ]; then echo "::error::archive:upload returned empty file_id"; exit 1; fi
+          echo "Uploaded file_id=$FILE_ID"
+          echo "file_id=$FILE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Build hosts_filter JSON
+        id: hosts
+        run: |
+          IN="${{ inputs.hosts_filter }}"
+          if [ -z "$IN" ]; then
+            echo "value=[]" >> "$GITHUB_OUTPUT"
+          else
+            JSON=$(printf '%s' "$IN" | jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$"; ""))')
+            echo "value=$JSON" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Start HAR discovery
+        id: start
+        uses: NeuraLegion/run-discovery@v1.1
+        with:
+          api_token: ${{ secrets.BRIGHT_TOKEN }}
+          name: ${{ inputs.discovery_name }} ${{ github.sha }}
+          project_id: ${{ steps.ids.outputs.project }}
+          auth_object_id: ${{ steps.ids.outputs.auth }}
+          discovery_types: |
+            ["archive"]
+          file_id: ${{ steps.upload.outputs.file_id }}
+          hosts_filter: ${{ steps.hosts.outputs.value }}
+
+      - name: Show discovery URL
+        run: echo "Discovery - ${{ steps.start.outputs.url }}"
+
+      - name: Wait for discovery
+        uses: NeuraLegion/wait-for-discovery@v1
+        with:
+          api_token: ${{ secrets.BRIGHT_TOKEN }}
+          discovery_id: ${{ steps.start.outputs.id }}
+          project_id: ${{ steps.ids.outputs.project }}
+          timeout: ${{ inputs.wait_timeout_seconds }}
