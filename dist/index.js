@@ -40315,7 +40315,9 @@ function parseAuthResponse(trimmed) {
     console.warn(`[Auth] Detected false "no auth" escape from LLM \u2014 treating as FAILED`);
     return void 0;
   }
-  const idMatch = trimmed.match(/[0-9a-f]{24}|[0-9a-f-]{36}/i);
+  const idMatch = trimmed.match(
+    /[0-9a-f]{24}|[0-9a-f-]{36}|[A-Za-z0-9_-]{20,24}/i
+  );
   return idMatch ? idMatch[0] : void 0;
 }
 var COMMON_CSRF_KEYS = [

@@ -1672,8 +1672,14 @@ function parseAuthResponse(trimmed: string): string | undefined {
     console.warn(`[Auth] Detected false "no auth" escape from LLM — treating as FAILED`);
     return undefined;
   }
-  // Extract auth object ID from response (may be a UUID or hex string)
-  const idMatch = trimmed.match(/[0-9a-f]{24}|[0-9a-f-]{36}/i);
+  // Extract auth object ID from response.
+  // Bright IDs come in three formats:
+  //   • MongoDB ObjectId — 24 hex chars  (e.g. 507f1f77bcf86cd799439011)
+  //   • UUID             — 36 hex+dash   (e.g. 550e8400-e29b-41d4-a716-446655440000)
+  //   • NanoID           — 20-24 base62   (e.g. 8TiJo1cG18whEV69KbABWy)
+  const idMatch = trimmed.match(
+    /[0-9a-f]{24}|[0-9a-f-]{36}|[A-Za-z0-9_-]{20,24}/i,
+  );
   return idMatch ? idMatch[0] : undefined;
 }
 
