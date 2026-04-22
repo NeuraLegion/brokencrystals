@@ -26,7 +26,7 @@ on:
         required: false
         default: "1800"
       project_id:
-        description: "Bright project ID (optional, falls back to Default project)"
+        description: "Bright project ID (leave blank to use repo var BRIGHT_PROJECT_ID)"
         required: false
         default: ""
 
@@ -45,7 +45,7 @@ jobs:
         with:
           api_token: ${{ secrets.BRIGHT_TOKEN }}
           name: ${{ inputs.scan_name }} ${{ github.sha }}
-          project_id: ${{ inputs.project_id }}
+          project_id: ${{ inputs.project_id != '' && inputs.project_id || vars.BRIGHT_PROJECT_ID }}
           discovery_types: |
             ["crawler"]
           crawler_urls: |
