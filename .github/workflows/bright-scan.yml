@@ -3,14 +3,10 @@ name: Bright Security Scan
 on:
   workflow_dispatch:
     inputs:
-      target_url:
-        description: "URL to crawl (must be reachable from GitHub runners)"
-        required: true
-        default: "https://brokencrystals.com/"
       scan_name:
         description: "Scan name shown in the Bright dashboard"
         required: false
-        default: "brokencrystals CI scan"
+        default: "brokencrystals entrypoints scan"
       severity:
         description: "Fail the job on first issue of this severity or higher"
         required: true
@@ -24,11 +20,19 @@ on:
       timeout_seconds:
         description: "How long to wait for issues before exiting"
         required: false
-        default: "1800"
+        default: "3600"
       project_id:
         description: "Bright project ID (leave blank to use repo var BRIGHT_PROJECT_ID)"
         required: false
         default: ""
+      entrypoint_statuses:
+        description: "Comma-separated entrypoint security statuses to include"
+        required: false
+        default: "new,changed,vulnerable"
+      entrypoint_limit:
+        description: "Max number of entrypoints to pull"
+        required: false
+        default: "500"
 
 permissions:
   contents: read
@@ -36,22 +40,53 @@ permissions:
 
 jobs:
   bright:
-    name: DAST scan
+    name: Entrypoints DAST scan
     runs-on: ubuntu-latest
     steps:
-      - name: Start Bright scan
+      - name: Resolve project ID
+        id: project
+        run: |
+          PID="${{ inputs.project_id }}"
+          if [ -z "$PID" ]; then PID="${{ vars.BRIGHT_PROJECT_ID }}"; fi
+          if [ -z "$PID" ]; then
+            echo "::error::No project ID supplied (input blank and vars.BRIGHT_PROJECT_ID unset)."
+            exit 1
+          fi
+          echo "id=$PID" >> "$GITHUB_OUTPUT"
+          echo "Using project: $PID"
+
+      - name: List entrypoints (new, changed, vulnerable)
+        id: entrypoints
+        uses: NeuraLegion/list-entrypoints@v1.1
+        with:
+          api_token: ${{ secrets.BRIGHT_TOKEN }}
+          project_id: ${{ steps.project.outputs.id }}
+          status: ${{ inputs.entrypoint_statuses }}
+          limit: ${{ inputs.entrypoint_limit }}
+          ids_only: 'true'
+
+      - name: Guard - fail if no entrypoints matched
+        env:
+          IDS: ${{ steps.entrypoints.outputs.entrypoints }}
+        run: |
+          COUNT=$(echo "$IDS" | jq 'length')
+          echo "Matched $COUNT entrypoints with status '${{ inputs.entrypoint_statuses }}'"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No entrypoints matched - nothing to scan. Discover entrypoints first (HAR/OAS/crawler) and re-run."
+            exit 1
+          fi
+
+      - name: Start Bright scan (all 53 tests)
         id: start
         uses: NeuraLegion/run-scan@v1.4
         with:
           api_token: ${{ secrets.BRIGHT_TOKEN }}
           name: ${{ inputs.scan_name }} ${{ github.sha }}
-          project_id: ${{ inputs.project_id != '' && inputs.project_id || vars.BRIGHT_PROJECT_ID }}
-          discovery_types: |
-            ["crawler"]
-          crawler_urls: |
-            ["${{ inputs.target_url }}"]
+          project_id: ${{ steps.project.outputs.id }}
+          entrypoints: ${{ steps.entrypoints.outputs.entrypoints }}
+          module: dast
           tests: |
-            ["amazon_s3_takeover","bopla","broken_access_control","broken_saml_auth","brute_force_login","business_constraint_bypass","common_files","cookie_security","csrf","css_injection","cve_test","date_manipulation","default_login_location","directory_listing","email_injection","excessive_data_exposure","file_upload","full_path_disclosure","graphql_introspection","header_security","html_injection","http_method_fuzzing","id_enumeration","iframe_injection","improper_asset_management","insecure_output_handling","insecure_tls_configuration","jwt","ldapi","lfi","lrrl","nosql","open_cloud_storage","open_database","osi","prompt_injection","proto_pollution","retire_js","rfi","secret_tokens","server_side_js_injection","sqli","ssrf","ssti","stored_xss","unvalidated_redirect","version_control_systems","wordpress","xpathi","xss","xxe"]
+            ["amazon_s3_takeover","bopla","broken_access_control","broken_saml_auth","brute_force_login","business_constraint_bypass","common_files","cookie_security","csrf","css_injection","cve_test","date_manipulation","default_login_location","directory_listing","email_injection","excessive_data_exposure","file_upload","full_path_disclosure","graphql_introspection","header_security","html_injection","http_method_fuzzing","id_enumeration","iframe_injection","improper_asset_management","insecure_output_handling","insecure_tls_configuration","jwt","ldapi","lfi","lrrl","nosql","open_cloud_storage","open_database","osi","password_reset_poisoning","prompt_injection","proto_pollution","retire_js","rfi","secret_tokens","server_side_js_injection","sqli","ssrf","ssti","stored_xss","unvalidated_redirect","version_control_systems","webdav","wordpress","xpathi","xss","xxe"]
 
       - name: Show scan URL
         run: echo "Scan started - ${{ steps.start.outputs.url }}"
