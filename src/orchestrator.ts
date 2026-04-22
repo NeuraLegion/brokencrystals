@@ -477,7 +477,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     }
 
     let registered = await registerEntrypoints(
-      bright,
+      config,
       projectId,
       safeEndpoints,
       baseUrl,
@@ -496,7 +496,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         `[Entrypoints] Verifying auth on ${registered.length} registered entrypoint(s)...`,
       );
       const check = await verifyEntrypointAuth(
-        bright,
+        config,
         projectId,
         registered[0].entrypointId,
       );
@@ -514,10 +514,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // Prune entrypoints that returned 404 — they waste scan time
     if (registered.length > 0) {
       registered = await pruneDeadEntrypoints(
-        bright,
+        config,
         projectId,
         registered,
-        config,
       );
       await progress.phaseDetail(
         "entrypoints",
@@ -1016,7 +1015,7 @@ async function runScanLoop(
     // Register harness endpoints (no auth)
     await progress.phaseStart("entrypoints", "Registering harness endpoints");
     const registered = await registerEntrypoints(
-      bright,
+      config,
       projectId,
       harnessResult.endpoints,
       baseUrl,

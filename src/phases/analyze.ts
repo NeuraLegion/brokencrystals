@@ -316,6 +316,15 @@ const SKIP_PROJECT_PATTERNS = [
   /\.cli$/i,
   /\.tools?$/i,
   /\.worker$/i,
+  /persistence/i,
+  /\.data$/i,
+  /efcore/i,
+  /entityframework/i,
+  /\.abstractions$/i,
+  /\.core$/i,
+  /\.targets$/i,
+  /\.docs?$/i,
+  /staticassets/i,
 ];
 
 /** Names that strongly suggest a runnable web API. */
@@ -324,10 +333,12 @@ const PREFER_PROJECT_PATTERNS = [
   /\.api$/i,
   /web$/i,
   /webapp$/i,
-  /server$/i,
+  /(?:^|\.)server$/i,
   /gateway$/i,
   /host$/i,
+  /\.web\./i,
   /\.web$/i,
+  /\.ui$/i,
 ];
 
 interface ServiceCandidate {
@@ -344,11 +355,12 @@ interface ServiceCandidate {
  *
  * Scoring:
  *  +10  has its own Dockerfile
- *  +8   has HTTP framework dependency (express, fastapi, ASP.NET, etc.)
+ *  +8   has HTTP framework dependency (express, fastapi, ASP.NET Web SDK, etc.)
+ *  +8   has a main entry point (Program.cs, main.go, app.py, etc.)
  *  +5   name matches web/API patterns
  *  +3   has controller/route files
  *  +2   has package.json / go.mod / .csproj at that level
- *  -100 is a test/orchestrator/shared/CLI project
+ *  -100 is a test/orchestrator/shared/CLI/persistence project
  */
 async function selectServiceForTesting(
   repoPath: string,
@@ -496,6 +508,25 @@ async function scoreCandidate(
     score += 10;
   }
 
+  // Strong signal: has a main entry point (Program.cs, main.go, app.py, etc.)
+  const entryPoints = [
+    "Program.cs",
+    "Startup.cs",
+    "main.go",
+    "app.py",
+    "manage.py",
+    "main.py",
+    "index.ts",
+    "index.js",
+    "server.ts",
+    "server.js",
+    "app.ts",
+    "app.js",
+  ];
+  if (entryPoints.some((ep) => existsSync(resolve(absDir, ep)))) {
+    score += 8;
+  }
+
   // Bonus: name suggests a web API
   if (PREFER_PROJECT_PATTERNS.some((p) => p.test(name))) {
     score += 5;
@@ -557,11 +588,18 @@ async function scoreHttpFramework(absDir: string): Promise<number> {
   });
   for (const f of csprojFiles) {
     try {
-      const content = readFileSync(resolve(absDir, f), "utf-8").toLowerCase();
-      if (
-        content.includes("microsoft.aspnetcore") ||
-        content.includes("aspnet")
-      ) {
+      const content = readFileSync(resolve(absDir, f), "utf-8");
+      const lower = content.toLowerCase();
+      // Check for Web SDK (definitive signal for ASP.NET web projects)
+      if (/sdk\s*=\s*"microsoft\.net\.sdk\.web"/i.test(content)) {
+        return 8;
+      }
+      // Check actual PackageReference elements, not comments
+      const pkgRefs = content.match(/<PackageReference\s[^>]*Include="[^"]*"/gi) || [];
+      const hasAspNet = pkgRefs.some(
+        (ref) => /aspnetcore|aspnet|microsoft\.aspnetcore/i.test(ref),
+      );
+      if (hasAspNet) {
         return 8;
       }
     } catch {

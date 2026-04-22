@@ -34192,17 +34192,28 @@ var SKIP_PROJECT_PATTERNS = [
   /migrations/i,
   /\.cli$/i,
   /\.tools?$/i,
-  /\.worker$/i
+  /\.worker$/i,
+  /persistence/i,
+  /\.data$/i,
+  /efcore/i,
+  /entityframework/i,
+  /\.abstractions$/i,
+  /\.core$/i,
+  /\.targets$/i,
+  /\.docs?$/i,
+  /staticassets/i
 ];
 var PREFER_PROJECT_PATTERNS = [
   /api$/i,
   /\.api$/i,
   /web$/i,
   /webapp$/i,
-  /server$/i,
+  /(?:^|\.)server$/i,
   /gateway$/i,
   /host$/i,
-  /\.web$/i
+  /\.web\./i,
+  /\.web$/i,
+  /\.ui$/i
 ];
 async function selectServiceForTesting(repoPath, rootFrameworks) {
   const monorepoIndicators = [
@@ -34295,6 +34306,23 @@ async function scoreCandidate(repoPath, dir, name) {
   if (existsSync3(resolve(absDir, "Dockerfile")) || existsSync3(resolve(absDir, "dockerfile"))) {
     score += 10;
   }
+  const entryPoints = [
+    "Program.cs",
+    "Startup.cs",
+    "main.go",
+    "app.py",
+    "manage.py",
+    "main.py",
+    "index.ts",
+    "index.js",
+    "server.ts",
+    "server.js",
+    "app.ts",
+    "app.js"
+  ];
+  if (entryPoints.some((ep) => existsSync3(resolve(absDir, ep)))) {
+    score += 8;
+  }
   if (PREFER_PROJECT_PATTERNS.some((p) => p.test(name))) {
     score += 5;
   }
@@ -34342,8 +34370,16 @@ async function scoreHttpFramework(absDir) {
   });
   for (const f of csprojFiles) {
     try {
-      const content = readFileSync2(resolve(absDir, f), "utf-8").toLowerCase();
-      if (content.includes("microsoft.aspnetcore") || content.includes("aspnet")) {
+      const content = readFileSync2(resolve(absDir, f), "utf-8");
+      const lower = content.toLowerCase();
+      if (/sdk\s*=\s*"microsoft\.net\.sdk\.web"/i.test(content)) {
+        return 8;
+      }
+      const pkgRefs = content.match(/<PackageReference\s[^>]*Include="[^"]*"/gi) || [];
+      const hasAspNet = pkgRefs.some(
+        (ref) => /aspnetcore|aspnet|microsoft\.aspnetcore/i.test(ref)
+      );
+      if (hasAspNet) {
         return 8;
       }
     } catch {
@@ -36007,12 +36043,39 @@ var dockerfileTools = [
 ];
 async function verifyDockerImage(imageRef) {
   const [imagePart, tag = "latest"] = imageRef.split(":");
+  const firstSegment = imagePart.split("/")[0];
+  if (firstSegment.includes(".")) {
+    return verifyOciImage(imagePart, tag);
+  }
   const repo = imagePart.includes("/") ? imagePart : `library/${imagePart}`;
   const url2 = `https://hub.docker.com/v2/repositories/${repo}/tags/${tag}`;
   try {
     const res = await fetch(url2, {
       signal: AbortSignal.timeout(1e4),
       headers: { Accept: "application/json" }
+    });
+    return res.ok;
+  } catch {
+    return true;
+  }
+}
+async function verifyOciImage(imagePart, tag) {
+  const segments = imagePart.split("/");
+  const registry2 = segments[0];
+  const repo = segments.slice(1).join("/");
+  const url2 = `https://${registry2}/v2/${repo}/manifests/${tag}`;
+  try {
+    const res = await fetch(url2, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(1e4),
+      headers: {
+        Accept: [
+          "application/vnd.docker.distribution.manifest.v2+json",
+          "application/vnd.docker.distribution.manifest.list.v2+json",
+          "application/vnd.oci.image.manifest.v1+json",
+          "application/vnd.oci.image.index.v1+json"
+        ].join(", ")
+      }
     });
     return res.ok;
   } catch {
@@ -40900,10 +40963,8 @@ Use read_file to inspect for errors, setup instructions, or configuration requir
 }
 
 // src/phases/entrypoints.ts
-var CONFLICT_MSG = "already exists";
-var RATE_LIMIT_PATTERNS = /rate.?limit|too many req|429|throttl/i;
 var CONCURRENCY = 10;
-async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeaterId, authObjectId) {
+async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterId, authObjectId) {
   const prepared = [];
   for (const ep of endpoints) {
     const path2 = resolvePath(ep.path);
@@ -40942,20 +41003,21 @@ async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeat
     if (needsBody) {
       request.body = sanitizeBody(ep.body ?? "{}");
     }
-    const args = { projectId, request, repeaterId };
+    const payload = { request, repeaterId };
     if (authObjectId) {
-      args.authObjectId = authObjectId;
+      payload.authObjectId = authObjectId;
     }
-    prepared.push({ ep, method, fullUrl, args });
+    prepared.push({ ep, method, fullUrl, payload });
   }
   console.log(
     `[Entrypoints] Registering ${prepared.length} endpoints (${CONCURRENCY} concurrent)\u2026`
   );
+  const apiUrl = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
   const registered = [];
   let failedUploads = 0;
   let rateLimitPauseUntil = 0;
   async function processOne(item) {
-    const { ep, method, fullUrl, args } = item;
+    const { ep, method, fullUrl, payload } = item;
     const now = Date.now();
     if (rateLimitPauseUntil > now) {
       await sleep3(rateLimitPauseUntil - now);
@@ -40964,46 +41026,66 @@ async function registerEntrypoints(bright, projectId, endpoints, baseUrl, repeat
       `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
     );
     try {
-      const result = await bright.callMcpToolRaw("addEntrypoint", args);
-      if (RATE_LIMIT_PATTERNS.test(result)) {
-        console.warn(`[Entrypoints] Rate limited \u2014 pausing 10s`);
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Api-Key ${api.brightToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      if (res.status === 429) {
+        console.warn(`[Entrypoints] Rate limited (429) \u2014 pausing 10s`);
         rateLimitPauseUntil = Date.now() + 1e4;
         await sleep3(1e4);
-        const retry = await bright.callMcpToolRaw("addEntrypoint", args);
-        handleResult(retry, ep, method, fullUrl);
+        const retry = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Api-Key ${api.brightToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+        handleResponse(retry, ep, method, fullUrl);
         return;
       }
-      handleResult(result, ep, method, fullUrl);
+      handleResponse(res, ep, method, fullUrl);
     } catch (err) {
       console.error(
         `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`
       );
     }
   }
-  function handleResult(result, ep, method, fullUrl) {
-    let epId;
+  async function handleResponse(res, ep, method, fullUrl) {
+    if (res.ok) {
+      try {
+        const data = await res.json();
+        const epId = data.id ?? data.entrypointId;
+        if (epId) {
+          registered.push({ endpoint: ep, entrypointId: epId });
+          return;
+        }
+      } catch {
+      }
+      console.warn(
+        `[Entrypoints] OK response for ${method} ${fullUrl} but no entrypoint ID returned`
+      );
+      return;
+    }
+    let errorBody = "";
     try {
-      const parsed = JSON.parse(result);
-      epId = parsed.entrypointId ?? parsed.id;
+      errorBody = await res.text();
     } catch {
     }
-    if (epId) {
-      registered.push({ endpoint: ep, entrypointId: epId });
-    } else if (result.includes(CONFLICT_MSG)) {
+    if (res.status === 409) {
       console.log(
         `[Entrypoints] EP already exists for ${method} ${fullUrl} \u2014 skipping`
       );
     } else {
       failedUploads++;
-      if (result.startsWith("Error")) {
-        console.error(
-          `[Entrypoints] Failed ${method} ${fullUrl}: ${result.slice(0, 300)}`
-        );
-      } else {
-        console.warn(
-          `[Entrypoints] Unexpected response for ${method} ${fullUrl}: ${result.slice(0, 200)}`
-        );
-      }
+      console.error(
+        `[Entrypoints] Failed ${method} ${fullUrl}: HTTP ${res.status} \u2014 ${errorBody.slice(0, 300)}`
+      );
     }
   }
   await pMap(prepared, processOne, CONCURRENCY);
@@ -41048,16 +41130,20 @@ var JUNK_URL_PATTERNS = [
 function isScannablePath(path2) {
   return !JUNK_URL_PATTERNS.some((re) => re.test(path2));
 }
-async function verifyEntrypointAuth(bright, projectId, entrypointId) {
+async function verifyEntrypointAuth(api, projectId, entrypointId) {
   try {
     console.log(
       `[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`
     );
-    const raw = await bright.callMcpToolRaw("getEntrypoint", {
-      projectId,
-      entrypointId
+    const url2 = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`;
+    const res = await fetch(url2, {
+      headers: { Authorization: `Api-Key ${api.brightToken}` }
     });
-    console.log(`[Entrypoints] getEntrypoint response: ${raw.slice(0, 1e3)}`);
+    const raw = await res.text();
+    console.log(`[Entrypoints] getEntrypoint response (HTTP ${res.status}): ${raw.slice(0, 1e3)}`);
+    if (!res.ok) {
+      return { ok: false, detail: `HTTP ${res.status}: ${raw.slice(0, 200)}` };
+    }
     const data = JSON.parse(raw);
     const status = data.response?.status ?? data.status;
     if (status && (status === 401 || status === 403)) {
@@ -41076,24 +41162,31 @@ async function verifyEntrypointAuth(bright, projectId, entrypointId) {
     return { ok: false, detail: `Could not verify: ${msg}` };
   }
 }
-async function pruneDeadEntrypoints(bright, projectId, entries, api) {
+async function pruneDeadEntrypoints(api, projectId, entries) {
   const alive = [];
   const dead = [];
   console.log(
     `[Entrypoints] Checking ${entries.length} entrypoints for 404s (${CONCURRENCY} concurrent)\u2026`
   );
+  const baseUrl = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
   await pMap(
     entries,
     async (entry) => {
       try {
-        const raw = await bright.callMcpToolRaw("getEntrypoint", {
-          projectId,
-          entrypointId: entry.entrypointId
-        });
-        const data = JSON.parse(raw);
-        const status = data.response?.status ?? data.status;
+        const res = await fetch(
+          `${baseUrl}/${encodeURIComponent(entry.entrypointId)}`,
+          { headers: { Authorization: `Api-Key ${api.brightToken}` } }
+        );
+        if (!res.ok) {
+          alive.push(entry);
+          return;
+        }
+        const data = await res.json();
+        const resp = data.response;
+        const status = resp?.status ?? data.status;
         if (status === 404) {
-          const url2 = data.request?.url ?? data.url ?? entry.entrypointId;
+          const req = data.request;
+          const url2 = req?.url ?? data.url ?? entry.entrypointId;
           console.log(`[Entrypoints] \u2717 Removing 404 entrypoint: ${url2}`);
           dead.push(entry.entrypointId);
         } else {
@@ -43266,7 +43359,7 @@ async function runOrchestrator(ctx) {
       );
     }
     let registered = await registerEntrypoints(
-      bright,
+      config2,
       projectId,
       safeEndpoints,
       baseUrl,
@@ -43283,7 +43376,7 @@ async function runOrchestrator(ctx) {
         `[Entrypoints] Verifying auth on ${registered.length} registered entrypoint(s)...`
       );
       const check2 = await verifyEntrypointAuth(
-        bright,
+        config2,
         projectId,
         registered[0].entrypointId
       );
@@ -43299,10 +43392,9 @@ async function runOrchestrator(ctx) {
     }
     if (registered.length > 0) {
       registered = await pruneDeadEntrypoints(
-        bright,
+        config2,
         projectId,
-        registered,
-        config2
+        registered
       );
       await progress.phaseDetail(
         "entrypoints",
@@ -43710,7 +43802,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
   try {
     await progress.phaseStart("entrypoints", "Registering harness endpoints");
     const registered = await registerEntrypoints(
-      bright,
+      config2,
       projectId,
       harnessResult.endpoints,
       baseUrl,

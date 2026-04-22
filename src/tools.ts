@@ -691,20 +691,57 @@ export const dockerfileTools: ChatCompletionTool[] = [
 ];
 
 /**
- * Check if a Docker image:tag exists on Docker Hub.
- * Uses the Docker Hub v2 API (no auth needed for public images).
+ * Check if a Docker image:tag exists on its registry.
+ * Supports Docker Hub (default) and third-party registries (MCR, GHCR, GCR, Quay, etc.)
+ * via the OCI Distribution API.
  */
 export async function verifyDockerImage(imageRef: string): Promise<boolean> {
   // Parse image:tag
   const [imagePart, tag = "latest"] = imageRef.split(":");
-  // Official images are under library/
-  const repo = imagePart.includes("/") ? imagePart : `library/${imagePart}`;
 
+  // Detect third-party registries: first segment contains a dot (e.g. mcr.microsoft.com, ghcr.io)
+  const firstSegment = imagePart.split("/")[0];
+  if (firstSegment.includes(".")) {
+    return verifyOciImage(imagePart, tag);
+  }
+
+  // Docker Hub: official images are under library/
+  const repo = imagePart.includes("/") ? imagePart : `library/${imagePart}`;
   const url = `https://hub.docker.com/v2/repositories/${repo}/tags/${tag}`;
   try {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(10_000),
       headers: { Accept: "application/json" },
+    });
+    return res.ok;
+  } catch {
+    // Network error or timeout — assume it exists to avoid false negatives
+    return true;
+  }
+}
+
+/**
+ * Verify an image on an OCI-compliant registry using the Distribution API.
+ * Works with mcr.microsoft.com, ghcr.io, gcr.io, quay.io, etc.
+ */
+async function verifyOciImage(imagePart: string, tag: string): Promise<boolean> {
+  const segments = imagePart.split("/");
+  const registry = segments[0];
+  const repo = segments.slice(1).join("/");
+
+  const url = `https://${registry}/v2/${repo}/manifests/${tag}`;
+  try {
+    const res = await fetch(url, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(10_000),
+      headers: {
+        Accept: [
+          "application/vnd.docker.distribution.manifest.v2+json",
+          "application/vnd.docker.distribution.manifest.list.v2+json",
+          "application/vnd.oci.image.manifest.v1+json",
+          "application/vnd.oci.image.index.v1+json",
+        ].join(", "),
+      },
     });
     return res.ok;
   } catch {
@@ -835,7 +872,7 @@ export async function validateDockerfileImages(
 }
 
 /**
- * Try common tag variations for a Docker image until one is found on Docker Hub.
+ * Try common tag variations for a Docker image until one is found.
  * Returns the first working tag, or null if none found.
  */
 async function findAlternativeImage(badRef: string): Promise<string | null> {
