@@ -475,6 +475,8 @@ async function createAuthViaRestApi(
     csrfUrl?: string;
     csrfHeaderName?: string;
     csrfExtractPattern?: string;
+    cookieUrl?: string;
+    loginAccept?: string;
     reauthStrategy?: string;
     reauthBodyPattern?: string;
   },
@@ -594,10 +596,12 @@ async function createAuthViaRestApi(
     config: {
       multistep: {
         steps: buildLoginSteps({
+          cookieUrl: params.cookieUrl,
           csrfUrl: params.csrfUrl,
           csrfHeaderName: params.csrfHeaderName,
           csrfExtractPattern: params.csrfExtractPattern,
           loginUrl,
+          loginAccept: params.loginAccept,
           contentType,
           normalizedBody,
           isSession,
@@ -609,7 +613,7 @@ async function createAuthViaRestApi(
   };
 
   console.log(
-    `[Auth] Creating ${authStyle} auth via REST API — login: ${loginUrl}, test: ${testUrl}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`,
+    `[Auth] Creating ${authStyle} auth via REST API — login: ${loginUrl}, test: ${testUrl}${params.cookieUrl ? `, cookie: ${params.cookieUrl}` : ""}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`,
   );
   const steps = (body.config as Record<string, unknown>).multistep
     ? ((body.config as Record<string, Record<string, unknown>>).multistep.steps as Record<string, unknown>[])
@@ -626,10 +630,12 @@ async function createAuthViaRestApi(
  * via NexTemplate.
  */
 function buildLoginSteps(opts: {
+  cookieUrl?: string;
   csrfUrl?: string;
   csrfHeaderName?: string;
   csrfExtractPattern?: string;
   loginUrl: string;
+  loginAccept?: string;
   contentType: string;
   normalizedBody: string;
   isSession: boolean;
@@ -662,6 +668,22 @@ function buildLoginSteps(opts: {
     });
   }
 
+  // Optional cookie-establishing step: GET a page to init the session cookie
+  // before the CSRF fetch. Needed by apps that require a pre-existing session
+  // cookie before the CSRF endpoint will return a valid token.
+  if (opts.cookieUrl) {
+    steps.push({
+      name: "init_session",
+      request: {
+        method: "GET",
+        url: opts.cookieUrl,
+        protocol: "http",
+        bodyType: "clear_text",
+      },
+      successResponseDetection: [{ type: "status", statuses: [200] }],
+    });
+  }
+
   // Login step headers
   const loginHeaders: Record<string, unknown>[] = [
     {
@@ -671,6 +693,18 @@ function buildLoginSteps(opts: {
       mergeStrategy: "replace",
     },
   ];
+
+  // Optional Accept header — only when the caller explicitly requests it.
+  // Not all apps support JSON responses; hardcoding it would break HTML-only
+  // login flows (SAML, server-rendered apps, etc.).
+  if (opts.loginAccept) {
+    loginHeaders.push({
+      name: "Accept",
+      value: opts.loginAccept,
+      type: "clear_text",
+      mergeStrategy: "replace",
+    });
+  }
 
   // Inject CSRF token from previous step via NexTemplate
   if (opts.csrfUrl) {
@@ -800,6 +834,16 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
               type: "string",
               description:
                 "(Session auth) URL that returns a CSRF token in JSON body. The token is extracted via regex and sent as X-CSRF-Token header on the login request. E.g. http://localhost:3000/session/csrf. IMPORTANT: probe_url the csrfUrl first to verify the response body format, then set csrfExtractPattern if the default regex doesn't match.",
+            },
+            cookieUrl: {
+              type: "string",
+              description:
+                "(Session auth) URL to GET before the CSRF step to establish an initial session cookie. Some apps require a session cookie to exist before the CSRF endpoint returns a valid token. Typically the app's root URL (e.g. http://localhost:3000/). Only needed if the CSRF-then-login flow fails with session/token mismatch errors.",
+            },
+            loginAccept: {
+              type: "string",
+              description:
+                "Accept header value for the login request. Set to 'application/json' when the login endpoint supports JSON responses — this prevents the server from trying to render HTML (which may crash on missing dependencies like ImageMagick). Leave unset for apps that only return HTML or when you're unsure. IMPORTANT: if login returns 500 with an HTML error page (Content-Type: text/html), try setting this to 'application/json'.",
             },
             csrfHeaderName: {
               type: "string",
@@ -990,6 +1034,8 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
           csrfExtractPattern: args.csrfExtractPattern
             ? String(args.csrfExtractPattern)
             : undefined,
+          cookieUrl: args.cookieUrl ? String(args.cookieUrl) : undefined,
+          loginAccept: args.loginAccept ? String(args.loginAccept) : undefined,
           reauthStrategy: args.reauthStrategy
             ? String(args.reauthStrategy)
             : undefined,
@@ -1502,8 +1548,39 @@ export async function testAuthObject(
       );
       for (const l of lines) console.log(`[Auth] Test: ${l}`);
 
+      // --- Smart diagnostic hints ---
+      // Detect "login returned 500 + HTML" pattern: the server tried to render
+      // HTML but crashed (e.g. missing ImageMagick). Surface both the quick fix
+      // (loginAccept) and the real problem (broken HTML rendering).
+      const diagnosticHints: string[] = [];
+      for (const s of stages) {
+        if (
+          s.stage === "authentication" &&
+          s.status !== "success" &&
+          s.response &&
+          s.response.status === 500 &&
+          s.response.contentType?.includes("html")
+        ) {
+          diagnosticHints.push(
+            `DIAGNOSTIC: The "${s.name ?? "login"}" step returned HTTP 500 with Content-Type text/html. ` +
+            `This usually means the server tried to render an HTML response but crashed ` +
+            `(e.g. missing system dependency like ImageMagick). ` +
+            `TWO actions to consider:\n` +
+            `  1. QUICK FIX: Recreate the auth object with loginAccept='application/json' — ` +
+            `this tells the server to return JSON instead of HTML, bypassing the render crash.\n` +
+            `  2. ROOT CAUSE: The app has broken HTML rendering. Use run_command_in_docker to ` +
+            `check application logs for the actual error (e.g. 'magick' binary missing). ` +
+            `This MUST be fixed for client-side security tests (XSS, CSS injection, etc.) to work. ` +
+            `Consider this an infrastructure issue — report it so the startup phase can fix it.`,
+          );
+        }
+      }
+
       const allPassed = rawResults.every((r) => r.status === "success");
-      return { passed: allPassed, summary: lines.join("\n"), stages };
+      const fullSummary = diagnosticHints.length > 0
+        ? lines.join("\n") + "\n\n" + diagnosticHints.join("\n")
+        : lines.join("\n");
+      return { passed: allPassed, summary: fullSummary, stages };
     } catch (err) {
       const msg = toErrorMessage(err);
       console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);

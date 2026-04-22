@@ -199,6 +199,9 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Wrong credentials
    - Missing CSRF token — add csrfUrl
    - Wrong loginBody format (json vs form mismatch)
+   - **Login returned HTTP 500 with Content-Type text/html** — the server tried to render HTML but crashed (e.g. missing ImageMagick or other system dependency). TWO actions:
+     1. QUICK FIX: recreate auth with loginAccept='application/json' to request JSON response instead of HTML
+     2. ROOT CAUSE: use run_command_in_docker to check app logs for the actual error. If it's a missing dependency, respond with INFRA_REPAIR — broken HTML rendering means client-side security tests (XSS, CSS injection, etc.) won't work either.
    → Fix: probe the login endpoint to understand what it expects, then recreate.
 
    **If "authentication" succeeds but response body is HTML (not JSON)**:
@@ -223,6 +226,8 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Different reauthStrategy (status → body → redirect)
    - Different loginBody format (json vs form)
    - Add/remove csrfUrl
+   - Add loginAccept='application/json' if login returns HTML error pages
+   - Add cookieUrl (app root URL) if CSRF token fails despite being correct (session cookie needed before CSRF)
    - **If the application itself is misconfigured**, diagnose with command tools and respond with INFRA_REPAIR
 
 ## CRITICAL PERSISTENCE RULES

@@ -38934,6 +38934,9 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Wrong credentials
    - Missing CSRF token \u2014 add csrfUrl
    - Wrong loginBody format (json vs form mismatch)
+   - **Login returned HTTP 500 with Content-Type text/html** \u2014 the server tried to render HTML but crashed (e.g. missing ImageMagick or other system dependency). TWO actions:
+     1. QUICK FIX: recreate auth with loginAccept='application/json' to request JSON response instead of HTML
+     2. ROOT CAUSE: use run_command_in_docker to check app logs for the actual error. If it's a missing dependency, respond with INFRA_REPAIR \u2014 broken HTML rendering means client-side security tests (XSS, CSS injection, etc.) won't work either.
    \u2192 Fix: probe the login endpoint to understand what it expects, then recreate.
 
    **If "authentication" succeeds but response body is HTML (not JSON)**:
@@ -38958,6 +38961,8 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Different reauthStrategy (status \u2192 body \u2192 redirect)
    - Different loginBody format (json vs form)
    - Add/remove csrfUrl
+   - Add loginAccept='application/json' if login returns HTML error pages
+   - Add cookieUrl (app root URL) if CSRF token fails despite being correct (session cookie needed before CSRF)
    - **If the application itself is misconfigured**, diagnose with command tools and respond with INFRA_REPAIR
 
 ## CRITICAL PERSISTENCE RULES
@@ -39513,10 +39518,12 @@ async function createAuthViaRestApi(api, projectId, repeaterId, params) {
     config: {
       multistep: {
         steps: buildLoginSteps({
+          cookieUrl: params.cookieUrl,
           csrfUrl: params.csrfUrl,
           csrfHeaderName: params.csrfHeaderName,
           csrfExtractPattern: params.csrfExtractPattern,
           loginUrl,
+          loginAccept: params.loginAccept,
           contentType,
           normalizedBody,
           isSession,
@@ -39527,7 +39534,7 @@ async function createAuthViaRestApi(api, projectId, repeaterId, params) {
     }
   };
   console.log(
-    `[Auth] Creating ${authStyle} auth via REST API \u2014 login: ${loginUrl}, test: ${testUrl}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`
+    `[Auth] Creating ${authStyle} auth via REST API \u2014 login: ${loginUrl}, test: ${testUrl}${params.cookieUrl ? `, cookie: ${params.cookieUrl}` : ""}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`
   );
   const steps = body.config.multistep ? body.config.multistep.steps : void 0;
   if (steps) {
@@ -39560,6 +39567,18 @@ function buildLoginSteps(opts) {
       successResponseDetection: [{ type: "status", statuses: [200] }]
     });
   }
+  if (opts.cookieUrl) {
+    steps.push({
+      name: "init_session",
+      request: {
+        method: "GET",
+        url: opts.cookieUrl,
+        protocol: "http",
+        bodyType: "clear_text"
+      },
+      successResponseDetection: [{ type: "status", statuses: [200] }]
+    });
+  }
   const loginHeaders = [
     {
       name: "Content-Type",
@@ -39568,6 +39587,14 @@ function buildLoginSteps(opts) {
       mergeStrategy: "replace"
     }
   ];
+  if (opts.loginAccept) {
+    loginHeaders.push({
+      name: "Accept",
+      value: opts.loginAccept,
+      type: "clear_text",
+      mergeStrategy: "replace"
+    });
+  }
   if (opts.csrfUrl) {
     const headerName = opts.csrfHeaderName || "X-CSRF-Token";
     const extractPattern = opts.csrfExtractPattern || '"csrf"\\s*:\\s*"([^"]*)"';
@@ -39664,6 +39691,14 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
             csrfUrl: {
               type: "string",
               description: "(Session auth) URL that returns a CSRF token in JSON body. The token is extracted via regex and sent as X-CSRF-Token header on the login request. E.g. http://localhost:3000/session/csrf. IMPORTANT: probe_url the csrfUrl first to verify the response body format, then set csrfExtractPattern if the default regex doesn't match."
+            },
+            cookieUrl: {
+              type: "string",
+              description: "(Session auth) URL to GET before the CSRF step to establish an initial session cookie. Some apps require a session cookie to exist before the CSRF endpoint returns a valid token. Typically the app's root URL (e.g. http://localhost:3000/). Only needed if the CSRF-then-login flow fails with session/token mismatch errors."
+            },
+            loginAccept: {
+              type: "string",
+              description: "Accept header value for the login request. Set to 'application/json' when the login endpoint supports JSON responses \u2014 this prevents the server from trying to render HTML (which may crash on missing dependencies like ImageMagick). Leave unset for apps that only return HTML or when you're unsure. IMPORTANT: if login returns 500 with an HTML error page (Content-Type: text/html), try setting this to 'application/json'."
             },
             csrfHeaderName: {
               type: "string",
@@ -39831,6 +39866,8 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
           csrfUrl: args.csrfUrl ? String(args.csrfUrl) : void 0,
           csrfHeaderName: args.csrfHeaderName ? String(args.csrfHeaderName) : void 0,
           csrfExtractPattern: args.csrfExtractPattern ? String(args.csrfExtractPattern) : void 0,
+          cookieUrl: args.cookieUrl ? String(args.cookieUrl) : void 0,
+          loginAccept: args.loginAccept ? String(args.loginAccept) : void 0,
           reauthStrategy: args.reauthStrategy ? String(args.reauthStrategy) : void 0,
           reauthBodyPattern: args.reauthBodyPattern ? String(args.reauthBodyPattern) : void 0,
           tokenFieldPath: args.tokenFieldPath ? String(args.tokenFieldPath) : void 0,
@@ -40202,8 +40239,19 @@ async function testAuthObject(api, authObjectId) {
         (s) => `${s.name ? `[${s.name}] ` : ""}stage=${s.stage} status=${s.status}${s.message ? ` \u2014 ${s.message}` : ""}${s.response ? ` (HTTP ${s.response.status}, ${s.response.contentType ?? "unknown"}, body=${s.response.bodyPreview.slice(0, 120)}\u2026)` : ""}`
       );
       for (const l of lines) console.log(`[Auth] Test: ${l}`);
+      const diagnosticHints = [];
+      for (const s of stages) {
+        if (s.stage === "authentication" && s.status !== "success" && s.response && s.response.status === 500 && s.response.contentType?.includes("html")) {
+          diagnosticHints.push(
+            `DIAGNOSTIC: The "${s.name ?? "login"}" step returned HTTP 500 with Content-Type text/html. This usually means the server tried to render an HTML response but crashed (e.g. missing system dependency like ImageMagick). TWO actions to consider:
+  1. QUICK FIX: Recreate the auth object with loginAccept='application/json' \u2014 this tells the server to return JSON instead of HTML, bypassing the render crash.
+  2. ROOT CAUSE: The app has broken HTML rendering. Use run_command_in_docker to check application logs for the actual error (e.g. 'magick' binary missing). This MUST be fixed for client-side security tests (XSS, CSS injection, etc.) to work. Consider this an infrastructure issue \u2014 report it so the startup phase can fix it.`
+          );
+        }
+      }
       const allPassed = rawResults.every((r) => r.status === "success");
-      return { passed: allPassed, summary: lines.join("\n"), stages };
+      const fullSummary = diagnosticHints.length > 0 ? lines.join("\n") + "\n\n" + diagnosticHints.join("\n") : lines.join("\n");
+      return { passed: allPassed, summary: fullSummary, stages };
     } catch (err) {
       const msg = toErrorMessage(err);
       console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);
