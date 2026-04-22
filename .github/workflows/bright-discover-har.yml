@@ -3,10 +3,10 @@ name: Bright Discovery - HAR
 on:
   workflow_dispatch:
     inputs:
-      har_file_path:
-        description: "Path to the HAR file inside this repo"
-        required: true
-        default: ".bright/archives/brokencrystals.har"
+      file_id:
+        description: "Bright file ID of the HAR archive (leave blank to use repo var BRIGHT_HAR_FILE_ID)"
+        required: false
+        default: ""
       discovery_name:
         description: "Discovery name shown in Bright"
         required: false
@@ -36,9 +36,7 @@ jobs:
     name: HAR discovery
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Resolve IDs and verify HAR
+      - name: Resolve IDs
         id: ids
         run: |
           PID="${{ inputs.project_id }}"
@@ -46,30 +44,13 @@ jobs:
           if [ -z "$PID" ]; then echo "::error::No project ID"; exit 1; fi
           AID="${{ inputs.auth_object_id }}"
           [ -z "$AID" ] && AID="${{ vars.BRIGHT_AUTH_OBJECT_ID }}"
-          if [ ! -f "${{ inputs.har_file_path }}" ]; then
-            echo "::error::HAR file not found: ${{ inputs.har_file_path }}"
-            exit 1
-          fi
+          FID="${{ inputs.file_id }}"
+          [ -z "$FID" ] && FID="${{ vars.BRIGHT_HAR_FILE_ID }}"
+          if [ -z "$FID" ]; then echo "::error::No HAR file_id supplied"; exit 1; fi
           echo "project=$PID" >> "$GITHUB_OUTPUT"
-          echo "auth=$AID" >> "$GITHUB_OUTPUT"
-
-      - name: Upload HAR to Bright
-        id: upload
-        env:
-          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
-          PROJECT_ID: ${{ steps.ids.outputs.project }}
-          HAR_PATH: ${{ inputs.har_file_path }}
-        run: |
-          FILE_ID=$(docker run --rm \
-            -v "$PWD:/work" -w /work \
-            brightsec/cli:latest archive:upload \
-              --token "$BRIGHT_TOKEN" \
-              --project "$PROJECT_ID" \
-              --type har \
-              "$HAR_PATH" | tail -n1 | tr -d '\r\n')
-          if [ -z "$FILE_ID" ]; then echo "::error::archive:upload returned empty file_id"; exit 1; fi
-          echo "Uploaded file_id=$FILE_ID"
-          echo "file_id=$FILE_ID" >> "$GITHUB_OUTPUT"
+          echo "auth=$AID"     >> "$GITHUB_OUTPUT"
+          echo "file=$FID"     >> "$GITHUB_OUTPUT"
+          echo "Project=$PID Auth=${AID:-<anonymous>} File=$FID"
 
       - name: Build hosts_filter JSON
         id: hosts
@@ -92,7 +73,7 @@ jobs:
           auth_object_id: ${{ steps.ids.outputs.auth }}
           discovery_types: |
             ["archive"]
-          file_id: ${{ steps.upload.outputs.file_id }}
+          file_id: ${{ steps.ids.outputs.file }}
           hosts_filter: ${{ steps.hosts.outputs.value }}
 
       - name: Show discovery URL

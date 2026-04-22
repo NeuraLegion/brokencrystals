@@ -3,18 +3,10 @@ name: Bright Discovery - schema (OpenAPI / Postman)
 on:
   workflow_dispatch:
     inputs:
-      schema_file_path:
-        description: "Path to the schema file inside this repo"
-        required: true
-        default: ".bright/schemas/openapi.yaml"
-      schema_type:
-        description: "Schema type"
-        required: true
-        default: "openapi"
-        type: choice
-        options:
-          - openapi
-          - postman
+      file_id:
+        description: "Bright file ID of the schema (leave blank to use repo var BRIGHT_SCHEMA_FILE_ID)"
+        required: false
+        default: ""
       discovery_name:
         description: "Discovery name shown in Bright"
         required: false
@@ -40,9 +32,7 @@ jobs:
     name: Schema discovery
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Resolve IDs and verify schema
+      - name: Resolve IDs
         id: ids
         run: |
           PID="${{ inputs.project_id }}"
@@ -50,31 +40,13 @@ jobs:
           if [ -z "$PID" ]; then echo "::error::No project ID"; exit 1; fi
           AID="${{ inputs.auth_object_id }}"
           [ -z "$AID" ] && AID="${{ vars.BRIGHT_AUTH_OBJECT_ID }}"
-          if [ ! -f "${{ inputs.schema_file_path }}" ]; then
-            echo "::error::Schema file not found: ${{ inputs.schema_file_path }}"
-            exit 1
-          fi
+          FID="${{ inputs.file_id }}"
+          [ -z "$FID" ] && FID="${{ vars.BRIGHT_SCHEMA_FILE_ID }}"
+          if [ -z "$FID" ]; then echo "::error::No schema file_id supplied"; exit 1; fi
           echo "project=$PID" >> "$GITHUB_OUTPUT"
-          echo "auth=$AID" >> "$GITHUB_OUTPUT"
-
-      - name: Upload schema to Bright
-        id: upload
-        env:
-          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
-          PROJECT_ID: ${{ steps.ids.outputs.project }}
-          SCHEMA_PATH: ${{ inputs.schema_file_path }}
-          SCHEMA_TYPE: ${{ inputs.schema_type }}
-        run: |
-          FILE_ID=$(docker run --rm \
-            -v "$PWD:/work" -w /work \
-            brightsec/cli:latest archive:upload \
-              --token "$BRIGHT_TOKEN" \
-              --project "$PROJECT_ID" \
-              --type "$SCHEMA_TYPE" \
-              "$SCHEMA_PATH" | tail -n1 | tr -d '\r\n')
-          if [ -z "$FILE_ID" ]; then echo "::error::archive:upload returned empty file_id"; exit 1; fi
-          echo "Uploaded file_id=$FILE_ID"
-          echo "file_id=$FILE_ID" >> "$GITHUB_OUTPUT"
+          echo "auth=$AID"     >> "$GITHUB_OUTPUT"
+          echo "file=$FID"     >> "$GITHUB_OUTPUT"
+          echo "Project=$PID Auth=${AID:-<anonymous>} File=$FID"
 
       - name: Start schema discovery
         id: start
@@ -86,7 +58,7 @@ jobs:
           auth_object_id: ${{ steps.ids.outputs.auth }}
           discovery_types: |
             ["oas"]
-          file_id: ${{ steps.upload.outputs.file_id }}
+          file_id: ${{ steps.ids.outputs.file }}
 
       - name: Show discovery URL
         run: echo "Discovery - ${{ steps.start.outputs.url }}"
