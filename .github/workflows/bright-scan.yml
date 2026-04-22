@@ -1,0 +1,65 @@
+name: Bright Security Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "URL to crawl (must be reachable from GitHub runners)"
+        required: true
+        default: "https://brokencrystals.com/"
+      scan_name:
+        description: "Scan name shown in the Bright dashboard"
+        required: false
+        default: "brokencrystals CI scan"
+      severity:
+        description: "Fail the job on first issue of this severity or higher"
+        required: true
+        default: "high"
+        type: choice
+        options:
+          - any
+          - medium
+          - high
+          - critical
+      timeout_seconds:
+        description: "How long to wait for issues before exiting"
+        required: false
+        default: "1800"
+      project_id:
+        description: "Bright project ID (optional, falls back to Default project)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  bright:
+    name: DAST scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start Bright scan
+        id: start
+        uses: NeuraLegion/run-scan@v1.4
+        with:
+          api_token: ${{ secrets.BRIGHT_TOKEN }}
+          name: ${{ inputs.scan_name }} ${{ github.sha }}
+          project_id: ${{ inputs.project_id }}
+          discovery_types: |
+            ["crawler"]
+          crawler_urls: |
+            ["${{ inputs.target_url }}"]
+
+      - name: Show scan URL
+        run: echo "Scan started - ${{ steps.start.outputs.url }}"
+
+      - name: Wait for issues
+        uses: NeuraLegion/wait-for@v1.1
+        with:
+          api_token: ${{ secrets.BRIGHT_TOKEN }}
+          scan: ${{ steps.start.outputs.id }}
+          wait_for: ${{ inputs.severity }}
+          timeout: ${{ inputs.timeout_seconds }}
+          stop_scan: true
+          code_scanning_alerts: true
