@@ -258,6 +258,20 @@ export class McpController {
           },
           id: 12
         }
+      },
+      call_excerpt_text: {
+        summary: 'Call excerpt_text',
+        value: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'excerpt_text',
+            arguments: {
+              text: 'Q4 earnings rose 12% year-over-year, driven by strong cloud demand.'
+            }
+          },
+          id: 13
+        }
       }
     }
   })

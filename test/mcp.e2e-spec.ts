@@ -1,5 +1,7 @@
 import { SecRunner } from '@sectester/runner';
 import axios, { AxiosResponse } from 'axios';
+import { createServer } from 'node:http';
+import { AddressInfo } from 'node:net';
 
 const secTesterTarget =
   process.env.SEC_TESTER_TARGET?.trim() || 'http://127.0.0.1:3000';
@@ -7,6 +9,12 @@ const mcpUrl = `${secTesterTarget}/api/mcp`;
 const authUrl = `${secTesterTarget}/api/auth/admin/login`;
 const hasSecTesterCreds =
   !!process.env.BRIGHT_TOKEN && !!process.env.BRIGHT_CLUSTER;
+const remotePayloadHtml = `<!DOCTYPE html>
+<html>
+<body>
+<p>Quarterly earnings rose 12% year-over-year.</p>
+</body>
+</html>`;
 
 type McpRole = 'guest' | 'user' | 'admin';
 
@@ -41,6 +49,11 @@ interface ParsedSseEvent {
 interface ParsedStreamedToolResponse {
   notifications: Array<Record<string, unknown>>;
   finalRpc: McpJsonRpcEnvelope;
+}
+
+interface RemoteFixtureServer {
+  close: () => Promise<void>;
+  payloadUrl: string;
 }
 
 const withBearer = (token: string): string =>
@@ -193,9 +206,59 @@ const initializeMcpSession = async (
   };
 };
 
+const startRemoteFixtureServer = async (): Promise<RemoteFixtureServer> =>
+  new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      if (req.url === '/remote-payload') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(remotePayloadHtml);
+        return;
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('not found');
+    });
+
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        reject(new Error('Failed to resolve remote fixture server address'));
+        return;
+      }
+
+      const { port } = address as AddressInfo;
+      const baseUrl = `http://127.0.0.1:${port}`;
+
+      resolve({
+        payloadUrl: `${baseUrl}/remote-payload`,
+        close: () =>
+          new Promise<void>((closeResolve, closeReject) => {
+            server.close((error) => {
+              if (error) {
+                closeReject(error);
+                return;
+              }
+
+              closeResolve();
+            });
+          })
+      });
+    });
+  });
+
 describe('/api', () => {
   const timeout = 600000;
+  let remoteFixtureServer: RemoteFixtureServer;
+
   jest.setTimeout(timeout);
+
+  beforeAll(async () => {
+    remoteFixtureServer = await startRemoteFixtureServer();
+  });
+
+  afterAll(async () => {
+    await remoteFixtureServer.close();
+  });
 
   describe('POST /mcp', () => {
     describe('initialize', () => {
@@ -252,6 +315,13 @@ describe('/api', () => {
 
         expect(withSession.status).toBe(200);
         expect(Array.isArray(withSession.data?.result?.tools)).toBe(true);
+        expect(withSession.data?.result?.tools).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: 'excerpt_text'
+            })
+          ])
+        );
       });
     });
 
@@ -281,6 +351,14 @@ describe('/api', () => {
 
         expect(withSession.status).toBe(200);
         expect(Array.isArray(withSession.data?.result?.resources)).toBe(true);
+        expect(withSession.data?.result?.resources).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: 'remote_file',
+              uri: 'https://test-host.example.com/remote-payload'
+            })
+          ])
+        );
       });
     });
 
@@ -595,6 +673,64 @@ describe('/api', () => {
           name: 'Bob',
           role: 'admin'
         });
+      });
+    });
+
+    describe('excerpt_text', () => {
+      it('should return the provided text truncated to 1000 symbols', async () => {
+        const mcpSession = await initializeMcpSession();
+        const inputText = 'A'.repeat(1105);
+        const response = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+              name: 'excerpt_text',
+              arguments: {
+                text: inputText
+              }
+            },
+            id: 14
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.data?.error).toBeUndefined();
+        expect(response.data?.result?.content?.[0]?.text).toHaveLength(1000);
+        expect(response.data?.result?.content?.[0]?.text).toBe(
+          inputText.slice(0, 1000)
+        );
+      });
+    });
+
+    describe('remote resource', () => {
+      it('should relay remote payload HTML into result.contents[0].text', async () => {
+        const mcpSession = await initializeMcpSession();
+        const payloadResponse = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'resources/read',
+            params: {
+              uri: remoteFixtureServer.payloadUrl
+            },
+            id: 15
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(payloadResponse.status).toBe(200);
+        expect(payloadResponse.data?.error).toBeUndefined();
+        expect(payloadResponse.data?.result?.contents?.[0]?.mimeType).toContain(
+          'text/html'
+        );
+        expect(payloadResponse.data?.result?.contents?.[0]?.text).toContain(
+          'Quarterly earnings rose 12% year-over-year'
+        );
       });
     });
 

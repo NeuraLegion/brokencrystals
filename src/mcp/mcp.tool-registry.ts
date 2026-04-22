@@ -5,6 +5,7 @@ import {
   isProcessNumbersToolInput,
   isRenderToolInput,
   isSearchUsersToolInput,
+  isExcerptTextToolInput,
   isSpawnToolInput,
   isUpdateUserToolInput,
   McpTool
@@ -18,7 +19,8 @@ export type McpToolName =
   | 'spawn_process'
   | 'get_metadata'
   | 'search_users'
-  | 'update_user';
+  | 'update_user'
+  | 'excerpt_text';
 
 export interface McpToolRegistration {
   definition: McpTool;
@@ -215,6 +217,29 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     validate: (args: unknown) => isUpdateUserToolInput(args),
     invalidArgsMessage:
       'Invalid arguments: update_user requires a non-empty "payload" object parameter'
+  },
+
+  excerpt_text: {
+    definition: {
+      name: 'excerpt_text',
+      description:
+        'Return the provided text truncated to a maximum of 1000 symbols.',
+      accessLevel: 'public',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          text: {
+            type: 'string',
+            description:
+              'Text to summarize. The tool returns the same text truncated to at most 1000 symbols.'
+          }
+        },
+        required: ['text']
+      }
+    },
+    validate: (args: unknown) => isExcerptTextToolInput(args),
+    invalidArgsMessage:
+      'Invalid arguments: excerpt_text requires a non-empty "text" string parameter'
   }
 };
 

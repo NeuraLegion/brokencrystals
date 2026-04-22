@@ -80,9 +80,6 @@ export class McpService {
 
     this.logger.debug(`Reading resource URI: ${uri}`);
 
-    return this.resourceExecutor.readLfiResource(
-      uri,
-      context.authorizationHeader
-    );
+    return this.resourceExecutor.readResource(uri, context.authorizationHeader);
   }
 }

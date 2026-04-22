@@ -148,6 +148,10 @@ export interface UpdateUserToolInput {
   payload: Record<string, unknown>;
 }
 
+export interface ExcerptTextToolInput {
+  text: string;
+}
+
 // Type guards for runtime validation
 export function isCountToolInput(args: unknown): args is CountToolInput {
   return (
@@ -281,5 +285,22 @@ export function isUpdateUserToolInput(
   const { payload } = args as { payload?: unknown };
   return (
     typeof payload === 'object' && payload !== null && !Array.isArray(payload)
+  );
+}
+
+export function isExcerptTextToolInput(
+  args: unknown
+): args is ExcerptTextToolInput {
+  const text =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>).text
+      : undefined;
+
+  return (
+    typeof args === 'object' &&
+    args !== null &&
+    'text' in args &&
+    typeof text === 'string' &&
+    text.trim().length > 0
   );
 }
