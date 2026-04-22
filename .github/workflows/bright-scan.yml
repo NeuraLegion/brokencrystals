@@ -50,6 +50,8 @@ jobs:
             ["crawler"]
           crawler_urls: |
             ["${{ inputs.target_url }}"]
+          tests: |
+            ["amazon_s3_takeover","bopla","broken_access_control","broken_saml_auth","brute_force_login","business_constraint_bypass","common_files","cookie_security","csrf","css_injection","cve_test","date_manipulation","default_login_location","directory_listing","email_injection","excessive_data_exposure","file_upload","full_path_disclosure","graphql_introspection","header_security","html_injection","http_method_fuzzing","id_enumeration","iframe_injection","improper_asset_management","insecure_output_handling","insecure_tls_configuration","jwt","ldapi","lfi","lrrl","nosql","open_cloud_storage","open_database","osi","prompt_injection","proto_pollution","retire_js","rfi","secret_tokens","server_side_js_injection","sqli","ssrf","ssti","stored_xss","unvalidated_redirect","version_control_systems","wordpress","xpathi","xss","xxe"]
 
       - name: Show scan URL
         run: echo "Scan started - ${{ steps.start.outputs.url }}"
