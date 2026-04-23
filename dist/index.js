@@ -45421,9 +45421,10 @@ async function main() {
   const origLog = console.log.bind(console);
   const origWarn = console.warn.bind(console);
   const origError = console.error.bind(console);
-  console.log = (...args) => origLog((/* @__PURE__ */ new Date()).toISOString(), ...args);
-  console.warn = (...args) => origWarn((/* @__PURE__ */ new Date()).toISOString(), ...args);
-  console.error = (...args) => origError((/* @__PURE__ */ new Date()).toISOString(), ...args);
+  const ts = () => (/* @__PURE__ */ new Date()).toLocaleString("sv-SE", { hour12: false }).replace(" ", "T");
+  console.log = (...args) => origLog(ts(), ...args);
+  console.warn = (...args) => origWarn(ts(), ...args);
+  console.error = (...args) => origError(ts(), ...args);
   console.log("[Engine] Bright Security Copilot Engine starting...");
   const config2 = loadConfig();
   const { platform, job } = await createPlatform(config2.gitToken);

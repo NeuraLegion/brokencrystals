@@ -15,12 +15,13 @@ async function main(): Promise<void> {
   const origLog = console.log.bind(console);
   const origWarn = console.warn.bind(console);
   const origError = console.error.bind(console);
+  const ts = () => new Date().toLocaleString("sv-SE", { hour12: false }).replace(" ", "T");
   console.log = (...args: unknown[]) =>
-    origLog(new Date().toISOString(), ...args);
+    origLog(ts(), ...args);
   console.warn = (...args: unknown[]) =>
-    origWarn(new Date().toISOString(), ...args);
+    origWarn(ts(), ...args);
   console.error = (...args: unknown[]) =>
-    origError(new Date().toISOString(), ...args);
+    origError(ts(), ...args);
 
   console.log("[Engine] Bright Security Copilot Engine starting...");
 
