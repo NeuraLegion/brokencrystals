@@ -37141,7 +37141,11 @@ ${body}
       if (stats.length > 1) printStartupStats(stats);
       modelSelector?.reset();
       if (lastHealthReason) config2.healthCheckSummary = lastHealthReason;
-      return { process: proc2, config: config2 };
+      return {
+        process: proc2,
+        config: config2,
+        postStartSetupHints: discovery?.postStartSetup
+      };
     } catch (err) {
       const errorMsg = toErrorMessage(err);
       const detailedError = toDetailedErrorMessage(err);
@@ -40962,6 +40966,359 @@ Use read_file to inspect for errors, setup instructions, or configuration requir
   }
 }
 
+// src/phases/setup.ts
+import { execSync as execSync5 } from "child_process";
+
+// src/prompts/setup.ts
+function firstRunSetupPrompt(baseUrl, techStack, healthCheckSummary, postStartSetupHints) {
+  const hintsBlock = postStartSetupHints.length > 0 ? `## Discovery hints
+${postStartSetupHints.map((h) => `- ${h}`).join("\n")}` : "";
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer completing the first-time setup / install wizard for a freshly deployed web application. The app is running and responds to HTTP requests, but it is in its initial setup state \u2014 the database schema may not exist yet, and no admin user has been registered.
+
+## Context
+- Base URL: ${baseUrl}
+- Tech stack: ${techStack}
+- Health check response: ${healthCheckSummary}
+${hintsBlock}
+
+## Goal
+Complete the application's first-run setup so that:
+1. The database schema is created (tables exist)
+2. An admin/superuser account is registered
+3. The app transitions from "setup mode" to "normal mode" (serving login pages, not install wizards)
+
+## Target admin credentials
+Create an admin with these credentials:
+- username: bright_test
+- email: bright@test.com
+- password: BrightTest123!
+- Make the user an admin/superuser
+
+## Tools available
+- **run_command_on_host** \u2014 Run shell commands on the host (docker ps, docker logs, curl, etc.)
+- **run_command_in_docker** \u2014 Run commands inside a Docker container
+- **probe_url** \u2014 Make HTTP requests to the running app (cookies are tracked across calls)
+- **read_file / search_files / list_files** \u2014 Inspect the application codebase
+- **search_web** \u2014 Search the internet for framework-specific setup documentation
+- **fetch_url** \u2014 Fetch full content of a web page (docs, guides)
+
+## Strategy
+
+### 1. Understand the setup state
+- Probe GET ${baseUrl}/ and examine the response \u2014 look for setup wizard, install page, or redirect
+- Check common setup URLs: ${baseUrl}/setup, ${baseUrl}/install, ${baseUrl}/finish-installation, ${baseUrl}/admin/install, ${baseUrl}/wizard
+- Read container logs: docker logs <container> --tail 100
+- Search the codebase for setup/installation routes and controllers
+
+### 2. Complete the setup via HTTP
+Most frameworks provide a web-based install wizard. Complete it by:
+- **POST to the setup form** with the admin credentials and any required config (DB connection, site name, etc.)
+- Follow redirects \u2014 setup wizards often have multiple steps
+- If the wizard requires a database connection string, check the container's environment variables
+- If the wizard asks for a site name/title, use "Bright Security Test"
+- For CMS platforms (WordPress, Umbraco, Ghost, Drupal):
+  - Find the install endpoint and POST the registration form
+  - Include any CSRF/anti-forgery tokens found in the setup page HTML
+  - Accept default settings for optional config steps
+
+### 3. Complete setup via CLI (fallback)
+If the web wizard doesn't work, try:
+- Framework CLI: \`docker exec <container> <framework-cli> setup\`
+- Database migrations: \`docker exec <container> <migration-command>\`
+- Seed commands: \`docker exec <container> <seed-command>\`
+- Direct SQL: create tables, insert admin user
+- Search codebase for setup/install scripts
+
+### 4. Verify setup completed
+After setup:
+1. Probe GET ${baseUrl}/ \u2014 should now show login page or dashboard (NOT the setup wizard)
+2. Probe the login endpoint with the admin credentials to verify they work
+3. If the app still shows a setup wizard, you missed a step \u2014 check what the wizard is asking for
+
+## Important notes
+- Many setup wizards include CSRF/anti-forgery tokens. You MUST:
+  1. GET the setup page first to extract the token
+  2. Include the token in your POST request
+- Setup forms may use various field names. Inspect the HTML to find the correct form fields.
+- Some apps need specific request headers (Accept, Content-Type) \u2014 match what the form expects.
+- If the setup creates a different password than requested (due to validation), report the ACTUAL password used.
+
+## Output
+When setup is complete and verified, respond with ONLY this JSON:
+{"completed": true, "username": "bright_test", "password": "<ACTUAL_PASSWORD>", "email": "bright@test.com", "summary": "brief description of what you did"}
+
+If the app does NOT need first-run setup (already has tables and the setup wizard is not present), respond with:
+{"completed": true, "alreadySetUp": true, "summary": "App is already set up \u2014 no wizard detected"}
+
+If you tried everything and setup cannot be completed, respond with:
+{"completed": false, "reason": "brief explanation of what went wrong"}
+
+## Rules
+- Be persistent. Try at least 5 different approaches before giving up.
+- Read HTML responses carefully \u2014 they contain form fields, CSRF tokens, and action URLs.
+- Always extract and include anti-forgery tokens from the setup page.
+- When probing, use appropriate Content-Type headers (application/x-www-form-urlencoded for HTML forms, application/json for API endpoints).
+- Do NOT skip steps \u2014 if a wizard has multiple pages, complete all of them.`
+    },
+    {
+      role: "user",
+      content: "Complete the first-time setup for this application. Return the JSON result."
+    }
+  ];
+}
+
+// src/phases/setup.ts
+async function detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints) {
+  if (postStartSetupHints && postStartSetupHints.length > 0) {
+    const combined = postStartSetupHints.join(" ").toLowerCase();
+    if (combined.includes("wizard") || combined.includes("install") || combined.includes("setup") || combined.includes("first-run") || combined.includes("register admin") || combined.includes("initial config")) {
+      console.log("[Setup] Discovery hints indicate first-run setup needed");
+      return true;
+    }
+  }
+  const summary = (startupConfig.healthCheckSummary ?? "").toLowerCase();
+  const setupKeywords = [
+    "setup wizard",
+    "install wizard",
+    "installation wizard",
+    "finish installation",
+    "first-run",
+    "first run",
+    "initial setup",
+    "configure your",
+    "register an admin",
+    "create an admin",
+    "setup page",
+    "install page"
+  ];
+  if (setupKeywords.some((kw) => summary.match(new RegExp(kw, "i")))) {
+    console.log("[Setup] Health check summary indicates first-run setup needed");
+    return true;
+  }
+  const specificSetupPaths = [
+    { path: "/install", match: /(?:step|wizard|database|admin|password|configuration)/i },
+    { path: "/setup", match: /(?:step|wizard|database|admin|password|configuration)/i },
+    { path: "/finish-installation", match: /(?:register|admin|install)/i },
+    { path: "/finish-installation/register", match: /(?:name|email|password)/i },
+    { path: "/wp-admin/install.php", match: /wordpress/i },
+    { path: "/ghost/setup", match: /ghost/i }
+  ];
+  for (const { path: path2, match: match2 } of specificSetupPaths) {
+    try {
+      const resp = await fetch(`${baseUrl}${path2}`, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(5e3)
+      });
+      if (resp.status === 200) {
+        const body = await resp.text();
+        if (match2.test(body)) {
+          console.log(`[Setup] Found setup page at ${path2}`);
+          return true;
+        }
+      }
+    } catch {
+    }
+  }
+  try {
+    const rootResp = await fetch(baseUrl, {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(5e3)
+    });
+    if (rootResp.status >= 300 && rootResp.status < 400) {
+      const location = (rootResp.headers.get("location") ?? "").toLowerCase();
+      if (location.includes("/install") || location.includes("/setup") || location.includes("/wizard") || location.includes("/finish-installation")) {
+        console.log(`[Setup] Root redirects to setup: ${location}`);
+        return true;
+      }
+    }
+  } catch {
+  }
+  return false;
+}
+async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, model) {
+  console.log("[Setup] Starting first-run setup phase...");
+  const setupTools = [
+    ...codebaseTools,
+    ...webSearchTools,
+    {
+      type: "function",
+      function: {
+        name: "run_command_on_host",
+        description: "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and host-level diagnostics. Timeout: 120 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: `Host shell command (e.g. "docker ps --format '{{.ID}} {{.Image}}'")`
+            }
+          },
+          required: ["command"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "run_command_in_docker",
+        description: "Run a command INSIDE a Docker container. Use to run migrations, CLI setup, etc. Timeout: 120 seconds.",
+        parameters: {
+          type: "object",
+          properties: {
+            container: {
+              type: "string",
+              description: "Container name or ID"
+            },
+            command: {
+              type: "string",
+              description: "Command to run inside the container"
+            }
+          },
+          required: ["container", "command"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "probe_url",
+        description: "Make an HTTP request to the running app. Cookies are tracked across calls within this session. Use to interact with setup wizards.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "Full URL to probe" },
+            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
+            headers: { type: "string", description: `JSON headers, e.g. '{"Content-Type":"application/json"}'` },
+            body: { type: "string", description: "Request body for POST/PUT" }
+          },
+          required: ["url"],
+          additionalProperties: false
+        }
+      }
+    }
+  ];
+  const baseCodeHandler = createToolHandler(repoPath);
+  const webHandler = createWebSearchHandler(repoPath);
+  const cookieJar = {};
+  const handler = async (name, args) => {
+    if (name === "run_command_on_host") {
+      const cmd = String(args.command ?? "");
+      console.log(`[Setup] run_command_on_host: ${cmd.slice(0, 200)}`);
+      return runShellCommand(repoPath, cmd, 12e4);
+    }
+    if (name === "run_command_in_docker") {
+      const container = String(args.container ?? "");
+      const cmd = String(args.command ?? "");
+      console.log(`[Setup] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      const isRunning = (() => {
+        try {
+          const out = execSync5(
+            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+            { encoding: "utf-8", timeout: 5e3 }
+          ).trim();
+          return out === "true";
+        } catch {
+          return false;
+        }
+      })();
+      const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
+      return runShellCommand(repoPath, dockerCmd, 12e4);
+    }
+    if (name === "probe_url") {
+      return probeUrlWithCookies(args, cookieJar);
+    }
+    if (name === "search_web" || name === "fetch_url") {
+      return webHandler(name, args);
+    }
+    return baseCodeHandler(name, args);
+  };
+  const messages = firstRunSetupPrompt(
+    baseUrl,
+    formatTechStack(techStack),
+    startupConfig.healthCheckSummary ?? "N/A",
+    postStartSetupHints
+  );
+  const response = await chatWithTools(llm, messages, setupTools, handler, model, 30);
+  try {
+    const json = extractJson(response);
+    const result = JSON.parse(json);
+    if (result.completed) {
+      const summary = result.summary ?? (result.alreadySetUp ? "Already set up" : "Setup completed");
+      console.log(`[Setup] First-run setup completed: ${summary}`);
+      const credentials = result.username && result.password ? { username: result.username, password: result.password, email: result.email ?? "bright@test.com" } : void 0;
+      return { completed: true, credentials, summary };
+    }
+    console.warn(`[Setup] First-run setup failed: ${result.reason ?? "unknown"}`);
+    return { completed: false, summary: result.reason ?? "Setup failed" };
+  } catch {
+    console.warn(`[Setup] Could not parse setup result: ${response.slice(0, 200)}`);
+    return { completed: false, summary: "Failed to parse LLM response" };
+  }
+}
+async function probeUrlWithCookies(args, cookieJar) {
+  const url2 = String(args.url ?? "");
+  const method = String(args.method ?? "GET").toUpperCase();
+  const body = args.body ? String(args.body) : void 0;
+  let headers = {};
+  if (args.headers) {
+    try {
+      headers = JSON.parse(String(args.headers));
+    } catch {
+    }
+  }
+  const cookieStr = Object.entries(cookieJar).map(([k, v]) => `${k}=${v}`).join("; ");
+  if (cookieStr) {
+    headers["Cookie"] = cookieStr;
+  }
+  console.log(`[Setup] probe_url: ${method} ${url2}`);
+  try {
+    const resp = await fetch(url2, {
+      method,
+      headers,
+      body: method !== "GET" && method !== "HEAD" ? body : void 0,
+      redirect: "manual",
+      signal: AbortSignal.timeout(15e3)
+    });
+    const setCookies = resp.headers.getSetCookie?.() ?? [];
+    for (const sc of setCookies) {
+      const match2 = sc.match(/^([^=]+)=([^;]*)/);
+      if (match2) {
+        cookieJar[match2[1]] = match2[2];
+      }
+    }
+    const status = resp.status;
+    const respHeaders = {};
+    resp.headers.forEach((v, k) => {
+      respHeaders[k] = v;
+    });
+    let respBody = "";
+    try {
+      respBody = await resp.text();
+    } catch {
+      respBody = "(could not read body)";
+    }
+    const maxLen = 8e3;
+    const truncated = respBody.length > maxLen ? respBody.slice(0, maxLen) + `
+... (truncated, ${respBody.length} bytes total)` : respBody;
+    const headerSummary = Object.entries(respHeaders).filter(([k]) => ["content-type", "location", "set-cookie", "x-csrf-token"].includes(k.toLowerCase())).map(([k, v]) => `${k}: ${v}`).join("\n");
+    return `HTTP ${status}
+${headerSummary}
+
+${truncated}`;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.log(`[Setup] probe_url error: ${msg}`);
+    return `Error: ${msg}`;
+  }
+}
+
 // src/phases/entrypoints.ts
 var CONCURRENCY = 10;
 async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterId, authObjectId) {
@@ -41974,7 +42331,7 @@ function safeReadFile(fullPath) {
 }
 
 // src/phases/harness.ts
-import { execSync as execSync5, spawn as spawn3 } from "child_process";
+import { execSync as execSync6, spawn as spawn3 } from "child_process";
 import { writeFileSync as writeFileSync5, existsSync as existsSync6, readFileSync as readFileSync6 } from "fs";
 import { resolve as resolve4 } from "path";
 import { createInterface as createInterface2 } from "readline";
@@ -42487,7 +42844,7 @@ async function startMinimalInfra(repoPath, infra) {
     const cmd = `docker compose -f ${infra.composeFile} up -d ${serviceNames}`;
     console.log(`[Harness] Starting infra: ${cmd}`);
     try {
-      execSync5(cmd, {
+      execSync6(cmd, {
         cwd: repoPath,
         stdio: "pipe",
         timeout: 12e4,
@@ -42538,7 +42895,7 @@ async function startServicesStandalone(services) {
     const cmd = `docker run -d --name harness_${svc.name} ${portFlags} ${envFlags} ${image}`;
     console.log(`[Harness] Starting standalone: ${cmd}`);
     try {
-      execSync5(cmd, { stdio: "pipe", timeout: 6e4 });
+      execSync6(cmd, { stdio: "pipe", timeout: 6e4 });
     } catch (err) {
       console.warn(`[Harness] Failed to start ${svc.name}: ${toErrorMessage(err)}`);
     }
@@ -42709,7 +43066,7 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
   for (let attempt = 0; attempt < MAX_HARNESS_ATTEMPTS; attempt++) {
     console.log(`[Harness] Building harness image (attempt ${attempt + 1}/${MAX_HARNESS_ATTEMPTS})...`);
     try {
-      execSync5(`docker build -t ${HARNESS_IMAGE} -f Dockerfile.harness .`, {
+      execSync6(`docker build -t ${HARNESS_IMAGE} -f Dockerfile.harness .`, {
         cwd: repoPath,
         stdio: "pipe",
         timeout: 12e4
@@ -42731,7 +43088,7 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
       continue;
     }
     try {
-      execSync5(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
+      execSync6(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
         stdio: "ignore",
         timeout: 1e4
       });
@@ -43001,11 +43358,11 @@ ${outputLines.slice(-30).join("\n")}`
 }
 function cleanupHarnessInfra(repoPath) {
   try {
-    execSync5(
+    execSync6(
       `docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`,
       { stdio: "ignore", timeout: 15e3 }
     );
-    execSync5(
+    execSync6(
       "docker rm -f $(docker ps -aq --filter name=harness_) 2>/dev/null || true",
       { stdio: "ignore", timeout: 15e3 }
     );
@@ -43144,8 +43501,48 @@ async function runOrchestrator(ctx) {
       "repeater",
       `Repeater connected: ${repeater.repeaterId}`
     );
+    let setupCredentials;
+    const needsSetup = await detectFirstRunSetup(baseUrl, startupConfig, startup.postStartSetupHints);
+    if (needsSetup) {
+      await progress.phaseStart("first_run_setup", "Completing first-time application setup");
+      console.log("[Engine] App appears to be in first-run setup mode \u2014 completing install wizard");
+      const setupResult = await completeFirstRunSetup(
+        llm,
+        repoPath,
+        baseUrl,
+        techStack,
+        startupConfig,
+        startup.postStartSetupHints ?? [],
+        config2.modelSelector.current()
+      );
+      if (setupResult.completed) {
+        setupCredentials = setupResult.credentials;
+        await progress.phaseDetail(
+          "first_run_setup",
+          "done",
+          `Setup completed: ${setupResult.summary}`
+        );
+        console.log(`[Engine] First-run setup completed: ${setupResult.summary}`);
+      } else {
+        console.warn(`[Engine] First-run setup failed: ${setupResult.summary}`);
+        await progress.phaseDetail(
+          "first_run_setup",
+          "failed",
+          `Setup failed: ${setupResult.summary}`
+        );
+      }
+    }
     await progress.phaseStart("auth", "Detecting authentication requirements");
-    const preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
+    let preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
+    if (setupCredentials) {
+      preAuthContext += `
+
+IMPORTANT: A test user was already created during first-run setup:
+- username: ${setupCredentials.username}
+- email: ${setupCredentials.email}
+- password: ${setupCredentials.password}
+This user should work for authentication. Skip user registration/seeding and go straight to auth configuration.`;
+    }
     const authResult = await detectAndConfigureAuth(
       llm,
       bright,

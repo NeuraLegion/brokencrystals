@@ -22,6 +22,11 @@ import {
   type AuthResult,
 } from "./phases/auth.js";
 import {
+  detectFirstRunSetup,
+  completeFirstRunSetup,
+  type FirstRunSetupResult,
+} from "./phases/setup.js";
+import {
   registerEntrypoints,
   verifyEntrypointAuth,
   pruneDeadEntrypoints,
@@ -207,11 +212,58 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       `Repeater connected: ${repeater.repeaterId}`,
     );
 
+    // ----- Phase 2.5: First-run setup (if needed) -----
+    // Some apps (Umbraco, WordPress, Ghost, etc.) require completing an install wizard
+    // before auth can work. Detect and complete it before the auth phase.
+    let setupCredentials: FirstRunSetupResult["credentials"] | undefined;
+    const needsSetup = await detectFirstRunSetup(baseUrl, startupConfig, startup.postStartSetupHints);
+    if (needsSetup) {
+      await progress.phaseStart("first_run_setup", "Completing first-time application setup");
+      console.log("[Engine] App appears to be in first-run setup mode — completing install wizard");
+
+      const setupResult = await completeFirstRunSetup(
+        llm,
+        repoPath,
+        baseUrl,
+        techStack,
+        startupConfig,
+        startup.postStartSetupHints ?? [],
+        config.modelSelector.current(),
+      );
+
+      if (setupResult.completed) {
+        setupCredentials = setupResult.credentials;
+        await progress.phaseDetail(
+          "first_run_setup",
+          "done",
+          `Setup completed: ${setupResult.summary}`,
+        );
+        console.log(`[Engine] First-run setup completed: ${setupResult.summary}`);
+      } else {
+        console.warn(`[Engine] First-run setup failed: ${setupResult.summary}`);
+        await progress.phaseDetail(
+          "first_run_setup",
+          "failed",
+          `Setup failed: ${setupResult.summary}`,
+        );
+        // Don't abort — auth phase might still work or handle it via repair
+      }
+    }
+
     // ----- Phase 3: Auth configuration (fail fast — before expensive EP analysis) -----
     await progress.phaseStart("auth", "Detecting authentication requirements");
 
     // Build a lightweight context summary (no endpoints yet)
-    const preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
+    let preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
+
+    // If first-run setup created an admin, tell auth about it so it can skip user seeding
+    if (setupCredentials) {
+      preAuthContext += `\n\nIMPORTANT: A test user was already created during first-run setup:\n` +
+        `- username: ${setupCredentials.username}\n` +
+        `- email: ${setupCredentials.email}\n` +
+        `- password: ${setupCredentials.password}\n` +
+        `This user should work for authentication. Skip user registration/seeding and go straight to auth configuration.`;
+    }
 
     const authResult = await detectAndConfigureAuth(
       llm,

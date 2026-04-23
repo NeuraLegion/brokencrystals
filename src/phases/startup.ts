@@ -183,6 +183,8 @@ export function canBuildFromSource(repoPath: string): boolean {
 export interface StartupResult {
   process: ChildProcess;
   config: StartupConfig;
+  /** Post-start setup hints from discovery (e.g. "App has a first-run setup wizard") */
+  postStartSetupHints?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -681,7 +683,11 @@ When in doubt about whether the app is running vs broken, check: does the page c
       if (stats.length > 1) printStartupStats(stats);
       modelSelector?.reset();
       if (lastHealthReason) config.healthCheckSummary = lastHealthReason;
-      return { process: proc, config };
+      return {
+        process: proc,
+        config,
+        postStartSetupHints: discovery?.postStartSetup,
+      };
     } catch (err) {
       const errorMsg = toErrorMessage(err);
       const detailedError = toDetailedErrorMessage(err);
