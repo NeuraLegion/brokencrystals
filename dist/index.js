@@ -43566,7 +43566,7 @@ async function runOrchestrator(ctx) {
     if (needsSetup) {
       await progress.phaseStart("first_run_setup", "Completing first-time application setup");
       console.log("[Engine] App appears to be in first-run setup mode \u2014 completing install wizard");
-      const setupResult = await completeFirstRunSetup(
+      let setupResult = await completeFirstRunSetup(
         llm,
         repoPath,
         baseUrl,
@@ -43575,6 +43575,18 @@ async function runOrchestrator(ctx) {
         startup.postStartSetupHints ?? [],
         config2.modelSelector.current()
       );
+      if (!setupResult.completed && config2.modelSelector.escalate()) {
+        console.log(`[Engine] First-run setup failed \u2014 retrying with escalated model`);
+        setupResult = await completeFirstRunSetup(
+          llm,
+          repoPath,
+          baseUrl,
+          techStack,
+          startupConfig,
+          startup.postStartSetupHints ?? [],
+          config2.modelSelector.current()
+        );
+      }
       if (setupResult.completed) {
         setupCredentials = setupResult.credentials;
         await progress.phaseDetail(
@@ -43583,6 +43595,7 @@ async function runOrchestrator(ctx) {
           `Setup completed: ${setupResult.summary}`
         );
         console.log(`[Engine] First-run setup completed: ${setupResult.summary}`);
+        config2.modelSelector.reset();
       } else {
         console.warn(`[Engine] First-run setup failed: ${setupResult.summary}`);
         await progress.phaseDetail(
@@ -43623,6 +43636,7 @@ This user should work for authentication. Skip user registration/seeding and go 
     const MAX_INFRA_BOUNCEBACKS = 5;
     for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {
       if (!authResult.authFailed || !authResult.infraRepairHint) break;
+      config2.modelSelector.escalate();
       console.log(`[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} \u2014 repairing infrastructure`);
       console.log(`[Engine] Hint: ${authResult.infraRepairHint.slice(0, 200)}`);
       await progress.phaseDetail(
@@ -43721,6 +43735,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         }
       }
     }
+    config2.modelSelector.reset();
     await progress.phaseStart(
       "swagger",
       "Probing for OpenAPI/Swagger spec"
@@ -43749,12 +43764,21 @@ This user should work for authentication. Skip user registration/seeding and go 
       "analyze",
       "Analyzing source code for endpoints and parameters"
     );
-    const staticEndpoints = await discoverEndpoints(
+    let staticEndpoints = await discoverEndpoints(
       llm,
       repoPath,
       techStack,
       config2.modelSelector.current()
     );
+    if (staticEndpoints.length === 0 && swaggerEndpoints.length === 0 && config2.modelSelector.escalate()) {
+      console.log(`[Analyze] No endpoints found \u2014 retrying with escalated model`);
+      staticEndpoints = await discoverEndpoints(
+        llm,
+        repoPath,
+        techStack,
+        config2.modelSelector.current()
+      );
+    }
     console.log(
       `[Analyze] Discovered ${staticEndpoints.length} endpoints via static analysis`
     );

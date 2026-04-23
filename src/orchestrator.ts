@@ -221,7 +221,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       await progress.phaseStart("first_run_setup", "Completing first-time application setup");
       console.log("[Engine] App appears to be in first-run setup mode — completing install wizard");
 
-      const setupResult = await completeFirstRunSetup(
+      // Try setup with current model, escalate once on failure
+      let setupResult = await completeFirstRunSetup(
         llm,
         repoPath,
         baseUrl,
@@ -231,6 +232,19 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         config.modelSelector.current(),
       );
 
+      if (!setupResult.completed && config.modelSelector.escalate()) {
+        console.log(`[Engine] First-run setup failed — retrying with escalated model`);
+        setupResult = await completeFirstRunSetup(
+          llm,
+          repoPath,
+          baseUrl,
+          techStack,
+          startupConfig,
+          startup.postStartSetupHints ?? [],
+          config.modelSelector.current(),
+        );
+      }
+
       if (setupResult.completed) {
         setupCredentials = setupResult.credentials;
         await progress.phaseDetail(
@@ -239,6 +253,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           `Setup completed: ${setupResult.summary}`,
         );
         console.log(`[Engine] First-run setup completed: ${setupResult.summary}`);
+        config.modelSelector.reset(); // back to base for auth phase
       } else {
         console.warn(`[Engine] First-run setup failed: ${setupResult.summary}`);
         await progress.phaseDetail(
@@ -289,6 +304,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     const MAX_INFRA_BOUNCEBACKS = 5;
     for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {
       if (!authResult.authFailed || !authResult.infraRepairHint) break;
+
+      // Escalate the model on each bounce — harder problems need stronger models
+      config.modelSelector.escalate();
 
       // ----- Auth infra bounce-back: repair infra and retry auth -----
       console.log(`[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} — repairing infrastructure`);
@@ -404,6 +422,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
     }
 
+    // Reset model to base tier after auth — endpoint discovery is less demanding
+    config.modelSelector.reset();
+
     // ----- Phase 4: Swagger / OpenAPI discovery -----
     await progress.phaseStart(
       "swagger",
@@ -436,12 +457,24 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       "analyze",
       "Analyzing source code for endpoints and parameters",
     );
-    const staticEndpoints = await discoverEndpoints(
+    let staticEndpoints = await discoverEndpoints(
       llm,
       repoPath,
       techStack,
       config.modelSelector.current(),
     );
+
+    // If no endpoints found, escalate model and retry once
+    if (staticEndpoints.length === 0 && swaggerEndpoints.length === 0 && config.modelSelector.escalate()) {
+      console.log(`[Analyze] No endpoints found — retrying with escalated model`);
+      staticEndpoints = await discoverEndpoints(
+        llm,
+        repoPath,
+        techStack,
+        config.modelSelector.current(),
+      );
+    }
+
     console.log(
       `[Analyze] Discovered ${staticEndpoints.length} endpoints via static analysis`,
     );
