@@ -34372,7 +34372,8 @@ async function scoreHttpFramework(absDir) {
     try {
       const content = readFileSync2(resolve(absDir, f), "utf-8");
       const lower = content.toLowerCase();
-      if (/sdk\s*=\s*"microsoft\.net\.sdk\.web"/i.test(content)) {
+      const noComments = content.replace(/<!--[\s\S]*?-->/g, "");
+      if (/sdk\s*=\s*"microsoft\.net\.sdk\.web"/i.test(noComments)) {
         return 8;
       }
       const pkgRefs = content.match(/<PackageReference\s[^>]*Include="[^"]*"/gi) || [];
@@ -36041,14 +36042,32 @@ var dockerfileTools = [
   ...codebaseTools,
   verifyDockerImageTool
 ];
-async function verifyDockerImage(imageRef) {
-  const [imagePart, tag = "latest"] = imageRef.split(":");
-  const firstSegment = imagePart.split("/")[0];
-  if (firstSegment.includes(".")) {
-    return verifyOciImage(imagePart, tag);
+function parseImageRef(imageRef) {
+  const segments = imageRef.split("/");
+  let registry2 = null;
+  let repoParts;
+  if (segments.length > 1 && (segments[0].includes(".") || segments[0].includes(":"))) {
+    registry2 = segments[0];
+    repoParts = segments.slice(1);
+  } else {
+    repoParts = segments;
   }
-  const repo = imagePart.includes("/") ? imagePart : `library/${imagePart}`;
-  const url2 = `https://hub.docker.com/v2/repositories/${repo}/tags/${tag}`;
+  const last = repoParts[repoParts.length - 1];
+  const colonIdx = last.lastIndexOf(":");
+  let tag = "latest";
+  if (colonIdx !== -1) {
+    tag = last.substring(colonIdx + 1);
+    repoParts[repoParts.length - 1] = last.substring(0, colonIdx);
+  }
+  return { registry: registry2, repo: repoParts.join("/"), tag };
+}
+async function verifyDockerImage(imageRef) {
+  const { registry: registry2, repo, tag } = parseImageRef(imageRef);
+  if (registry2) {
+    return verifyOciImage(`${registry2}/${repo}`, tag);
+  }
+  const hubRepo = repo.includes("/") ? repo : `library/${repo}`;
+  const url2 = `https://hub.docker.com/v2/repositories/${hubRepo}/tags/${tag}`;
   try {
     const res = await fetch(url2, {
       signal: AbortSignal.timeout(1e4),
@@ -36173,7 +36192,8 @@ async function validateDockerfileImages(dockerfile) {
   return missing;
 }
 async function findAlternativeImage(badRef) {
-  const [imagePart, badTag = "latest"] = badRef.split(":");
+  const { registry: registry2, repo, tag: badTag } = parseImageRef(badRef);
+  const imagePart = registry2 ? `${registry2}/${repo}` : repo;
   const candidates = [];
   if (badTag.endsWith("-slim")) {
     candidates.push(`${imagePart}:${badTag.replace(/-slim$/, "")}`);

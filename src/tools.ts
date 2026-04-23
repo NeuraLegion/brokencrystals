@@ -691,23 +691,58 @@ export const dockerfileTools: ChatCompletionTool[] = [
 ];
 
 /**
+ * Parse a Docker image reference into registry, repo, and tag.
+ * Handles registries with ports (e.g. localhost:5000/myapp:v1).
+ * Registry is detected by a '.' or ':' in the first path segment.
+ */
+function parseImageRef(imageRef: string): {
+  registry: string | null;
+  repo: string;
+  tag: string;
+} {
+  const segments = imageRef.split("/");
+  let registry: string | null = null;
+  let repoParts: string[];
+
+  // First segment with '.' or ':' indicates a registry (e.g. mcr.microsoft.com, localhost:5000)
+  if (
+    segments.length > 1 &&
+    (segments[0].includes(".") || segments[0].includes(":"))
+  ) {
+    registry = segments[0];
+    repoParts = segments.slice(1);
+  } else {
+    repoParts = segments;
+  }
+
+  // Tag is after the last ':' in the last path segment
+  const last = repoParts[repoParts.length - 1];
+  const colonIdx = last.lastIndexOf(":");
+  let tag = "latest";
+  if (colonIdx !== -1) {
+    tag = last.substring(colonIdx + 1);
+    repoParts[repoParts.length - 1] = last.substring(0, colonIdx);
+  }
+
+  return { registry, repo: repoParts.join("/"), tag };
+}
+
+/**
  * Check if a Docker image:tag exists on its registry.
  * Supports Docker Hub (default) and third-party registries (MCR, GHCR, GCR, Quay, etc.)
  * via the OCI Distribution API.
  */
 export async function verifyDockerImage(imageRef: string): Promise<boolean> {
-  // Parse image:tag
-  const [imagePart, tag = "latest"] = imageRef.split(":");
+  const { registry, repo, tag } = parseImageRef(imageRef);
 
-  // Detect third-party registries: first segment contains a dot (e.g. mcr.microsoft.com, ghcr.io)
-  const firstSegment = imagePart.split("/")[0];
-  if (firstSegment.includes(".")) {
-    return verifyOciImage(imagePart, tag);
+  // Third-party registry detected — use OCI Distribution API
+  if (registry) {
+    return verifyOciImage(`${registry}/${repo}`, tag);
   }
 
   // Docker Hub: official images are under library/
-  const repo = imagePart.includes("/") ? imagePart : `library/${imagePart}`;
-  const url = `https://hub.docker.com/v2/repositories/${repo}/tags/${tag}`;
+  const hubRepo = repo.includes("/") ? repo : `library/${repo}`;
+  const url = `https://hub.docker.com/v2/repositories/${hubRepo}/tags/${tag}`;
   try {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(10_000),
@@ -876,7 +911,8 @@ export async function validateDockerfileImages(
  * Returns the first working tag, or null if none found.
  */
 async function findAlternativeImage(badRef: string): Promise<string | null> {
-  const [imagePart, badTag = "latest"] = badRef.split(":");
+  const { registry, repo, tag: badTag } = parseImageRef(badRef);
+  const imagePart = registry ? `${registry}/${repo}` : repo;
 
   // Generate candidates by trying common tag patterns
   const candidates: string[] = [];

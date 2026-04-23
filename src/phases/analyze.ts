@@ -591,7 +591,8 @@ async function scoreHttpFramework(absDir: string): Promise<number> {
       const content = readFileSync(resolve(absDir, f), "utf-8");
       const lower = content.toLowerCase();
       // Check for Web SDK (definitive signal for ASP.NET web projects)
-      if (/sdk\s*=\s*"microsoft\.net\.sdk\.web"/i.test(content)) {
+      const noComments = content.replace(/<!--[\s\S]*?-->/g, "");
+      if (/sdk\s*=\s*"microsoft\.net\.sdk\.web"/i.test(noComments)) {
         return 8;
       }
       // Check actual PackageReference elements, not comments
