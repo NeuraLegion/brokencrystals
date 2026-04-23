@@ -39134,9 +39134,22 @@ ${credentialNote}
 - **read_file / search_files / list_files** \u2014 Inspect the codebase to understand auth flow.
 - **search_web** \u2014 Search the internet for how this app handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough.
 - **fetch_url** \u2014 Fetch full content of a web page (e.g. app documentation, Stack Overflow answer). Large pages are saved to .bright-fetched-page.txt \u2014 use read_file to see full content.
-- **create_auth** \u2014 Create a Bright auth object. This is the ONLY way to properly test login \u2014 it handles cookies, CSRF, redirects correctly.
+- **create_auth** \u2014 Create a Bright auth object with simplified parameters. Best for standard session/cookie, JWT, and API key flows.
+- **create_auth_raw** \u2014 Create a Bright auth object with FULL multistep control. Use this for complex flows like OAuth2 PKCE, authorization code grants, or any flow needing multiple HTTP steps with value extraction between them. You define the exact steps, embedders, and triggers.
 - **test_auth_object** \u2014 Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** \u2014 Delete a broken auth object to recreate with different settings.
+
+## When to use create_auth vs create_auth_raw
+- **create_auth**: Standard flows \u2014 single login POST that returns a cookie or JWT. Handles CSRF, redirects automatically.
+- **create_auth_raw**: Complex multi-step flows \u2014 OAuth2 PKCE (login \u2192 authorize \u2192 token exchange), OpenID Connect authorization code, or any flow where:
+  - Login returns a cookie but you need a SECOND request to get an authorization code
+  - You need to extract values from redirect Location headers (e.g. ?code=...)
+  - You need to exchange an auth code for an access token
+  - The final auth is a Bearer token obtained through multiple HTTP round-trips
+  With create_auth_raw, you define each step and use NexTemplate expressions to pass values between steps:
+  - Body extraction: {{ auth_object.stages.<step_name>.response.body | match: /<regex_with_capture_group>/ }}
+  - Header extraction: {{ auth_object.stages.<step_name>.response.headers.<HeaderName> | match: /<regex>/ }}
+  Use followRedirects: false on steps where you need to capture the Location header (e.g. OAuth2 authorize \u2192 302).
 
 ## Workflow
 
@@ -39207,6 +39220,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Add/remove csrfUrl
    - Add loginAccept='application/json' if login returns HTML error pages
    - Add cookieUrl (app root URL) if CSRF token fails despite being correct (session cookie needed before CSRF)
+   - **Switch to create_auth_raw** if the app uses OAuth2, PKCE, OpenID Connect, or any multi-step token exchange. Signs: login returns 200 with a cookie but the test request still fails with 401; app has /authorize, /token, or /oauth endpoints; WWW-Authenticate: Bearer in responses; OpenAPI spec mentions OAuth2 flows.
    - **If the application itself is misconfigured**, diagnose with command tools and respond with INFRA_REPAIR
 
 ## CRITICAL PERSISTENCE RULES
@@ -39217,7 +39231,8 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
   4. Both json and form loginContentType
   5. With and without csrfUrl
   6. Different credential field names \u2014 try "username", "email", "login" as the identifier field; some apps use the email address in the "username" field, others have a separate "email" field
-  6. **If login responses contain HTML error pages or misconfiguration warnings**, diagnose with command tools and respond with INFRA_REPAIR \u2014 do NOT try to fix the app yourself (no killing processes, no restarting containers, no modifying files)
+  7. **create_auth_raw for OAuth2/PKCE/multi-step flows** \u2014 if the app uses Bearer tokens obtained via authorization code exchange, build the full step chain: login POST \u2192 authorize GET (followRedirects:false) \u2192 token POST \u2192 Bearer embedder
+  8. **If login responses contain HTML error pages or misconfiguration warnings**, diagnose with command tools and respond with INFRA_REPAIR \u2014 do NOT try to fix the app yourself (no killing processes, no restarting containers, no modifying files)
 - **After each failed test_auth_object, analyze the response body previews for EACH stage to understand the root cause.**
 - **Use probe_url between attempts to gather more data** \u2014 probe new endpoints, check response formats, search the codebase for auth routes.
 - **You have 50 rounds. Use them ALL before giving up.** Each create/test/delete cycle takes ~3 rounds. You can try 15+ different configurations.
@@ -39989,6 +40004,58 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     {
       type: "function",
       function: {
+        name: "create_auth_raw",
+        description: `Create a Bright auth object with FULL control over the multistep configuration.
+Use this when the simplified create_auth tool cannot express the auth flow \u2014 e.g. OAuth2 PKCE, multi-step token exchanges, authorization code flows, or any flow requiring more than a single login POST.
+
+You define the exact steps array, embedders, reauthTriggers, and test request. Steps execute in order. Each step can reference previous step responses via NexTemplate expressions:
+- Extract from response body: {{ auth_object.stages.<step_name>.response.body | match: /<regex_with_capture_group>/ }}
+- Extract from response header: {{ auth_object.stages.<step_name>.response.headers.Location | match: /code=([^&]+)/ }}
+
+Example \u2014 OAuth2 PKCE flow:
+  steps: [
+    { name: "login", request: { method: "POST", url: "http://localhost/login", body: '{"username":"...","password":"..."}', headers: [{ name: "Content-Type", value: "application/json" }], protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
+    { name: "authorize", request: { method: "GET", url: "http://localhost/authorize?client_id=my-app&response_type=code&code_challenge=...&code_challenge_method=S256&redirect_uri=http://localhost/callback&scope=offline_access", protocol: "http", followRedirects: false }, successResponseDetection: [{ type: "status", statuses: [302] }] },
+    { name: "token", request: { method: "POST", url: "http://localhost/token", body: "grant_type=authorization_code&code={{ auth_object.stages.authorize.response.headers.Location | match: /code=([^&]+)/ }}&code_verifier=...&redirect_uri=http://localhost/callback&client_id=my-app", headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }], protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] }
+  ]
+  embedders: [{ type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.token.response.body | match: /"access_token"\\s*:\\s*"([^"]*)"/ }}", mergeStrategy: "replace" }]`,
+        parameters: {
+          type: "object",
+          properties: {
+            steps: {
+              type: "string",
+              description: `JSON array of multistep login steps. Each step: { name: string, request: { method, url, protocol: "http", headers?: [{name, value}], body?: string, bodyType?: "clear_text", followRedirects?: boolean, maxRedirects?: number, changeMethodOnRedirect?: boolean }, successResponseDetection?: [{type: "status", statuses: [200]}] }. Steps execute in order. Use NexTemplate to reference prior step responses.`
+            },
+            embedders: {
+              type: "string",
+              description: `JSON array of embedders that inject tokens into scan requests. Each: { type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.<step_name>.response.body | match: /<regex>/ }}", mergeStrategy: "replace" }. For cookie/session auth (no explicit token), omit or pass empty array \u2014 Bright auto-replays cookies.`
+            },
+            testUrl: {
+              type: "string",
+              description: "Full URL to a protected endpoint for session validation. Should return different responses for authenticated vs unauthenticated requests."
+            },
+            testMethod: {
+              type: "string",
+              enum: ["GET", "POST", "PUT", "DELETE"],
+              description: "HTTP method for the test request. Default: GET"
+            },
+            reauthTriggers: {
+              type: "string",
+              description: `JSON array of reauth triggers. Default: [{"type":"TRIGGER","location":"status","statuses":[401,403]}]. For redirect-based: [{"type":"TRIGGER","location":"header","name":"Location","patterns":["login"]}]. Can combine with OR: [..., {"type":"OR"}, ...].`
+            },
+            successResponseDetection: {
+              type: "string",
+              description: `JSON array of success detection rules for the overall auth object (applied to the login response). Default: [{"type":"status","statuses":[200]}].`
+            }
+          },
+          required: ["steps", "testUrl"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
         name: "test_auth_object",
         description: "Test a Bright auth object. Runs the full login flow and returns detailed stage-by-stage results including HTTP status codes, response body previews, Set-Cookie headers, and request details for each stage (validation, authentication, authorization). Use the response body previews to diagnose issues \u2014 e.g. if the login response contains HTML error pages instead of JSON, the application may need configuration fixes.",
         parameters: {
@@ -40126,13 +40193,104 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
       }
       return JSON.stringify({ authObjectId: result.id });
     }
+    if (name === "create_auth_raw") {
+      lastCreateArgs = { ...args, authStyle: "raw" };
+      let steps;
+      try {
+        steps = JSON.parse(String(args.steps));
+        if (!Array.isArray(steps) || steps.length === 0) {
+          return JSON.stringify({ error: "steps must be a non-empty JSON array" });
+        }
+      } catch (e) {
+        return JSON.stringify({ error: `Invalid steps JSON: ${e}` });
+      }
+      let embedders = [];
+      if (args.embedders) {
+        try {
+          embedders = JSON.parse(String(args.embedders));
+          if (!Array.isArray(embedders)) {
+            return JSON.stringify({ error: "embedders must be a JSON array" });
+          }
+        } catch (e) {
+          return JSON.stringify({ error: `Invalid embedders JSON: ${e}` });
+        }
+      }
+      let reauthTriggers = [
+        { type: "TRIGGER", location: "status", statuses: [401, 403] }
+      ];
+      if (args.reauthTriggers) {
+        try {
+          reauthTriggers = JSON.parse(String(args.reauthTriggers));
+          if (!Array.isArray(reauthTriggers)) {
+            return JSON.stringify({ error: "reauthTriggers must be a JSON array" });
+          }
+        } catch (e) {
+          return JSON.stringify({ error: `Invalid reauthTriggers JSON: ${e}` });
+        }
+      }
+      let successDetection = [
+        { type: "status", statuses: [200] }
+      ];
+      if (args.successResponseDetection) {
+        try {
+          successDetection = JSON.parse(String(args.successResponseDetection));
+          if (!Array.isArray(successDetection)) {
+            return JSON.stringify({ error: "successResponseDetection must be a JSON array" });
+          }
+        } catch (e) {
+          return JSON.stringify({ error: `Invalid successResponseDetection JSON: ${e}` });
+        }
+      }
+      const testMethod = args.testMethod ? String(args.testMethod) : "GET";
+      const testUrl2 = String(args.testUrl);
+      for (const step of steps) {
+        const req = step.request;
+        if (req) {
+          if (!req.protocol) req.protocol = "http";
+          if (!req.bodyType) req.bodyType = "clear_text";
+        }
+      }
+      const body = {
+        name: "Engine Auth \u2014 raw multistep",
+        projectId,
+        type: "multistep",
+        test: {
+          repeaterId,
+          request: {
+            method: testMethod,
+            url: testUrl2,
+            protocol: "http",
+            bodyType: "clear_text"
+          }
+        },
+        successResponseDetection: successDetection,
+        reauthTriggers,
+        config: {
+          multistep: {
+            steps,
+            ...embedders.length > 0 ? { embedders } : {}
+          }
+        }
+      };
+      const stepNames = steps.map((s) => {
+        const req = s.request;
+        return `${s.name}(${req?.method ?? "?"} ${req?.url ?? "?"})`;
+      }).join(" \u2192 ");
+      console.log(`[Auth] Creating raw multistep auth \u2014 steps: ${stepNames}, test: ${testMethod} ${testUrl2}`);
+      const result = await postAuthObject(api, body);
+      if (result.error) {
+        attemptLog.push(`- create_auth_raw(steps=[${stepNames}], testUrl=${testUrl2}) \u2192 ERROR: ${result.error}`);
+        return JSON.stringify({ error: result.error });
+      }
+      return JSON.stringify({ authObjectId: result.id });
+    }
     if (name === "test_auth_object") {
       const result = await testAuthObject(
         api,
         String(args.authObjectId)
       );
       const summary = JSON.stringify(result);
-      const configSummary = `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
+      const configSummary = lastCreateArgs.authStyle === "raw" ? `raw multistep, testUrl=${lastCreateArgs.testUrl}` : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
       if (!result.passed) {
         attemptLog.push(`- create_auth(${configSummary}) \u2192 test FAILED: ${result.summary ?? summary.slice(0, 300)}`);
       }
@@ -40175,7 +40333,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
   };
   const webHandler = createWebSearchHandler(repoPath);
   const combinedHandler = async (name, args) => {
-    if (name === "create_auth" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
+    if (name === "create_auth" || name === "create_auth_raw" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
       return customHandler(name, args);
     }
     if (name === "search_web" || name === "fetch_url") {

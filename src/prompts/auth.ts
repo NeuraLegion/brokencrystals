@@ -156,9 +156,22 @@ ${credentialNote}
 - **read_file / search_files / list_files** — Inspect the codebase to understand auth flow.
 - **search_web** — Search the internet for how this app handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough.
 - **fetch_url** — Fetch full content of a web page (e.g. app documentation, Stack Overflow answer). Large pages are saved to .bright-fetched-page.txt — use read_file to see full content.
-- **create_auth** — Create a Bright auth object. This is the ONLY way to properly test login — it handles cookies, CSRF, redirects correctly.
+- **create_auth** — Create a Bright auth object with simplified parameters. Best for standard session/cookie, JWT, and API key flows.
+- **create_auth_raw** — Create a Bright auth object with FULL multistep control. Use this for complex flows like OAuth2 PKCE, authorization code grants, or any flow needing multiple HTTP steps with value extraction between them. You define the exact steps, embedders, and triggers.
 - **test_auth_object** — Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** — Delete a broken auth object to recreate with different settings.
+
+## When to use create_auth vs create_auth_raw
+- **create_auth**: Standard flows — single login POST that returns a cookie or JWT. Handles CSRF, redirects automatically.
+- **create_auth_raw**: Complex multi-step flows — OAuth2 PKCE (login → authorize → token exchange), OpenID Connect authorization code, or any flow where:
+  - Login returns a cookie but you need a SECOND request to get an authorization code
+  - You need to extract values from redirect Location headers (e.g. ?code=...)
+  - You need to exchange an auth code for an access token
+  - The final auth is a Bearer token obtained through multiple HTTP round-trips
+  With create_auth_raw, you define each step and use NexTemplate expressions to pass values between steps:
+  - Body extraction: {{ auth_object.stages.<step_name>.response.body | match: /<regex_with_capture_group>/ }}
+  - Header extraction: {{ auth_object.stages.<step_name>.response.headers.<HeaderName> | match: /<regex>/ }}
+  Use followRedirects: false on steps where you need to capture the Location header (e.g. OAuth2 authorize → 302).
 
 ## Workflow
 
@@ -229,6 +242,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Add/remove csrfUrl
    - Add loginAccept='application/json' if login returns HTML error pages
    - Add cookieUrl (app root URL) if CSRF token fails despite being correct (session cookie needed before CSRF)
+   - **Switch to create_auth_raw** if the app uses OAuth2, PKCE, OpenID Connect, or any multi-step token exchange. Signs: login returns 200 with a cookie but the test request still fails with 401; app has /authorize, /token, or /oauth endpoints; WWW-Authenticate: Bearer in responses; OpenAPI spec mentions OAuth2 flows.
    - **If the application itself is misconfigured**, diagnose with command tools and respond with INFRA_REPAIR
 
 ## CRITICAL PERSISTENCE RULES
@@ -239,7 +253,8 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
   4. Both json and form loginContentType
   5. With and without csrfUrl
   6. Different credential field names — try "username", "email", "login" as the identifier field; some apps use the email address in the "username" field, others have a separate "email" field
-  6. **If login responses contain HTML error pages or misconfiguration warnings**, diagnose with command tools and respond with INFRA_REPAIR — do NOT try to fix the app yourself (no killing processes, no restarting containers, no modifying files)
+  7. **create_auth_raw for OAuth2/PKCE/multi-step flows** — if the app uses Bearer tokens obtained via authorization code exchange, build the full step chain: login POST → authorize GET (followRedirects:false) → token POST → Bearer embedder
+  8. **If login responses contain HTML error pages or misconfiguration warnings**, diagnose with command tools and respond with INFRA_REPAIR — do NOT try to fix the app yourself (no killing processes, no restarting containers, no modifying files)
 - **After each failed test_auth_object, analyze the response body previews for EACH stage to understand the root cause.**
 - **Use probe_url between attempts to gather more data** — probe new endpoints, check response formats, search the codebase for auth routes.
 - **You have 50 rounds. Use them ALL before giving up.** Each create/test/delete cycle takes ~3 rounds. You can try 15+ different configurations.

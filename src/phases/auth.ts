@@ -896,6 +896,58 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
     {
       type: "function",
       function: {
+        name: "create_auth_raw",
+        description: `Create a Bright auth object with FULL control over the multistep configuration.
+Use this when the simplified create_auth tool cannot express the auth flow — e.g. OAuth2 PKCE, multi-step token exchanges, authorization code flows, or any flow requiring more than a single login POST.
+
+You define the exact steps array, embedders, reauthTriggers, and test request. Steps execute in order. Each step can reference previous step responses via NexTemplate expressions:
+- Extract from response body: {{ auth_object.stages.<step_name>.response.body | match: /<regex_with_capture_group>/ }}
+- Extract from response header: {{ auth_object.stages.<step_name>.response.headers.Location | match: /code=([^&]+)/ }}
+
+Example — OAuth2 PKCE flow:
+  steps: [
+    { name: "login", request: { method: "POST", url: "http://localhost/login", body: '{"username":"...","password":"..."}', headers: [{ name: "Content-Type", value: "application/json" }], protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
+    { name: "authorize", request: { method: "GET", url: "http://localhost/authorize?client_id=my-app&response_type=code&code_challenge=...&code_challenge_method=S256&redirect_uri=http://localhost/callback&scope=offline_access", protocol: "http", followRedirects: false }, successResponseDetection: [{ type: "status", statuses: [302] }] },
+    { name: "token", request: { method: "POST", url: "http://localhost/token", body: "grant_type=authorization_code&code={{ auth_object.stages.authorize.response.headers.Location | match: /code=([^&]+)/ }}&code_verifier=...&redirect_uri=http://localhost/callback&client_id=my-app", headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }], protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] }
+  ]
+  embedders: [{ type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.token.response.body | match: /"access_token"\\s*:\\s*"([^"]*)"/ }}", mergeStrategy: "replace" }]`,
+        parameters: {
+          type: "object",
+          properties: {
+            steps: {
+              type: "string",
+              description: `JSON array of multistep login steps. Each step: { name: string, request: { method, url, protocol: "http", headers?: [{name, value}], body?: string, bodyType?: "clear_text", followRedirects?: boolean, maxRedirects?: number, changeMethodOnRedirect?: boolean }, successResponseDetection?: [{type: "status", statuses: [200]}] }. Steps execute in order. Use NexTemplate to reference prior step responses.`,
+            },
+            embedders: {
+              type: "string",
+              description: `JSON array of embedders that inject tokens into scan requests. Each: { type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.<step_name>.response.body | match: /<regex>/ }}", mergeStrategy: "replace" }. For cookie/session auth (no explicit token), omit or pass empty array — Bright auto-replays cookies.`,
+            },
+            testUrl: {
+              type: "string",
+              description: "Full URL to a protected endpoint for session validation. Should return different responses for authenticated vs unauthenticated requests.",
+            },
+            testMethod: {
+              type: "string",
+              enum: ["GET", "POST", "PUT", "DELETE"],
+              description: "HTTP method for the test request. Default: GET",
+            },
+            reauthTriggers: {
+              type: "string",
+              description: `JSON array of reauth triggers. Default: [{"type":"TRIGGER","location":"status","statuses":[401,403]}]. For redirect-based: [{"type":"TRIGGER","location":"header","name":"Location","patterns":["login"]}]. Can combine with OR: [..., {"type":"OR"}, ...].`,
+            },
+            successResponseDetection: {
+              type: "string",
+              description: `JSON array of success detection rules for the overall auth object (applied to the login response). Default: [{"type":"status","statuses":[200]}].`,
+            },
+          },
+          required: ["steps", "testUrl"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "test_auth_object",
         description:
           "Test a Bright auth object. Runs the full login flow and returns detailed stage-by-stage results including HTTP status codes, response body previews, Set-Cookie headers, and request details for each stage (validation, authentication, authorization). Use the response body previews to diagnose issues — e.g. if the login response contains HTML error pages instead of JSON, the application may need configuration fixes.",
@@ -1055,6 +1107,107 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
       }
       return JSON.stringify({ authObjectId: result.id });
     }
+    if (name === "create_auth_raw") {
+      lastCreateArgs = { ...args, authStyle: "raw" };
+      // Parse the steps, embedders, reauthTriggers from JSON strings
+      let steps: Record<string, unknown>[];
+      try {
+        steps = JSON.parse(String(args.steps));
+        if (!Array.isArray(steps) || steps.length === 0) {
+          return JSON.stringify({ error: "steps must be a non-empty JSON array" });
+        }
+      } catch (e) {
+        return JSON.stringify({ error: `Invalid steps JSON: ${e}` });
+      }
+
+      let embedders: Record<string, unknown>[] = [];
+      if (args.embedders) {
+        try {
+          embedders = JSON.parse(String(args.embedders));
+          if (!Array.isArray(embedders)) {
+            return JSON.stringify({ error: "embedders must be a JSON array" });
+          }
+        } catch (e) {
+          return JSON.stringify({ error: `Invalid embedders JSON: ${e}` });
+        }
+      }
+
+      let reauthTriggers: Record<string, unknown>[] = [
+        { type: "TRIGGER", location: "status", statuses: [401, 403] },
+      ];
+      if (args.reauthTriggers) {
+        try {
+          reauthTriggers = JSON.parse(String(args.reauthTriggers));
+          if (!Array.isArray(reauthTriggers)) {
+            return JSON.stringify({ error: "reauthTriggers must be a JSON array" });
+          }
+        } catch (e) {
+          return JSON.stringify({ error: `Invalid reauthTriggers JSON: ${e}` });
+        }
+      }
+
+      let successDetection: Record<string, unknown>[] = [
+        { type: "status", statuses: [200] },
+      ];
+      if (args.successResponseDetection) {
+        try {
+          successDetection = JSON.parse(String(args.successResponseDetection));
+          if (!Array.isArray(successDetection)) {
+            return JSON.stringify({ error: "successResponseDetection must be a JSON array" });
+          }
+        } catch (e) {
+          return JSON.stringify({ error: `Invalid successResponseDetection JSON: ${e}` });
+        }
+      }
+
+      const testMethod = args.testMethod ? String(args.testMethod) : "GET";
+      const testUrl = String(args.testUrl);
+
+      // Ensure each step has protocol and bodyType defaults
+      for (const step of steps) {
+        const req = step.request as Record<string, unknown> | undefined;
+        if (req) {
+          if (!req.protocol) req.protocol = "http";
+          if (!req.bodyType) req.bodyType = "clear_text";
+        }
+      }
+
+      const body: Record<string, unknown> = {
+        name: "Engine Auth — raw multistep",
+        projectId,
+        type: "multistep",
+        test: {
+          repeaterId,
+          request: {
+            method: testMethod,
+            url: testUrl,
+            protocol: "http",
+            bodyType: "clear_text",
+          },
+        },
+        successResponseDetection: successDetection,
+        reauthTriggers,
+        config: {
+          multistep: {
+            steps,
+            ...(embedders.length > 0 ? { embedders } : {}),
+          },
+        },
+      };
+
+      const stepNames = steps.map((s) => {
+        const req = s.request as Record<string, unknown> | undefined;
+        return `${s.name}(${req?.method ?? "?"} ${req?.url ?? "?"})`;
+      }).join(" → ");
+      console.log(`[Auth] Creating raw multistep auth — steps: ${stepNames}, test: ${testMethod} ${testUrl}`);
+
+      const result = await postAuthObject(api, body);
+      if (result.error) {
+        attemptLog.push(`- create_auth_raw(steps=[${stepNames}], testUrl=${testUrl}) → ERROR: ${result.error}`);
+        return JSON.stringify({ error: result.error });
+      }
+      return JSON.stringify({ authObjectId: result.id });
+    }
     if (name === "test_auth_object") {
       const result = await testAuthObject(
         api,
@@ -1062,7 +1215,9 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
       );
       // Log the test result with the create_auth params that produced this auth object
       const summary = JSON.stringify(result);
-      const configSummary = `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
+      const configSummary = lastCreateArgs.authStyle === "raw"
+        ? `raw multistep, testUrl=${lastCreateArgs.testUrl}`
+        : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
       if (!result.passed) {
         attemptLog.push(`- create_auth(${configSummary}) → test FAILED: ${result.summary ?? summary.slice(0, 300)}`);
       }
@@ -1110,6 +1265,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
   const combinedHandler: ToolHandler = async (name, args) => {
     if (
       name === "create_auth" ||
+      name === "create_auth_raw" ||
       name === "test_auth_object" ||
       name === "delete_auth_object" ||
       name === "probe_url" ||
