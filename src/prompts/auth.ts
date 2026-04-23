@@ -51,7 +51,7 @@ You have codebase tools (read_file, list_files, search_files) AND a **probe_url*
 
 3. **Find the login endpoint** — search for auth controllers, login routes, sign-in handlers. IMPORTANT: distinguish between the HTML login PAGE (e.g. /login) and the API endpoint that PROCESSES credentials (e.g. POST /session, POST /api/auth/login). Read the handler code to determine:
    - The exact API endpoint that processes login (NOT the page that renders the login form)
-   - The exact request body field names (e.g. "user", "email", "username", "password")
+   - The exact request body field names (e.g. "user", "email", "username", "password"). NOTE: the login form may label the field "Email" in the UI but the API field is actually called "username" (and vice versa). Always check the actual HTML input 'name' attribute or the controller's expected parameter names, not just the UI label.
    - How the token/session is returned: response body field, response header, or Set-Cookie
    - Whether it's session-based (cookies), JWT (token in body/header), or API key
    For loginEndpoint, always use the API endpoint path. If unsure, probe POST to candidate endpoints to find the one that accepts credentials.
@@ -225,6 +225,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Different testUrl
    - Different reauthStrategy (status → body → redirect)
    - Different loginBody format (json vs form)
+   - **Different credential field names** — many apps accept EITHER "username" or "email" for the login identifier. If {"username":"bright@test.com","password":"..."} fails, try {"email":"bright@test.com","password":"..."} and vice versa. Also try {"login":"..."}, {"user":{"email":"...","password":"..."}} (nested). Check the login form HTML — the input field 'name' attribute tells you exactly what the server expects.
    - Add/remove csrfUrl
    - Add loginAccept='application/json' if login returns HTML error pages
    - Add cookieUrl (app root URL) if CSRF token fails despite being correct (session cookie needed before CSRF)
@@ -237,6 +238,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
   3. Both reauthStrategy='status' and reauthStrategy='body' with reauthBodyPattern
   4. Both json and form loginContentType
   5. With and without csrfUrl
+  6. Different credential field names — try "username", "email", "login" as the identifier field; some apps use the email address in the "username" field, others have a separate "email" field
   6. **If login responses contain HTML error pages or misconfiguration warnings**, diagnose with command tools and respond with INFRA_REPAIR — do NOT try to fix the app yourself (no killing processes, no restarting containers, no modifying files)
 - **After each failed test_auth_object, analyze the response body previews for EACH stage to understand the root cause.**
 - **Use probe_url between attempts to gather more data** — probe new endpoints, check response formats, search the codebase for auth routes.
