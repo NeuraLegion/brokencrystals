@@ -1200,7 +1200,7 @@ APPROACH:
 7. Before finishing, call save_hint for any important discoveries about this app's configuration or behavior.
 
 IMPORTANT DATABASE TIPS:
-- **Stale volumes are a top cause of DB auth failures.** If DB logs show "Password did not match" or "Login failed", the DB volume was initialized with a different password on a prior run. MSSQL/PostgreSQL/MySQL all set the admin password ONLY on first initialization. Fix: \`docker compose down -v\` to remove volumes, then \`docker compose up -d\`.
+- **Stale volumes are a top cause of DB auth failures.** If DB logs show "Password did not match" or "Login failed", the DB volume was initialized with a different password on a prior run. MSSQL/PostgreSQL/MySQL all set the admin password ONLY on first initialization. Fix: \`docker compose down && docker volume rm <specific_volume_name> && docker compose up -d\`. Use \`docker volume ls\` to identify the stale volume. Do NOT use \`docker compose down -v\` — it destroys ALL volumes including healthy data.
 - If a migration fails because of a missing PostgreSQL extension (e.g. pgvector), first check if you can REMOVE the plugin that requires it (e.g. delete/rename its directory under plugins/) rather than installing the extension. Removing an optional plugin is often simpler than fixing extension availability.
 - If the app crashes with "No such file or directory" for a tool (e.g. brotli, wkhtmltopdf), install it in the Dockerfile or set an env var to disable the feature that needs it.
 

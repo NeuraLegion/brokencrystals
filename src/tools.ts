@@ -332,6 +332,14 @@ export function createInfraToolHandler(repoPath: string, onHint?: (hint: string)
       case "run_command":
       case "run_command_on_host": {
         const command = String(args.command ?? "");
+        // Guard: block blanket volume destruction — infra repair should target specific volumes
+        if (/docker\s+compose\s+down\s+[^|]*-v/i.test(command) ||
+            /docker-compose\s+down\s+[^|]*-v/i.test(command) ||
+            /docker\s+volume\s+prune/i.test(command) ||
+            /docker\s+system\s+prune/i.test(command)) {
+          console.warn(`[Tool] BLOCKED destructive command in infra repair: ${command.slice(0, 120)}`);
+          return `Error: "docker compose down -v" and volume prune commands are blocked. They destroy ALL volumes including healthy data. Instead, remove only the specific stale volume: "docker compose down && docker volume rm <volume_name> && docker compose up -d". Use "docker volume ls" to identify which volume to remove.`;
+        }
         console.log(`[Tool] run_command_on_host: ${command.slice(0, 200)}`);
         return runShellCommand(repoPath, command, 120_000);
       }
