@@ -60,10 +60,17 @@ If you need to edit a runtime config file, edit the SOURCE copy in the host repo
 
 ## Strategy
 
-**Your first move should almost always be search_web.** You know the tech stack — search for how to complete its install/setup programmatically (e.g. "Umbraco unattended install API", "WordPress CLI setup", "Ghost setup API endpoint"). This tells you the exact endpoints, required payloads, and CLI commands — far more reliable than guessing URLs.
+**CRITICAL: READ THE PRE-GATHERED CONTEXT FIRST.** Before you do anything else, carefully read the "Pre-gathered setup intelligence" section in the next message (if present). It contains:
+- Web search results for how to install/set up this specific framework — these often contain the EXACT commands, API endpoints, and environment variables you need
+- Probe results from the app's key URLs — showing what endpoints exist, whether the app is in install mode, and what API routes are available
+
+**Follow the official installation method from the web search results.** Do NOT improvise or guess. If the search results say "use environment variable X for unattended install" or "POST to /install/api with payload Y", do exactly that. The web search results are the authoritative source for how this framework's setup works.
+
+**NEVER directly hack the database to complete setup.** Do not manually CREATE TABLE or INSERT INTO user tables. Use the framework's own setup mechanism (install wizard endpoint, CLI command, unattended install env vars, etc.). Direct DB manipulation bypasses framework logic (password hashing, migrations, config state) and WILL break the app.
 
 ### 1. Understand the setup state
-- **Search the web first** — query for the framework's install/setup process (e.g. "${techStack} install wizard API", "${techStack} unattended setup", "${techStack} first run setup endpoint"). This gives you the exact routes, form fields, and API payloads.
+- **Start with the pre-gathered context** — web search results and app probes are already provided. Read them carefully.
+- If you need more specific information, use search_web to query for it (e.g. "${techStack} install wizard API", "${techStack} unattended setup", "${techStack} first run setup endpoint")
 - Probe GET ${baseUrl}/ and examine the response carefully
 - **Search the codebase** for install/setup routes: search for "install", "setup", "wizard", "first-run" in route definitions, controllers, and startup files
 - **Check container logs**: docker logs <container> --tail 200 — look for "install", "setup", "migration", "first run" messages
@@ -94,8 +101,8 @@ If the web wizard doesn't work, try:
 - Framework CLI: \`docker exec <container> <framework-cli> setup\`
 - Database migrations: \`docker exec <container> <migration-command>\`
 - Seed commands: \`docker exec <container> <seed-command>\`
-- Direct SQL: create tables, insert admin user
 - Search codebase for setup/install scripts
+- **LAST RESORT ONLY**: Direct SQL — but only if you know the EXACT schema the framework expects (from codebase analysis), including password hashing algorithms, required config state rows, etc. Prefer any other method first.
 
 ### 5. Verify setup completed — EVIDENCE REQUIRED
 After setup, you MUST gather concrete evidence that setup actually worked. Do not trust HTTP 200 responses alone — most modern apps serve an SPA shell that returns 200 in both setup and post-setup states.

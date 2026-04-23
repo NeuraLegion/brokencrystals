@@ -5937,7 +5937,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve5.call(this, root, ref);
+      let _sch = resolve6.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
         const { schemaId } = this.opts;
@@ -5964,7 +5964,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve5(root, ref) {
+    function resolve6(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -6539,7 +6539,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve5(baseURI, relativeURI, options) {
+    function resolve6(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -6766,7 +6766,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize2,
-      resolve: resolve5,
+      resolve: resolve6,
       resolveComponent,
       equal,
       serialize,
@@ -10806,7 +10806,7 @@ function consumeBody() {
   let accum = [];
   let accumBytes = 0;
   let abort = false;
-  return new Body.Promise(function(resolve5, reject) {
+  return new Body.Promise(function(resolve6, reject) {
     let resTimeout;
     if (_this4.timeout) {
       resTimeout = setTimeout(function() {
@@ -10840,7 +10840,7 @@ function consumeBody() {
       }
       clearTimeout(resTimeout);
       try {
-        resolve5(Buffer.concat(accum, accumBytes));
+        resolve6(Buffer.concat(accum, accumBytes));
       } catch (err) {
         reject(new FetchError(`Could not create Buffer from response body for ${_this4.url}: ${err.message}`, "system", err));
       }
@@ -11515,7 +11515,7 @@ function fetch3(url2, opts) {
     throw new Error("native promise missing, set fetch.Promise to your favorite alternative");
   }
   Body.Promise = fetch3.Promise;
-  return new fetch3.Promise(function(resolve5, reject) {
+  return new fetch3.Promise(function(resolve6, reject) {
     const request = new Request2(url2, opts);
     const options = getNodeRequestOptions(request);
     const send = (options.protocol === "https:" ? https : http).request;
@@ -11648,7 +11648,7 @@ function fetch3(url2, opts) {
               requestOpts.body = void 0;
               requestOpts.headers.delete("content-length");
             }
-            resolve5(fetch3(new Request2(locationURL, requestOpts)));
+            resolve6(fetch3(new Request2(locationURL, requestOpts)));
             finalize();
             return;
         }
@@ -11669,7 +11669,7 @@ function fetch3(url2, opts) {
       const codings = headers.get("Content-Encoding");
       if (!request.compress || request.method === "HEAD" || codings === null || res.statusCode === 204 || res.statusCode === 304) {
         response = new Response3(body, response_options);
-        resolve5(response);
+        resolve6(response);
         return;
       }
       const zlibOptions = {
@@ -11679,7 +11679,7 @@ function fetch3(url2, opts) {
       if (codings == "gzip" || codings == "x-gzip") {
         body = body.pipe(zlib.createGunzip(zlibOptions));
         response = new Response3(body, response_options);
-        resolve5(response);
+        resolve6(response);
         return;
       }
       if (codings == "deflate" || codings == "x-deflate") {
@@ -11691,12 +11691,12 @@ function fetch3(url2, opts) {
             body = body.pipe(zlib.createInflateRaw());
           }
           response = new Response3(body, response_options);
-          resolve5(response);
+          resolve6(response);
         });
         raw.on("end", function() {
           if (!response) {
             response = new Response3(body, response_options);
-            resolve5(response);
+            resolve6(response);
           }
         });
         return;
@@ -11704,11 +11704,11 @@ function fetch3(url2, opts) {
       if (codings == "br" && typeof zlib.createBrotliDecompress === "function") {
         body = body.pipe(zlib.createBrotliDecompress());
         response = new Response3(body, response_options);
-        resolve5(response);
+        resolve6(response);
         return;
       }
       response = new Response3(body, response_options);
-      resolve5(response);
+      resolve6(response);
     });
     writeToStream(req, request);
   });
@@ -12758,8 +12758,8 @@ function _addRequestID(value, response) {
 }
 var APIPromise = class _APIPromise extends Promise {
   constructor(responsePromise, parseResponse2 = defaultParseResponse) {
-    super((resolve5) => {
-      resolve5(null);
+    super((resolve6) => {
+      resolve6(null);
     });
     this.responsePromise = responsePromise;
     this.parseResponse = parseResponse2;
@@ -13334,7 +13334,7 @@ var startsWithSchemeRegexp = /^[a-z][a-z0-9+.-]*:/i;
 var isAbsoluteURL = (url2) => {
   return startsWithSchemeRegexp.test(url2);
 };
-var sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
+var sleep = (ms) => new Promise((resolve6) => setTimeout(resolve6, ms));
 var validatePositiveInteger = (name, n) => {
   if (typeof n !== "number" || !Number.isInteger(n)) {
     throw new OpenAIError(`${name} must be an integer`);
@@ -13767,12 +13767,12 @@ var EventStream = class {
     _EventStream_errored.set(this, false);
     _EventStream_aborted.set(this, false);
     _EventStream_catchingPromiseCreated.set(this, false);
-    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve5, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve5, "f");
+    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve6, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve6, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectConnectedPromise, reject, "f");
     }), "f");
-    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve5, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve5, "f");
+    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve6, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve6, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectEndPromise, reject, "f");
     }), "f");
     __classPrivateFieldGet5(this, _EventStream_connectedPromise, "f").catch(() => {
@@ -13856,11 +13856,11 @@ var EventStream = class {
    *   const message = await stream.emitted('message') // rejects if the stream errors
    */
   emitted(event) {
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       __classPrivateFieldSet4(this, _EventStream_catchingPromiseCreated, true, "f");
       if (event !== "error")
         this.once("error", reject);
-      this.once(event, resolve5);
+      this.once(event, resolve6);
     });
   }
   async done() {
@@ -14013,7 +14013,7 @@ var AssistantStream = class _AssistantStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve6, reject) => readQueue.push({ resolve: resolve6, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -15631,7 +15631,7 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve6, reject) => readQueue.push({ resolve: resolve6, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -17282,7 +17282,7 @@ var ResponseStream = class _ResponseStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve6, reject) => readQueue.push({ resolve: resolve6, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
         }
         const event = pushQueue.shift();
         return { value: event, done: false };
@@ -18183,7 +18183,7 @@ function buildSeveritySummary(findings) {
   return Object.entries(bySev).sort(([a], [b]) => (SEVERITY_ORDER[a] ?? 4) - (SEVERITY_ORDER[b] ?? 4)).map(([sev, count]) => `${count} ${sev}`).join(", ");
 }
 function sleep2(ms) {
-  return new Promise((resolve5) => setTimeout(resolve5, ms));
+  return new Promise((resolve6) => setTimeout(resolve6, ms));
 }
 function formatTechStack(techStack) {
   const stack = [...techStack.languages, ...techStack.frameworks].join(", ");
@@ -24473,7 +24473,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve5) => setTimeout(resolve5, pollInterval));
+        await new Promise((resolve6) => setTimeout(resolve6, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -24490,7 +24490,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -24568,7 +24568,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve5(parseResult.data);
+            resolve6(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -24829,12 +24829,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve5, interval);
+      const timeoutId = setTimeout(resolve6, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -27033,7 +27033,7 @@ var SSEClientTransport = class {
   }
   _startOrAuth() {
     const fetchImpl = this?._eventSourceInit?.fetch ?? this._fetch ?? fetch;
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       this._eventSource = new EventSource(this._url.href, {
         ...this._eventSourceInit,
         fetch: async (url2, init2) => {
@@ -27054,7 +27054,7 @@ var SSEClientTransport = class {
       this._abortController = new AbortController();
       this._eventSource.onerror = (event) => {
         if (event.code === 401 && this._authProvider) {
-          this._authThenStart().then(resolve5, reject);
+          this._authThenStart().then(resolve6, reject);
           return;
         }
         const error2 = new SseError(event.code, event.message, event);
@@ -27076,7 +27076,7 @@ var SSEClientTransport = class {
           void this.close();
           return;
         }
-        resolve5();
+        resolve6();
       });
       this._eventSource.onmessage = (event) => {
         const messageEvent = event;
@@ -31011,10 +31011,10 @@ var Minipass = class extends EventEmitter {
    * Return a void Promise that resolves once the stream ends.
    */
   async promise() {
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve6, reject) => {
       this.on(DESTROYED, () => reject(new Error("stream destroyed")));
       this.on("error", (er) => reject(er));
-      this.on("end", () => resolve5());
+      this.on("end", () => resolve6());
     });
   }
   /**
@@ -31038,7 +31038,7 @@ var Minipass = class extends EventEmitter {
         return Promise.resolve({ done: false, value: res });
       if (this[EOF])
         return stop();
-      let resolve5;
+      let resolve6;
       let reject;
       const onerr = (er) => {
         this.off("data", ondata);
@@ -31052,19 +31052,19 @@ var Minipass = class extends EventEmitter {
         this.off("end", onend);
         this.off(DESTROYED, ondestroy);
         this.pause();
-        resolve5({ value, done: !!this[EOF] });
+        resolve6({ value, done: !!this[EOF] });
       };
       const onend = () => {
         this.off("error", onerr);
         this.off("data", ondata);
         this.off(DESTROYED, ondestroy);
         stop();
-        resolve5({ done: true, value: void 0 });
+        resolve6({ done: true, value: void 0 });
       };
       const ondestroy = () => onerr(new Error("stream destroyed"));
       return new Promise((res2, rej) => {
         reject = rej;
-        resolve5 = res2;
+        resolve6 = res2;
         this.once(DESTROYED, ondestroy);
         this.once("error", onerr);
         this.once("end", onend);
@@ -32040,9 +32040,9 @@ var PathBase = class {
     if (this.#asyncReaddirInFlight) {
       await this.#asyncReaddirInFlight;
     } else {
-      let resolve5 = () => {
+      let resolve6 = () => {
       };
-      this.#asyncReaddirInFlight = new Promise((res) => resolve5 = res);
+      this.#asyncReaddirInFlight = new Promise((res) => resolve6 = res);
       try {
         for (const e of await this.#fs.promises.readdir(fullpath, {
           withFileTypes: true
@@ -32055,7 +32055,7 @@ var PathBase = class {
         children.provisional = 0;
       }
       this.#asyncReaddirInFlight = void 0;
-      resolve5();
+      resolve6();
     }
     return children.slice(0, children.provisional);
   }
@@ -35671,6 +35671,32 @@ var writeFileTool = {
     }
   }
 };
+var editFileTool = {
+  type: "function",
+  function: {
+    name: "edit_file",
+    description: "Make a targeted edit to a file by replacing an exact string match. Much safer than write_file for small changes \u2014 you don't need to rewrite the entire file. The old_string must match EXACTLY one occurrence in the file (including whitespace/indentation).",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "Relative file path from the repository root (e.g. compose.yml, Dockerfile)"
+        },
+        old_string: {
+          type: "string",
+          description: "The exact string to find in the file. Must match exactly one occurrence. Include enough surrounding context (a few lines) to ensure uniqueness."
+        },
+        new_string: {
+          type: "string",
+          description: "The replacement string. Can be empty to delete the matched text."
+        }
+      },
+      required: ["path", "old_string", "new_string"],
+      additionalProperties: false
+    }
+  }
+};
 var runCommandOnHostTool = {
   type: "function",
   function: {
@@ -35726,6 +35752,30 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
           return `Written ${content.length} bytes to ${args.path}`;
         } catch (err) {
           return `Error writing file: ${toErrorMessage(err)}`;
+        }
+      }
+      case "edit_file": {
+        const filePath = resolve2(repoPath, String(args.path ?? ""));
+        if (!filePath.startsWith(repoPath)) {
+          return "Error: path traversal attempt blocked";
+        }
+        const oldStr = String(args.old_string ?? "");
+        const newStr = String(args.new_string ?? "");
+        if (!oldStr) return "Error: old_string is required";
+        try {
+          const existing = readFileSync3(filePath, "utf-8");
+          const count = existing.split(oldStr).length - 1;
+          if (count === 0) {
+            return `Error: old_string not found in ${args.path}. Make sure the string matches exactly (including whitespace and indentation).`;
+          }
+          if (count > 1) {
+            return `Error: old_string found ${count} times in ${args.path}. Include more surrounding context to make it unique.`;
+          }
+          const updated = existing.replace(oldStr, newStr);
+          writeFileSync2(filePath, updated);
+          return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
+        } catch (err) {
+          return `Error editing file: ${toErrorMessage(err)}`;
         }
       }
       case "run_command":
@@ -36039,6 +36089,7 @@ var infraTools = [
   ...codebaseTools,
   verifyDockerImageTool,
   writeFileTool,
+  editFileTool,
   runCommandOnHostTool,
   runCommandInDockerTool,
   waitTool,
@@ -37629,7 +37680,7 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
     let usedMutatingTools = false;
     const trackingHandler = async (name, args) => {
       const result2 = await infraHandler(name, args);
-      if (name === "write_file" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
+      if (name === "write_file" || name === "edit_file" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
         usedMutatingTools = true;
       }
       return result2;
@@ -38050,13 +38101,13 @@ ${containerLogs}`);
     });
   });
   if (config2.docker && command.includes("--wait")) {
-    const composeExitPromise = new Promise((resolve5, reject) => {
+    const composeExitPromise = new Promise((resolve6, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("docker compose --wait timed out after 300s"));
       }, 3e5);
       child.on("exit", (code) => {
         clearTimeout(timer);
-        if (code === 0) resolve5();
+        if (code === 0) resolve6();
         else {
           const head = outputLines.slice(0, 30).join("\n");
           const tail = outputLines.slice(-30).join("\n");
@@ -38277,7 +38328,7 @@ function runPrerequisite(cmd, cwd, envVars) {
   const EXTENSION_MS = 3e5;
   const MAX_EXTENSIONS = 5;
   const STALL_THRESHOLD_MS = 6e4;
-  return new Promise((resolve5, reject) => {
+  return new Promise((resolve6, reject) => {
     const child = spawn("sh", ["-c", cmd], {
       cwd,
       env: { ...process.env, ...envVars },
@@ -38357,7 +38408,7 @@ ${tail}`;
       if (code === 0) {
         const elapsed = Math.round((Date.now() - startTime) / 1e3);
         console.log(`[Startup] Prerequisite completed in ${elapsed}s`);
-        resolve5();
+        resolve6();
       } else {
         const tail = outputLines.slice(-30).join("\n");
         reject(
@@ -41089,6 +41140,8 @@ Use read_file to inspect for errors, setup instructions, or configuration requir
 
 // src/phases/setup.ts
 import { execSync as execSync5 } from "child_process";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync4 } from "fs";
+import { resolve as resolve3 } from "path";
 
 // src/prompts/setup.ts
 function firstRunSetupPrompt(baseUrl, techStack, healthCheckSummary, postStartSetupHints) {
@@ -41138,10 +41191,17 @@ If you need to edit a runtime config file, edit the SOURCE copy in the host repo
 
 ## Strategy
 
-**Your first move should almost always be search_web.** You know the tech stack \u2014 search for how to complete its install/setup programmatically (e.g. "Umbraco unattended install API", "WordPress CLI setup", "Ghost setup API endpoint"). This tells you the exact endpoints, required payloads, and CLI commands \u2014 far more reliable than guessing URLs.
+**CRITICAL: READ THE PRE-GATHERED CONTEXT FIRST.** Before you do anything else, carefully read the "Pre-gathered setup intelligence" section in the next message (if present). It contains:
+- Web search results for how to install/set up this specific framework \u2014 these often contain the EXACT commands, API endpoints, and environment variables you need
+- Probe results from the app's key URLs \u2014 showing what endpoints exist, whether the app is in install mode, and what API routes are available
+
+**Follow the official installation method from the web search results.** Do NOT improvise or guess. If the search results say "use environment variable X for unattended install" or "POST to /install/api with payload Y", do exactly that. The web search results are the authoritative source for how this framework's setup works.
+
+**NEVER directly hack the database to complete setup.** Do not manually CREATE TABLE or INSERT INTO user tables. Use the framework's own setup mechanism (install wizard endpoint, CLI command, unattended install env vars, etc.). Direct DB manipulation bypasses framework logic (password hashing, migrations, config state) and WILL break the app.
 
 ### 1. Understand the setup state
-- **Search the web first** \u2014 query for the framework's install/setup process (e.g. "${techStack} install wizard API", "${techStack} unattended setup", "${techStack} first run setup endpoint"). This gives you the exact routes, form fields, and API payloads.
+- **Start with the pre-gathered context** \u2014 web search results and app probes are already provided. Read them carefully.
+- If you need more specific information, use search_web to query for it (e.g. "${techStack} install wizard API", "${techStack} unattended setup", "${techStack} first run setup endpoint")
 - Probe GET ${baseUrl}/ and examine the response carefully
 - **Search the codebase** for install/setup routes: search for "install", "setup", "wizard", "first-run" in route definitions, controllers, and startup files
 - **Check container logs**: docker logs <container> --tail 200 \u2014 look for "install", "setup", "migration", "first run" messages
@@ -41172,8 +41232,8 @@ If the web wizard doesn't work, try:
 - Framework CLI: \`docker exec <container> <framework-cli> setup\`
 - Database migrations: \`docker exec <container> <migration-command>\`
 - Seed commands: \`docker exec <container> <seed-command>\`
-- Direct SQL: create tables, insert admin user
 - Search codebase for setup/install scripts
+- **LAST RESORT ONLY**: Direct SQL \u2014 but only if you know the EXACT schema the framework expects (from codebase analysis), including password hashing algorithms, required config state rows, etc. Prefer any other method first.
 
 ### 5. Verify setup completed \u2014 EVIDENCE REQUIRED
 After setup, you MUST gather concrete evidence that setup actually worked. Do not trust HTTP 200 responses alone \u2014 most modern apps serve an SPA shell that returns 200 in both setup and post-setup states.
@@ -41290,8 +41350,130 @@ async function detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints) 
   }
   return false;
 }
+var SETUP_BLOCKED_COMMANDS = [
+  /docker\s+compose\s+down/i,
+  /docker-compose\s+down/i,
+  /docker\s+volume\s+rm/i,
+  /docker\s+volume\s+prune/i,
+  /docker\s+system\s+prune/i
+];
+async function gatherSetupContext(baseUrl, techStack) {
+  const sections = [];
+  const searchQueries = [
+    `${techStack} first run setup unattended install CLI`,
+    `${techStack} installation wizard API endpoint programmatic setup`
+  ];
+  for (const query of searchQueries) {
+    try {
+      console.log(`[Setup] Pre-searching: ${query}`);
+      const res = await fetch(
+        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+            Accept: "text/html"
+          },
+          signal: AbortSignal.timeout(1e4)
+        }
+      );
+      if (res.ok) {
+        const html = await res.text();
+        const blocks = html.split(/class="result\s/);
+        const results = [];
+        for (const block of blocks.slice(1, 5)) {
+          const titleMatch = block.match(/class="result__a"[^>]*>([\s\S]*?)<\/a>/);
+          const title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, "").trim() : "";
+          const hrefMatch = block.match(/class="result__a"[^>]*href="([^"]*)"/);
+          let url2 = hrefMatch ? hrefMatch[1] : "";
+          const uddgMatch = url2.match(/[?&]uddg=([^&]*)/);
+          if (uddgMatch) url2 = decodeURIComponent(uddgMatch[1]);
+          const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+          const snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]*>/g, "").trim() : "";
+          if (title) results.push(`- ${title}
+  ${url2}
+  ${snippet}`);
+        }
+        if (results.length > 0) {
+          sections.push(`### Web search: "${query}"
+${results.join("\n")}`);
+        }
+      }
+    } catch {
+    }
+  }
+  const probePaths = ["/", "/install", "/setup", "/admin", "/umbraco", "/wp-admin", "/ghost"];
+  const probeResults = [];
+  for (const path2 of probePaths) {
+    try {
+      const resp = await fetch(`${baseUrl}${path2}`, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(5e3)
+      });
+      const status = resp.status;
+      if (status === 404) continue;
+      const body = await resp.text();
+      const bodyPreview = body.slice(0, 3e3);
+      const apiRoutes = extractApiRoutes(bodyPreview);
+      const forms = extractForms(bodyPreview);
+      const redirect = resp.status >= 300 && resp.status < 400 ? ` \u2192 ${resp.headers.get("location") ?? ""}` : "";
+      let entry = `**${path2}** \u2192 HTTP ${status}${redirect}`;
+      if (apiRoutes.length > 0) entry += `
+  API routes found: ${apiRoutes.slice(0, 15).join(", ")}`;
+      if (forms.length > 0) entry += `
+  Forms: ${forms.join("; ")}`;
+      if (body.length < 500) {
+        const text = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        if (text.length > 0 && text.length < 300) entry += `
+  Content: ${text}`;
+      }
+      probeResults.push(entry);
+    } catch {
+    }
+  }
+  if (probeResults.length > 0) {
+    sections.push(`### App endpoint probe results
+${probeResults.join("\n")}`);
+  }
+  if (sections.length === 0) return "";
+  return `## Pre-gathered setup intelligence
+The following information was gathered automatically BEFORE your session started. Use it to guide your strategy \u2014 the web search results often contain the exact commands/endpoints you need.
+
+${sections.join("\n\n")}`;
+}
+function extractApiRoutes(html) {
+  const routes = /* @__PURE__ */ new Set();
+  const importMapMatch = html.match(/<script\s+type="importmap"[^>]*>([\s\S]*?)<\/script>/i);
+  if (importMapMatch) {
+    const paths = importMapMatch[1].match(/\/[a-z0-9/_-]+\/api\/[a-z0-9/_-]+/gi) ?? [];
+    for (const p of paths) routes.add(p);
+  }
+  const apiPatterns = html.match(/["'](\/[a-z0-9/_.-]*(?:api|management|admin|auth|security|login|install|setup)[a-z0-9/_.-]*)["']/gi) ?? [];
+  for (const m of apiPatterns) {
+    const clean = m.replace(/^["']|["']$/g, "");
+    if (clean.length > 3 && clean.length < 150) routes.add(clean);
+  }
+  return [...routes];
+}
+function extractForms(html) {
+  const forms = [];
+  const formMatches = html.matchAll(/<form[^>]*>([\s\S]*?)<\/form>/gi);
+  for (const m of formMatches) {
+    const actionMatch = m[0].match(/action="([^"]*)"/i);
+    const action = actionMatch ? actionMatch[1] : "(no action)";
+    const inputs = [...m[1].matchAll(/<input[^>]*name="([^"]*)"[^>]*/gi)].map((i) => i[1]);
+    const methodMatch = m[0].match(/method="([^"]*)"/i);
+    const method = methodMatch ? methodMatch[1].toUpperCase() : "GET";
+    forms.push(`${method} ${action} [fields: ${inputs.join(", ") || "none"}]`);
+  }
+  return forms;
+}
 async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, model, criticModel) {
   console.log("[Setup] Starting first-run setup phase...");
+  const preContext = await gatherSetupContext(baseUrl, formatTechStack(techStack));
+  if (preContext) {
+    console.log(`[Setup] Pre-gathered ${preContext.length} chars of setup context`);
+  }
   const setupTools = [
     ...codebaseTools,
     ...webSearchTools,
@@ -41331,6 +41513,32 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
             }
           },
           required: ["container", "command"],
+          additionalProperties: false
+        }
+      }
+    },
+    {
+      type: "function",
+      function: {
+        name: "edit_file",
+        description: "Make a targeted edit to a file by replacing an exact string match. Safer than rewriting the whole file \u2014 use for adding env vars to compose.yml, tweaking config, etc. The old_string must match EXACTLY one occurrence.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Relative file path from the repository root"
+            },
+            old_string: {
+              type: "string",
+              description: "The exact string to find in the file. Must match exactly one occurrence."
+            },
+            new_string: {
+              type: "string",
+              description: "The replacement string."
+            }
+          },
+          required: ["path", "old_string", "new_string"],
           additionalProperties: false
         }
       }
@@ -41387,6 +41595,12 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
   const handler = async (name, args) => {
     if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
+      for (const pattern of SETUP_BLOCKED_COMMANDS) {
+        if (pattern.test(cmd)) {
+          console.warn(`[Setup] BLOCKED destructive command: ${cmd.slice(0, 120)}`);
+          return `Error: "${cmd.slice(0, 80)}" is not allowed in the setup phase. Setup must configure the existing running app, not destroy/rebuild containers. Use edit_file to modify compose.yml, then the orchestrator will rebuild for you if needed.`;
+        }
+      }
       console.log(`[Setup] run_command_on_host: ${cmd.slice(0, 200)}`);
       return runShellCommand(repoPath, cmd, 12e4);
     }
@@ -41407,6 +41621,23 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
       })();
       const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
       return runShellCommand(repoPath, dockerCmd, 12e4);
+    }
+    if (name === "edit_file") {
+      const filePath = resolve3(repoPath, String(args.path ?? ""));
+      if (!filePath.startsWith(repoPath)) return "Error: path traversal attempt blocked";
+      const oldStr = String(args.old_string ?? "");
+      const newStr = String(args.new_string ?? "");
+      if (!oldStr) return "Error: old_string is required";
+      try {
+        const existing = readFileSync5(filePath, "utf-8");
+        const count = existing.split(oldStr).length - 1;
+        if (count === 0) return `Error: old_string not found in ${args.path}. Make sure it matches exactly (including whitespace).`;
+        if (count > 1) return `Error: old_string found ${count} times in ${args.path}. Include more context to make it unique.`;
+        writeFileSync4(filePath, existing.replace(oldStr, newStr));
+        return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
+      } catch (err) {
+        return `Error editing file: ${err instanceof Error ? err.message : String(err)}`;
+      }
     }
     if (name === "probe_url") {
       return probeUrlWithCookies(args, cookieJar);
@@ -41433,6 +41664,9 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
     startupConfig.healthCheckSummary ?? "N/A",
     postStartSetupHints
   );
+  if (preContext) {
+    messages.push({ role: "user", content: preContext });
+  }
   const response = await chatWithTools(llm, messages, setupTools, handler, model, 30);
   try {
     const json = extractJson(response);
@@ -41773,7 +42007,7 @@ async function pMap(items, fn, concurrency) {
   await Promise.all(workers);
 }
 function sleep3(ms) {
-  return new Promise((resolve5) => setTimeout(resolve5, ms));
+  return new Promise((resolve6) => setTimeout(resolve6, ms));
 }
 function resolvePath(path2) {
   let resolved = path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
@@ -41986,13 +42220,13 @@ async function setupRepeater(projectId, api) {
   return { repeaterId, process: proc2 };
 }
 async function waitForRepeaterReady(proc2, timeoutMs) {
-  return new Promise((resolve5, reject) => {
+  return new Promise((resolve6, reject) => {
     const timer = setTimeout(() => {
       console.warn(
         "[Repeater] Timed out waiting for connection \u2014 proceeding anyway"
       );
       cleanup();
-      resolve5();
+      resolve6();
     }, timeoutMs);
     function cleanup() {
       clearTimeout(timer);
@@ -42003,7 +42237,7 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
       const text = d.toString();
       if (/connect(ed|ion established)|started/i.test(text)) {
         cleanup();
-        resolve5();
+        resolve6();
       }
     }
     function onExit(code) {
@@ -42444,8 +42678,8 @@ function normalizeSeverity(s) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
-import { resolve as resolve3, dirname } from "path";
+import { readFileSync as readFileSync6, writeFileSync as writeFileSync5, mkdirSync as mkdirSync3 } from "fs";
+import { resolve as resolve4, dirname } from "path";
 
 // src/prompts/generate-fix.ts
 function taintAnalysisPrompt(techStack, finding) {
@@ -42574,7 +42808,7 @@ ${contextSummary}`;
     const filePaths = extractFilePaths(taintAnalysis, repoPath);
     const affectedFiles = filePaths.map((p) => ({
       path: p,
-      content: safeReadFile(resolve3(repoPath, p))
+      content: safeReadFile(resolve4(repoPath, p))
     }));
     const fixMessages = generateFixPrompt(
       stackStr,
@@ -42609,9 +42843,9 @@ ${contextSummary}`;
 function applyFixes(repoPath, fixes) {
   for (const fix of fixes) {
     for (const file of fix.files) {
-      const fullPath = resolve3(repoPath, file.path);
+      const fullPath = resolve4(repoPath, file.path);
       mkdirSync3(dirname(fullPath), { recursive: true });
-      writeFileSync4(fullPath, file.content, "utf-8");
+      writeFileSync5(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
   }
@@ -42623,7 +42857,7 @@ function extractFilePaths(text, repoPath) {
   while ((match2 = regex.exec(text)) !== null) {
     const p = match2[1].replace(/^\.\//, "");
     try {
-      readFileSync5(resolve3(repoPath, p));
+      readFileSync6(resolve4(repoPath, p));
       paths.add(p);
     } catch {
     }
@@ -42632,7 +42866,7 @@ function extractFilePaths(text, repoPath) {
 }
 function safeReadFile(fullPath) {
   try {
-    return readFileSync5(fullPath, "utf-8");
+    return readFileSync6(fullPath, "utf-8");
   } catch {
     return "";
   }
@@ -42640,8 +42874,8 @@ function safeReadFile(fullPath) {
 
 // src/phases/harness.ts
 import { execSync as execSync6, spawn as spawn3 } from "child_process";
-import { writeFileSync as writeFileSync5, existsSync as existsSync6, readFileSync as readFileSync6 } from "fs";
-import { resolve as resolve4 } from "path";
+import { writeFileSync as writeFileSync6, existsSync as existsSync6, readFileSync as readFileSync7 } from "fs";
+import { resolve as resolve5 } from "path";
 import { createInterface as createInterface2 } from "readline";
 
 // src/prompts/harness.ts
@@ -43147,7 +43381,7 @@ async function startMinimalInfra(repoPath, infra) {
     console.log("[Harness] No essential infrastructure services");
     return;
   }
-  if (infra.composeFile && existsSync6(resolve4(repoPath, infra.composeFile))) {
+  if (infra.composeFile && existsSync6(resolve5(repoPath, infra.composeFile))) {
     const serviceNames = essentialServices.map((s) => s.name).join(" ");
     const cmd = `docker compose -f ${infra.composeFile} up -d ${serviceNames}`;
     console.log(`[Harness] Starting infra: ${cmd}`);
@@ -43223,7 +43457,7 @@ async function identifyTargets(llm, repoPath, stackStr, handleTool, model) {
         console.warn(`[Harness] Skipping invalid target: ${JSON.stringify(t).slice(0, 200)}`);
         return false;
       }
-      if (!existsSync6(resolve4(repoPath, String(t.file)))) {
+      if (!existsSync6(resolve5(repoPath, String(t.file)))) {
         console.warn(`[Harness] Skipping target with missing file: ${t.file}`);
         return false;
       }
@@ -43283,7 +43517,7 @@ async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTo
     const ext2 = extMap[language] ?? "." + language;
     harnessFileName = `harness${ext2}`;
   }
-  const harnessPath = resolve4(repoPath, harnessFileName);
+  const harnessPath = resolve5(repoPath, harnessFileName);
   if (!startCommand) {
     const cmdMap = {
       ".rb": `ruby ${harnessFileName}`,
@@ -43295,7 +43529,7 @@ async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTo
     const ext2 = harnessFileName.slice(harnessFileName.lastIndexOf("."));
     startCommand = cmdMap[ext2] ?? `node ${harnessFileName}`;
   }
-  writeFileSync5(harnessPath, harnessCode, "utf-8");
+  writeFileSync6(harnessPath, harnessCode, "utf-8");
   console.log(`[Harness] Wrote harness to ${harnessFileName} (${harnessCode.length} bytes)`);
   const endpoints = targets.map((t) => {
     const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
@@ -43325,8 +43559,8 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
   console.log(`[Harness] All targets are tier \u2264${maxTier} \u2014 skipping full app build, using stock runtime image`);
   ensureDockerIgnore(repoPath);
   const harnessFileName = config2.harnessFile.split("/").pop();
-  let harnessCode = readFileSync6(config2.harnessFile, "utf-8");
-  const harnessDockerfilePath = resolve4(repoPath, "Dockerfile.harness");
+  let harnessCode = readFileSync7(config2.harnessFile, "utf-8");
+  const harnessDockerfilePath = resolve5(repoPath, "Dockerfile.harness");
   console.log("[Harness] Generating Dockerfile.harness via LLM...");
   const genMessages = standaloneHarnessDockerfilePrompt(
     techStack,
@@ -43368,7 +43602,7 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
       throw new Error("LLM failed to generate Dockerfile.harness after retry");
     }
   }
-  writeFileSync5(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
+  writeFileSync6(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
   console.log(`[Harness] Generated Dockerfile.harness (${harnessDockerfileContent.split("\n").length} lines)`);
   const MAX_HARNESS_ATTEMPTS = 5;
   for (let attempt = 0; attempt < MAX_HARNESS_ATTEMPTS; attempt++) {
@@ -43449,7 +43683,7 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
           handleTool,
           modelSelector
         );
-        harnessCode = readFileSync6(config2.harnessFile, "utf-8");
+        harnessCode = readFileSync7(config2.harnessFile, "utf-8");
       }
       continue;
     } catch (err) {
@@ -43468,7 +43702,7 @@ async function startHarness(repoPath, llm, techStack, config2, infraInfo, handle
             handleTool,
             modelSelector
           );
-          harnessCode = readFileSync6(config2.harnessFile, "utf-8");
+          harnessCode = readFileSync7(config2.harnessFile, "utf-8");
         } else {
           await repairHarnessDockerfile(
             llm,
@@ -43511,10 +43745,10 @@ function extractExecError(err) {
   return errMsg;
 }
 async function repairHarnessDockerfile(llm, repoPath, error2, harnessCode, harnessFileName, handleTool, modelSelector) {
-  const dockerfilePath = resolve4(repoPath, "Dockerfile.harness");
+  const dockerfilePath = resolve5(repoPath, "Dockerfile.harness");
   let currentDockerfile;
   try {
-    currentDockerfile = readFileSync6(dockerfilePath, "utf-8");
+    currentDockerfile = readFileSync7(dockerfilePath, "utf-8");
   } catch {
     return;
   }
@@ -43542,7 +43776,7 @@ async function repairHarnessDockerfile(llm, repoPath, error2, harnessCode, harne
       return;
     }
     const changed = fixed !== currentDockerfile;
-    writeFileSync5(dockerfilePath, fixed, "utf-8");
+    writeFileSync6(dockerfilePath, fixed, "utf-8");
     console.log(
       `[Harness] LLM repaired Dockerfile.harness (${fixed.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
     );
@@ -43587,7 +43821,7 @@ async function probeEndpoints(port, endpoints) {
   return { errors, healthyPaths };
 }
 async function repairHarnessCode(llm, repoPath, config2, probeErrors, targets, handleTool, modelSelector) {
-  const harnessCode = readFileSync6(config2.harnessFile, "utf-8");
+  const harnessCode = readFileSync7(config2.harnessFile, "utf-8");
   const harnessFileName = config2.harnessFile.split("/").pop();
   modelSelector.escalate();
   const messages = harnessCodeRepairPrompt(harnessCode, harnessFileName, probeErrors, targets);
@@ -43608,7 +43842,7 @@ async function repairHarnessCode(llm, repoPath, config2, probeErrors, targets, h
     }
     const fixedCode = codeMatch[2];
     const changed = fixedCode !== harnessCode;
-    writeFileSync5(config2.harnessFile, fixedCode, "utf-8");
+    writeFileSync6(config2.harnessFile, fixedCode, "utf-8");
     console.log(
       `[Harness] LLM repaired harness code (${fixedCode.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
     );
@@ -44756,12 +44990,12 @@ function mergeQueryParams(a, b) {
   return merged.length > 0 ? merged : void 0;
 }
 function killProcess(proc2) {
-  return new Promise((resolve5) => {
+  return new Promise((resolve6) => {
     if (!proc2 || !proc2.pid) {
-      resolve5();
+      resolve6();
       return;
     }
-    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve5());
+    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve6());
   });
 }
 async function stopRunningScans(api, scanIds) {

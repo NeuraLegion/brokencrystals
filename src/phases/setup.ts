@@ -1,6 +1,8 @@
 import type OpenAI from "openai";
 import type { ChatCompletionTool, ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 import { execSync } from "child_process";
+import { readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
 import { chatWithTools, type ToolHandler } from "../inference.js";
 import {
   codebaseTools,
@@ -142,6 +144,160 @@ export async function detectFirstRunSetup(
 }
 
 // ---------------------------------------------------------------------------
+// Pre-gather context: web search + app probing before LLM starts
+// ---------------------------------------------------------------------------
+
+/**
+ * Blocked command patterns — setup phase must NEVER run destructive Docker
+ * operations that destroy volumes / rebuild from scratch.
+ */
+const SETUP_BLOCKED_COMMANDS = [
+  /docker\s+compose\s+down/i,
+  /docker-compose\s+down/i,
+  /docker\s+volume\s+rm/i,
+  /docker\s+volume\s+prune/i,
+  /docker\s+system\s+prune/i,
+];
+
+/**
+ * Gather context for the setup LLM BEFORE it starts.
+ * 1. Web search for "{techStack} first-run setup / unattended install"
+ * 2. Probe the app's root + common setup URLs, extract API routes from HTML
+ * Returns a markdown block to inject into the user message.
+ */
+async function gatherSetupContext(
+  baseUrl: string,
+  techStack: string,
+): Promise<string> {
+  const sections: string[] = [];
+
+  // --- 1. Web search for installation docs ---
+  const searchQueries = [
+    `${techStack} first run setup unattended install CLI`,
+    `${techStack} installation wizard API endpoint programmatic setup`,
+  ];
+  for (const query of searchQueries) {
+    try {
+      console.log(`[Setup] Pre-searching: ${query}`);
+      const res = await fetch(
+        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+            Accept: "text/html",
+          },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (res.ok) {
+        const html = await res.text();
+        const blocks = html.split(/class="result\s/);
+        const results: string[] = [];
+        for (const block of blocks.slice(1, 5)) {
+          const titleMatch = block.match(/class="result__a"[^>]*>([\s\S]*?)<\/a>/);
+          const title = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, "").trim() : "";
+          const hrefMatch = block.match(/class="result__a"[^>]*href="([^"]*)"/);
+          let url = hrefMatch ? hrefMatch[1] : "";
+          const uddgMatch = url.match(/[?&]uddg=([^&]*)/);
+          if (uddgMatch) url = decodeURIComponent(uddgMatch[1]);
+          const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+          const snippet = snippetMatch ? snippetMatch[1].replace(/<[^>]*>/g, "").trim() : "";
+          if (title) results.push(`- ${title}\n  ${url}\n  ${snippet}`);
+        }
+        if (results.length > 0) {
+          sections.push(`### Web search: "${query}"\n${results.join("\n")}`);
+        }
+      }
+    } catch {
+      // Timeout — skip
+    }
+  }
+
+  // --- 2. Probe key app URLs, extract useful info from HTML ---
+  const probePaths = ["/", "/install", "/setup", "/admin", "/umbraco", "/wp-admin", "/ghost"];
+  const probeResults: string[] = [];
+  for (const path of probePaths) {
+    try {
+      const resp = await fetch(`${baseUrl}${path}`, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(5_000),
+      });
+      const status = resp.status;
+      if (status === 404) continue; // skip 404s
+      const body = await resp.text();
+      const bodyPreview = body.slice(0, 3000);
+
+      // Extract API routes from import maps, script references, form actions
+      const apiRoutes = extractApiRoutes(bodyPreview);
+      const forms = extractForms(bodyPreview);
+      const redirect = resp.status >= 300 && resp.status < 400
+        ? ` → ${resp.headers.get("location") ?? ""}`
+        : "";
+
+      let entry = `**${path}** → HTTP ${status}${redirect}`;
+      if (apiRoutes.length > 0) entry += `\n  API routes found: ${apiRoutes.slice(0, 15).join(", ")}`;
+      if (forms.length > 0) entry += `\n  Forms: ${forms.join("; ")}`;
+      if (body.length < 500) {
+        // Small response — include full text
+        const text = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        if (text.length > 0 && text.length < 300) entry += `\n  Content: ${text}`;
+      }
+      probeResults.push(entry);
+    } catch {
+      // Skip
+    }
+  }
+  if (probeResults.length > 0) {
+    sections.push(`### App endpoint probe results\n${probeResults.join("\n")}`);
+  }
+
+  if (sections.length === 0) return "";
+  return `## Pre-gathered setup intelligence\nThe following information was gathered automatically BEFORE your session started. Use it to guide your strategy — the web search results often contain the exact commands/endpoints you need.\n\n${sections.join("\n\n")}`;
+}
+
+/**
+ * Extract API routes from HTML (import maps, script src attributes, href attributes).
+ * These give the LLM a map of the app's backend API surface.
+ */
+function extractApiRoutes(html: string): string[] {
+  const routes = new Set<string>();
+
+  // importmap entries — extract paths like /umbraco/management/api/v1/...
+  const importMapMatch = html.match(/<script\s+type="importmap"[^>]*>([\s\S]*?)<\/script>/i);
+  if (importMapMatch) {
+    const paths = importMapMatch[1].match(/\/[a-z0-9/_-]+\/api\/[a-z0-9/_-]+/gi) ?? [];
+    for (const p of paths) routes.add(p);
+  }
+
+  // Any URL-like patterns that look like API endpoints
+  const apiPatterns = html.match(/["'](\/[a-z0-9/_.-]*(?:api|management|admin|auth|security|login|install|setup)[a-z0-9/_.-]*)["']/gi) ?? [];
+  for (const m of apiPatterns) {
+    const clean = m.replace(/^["']|["']$/g, "");
+    if (clean.length > 3 && clean.length < 150) routes.add(clean);
+  }
+
+  return [...routes];
+}
+
+/**
+ * Extract form actions and key input fields from HTML.
+ */
+function extractForms(html: string): string[] {
+  const forms: string[] = [];
+  const formMatches = html.matchAll(/<form[^>]*>([\s\S]*?)<\/form>/gi);
+  for (const m of formMatches) {
+    const actionMatch = m[0].match(/action="([^"]*)"/i);
+    const action = actionMatch ? actionMatch[1] : "(no action)";
+    const inputs = [...m[1].matchAll(/<input[^>]*name="([^"]*)"[^>]*/gi)].map((i) => i[1]);
+    const methodMatch = m[0].match(/method="([^"]*)"/i);
+    const method = methodMatch ? methodMatch[1].toUpperCase() : "GET";
+    forms.push(`${method} ${action} [fields: ${inputs.join(", ") || "none"}]`);
+  }
+  return forms;
+}
+
+// ---------------------------------------------------------------------------
 // Main: complete first-run setup via LLM
 // ---------------------------------------------------------------------------
 
@@ -156,6 +312,12 @@ export async function completeFirstRunSetup(
   criticModel?: string,
 ): Promise<FirstRunSetupResult> {
   console.log("[Setup] Starting first-run setup phase...");
+
+  // Pre-gather web search results + app probe data BEFORE the LLM starts
+  const preContext = await gatherSetupContext(baseUrl, formatTechStack(techStack));
+  if (preContext) {
+    console.log(`[Setup] Pre-gathered ${preContext.length} chars of setup context`);
+  }
 
   // Build tool set — same as auth seed/repair (host commands, docker, probe, codebase, web)
   const setupTools: ChatCompletionTool[] = [
@@ -199,6 +361,33 @@ export async function completeFirstRunSetup(
             },
           },
           required: ["container", "command"],
+          additionalProperties: false,
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "edit_file",
+        description:
+          "Make a targeted edit to a file by replacing an exact string match. Safer than rewriting the whole file — use for adding env vars to compose.yml, tweaking config, etc. The old_string must match EXACTLY one occurrence.",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Relative file path from the repository root",
+            },
+            old_string: {
+              type: "string",
+              description: "The exact string to find in the file. Must match exactly one occurrence.",
+            },
+            new_string: {
+              type: "string",
+              description: "The replacement string.",
+            },
+          },
+          required: ["path", "old_string", "new_string"],
           additionalProperties: false,
         },
       },
@@ -266,6 +455,13 @@ export async function completeFirstRunSetup(
   const handler: ToolHandler = async (name, args) => {
     if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
+      // Block destructive Docker commands — setup must configure, not destroy
+      for (const pattern of SETUP_BLOCKED_COMMANDS) {
+        if (pattern.test(cmd)) {
+          console.warn(`[Setup] BLOCKED destructive command: ${cmd.slice(0, 120)}`);
+          return `Error: "${cmd.slice(0, 80)}" is not allowed in the setup phase. Setup must configure the existing running app, not destroy/rebuild containers. Use edit_file to modify compose.yml, then the orchestrator will rebuild for you if needed.`;
+        }
+      }
       console.log(`[Setup] run_command_on_host: ${cmd.slice(0, 200)}`);
       return runShellCommand(repoPath, cmd, 120_000);
     }
@@ -288,6 +484,23 @@ export async function completeFirstRunSetup(
         ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
         : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
       return runShellCommand(repoPath, dockerCmd, 120_000);
+    }
+    if (name === "edit_file") {
+      const filePath = resolve(repoPath, String(args.path ?? ""));
+      if (!filePath.startsWith(repoPath)) return "Error: path traversal attempt blocked";
+      const oldStr = String(args.old_string ?? "");
+      const newStr = String(args.new_string ?? "");
+      if (!oldStr) return "Error: old_string is required";
+      try {
+        const existing = readFileSync(filePath, "utf-8");
+        const count = existing.split(oldStr).length - 1;
+        if (count === 0) return `Error: old_string not found in ${args.path}. Make sure it matches exactly (including whitespace).`;
+        if (count > 1) return `Error: old_string found ${count} times in ${args.path}. Include more context to make it unique.`;
+        writeFileSync(filePath, existing.replace(oldStr, newStr));
+        return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
+      } catch (err: unknown) {
+        return `Error editing file: ${err instanceof Error ? err.message : String(err)}`;
+      }
     }
     if (name === "probe_url") {
       return probeUrlWithCookies(args, cookieJar);
@@ -316,6 +529,11 @@ export async function completeFirstRunSetup(
     startupConfig.healthCheckSummary ?? "N/A",
     postStartSetupHints,
   );
+
+  // Inject pre-gathered context as an additional user message
+  if (preContext) {
+    messages.push({ role: "user", content: preContext });
+  }
 
   const response = await chatWithTools(llm, messages, setupTools, handler, model, 30);
 

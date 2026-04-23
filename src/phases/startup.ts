@@ -1274,7 +1274,7 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
     let usedMutatingTools = false;
     const trackingHandler: ToolHandler = async (name, args) => {
       const result = await infraHandler(name, args);
-      if (name === "write_file" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
+      if (name === "write_file" || name === "edit_file" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
         usedMutatingTools = true;
       }
       return result;

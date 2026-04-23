@@ -206,6 +206,37 @@ const writeFileTool: ChatCompletionTool = {
   },
 };
 
+const editFileTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "edit_file",
+    description:
+      "Make a targeted edit to a file by replacing an exact string match. Much safer than write_file for small changes — you don't need to rewrite the entire file. The old_string must match EXACTLY one occurrence in the file (including whitespace/indentation).",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            "Relative file path from the repository root (e.g. compose.yml, Dockerfile)",
+        },
+        old_string: {
+          type: "string",
+          description:
+            "The exact string to find in the file. Must match exactly one occurrence. Include enough surrounding context (a few lines) to ensure uniqueness.",
+        },
+        new_string: {
+          type: "string",
+          description:
+            "The replacement string. Can be empty to delete the matched text.",
+        },
+      },
+      required: ["path", "old_string", "new_string"],
+      additionalProperties: false,
+    },
+  },
+};
+
 const runCommandOnHostTool: ChatCompletionTool = {
   type: "function",
   function: {
@@ -270,6 +301,31 @@ export function createInfraToolHandler(repoPath: string, onHint?: (hint: string)
           return `Written ${content.length} bytes to ${args.path}`;
         } catch (err) {
           return `Error writing file: ${toErrorMessage(err)}`;
+        }
+      }
+
+      case "edit_file": {
+        const filePath = resolve(repoPath, String(args.path ?? ""));
+        if (!filePath.startsWith(repoPath)) {
+          return "Error: path traversal attempt blocked";
+        }
+        const oldStr = String(args.old_string ?? "");
+        const newStr = String(args.new_string ?? "");
+        if (!oldStr) return "Error: old_string is required";
+        try {
+          const existing = readFileSync(filePath, "utf-8");
+          const count = existing.split(oldStr).length - 1;
+          if (count === 0) {
+            return `Error: old_string not found in ${args.path}. Make sure the string matches exactly (including whitespace and indentation).`;
+          }
+          if (count > 1) {
+            return `Error: old_string found ${count} times in ${args.path}. Include more surrounding context to make it unique.`;
+          }
+          const updated = existing.replace(oldStr, newStr);
+          writeFileSync(filePath, updated);
+          return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
+        } catch (err) {
+          return `Error editing file: ${toErrorMessage(err)}`;
         }
       }
 
@@ -674,6 +730,7 @@ export const infraTools: ChatCompletionTool[] = [
   ...codebaseTools,
   verifyDockerImageTool,
   writeFileTool,
+  editFileTool,
   runCommandOnHostTool,
   runCommandInDockerTool,
   waitTool,
