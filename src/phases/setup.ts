@@ -81,15 +81,12 @@ export async function detectFirstRunSetup(
     return true;
   }
 
-  // 3. Probe well-known setup URLs — only specific paths that won't false-positive
-  //    These are framework-specific install endpoints that only exist in setup mode
+  // 3. Probe well-known setup URLs — only generic paths that are near-universal
+  //    Framework-specific paths are the LLM's job to discover, not hardcoded here
   const specificSetupPaths = [
     { path: "/install", match: /(?:step|wizard|database|admin|password|configuration)/i },
     { path: "/setup", match: /(?:step|wizard|database|admin|password|configuration)/i },
     { path: "/finish-installation", match: /(?:register|admin|install)/i },
-    { path: "/finish-installation/register", match: /(?:name|email|password)/i },
-    { path: "/wp-admin/install.php", match: /wordpress/i },
-    { path: "/ghost/setup", match: /ghost/i },
   ];
 
   for (const { path, match } of specificSetupPaths) {
@@ -283,6 +280,15 @@ export async function completeFirstRunSetup(
     };
 
     if (result.completed) {
+      // If LLM says "already set up" but detection triggered, verify by re-probing
+      if (result.alreadySetUp) {
+        const stillInSetup = await verifyStillInSetupMode(baseUrl);
+        if (stillInSetup) {
+          console.warn("[Setup] LLM claimed app is set up, but installer endpoints still respond — treating as incomplete");
+          return { completed: false, summary: "LLM claimed already set up but installer endpoints are still active" };
+        }
+      }
+
       const summary = result.summary ?? (result.alreadySetUp ? "Already set up" : "Setup completed");
       console.log(`[Setup] First-run setup completed: ${summary}`);
 
@@ -300,6 +306,43 @@ export async function completeFirstRunSetup(
     console.warn(`[Setup] Could not parse setup result: ${response.slice(0, 200)}`);
     return { completed: false, summary: "Failed to parse LLM response" };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Post-completion verification: is the app still in setup mode?
+// ---------------------------------------------------------------------------
+
+/**
+ * Quick sanity check after LLM claims "already set up". Probes the base URL
+ * and checks container logs for signs the app is still in setup/install mode.
+ * Returns true if evidence of active setup is found.
+ */
+async function verifyStillInSetupMode(baseUrl: string): Promise<boolean> {
+  // Check if root page or common paths contain setup/install indicators
+  for (const path of ["", "/admin", "/login"]) {
+    try {
+      const resp = await fetch(`${baseUrl}${path}`, {
+        method: "GET",
+        redirect: "follow",
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (resp.status === 200) {
+        const body = await resp.text();
+        // Look for strong setup indicators in the page content
+        if (/(?:install(?:er|ation)|setup.wizard|first.run|finish.installation|create.*admin.*account)/i.test(body)) {
+          // But avoid false positives on pages that merely mention "install" in docs/text
+          const url = resp.url.toLowerCase();
+          if (/install|setup|wizard/.test(url)) {
+            console.log(`[Setup] App appears to still be in setup mode (redirected to ${resp.url})`);
+            return true;
+          }
+        }
+      }
+    } catch {
+      // Skip
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

@@ -50,13 +50,25 @@ Create an admin with these credentials:
 
 ## Strategy
 
-### 1. Understand the setup state
-- Probe GET ${baseUrl}/ and examine the response — look for setup wizard, install page, or redirect
-- Check common setup URLs: ${baseUrl}/setup, ${baseUrl}/install, ${baseUrl}/finish-installation, ${baseUrl}/admin/install, ${baseUrl}/wizard
-- Read container logs: docker logs <container> --tail 100
-- Search the codebase for setup/installation routes and controllers
+**Your first move should almost always be search_web.** You know the tech stack — search for how to complete its install/setup programmatically (e.g. "Umbraco unattended install API", "WordPress CLI setup", "Ghost setup API endpoint"). This tells you the exact endpoints, required payloads, and CLI commands — far more reliable than guessing URLs.
 
-### 2. Complete the setup via HTTP
+### 1. Understand the setup state
+- **Search the web first** — query for the framework's install/setup process (e.g. "${techStack} install wizard API", "${techStack} unattended setup", "${techStack} first run setup endpoint"). This gives you the exact routes, form fields, and API payloads.
+- Probe GET ${baseUrl}/ and examine the response carefully
+- **Search the codebase** for install/setup routes: search for "install", "setup", "wizard", "first-run" in route definitions, controllers, and startup files
+- **Check container logs**: docker logs <container> --tail 200 — look for "install", "setup", "migration", "first run" messages
+- **Check environment variables**: look for unattended install flags, DB connection status, setup mode indicators
+- CRITICAL: If you see an SPA shell / JavaScript-required page at the root URL, do NOT assume the app is fully set up. Modern web apps serve the SPA shell regardless of setup state. You MUST check for installer/setup endpoints by searching the codebase and probing discovered routes.
+- CRITICAL: If the discovery hints say setup is needed, it IS needed. Do not skip setup unless you have concrete proof (database tables exist, admin user exists, installer endpoints return 404).
+
+### 2. Discover the setup endpoint
+Do NOT guess URLs. Instead:
+- **Search the codebase** for install/setup controllers and routes (e.g. grep for "installer", "InstallController", "SetupController", route attributes)
+- **Search the web** for framework-specific setup documentation
+- **Check the container's file system**: look for install scripts, setup pages, or CLI tools
+- Once you find the correct endpoint, probe it to confirm it responds
+
+### 3. Complete the setup via HTTP
 Most frameworks provide a web-based install wizard. Complete it by:
 - **POST to the setup form** with the admin credentials and any required config (DB connection, site name, etc.)
 - Follow redirects — setup wizards often have multiple steps
@@ -67,7 +79,7 @@ Most frameworks provide a web-based install wizard. Complete it by:
   - Include any CSRF/anti-forgery tokens found in the setup page HTML
   - Accept default settings for optional config steps
 
-### 3. Complete setup via CLI (fallback)
+### 4. Complete setup via CLI (fallback)
 If the web wizard doesn't work, try:
 - Framework CLI: \`docker exec <container> <framework-cli> setup\`
 - Database migrations: \`docker exec <container> <migration-command>\`
@@ -75,7 +87,7 @@ If the web wizard doesn't work, try:
 - Direct SQL: create tables, insert admin user
 - Search codebase for setup/install scripts
 
-### 4. Verify setup completed
+### 5. Verify setup completed
 After setup:
 1. Probe GET ${baseUrl}/ — should now show login page or dashboard (NOT the setup wizard)
 2. Probe the login endpoint with the admin credentials to verify they work
@@ -93,8 +105,9 @@ After setup:
 When setup is complete and verified, respond with ONLY this JSON:
 {"completed": true, "username": "bright_test", "password": "<ACTUAL_PASSWORD>", "email": "bright@test.com", "summary": "brief description of what you did"}
 
-If the app does NOT need first-run setup (already has tables and the setup wizard is not present), respond with:
+If the app does NOT need first-run setup (you confirmed the database has tables, admin users exist, and NO setup/installer endpoints return 200), respond with:
 {"completed": true, "alreadySetUp": true, "summary": "App is already set up — no wizard detected"}
+IMPORTANT: Do NOT return alreadySetUp:true if you're unsure. If the setup endpoint returns 200, the app needs setup even if the root page looks normal.
 
 If you tried everything and setup cannot be completed, respond with:
 {"completed": false, "reason": "brief explanation of what went wrong"}
