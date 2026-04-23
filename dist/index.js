@@ -37524,6 +37524,7 @@ ${tailLines}
 
 (Full log: ${errorLines.length} lines in .bright-build-error.log \u2014 use read_file if you need the middle)`;
   }
+  const diagnosticSnapshot = config2.docker ? gatherDiagnosticSnapshot(repoPath) : "";
   const messages = [
     {
       role: "system",
@@ -37543,20 +37544,16 @@ ${tailLines}
 IMPORTANT: The startup command runs ON THE HOST, not inside a container. If the command uses a tool like pnpm/node/rails that only exists inside the Docker image, the command must be wrapped with 'docker run' or 'docker exec'.
 
 APPROACH:
-1. **FIRST \u2014 read the full logs.** The error excerpt below may be truncated (e.g. only stack trace tails without the actual exception). BEFORE investigating anything else, use read_file on these files which contain the COMPLETE untruncated output:
-   - .bright-container-logs.txt \u2014 full Docker container logs (all containers)
-   - .bright-build-error.log \u2014 full error output from the failed command
-   The real error message is almost always near the TOP of these files. Do NOT run 'docker logs --tail' \u2014 it only shows the bottom of the stack trace.
-2. If the error mentions HTTP 500 or similar, use **probe_url** to see the full error response from the app \u2014 it often contains the exact problem (e.g. "Migrations are pending", "database does not exist").
-3. If hints from previous attempts are provided, evaluate them critically \u2014 remove any that are wrong or led to this failure.
-4. Use run_command_on_host for host-level diagnostics (docker ps, docker inspect).
-5. Use run_command_in_docker to inspect what's available INSIDE the container (which pnpm, ps aux, cat /app/config.yml).
-6. Fix the ROOT CAUSE with targeted changes \u2014 fix config files, scripts, compose files, environment so the startup command can succeed.
-7. After fixing, verify your changes (e.g. re-read the patched file, run a diagnostic command, use probe_url to test the app).
-8. Before finishing, call save_hint for any important discoveries about this app's configuration or behavior.
+1. **STUDY THE DIAGNOSTIC SNAPSHOT FIRST.** A "DIAGNOSTIC SNAPSHOT" section is appended to the error details below. It contains the CURRENT docker state: container statuses, volumes, health check results, key error lines from logs, and the resolved compose config. Read it CAREFULLY before doing anything \u2014 the root cause is usually visible in this snapshot.
+2. If the snapshot isn't enough, read the full logs: .bright-container-logs.txt and .bright-build-error.log.
+3. If the error mentions HTTP 500 or similar, use **probe_url** to see the full error response from the app \u2014 it often contains the exact problem (e.g. "Migrations are pending", "database does not exist").
+4. If hints from previous attempts are provided, evaluate them critically \u2014 remove any that are wrong or led to this failure.
+5. Fix the ROOT CAUSE with targeted changes \u2014 fix config files, scripts, compose files, environment so the startup command can succeed.
+6. After fixing, verify your changes (e.g. re-read the patched file, run a diagnostic command, use probe_url to test the app).
+7. Before finishing, call save_hint for any important discoveries about this app's configuration or behavior.
 
 IMPORTANT DATABASE TIPS:
-- Docker volumes are automatically cleaned between attempts (docker compose down -v), so stale data from a previous image won't persist.
+- **Stale volumes are a top cause of DB auth failures.** If DB logs show "Password did not match" or "Login failed", the DB volume was initialized with a different password on a prior run. MSSQL/PostgreSQL/MySQL all set the admin password ONLY on first initialization. Fix: \`docker compose down -v\` to remove volumes, then \`docker compose up -d\`.
 - If a migration fails because of a missing PostgreSQL extension (e.g. pgvector), first check if you can REMOVE the plugin that requires it (e.g. delete/rename its directory under plugins/) rather than installing the extension. Removing an optional plugin is often simpler than fixing extension availability.
 - If the app crashes with "No such file or directory" for a tool (e.g. brotli, wkhtmltopdf), install it in the Dockerfile or set an env var to disable the feature that needs it.
 
@@ -37609,12 +37606,9 @@ ${e.slice(-500)}`).join("\n")}
 ` : ""}${hints && hints.length > 0 ? `
 Hints from previous repair attempts (use these \u2014 they were discovered through investigation):
 ${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
-` : ""}
-Investigate the root cause using the tools, then fix it.
+` : ""}${diagnosticSnapshot}
 
-\u26A0\uFE0F YOUR FIRST ACTION must be: read_file .bright-container-logs.txt \u2014 the error excerpt above is likely truncated. The full logs have the actual exception message near the top. Do NOT skip this step or run 'docker logs --tail' instead.
-
-Reply with the JSON object.`
+Study the diagnostic snapshot above, identify the root cause, fix it, then reply with the JSON object.`
     }
   ];
   try {
@@ -38864,6 +38858,103 @@ ${containerLog.trim()}`);
 ... (${lines.length - tailLines} lines omitted \u2014 full logs in .bright-container-logs.txt) ...
 
 ${tail}`;
+}
+function gatherDiagnosticSnapshot(repoPath) {
+  const sections = [];
+  try {
+    const ps = execFileSync4(
+      "docker",
+      ["ps", "-a", "--format", "table {{.Names}}	{{.Status}}	{{.Ports}}"],
+      { encoding: "utf-8", timeout: 1e4 }
+    ).trim();
+    sections.push(`## Container Status
+\`\`\`
+${ps}
+\`\`\``);
+  } catch {
+  }
+  try {
+    const volumes = execFileSync4(
+      "docker",
+      ["volume", "ls", "--format", "table {{.Name}}	{{.Driver}}"],
+      { encoding: "utf-8", timeout: 1e4 }
+    ).trim();
+    sections.push(`## Docker Volumes
+\`\`\`
+${volumes}
+\`\`\``);
+  } catch {
+  }
+  try {
+    const containers = execFileSync4(
+      "docker",
+      ["ps", "-a", "--filter", "health=unhealthy", "--filter", "health=starting", "--format", "{{.Names}}"],
+      { encoding: "utf-8", timeout: 1e4 }
+    ).trim().split("\n").filter(Boolean);
+    for (const name of containers.slice(0, 3)) {
+      try {
+        const health = execFileSync4(
+          "docker",
+          ["inspect", "--format", "{{json .State.Health}}", name],
+          { encoding: "utf-8", timeout: 1e4 }
+        ).trim();
+        try {
+          const parsed = JSON.parse(health);
+          const lastLogs = (parsed.Log || []).slice(-3).map(
+            (l) => `  exit=${l.ExitCode}: ${(l.Output || "").trim().slice(0, 200)}`
+          ).join("\n");
+          sections.push(`## Health Check: ${name} (${parsed.Status})
+Last checks:
+${lastLogs}`);
+        } catch {
+          sections.push(`## Health Check: ${name}
+${health.slice(0, 500)}`);
+        }
+      } catch {
+      }
+    }
+  } catch {
+  }
+  try {
+    const logFile = `${repoPath}/.bright-container-logs.txt`;
+    if (existsSync5(logFile)) {
+      const logContent = readFileSync4(logFile, "utf-8");
+      const errorPatterns = /error|failed|fatal|panic|exception|denied|refused|password.*match|login failed|permission|timeout|not found|cannot connect/i;
+      const errorLines = logContent.split("\n").filter((line) => errorPatterns.test(line)).slice(0, 20).map((line) => line.trim().slice(0, 300));
+      if (errorLines.length > 0) {
+        sections.push(`## Key Error Lines from Container Logs
+\`\`\`
+${errorLines.join("\n")}
+\`\`\``);
+      }
+    }
+  } catch {
+  }
+  try {
+    const composeConfig = execFileSync4(
+      "docker",
+      ["compose", "config"],
+      { cwd: repoPath, encoding: "utf-8", timeout: 1e4 }
+    ).trim();
+    if (composeConfig.length < 3e3) {
+      sections.push(`## Resolved Compose Config
+\`\`\`yaml
+${composeConfig}
+\`\`\``);
+    } else {
+      sections.push(`## Resolved Compose Config (truncated)
+\`\`\`yaml
+${composeConfig.slice(0, 3e3)}
+...(truncated)
+\`\`\``);
+    }
+  } catch {
+  }
+  if (sections.length === 0) return "";
+  return `
+
+# DIAGNOSTIC SNAPSHOT (current Docker state)
+${sections.join("\n\n")}`;
 }
 
 // src/phases/auth.ts
