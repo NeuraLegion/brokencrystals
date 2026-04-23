@@ -47,6 +47,16 @@ Create an admin with these credentials:
 - **read_file / search_files / list_files** — Inspect the application codebase
 - **search_web** — Search the internet for framework-specific setup documentation
 - **fetch_url** — Fetch full content of a web page (docs, guides)
+- **report_setup_evidence** — REQUIRED before claiming success. You must call this with the actual command + raw output that proves setup worked.
+
+## CRITICAL: Persistence rule
+Any change you make MUST survive a container rebuild. The orchestrator may rebuild the container (lose runtime state) at any point after this phase. So:
+- ✅ ALLOWED: edit files in the source tree on the host (compose.yml, Dockerfile, appsettings.json in the source repo, init scripts, migrations)
+- ✅ ALLOWED: add environment variables to compose.yml that the framework reads at startup (e.g. unattended-install env vars)
+- ✅ ALLOWED: write SQL/seed data to the database (DB volumes typically persist; if not, seed via init script)
+- ❌ FORBIDDEN: edit files INSIDE the running container (e.g. \`docker exec ... vi /app/publish/appsettings.json\`) — these are LOST on rebuild
+- ❌ FORBIDDEN: rely on temporary process state, in-memory caches, or files written to non-persistent container paths
+If you need to edit a runtime config file, edit the SOURCE copy in the host repo and rebuild, OR set the equivalent environment variable in compose.yml.
 
 ## Strategy
 
@@ -87,11 +97,20 @@ If the web wizard doesn't work, try:
 - Direct SQL: create tables, insert admin user
 - Search codebase for setup/install scripts
 
-### 5. Verify setup completed
-After setup:
-1. Probe GET ${baseUrl}/ — should now show login page or dashboard (NOT the setup wizard)
-2. Probe the login endpoint with the admin credentials to verify they work
-3. If the app still shows a setup wizard, you missed a step — check what the wizard is asking for
+### 5. Verify setup completed — EVIDENCE REQUIRED
+After setup, you MUST gather concrete evidence that setup actually worked. Do not trust HTTP 200 responses alone — most modern apps serve an SPA shell that returns 200 in both setup and post-setup states.
+
+Acceptable evidence (pick ONE that is appropriate for this app):
+- **Database evidence**: Run a SQL query that lists tables/users created during setup (e.g. \`SELECT TOP 5 * FROM <user_table>\`, \`SELECT count(*) FROM information_schema.tables WHERE table_schema='public'\`). The output must show actual rows / non-zero counts.
+- **API evidence**: Probe an endpoint that ONLY works after setup (e.g. successful login that returns 200 + a token/cookie, an admin endpoint that returns user data).
+- **App-state evidence**: Probe an endpoint that explicitly reports setup state (e.g. \`/api/health\`, \`/api/setup-status\`, \`/installer/status\`) and shows "configured" / "ready" / "installed".
+
+Then, before declaring success, call \`report_setup_evidence\` with:
+- The exact command/probe you ran
+- The raw output you captured (not your summary — paste the actual response)
+- A short explanation of why this output proves setup succeeded
+
+If you cannot provide such evidence, setup did not actually succeed. Keep iterating.
 
 ## Important notes
 - Many setup wizards include CSRF/anti-forgery tokens. You MUST:
@@ -102,12 +121,12 @@ After setup:
 - If the setup creates a different password than requested (due to validation), report the ACTUAL password used.
 
 ## Output
-When setup is complete and verified, respond with ONLY this JSON:
+When setup is complete and verified, FIRST call \`report_setup_evidence\`, THEN respond with ONLY this JSON:
 {"completed": true, "username": "bright_test", "password": "<ACTUAL_PASSWORD>", "email": "bright@test.com", "summary": "brief description of what you did"}
 
-If the app does NOT need first-run setup (you confirmed the database has tables, admin users exist, and NO setup/installer endpoints return 200), respond with:
+If the app does NOT need first-run setup (you confirmed via DB query / API probe that schema and admin users exist, and NO setup/installer endpoints return 200), call \`report_setup_evidence\` with that proof, then respond with:
 {"completed": true, "alreadySetUp": true, "summary": "App is already set up — no wizard detected"}
-IMPORTANT: Do NOT return alreadySetUp:true if you're unsure. If the setup endpoint returns 200, the app needs setup even if the root page looks normal.
+IMPORTANT: Do NOT return alreadySetUp:true if you're unsure. The orchestrator will reject any "completed" response that lacks evidence.
 
 If you tried everything and setup cannot be completed, respond with:
 {"completed": false, "reason": "brief explanation of what went wrong"}

@@ -76,6 +76,68 @@ async function restartApp(
   return result;
 }
 
+/**
+ * Run the first-run setup phase if the app appears to need it.
+ * Used both at the initial setup point and after every bounce-back rebuild
+ * (since rebuilds can wipe runtime state). Returns updated credentials and
+ * whether setup succeeded; safe to call when no setup is needed.
+ */
+async function runSetupIfNeeded(
+  llm: Parameters<typeof chatWithTools>[0],
+  repoPath: string,
+  baseUrl: string,
+  techStack: TechStack,
+  startupConfig: StartupConfig,
+  postStartSetupHints: string[] | undefined,
+  modelSelector: ModelSelector,
+  progress: ProgressReporter,
+  context: string,
+): Promise<{ ran: boolean; completed: boolean; credentials?: FirstRunSetupResult["credentials"]; summary: string }> {
+  const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
+  if (!needs) return { ran: false, completed: false, summary: "Setup not needed" };
+
+  await progress.phaseStart("first_run_setup", `Completing first-time application setup (${context})`);
+  console.log(`[Engine] App needs first-run setup (${context}) — running setup phase`);
+
+  const baseModel = modelSelector.current();
+  const criticModel = modelSelector.peekEscalated();
+  let setupResult = await completeFirstRunSetup(
+    llm,
+    repoPath,
+    baseUrl,
+    techStack,
+    startupConfig,
+    postStartSetupHints ?? [],
+    baseModel,
+    criticModel,
+  );
+
+  if (!setupResult.completed && modelSelector.escalate()) {
+    console.log(`[Engine] First-run setup failed (${context}) — retrying with escalated model`);
+    setupResult = await completeFirstRunSetup(
+      llm,
+      repoPath,
+      baseUrl,
+      techStack,
+      startupConfig,
+      postStartSetupHints ?? [],
+      modelSelector.current(),
+      criticModel,
+    );
+  }
+
+  if (setupResult.completed) {
+    await progress.phaseDetail("first_run_setup", "done", `Setup completed: ${setupResult.summary}`);
+    console.log(`[Engine] First-run setup completed (${context}): ${setupResult.summary}`);
+    modelSelector.reset();
+    return { ran: true, completed: true, credentials: setupResult.credentials, summary: setupResult.summary };
+  }
+
+  console.warn(`[Engine] First-run setup failed (${context}): ${setupResult.summary}`);
+  await progress.phaseDetail("first_run_setup", "failed", `Setup failed: ${setupResult.summary}`);
+  return { ran: true, completed: false, summary: setupResult.summary };
+}
+
 export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   const { repoPath, platform, llm, bright, config } = ctx;
   const progress = new ProgressReporter(platform);
@@ -216,52 +278,22 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // Some apps (Umbraco, WordPress, Ghost, etc.) require completing an install wizard
     // before auth can work. Detect and complete it before the auth phase.
     let setupCredentials: FirstRunSetupResult["credentials"] | undefined;
-    const needsSetup = await detectFirstRunSetup(baseUrl, startupConfig, startup.postStartSetupHints);
-    if (needsSetup) {
-      await progress.phaseStart("first_run_setup", "Completing first-time application setup");
-      console.log("[Engine] App appears to be in first-run setup mode — completing install wizard");
-
-      // Try setup with current model, escalate once on failure
-      let setupResult = await completeFirstRunSetup(
+    let setupCompleted = false;
+    {
+      const r = await runSetupIfNeeded(
         llm,
         repoPath,
         baseUrl,
         techStack,
         startupConfig,
-        startup.postStartSetupHints ?? [],
-        config.modelSelector.current(),
+        startup.postStartSetupHints,
+        config.modelSelector,
+        progress,
+        "initial",
       );
-
-      if (!setupResult.completed && config.modelSelector.escalate()) {
-        console.log(`[Engine] First-run setup failed — retrying with escalated model`);
-        setupResult = await completeFirstRunSetup(
-          llm,
-          repoPath,
-          baseUrl,
-          techStack,
-          startupConfig,
-          startup.postStartSetupHints ?? [],
-          config.modelSelector.current(),
-        );
-      }
-
-      if (setupResult.completed) {
-        setupCredentials = setupResult.credentials;
-        await progress.phaseDetail(
-          "first_run_setup",
-          "done",
-          `Setup completed: ${setupResult.summary}`,
-        );
-        console.log(`[Engine] First-run setup completed: ${setupResult.summary}`);
-        config.modelSelector.reset(); // back to base for auth phase
-      } else {
-        console.warn(`[Engine] First-run setup failed: ${setupResult.summary}`);
-        await progress.phaseDetail(
-          "first_run_setup",
-          "failed",
-          `Setup failed: ${setupResult.summary}`,
-        );
-        // Don't abort — auth phase might still work or handle it via repair
+      if (r.completed) {
+        setupCredentials = r.credentials;
+        setupCompleted = true;
       }
     }
 
@@ -345,6 +377,39 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         baseUrl = `http://localhost:${startupConfig.port}`;
         if (authResult.registration) await reRegisterUser(authResult.registration);
         console.log(`[Engine] App restarted after infra repair — retrying auth`);
+
+        // Re-run first-run setup if the app needs it again. Rebuilds wipe
+        // any container-internal state (DB schema, admin users) so anything
+        // that wasn't persisted in the source/compose tree is gone.
+        // Also covers cases where the auth failure ITSELF was caused by a
+        // missing schema / unseeded DB ("Invalid object name", "no such table",
+        // "relation does not exist") that the rebuild revealed.
+        try {
+          const setupRetry = await runSetupIfNeeded(
+            llm,
+            repoPath,
+            baseUrl,
+            techStack,
+            startupConfig,
+            repairedStartup.postStartSetupHints ?? startup.postStartSetupHints,
+            config.modelSelector,
+            progress,
+            `bounce-back ${bounce}`,
+          );
+          if (setupRetry.completed && setupRetry.credentials) {
+            // New credentials — re-seed the auth context
+            setupCredentials = setupRetry.credentials;
+            preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
+            preAuthContext +=
+              `\n\nIMPORTANT: A test user was already created during first-run setup:\n` +
+              `- username: ${setupCredentials.username}\n` +
+              `- email: ${setupCredentials.email}\n` +
+              `- password: ${setupCredentials.password}\n` +
+              `This user should work for authentication. Skip user registration/seeding and go straight to auth configuration.`;
+          }
+        } catch (setupErr) {
+          console.warn(`[Engine] Setup re-run after bounce-back failed: ${toErrorMessage(setupErr)}`);
+        }
 
         const retryAuthResult = await detectAndConfigureAuth(
           llm,

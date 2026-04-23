@@ -17996,6 +17996,16 @@ var ModelSelector = class {
   isEscalated() {
     return this.level > 0;
   }
+  /**
+   * Return the model name of the next stronger tier WITHOUT changing the
+   * current level. Returns the current tier name if already at the top.
+   * Useful for spawning a parallel "critic" call on a stronger model
+   * without disturbing the worker's current tier.
+   */
+  peekEscalated() {
+    const next = Math.min(this.level + 1, this.tiers.length - 1);
+    return this.tiers[next];
+  }
   toString() {
     if (this.tiers.length === 1) return this.tiers[0];
     return `[${this.tiers.join(" \u2192 ")}] @ tier ${this.level + 1}`;
@@ -41024,6 +41034,16 @@ Create an admin with these credentials:
 - **read_file / search_files / list_files** \u2014 Inspect the application codebase
 - **search_web** \u2014 Search the internet for framework-specific setup documentation
 - **fetch_url** \u2014 Fetch full content of a web page (docs, guides)
+- **report_setup_evidence** \u2014 REQUIRED before claiming success. You must call this with the actual command + raw output that proves setup worked.
+
+## CRITICAL: Persistence rule
+Any change you make MUST survive a container rebuild. The orchestrator may rebuild the container (lose runtime state) at any point after this phase. So:
+- \u2705 ALLOWED: edit files in the source tree on the host (compose.yml, Dockerfile, appsettings.json in the source repo, init scripts, migrations)
+- \u2705 ALLOWED: add environment variables to compose.yml that the framework reads at startup (e.g. unattended-install env vars)
+- \u2705 ALLOWED: write SQL/seed data to the database (DB volumes typically persist; if not, seed via init script)
+- \u274C FORBIDDEN: edit files INSIDE the running container (e.g. \`docker exec ... vi /app/publish/appsettings.json\`) \u2014 these are LOST on rebuild
+- \u274C FORBIDDEN: rely on temporary process state, in-memory caches, or files written to non-persistent container paths
+If you need to edit a runtime config file, edit the SOURCE copy in the host repo and rebuild, OR set the equivalent environment variable in compose.yml.
 
 ## Strategy
 
@@ -41064,11 +41084,20 @@ If the web wizard doesn't work, try:
 - Direct SQL: create tables, insert admin user
 - Search codebase for setup/install scripts
 
-### 5. Verify setup completed
-After setup:
-1. Probe GET ${baseUrl}/ \u2014 should now show login page or dashboard (NOT the setup wizard)
-2. Probe the login endpoint with the admin credentials to verify they work
-3. If the app still shows a setup wizard, you missed a step \u2014 check what the wizard is asking for
+### 5. Verify setup completed \u2014 EVIDENCE REQUIRED
+After setup, you MUST gather concrete evidence that setup actually worked. Do not trust HTTP 200 responses alone \u2014 most modern apps serve an SPA shell that returns 200 in both setup and post-setup states.
+
+Acceptable evidence (pick ONE that is appropriate for this app):
+- **Database evidence**: Run a SQL query that lists tables/users created during setup (e.g. \`SELECT TOP 5 * FROM <user_table>\`, \`SELECT count(*) FROM information_schema.tables WHERE table_schema='public'\`). The output must show actual rows / non-zero counts.
+- **API evidence**: Probe an endpoint that ONLY works after setup (e.g. successful login that returns 200 + a token/cookie, an admin endpoint that returns user data).
+- **App-state evidence**: Probe an endpoint that explicitly reports setup state (e.g. \`/api/health\`, \`/api/setup-status\`, \`/installer/status\`) and shows "configured" / "ready" / "installed".
+
+Then, before declaring success, call \`report_setup_evidence\` with:
+- The exact command/probe you ran
+- The raw output you captured (not your summary \u2014 paste the actual response)
+- A short explanation of why this output proves setup succeeded
+
+If you cannot provide such evidence, setup did not actually succeed. Keep iterating.
 
 ## Important notes
 - Many setup wizards include CSRF/anti-forgery tokens. You MUST:
@@ -41079,12 +41108,12 @@ After setup:
 - If the setup creates a different password than requested (due to validation), report the ACTUAL password used.
 
 ## Output
-When setup is complete and verified, respond with ONLY this JSON:
+When setup is complete and verified, FIRST call \`report_setup_evidence\`, THEN respond with ONLY this JSON:
 {"completed": true, "username": "bright_test", "password": "<ACTUAL_PASSWORD>", "email": "bright@test.com", "summary": "brief description of what you did"}
 
-If the app does NOT need first-run setup (you confirmed the database has tables, admin users exist, and NO setup/installer endpoints return 200), respond with:
+If the app does NOT need first-run setup (you confirmed via DB query / API probe that schema and admin users exist, and NO setup/installer endpoints return 200), call \`report_setup_evidence\` with that proof, then respond with:
 {"completed": true, "alreadySetUp": true, "summary": "App is already set up \u2014 no wizard detected"}
-IMPORTANT: Do NOT return alreadySetUp:true if you're unsure. If the setup endpoint returns 200, the app needs setup even if the root page looks normal.
+IMPORTANT: Do NOT return alreadySetUp:true if you're unsure. The orchestrator will reject any "completed" response that lacks evidence.
 
 If you tried everything and setup cannot be completed, respond with:
 {"completed": false, "reason": "brief explanation of what went wrong"}
@@ -41170,7 +41199,7 @@ async function detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints) 
   }
   return false;
 }
-async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, model) {
+async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, model, criticModel) {
   console.log("[Setup] Starting first-run setup phase...");
   const setupTools = [
     ...codebaseTools,
@@ -41232,11 +41261,38 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
           additionalProperties: false
         }
       }
+    },
+    {
+      type: "function",
+      function: {
+        name: "report_setup_evidence",
+        description: "REQUIRED before claiming setup is complete. Report concrete evidence proving setup succeeded. Provide the EXACT verification command/probe you ran, the RAW output you captured (paste actual response, not a summary), and a short explanation of why this output proves setup is done. May be called multiple times to accumulate evidence.",
+        parameters: {
+          type: "object",
+          properties: {
+            verification_command: {
+              type: "string",
+              description: `The exact command, SQL query, or HTTP probe used to verify setup (e.g. "sqlcmd -Q 'SELECT count(*) FROM umbracoUser'" or "POST /umbraco/management/api/v1/security/back-office/login")`
+            },
+            verification_output: {
+              type: "string",
+              description: "The raw, unmodified output captured from the verification command. Paste the actual response/result, not a summary."
+            },
+            why_this_proves_setup_complete: {
+              type: "string",
+              description: "Short explanation of why this specific output proves the setup achieved its goal (schema created, admin user exists, etc.)"
+            }
+          },
+          required: ["verification_command", "verification_output", "why_this_proves_setup_complete"],
+          additionalProperties: false
+        }
+      }
     }
   ];
   const baseCodeHandler = createToolHandler(repoPath);
   const webHandler = createWebSearchHandler(repoPath);
   const cookieJar = {};
+  const collectedEvidence = [];
   const handler = async (name, args) => {
     if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
@@ -41264,6 +41320,17 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
     if (name === "probe_url") {
       return probeUrlWithCookies(args, cookieJar);
     }
+    if (name === "report_setup_evidence") {
+      const command = String(args.verification_command ?? "").trim();
+      const output = String(args.verification_output ?? "").trim();
+      const reasoning = String(args.why_this_proves_setup_complete ?? "").trim();
+      if (command.length < 3 || output.length < 3 || reasoning.length < 5) {
+        return "Evidence rejected: each field must contain real content. Re-run a verification command and paste actual output.";
+      }
+      collectedEvidence.push({ command, output, reasoning });
+      console.log(`[Setup] Evidence #${collectedEvidence.length} recorded: ${command.slice(0, 120)}`);
+      return `Evidence recorded (${collectedEvidence.length} total). You may report more evidence or proceed to the final JSON answer.`;
+    }
     if (name === "search_web" || name === "fetch_url") {
       return webHandler(name, args);
     }
@@ -41280,6 +41347,29 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
     const json = extractJson(response);
     const result = JSON.parse(json);
     if (result.completed) {
+      if (collectedEvidence.length === 0) {
+        console.warn("[Setup] LLM claimed completed=true but provided NO evidence \u2014 rejecting");
+        return {
+          completed: false,
+          summary: "LLM claimed setup complete but failed to call report_setup_evidence with proof"
+        };
+      }
+      const critic = await runEvidenceCritic(
+        llm,
+        baseUrl,
+        techStack,
+        result.alreadySetUp === true,
+        collectedEvidence,
+        criticModel ?? model
+      );
+      if (!critic.convincing) {
+        console.warn(`[Setup] Critic rejected evidence: ${critic.reason}`);
+        return {
+          completed: false,
+          summary: `Evidence rejected by critic: ${critic.reason}`
+        };
+      }
+      console.log(`[Setup] Critic accepted evidence: ${critic.reason.slice(0, 160)}`);
       if (result.alreadySetUp) {
         const stillInSetup = await verifyStillInSetupMode(baseUrl);
         if (stillInSetup) {
@@ -41297,6 +41387,73 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
   } catch {
     console.warn(`[Setup] Could not parse setup result: ${response.slice(0, 200)}`);
     return { completed: false, summary: "Failed to parse LLM response" };
+  }
+}
+async function runEvidenceCritic(llm, baseUrl, techStack, alreadySetUpClaim, evidence, criticModel) {
+  const evidenceBlock = evidence.map(
+    (e, i) => `### Evidence #${i + 1}
+Command/probe: \`${e.command}\`
+Raw output:
+\`\`\`
+${e.output.slice(0, 3e3)}
+\`\`\`
+Agent's reasoning: ${e.reasoning}`
+  ).join("\n\n");
+  const claim = alreadySetUpClaim ? "the app was ALREADY set up (no wizard needed) \u2014 schema and admin user existed before this phase started" : "the app's first-run setup has been COMPLETED \u2014 the database schema now exists and the admin user has been created";
+  const messages = [
+    {
+      role: "system",
+      content: `You are a strict reviewer evaluating whether a setup agent's claim is supported by concrete evidence. Your job is to detect hallucinated success \u2014 cases where the agent claims completion without real proof.
+
+## Context
+- App URL: ${baseUrl}
+- Tech stack: ${formatTechStack(techStack)}
+- Agent claims: ${claim}
+
+## What counts as convincing evidence
+- A SQL query whose output shows actual rows from a setup-created table (e.g. \`SELECT * FROM users LIMIT 5\` returning real rows)
+- A successful authenticated API call that ONLY works after setup (e.g. login returns 200 + a token, not 401)
+- A health/status endpoint explicitly reporting "configured" / "ready" / "installed"
+- A direct check confirming database tables exist (e.g. \`information_schema\` query returning the expected table)
+
+## What is NOT convincing
+- The root URL returns HTTP 200 (modern SPAs return 200 in both setup and post-setup states)
+- A command that just prints "done" or "ok" without actually checking anything
+- A grep/search of source code (proves nothing about runtime state)
+- An HTTP 200 from any page that doesn't require setup-specific data
+- Reasoning that says "the logs probably show..." without actual log content
+- Empty/short output that doesn't actually demonstrate the claim
+
+## Your task
+Examine each piece of evidence. Decide if the COMBINED evidence convincingly proves the agent's claim. Be strict \u2014 when in doubt, reject. False positives here cause cascading failures downstream.
+
+Reply with ONLY this JSON (no prose, no markdown fence):
+{"convincing": true|false, "reason": "1-2 sentence justification"}`
+    },
+    {
+      role: "user",
+      content: `## Evidence collected
+
+${evidenceBlock}
+
+Is this evidence convincing? Reply with the JSON verdict.`
+    }
+  ];
+  try {
+    const response = await chatWithTools(llm, messages, [], async () => "", criticModel, 1);
+    const json = extractJson(response);
+    const verdict = JSON.parse(json);
+    return {
+      convincing: verdict.convincing === true,
+      reason: verdict.reason ?? "(no reason provided)"
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[Setup] Critic call failed: ${msg} \u2014 defaulting to REJECT`);
+    return {
+      convincing: false,
+      reason: `Critic evaluation failed: ${msg}`
+    };
   }
 }
 async function verifyStillInSetupMode(baseUrl) {
@@ -43446,6 +43603,46 @@ async function restartApp(current, llm, repoPath, techStack, startupConfig, mode
   if (registration) await reRegisterUser(registration);
   return result;
 }
+async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, modelSelector, progress, context) {
+  const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
+  if (!needs) return { ran: false, completed: false, summary: "Setup not needed" };
+  await progress.phaseStart("first_run_setup", `Completing first-time application setup (${context})`);
+  console.log(`[Engine] App needs first-run setup (${context}) \u2014 running setup phase`);
+  const baseModel = modelSelector.current();
+  const criticModel = modelSelector.peekEscalated();
+  let setupResult = await completeFirstRunSetup(
+    llm,
+    repoPath,
+    baseUrl,
+    techStack,
+    startupConfig,
+    postStartSetupHints ?? [],
+    baseModel,
+    criticModel
+  );
+  if (!setupResult.completed && modelSelector.escalate()) {
+    console.log(`[Engine] First-run setup failed (${context}) \u2014 retrying with escalated model`);
+    setupResult = await completeFirstRunSetup(
+      llm,
+      repoPath,
+      baseUrl,
+      techStack,
+      startupConfig,
+      postStartSetupHints ?? [],
+      modelSelector.current(),
+      criticModel
+    );
+  }
+  if (setupResult.completed) {
+    await progress.phaseDetail("first_run_setup", "done", `Setup completed: ${setupResult.summary}`);
+    console.log(`[Engine] First-run setup completed (${context}): ${setupResult.summary}`);
+    modelSelector.reset();
+    return { ran: true, completed: true, credentials: setupResult.credentials, summary: setupResult.summary };
+  }
+  console.warn(`[Engine] First-run setup failed (${context}): ${setupResult.summary}`);
+  await progress.phaseDetail("first_run_setup", "failed", `Setup failed: ${setupResult.summary}`);
+  return { ran: true, completed: false, summary: setupResult.summary };
+}
 async function runOrchestrator(ctx) {
   const { repoPath, platform, llm, bright, config: config2 } = ctx;
   const progress = new ProgressReporter(platform);
@@ -43562,47 +43759,22 @@ async function runOrchestrator(ctx) {
       `Repeater connected: ${repeater.repeaterId}`
     );
     let setupCredentials;
-    const needsSetup = await detectFirstRunSetup(baseUrl, startupConfig, startup.postStartSetupHints);
-    if (needsSetup) {
-      await progress.phaseStart("first_run_setup", "Completing first-time application setup");
-      console.log("[Engine] App appears to be in first-run setup mode \u2014 completing install wizard");
-      let setupResult = await completeFirstRunSetup(
+    let setupCompleted = false;
+    {
+      const r = await runSetupIfNeeded(
         llm,
         repoPath,
         baseUrl,
         techStack,
         startupConfig,
-        startup.postStartSetupHints ?? [],
-        config2.modelSelector.current()
+        startup.postStartSetupHints,
+        config2.modelSelector,
+        progress,
+        "initial"
       );
-      if (!setupResult.completed && config2.modelSelector.escalate()) {
-        console.log(`[Engine] First-run setup failed \u2014 retrying with escalated model`);
-        setupResult = await completeFirstRunSetup(
-          llm,
-          repoPath,
-          baseUrl,
-          techStack,
-          startupConfig,
-          startup.postStartSetupHints ?? [],
-          config2.modelSelector.current()
-        );
-      }
-      if (setupResult.completed) {
-        setupCredentials = setupResult.credentials;
-        await progress.phaseDetail(
-          "first_run_setup",
-          "done",
-          `Setup completed: ${setupResult.summary}`
-        );
-        console.log(`[Engine] First-run setup completed: ${setupResult.summary}`);
-        config2.modelSelector.reset();
-      } else {
-        console.warn(`[Engine] First-run setup failed: ${setupResult.summary}`);
-        await progress.phaseDetail(
-          "first_run_setup",
-          "failed",
-          `Setup failed: ${setupResult.summary}`
-        );
+      if (r.completed) {
+        setupCredentials = r.credentials;
+        setupCompleted = true;
       }
     }
     await progress.phaseStart("auth", "Detecting authentication requirements");
@@ -43667,6 +43839,32 @@ This user should work for authentication. Skip user registration/seeding and go 
         baseUrl = `http://localhost:${startupConfig.port}`;
         if (authResult.registration) await reRegisterUser(authResult.registration);
         console.log(`[Engine] App restarted after infra repair \u2014 retrying auth`);
+        try {
+          const setupRetry = await runSetupIfNeeded(
+            llm,
+            repoPath,
+            baseUrl,
+            techStack,
+            startupConfig,
+            repairedStartup.postStartSetupHints ?? startup.postStartSetupHints,
+            config2.modelSelector,
+            progress,
+            `bounce-back ${bounce}`
+          );
+          if (setupRetry.completed && setupRetry.credentials) {
+            setupCredentials = setupRetry.credentials;
+            preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
+            preAuthContext += `
+
+IMPORTANT: A test user was already created during first-run setup:
+- username: ${setupCredentials.username}
+- email: ${setupCredentials.email}
+- password: ${setupCredentials.password}
+This user should work for authentication. Skip user registration/seeding and go straight to auth configuration.`;
+          }
+        } catch (setupErr) {
+          console.warn(`[Engine] Setup re-run after bounce-back failed: ${toErrorMessage(setupErr)}`);
+        }
         const retryAuthResult = await detectAndConfigureAuth(
           llm,
           bright,

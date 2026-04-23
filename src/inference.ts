@@ -137,6 +137,17 @@ export class ModelSelector {
     return this.level > 0;
   }
 
+  /**
+   * Return the model name of the next stronger tier WITHOUT changing the
+   * current level. Returns the current tier name if already at the top.
+   * Useful for spawning a parallel "critic" call on a stronger model
+   * without disturbing the worker's current tier.
+   */
+  peekEscalated(): string {
+    const next = Math.min(this.level + 1, this.tiers.length - 1);
+    return this.tiers[next];
+  }
+
   toString(): string {
     if (this.tiers.length === 1) return this.tiers[0];
     return `[${this.tiers.join(" → ")}] @ tier ${this.level + 1}`;

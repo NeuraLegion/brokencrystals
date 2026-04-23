@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import type { ChatCompletionTool, ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 import { execSync } from "child_process";
 import { chatWithTools, type ToolHandler } from "../inference.js";
 import {
@@ -27,6 +27,13 @@ export interface FirstRunSetupResult {
   };
   /** Brief description of what happened. */
   summary: string;
+}
+
+/** Captured evidence from a single report_setup_evidence call. */
+interface SetupEvidence {
+  command: string;
+  output: string;
+  reasoning: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +153,7 @@ export async function completeFirstRunSetup(
   startupConfig: StartupConfig,
   postStartSetupHints: string[],
   model?: string,
+  criticModel?: string,
 ): Promise<FirstRunSetupResult> {
   console.log("[Setup] Starting first-run setup phase...");
 
@@ -214,6 +222,35 @@ export async function completeFirstRunSetup(
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "report_setup_evidence",
+        description:
+          "REQUIRED before claiming setup is complete. Report concrete evidence proving setup succeeded. " +
+          "Provide the EXACT verification command/probe you ran, the RAW output you captured (paste actual response, not a summary), " +
+          "and a short explanation of why this output proves setup is done. May be called multiple times to accumulate evidence.",
+        parameters: {
+          type: "object",
+          properties: {
+            verification_command: {
+              type: "string",
+              description: "The exact command, SQL query, or HTTP probe used to verify setup (e.g. \"sqlcmd -Q 'SELECT count(*) FROM umbracoUser'\" or \"POST /umbraco/management/api/v1/security/back-office/login\")",
+            },
+            verification_output: {
+              type: "string",
+              description: "The raw, unmodified output captured from the verification command. Paste the actual response/result, not a summary.",
+            },
+            why_this_proves_setup_complete: {
+              type: "string",
+              description: "Short explanation of why this specific output proves the setup achieved its goal (schema created, admin user exists, etc.)",
+            },
+          },
+          required: ["verification_command", "verification_output", "why_this_proves_setup_complete"],
+          additionalProperties: false,
+        },
+      },
+    },
   ];
 
   // Build tool handler
@@ -222,6 +259,9 @@ export async function completeFirstRunSetup(
 
   // Track cookies across probe_url calls for wizard multi-step flows
   const cookieJar: Record<string, string> = {};
+
+  // Track evidence reported by the LLM
+  const collectedEvidence: SetupEvidence[] = [];
 
   const handler: ToolHandler = async (name, args) => {
     if (name === "run_command_on_host") {
@@ -252,6 +292,18 @@ export async function completeFirstRunSetup(
     if (name === "probe_url") {
       return probeUrlWithCookies(args, cookieJar);
     }
+    if (name === "report_setup_evidence") {
+      const command = String(args.verification_command ?? "").trim();
+      const output = String(args.verification_output ?? "").trim();
+      const reasoning = String(args.why_this_proves_setup_complete ?? "").trim();
+      // Reject obviously-empty / placeholder evidence so the LLM tries again
+      if (command.length < 3 || output.length < 3 || reasoning.length < 5) {
+        return "Evidence rejected: each field must contain real content. Re-run a verification command and paste actual output.";
+      }
+      collectedEvidence.push({ command, output, reasoning });
+      console.log(`[Setup] Evidence #${collectedEvidence.length} recorded: ${command.slice(0, 120)}`);
+      return `Evidence recorded (${collectedEvidence.length} total). You may report more evidence or proceed to the final JSON answer.`;
+    }
     if (name === "search_web" || name === "fetch_url") {
       return webHandler(name, args);
     }
@@ -280,7 +332,34 @@ export async function completeFirstRunSetup(
     };
 
     if (result.completed) {
-      // If LLM says "already set up" but detection triggered, verify by re-probing
+      // Gate 1: Evidence required
+      if (collectedEvidence.length === 0) {
+        console.warn("[Setup] LLM claimed completed=true but provided NO evidence — rejecting");
+        return {
+          completed: false,
+          summary: "LLM claimed setup complete but failed to call report_setup_evidence with proof",
+        };
+      }
+
+      // Gate 2: Critic pass with escalated model
+      const critic = await runEvidenceCritic(
+        llm,
+        baseUrl,
+        techStack,
+        result.alreadySetUp === true,
+        collectedEvidence,
+        criticModel ?? model,
+      );
+      if (!critic.convincing) {
+        console.warn(`[Setup] Critic rejected evidence: ${critic.reason}`);
+        return {
+          completed: false,
+          summary: `Evidence rejected by critic: ${critic.reason}`,
+        };
+      }
+      console.log(`[Setup] Critic accepted evidence: ${critic.reason.slice(0, 160)}`);
+
+      // Gate 3: Existing safety net — re-probe for installer endpoints if "alreadySetUp"
       if (result.alreadySetUp) {
         const stillInSetup = await verifyStillInSetupMode(baseUrl);
         if (stillInSetup) {
@@ -305,6 +384,83 @@ export async function completeFirstRunSetup(
   } catch {
     console.warn(`[Setup] Could not parse setup result: ${response.slice(0, 200)}`);
     return { completed: false, summary: "Failed to parse LLM response" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Critic pass — independent LLM call evaluates if evidence proves setup done
+// ---------------------------------------------------------------------------
+
+async function runEvidenceCritic(
+  llm: OpenAI,
+  baseUrl: string,
+  techStack: TechStack,
+  alreadySetUpClaim: boolean,
+  evidence: SetupEvidence[],
+  criticModel?: string,
+): Promise<{ convincing: boolean; reason: string }> {
+  const evidenceBlock = evidence
+    .map((e, i) =>
+      `### Evidence #${i + 1}\n` +
+      `Command/probe: \`${e.command}\`\n` +
+      `Raw output:\n\`\`\`\n${e.output.slice(0, 3000)}\n\`\`\`\n` +
+      `Agent's reasoning: ${e.reasoning}`,
+    )
+    .join("\n\n");
+
+  const claim = alreadySetUpClaim
+    ? "the app was ALREADY set up (no wizard needed) — schema and admin user existed before this phase started"
+    : "the app's first-run setup has been COMPLETED — the database schema now exists and the admin user has been created";
+
+  const messages: ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content:
+        `You are a strict reviewer evaluating whether a setup agent's claim is supported by concrete evidence. ` +
+        `Your job is to detect hallucinated success — cases where the agent claims completion without real proof.\n\n` +
+        `## Context\n` +
+        `- App URL: ${baseUrl}\n` +
+        `- Tech stack: ${formatTechStack(techStack)}\n` +
+        `- Agent claims: ${claim}\n\n` +
+        `## What counts as convincing evidence\n` +
+        `- A SQL query whose output shows actual rows from a setup-created table (e.g. \`SELECT * FROM users LIMIT 5\` returning real rows)\n` +
+        `- A successful authenticated API call that ONLY works after setup (e.g. login returns 200 + a token, not 401)\n` +
+        `- A health/status endpoint explicitly reporting "configured" / "ready" / "installed"\n` +
+        `- A direct check confirming database tables exist (e.g. \`information_schema\` query returning the expected table)\n\n` +
+        `## What is NOT convincing\n` +
+        `- The root URL returns HTTP 200 (modern SPAs return 200 in both setup and post-setup states)\n` +
+        `- A command that just prints "done" or "ok" without actually checking anything\n` +
+        `- A grep/search of source code (proves nothing about runtime state)\n` +
+        `- An HTTP 200 from any page that doesn't require setup-specific data\n` +
+        `- Reasoning that says "the logs probably show..." without actual log content\n` +
+        `- Empty/short output that doesn't actually demonstrate the claim\n\n` +
+        `## Your task\n` +
+        `Examine each piece of evidence. Decide if the COMBINED evidence convincingly proves the agent's claim. ` +
+        `Be strict — when in doubt, reject. False positives here cause cascading failures downstream.\n\n` +
+        `Reply with ONLY this JSON (no prose, no markdown fence):\n` +
+        `{"convincing": true|false, "reason": "1-2 sentence justification"}`,
+    },
+    {
+      role: "user",
+      content: `## Evidence collected\n\n${evidenceBlock}\n\nIs this evidence convincing? Reply with the JSON verdict.`,
+    },
+  ];
+
+  try {
+    const response = await chatWithTools(llm, messages, [], async () => "", criticModel, 1);
+    const json = extractJson(response);
+    const verdict = JSON.parse(json) as { convincing?: boolean; reason?: string };
+    return {
+      convincing: verdict.convincing === true,
+      reason: verdict.reason ?? "(no reason provided)",
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[Setup] Critic call failed: ${msg} — defaulting to REJECT`);
+    return {
+      convincing: false,
+      reason: `Critic evaluation failed: ${msg}`,
+    };
   }
 }
 
