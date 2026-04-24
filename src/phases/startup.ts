@@ -574,7 +574,15 @@ export async function startApplicationWithRetries(
 
     try {
       // Create LLM-powered log analyzer for health check waits
-      const analyzeLogsFn: LogAnalyzer = async (logs: string) => {
+      const analyzeLogsFn: LogAnalyzer = async (logs: string, ctx) => {
+        const ctxBlock = ctx
+          ? `\n\nReachability context (CRITICAL — use this to detect lying logs):
+- Host-side port ${ctx.port} reachable: ${ctx.hostPortReachable ? "YES (got HTTP response at least once)" : "NO (never responded)"}
+- Consecutive connection failures from host: ${ctx.consecutiveConnFailures}
+- Seconds waiting for port: ${ctx.secondsWaiting}
+
+If logs claim the server is "listening on ${ctx.port}" but the host has NEVER reached the port and many seconds have passed, this is almost certainly a binding/port-mapping problem (server bound to 127.0.0.1 inside the container, wrong "ports:" entry in compose, or the framework is listening on a different port than declared). Return "fatal" with a clear summary in that case — extending the timeout will not help.`
+          : "";
         const resp = await llm.chat.completions.create({
           model: modelSelector?.current() ?? "gpt-4o-mini",
           max_completion_tokens: 200,
@@ -586,13 +594,13 @@ export async function startApplicationWithRetries(
 Respond with EXACTLY one JSON object:
 {"status": "progress" | "fatal" | "unknown", "summary": "<one sentence>"}
 
-- "progress": logs show active work — migrations running, assets compiling, dependencies installing, database seeding, server starting up
-- "fatal": logs show an unrecoverable error — connection refused to a required service, missing database, permission denied, syntax error, crash loop
+- "progress": logs show active work — migrations running, assets compiling, dependencies installing, database seeding, server starting up — AND host-side port is either reachable already or we're still in the early startup window
+- "fatal": logs show an unrecoverable error — connection refused to a required service, missing database, permission denied, syntax error, crash loop, OR the server claims to be listening but the host cannot reach the port after a substantial wait (binding/port-mapping mismatch — see reachability context below)
 - "unknown": can't tell from the logs`,
             },
             {
               role: "user",
-              content: `Container logs (last 40 lines):\n\`\`\`\n${logs.slice(-3000)}\n\`\`\``,
+              content: `Container logs (last 40 lines):\n\`\`\`\n${logs.slice(-3000)}\n\`\`\`${ctxBlock}`,
             },
           ],
         });
@@ -1794,7 +1802,16 @@ function isToolAvailable(name: string): boolean {
 }
 
 /** Callback for AI-powered log analysis during health check waits */
-type LogAnalyzer = (logs: string) => Promise<{ status: "progress" | "fatal" | "unknown"; summary: string }>;
+/** Context passed alongside container logs so the AI can correlate log
+ * activity with actual host-side reachability of the app's port. */
+export interface LogAnalyzerContext {
+  hostPortReachable: boolean; // true once the host has gotten ANY HTTP response (even 5xx)
+  consecutiveConnFailures: number; // host-side connection refused/reset count
+  secondsWaiting: number; // seconds since waitForPort started polling
+  port: number;
+}
+
+type LogAnalyzer = (logs: string, ctx?: LogAnalyzerContext) => Promise<{ status: "progress" | "fatal" | "unknown"; summary: string }>;
 
 /** Callback for AI-powered HTTP response health analysis */
 type ResponseAnalyzer = (status: number, body: string) => Promise<{ healthy: boolean; reason: string }>;
@@ -2403,7 +2420,7 @@ export async function waitForPort(
   timeoutMs: number,
   healthCheckPath = "/",
   repoPath?: string,
-  analyzeLogsFn?: (logs: string) => Promise<{ status: "progress" | "fatal" | "unknown"; summary: string }>,
+  analyzeLogsFn?: LogAnalyzer,
   analyzeResponseFn?: (status: number, body: string) => Promise<{ healthy: boolean; reason: string }>,
 ): Promise<void> {
   const start = Date.now();
@@ -2424,6 +2441,7 @@ export async function waitForPort(
   let progressCount = 0; // how many times AI reported "still progressing"
   let extensionsGranted = 0;
   let effectiveTimeoutMs = timeoutMs;
+  let portHasEverResponded = false; // got ANY HTTP response (even 5xx) at least once
 
   while (Date.now() - start < effectiveTimeoutMs) {
     // If the AI flagged a fatal error, stop waiting immediately
@@ -2444,6 +2462,7 @@ export async function waitForPort(
         signal: AbortSignal.timeout(3_000),
       });
       lastStatus = response.status;
+      portHasEverResponded = true;
       // Accept any non-server-error response as potentially healthy.
       // But ask the AI to verify the response looks like a real working app.
       if (response.status < 500) {
@@ -2551,9 +2570,15 @@ export async function waitForPort(
 
         if (analyzeLogsFn) {
           analysisInFlight = true;
+          const analysisCtx: LogAnalyzerContext = {
+            hostPortReachable: portHasEverResponded,
+            consecutiveConnFailures,
+            secondsWaiting: Math.floor((Date.now() - start) / 1000),
+            port,
+          };
           // Fire-and-forget the LLM call — don't block the poll loop.
           // We capture the result and act on it in the next iteration.
-          analyzeLogsFn(snapshot)
+          analyzeLogsFn(snapshot, analysisCtx)
             .then((result) => {
               analysisInFlight = false;
               if (result.status === "progress") {
@@ -2579,17 +2604,36 @@ export async function waitForPort(
     // If approaching timeout and the AI has been reporting progress, extend
     // the deadline — avoids killing apps that are actively booting (e.g.
     // running database migrations).  Allow multiple extensions up to a cap.
+    //
+    // Tighter cap when the port has NEVER responded: in that case logs may
+    // be claiming "listening on PORT" while a binding/port-mapping issue
+    // means the host can't actually reach it.  Allow at most 1 grace
+    // extension in that scenario instead of MAX_PORT_WAIT_EXTENSIONS, so we
+    // don't loop indefinitely on a misconfigured app.
     const remaining = effectiveTimeoutMs - (Date.now() - start);
-    if (remaining < 30_000 && progressCount > 0 && extensionsGranted < MAX_PORT_WAIT_EXTENSIONS && analyzeLogsFn && repoPath) {
+    const extensionCap = portHasEverResponded ? MAX_PORT_WAIT_EXTENSIONS : 1;
+    if (remaining < 30_000 && progressCount > 0 && extensionsGranted < extensionCap && analyzeLogsFn && repoPath) {
       const snapshot = getContainerLogTail(repoPath, 40);
       if (snapshot) {
         try {
-          const result = await analyzeLogsFn(snapshot);
-          if (result.status === "progress") {
+          const extensionCtx: LogAnalyzerContext = {
+            hostPortReachable: portHasEverResponded,
+            consecutiveConnFailures,
+            secondsWaiting: Math.floor((Date.now() - start) / 1000),
+            port,
+          };
+          const result = await analyzeLogsFn(snapshot, extensionCtx);
+          if (result.status === "fatal") {
+            // AI flagged it now (likely once it saw the port-unreachable context)
+            fatalDiagnosis = result.summary;
+          } else if (result.status === "progress") {
             extensionsGranted++;
             effectiveTimeoutMs += PORT_WAIT_EXTENSION_MS;
             const totalExtra = extensionsGranted * PORT_WAIT_EXTENSION_MS / 1000;
-            console.log(`[Startup] AI confirms app is still progressing — extending timeout by ${PORT_WAIT_EXTENSION_MS / 1000}s (extension ${extensionsGranted}/${MAX_PORT_WAIT_EXTENSIONS}, +${totalExtra}s total)`);
+            const reachNote = portHasEverResponded
+              ? ""
+              : " (port has never responded — capped at 1 grace extension)";
+            console.log(`[Startup] AI confirms app is still progressing — extending timeout by ${PORT_WAIT_EXTENSION_MS / 1000}s (extension ${extensionsGranted}/${extensionCap}, +${totalExtra}s total)${reachNote}`);
           }
         } catch { /* ignore analysis failure */ }
       }

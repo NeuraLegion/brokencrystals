@@ -21049,7 +21049,15 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
       console.log(`[Startup]   health-check: ${config.healthCheckPath}`);
     }
     try {
-      const analyzeLogsFn = async (logs) => {
+      const analyzeLogsFn = async (logs, ctx) => {
+        const ctxBlock = ctx ? `
+
+Reachability context (CRITICAL \u2014 use this to detect lying logs):
+- Host-side port ${ctx.port} reachable: ${ctx.hostPortReachable ? "YES (got HTTP response at least once)" : "NO (never responded)"}
+- Consecutive connection failures from host: ${ctx.consecutiveConnFailures}
+- Seconds waiting for port: ${ctx.secondsWaiting}
+
+If logs claim the server is "listening on ${ctx.port}" but the host has NEVER reached the port and many seconds have passed, this is almost certainly a binding/port-mapping problem (server bound to 127.0.0.1 inside the container, wrong "ports:" entry in compose, or the framework is listening on a different port than declared). Return "fatal" with a clear summary in that case \u2014 extending the timeout will not help.` : "";
         const resp = await llm.chat.completions.create({
           model: modelSelector?.current() ?? "gpt-4o-mini",
           max_completion_tokens: 200,
@@ -21061,8 +21069,8 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
 Respond with EXACTLY one JSON object:
 {"status": "progress" | "fatal" | "unknown", "summary": "<one sentence>"}
 
-- "progress": logs show active work \u2014 migrations running, assets compiling, dependencies installing, database seeding, server starting up
-- "fatal": logs show an unrecoverable error \u2014 connection refused to a required service, missing database, permission denied, syntax error, crash loop
+- "progress": logs show active work \u2014 migrations running, assets compiling, dependencies installing, database seeding, server starting up \u2014 AND host-side port is either reachable already or we're still in the early startup window
+- "fatal": logs show an unrecoverable error \u2014 connection refused to a required service, missing database, permission denied, syntax error, crash loop, OR the server claims to be listening but the host cannot reach the port after a substantial wait (binding/port-mapping mismatch \u2014 see reachability context below)
 - "unknown": can't tell from the logs`
             },
             {
@@ -21070,7 +21078,7 @@ Respond with EXACTLY one JSON object:
               content: `Container logs (last 40 lines):
 \`\`\`
 ${logs.slice(-3e3)}
-\`\`\``
+\`\`\`${ctxBlock}`
             }
           ]
         });
@@ -22437,6 +22445,7 @@ async function waitForPort(port, timeoutMs, healthCheckPath = "/", repoPath, ana
   let progressCount = 0;
   let extensionsGranted = 0;
   let effectiveTimeoutMs = timeoutMs;
+  let portHasEverResponded = false;
   while (Date.now() - start < effectiveTimeoutMs) {
     if (fatalDiagnosis) {
       let errMsg2 = `Application failed on port ${port}: ${fatalDiagnosis}`;
@@ -22460,6 +22469,7 @@ ${logs}`;
         signal: AbortSignal.timeout(3e3)
       });
       lastStatus = response.status;
+      portHasEverResponded = true;
       if (response.status < 500) {
         consecutive500s = 0;
         consecutiveConnFailures = 0;
@@ -22556,7 +22566,13 @@ ${logs}`;
         lastLogCheckTime = Date.now();
         if (analyzeLogsFn) {
           analysisInFlight = true;
-          analyzeLogsFn(snapshot).then((result) => {
+          const analysisCtx = {
+            hostPortReachable: portHasEverResponded,
+            consecutiveConnFailures,
+            secondsWaiting: Math.floor((Date.now() - start) / 1e3),
+            port
+          };
+          analyzeLogsFn(snapshot, analysisCtx).then((result) => {
             analysisInFlight = false;
             if (result.status === "progress") {
               progressCount++;
@@ -22577,16 +22593,26 @@ ${logs}`;
       }
     }
     const remaining = effectiveTimeoutMs - (Date.now() - start);
-    if (remaining < 3e4 && progressCount > 0 && extensionsGranted < MAX_PORT_WAIT_EXTENSIONS && analyzeLogsFn && repoPath) {
+    const extensionCap = portHasEverResponded ? MAX_PORT_WAIT_EXTENSIONS : 1;
+    if (remaining < 3e4 && progressCount > 0 && extensionsGranted < extensionCap && analyzeLogsFn && repoPath) {
       const snapshot = getContainerLogTail(repoPath, 40);
       if (snapshot) {
         try {
-          const result = await analyzeLogsFn(snapshot);
-          if (result.status === "progress") {
+          const extensionCtx = {
+            hostPortReachable: portHasEverResponded,
+            consecutiveConnFailures,
+            secondsWaiting: Math.floor((Date.now() - start) / 1e3),
+            port
+          };
+          const result = await analyzeLogsFn(snapshot, extensionCtx);
+          if (result.status === "fatal") {
+            fatalDiagnosis = result.summary;
+          } else if (result.status === "progress") {
             extensionsGranted++;
             effectiveTimeoutMs += PORT_WAIT_EXTENSION_MS;
             const totalExtra = extensionsGranted * PORT_WAIT_EXTENSION_MS / 1e3;
-            console.log(`[Startup] AI confirms app is still progressing \u2014 extending timeout by ${PORT_WAIT_EXTENSION_MS / 1e3}s (extension ${extensionsGranted}/${MAX_PORT_WAIT_EXTENSIONS}, +${totalExtra}s total)`);
+            const reachNote = portHasEverResponded ? "" : " (port has never responded \u2014 capped at 1 grace extension)";
+            console.log(`[Startup] AI confirms app is still progressing \u2014 extending timeout by ${PORT_WAIT_EXTENSION_MS / 1e3}s (extension ${extensionsGranted}/${extensionCap}, +${totalExtra}s total)${reachNote}`);
           }
         } catch {
         }
