@@ -7,7 +7,7 @@ A GitHub Copilot Engine that performs automated security scanning and remediatio
 This engine integrates with:
 
 - **GitHub Copilot Engine SDK** (`@github/copilot-engine-sdk`) for orchestration and CI/CD integration
-- **Bright MCP Server** for security scanning capabilities
+- **Bright API** for security scanning capabilities
 - **OpenAI/Claude API** for LLM-driven code analysis and fix generation
 
 The workflow follows a multi-phase scan-fix-validate loop, repeating up to 5 passes until vulnerabilities are resolved or max iterations reached.
@@ -175,9 +175,8 @@ This allows scanning applications that are difficult to start fully (complex inf
 | Variable            | Required | Description                                                 |
 | ------------------- | -------- | ----------------------------------------------------------- |
 | `BRIGHT_TOKEN`      | **Yes**  | API key from [app.brightsec.com](https://app.brightsec.com) |
-| `BRIGHT_MCP_URL`    | No       | MCP server URL (default: `https://app.brightsec.com/mcp`)   |
 | `BRIGHT_PROJECT_ID` | No       | Project ID. Auto-detected if omitted                        |
-| `BRIGHT_HOSTNAME`   | No       | API hostname. Derived from `BRIGHT_MCP_URL` if omitted      |
+| `BRIGHT_HOSTNAME`   | No       | API hostname. Default: `app.brightsec.com`                  |
 
 #### AI / Inference
 
@@ -388,7 +387,6 @@ cd /path/to/bright-agent
 
 GITHUB_TOKEN="your-github-pat" \
 BRIGHT_TOKEN="your-bright-api-token" \
-BRIGHT_MCP_URL="https://app.brightsec.com/mcp" \
 GITHUB_INFERENCE_URL="https://api.openai.com/v1" \
 OPENAI_API_KEY="your-openai-key" \
 AI_MODEL="gpt-4.1-mini" \

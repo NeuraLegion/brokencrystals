@@ -12,9 +12,8 @@
   },
   "dependencies": {
     "@github/copilot-engine-sdk": "github:github/copilot-engine-sdk#main",
-    "@modelcontextprotocol/sdk": "^1.25.3",
-    "openai": "^4.86.0",
     "glob": "^11.0.0",
+    "openai": "^4.86.0",
     "tree-kill": "^1.2.2"
   },
   "devDependencies": {

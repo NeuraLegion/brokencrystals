@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
-import type { DiscoveredEndpoint, TechStack } from "../types.js";
-import type { BrightMcpClient, BrightTest } from "../mcp-client.js";
+import type { DiscoveredEndpoint, TechStack, BrightApiContext } from "../types.js";
+import { listTests } from "../bright-api.js";
 import { chatWithSchema } from "../inference.js";
 import { formatTechStack } from "../utils.js";
 
@@ -28,14 +28,14 @@ export interface ScanGroup {
  */
 export async function selectTestsPerEndpoint(
   llm: OpenAI,
-  bright: BrightMcpClient,
+  api: BrightApiContext,
   endpoints: DiscoveredEndpoint[],
   entrypointIds: string[],
   techStack: TechStack,
   hasAuth: boolean,
   model?: string,
 ): Promise<ScanGroup[]> {
-  const availableTests = await bright.listTests();
+  const availableTests = await listTests(api);
 
   const eligibleTests = availableTests.filter(
     (t) => !MULTI_AUTH_TESTS.has(t.tag) && !EXCLUDED_TESTS.has(t.tag),

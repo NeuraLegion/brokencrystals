@@ -1,6 +1,5 @@
 import type OpenAI from "openai";
 import type { Platform } from "./platform.js";
-import type { BrightMcpClient } from "./mcp-client.js";
 
 import type { ModelSelector, InferenceProvider } from "./inference.js";
 
@@ -18,7 +17,6 @@ export interface BrightApiContext {
 // ---------------------------------------------------------------------------
 
 export interface EngineConfig extends BrightApiContext {
-  brightMcpUrl?: string;
   brightProjectId?: string;
   gitToken: string;
   inferenceUrl: string;
@@ -142,7 +140,6 @@ export interface OrchestratorContext {
   repoPath: string;
   platform: Platform;
   llm: OpenAI;
-  bright: BrightMcpClient;
   config: EngineConfig;
 }
 

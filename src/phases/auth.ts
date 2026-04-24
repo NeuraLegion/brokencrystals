@@ -1,17 +1,15 @@
 import type OpenAI from "openai";
 import type { TechStack, BrightApiContext } from "../types.js";
-import type { BrightMcpClient } from "../mcp-client.js";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import { execSync } from "child_process";
 import { chatWithTools, type ToolHandler } from "../inference.js";
 import {
   codebaseTools,
   createToolHandler,
-  convertMcpToolsToOpenAI,
-  createMcpToolHandler,
   webSearchTools,
   createWebSearchHandler,
 } from "../tools.js";
+import { listAuthObjects, getAuthObject } from "../bright-api.js";
 import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody, stripHtmlForAnalysis } from "../utils.js";
 import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt, repairBrokenLoginPrompt } from "../prompts/auth.js";
 
@@ -70,18 +68,17 @@ export interface AuthTestResult {
 
 /**
  * Detects the application's authentication mechanism by analyzing source code,
- * then creates a Bright auth object using the LLM + Bright MCP tools.
+ * then creates a Bright auth object using the LLM + Bright REST API.
  *
  * Phase 1 (code analysis): LLM reads the codebase to detect auth type,
  *   credentials, registration flow, etc.
  * Phase 2 (local registration): Directly registers a test user if needed.
- * Phase 3 (MCP-driven auth setup): LLM uses Bright MCP tools (addAuth,
- *   editAuth, getAuth, listAuths) to create and iteratively fix the auth
- *   object, seeing full test feedback at each step.
+ * Phase 3 (LLM-driven auth setup): LLM uses custom Bright REST tools
+ *   (create_auth, edit_auth, getAuth, listAuths) to create and iteratively
+ *   fix the auth object, seeing full test feedback at each step.
  */
 export async function detectAndConfigureAuth(
   llm: OpenAI,
-  bright: BrightMcpClient,
   repoPath: string,
   techStack: TechStack,
   projectId: string,
@@ -180,7 +177,7 @@ export async function detectAndConfigureAuth(
     }
   }
 
-  // Phase 4: Let the LLM create + test + fix the auth object via MCP tools
+  // Phase 4: Let the LLM create + test + fix the auth object via custom tools
   //   Pre-probe the app to give the LLM real data instead of forcing it to guess
   const probeContext = await preProbeForAuth(baseUrl, detection);
 
@@ -243,7 +240,6 @@ export async function detectAndConfigureAuth(
     console.log(`[Auth] Auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS}...`);
     const result = await createAuthViaMcp(
       llm,
-      bright,
       repoPath,
       detection,
       registrationOk,
@@ -451,7 +447,7 @@ async function detectAuthFromCode(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3: LLM-driven auth configuration via custom + MCP tools
+// Phase 3: LLM-driven auth configuration via custom Bright REST tools
 // ---------------------------------------------------------------------------
 
 /**
@@ -768,7 +764,6 @@ async function postAuthObject(
 
 async function createAuthViaMcp(
   llm: OpenAI,
-  bright: BrightMcpClient,
   repoPath: string,
   detection: AuthDetection,
   registrationOk: boolean,
@@ -779,11 +774,69 @@ async function createAuthViaMcp(
   model?: string,
   preProbeContext?: string,
 ): Promise<{ authId: string | undefined; attemptLog: string[]; infraRepairHint?: string }> {
-  // MCP tools for inspection only (listAuths, getAuth)
+  // Bright auth-object inspection tools (read-only, REST-backed)
   _probeCookieJar = {};
-  const mcpSchemas = await bright.getMcpToolSchemas(["getAuth", "listAuths"]);
-  const mcpToolsDefs = convertMcpToolsToOpenAI(mcpSchemas);
-  const mcpHandler = createMcpToolHandler(bright);
+  const inspectionTools: ChatCompletionTool[] = [
+    {
+      type: "function",
+      function: {
+        name: "listAuths",
+        description:
+          "List Bright auth objects in the current project. Use to check what auth objects already exist before creating new ones, or to find the ID of an auth object you just created.",
+        parameters: {
+          type: "object",
+          properties: {
+            q: {
+              type: "string",
+              description: "(Optional) text search across auth object names",
+            },
+            limit: {
+              type: "number",
+              description: "(Optional) maximum results to return (default 25)",
+            },
+          },
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "getAuth",
+        description:
+          "Fetch the full configuration of a single Bright auth object by ID. Use this after listAuths to inspect how an existing auth object is configured.",
+        parameters: {
+          type: "object",
+          properties: {
+            authObjectId: {
+              type: "string",
+              description: "ID of the auth object to fetch",
+            },
+          },
+          required: ["authObjectId"],
+        },
+      },
+    },
+  ];
+
+  const inspectionHandler: ToolHandler = async (name, args) => {
+    try {
+      if (name === "listAuths") {
+        const list = await listAuthObjects(api, {
+          projectId,
+          q: args.q as string | undefined,
+          limit: (args.limit as number | undefined) ?? 25,
+        });
+        return JSON.stringify(list, null, 2);
+      }
+      if (name === "getAuth") {
+        const obj = await getAuthObject(api, args.authObjectId as string);
+        return JSON.stringify(obj, null, 2);
+      }
+      return `Unknown inspection tool: ${name}`;
+    } catch (err) {
+      return `Error from Bright API: ${toErrorMessage(err)}`;
+    }
+  };
 
   // Track what was tried and what failed for cross-attempt learning
   const attemptLog: string[] = [];
@@ -1287,11 +1340,11 @@ Example — OAuth2 PKCE flow:
     ) {
       return baseCodeHandler(name, args);
     }
-    return mcpHandler(name, args);
+    return inspectionHandler(name, args);
   };
 
   const baseCodeHandler = createToolHandler(repoPath);
-  const allTools = [...codebaseTools, ...mcpToolsDefs, ...customTools, ...webSearchTools];
+  const allTools = [...codebaseTools, ...inspectionTools, ...customTools, ...webSearchTools];
 
   // Resolve protected endpoint path for test URL
   const resolvedPath = detection.protectedEndpointPath

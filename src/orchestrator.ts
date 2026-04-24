@@ -139,7 +139,7 @@ async function runSetupIfNeeded(
 }
 
 export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
-  const { repoPath, platform, llm, bright, config } = ctx;
+  const { repoPath, platform, llm, config } = ctx;
   const progress = new ProgressReporter(platform);
 
   let appProcess: ChildProcess | undefined;
@@ -314,7 +314,6 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     const authResult = await detectAndConfigureAuth(
       llm,
-      bright,
       repoPath,
       techStack,
       projectId,
@@ -413,7 +412,6 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
         const retryAuthResult = await detectAndConfigureAuth(
           llm,
-          bright,
           repoPath,
           techStack,
           projectId,
@@ -679,7 +677,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     if (registered.length === 0) {
       await progress.phaseStart(
         "done",
-        "No entrypoints could be registered with Bright. Check MCP logs for validation errors.",
+        "No entrypoints could be registered with Bright. Check Bright API logs for validation errors.",
       );
       return;
     }
@@ -695,7 +693,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     );
     const scanGroups = await selectTestsPerEndpoint(
       llm,
-      bright,
+      config,
       liveEndpoints,
       entrypointIds,
       techStack,
@@ -815,7 +813,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       if (scanIds.length === 0) {
         await progress.phaseStart(
           "scan_error",
-          "All scan launches failed. Check MCP logs.",
+          "All scan launches failed. Check Bright API logs.",
         );
         break;
       }
@@ -1120,12 +1118,6 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
     }
 
-    try {
-      await bright.close();
-    } catch {
-      // Ignore
-    }
-
     // Clean up harness infra (standalone DB containers)
     if (harnessResult) {
       cleanupHarnessInfra(repoPath);
@@ -1145,7 +1137,7 @@ async function runScanLoop(
   allFindings: Map<string, FindingSummary>,
   fixedKeys: Set<string>,
 ): Promise<void> {
-  const { llm, bright, config } = ctx;
+  const { llm, config } = ctx;
   const projectId = config.brightProjectId;
   if (!projectId) {
     throw new Error("No Bright project ID configured. Set BRIGHT_PROJECT_ID.");
@@ -1190,7 +1182,7 @@ async function runScanLoop(
     await progress.phaseStart("test_selection", "Selecting security tests for harness endpoints");
     const scanGroups = await selectTestsPerEndpoint(
       llm,
-      bright,
+      config,
       liveEndpoints,
       entrypointIds,
       techStack,
@@ -1545,7 +1537,7 @@ async function verifyAndRepairAuth(
 The application had a working authentication system that passed all tests. After security fixes were applied, the auth object test is now FAILING. Something in the recent code changes broke the authentication flow.
 
 The auth object ID is: ${authObjectId}
-You can fetch its full configuration using the Bright MCP tools if needed.
+You can fetch its full configuration using the getAuth tool if needed.
 
 Your job:
 1. Look at the recent fixes that were applied (listed below)

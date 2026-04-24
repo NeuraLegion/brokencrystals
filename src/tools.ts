@@ -5,7 +5,6 @@ import { execFileSync, execSync } from "child_process";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import type { ToolHandler } from "./inference.js";
 import { runShellCommand, toErrorMessage, saveProbeBody, PROBE_RESPONSE_DIR } from "./utils.js";
-import type { McpToolSchema, BrightMcpClient } from "./mcp-client.js";
 
 export const codebaseTools: ChatCompletionTool[] = [
   {
@@ -1044,24 +1043,5 @@ export async function fixDockerfileImages(
 }
 
 // ---------------------------------------------------------------------------
-// MCP tool helpers — convert MCP schemas to OpenAI format & dispatch calls
+// (MCP helpers removed — Bright access is now via direct REST in bright-api.ts)
 // ---------------------------------------------------------------------------
-
-export function convertMcpToolsToOpenAI(
-  schemas: McpToolSchema[],
-): ChatCompletionTool[] {
-  return schemas.map((schema) => ({
-    type: "function" as const,
-    function: {
-      name: schema.name,
-      description: schema.description ?? schema.name,
-      parameters: schema.inputSchema,
-    },
-  }));
-}
-
-export function createMcpToolHandler(bright: BrightMcpClient): ToolHandler {
-  return async (name: string, args: Record<string, unknown>) => {
-    return bright.callMcpToolRaw(name, args);
-  };
-}

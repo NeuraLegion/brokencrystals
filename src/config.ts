@@ -3,10 +3,7 @@ import { ModelSelector, DEFAULT_MODEL, detectProvider } from "./inference.js";
 
 export function loadConfig(): EngineConfig {
   const brightToken = requireEnv("BRIGHT_TOKEN");
-  const brightMcpUrl = process.env.BRIGHT_MCP_URL;
-  const brightHostname =
-    process.env.BRIGHT_HOSTNAME ??
-    (brightMcpUrl ? new URL(brightMcpUrl).hostname : "app.brightsec.com");
+  const brightHostname = process.env.BRIGHT_HOSTNAME ?? "app.brightsec.com";
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
 
   // RUN_MODE: "full" (default), "dynamic" (no harness fallback), or "function"
@@ -39,7 +36,6 @@ export function loadConfig(): EngineConfig {
   return {
     brightToken,
     brightHostname,
-    brightMcpUrl,
     brightProjectId,
     gitToken,
     inferenceUrl,

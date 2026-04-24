@@ -6,7 +6,6 @@ import {
 import { loadConfig } from "./config.js";
 import { createInferenceClient, validateModelTiers } from "./inference.js";
 import { toErrorMessage } from "./utils.js";
-import { createBrightMcpClient } from "./mcp-client.js";
 import { runOrchestrator } from "./orchestrator.js";
 import type { OrchestratorContext } from "./types.js";
 
@@ -63,16 +62,11 @@ async function main(): Promise<void> {
   // 4b. Validate configured model tiers are available
   await validateModelTiers(llm, config.modelSelector, config.inferenceProvider);
 
-  // 5. Connect to Bright MCP
-  const bright = await createBrightMcpClient(config);
-  console.log("[Engine] Connected to Bright MCP server");
-
-  // 6. Run the orchestrator
+  // 5. Run the orchestrator
   const ctx: OrchestratorContext = {
     repoPath,
     platform,
     llm,
-    bright,
     config,
   };
 
