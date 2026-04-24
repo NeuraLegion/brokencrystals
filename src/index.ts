@@ -5,6 +5,7 @@ import {
 } from "./platform.js";
 import { loadConfig } from "./config.js";
 import { createInferenceClient, validateModelTiers } from "./inference.js";
+import { verifyBrightAuth } from "./bright-api.js";
 import { toErrorMessage } from "./utils.js";
 import { runOrchestrator } from "./orchestrator.js";
 import type { OrchestratorContext } from "./types.js";
@@ -26,6 +27,20 @@ async function main(): Promise<void> {
 
   // 1. Load configuration from environment
   const config = loadConfig();
+
+  // 1b. Preflight: verify BRIGHT_TOKEN works against BRIGHT_HOSTNAME (fail fast)
+  try {
+    await verifyBrightAuth({
+      brightToken: config.brightToken,
+      brightHostname: config.brightHostname,
+    });
+    console.log(
+      `[Engine] Bright credentials verified against ${config.brightHostname}`,
+    );
+  } catch (err) {
+    console.error(`[Engine] Bright preflight failed: ${toErrorMessage(err)}`);
+    process.exit(1);
+  }
 
   // 2. Initialize platform (GitHub SDK or standalone)
   const { platform, job } = await createPlatform(config.gitToken);

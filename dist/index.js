@@ -11690,6 +11690,87 @@ function injectEnvVarsFromHint(repoPath, hint) {
   return injected;
 }
 
+// src/bright-api.ts
+async function brightGet(api, path2, query) {
+  const url = new URL(path2, `https://${api.brightHostname}`);
+  if (query) {
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== void 0 && v !== "") url.searchParams.set(k, String(v));
+    }
+  }
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: {
+        Authorization: `Api-Key ${api.brightToken}`,
+        Accept: "application/json"
+      }
+    });
+  } catch (err) {
+    throw new Error(`Bright API request failed (${path2}): ${toErrorMessage(err)}`);
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Bright API ${path2} returned HTTP ${res.status}: ${body.slice(0, 500)}`
+    );
+  }
+  return await res.json();
+}
+function unwrapList(result) {
+  if (Array.isArray(result)) return result;
+  if (result && typeof result === "object" && "items" in result) {
+    return result.items;
+  }
+  return [];
+}
+async function listTests(api) {
+  const data = await brightGet(api, "/api/v1/scans/tests");
+  return unwrapList(data);
+}
+async function listAuthObjects(api, opts = {}) {
+  const data = await brightGet(api, "/api/v3/auth-objects", {
+    projectId: opts.projectId,
+    q: opts.q,
+    limit: opts.limit
+  });
+  return unwrapList(data);
+}
+async function getAuthObject(api, authObjectId) {
+  return brightGet(
+    api,
+    `/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`
+  );
+}
+async function verifyBrightAuth(api) {
+  const url = new URL("/api/v2/projects", `https://${api.brightHostname}`);
+  url.searchParams.set("limit", "1");
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: {
+        Authorization: `Api-Key ${api.brightToken}`,
+        Accept: "application/json"
+      }
+    });
+  } catch (err) {
+    throw new Error(
+      `Cannot reach Bright API at https://${api.brightHostname} \u2014 ${toErrorMessage(err)}. Check BRIGHT_HOSTNAME and network connectivity.`
+    );
+  }
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(
+      `BRIGHT_TOKEN was rejected by https://${api.brightHostname} (HTTP ${res.status}). Verify the token is valid, not expired, and has access to the target organization.`
+    );
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Bright preflight failed: HTTP ${res.status} from /api/v2/projects: ${body.slice(0, 300)}`
+    );
+  }
+}
+
 // src/orchestrator.ts
 var import_tree_kill = __toESM(require_tree_kill(), 1);
 import { execFileSync as execFileSync5 } from "child_process";
@@ -22866,59 +22947,6 @@ ${sections.join("\n\n")}`;
 // src/phases/auth.ts
 import { execSync as execSync4 } from "child_process";
 
-// src/bright-api.ts
-async function brightGet(api, path2, query) {
-  const url = new URL(path2, `https://${api.brightHostname}`);
-  if (query) {
-    for (const [k, v] of Object.entries(query)) {
-      if (v !== void 0 && v !== "") url.searchParams.set(k, String(v));
-    }
-  }
-  let res;
-  try {
-    res = await fetch(url, {
-      headers: {
-        Authorization: `Api-Key ${api.brightToken}`,
-        Accept: "application/json"
-      }
-    });
-  } catch (err) {
-    throw new Error(`Bright API request failed (${path2}): ${toErrorMessage(err)}`);
-  }
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `Bright API ${path2} returned HTTP ${res.status}: ${body.slice(0, 500)}`
-    );
-  }
-  return await res.json();
-}
-function unwrapList(result) {
-  if (Array.isArray(result)) return result;
-  if (result && typeof result === "object" && "items" in result) {
-    return result.items;
-  }
-  return [];
-}
-async function listTests(api) {
-  const data = await brightGet(api, "/api/v1/scans/tests");
-  return unwrapList(data);
-}
-async function listAuthObjects(api, opts = {}) {
-  const data = await brightGet(api, "/api/v3/auth-objects", {
-    projectId: opts.projectId,
-    q: opts.q,
-    limit: opts.limit
-  });
-  return unwrapList(data);
-}
-async function getAuthObject(api, authObjectId) {
-  return brightGet(
-    api,
-    `/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`
-  );
-}
-
 // src/prompts/auth.ts
 function detectAuthPrompt(stackStr, baseUrl, contextSummary) {
   const contextBlock = contextSummary ? `
@@ -29581,6 +29609,18 @@ async function main() {
   console.error = (...args) => origError(ts(), ...args);
   console.log("[Engine] Bright Security Copilot Engine starting...");
   const config = loadConfig();
+  try {
+    await verifyBrightAuth({
+      brightToken: config.brightToken,
+      brightHostname: config.brightHostname
+    });
+    console.log(
+      `[Engine] Bright credentials verified against ${config.brightHostname}`
+    );
+  } catch (err) {
+    console.error(`[Engine] Bright preflight failed: ${toErrorMessage(err)}`);
+    process.exit(1);
+  }
   const { platform, job } = await createPlatform(config.gitToken);
   console.log(`[Engine] Job: ${job.id}, action: ${job.action}`);
   console.log(`[Engine] Repository: ${job.repository}`);

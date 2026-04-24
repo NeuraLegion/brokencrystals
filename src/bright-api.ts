@@ -95,3 +95,40 @@ export async function getAuthObject(
     `/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
   );
 }
+
+/**
+ * Preflight check: hits a cheap endpoint to validate BRIGHT_TOKEN and
+ * BRIGHT_HOSTNAME up-front. Throws a clear, actionable error on auth
+ * failure or network problems so the engine fails fast at startup.
+ */
+export async function verifyBrightAuth(api: BrightApiContext): Promise<void> {
+  const url = new URL("/api/v2/projects", `https://${api.brightHostname}`);
+  url.searchParams.set("limit", "1");
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        Authorization: `Api-Key ${api.brightToken}`,
+        Accept: "application/json",
+      },
+    });
+  } catch (err) {
+    throw new Error(
+      `Cannot reach Bright API at https://${api.brightHostname} — ${toErrorMessage(err)}. Check BRIGHT_HOSTNAME and network connectivity.`,
+    );
+  }
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(
+      `BRIGHT_TOKEN was rejected by https://${api.brightHostname} (HTTP ${res.status}). Verify the token is valid, not expired, and has access to the target organization.`,
+    );
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Bright preflight failed: HTTP ${res.status} from /api/v2/projects: ${body.slice(0, 300)}`,
+    );
+  }
+}
