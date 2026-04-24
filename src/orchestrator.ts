@@ -837,23 +837,30 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         }),
       );
 
-      let anyFailed = false;
+      const succeededScanIds: string[] = [];
+      const failedScanDetails: string[] = [];
       for (const [si, result] of scanResults.entries()) {
+        const sid = scanIds[si];
         if (result.status === "rejected") {
           console.error(
-            `[Scan] Error waiting for scan ${scanIds[si]}: ${result.reason}`,
+            `[Scan] Error waiting for scan ${sid}: ${result.reason}`,
           );
-          anyFailed = true;
+          failedScanDetails.push(`${sid} (wait error)`);
         } else if (isFailureStatus(result.value)) {
           console.error(
-            `[Scan] Scan ${scanIds[si]} ended with status: ${result.value}`,
+            `[Scan] Scan ${sid} ended with status: ${result.value}`,
           );
-          anyFailed = true;
+          failedScanDetails.push(`${sid} (${result.value})`);
+        } else {
+          succeededScanIds.push(sid);
         }
       }
 
-      if (anyFailed) {
-        // Check if the failure is caused by the app being down
+      const totalScans = scanIds.length;
+      const failedCount = failedScanDetails.length;
+
+      if (failedCount > 0 && succeededScanIds.length === 0) {
+        // All scans failed — nothing to harvest. Try to recover or abort.
         const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
         if (!stillAlive) {
           console.warn(
@@ -865,7 +872,6 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             console.log(
               "[Scan] App restarted — will retry scans on next iteration",
             );
-            // Don't break — let the loop continue to re-run scans
             await progress.phaseDetail(
               "scan",
               "app_restart",
@@ -886,15 +892,45 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
         await progress.phaseStart(
           "scan_error",
-          `One or more scans failed on round ${iteration + 1}. Check Bright dashboard.`,
+          `All ${totalScans} scan(s) failed on round ${iteration + 1}. Check Bright dashboard.`,
         );
         break;
       }
 
-      // --- Fetch findings ---
+      if (failedCount > 0) {
+        // Partial failure — proceed with what succeeded, signal the gap.
+        console.warn(
+          `[Scan] Round ${iteration + 1}: ${failedCount}/${totalScans} scan(s) failed — proceeding with ${succeededScanIds.length} successful scan(s). Failed: ${failedScanDetails.join(", ")}`,
+        );
+        await progress.phaseDetail(
+          "scan",
+          "partial_failure",
+          `Round ${iteration + 1}: ${failedCount}/${totalScans} scan(s) failed — continuing with findings from ${succeededScanIds.length} successful scan(s).`,
+        );
+
+        // If app died but we still have some findings, restart it so the
+        // next round (if any) has a healthy target — but don't abort.
+        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
+        if (!stillAlive) {
+          console.warn(
+            "[Scan] App appears to have crashed during scanning — attempting restart before processing findings",
+          );
+          try {
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+            appProcess = restart.process;
+            console.log("[Scan] App restarted");
+          } catch (restartErr) {
+            console.error(
+              `[Scan] Failed to restart app after crash: ${restartErr} — will still process findings from successful scans`,
+            );
+          }
+        }
+      }
+
+      // --- Fetch findings (only from successful scans) ---
       const findings = await fetchFindings(
         config,
-        scanIds,
+        succeededScanIds,
       );
 
       const sevSummary = buildSeveritySummary(findings);
@@ -1235,18 +1271,44 @@ async function runScanLoop(
       }),
     );
 
+    const succeededScanIds: string[] = [];
+    const failedScanDetails: string[] = [];
     for (const [si, result] of scanResults.entries()) {
+      const sid = scanIds[si];
       if (result.status === "rejected") {
-        console.error(`[Scan] Error in harness scan ${scanIds[si]}: ${result.reason}`);
+        console.error(`[Scan] Error in harness scan ${sid}: ${result.reason}`);
+        failedScanDetails.push(`${sid} (wait error)`);
       } else if (isFailureStatus(result.value)) {
-        console.error(`[Scan] Harness scan ${scanIds[si]} ended with status: ${result.value}`);
+        console.error(`[Scan] Harness scan ${sid} ended with status: ${result.value}`);
+        failedScanDetails.push(`${sid} (${result.value})`);
+      } else {
+        succeededScanIds.push(sid);
       }
     }
 
-    // Fetch findings
+    if (failedScanDetails.length > 0) {
+      console.warn(
+        `[Scan] Harness: ${failedScanDetails.length}/${scanIds.length} scan(s) failed — proceeding with ${succeededScanIds.length} successful scan(s). Failed: ${failedScanDetails.join(", ")}`,
+      );
+      await progress.phaseDetail(
+        "scan",
+        "partial_failure",
+        `Harness: ${failedScanDetails.length}/${scanIds.length} scan(s) failed — continuing with findings from ${succeededScanIds.length} successful scan(s).`,
+      );
+    }
+
+    if (succeededScanIds.length === 0) {
+      await progress.phaseStart(
+        "scan_error",
+        `All ${scanIds.length} harness scan(s) failed.`,
+      );
+      return;
+    }
+
+    // Fetch findings (only from successful scans)
     const findings = await fetchFindings(
       config,
-      scanIds,
+      succeededScanIds,
     );
 
     const sevSummary = buildSeveritySummary(findings);
