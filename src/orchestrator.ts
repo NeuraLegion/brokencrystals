@@ -65,6 +65,7 @@ async function restartApp(
   startupConfig: StartupConfig,
   modelSelector: ModelSelector,
   registration?: AuthResult["registration"],
+  recoveryHints?: string[],
 ): Promise<StartupResult> {
   await killProcess(current);
   const result = await startApplicationWithRetries(
@@ -73,6 +74,7 @@ async function restartApp(
     techStack,
     startupConfig,
     modelSelector,
+    recoveryHints,
   );
   if (registration) await reRegisterUser(registration);
   return result;
@@ -102,15 +104,22 @@ async function recoverApp(
   registration: AuthResult["registration"] | undefined,
 ): Promise<{ ok: boolean; process?: ChildProcess; detail: string }> {
   // Stage 1: try fast compose restart (only if dockerized)
+  const stage1Hints: string[] = [];
   if (startupConfig.docker) {
-    const ok = await quickRestartCompose(repoPath, startupConfig);
-    if (ok) {
+    const r = await quickRestartCompose(repoPath, startupConfig);
+    if (r.ok) {
       return { ok: true, detail: "compose restart succeeded" };
     }
-    console.warn(`[Recover] Compose restart did not restore health — escalating to full restart`);
+    if (r.diagnostics) {
+      console.warn(`[Recover] Compose restart failed:\n${r.diagnostics}`);
+      stage1Hints.push(
+        `[recovery] A prior \`docker compose restart\` was attempted because the running app stopped responding to HTTP probes, but it did not restore health. Diagnostics from that attempt:\n${r.diagnostics}\nPlease account for this when bringing the app back up — e.g. clean stale state files, force-recreate the affected container, or fix the underlying config so the same failure doesn't repeat.`,
+      );
+    }
+    console.warn(`[Recover] Escalating to full LLM-driven restart`);
   }
 
-  // Stage 2: full restart (kills process + LLM repair loop)
+  // Stage 2: full restart (kills process + LLM repair loop), with hints from stage 1
   try {
     const result = await restartApp(
       appProcess,
@@ -120,6 +129,7 @@ async function recoverApp(
       startupConfig,
       modelSelector,
       registration,
+      stage1Hints.length > 0 ? stage1Hints : undefined,
     );
     return {
       ok: true,
