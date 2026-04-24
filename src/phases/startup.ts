@@ -31,7 +31,7 @@ import { generateDockerfilePrompt } from "../prompts/generate-dockerfile.js";
 import { discoverProjectPrompt } from "../prompts/discover-project.js";
 import { generateComposePrompt } from "../prompts/generate-compose.js";
 
-const MAX_STARTUP_ATTEMPTS = parseInt(process.env.MAX_STARTUP_ATTEMPTS ?? "10", 10);
+const MAX_STARTUP_ATTEMPTS = parseInt(process.env.MAX_STARTUP_ATTEMPTS ?? "15", 10);
 
 /** Intentional startup failure — must always propagate through catch blocks. */
 class StartupFailedError extends Error {
@@ -342,6 +342,10 @@ export async function startApplicationWithRetries(
   const stats: AttemptStat[] = [];
   let dockerfileRepaired = false;
   let infraRepaired = false;
+  // Summaries of what each prior repair LLM did + a fingerprint of the error
+  // they were trying to fix. Used to detect "repair didn't break the loop"
+  // and to give the next repair LLM context about what's already been tried.
+  const repairHistory: Array<{ kind: "build" | "infra"; summary: string; targetErrorFp: string }> = [];
 
   // Run project discovery ONCE before the attempt loop (skip for rebuilds — we already know what works)
   let discovery: ProjectDiscovery | undefined;
@@ -745,17 +749,43 @@ When in doubt about whether the app is running vs broken, check: does the page c
         // Escalate to stronger model after repeated failures
         if (attempt > 1) modelSelector?.escalate();
 
+        // Detect repeated root cause: did the LAST repair (of the same kind)
+        // try to fix this exact error, but here we are again with the same
+        // fingerprint? If so, force a strategy shift in the next prompt.
+        const currentFp = errorFingerprint(detailedError);
+        const lastRepair = [...repairHistory].reverse().find(
+          (r) => r.kind === (isDockerBuildError ? "build" : "infra"),
+        );
+        const repeatedRootCause = lastRepair?.targetErrorFp === currentFp;
+        if (repeatedRootCause) {
+          console.log(
+            "[Startup] Same error fingerprint as last repair — forcing strategy shift in next repair prompt",
+          );
+          // Also force model escalation when stuck on same root cause
+          modelSelector?.escalate();
+        }
+
+        const previousRepairs = repairHistory
+          .filter((r) => r.kind === (isDockerBuildError ? "build" : "infra"))
+          .map((r) => r.summary)
+          .slice(-3); // last 3 repairs of this kind
+
         console.log(`[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`);
 
         if (isDockerBuildError) {
-          await repairDockerBuild(
+          const buildSummary = await repairDockerBuild(
             llm,
             repoPath,
             detailedError,
             modelSelector?.current(),
             attemptErrors.slice(0, -1).map((a) => a.error),
             startupHints,
+            previousRepairs,
+            repeatedRootCause,
           );
+          if (buildSummary) {
+            repairHistory.push({ kind: "build", summary: buildSummary, targetErrorFp: currentFp });
+          }
           dockerfileRepaired = true;
         } else {
           const infraResult = await repairInfrastructure(
@@ -766,7 +796,12 @@ When in doubt about whether the app is running vs broken, check: does the page c
             modelSelector?.current(),
             attemptErrors.slice(0, -1).map((a) => a.error),
             startupHints,
+            previousRepairs,
+            repeatedRootCause,
           );
+          if (infraResult.summary) {
+            repairHistory.push({ kind: "infra", summary: infraResult.summary, targetErrorFp: currentFp });
+          }
           // Apply any config modifications from the repair LLM
           if (infraResult.command || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath) {
             if (infraResult.command) {
@@ -1015,7 +1050,9 @@ export async function repairDockerBuild(
   model?: string,
   previousErrors?: string[],
   hints?: string[],
-): Promise<void> {
+  previousRepairs?: string[],
+  repeatedRootCause?: boolean,
+): Promise<string | undefined> {
   const dockerfilePath = `${repoPath}/Dockerfile`;
   let currentDockerfile: string;
   try {
@@ -1078,7 +1115,11 @@ Current Dockerfile:
 \`\`\`dockerfile
 ${currentDockerfile}
 \`\`\`
-${previousErrors && previousErrors.length > 0
+${repeatedRootCause
+    ? `\n⚠️  STRATEGY-SHIFT REQUIRED ⚠️\nThe LAST Dockerfile repair did not work — the build is failing with the SAME root cause as before. Pick a fundamentally different approach (e.g. switch base image, install the tool a different way, drop a problematic step entirely).\n`
+    : ""}${previousRepairs && previousRepairs.length > 0
+    ? `\nWhat previous Dockerfile repairs already tried (do NOT just slightly reword these):\n${previousRepairs.map((r, i) => `--- Repair ${i + 1} ---\n${r}`).join("\n")}\n`
+    : ""}${previousErrors && previousErrors.length > 0
     ? `\nPrevious failed attempts and their errors (do NOT repeat the same mistakes):\n${previousErrors.map((e, i) => `--- Attempt ${i + 1} ---\n${e.slice(-500)}`).join("\n")}\n`
     : ""}${hints && hints.length > 0
     ? `\nHints from previous attempts:\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
@@ -1122,10 +1163,19 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
     console.log(
       `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes detected"})`,
     );
+    // Capture a short summary of what the repair did, so the next repair
+    // round can see what was already attempted. Prefer prose outside the code
+    // block; fall back to a generic note.
+    const proseBefore = response.split(/```/)[0]?.trim();
+    const summary = proseBefore && proseBefore.length > 0
+      ? proseBefore.slice(0, 400)
+      : `Rewrote Dockerfile (${fixedDockerfile.split("\n").length} lines${changed ? "" : ", no diff"})`;
+    return summary;
   } catch (err) {
     console.warn(
       `[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`,
     );
+    return undefined;
   }
 }
 
@@ -1151,6 +1201,37 @@ interface InfraRepairResult {
   command?: string;
   /** True if the repair LLM used mutating tools (write_file, run_command, etc.) */
   madeFileChanges?: boolean;
+  /** One-line summary of what the repair LLM did, to feed into the NEXT repair if this one fails */
+  summary?: string;
+}
+
+/**
+ * Reduce a build/runtime error string to a stable fingerprint so we can detect
+ * when the SAME root cause is failing across consecutive attempts.
+ *
+ * The fingerprint focuses on the most distinctive lines: error/exception
+ * markers, missing-file paths, and shell exit codes. Whitespace and dynamic
+ * fragments (timestamps, container IDs, line numbers) are normalized so two
+ * structurally identical errors produce the same fingerprint.
+ */
+function errorFingerprint(error: string): string {
+  const interesting = error
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) =>
+      /error|exception|fail|undefined|cannot|no such|missing|denied|refused|crashed|exit code|ENOENT|EACCES|did not complete|extension control file/i
+        .test(l),
+    )
+    .slice(0, 8)
+    .join("|")
+    // Normalize variable bits
+    .replace(/\b[0-9a-f]{12,}\b/gi, "<id>")
+    .replace(/:\d+:\d+/g, ":<n>:<n>")
+    .replace(/:\d+\b/g, ":<n>")
+    .replace(/\d{4}-\d{2}-\d{2}T[\d:.+Z-]+/g, "<ts>")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  return interesting || error.slice(0, 200).toLowerCase();
 }
 
 async function repairInfrastructure(
@@ -1161,6 +1242,8 @@ async function repairInfrastructure(
   model?: string,
   previousErrors?: string[],
   hints?: string[],
+  previousRepairs?: string[],
+  repeatedRootCause?: boolean,
 ): Promise<InfraRepairResult> {
   // Write full error to a file the LLM can read, show head+tail in the prompt
   const errorLogPath = `${repoPath}/.bright-build-error.log`;
@@ -1254,7 +1337,11 @@ Prerequisites: ${JSON.stringify(config.prerequisites)}
 Docker: ${config.docker}
 
 ${errorSection}
-${previousErrors && previousErrors.length > 0
+${repeatedRootCause
+    ? `\n⚠️  STRATEGY-SHIFT REQUIRED ⚠️\nThe LAST repair attempt did not work — the application is failing with the SAME root cause as before. Do NOT iterate on the previous fix. Pick a fundamentally different approach (e.g. change the base image, swap out the conflicting dependency, disable the failing component at the source level instead of via volume tricks, etc.).\n`
+    : ""}${previousRepairs && previousRepairs.length > 0
+    ? `\nWhat previous repair attempts already tried (do NOT just slightly reword these — try genuinely different approaches if these failed):\n${previousRepairs.map((r, i) => `--- Repair ${i + 1} ---\n${r}`).join("\n")}\n`
+    : ""}${previousErrors && previousErrors.length > 0
     ? `\nPrevious failed attempts and their errors (do NOT repeat the same fixes):\n${previousErrors.map((e, i) => `--- Attempt ${i + 1} ---\n${e.slice(-500)}`).join("\n")}\n`
     : ""}${hints && hints.length > 0
     ? `\nHints from previous repair attempts (use these — they were discovered through investigation):\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
@@ -1338,6 +1425,9 @@ function parseInfraRepairResult(response: string): InfraRepairResult {
     if (typeof parsed.command === "string" && parsed.command) {
       result.command = parsed.command;
       console.log(`[Startup] Infra repair overrode command: ${result.command}`);
+    }
+    if (typeof parsed.summary === "string" && parsed.summary) {
+      result.summary = parsed.summary.slice(0, 400);
     }
     return result;
   } catch {
