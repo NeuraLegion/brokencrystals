@@ -18683,23 +18683,63 @@ function extractEndpointsFromFile(content, filePath) {
         continue;
       }
       const resMatch = trimmed.match(
-        /^\s*resources?\s+:(\w+)/
+        /^\s*(resources?)\s+:(\w+)(.*)$/
       );
       if (resMatch) {
-        const name = resMatch[0].includes("resources") ? resMatch[1] : resMatch[1];
-        const isSingular = /^\s*resource\s/.test(trimmed);
+        const keyword = resMatch[1];
+        const name = resMatch[2];
+        const rest = resMatch[3];
+        const isSingular = keyword === "resource";
         const prefix = prefixStack.join("") + `/${name}`;
-        if (isSingular) {
-          for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
-            endpoints.push({ method, path: prefix, filePath });
+        const pluralActions = {
+          index: [{ method: "GET", suffix: "" }],
+          create: [{ method: "POST", suffix: "" }],
+          new: [{ method: "GET", suffix: "/new" }],
+          show: [{ method: "GET", suffix: "/:id" }],
+          edit: [{ method: "GET", suffix: "/:id/edit" }],
+          update: [
+            { method: "PUT", suffix: "/:id" },
+            { method: "PATCH", suffix: "/:id" }
+          ],
+          destroy: [{ method: "DELETE", suffix: "/:id" }]
+        };
+        const singularActions = {
+          create: [{ method: "POST", suffix: "" }],
+          new: [{ method: "GET", suffix: "/new" }],
+          show: [{ method: "GET", suffix: "" }],
+          edit: [{ method: "GET", suffix: "/edit" }],
+          update: [
+            { method: "PUT", suffix: "" },
+            { method: "PATCH", suffix: "" }
+          ],
+          destroy: [{ method: "DELETE", suffix: "" }]
+        };
+        const actionMap = isSingular ? singularActions : pluralActions;
+        const allActions = Object.keys(actionMap);
+        const parseActionList = (raw) => {
+          const r = raw.trim();
+          let m2 = r.match(/^%i\[\s*([^\]]+)\]/);
+          if (m2) return m2[1].split(/\s+/).filter(Boolean);
+          m2 = r.match(/^\[\s*([^\]]+)\]/);
+          if (m2) return m2[1].split(",").map((s) => s.trim().replace(/^:/, "")).filter(Boolean);
+          m2 = r.match(/^:(\w+)/);
+          if (m2) return [m2[1]];
+          return [];
+        };
+        let activeActions = allActions;
+        const onlyMatch = rest.match(/\bonly:\s*(.*)$/);
+        const exceptMatch = rest.match(/\bexcept:\s*(.*)$/);
+        if (onlyMatch) {
+          const allowed = new Set(parseActionList(onlyMatch[1]));
+          if (allowed.size > 0) activeActions = allActions.filter((a) => allowed.has(a));
+        } else if (exceptMatch) {
+          const blocked = new Set(parseActionList(exceptMatch[1]));
+          if (blocked.size > 0) activeActions = allActions.filter((a) => !blocked.has(a));
+        }
+        for (const action of activeActions) {
+          for (const { method, suffix } of actionMap[action] ?? []) {
+            endpoints.push({ method, path: `${prefix}${suffix}`, filePath });
           }
-        } else {
-          endpoints.push({ method: "GET", path: prefix, filePath });
-          endpoints.push({ method: "POST", path: prefix, filePath });
-          endpoints.push({ method: "GET", path: `${prefix}/:id`, filePath });
-          endpoints.push({ method: "PUT", path: `${prefix}/:id`, filePath });
-          endpoints.push({ method: "PATCH", path: `${prefix}/:id`, filePath });
-          endpoints.push({ method: "DELETE", path: `${prefix}/:id`, filePath });
         }
       }
     }
