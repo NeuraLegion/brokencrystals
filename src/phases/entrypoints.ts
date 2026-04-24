@@ -1,7 +1,22 @@
 import type { DiscoveredEndpoint, BrightApiContext } from "../types.js";
 import { toErrorMessage } from "../utils.js";
 
-const CONCURRENCY = 10;
+const CONCURRENCY = 3;
+const MAX_RETRIES = 3;
+const BASE_BACKOFF_MS = 1000;
+const JITTER_MS = 250;
+
+function isTransientHttpError(status: number, body: string): boolean {
+  if (status >= 500) return true;
+  if (status === 408) return true;
+  if (
+    status === 400 &&
+    /target.*(?:is\s+down|accessible|firewall)/i.test(body)
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export interface RegisteredEntrypoint {
   endpoint: DiscoveredEndpoint;
@@ -88,6 +103,17 @@ export async function registerEntrypoints(
   let failedUploads = 0;
   let rateLimitPauseUntil = 0;
 
+  async function postOnce(payload: Record<string, unknown>): Promise<Response> {
+    return fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Api-Key ${api.brightToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
   async function processOne(item: (typeof prepared)[number]): Promise<void> {
     const { ep, method, fullUrl, payload } = item;
 
@@ -102,38 +128,64 @@ export async function registerEntrypoints(
         (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]"),
     );
 
-    try {
-      const res = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Api-Key ${api.brightToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+    // Small jitter to desynchronise concurrent workers and avoid bursts
+    // saturating Bright's API/repeater pipeline.
+    await sleep(Math.floor(Math.random() * JITTER_MS));
 
-      if (res.status === 429) {
-        console.warn(`[Entrypoints] Rate limited (429) — pausing 10s`);
-        rateLimitPauseUntil = Date.now() + 10_000;
-        await sleep(10_000);
-        // Retry once after rate-limit pause
-        const retry = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            Authorization: `Api-Key ${api.brightToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-        handleResponse(retry, ep, method, fullUrl);
+    let attempt = 0;
+    while (true) {
+      try {
+        const res = await postOnce(payload);
+
+        if (res.status === 429) {
+          console.warn(`[Entrypoints] Rate limited (429) — pausing 10s`);
+          rateLimitPauseUntil = Date.now() + 10_000;
+          await sleep(10_000);
+          if (attempt < MAX_RETRIES) {
+            attempt++;
+            continue;
+          }
+          await handleResponse(res, ep, method, fullUrl);
+          return;
+        }
+
+        if (!res.ok && attempt < MAX_RETRIES) {
+          // Peek body to detect transient Bright/repeater errors without
+          // consuming the stream needed by handleResponse — clone first.
+          const probe = res.clone();
+          const body = await probe.text().catch(() => "");
+          if (isTransientHttpError(res.status, body)) {
+            const backoff =
+              BASE_BACKOFF_MS * Math.pow(3, attempt) +
+              Math.floor(Math.random() * JITTER_MS);
+            console.warn(
+              `[Entrypoints] Transient HTTP ${res.status} for ${method} ${fullUrl} — retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`,
+            );
+            await sleep(backoff);
+            attempt++;
+            continue;
+          }
+        }
+
+        await handleResponse(res, ep, method, fullUrl);
+        return;
+      } catch (err) {
+        if (attempt < MAX_RETRIES) {
+          const backoff =
+            BASE_BACKOFF_MS * Math.pow(3, attempt) +
+            Math.floor(Math.random() * JITTER_MS);
+          console.warn(
+            `[Entrypoints] Network error for ${method} ${fullUrl}: ${toErrorMessage(err)} — retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`,
+          );
+          await sleep(backoff);
+          attempt++;
+          continue;
+        }
+        console.error(
+          `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`,
+        );
         return;
       }
-
-      handleResponse(res, ep, method, fullUrl);
-    } catch (err) {
-      console.error(
-        `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`,
-      );
     }
   }
 
