@@ -26871,10 +26871,29 @@ function isFailureStatus(status) {
   const s = status.toLowerCase();
   return s === "failed" || s === "disrupted" || s === "timeout";
 }
-async function waitForScanCompletion(api, scanId, onProgress) {
+async function waitForScanCompletion(api, scanId, onProgress, healthMonitor) {
   const pollInterval = 3e4;
+  let pausedByMonitor = false;
   await sleep2(pollInterval);
   while (true) {
+    if (healthMonitor) {
+      const healthy = healthMonitor.isHealthy();
+      if (!healthy && !pausedByMonitor) {
+        const ok = await setScanLifecycle(api, scanId, "pause");
+        if (ok) {
+          pausedByMonitor = true;
+          console.log(
+            `[Scan] Paused ${scanId} \u2014 app unhealthy, will resume after recovery`
+          );
+        }
+      } else if (healthy && pausedByMonitor) {
+        const ok = await setScanLifecycle(api, scanId, "resume");
+        if (ok) {
+          pausedByMonitor = false;
+          console.log(`[Scan] Resumed ${scanId} \u2014 app healthy again`);
+        }
+      }
+    }
     const scanStatus = await getScanStatusViaRest(
       api,
       scanId
@@ -26889,6 +26908,32 @@ async function waitForScanCompletion(api, scanId, onProgress) {
       `[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`
     );
     await sleep2(pollInterval);
+  }
+}
+async function setScanLifecycle(api, scanId, action) {
+  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/lifecycle`;
+  try {
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Authorization: `Api-Key ${api.brightToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ action })
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.warn(
+        `[Scan] Lifecycle ${action} for ${scanId} failed (${res.status}): ${body.slice(0, 200)}`
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(
+      `[Scan] Lifecycle ${action} for ${scanId} threw: ${toErrorMessage(err)}`
+    );
+    return false;
   }
 }
 async function getScanStatusViaRest(api, scanId) {
@@ -29059,7 +29104,8 @@ This user should work for authentication. Skip user registration/seeding and go 
               console.log(
                 `[Scan] Scan ${si + 1}/${scanIds.length}: ${status} \u2014 ${issues} issue(s)`
               );
-            }
+            },
+            healthMonitor
           );
           return finalStatus;
         })

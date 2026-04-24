@@ -917,6 +917,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
                 `[Scan] Scan ${si + 1}/${scanIds.length}: ${status} — ${issues} issue(s)`,
               );
             },
+            healthMonitor,
           );
           return finalStatus;
         }),

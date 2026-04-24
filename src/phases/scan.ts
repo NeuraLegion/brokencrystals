@@ -1,5 +1,6 @@
 import { sleep, toErrorMessage } from "../utils.js";
 import type { BrightApiContext } from "../types.js";
+import type { AppHealthMonitor } from "../app-health.js";
 
 const DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
 const PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
@@ -216,13 +217,37 @@ export async function waitForScanCompletion(
   api: BrightApiContext,
   scanId: string,
   onProgress?: (status: string, issuesFound: number) => void,
+  healthMonitor?: AppHealthMonitor,
 ): Promise<string> {
   const pollInterval = 30_000;
+  let pausedByMonitor = false;
 
   // Initial wait before first poll
   await sleep(pollInterval);
 
   while (true) {
+    // Reactive lifecycle control: pause the scan in Bright while the target
+    // is unhealthy, resume it once recovery succeeds. Avoids burning scan
+    // budget on requests that are doomed to fail with "target is down".
+    if (healthMonitor) {
+      const healthy = healthMonitor.isHealthy();
+      if (!healthy && !pausedByMonitor) {
+        const ok = await setScanLifecycle(api, scanId, "pause");
+        if (ok) {
+          pausedByMonitor = true;
+          console.log(
+            `[Scan] Paused ${scanId} — app unhealthy, will resume after recovery`,
+          );
+        }
+      } else if (healthy && pausedByMonitor) {
+        const ok = await setScanLifecycle(api, scanId, "resume");
+        if (ok) {
+          pausedByMonitor = false;
+          console.log(`[Scan] Resumed ${scanId} — app healthy again`);
+        }
+      }
+    }
+
     const scanStatus = await getScanStatusViaRest(
       api,
       scanId,
@@ -240,6 +265,42 @@ export async function waitForScanCompletion(
       `[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`,
     );
     await sleep(pollInterval);
+  }
+}
+
+/**
+ * Drive a scan's lifecycle (pause/resume/stop/run) via Bright's REST API.
+ * Returns true on 2xx, false on any failure (logged but not thrown — callers
+ * treat lifecycle control as best-effort).
+ */
+export async function setScanLifecycle(
+  api: BrightApiContext,
+  scanId: string,
+  action: "pause" | "resume" | "stop" | "run",
+): Promise<boolean> {
+  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/lifecycle`;
+  try {
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Authorization: `Api-Key ${api.brightToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.warn(
+        `[Scan] Lifecycle ${action} for ${scanId} failed (${res.status}): ${body.slice(0, 200)}`,
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(
+      `[Scan] Lifecycle ${action} for ${scanId} threw: ${toErrorMessage(err)}`,
+    );
+    return false;
   }
 }
 
