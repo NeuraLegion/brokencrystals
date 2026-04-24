@@ -22882,90 +22882,70 @@ function captureExitedContainers(repoPath, composeFile) {
     return [];
   }
 }
-function detectKnownStaleState(exited) {
-  for (const c3 of exited) {
-    if (/A server is already running.*server\.pid/i.test(c3.logs) || /server is already running.*pids\/server\.pid/i.test(c3.logs)) {
-      return {
-        service: c3.service,
-        cleanup: "rm -f tmp/pids/server.pid /app/tmp/pids/server.pid",
-        pattern: "Rails/Puma stale PID"
-      };
-    }
+async function waitForAppHealthy(port, healthCheckPath, waitMs) {
+  const start = Date.now();
+  while (Date.now() - start < waitMs) {
+    if (await checkAppHealth(port, healthCheckPath)) return true;
+    await new Promise((r) => setTimeout(r, 3e3));
   }
-  return null;
+  return false;
 }
 async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
   if (!config.docker) return { ok: false, diagnostics: "Not a dockerized app" };
   const composeFileMatch = config.command.match(/-f\s+(\S+)/);
   const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
   const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : "docker-compose.yml");
-  const cmd = `docker compose -f ${composeFile} restart`;
-  console.log(`[AppHealth] quickRestartCompose: ${cmd} (cwd=${repoPath})`);
+  const probePath = config.healthCheckPath ?? "/";
+  console.log(`[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${repoPath})`);
+  const triedStrategies = [];
   try {
-    execSync3(cmd, {
+    execSync3(`docker compose -f ${composeFile} restart`, {
       cwd: repoPath,
       stdio: "pipe",
       timeout: 6e4
     });
-  } catch (err) {
-    return {
-      ok: false,
-      diagnostics: `docker compose restart failed: ${err instanceof Error ? err.message : String(err)}`
-    };
-  }
-  const probePath = config.healthCheckPath ?? "/";
-  const start = Date.now();
-  while (Date.now() - start < waitMs) {
-    if (await checkAppHealth(config.port, probePath)) {
-      console.log(
-        `[AppHealth] App responsive again ${Math.round((Date.now() - start) / 1e3)}s after restart`
-      );
+    triedStrategies.push("docker compose restart");
+    if (await waitForAppHealthy(config.port, probePath, waitMs)) {
+      console.log(`[AppHealth] App responsive again after restart`);
       return { ok: true };
     }
-    await new Promise((r) => setTimeout(r, 3e3));
+  } catch (err) {
+    triedStrategies.push(`docker compose restart (failed: ${err instanceof Error ? err.message : String(err)})`);
+  }
+  console.log(`[AppHealth] Restart insufficient; trying force-recreate`);
+  try {
+    execSync3(`docker compose -f ${composeFile} up -d --force-recreate`, {
+      cwd: repoPath,
+      stdio: "pipe",
+      timeout: 12e4
+    });
+    triedStrategies.push("docker compose up -d --force-recreate");
+    if (await waitForAppHealthy(config.port, probePath, waitMs)) {
+      console.log(`[AppHealth] App responsive again after force-recreate`);
+      return { ok: true };
+    }
+  } catch (err) {
+    triedStrategies.push(`docker compose up -d --force-recreate (failed: ${err instanceof Error ? err.message : String(err)})`);
   }
   const exited = captureExitedContainers(repoPath, composeFile);
+  const triedList = triedStrategies.map((s) => `  - ${s}`).join("\n");
   if (exited.length === 0) {
     return {
       ok: false,
-      diagnostics: `App still unresponsive ${Math.round(waitMs / 1e3)}s after compose restart; all containers report running but HTTP probe never succeeded`
+      diagnostics: `Quick restart strategies did not bring the app back. Strategies tried:
+${triedList}
+All containers report running but the HTTP probe at port ${config.port}${probePath} never succeeded. The app process inside the container is likely wedged but not crashing.`
     };
   }
-  const known = detectKnownStaleState(exited);
-  if (known) {
-    console.warn(
-      `[AppHealth] Detected ${known.pattern} in service "${known.service}" \u2014 attempting targeted cleanup before escalating`
-    );
-    try {
-      execSync3(
-        `docker compose -f ${composeFile} run --rm --no-deps --entrypoint sh ${known.service} -c "${known.cleanup}"`,
-        { cwd: repoPath, stdio: "pipe", timeout: 3e4 }
-      );
-      execSync3(
-        `docker compose -f ${composeFile} up -d --force-recreate --no-deps ${known.service}`,
-        { cwd: repoPath, stdio: "pipe", timeout: 6e4 }
-      );
-      const recoverDeadline = Date.now() + 6e4;
-      while (Date.now() < recoverDeadline) {
-        if (await checkAppHealth(config.port, probePath)) {
-          console.log(`[AppHealth] App recovered after ${known.pattern} cleanup`);
-          return { ok: true };
-        }
-        await new Promise((r) => setTimeout(r, 3e3));
-      }
-    } catch (err) {
-      console.warn(`[AppHealth] Targeted cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-  const summary = exited.map((c3) => `- service "${c3.service}" (${c3.status})
+  const exitedSummary = exited.map((c3) => `- service "${c3.service}" (${c3.status})
   logs (tail):
 ${c3.logs.split("\n").map((l) => `    ${l}`).join("\n")}`).join("\n");
-  const knownNote = known ? `
-Detected known pattern: ${known.pattern}. Targeted in-place cleanup was attempted with: \`${known.cleanup}\` but did not restore health. The next attempt should include this cleanup as part of the startup sequence (e.g. add it to a postStartCommand or bake it into the compose entrypoint), or recreate the container with a fresh tmp volume.` : "";
   return {
     ok: false,
-    diagnostics: `Quick restart did not bring the app back. Container state after restart:
-${summary}${knownNote}`
+    diagnostics: `Quick restart strategies did not bring the app back. Strategies tried:
+${triedList}
+Containers in non-running state after these attempts:
+${exitedSummary}`
   };
 }
 function cleanupDocker(repoPath) {
