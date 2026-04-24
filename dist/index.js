@@ -42026,7 +42026,18 @@ ${truncated}`;
 }
 
 // src/phases/entrypoints.ts
-var CONCURRENCY = 10;
+var CONCURRENCY = 3;
+var MAX_RETRIES = 3;
+var BASE_BACKOFF_MS = 1e3;
+var JITTER_MS = 250;
+function isTransientHttpError(status, body) {
+  if (status >= 500) return true;
+  if (status === 408) return true;
+  if (status === 400 && /target.*(?:is\s+down|accessible|firewall)/i.test(body)) {
+    return true;
+  }
+  return false;
+}
 async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterId, authObjectId) {
   const prepared = [];
   for (const ep of endpoints) {
@@ -42079,6 +42090,16 @@ async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterI
   const registered = [];
   let failedUploads = 0;
   let rateLimitPauseUntil = 0;
+  async function postOnce(payload) {
+    return fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Api-Key ${api.brightToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+  }
   async function processOne(item) {
     const { ep, method, fullUrl, payload } = item;
     const now = Date.now();
@@ -42088,35 +42109,52 @@ async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterI
     console.log(
       `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
     );
-    try {
-      const res = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Api-Key ${api.brightToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      });
-      if (res.status === 429) {
-        console.warn(`[Entrypoints] Rate limited (429) \u2014 pausing 10s`);
-        rateLimitPauseUntil = Date.now() + 1e4;
-        await sleep3(1e4);
-        const retry = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            Authorization: `Api-Key ${api.brightToken}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
-        });
-        handleResponse(retry, ep, method, fullUrl);
+    await sleep3(Math.floor(Math.random() * JITTER_MS));
+    let attempt = 0;
+    while (true) {
+      try {
+        const res = await postOnce(payload);
+        if (res.status === 429) {
+          console.warn(`[Entrypoints] Rate limited (429) \u2014 pausing 10s`);
+          rateLimitPauseUntil = Date.now() + 1e4;
+          await sleep3(1e4);
+          if (attempt < MAX_RETRIES) {
+            attempt++;
+            continue;
+          }
+          await handleResponse(res, ep, method, fullUrl);
+          return;
+        }
+        if (!res.ok && attempt < MAX_RETRIES) {
+          const probe = res.clone();
+          const body = await probe.text().catch(() => "");
+          if (isTransientHttpError(res.status, body)) {
+            const backoff = BASE_BACKOFF_MS * Math.pow(3, attempt) + Math.floor(Math.random() * JITTER_MS);
+            console.warn(
+              `[Entrypoints] Transient HTTP ${res.status} for ${method} ${fullUrl} \u2014 retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`
+            );
+            await sleep3(backoff);
+            attempt++;
+            continue;
+          }
+        }
+        await handleResponse(res, ep, method, fullUrl);
+        return;
+      } catch (err) {
+        if (attempt < MAX_RETRIES) {
+          const backoff = BASE_BACKOFF_MS * Math.pow(3, attempt) + Math.floor(Math.random() * JITTER_MS);
+          console.warn(
+            `[Entrypoints] Network error for ${method} ${fullUrl}: ${toErrorMessage(err)} \u2014 retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`
+          );
+          await sleep3(backoff);
+          attempt++;
+          continue;
+        }
+        console.error(
+          `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`
+        );
         return;
       }
-      handleResponse(res, ep, method, fullUrl);
-    } catch (err) {
-      console.error(
-        `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`
-      );
     }
   }
   async function handleResponse(res, ep, method, fullUrl) {
