@@ -13,6 +13,7 @@ import {
   canBuildFromSource,
   captureDockerLogs,
   checkAppHealth,
+  quickRestartCompose,
   type StartupResult,
 } from "./phases/startup.js";
 import {
@@ -47,6 +48,7 @@ import { generateFixes, applyFixes } from "./phases/fix.js";
 import { runFunctionHarness, cleanupHarnessInfra, type HarnessResult } from "./phases/harness.js";
 import { chatWithTools, type ModelSelector } from "./inference.js";
 import { codebaseTools, createToolHandler } from "./tools.js";
+import { AppHealthMonitor } from "./app-health.js";
 
 const MAX_ITERATIONS = 5;
 const MAX_FIX_REPAIR_ATTEMPTS = 2;
@@ -74,6 +76,59 @@ async function restartApp(
   );
   if (registration) await reRegisterUser(registration);
   return result;
+}
+
+/**
+ * Two-stage recovery for a wedged target app.
+ *
+ * Stage 1: `docker compose restart` — fast, no LLM, no rebuild. Catches the
+ *   common case where the app process inside the container has hung but the
+ *   image is still good (e.g. Discourse/Rails getting stuck under scan load).
+ *
+ * Stage 2: full `restartApp` — invokes the LLM-driven repair loop. Used when
+ *   restart didn't bring the app back (e.g. corrupted state, OOM-killed,
+ *   compose teardown needed).
+ *
+ * Returns the new ChildProcess if a full restart happened (so caller can
+ * update its appProcess ref), or undefined if only the fast path ran.
+ */
+async function recoverApp(
+  appProcess: ChildProcess | undefined,
+  llm: Parameters<typeof chatWithTools>[0],
+  repoPath: string,
+  techStack: TechStack,
+  startupConfig: StartupConfig,
+  modelSelector: ModelSelector,
+  registration: AuthResult["registration"] | undefined,
+): Promise<{ ok: boolean; process?: ChildProcess; detail: string }> {
+  // Stage 1: try fast compose restart (only if dockerized)
+  if (startupConfig.docker) {
+    const ok = await quickRestartCompose(repoPath, startupConfig);
+    if (ok) {
+      return { ok: true, detail: "compose restart succeeded" };
+    }
+    console.warn(`[Recover] Compose restart did not restore health — escalating to full restart`);
+  }
+
+  // Stage 2: full restart (kills process + LLM repair loop)
+  try {
+    const result = await restartApp(
+      appProcess,
+      llm,
+      repoPath,
+      techStack,
+      startupConfig,
+      modelSelector,
+      registration,
+    );
+    return {
+      ok: true,
+      process: result.process,
+      detail: "full restartApp succeeded",
+    };
+  } catch (err) {
+    return { ok: false, detail: `full restart failed: ${toErrorMessage(err)}` };
+  }
 }
 
 /**
@@ -145,6 +200,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   let appProcess: ChildProcess | undefined;
   let repeater: RepeaterHandle | undefined;
   let harnessResult: HarnessResult | undefined;
+  let healthMonitor: AppHealthMonitor | undefined;
+  // Registration captured after auth completes — used by recovery callback to
+  // re-register the seeded test user after a restart wipes runtime state.
+  let authRegistration: AuthResult["registration"] | undefined;
   const allScanIds: string[] = [];
   const allFindings = new Map<string, FindingSummary>(); // dedupKey → summary
   const fixedKeys = new Set<string>();
@@ -250,6 +309,29 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       `Application running at ${baseUrl}`,
     );
 
+    // Start the background health monitor. It polls the app and, on
+    // sustained failure, fires our two-stage recoverApp() callback. Workers
+    // (entrypoint registration, scan loop) call waitHealthy() to gate work
+    // until the monitor confirms the app is up.
+    healthMonitor = new AppHealthMonitor({
+      port: startupConfig.port,
+      healthCheckPath: startupConfig.healthCheckPath,
+    });
+    healthMonitor.setRecoveryCallback(async () => {
+      const r = await recoverApp(
+        appProcess,
+        llm,
+        repoPath,
+        techStack,
+        startupConfig,
+        config.modelSelector,
+        authRegistration,
+      );
+      if (r.process) appProcess = r.process;
+      return { ok: r.ok, detail: r.detail };
+    });
+    healthMonitor.start();
+
     // ----- Phase 2: Setup Bright project + repeater -----
     await progress.phaseStart(
       "setup",
@@ -323,6 +405,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       config.modelSelector.current(),
       preAuthContext,
     );
+    authRegistration = authResult.registration;
     await progress.phaseDetail(
       "auth",
       "auth_done",
@@ -424,6 +507,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
         // Overwrite authResult so the loop re-checks infraRepairHint
         Object.assign(authResult, retryAuthResult);
+        authRegistration = authResult.registration;
 
         if (retryAuthResult.authObjectId) {
           console.log(`[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
@@ -631,6 +715,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       baseUrl,
       repeater.repeaterId,
       authResult.authObjectId,
+      healthMonitor,
     );
     await progress.phaseDetail(
       "entrypoints",
@@ -1135,6 +1220,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // Always publish the summary table — ensures ROI even on failure
     buildSummaryTable(progress, allFindings, fixedKeys);
     await progress.updatePrDescription();
+
+    // Stop the health monitor before tearing things down so it doesn't
+    // try to recover an app we're about to kill.
+    if (healthMonitor) healthMonitor.stop();
 
     // Cleanup
     await killProcess(appProcess);

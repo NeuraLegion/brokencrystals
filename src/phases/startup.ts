@@ -2985,6 +2985,57 @@ export async function checkAppHealth(port: number, healthCheckPath = "/"): Promi
   }
 }
 
+/**
+ * Fast restart of the docker-compose target without rebuilding.
+ * Used by the app-health monitor when the running app wedges (e.g. Discourse
+ * stops responding under load). Returns true if the app is reachable again
+ * within `waitMs`. Does not invoke any LLM.
+ */
+export async function quickRestartCompose(
+  repoPath: string,
+  config: StartupConfig,
+  waitMs = 90_000,
+): Promise<boolean> {
+  if (!config.docker) return false;
+
+  const composeFileMatch = config.command.match(/-f\s+(\S+)/);
+  const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
+  const composeFile = composeFileMatch?.[1]
+    ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : "docker-compose.yml");
+
+  const cmd = `docker compose -f ${composeFile} restart`;
+  console.log(`[AppHealth] quickRestartCompose: ${cmd} (cwd=${repoPath})`);
+  try {
+    execSync(cmd, {
+      cwd: repoPath,
+      stdio: "pipe",
+      timeout: 60_000,
+    });
+  } catch (err) {
+    console.warn(
+      `[AppHealth] docker compose restart failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return false;
+  }
+
+  // Poll until healthy or waitMs exhausted
+  const probePath = config.healthCheckPath ?? "/";
+  const start = Date.now();
+  while (Date.now() - start < waitMs) {
+    if (await checkAppHealth(config.port, probePath)) {
+      console.log(
+        `[AppHealth] App responsive again ${Math.round((Date.now() - start) / 1000)}s after restart`,
+      );
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 3_000));
+  }
+  console.warn(
+    `[AppHealth] App still unresponsive ${Math.round(waitMs / 1000)}s after compose restart`,
+  );
+  return false;
+}
+
 export function cleanupDocker(repoPath: string): void {
   try {
     // Tear down compose projects in the repo first (scoped to this project)

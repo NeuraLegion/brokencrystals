@@ -1,4 +1,5 @@
 import type { DiscoveredEndpoint, BrightApiContext } from "../types.js";
+import type { AppHealthMonitor } from "../app-health.js";
 import { toErrorMessage } from "../utils.js";
 
 const CONCURRENCY = 3;
@@ -18,6 +19,21 @@ function isTransientHttpError(status: number, body: string): boolean {
   return false;
 }
 
+/**
+ * "Target is down/firewall" 400s deserve special handling: they almost always
+ * mean the target itself is unreachable from the repeater, so retrying within
+ * seconds just piles more probes onto an already-broken target. We treat them
+ * as transient (so we still retry — the target may be a brief blip), but we
+ * also signal the health monitor to verify the target so workers can pause
+ * for a real recovery if the target is actually wedged.
+ */
+function isTargetDown400(status: number, body: string): boolean {
+  return (
+    status === 400 &&
+    /target.*(?:is\s+down|accessible|firewall)/i.test(body)
+  );
+}
+
 export interface RegisteredEntrypoint {
   endpoint: DiscoveredEndpoint;
   entrypointId: string;
@@ -30,6 +46,7 @@ export async function registerEntrypoints(
   baseUrl: string,
   repeaterId: string,
   authObjectId?: string,
+  healthMonitor?: AppHealthMonitor,
 ): Promise<RegisteredEntrypoint[]> {
   // Pre-process endpoints: validate, resolve paths, build request payloads
   const prepared: {
@@ -123,6 +140,11 @@ export async function registerEntrypoints(
       await sleep(rateLimitPauseUntil - now);
     }
 
+    // Block if the app is unhealthy — a recovery may be in progress.
+    if (healthMonitor) {
+      await healthMonitor.waitHealthy();
+    }
+
     console.log(
       `[Entrypoints] Adding ${method} ${fullUrl}` +
         (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]"),
@@ -155,6 +177,18 @@ export async function registerEntrypoints(
           const probe = res.clone();
           const body = await probe.text().catch(() => "");
           if (isTransientHttpError(res.status, body)) {
+            // If Bright says the target is down, ask the monitor to verify
+            // the app health right now. If it's actually wedged, the monitor
+            // will mark the app unhealthy and our next iteration's
+            // waitHealthy() will block until recovery completes.
+            if (healthMonitor && isTargetDown400(res.status, body)) {
+              healthMonitor.signalProbableUnhealthy(
+                `target-down 400 for ${method} ${fullUrl}`,
+              );
+              // Block before retrying so we don't pile more failed probes
+              // onto a wedged target.
+              await healthMonitor.waitHealthy();
+            }
             const backoff =
               BASE_BACKOFF_MS * Math.pow(3, attempt) +
               Math.floor(Math.random() * JITTER_MS);

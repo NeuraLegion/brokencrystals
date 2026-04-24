@@ -22846,6 +22846,41 @@ async function checkAppHealth(port, healthCheckPath = "/") {
     return false;
   }
 }
+async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
+  if (!config.docker) return false;
+  const composeFileMatch = config.command.match(/-f\s+(\S+)/);
+  const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
+  const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : "docker-compose.yml");
+  const cmd = `docker compose -f ${composeFile} restart`;
+  console.log(`[AppHealth] quickRestartCompose: ${cmd} (cwd=${repoPath})`);
+  try {
+    execSync3(cmd, {
+      cwd: repoPath,
+      stdio: "pipe",
+      timeout: 6e4
+    });
+  } catch (err) {
+    console.warn(
+      `[AppHealth] docker compose restart failed: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return false;
+  }
+  const probePath = config.healthCheckPath ?? "/";
+  const start = Date.now();
+  while (Date.now() - start < waitMs) {
+    if (await checkAppHealth(config.port, probePath)) {
+      console.log(
+        `[AppHealth] App responsive again ${Math.round((Date.now() - start) / 1e3)}s after restart`
+      );
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 3e3));
+  }
+  console.warn(
+    `[AppHealth] App still unresponsive ${Math.round(waitMs / 1e3)}s after compose restart`
+  );
+  return false;
+}
 function cleanupDocker(repoPath) {
   try {
     execSync3(
@@ -26100,7 +26135,10 @@ function isTransientHttpError(status, body) {
   }
   return false;
 }
-async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterId, authObjectId) {
+function isTargetDown400(status, body) {
+  return status === 400 && /target.*(?:is\s+down|accessible|firewall)/i.test(body);
+}
+async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterId, authObjectId, healthMonitor) {
   const prepared = [];
   for (const ep of endpoints) {
     const path2 = resolvePath(ep.path);
@@ -26168,6 +26206,9 @@ async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterI
     if (rateLimitPauseUntil > now) {
       await sleep3(rateLimitPauseUntil - now);
     }
+    if (healthMonitor) {
+      await healthMonitor.waitHealthy();
+    }
     console.log(
       `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
     );
@@ -26191,6 +26232,12 @@ async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterI
           const probe = res.clone();
           const body = await probe.text().catch(() => "");
           if (isTransientHttpError(res.status, body)) {
+            if (healthMonitor && isTargetDown400(res.status, body)) {
+              healthMonitor.signalProbableUnhealthy(
+                `target-down 400 for ${method} ${fullUrl}`
+              );
+              await healthMonitor.waitHealthy();
+            }
             const backoff = BASE_BACKOFF_MS * Math.pow(3, attempt) + Math.floor(Math.random() * JITTER_MS);
             console.warn(
               `[Entrypoints] Transient HTTP ${res.status} for ${method} ${fullUrl} \u2014 retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`
@@ -28177,6 +28224,162 @@ function cleanupHarnessInfra(repoPath) {
   cleanupDocker(repoPath);
 }
 
+// src/app-health.ts
+var AppHealthMonitor = class {
+  port;
+  healthCheckPath;
+  pollIntervalMs;
+  failureThreshold;
+  onRecover;
+  timer;
+  running = false;
+  healthy = true;
+  consecutiveFailures = 0;
+  probeInFlight = false;
+  recoveryInFlight;
+  gate;
+  constructor(opts) {
+    this.port = opts.port;
+    this.healthCheckPath = opts.healthCheckPath ?? "/";
+    this.pollIntervalMs = opts.pollIntervalMs ?? 15e3;
+    this.failureThreshold = opts.failureThreshold ?? 3;
+    this.onRecover = opts.onRecover;
+  }
+  setRecoveryCallback(cb) {
+    this.onRecover = cb;
+  }
+  start() {
+    if (this.running) return;
+    this.running = true;
+    this.timer = setInterval(() => {
+      void this.probe("scheduled");
+    }, this.pollIntervalMs);
+    if (typeof this.timer.unref === "function") this.timer.unref();
+    console.log(
+      `[AppHealth] Monitor started \u2014 polling http://localhost:${this.port}${this.healthCheckPath} every ${this.pollIntervalMs / 1e3}s`
+    );
+  }
+  stop() {
+    if (!this.running) return;
+    this.running = false;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = void 0;
+    }
+    if (this.gate) {
+      this.gate.resolve();
+      this.gate = void 0;
+    }
+  }
+  isHealthy() {
+    return this.healthy;
+  }
+  /**
+   * Resolves immediately if healthy. Otherwise blocks until the gate opens
+   * (recovery succeeds, monitor is stopped, or gate is manually opened).
+   */
+  async waitHealthy() {
+    if (this.healthy) return;
+    if (!this.gate) {
+      let resolve6;
+      const promise = new Promise((r) => {
+        resolve6 = r;
+      });
+      this.gate = { promise, resolve: resolve6 };
+    }
+    await this.gate.promise;
+  }
+  /**
+   * Tells the monitor that an external observation suggests the app may be
+   * unhealthy (e.g. Bright reported "target is down" for a registration).
+   * Triggers an immediate probe outside the regular polling cadence.
+   */
+  signalProbableUnhealthy(reason) {
+    if (!this.running) return;
+    if (this.probeInFlight) return;
+    void this.probe(`signal: ${reason}`);
+  }
+  async probe(reason) {
+    if (!this.running) return;
+    if (this.probeInFlight) return;
+    this.probeInFlight = true;
+    try {
+      const ok = await checkAppHealth(this.port, this.healthCheckPath);
+      if (ok) {
+        if (this.consecutiveFailures > 0) {
+          console.log(
+            `[AppHealth] Recovered (${reason}) \u2014 clearing ${this.consecutiveFailures} failure(s)`
+          );
+        }
+        this.consecutiveFailures = 0;
+        if (!this.healthy) this.markHealthy();
+      } else {
+        this.consecutiveFailures += 1;
+        console.warn(
+          `[AppHealth] Probe failed (${reason}) \u2014 ${this.consecutiveFailures}/${this.failureThreshold}`
+        );
+        if (this.healthy && this.consecutiveFailures >= this.failureThreshold) {
+          this.markUnhealthy();
+          void this.runRecovery();
+        }
+      }
+    } finally {
+      this.probeInFlight = false;
+    }
+  }
+  markUnhealthy() {
+    this.healthy = false;
+    if (!this.gate) {
+      let resolve6;
+      const promise = new Promise((r) => {
+        resolve6 = r;
+      });
+      this.gate = { promise, resolve: resolve6 };
+    }
+    console.warn(
+      `[AppHealth] App marked UNHEALTHY \u2014 pausing dependent operations`
+    );
+  }
+  markHealthy() {
+    this.healthy = true;
+    const gate = this.gate;
+    this.gate = void 0;
+    if (gate) gate.resolve();
+    console.log(`[AppHealth] App marked HEALTHY \u2014 resuming operations`);
+  }
+  async runRecovery() {
+    if (this.recoveryInFlight) return this.recoveryInFlight;
+    if (!this.onRecover) {
+      console.warn(`[AppHealth] No recovery callback registered \u2014 staying paused`);
+      return { ok: false, detail: "no recovery callback" };
+    }
+    const cb = this.onRecover;
+    this.recoveryInFlight = (async () => {
+      try {
+        console.log(`[AppHealth] Triggering recovery...`);
+        const result = await cb();
+        if (result.ok) {
+          this.consecutiveFailures = 0;
+          await this.probe("post-recovery");
+          if (!this.healthy) this.markHealthy();
+        } else {
+          console.error(
+            `[AppHealth] Recovery did not restore health: ${result.detail}`
+          );
+        }
+        return result;
+      } catch (err) {
+        const msg = toErrorMessage(err);
+        console.error(`[AppHealth] Recovery threw: ${msg}`);
+        return { ok: false, detail: msg };
+      } finally {
+        this.recoveryInFlight = void 0;
+      }
+    })();
+    return this.recoveryInFlight;
+  }
+};
+
 // src/orchestrator.ts
 var MAX_ITERATIONS = 5;
 var MAX_FIX_REPAIR_ATTEMPTS = 2;
@@ -28191,6 +28394,33 @@ async function restartApp(current, llm, repoPath, techStack, startupConfig, mode
   );
   if (registration) await reRegisterUser(registration);
   return result;
+}
+async function recoverApp(appProcess, llm, repoPath, techStack, startupConfig, modelSelector, registration) {
+  if (startupConfig.docker) {
+    const ok = await quickRestartCompose(repoPath, startupConfig);
+    if (ok) {
+      return { ok: true, detail: "compose restart succeeded" };
+    }
+    console.warn(`[Recover] Compose restart did not restore health \u2014 escalating to full restart`);
+  }
+  try {
+    const result = await restartApp(
+      appProcess,
+      llm,
+      repoPath,
+      techStack,
+      startupConfig,
+      modelSelector,
+      registration
+    );
+    return {
+      ok: true,
+      process: result.process,
+      detail: "full restartApp succeeded"
+    };
+  } catch (err) {
+    return { ok: false, detail: `full restart failed: ${toErrorMessage(err)}` };
+  }
 }
 async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, modelSelector, progress, context) {
   const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
@@ -28238,6 +28468,8 @@ async function runOrchestrator(ctx) {
   let appProcess;
   let repeater;
   let harnessResult;
+  let healthMonitor;
+  let authRegistration;
   const allScanIds = [];
   const allFindings = /* @__PURE__ */ new Map();
   const fixedKeys = /* @__PURE__ */ new Set();
@@ -28327,6 +28559,24 @@ async function runOrchestrator(ctx) {
       "app_running",
       `Application running at ${baseUrl}`
     );
+    healthMonitor = new AppHealthMonitor({
+      port: startupConfig.port,
+      healthCheckPath: startupConfig.healthCheckPath
+    });
+    healthMonitor.setRecoveryCallback(async () => {
+      const r = await recoverApp(
+        appProcess,
+        llm,
+        repoPath,
+        techStack,
+        startupConfig,
+        config.modelSelector,
+        authRegistration
+      );
+      if (r.process) appProcess = r.process;
+      return { ok: r.ok, detail: r.detail };
+    });
+    healthMonitor.start();
     await progress.phaseStart(
       "setup",
       "Setting up Bright security scanner and Repeater"
@@ -28388,6 +28638,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       config.modelSelector.current(),
       preAuthContext
     );
+    authRegistration = authResult.registration;
     await progress.phaseDetail(
       "auth",
       "auth_done",
@@ -28465,6 +28716,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           preAuthContext
         );
         Object.assign(authResult, retryAuthResult);
+        authRegistration = authResult.registration;
         if (retryAuthResult.authObjectId) {
           console.log(`[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
           await progress.phaseDetail(
@@ -28630,7 +28882,8 @@ This user should work for authentication. Skip user registration/seeding and go 
       safeEndpoints,
       baseUrl,
       repeater.repeaterId,
-      authResult.authObjectId
+      authResult.authObjectId,
+      healthMonitor
     );
     await progress.phaseDetail(
       "entrypoints",
@@ -29062,6 +29315,7 @@ This user should work for authentication. Skip user registration/seeding and go 
   } finally {
     buildSummaryTable(progress, allFindings, fixedKeys);
     await progress.updatePrDescription();
+    if (healthMonitor) healthMonitor.stop();
     await killProcess(appProcess);
     await killProcess(repeater?.process);
     await stopRunningScans(
