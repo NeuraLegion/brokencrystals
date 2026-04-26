@@ -11776,6 +11776,15 @@ var import_tree_kill = __toESM(require_tree_kill(), 1);
 import { execFileSync as execFileSync5 } from "child_process";
 
 // src/progress.ts
+function condenseDetail(detail) {
+  const trimmed = detail.trim();
+  if (trimmed.length <= 180) return trimmed;
+  const sentenceEnd = trimmed.search(/\.\s/);
+  if (sentenceEnd > 40 && sentenceEnd < 180) {
+    return trimmed.slice(0, sentenceEnd + 1);
+  }
+  return trimmed.slice(0, 177).trimEnd() + "\u2026";
+}
 var ProgressReporter = class {
   turn = 0;
   steps = [];
@@ -11788,19 +11797,33 @@ var ProgressReporter = class {
     for (const step of this.steps) {
       if (step.status === "working") step.status = "done";
     }
-    this.steps.push({
-      title: description,
-      status: "working",
-      details: [],
-      keyedDetails: /* @__PURE__ */ new Map()
-    });
+    const existingIdx = this.steps.findIndex((s) => s.phase === phase);
+    if (existingIdx >= 0) {
+      const existing = this.steps[existingIdx];
+      existing.status = "working";
+      existing.title = description;
+      existing.attempts += 1;
+      existing.details = [];
+      existing.keyedDetails.clear();
+      this.steps.splice(existingIdx, 1);
+      this.steps.push(existing);
+    } else {
+      this.steps.push({
+        phase,
+        title: description,
+        status: "working",
+        details: [],
+        keyedDetails: /* @__PURE__ */ new Map(),
+        attempts: 1
+      });
+    }
     await this.platform.reportPhase(phase, description, this.turn++);
     await this.updatePrDescription();
   }
   async phaseDetail(phase, toolName, detail) {
-    const current = this.steps.findLast((s) => s.status === "working");
-    if (current) {
-      current.details.push(detail);
+    const target = this.steps.findLast((s) => s.phase === phase) ?? this.steps.findLast((s) => s.status === "working");
+    if (target) {
+      target.details.push(detail);
     }
     await this.platform.reportDetail(phase, toolName, detail, this.turn);
     await this.updatePrDescription();
@@ -11835,12 +11858,20 @@ var ProgressReporter = class {
     const lines = [];
     for (const s of this.steps) {
       const icon = s.status === "done" ? "\u2705" : s.status === "working" ? "\u{1F504}" : "\u2B1C";
-      lines.push(`${icon} **${s.title}**`);
-      for (const d of s.details) {
-        lines.push(`   - ${d}`);
-      }
-      for (const d of s.keyedDetails.values()) {
-        lines.push(`   - ${d}`);
+      const suffix = s.attempts > 1 ? `  _(${s.attempts} attempts)_` : "";
+      lines.push(`${icon} **${s.title}**${suffix}`);
+      if (s.status === "working") {
+        for (const d of s.details) {
+          lines.push(`   - ${d}`);
+        }
+        for (const d of s.keyedDetails.values()) {
+          lines.push(`   - ${d}`);
+        }
+      } else if (s.status === "done") {
+        const last = s.details[s.details.length - 1];
+        if (last) {
+          lines.push(`   - ${condenseDetail(last)}`);
+        }
       }
     }
     if (this.findingsSummary.length > 0) {
@@ -28596,7 +28627,7 @@ Please account for this when bringing the app back up \u2014 e.g. clean stale st
 async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, modelSelector, progress, context) {
   const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
   if (!needs) return { ran: false, completed: false, summary: "Setup not needed" };
-  await progress.phaseStart("first_run_setup", `Completing first-time application setup (${context})`);
+  await progress.phaseStart("first_run_setup", "Completing first-time application setup");
   console.log(`[Engine] App needs first-run setup (${context}) \u2014 running setup phase`);
   const baseModel = modelSelector.current();
   const criticModel = modelSelector.peekEscalated();
@@ -28766,7 +28797,7 @@ async function runOrchestrator(ctx) {
     await progress.phaseDetail(
       "setup",
       "repeater",
-      `Repeater connected: ${repeater.repeaterId}`
+      "Repeater connected"
     );
     let setupCredentials;
     let setupCompleted = false;
@@ -28813,7 +28844,7 @@ This user should work for authentication. Skip user registration/seeding and go 
     await progress.phaseDetail(
       "auth",
       "auth_done",
-      authResult.authObjectId ? `Auth configured (object ${authResult.authObjectId})` : "No authentication required"
+      authResult.authObjectId ? "Auth configured" : "No authentication required"
     );
     const MAX_INFRA_BOUNCEBACKS = 5;
     for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {
@@ -28893,7 +28924,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           await progress.phaseDetail(
             "auth",
             "auth_done",
-            `Auth configured after infra repair (object ${retryAuthResult.authObjectId})`
+            "Auth configured (after infra repair)"
           );
           break;
         } else if (retryAuthResult.infraRepairHint) {
@@ -28944,13 +28975,13 @@ This user should work for authentication. Skip user registration/seeding and go 
       }
     }
     config.modelSelector.reset();
-    await progress.phaseStart(
-      "swagger",
-      "Probing for OpenAPI/Swagger spec"
-    );
     const swaggerResult = await discoverEndpointsViaSwagger(baseUrl);
     let swaggerEndpoints = [];
     if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {
+      await progress.phaseStart(
+        "swagger",
+        "Probing for OpenAPI/Swagger spec"
+      );
       swaggerEndpoints = swaggerResult.endpoints;
       console.log(
         `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from existing OpenAPI spec`
@@ -28962,11 +28993,6 @@ This user should work for authentication. Skip user registration/seeding and go 
       );
     } else {
       console.log("[Swagger] No spec found \u2014 will rely on static analysis");
-      await progress.phaseDetail(
-        "swagger",
-        "no_spec",
-        "No OpenAPI spec available \u2014 will rely on static analysis"
-      );
     }
     await progress.phaseStart(
       "analyze",
@@ -29517,7 +29543,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
     projectId,
     config
   );
-  await progress.phaseDetail("setup", "repeater", `Repeater connected: ${repeater.repeaterId}`);
+  await progress.phaseDetail("setup", "repeater", "Repeater connected");
   try {
     await progress.phaseStart("entrypoints", "Registering harness endpoints");
     const registered = await registerEntrypoints(

@@ -161,7 +161,7 @@ async function runSetupIfNeeded(
   const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
   if (!needs) return { ran: false, completed: false, summary: "Setup not needed" };
 
-  await progress.phaseStart("first_run_setup", `Completing first-time application setup (${context})`);
+  await progress.phaseStart("first_run_setup", "Completing first-time application setup");
   console.log(`[Engine] App needs first-run setup (${context}) — running setup phase`);
 
   const baseModel = modelSelector.current();
@@ -363,7 +363,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     await progress.phaseDetail(
       "setup",
       "repeater",
-      `Repeater connected: ${repeater.repeaterId}`,
+      "Repeater connected",
     );
 
     // ----- Phase 2.5: First-run setup (if needed) -----
@@ -420,7 +420,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       "auth",
       "auth_done",
       authResult.authObjectId
-        ? `Auth configured (object ${authResult.authObjectId})`
+        ? "Auth configured"
         : "No authentication required",
     );
 
@@ -524,7 +524,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           await progress.phaseDetail(
             "auth",
             "auth_done",
-            `Auth configured after infra repair (object ${retryAuthResult.authObjectId})`,
+            "Auth configured (after infra repair)",
           );
           break;
         } else if (retryAuthResult.infraRepairHint) {
@@ -583,14 +583,16 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     config.modelSelector.reset();
 
     // ----- Phase 4: Swagger / OpenAPI discovery -----
-    await progress.phaseStart(
-      "swagger",
-      "Probing for OpenAPI/Swagger spec",
-    );
+    // Only surface this phase to the user if we actually find a spec — otherwise
+    // it's just noise before the static-analysis step that always runs.
     const swaggerResult = await discoverEndpointsViaSwagger(baseUrl);
 
     let swaggerEndpoints: DiscoveredEndpoint[] = [];
     if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {
+      await progress.phaseStart(
+        "swagger",
+        "Probing for OpenAPI/Swagger spec",
+      );
       swaggerEndpoints = swaggerResult.endpoints;
       console.log(
         `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from existing OpenAPI spec`,
@@ -602,11 +604,6 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
     } else {
       console.log("[Swagger] No spec found — will rely on static analysis");
-      await progress.phaseDetail(
-        "swagger",
-        "no_spec",
-        "No OpenAPI spec available — will rely on static analysis",
-      );
     }
 
     // ----- Phase 5: Static analysis (always runs — fills gaps, enriches params) -----
@@ -1287,7 +1284,7 @@ async function runScanLoop(
     projectId,
     config,
   );
-  await progress.phaseDetail("setup", "repeater", `Repeater connected: ${repeater.repeaterId}`);
+  await progress.phaseDetail("setup", "repeater", "Repeater connected");
 
   try {
     // Register harness endpoints (no auth)
