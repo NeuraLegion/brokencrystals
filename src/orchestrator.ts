@@ -895,6 +895,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           );
           scanIds.push(scanId);
           allScanIds.push(scanId);
+          await progress.phaseDetail(
+            "scan",
+            "scan_launched",
+            `Group ${gi + 1}: ${group.entrypointIds.length} endpoints · tests: ${group.tests.join(", ")}`,
+          );
         } catch (err) {
           console.error(
             `[Scan] Failed to start scan for group ${gi + 1}: ${err}`,
@@ -1344,6 +1349,11 @@ async function runScanLoop(
         );
         scanIds.push(scanId);
         allScanIds.push(scanId);
+        await progress.phaseDetail(
+          "scan",
+          "scan_launched",
+          `Group ${gi + 1}: ${group.entrypointIds.length} endpoints · tests: ${group.tests.join(", ")}`,
+        );
       } catch (err) {
         console.error(`[Scan] Failed to start harness scan group ${gi + 1}: ${err}`);
       }

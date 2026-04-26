@@ -26866,7 +26866,7 @@ var PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
 async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, api, scanName, hasPathParams = false) {
   const locations = hasPathParams ? PATH_ATTACK_LOCATIONS : DEFAULT_ATTACK_LOCATIONS;
   console.log(
-    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests, attack locations: ${locations.join(", ")}`
+    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests [${testTags.join(", ")}], attack locations: ${locations.join(", ")}`
   );
   return runScanViaRest(
     api,
@@ -29231,6 +29231,11 @@ This user should work for authentication. Skip user registration/seeding and go 
           );
           scanIds.push(scanId);
           allScanIds.push(scanId);
+          await progress.phaseDetail(
+            "scan",
+            "scan_launched",
+            `Group ${gi + 1}: ${group.entrypointIds.length} endpoints \xB7 tests: ${group.tests.join(", ")}`
+          );
         } catch (err) {
           console.error(
             `[Scan] Failed to start scan for group ${gi + 1}: ${err}`
@@ -29597,6 +29602,11 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
         );
         scanIds.push(scanId);
         allScanIds.push(scanId);
+        await progress.phaseDetail(
+          "scan",
+          "scan_launched",
+          `Group ${gi + 1}: ${group.entrypointIds.length} endpoints \xB7 tests: ${group.tests.join(", ")}`
+        );
       } catch (err) {
         console.error(`[Scan] Failed to start harness scan group ${gi + 1}: ${err}`);
       }

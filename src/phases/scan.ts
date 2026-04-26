@@ -18,7 +18,7 @@ export async function runSecurityScan(
     ? PATH_ATTACK_LOCATIONS
     : DEFAULT_ATTACK_LOCATIONS;
   console.log(
-    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests, attack locations: ${locations.join(", ")}`,
+    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests [${testTags.join(", ")}], attack locations: ${locations.join(", ")}`,
   );
 
   return runScanViaRest(
