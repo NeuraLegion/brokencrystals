@@ -625,59 +625,9 @@ Respond with EXACTLY one JSON object:
 
       // Create LLM-powered HTTP response health analyzer
       const analyzeResponseFn = async (status: number, body: string): Promise<{ healthy: boolean; reason: string }> => {
-        const resp = await llm.chat.completions.create({
-          model: modelSelector?.current() ?? "gpt-4o-mini",
-          max_completion_tokens: 200,
-          messages: [
-            {
-              role: "system",
-              content: `You are checking if a web application's HTTP response indicates a FULLY WORKING application ready for real users.
-
-Respond with EXACTLY one JSON object:
-{"healthy": true/false, "reason": "<one sentence explanation>"}
-
-Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
-- Pages that tell the user to run a command, set an environment variable, or edit a config file before the app works (e.g. "Ember CLI is Required", "run bin/setup", "set DATABASE_URL")
-- Error pages (500, 503, "something went wrong", stack traces)
-- "Service unavailable", "under maintenance", or placeholder pages
-- Database migration needed, pending migrations
-- Configuration required, environment variable missing
-- Framework default welcome pages that are NOT real app UI (Rails "Yay! You're on Rails!", Django debug page, etc.)
-- Blank or nearly empty pages with just a title and no real content (but NOT SPA shells with JavaScript bundles — those are valid, and NOT minimal health/status endpoints — those are also valid)
-- JSON error responses like {"error": ...} or {"errors": [...]}
-
-Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
-- A real login form, registration form, or sign-up page
-- A dashboard, feed, or content page with actual data
-- A JSON API response with real data (not an error)
-- A working application UI with navigation, content, and interactive elements
-- A web-based setup wizard or "finish installation" form where the user can register an admin account through the browser — this is a NORMAL first-run state and the application IS working correctly
-- Any page served by the application framework (not a raw web server error) that accepts user interaction
-- A minimal health/status endpoint response such as "ok", "OK", "healthy", "pong", "alive", or a short JSON like {"status":"ok"} — these are VALID health responses even if the body is very short
-- **A Single-Page Application (SPA) shell** — HTML with a root element like <app-root>, <consumer-root>, <div id="root">, <div id="app">, <next-root>, etc. and references to JavaScript bundles (main.js, chunk-*.js, vendor.js, runtime.js, polyfills.js). The HTML body appears minimal because the actual UI is rendered client-side by JavaScript. This is the CORRECT healthy response for Angular, React, Vue, Next.js, and other SPA frameworks — mark it HEALTHY.
-- **A page served by nginx/Apache/CDN** with proper assets (CSS, JS, fonts) and an app title — even if the body text looks empty after stripping HTML tags, the presence of bundled assets and a framework root element means the app is running correctly.
-
-When in doubt about whether the app is running vs broken, check: does the page come from the application framework and accept user interaction? If yes → HEALTHY. If it just shows a static error or tells you to run commands → UNHEALTHY.`,
-            },
-            {
-              role: "user",
-              content: `HTTP ${status} response body:\n\`\`\`\n${body}\n\`\`\``,
-            },
-          ],
-        });
-        try {
-          const text = resp.choices[0]?.message.content ?? "";
-          const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
-          const result = {
-            healthy: json.healthy === true,
-            reason: String(json.reason ?? "").slice(0, 200) || "no reason given",
-          };
-          if (result.healthy) lastHealthReason = result.reason;
-          return result;
-        } catch {
-          // If AI fails to parse, assume healthy to avoid false positives
-          return { healthy: true, reason: "failed to parse AI response — assuming healthy" };
-        }
+        const result = await analyzeResponseWithLLM(llm, modelSelector, status, body);
+        if (result.healthy) lastHealthReason = result.reason;
+        return result;
       };
 
       const proc = await startApplication(repoPath, config, analyzeLogsFn, analyzeResponseFn);
@@ -2983,6 +2933,120 @@ export async function checkAppHealth(port: number, healthCheckPath = "/"): Promi
   } catch {
     return false;
   }
+}
+
+export interface ResponseHealthResult {
+  healthy: boolean;
+  reason: string;
+}
+
+/**
+ * Ask the LLM whether an HTTP response body looks like a real working app
+ * vs. a setup-required / dev-mode-warning / error page that happens to
+ * return HTTP 200.
+ *
+ * This is the same prompt used by the startup waiter (see
+ * `startApplicationWithRetries`) extracted as a standalone helper so the
+ * background health monitor and pre-scan validation can reuse it.
+ */
+export async function analyzeResponseWithLLM(
+  llm: Parameters<typeof chatWithTools>[0],
+  modelSelector: ModelSelector | undefined,
+  status: number,
+  body: string,
+): Promise<ResponseHealthResult> {
+  const resp = await llm.chat.completions.create({
+    model: modelSelector?.current() ?? "gpt-4o-mini",
+    max_completion_tokens: 200,
+    messages: [
+      {
+        role: "system",
+        content: `You are checking if a web application's HTTP response indicates a FULLY WORKING application ready for real users.
+
+Respond with EXACTLY one JSON object:
+{"healthy": true/false, "reason": "<one sentence explanation>"}
+
+Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
+- Pages that tell the user to run a command, set an environment variable, or edit a config file before the app works (e.g. "Ember CLI is Required", "run bin/setup", "set DATABASE_URL")
+- Error pages (500, 503, "something went wrong", stack traces)
+- "Service unavailable", "under maintenance", or placeholder pages
+- Database migration needed, pending migrations
+- Configuration required, environment variable missing
+- Framework default welcome pages that are NOT real app UI (Rails "Yay! You're on Rails!", Django debug page, etc.)
+- Blank or nearly empty pages with just a title and no real content (but NOT SPA shells with JavaScript bundles — those are valid, and NOT minimal health/status endpoints — those are also valid)
+- JSON error responses like {"error": ...} or {"errors": [...]}
+
+Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
+- A real login form, registration form, or sign-up page
+- A dashboard, feed, or content page with actual data
+- A JSON API response with real data (not an error)
+- A working application UI with navigation, content, and interactive elements
+- A web-based setup wizard or "finish installation" form where the user can register an admin account through the browser — this is a NORMAL first-run state and the application IS working correctly
+- Any page served by the application framework (not a raw web server error) that accepts user interaction
+- A minimal health/status endpoint response such as "ok", "OK", "healthy", "pong", "alive", or a short JSON like {"status":"ok"} — these are VALID health responses even if the body is very short
+- **A Single-Page Application (SPA) shell** — HTML with a root element like <app-root>, <consumer-root>, <div id="root">, <div id="app">, <next-root>, etc. and references to JavaScript bundles (main.js, chunk-*.js, vendor.js, runtime.js, polyfills.js). The HTML body appears minimal because the actual UI is rendered client-side by JavaScript. This is the CORRECT healthy response for Angular, React, Vue, Next.js, and other SPA frameworks — mark it HEALTHY.
+- **A page served by nginx/Apache/CDN** with proper assets (CSS, JS, fonts) and an app title — even if the body text looks empty after stripping HTML tags, the presence of bundled assets and a framework root element means the app is running correctly.
+
+When in doubt about whether the app is running vs broken, check: does the page come from the application framework and accept user interaction? If yes → HEALTHY. If it just shows a static error or tells you to run commands → UNHEALTHY.`,
+      },
+      {
+        role: "user",
+        content: `HTTP ${status} response body:\n\`\`\`\n${body}\n\`\`\``,
+      },
+    ],
+  });
+  try {
+    const text = resp.choices[0]?.message.content ?? "";
+    const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+    return {
+      healthy: json.healthy === true,
+      reason: String(json.reason ?? "").slice(0, 200) || "no reason given",
+    };
+  } catch {
+    return { healthy: true, reason: "failed to parse AI response — assuming healthy" };
+  }
+}
+
+/**
+ * Body-aware health probe. Fetches the health-check URL and asks the LLM to
+ * judge whether the response is from a real working app — catches cases
+ * where the app returns HTTP 200 with a dev-mode warning page, a setup
+ * required page, or a framework error that the status-code-only check would
+ * miss.
+ *
+ * Used by AppHealthMonitor periodically (every Nth shallow probe) and
+ * synchronously before each scan round.
+ */
+export async function deepHealthCheck(
+  port: number,
+  healthCheckPath: string,
+  llm: Parameters<typeof chatWithTools>[0],
+  modelSelector: ModelSelector | undefined,
+): Promise<ResponseHealthResult> {
+  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
+  let res: Response;
+  try {
+    res = await fetch(`http://localhost:${port}${probePath}`, {
+      method: "GET",
+      signal: AbortSignal.timeout(8_000),
+    });
+  } catch (err) {
+    return { healthy: false, reason: `connection failed: ${toErrorMessage(err)}` };
+  }
+  if (res.status >= 500) {
+    return { healthy: false, reason: `HTTP ${res.status} server error` };
+  }
+  let body = "";
+  try {
+    body = await res.text();
+  } catch {
+    /* empty body OK */
+  }
+  if (!body) return { healthy: true, reason: "empty body, status acceptable" };
+  const ct = res.headers.get("content-type") ?? "";
+  const text = ct.includes("html") ? stripHtmlForAnalysis(body) : body;
+  const preview = text.length > 3000 ? text.slice(0, 3000) + "..." : text;
+  return analyzeResponseWithLLM(llm, modelSelector, res.status, preview);
 }
 
 /**

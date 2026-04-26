@@ -1,4 +1,4 @@
-import { checkAppHealth } from "./phases/startup.js";
+import { checkAppHealth, type ResponseHealthResult } from "./phases/startup.js";
 import { toErrorMessage } from "./utils.js";
 
 /**
@@ -11,7 +11,19 @@ export interface RecoveryResult {
   detail: string;
 }
 
-export type RecoveryCallback = () => Promise<RecoveryResult>;
+/**
+ * Recovery callback. Receives an optional `hint` describing why the app
+ * was flagged unhealthy (e.g. "returned the Ember CLI warning page") so
+ * the LLM repair stage gets explicit context, not just "app down".
+ */
+export type RecoveryCallback = (hint?: string) => Promise<RecoveryResult>;
+
+/**
+ * Body-aware health probe. Returns whether the response from the app's
+ * health-check URL looks like a real working app (vs a setup page,
+ * dev-mode warning, error page, etc).
+ */
+export type DeepProbeFn = () => Promise<ResponseHealthResult>;
 
 export interface AppHealthMonitorOptions {
   port: number;
@@ -21,6 +33,15 @@ export interface AppHealthMonitorOptions {
   failureThreshold?: number;
   /** Recovery callback. If omitted, monitor only signals — caller does the recovery itself. */
   onRecover?: RecoveryCallback;
+  /**
+   * Optional body-aware probe. When set, runs every Nth shallow probe
+   * (see `deepProbeEveryNth`). A single failure trips unhealthy and
+   * triggers recovery — body-aware failures are stronger signals than
+   * a missed status-code probe, so we don't wait for `failureThreshold`.
+   */
+  onDeepProbe?: DeepProbeFn;
+  /** Run the deep probe every Nth shallow probe. Default: 5. */
+  deepProbeEveryNth?: number;
 }
 
 /**
@@ -41,15 +62,20 @@ export class AppHealthMonitor {
   private readonly healthCheckPath: string;
   private readonly pollIntervalMs: number;
   private readonly failureThreshold: number;
+  private readonly deepProbeEveryNth: number;
   private onRecover?: RecoveryCallback;
+  private onDeepProbe?: DeepProbeFn;
 
   private timer?: NodeJS.Timeout;
   private running = false;
   private healthy = true;
   private consecutiveFailures = 0;
+  private probeCount = 0;
   private probeInFlight = false;
+  private deepProbeInFlight = false;
   private recoveryInFlight: Promise<RecoveryResult> | undefined;
   private gate: { promise: Promise<void>; resolve: () => void } | undefined;
+  private lastUnhealthyReason: string | undefined;
 
   constructor(opts: AppHealthMonitorOptions) {
     this.port = opts.port;
@@ -57,10 +83,16 @@ export class AppHealthMonitor {
     this.pollIntervalMs = opts.pollIntervalMs ?? 15_000;
     this.failureThreshold = opts.failureThreshold ?? 3;
     this.onRecover = opts.onRecover;
+    this.onDeepProbe = opts.onDeepProbe;
+    this.deepProbeEveryNth = opts.deepProbeEveryNth ?? 5;
   }
 
   setRecoveryCallback(cb: RecoveryCallback): void {
     this.onRecover = cb;
+  }
+
+  setDeepProbe(cb: DeepProbeFn): void {
+    this.onDeepProbe = cb;
   }
 
   start(): void {
@@ -121,6 +153,29 @@ export class AppHealthMonitor {
     void this.probe(`signal: ${reason}`);
   }
 
+  /**
+   * On-demand body-aware probe. Used by the orchestrator before each scan
+   * round to fail-fast if the app has degraded into a setup-required /
+   * dev-mode-warning state that the periodic shallow probe wouldn't catch.
+   * If unhealthy, marks the monitor unhealthy and triggers recovery; the
+   * returned promise resolves once recovery completes (or fails).
+   */
+  async verifyDeepHealth(): Promise<ResponseHealthResult> {
+    if (!this.onDeepProbe) return { healthy: true, reason: "no deep probe configured" };
+    if (this.deepProbeInFlight) {
+      // Another caller is already probing — wait for the gate to settle.
+      await this.waitHealthy();
+      return { healthy: this.healthy, reason: this.lastUnhealthyReason ?? "ok" };
+    }
+    const result = await this.runDeepProbe("on-demand");
+    if (!result.healthy) {
+      // Wait for recovery to complete before returning so callers proceed
+      // against a recovered app, not the broken one.
+      await this.waitHealthy();
+    }
+    return result;
+  }
+
   private async probe(reason: string): Promise<void> {
     if (!this.running) return;
     if (this.probeInFlight) return;
@@ -144,13 +199,59 @@ export class AppHealthMonitor {
           this.healthy &&
           this.consecutiveFailures >= this.failureThreshold
         ) {
+          this.lastUnhealthyReason = `app stopped responding to HTTP probes at http://localhost:${this.port}${this.healthCheckPath}`;
           this.markUnhealthy();
           // Fire recovery (don't await — probe is allowed to return)
           void this.runRecovery();
         }
       }
+
+      // Periodic body-aware probe: catches degraded states (Ember CLI
+      // warning, setup-required page, framework error) that return HTTP
+      // 200 and so look healthy to the status-only check above.
+      if (
+        this.healthy &&
+        this.onDeepProbe &&
+        reason === "scheduled" &&
+        ++this.probeCount % this.deepProbeEveryNth === 0
+      ) {
+        // Don't await — keeps the regular probe cadence steady. runDeepProbe
+        // handles its own concurrency guard.
+        void this.runDeepProbe("scheduled-deep");
+      }
     } finally {
       this.probeInFlight = false;
+    }
+  }
+
+  private async runDeepProbe(reason: string): Promise<ResponseHealthResult> {
+    if (!this.onDeepProbe) return { healthy: true, reason: "no deep probe" };
+    if (this.deepProbeInFlight) return { healthy: this.healthy, reason: "already in flight" };
+    this.deepProbeInFlight = true;
+    try {
+      const result = await this.onDeepProbe();
+      if (!result.healthy) {
+        console.warn(
+          `[AppHealth] Deep probe (${reason}) UNHEALTHY — ${result.reason}`,
+        );
+        if (this.healthy) {
+          this.lastUnhealthyReason = `deep health probe flagged the app as unhealthy: ${result.reason}`;
+          this.markUnhealthy();
+          void this.runRecovery();
+        }
+      } else {
+        console.log(`[AppHealth] Deep probe (${reason}) healthy — ${result.reason}`);
+      }
+      return result;
+    } catch (err) {
+      // Deep probe itself failed (network, LLM error). Don't trip unhealthy
+      // on this — the shallow probe will catch real outages.
+      console.warn(
+        `[AppHealth] Deep probe (${reason}) errored: ${toErrorMessage(err)} — ignoring`,
+      );
+      return { healthy: true, reason: "deep probe errored, ignoring" };
+    } finally {
+      this.deepProbeInFlight = false;
     }
   }
 
@@ -183,13 +284,17 @@ export class AppHealthMonitor {
       return { ok: false, detail: "no recovery callback" };
     }
     const cb = this.onRecover;
+    const hint = this.lastUnhealthyReason;
     this.recoveryInFlight = (async () => {
       try {
-        console.log(`[AppHealth] Triggering recovery...`);
-        const result = await cb();
+        console.log(
+          `[AppHealth] Triggering recovery${hint ? ` — hint: ${hint}` : ""}...`,
+        );
+        const result = await cb(hint);
         if (result.ok) {
           // Probe immediately to confirm and open the gate
           this.consecutiveFailures = 0;
+          this.lastUnhealthyReason = undefined;
           await this.probe("post-recovery");
           if (!this.healthy) this.markHealthy(); // force-open even if probe was racy
         } else {

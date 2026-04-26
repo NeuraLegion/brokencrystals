@@ -13,6 +13,7 @@ import {
   canBuildFromSource,
   captureDockerLogs,
   checkAppHealth,
+  deepHealthCheck,
   quickRestartCompose,
   type StartupResult,
 } from "./phases/startup.js";
@@ -102,21 +103,41 @@ async function recoverApp(
   startupConfig: StartupConfig,
   modelSelector: ModelSelector,
   registration: AuthResult["registration"] | undefined,
+  hint?: string,
 ): Promise<{ ok: boolean; process?: ChildProcess; detail: string }> {
-  // Stage 1: try fast compose restart (only if dockerized)
-  const stage1Hints: string[] = [];
-  if (startupConfig.docker) {
+  // Hints passed all the way to the LLM repair stage (stage 2). Start with
+  // any context the health monitor gave us about *why* the app was flagged
+  // unhealthy — e.g. "deep probe flagged the app as unhealthy: returned the
+  // Ember CLI warning page". Without this the LLM only knows "app down" and
+  // would just rebuild the same broken config.
+  const stageHints: string[] = [];
+  if (hint) {
+    stageHints.push(
+      `[recovery] The app health monitor triggered this recovery because: ${hint}\nPlease address the underlying cause (set the missing env var, fix the config, etc.) — a plain rebuild will not be enough if the same condition reappears.`,
+    );
+  }
+
+  // Stage 1: try fast compose restart (only if dockerized AND the failure is
+  // the kind a restart can fix — i.e. an unresponsive process). When the
+  // hint indicates a content/config issue (deep probe flagged a setup or
+  // dev-mode warning page), skip restart and go straight to LLM repair.
+  const isContentLevelIssue = !!hint && hint.includes("deep health probe");
+  if (startupConfig.docker && !isContentLevelIssue) {
     const r = await quickRestartCompose(repoPath, startupConfig);
     if (r.ok) {
       return { ok: true, detail: "compose restart succeeded" };
     }
     if (r.diagnostics) {
       console.warn(`[Recover] Compose restart failed:\n${r.diagnostics}`);
-      stage1Hints.push(
+      stageHints.push(
         `[recovery] A prior \`docker compose restart\` was attempted because the running app stopped responding to HTTP probes, but it did not restore health. Diagnostics from that attempt:\n${r.diagnostics}\nPlease account for this when bringing the app back up — e.g. clean stale state files, force-recreate the affected container, or fix the underlying config so the same failure doesn't repeat.`,
       );
     }
     console.warn(`[Recover] Escalating to full LLM-driven restart`);
+  } else if (isContentLevelIssue) {
+    console.warn(
+      `[Recover] Skipping fast compose restart — content-level issue requires LLM repair`,
+    );
   }
 
   // Stage 2: full restart (kills process + LLM repair loop), with hints from stage 1
@@ -129,7 +150,7 @@ async function recoverApp(
       startupConfig,
       modelSelector,
       registration,
-      stage1Hints.length > 0 ? stage1Hints : undefined,
+      stageHints.length > 0 ? stageHints : undefined,
     );
     return {
       ok: true,
@@ -326,8 +347,15 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     healthMonitor = new AppHealthMonitor({
       port: startupConfig.port,
       healthCheckPath: startupConfig.healthCheckPath,
+      onDeepProbe: () =>
+        deepHealthCheck(
+          startupConfig.port,
+          startupConfig.healthCheckPath ?? "/",
+          llm,
+          config.modelSelector,
+        ),
     });
-    healthMonitor.setRecoveryCallback(async () => {
+    healthMonitor.setRecoveryCallback(async (hint) => {
       const r = await recoverApp(
         appProcess,
         llm,
@@ -336,6 +364,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         startupConfig,
         config.modelSelector,
         authRegistration,
+        hint,
       );
       if (r.process) appProcess = r.process;
       return { ok: r.ok, detail: r.detail };
@@ -880,6 +909,24 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         "scan",
         `Running scans — round ${iteration + 1}`,
       );
+
+      // Body-aware pre-scan health check. The shallow checkAppHealth above
+      // returns true for any non-5xx — including HTTP 200 with a setup or
+      // dev-mode warning page. verifyDeepHealth runs the LLM analyzer on
+      // the actual response body, and if it flags trouble it triggers
+      // recovery and blocks here until the app is healthy again.
+      try {
+        const deep = await healthMonitor.verifyDeepHealth();
+        if (!deep.healthy) {
+          console.warn(
+            `[Scan] Deep health check still unhealthy after recovery: ${deep.reason}`,
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `[Scan] Deep health check errored (continuing): ${toErrorMessage(err)}`,
+        );
+      }
 
       const scanIds: string[] = [];
       for (const [gi, group] of scanGroups.entries()) {

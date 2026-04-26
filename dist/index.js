@@ -21167,61 +21167,9 @@ ${logs.slice(-3e3)}
       };
       let lastHealthReason = "";
       const analyzeResponseFn = async (status, body) => {
-        const resp = await llm.chat.completions.create({
-          model: modelSelector?.current() ?? "gpt-4o-mini",
-          max_completion_tokens: 200,
-          messages: [
-            {
-              role: "system",
-              content: `You are checking if a web application's HTTP response indicates a FULLY WORKING application ready for real users.
-
-Respond with EXACTLY one JSON object:
-{"healthy": true/false, "reason": "<one sentence explanation>"}
-
-Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
-- Pages that tell the user to run a command, set an environment variable, or edit a config file before the app works (e.g. "Ember CLI is Required", "run bin/setup", "set DATABASE_URL")
-- Error pages (500, 503, "something went wrong", stack traces)
-- "Service unavailable", "under maintenance", or placeholder pages
-- Database migration needed, pending migrations
-- Configuration required, environment variable missing
-- Framework default welcome pages that are NOT real app UI (Rails "Yay! You're on Rails!", Django debug page, etc.)
-- Blank or nearly empty pages with just a title and no real content (but NOT SPA shells with JavaScript bundles \u2014 those are valid, and NOT minimal health/status endpoints \u2014 those are also valid)
-- JSON error responses like {"error": ...} or {"errors": [...]}
-
-Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
-- A real login form, registration form, or sign-up page
-- A dashboard, feed, or content page with actual data
-- A JSON API response with real data (not an error)
-- A working application UI with navigation, content, and interactive elements
-- A web-based setup wizard or "finish installation" form where the user can register an admin account through the browser \u2014 this is a NORMAL first-run state and the application IS working correctly
-- Any page served by the application framework (not a raw web server error) that accepts user interaction
-- A minimal health/status endpoint response such as "ok", "OK", "healthy", "pong", "alive", or a short JSON like {"status":"ok"} \u2014 these are VALID health responses even if the body is very short
-- **A Single-Page Application (SPA) shell** \u2014 HTML with a root element like <app-root>, <consumer-root>, <div id="root">, <div id="app">, <next-root>, etc. and references to JavaScript bundles (main.js, chunk-*.js, vendor.js, runtime.js, polyfills.js). The HTML body appears minimal because the actual UI is rendered client-side by JavaScript. This is the CORRECT healthy response for Angular, React, Vue, Next.js, and other SPA frameworks \u2014 mark it HEALTHY.
-- **A page served by nginx/Apache/CDN** with proper assets (CSS, JS, fonts) and an app title \u2014 even if the body text looks empty after stripping HTML tags, the presence of bundled assets and a framework root element means the app is running correctly.
-
-When in doubt about whether the app is running vs broken, check: does the page come from the application framework and accept user interaction? If yes \u2192 HEALTHY. If it just shows a static error or tells you to run commands \u2192 UNHEALTHY.`
-            },
-            {
-              role: "user",
-              content: `HTTP ${status} response body:
-\`\`\`
-${body}
-\`\`\``
-            }
-          ]
-        });
-        try {
-          const text = resp.choices[0]?.message.content ?? "";
-          const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
-          const result = {
-            healthy: json.healthy === true,
-            reason: String(json.reason ?? "").slice(0, 200) || "no reason given"
-          };
-          if (result.healthy) lastHealthReason = result.reason;
-          return result;
-        } catch {
-          return { healthy: true, reason: "failed to parse AI response \u2014 assuming healthy" };
-        }
+        const result = await analyzeResponseWithLLM(llm, modelSelector, status, body);
+        if (result.healthy) lastHealthReason = result.reason;
+        return result;
       };
       const proc2 = await startApplication(repoPath, config, analyzeLogsFn, analyzeResponseFn);
       console.log(
@@ -22916,6 +22864,86 @@ async function checkAppHealth(port, healthCheckPath = "/") {
   } catch {
     return false;
   }
+}
+async function analyzeResponseWithLLM(llm, modelSelector, status, body) {
+  const resp = await llm.chat.completions.create({
+    model: modelSelector?.current() ?? "gpt-4o-mini",
+    max_completion_tokens: 200,
+    messages: [
+      {
+        role: "system",
+        content: `You are checking if a web application's HTTP response indicates a FULLY WORKING application ready for real users.
+
+Respond with EXACTLY one JSON object:
+{"healthy": true/false, "reason": "<one sentence explanation>"}
+
+Mark as UNHEALTHY (healthy: false) if the response contains ANY of these:
+- Pages that tell the user to run a command, set an environment variable, or edit a config file before the app works (e.g. "Ember CLI is Required", "run bin/setup", "set DATABASE_URL")
+- Error pages (500, 503, "something went wrong", stack traces)
+- "Service unavailable", "under maintenance", or placeholder pages
+- Database migration needed, pending migrations
+- Configuration required, environment variable missing
+- Framework default welcome pages that are NOT real app UI (Rails "Yay! You're on Rails!", Django debug page, etc.)
+- Blank or nearly empty pages with just a title and no real content (but NOT SPA shells with JavaScript bundles \u2014 those are valid, and NOT minimal health/status endpoints \u2014 those are also valid)
+- JSON error responses like {"error": ...} or {"errors": [...]}
+
+Mark as HEALTHY (healthy: true) if the response is a WORKING application page:
+- A real login form, registration form, or sign-up page
+- A dashboard, feed, or content page with actual data
+- A JSON API response with real data (not an error)
+- A working application UI with navigation, content, and interactive elements
+- A web-based setup wizard or "finish installation" form where the user can register an admin account through the browser \u2014 this is a NORMAL first-run state and the application IS working correctly
+- Any page served by the application framework (not a raw web server error) that accepts user interaction
+- A minimal health/status endpoint response such as "ok", "OK", "healthy", "pong", "alive", or a short JSON like {"status":"ok"} \u2014 these are VALID health responses even if the body is very short
+- **A Single-Page Application (SPA) shell** \u2014 HTML with a root element like <app-root>, <consumer-root>, <div id="root">, <div id="app">, <next-root>, etc. and references to JavaScript bundles (main.js, chunk-*.js, vendor.js, runtime.js, polyfills.js). The HTML body appears minimal because the actual UI is rendered client-side by JavaScript. This is the CORRECT healthy response for Angular, React, Vue, Next.js, and other SPA frameworks \u2014 mark it HEALTHY.
+- **A page served by nginx/Apache/CDN** with proper assets (CSS, JS, fonts) and an app title \u2014 even if the body text looks empty after stripping HTML tags, the presence of bundled assets and a framework root element means the app is running correctly.
+
+When in doubt about whether the app is running vs broken, check: does the page come from the application framework and accept user interaction? If yes \u2192 HEALTHY. If it just shows a static error or tells you to run commands \u2192 UNHEALTHY.`
+      },
+      {
+        role: "user",
+        content: `HTTP ${status} response body:
+\`\`\`
+${body}
+\`\`\``
+      }
+    ]
+  });
+  try {
+    const text = resp.choices[0]?.message.content ?? "";
+    const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+    return {
+      healthy: json.healthy === true,
+      reason: String(json.reason ?? "").slice(0, 200) || "no reason given"
+    };
+  } catch {
+    return { healthy: true, reason: "failed to parse AI response \u2014 assuming healthy" };
+  }
+}
+async function deepHealthCheck(port, healthCheckPath, llm, modelSelector) {
+  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
+  let res;
+  try {
+    res = await fetch(`http://localhost:${port}${probePath}`, {
+      method: "GET",
+      signal: AbortSignal.timeout(8e3)
+    });
+  } catch (err) {
+    return { healthy: false, reason: `connection failed: ${toErrorMessage(err)}` };
+  }
+  if (res.status >= 500) {
+    return { healthy: false, reason: `HTTP ${res.status} server error` };
+  }
+  let body = "";
+  try {
+    body = await res.text();
+  } catch {
+  }
+  if (!body) return { healthy: true, reason: "empty body, status acceptable" };
+  const ct = res.headers.get("content-type") ?? "";
+  const text = ct.includes("html") ? stripHtmlForAnalysis(body) : body;
+  const preview = text.length > 3e3 ? text.slice(0, 3e3) + "..." : text;
+  return analyzeResponseWithLLM(llm, modelSelector, res.status, preview);
 }
 function captureExitedContainers(repoPath, composeFile) {
   try {
@@ -28431,23 +28459,33 @@ var AppHealthMonitor = class {
   healthCheckPath;
   pollIntervalMs;
   failureThreshold;
+  deepProbeEveryNth;
   onRecover;
+  onDeepProbe;
   timer;
   running = false;
   healthy = true;
   consecutiveFailures = 0;
+  probeCount = 0;
   probeInFlight = false;
+  deepProbeInFlight = false;
   recoveryInFlight;
   gate;
+  lastUnhealthyReason;
   constructor(opts) {
     this.port = opts.port;
     this.healthCheckPath = opts.healthCheckPath ?? "/";
     this.pollIntervalMs = opts.pollIntervalMs ?? 15e3;
     this.failureThreshold = opts.failureThreshold ?? 3;
     this.onRecover = opts.onRecover;
+    this.onDeepProbe = opts.onDeepProbe;
+    this.deepProbeEveryNth = opts.deepProbeEveryNth ?? 5;
   }
   setRecoveryCallback(cb) {
     this.onRecover = cb;
+  }
+  setDeepProbe(cb) {
+    this.onDeepProbe = cb;
   }
   start() {
     if (this.running) return;
@@ -28500,6 +28538,25 @@ var AppHealthMonitor = class {
     if (this.probeInFlight) return;
     void this.probe(`signal: ${reason}`);
   }
+  /**
+   * On-demand body-aware probe. Used by the orchestrator before each scan
+   * round to fail-fast if the app has degraded into a setup-required /
+   * dev-mode-warning state that the periodic shallow probe wouldn't catch.
+   * If unhealthy, marks the monitor unhealthy and triggers recovery; the
+   * returned promise resolves once recovery completes (or fails).
+   */
+  async verifyDeepHealth() {
+    if (!this.onDeepProbe) return { healthy: true, reason: "no deep probe configured" };
+    if (this.deepProbeInFlight) {
+      await this.waitHealthy();
+      return { healthy: this.healthy, reason: this.lastUnhealthyReason ?? "ok" };
+    }
+    const result = await this.runDeepProbe("on-demand");
+    if (!result.healthy) {
+      await this.waitHealthy();
+    }
+    return result;
+  }
   async probe(reason) {
     if (!this.running) return;
     if (this.probeInFlight) return;
@@ -28520,12 +28577,44 @@ var AppHealthMonitor = class {
           `[AppHealth] Probe failed (${reason}) \u2014 ${this.consecutiveFailures}/${this.failureThreshold}`
         );
         if (this.healthy && this.consecutiveFailures >= this.failureThreshold) {
+          this.lastUnhealthyReason = `app stopped responding to HTTP probes at http://localhost:${this.port}${this.healthCheckPath}`;
           this.markUnhealthy();
           void this.runRecovery();
         }
       }
+      if (this.healthy && this.onDeepProbe && reason === "scheduled" && ++this.probeCount % this.deepProbeEveryNth === 0) {
+        void this.runDeepProbe("scheduled-deep");
+      }
     } finally {
       this.probeInFlight = false;
+    }
+  }
+  async runDeepProbe(reason) {
+    if (!this.onDeepProbe) return { healthy: true, reason: "no deep probe" };
+    if (this.deepProbeInFlight) return { healthy: this.healthy, reason: "already in flight" };
+    this.deepProbeInFlight = true;
+    try {
+      const result = await this.onDeepProbe();
+      if (!result.healthy) {
+        console.warn(
+          `[AppHealth] Deep probe (${reason}) UNHEALTHY \u2014 ${result.reason}`
+        );
+        if (this.healthy) {
+          this.lastUnhealthyReason = `deep health probe flagged the app as unhealthy: ${result.reason}`;
+          this.markUnhealthy();
+          void this.runRecovery();
+        }
+      } else {
+        console.log(`[AppHealth] Deep probe (${reason}) healthy \u2014 ${result.reason}`);
+      }
+      return result;
+    } catch (err) {
+      console.warn(
+        `[AppHealth] Deep probe (${reason}) errored: ${toErrorMessage(err)} \u2014 ignoring`
+      );
+      return { healthy: true, reason: "deep probe errored, ignoring" };
+    } finally {
+      this.deepProbeInFlight = false;
     }
   }
   markUnhealthy() {
@@ -28555,12 +28644,16 @@ var AppHealthMonitor = class {
       return { ok: false, detail: "no recovery callback" };
     }
     const cb = this.onRecover;
+    const hint = this.lastUnhealthyReason;
     this.recoveryInFlight = (async () => {
       try {
-        console.log(`[AppHealth] Triggering recovery...`);
-        const result = await cb();
+        console.log(
+          `[AppHealth] Triggering recovery${hint ? ` \u2014 hint: ${hint}` : ""}...`
+        );
+        const result = await cb(hint);
         if (result.ok) {
           this.consecutiveFailures = 0;
+          this.lastUnhealthyReason = void 0;
           await this.probe("post-recovery");
           if (!this.healthy) this.markHealthy();
         } else {
@@ -28597,9 +28690,16 @@ async function restartApp(current, llm, repoPath, techStack, startupConfig, mode
   if (registration) await reRegisterUser(registration);
   return result;
 }
-async function recoverApp(appProcess, llm, repoPath, techStack, startupConfig, modelSelector, registration) {
-  const stage1Hints = [];
-  if (startupConfig.docker) {
+async function recoverApp(appProcess, llm, repoPath, techStack, startupConfig, modelSelector, registration, hint) {
+  const stageHints = [];
+  if (hint) {
+    stageHints.push(
+      `[recovery] The app health monitor triggered this recovery because: ${hint}
+Please address the underlying cause (set the missing env var, fix the config, etc.) \u2014 a plain rebuild will not be enough if the same condition reappears.`
+    );
+  }
+  const isContentLevelIssue = !!hint && hint.includes("deep health probe");
+  if (startupConfig.docker && !isContentLevelIssue) {
     const r = await quickRestartCompose(repoPath, startupConfig);
     if (r.ok) {
       return { ok: true, detail: "compose restart succeeded" };
@@ -28607,13 +28707,17 @@ async function recoverApp(appProcess, llm, repoPath, techStack, startupConfig, m
     if (r.diagnostics) {
       console.warn(`[Recover] Compose restart failed:
 ${r.diagnostics}`);
-      stage1Hints.push(
+      stageHints.push(
         `[recovery] A prior \`docker compose restart\` was attempted because the running app stopped responding to HTTP probes, but it did not restore health. Diagnostics from that attempt:
 ${r.diagnostics}
 Please account for this when bringing the app back up \u2014 e.g. clean stale state files, force-recreate the affected container, or fix the underlying config so the same failure doesn't repeat.`
       );
     }
     console.warn(`[Recover] Escalating to full LLM-driven restart`);
+  } else if (isContentLevelIssue) {
+    console.warn(
+      `[Recover] Skipping fast compose restart \u2014 content-level issue requires LLM repair`
+    );
   }
   try {
     const result = await restartApp(
@@ -28624,7 +28728,7 @@ Please account for this when bringing the app back up \u2014 e.g. clean stale st
       startupConfig,
       modelSelector,
       registration,
-      stage1Hints.length > 0 ? stage1Hints : void 0
+      stageHints.length > 0 ? stageHints : void 0
     );
     return {
       ok: true,
@@ -28774,9 +28878,15 @@ async function runOrchestrator(ctx) {
     );
     healthMonitor = new AppHealthMonitor({
       port: startupConfig.port,
-      healthCheckPath: startupConfig.healthCheckPath
+      healthCheckPath: startupConfig.healthCheckPath,
+      onDeepProbe: () => deepHealthCheck(
+        startupConfig.port,
+        startupConfig.healthCheckPath ?? "/",
+        llm,
+        config.modelSelector
+      )
     });
-    healthMonitor.setRecoveryCallback(async () => {
+    healthMonitor.setRecoveryCallback(async (hint) => {
       const r = await recoverApp(
         appProcess,
         llm,
@@ -28784,7 +28894,8 @@ async function runOrchestrator(ctx) {
         techStack,
         startupConfig,
         config.modelSelector,
-        authRegistration
+        authRegistration,
+        hint
       );
       if (r.process) appProcess = r.process;
       return { ok: r.ok, detail: r.detail };
@@ -29228,6 +29339,18 @@ This user should work for authentication. Skip user registration/seeding and go 
         "scan",
         `Running scans \u2014 round ${iteration + 1}`
       );
+      try {
+        const deep = await healthMonitor.verifyDeepHealth();
+        if (!deep.healthy) {
+          console.warn(
+            `[Scan] Deep health check still unhealthy after recovery: ${deep.reason}`
+          );
+        }
+      } catch (err) {
+        console.warn(
+          `[Scan] Deep health check errored (continuing): ${toErrorMessage(err)}`
+        );
+      }
       const scanIds = [];
       for (const [gi, group] of scanGroups.entries()) {
         try {
