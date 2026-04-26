@@ -151,14 +151,14 @@ Return a JSON object with an array of entries, one per endpoint index.`,
 
   // Hard cap on the number of concurrent Bright scans. With many endpoints
   // we'd rather have fewer scans each covering more endpoints than dozens of
-  // tiny scans (each scan has setup overhead and consumes a parallel slot).
-  const MAX_TOTAL_SCANS = 20;
+  // small scans (each scan has setup overhead and consumes a parallel slot).
+  const MAX_TOTAL_SCANS = 10;
 
   // Per-group entrypoint cap. Sized so that even when every endpoint ends
   // up in a different test-set bucket we can still fit them all inside
-  // MAX_TOTAL_SCANS. Floor of 50 keeps grouping loose for small projects.
+  // MAX_TOTAL_SCANS. Floor of 100 keeps grouping aggressive for small projects.
   const MAX_ENTRYPOINTS_PER_GROUP = Math.max(
-    50,
+    100,
     Math.ceil(endpoints.length / MAX_TOTAL_SCANS),
   );
 

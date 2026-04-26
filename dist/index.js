@@ -26768,9 +26768,9 @@ Return a JSON object with an array of entries, one per endpoint index.`
       hasPathParams
     });
   }
-  const MAX_TOTAL_SCANS = 20;
+  const MAX_TOTAL_SCANS = 10;
   const MAX_ENTRYPOINTS_PER_GROUP = Math.max(
-    50,
+    100,
     Math.ceil(endpoints.length / MAX_TOTAL_SCANS)
   );
   let working = consolidateGroups(groups, MAX_TOTAL_SCANS);
