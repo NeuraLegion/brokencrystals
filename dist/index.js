@@ -23938,6 +23938,17 @@ async function createAuthViaRestApi(api, projectId, repeaterId, params) {
       params.csrfExtractPattern = detectedPattern;
     }
   }
+  if (isSession && params.csrfUrl) {
+    const headerName = params.csrfHeaderName || "X-CSRF-Token";
+    const extractPattern = params.csrfExtractPattern || '"csrf"\\s*:\\s*"([^"]*)"';
+    embedders.push({
+      type: "header",
+      name: headerName,
+      template: `{{ auth_object.stages.get_csrf.response.body | match: /${extractPattern}/ }}`,
+      templateType: "clear_text",
+      mergeStrategy: "replace"
+    });
+  }
   const body = {
     name: `Engine Auth \u2014 ${authStyle}`,
     projectId,

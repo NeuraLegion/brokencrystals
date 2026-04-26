@@ -565,11 +565,34 @@ async function createAuthViaRestApi(
     : {};
 
   // --- Auto-probe CSRF URL to detect the correct extract pattern ---
+  // Must run BEFORE building the CSRF embedder below so the embedder uses
+  // the auto-detected pattern instead of the generic default.
   if (params.csrfUrl && !params.csrfExtractPattern) {
     const detectedPattern = await autoProbeCsrf(params.csrfUrl);
     if (detectedPattern) {
       params.csrfExtractPattern = detectedPattern;
     }
+  }
+
+  // For session auth with CSRF: embed the CSRF token header on every scan
+  // request. Without this, state-changing requests (POST/PUT/PATCH/DELETE)
+  // are rejected with 403 "BAD CSRF" even though the session cookie is
+  // valid. Gated on `params.csrfUrl` so apps that don't use CSRF (basic
+  // session, JWT, header auth, etc.) skip this branch entirely — same
+  // condition that controls whether a get_csrf step is added to the login
+  // flow, so the two stay in sync.
+  // Token is re-extracted from get_csrf on each re-auth, so the existing
+  // 401/403 reauthTriggers refresh both cookie and token together.
+  if (isSession && params.csrfUrl) {
+    const headerName = params.csrfHeaderName || "X-CSRF-Token";
+    const extractPattern = params.csrfExtractPattern || '"csrf"\\s*:\\s*"([^"]*)"';
+    embedders.push({
+      type: "header",
+      name: headerName,
+      template: `{{ auth_object.stages.get_csrf.response.body | match: /${extractPattern}/ }}`,
+      templateType: "clear_text",
+      mergeStrategy: "replace",
+    });
   }
 
   const body: Record<string, unknown> = {
