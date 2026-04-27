@@ -221,6 +221,11 @@ export async function waitForScanCompletion(
 ): Promise<string> {
   const pollInterval = 30_000;
   let pausedByMonitor = false;
+  // Track how long the app has been continuously unhealthy. If the quick
+  // compose restart (the only recovery the health monitor does) didn't fix
+  // it, bail out so the orchestrator's serial flow can do a full restart.
+  let unhealthySince: number | undefined;
+  const UNHEALTHY_BAIL_MS = 120_000; // 2 minutes
 
   // Initial wait before first poll
   await sleep(pollInterval);
@@ -239,12 +244,27 @@ export async function waitForScanCompletion(
             `[Scan] Paused ${scanId} — app unhealthy, will resume after recovery`,
           );
         }
+        if (!unhealthySince) unhealthySince = Date.now();
+      } else if (!healthy && unhealthySince) {
+        // Still unhealthy — check if we've waited too long
+        const elapsed = Date.now() - unhealthySince;
+        if (elapsed >= UNHEALTHY_BAIL_MS) {
+          console.warn(
+            `[Scan] App unhealthy for ${Math.round(elapsed / 1000)}s — bailing out of scan wait for orchestrator to handle`,
+          );
+          // Stop the scan so it doesn't keep running against a dead app
+          await setScanLifecycle(api, scanId, "stop");
+          return "disrupted";
+        }
       } else if (healthy && pausedByMonitor) {
         const ok = await setScanLifecycle(api, scanId, "resume");
         if (ok) {
           pausedByMonitor = false;
           console.log(`[Scan] Resumed ${scanId} — app healthy again`);
         }
+        unhealthySince = undefined;
+      } else if (healthy) {
+        unhealthySince = undefined;
       }
     }
 

@@ -82,87 +82,6 @@ async function restartApp(
 }
 
 /**
- * Two-stage recovery for a wedged target app.
- *
- * Stage 1: `docker compose restart` — fast, no LLM, no rebuild. Catches the
- *   common case where the app process inside the container has hung but the
- *   image is still good (e.g. Discourse/Rails getting stuck under scan load).
- *
- * Stage 2: full `restartApp` — invokes the LLM-driven repair loop. Used when
- *   restart didn't bring the app back (e.g. corrupted state, OOM-killed,
- *   compose teardown needed).
- *
- * Returns the new ChildProcess if a full restart happened (so caller can
- * update its appProcess ref), or undefined if only the fast path ran.
- */
-async function recoverApp(
-  appProcess: ChildProcess | undefined,
-  llm: Parameters<typeof chatWithTools>[0],
-  repoPath: string,
-  techStack: TechStack,
-  startupConfig: StartupConfig,
-  modelSelector: ModelSelector,
-  registration: AuthResult["registration"] | undefined,
-  hint?: string,
-): Promise<{ ok: boolean; process?: ChildProcess; detail: string }> {
-  // Hints passed all the way to the LLM repair stage (stage 2). Start with
-  // any context the health monitor gave us about *why* the app was flagged
-  // unhealthy — e.g. "deep probe flagged the app as unhealthy: returned the
-  // Ember CLI warning page". Without this the LLM only knows "app down" and
-  // would just rebuild the same broken config.
-  const stageHints: string[] = [];
-  if (hint) {
-    stageHints.push(
-      `[recovery] The app health monitor triggered this recovery because: ${hint}\nPlease address the underlying cause (set the missing env var, fix the config, etc.) — a plain rebuild will not be enough if the same condition reappears.`,
-    );
-  }
-
-  // Stage 1: try fast compose restart (only if dockerized AND the failure is
-  // the kind a restart can fix — i.e. an unresponsive process). When the
-  // hint indicates a content/config issue (deep probe flagged a setup or
-  // dev-mode warning page), skip restart and go straight to LLM repair.
-  const isContentLevelIssue = !!hint && hint.includes("deep health probe");
-  if (startupConfig.docker && !isContentLevelIssue) {
-    const r = await quickRestartCompose(repoPath, startupConfig);
-    if (r.ok) {
-      return { ok: true, detail: "compose restart succeeded" };
-    }
-    if (r.diagnostics) {
-      console.warn(`[Recover] Compose restart failed:\n${r.diagnostics}`);
-      stageHints.push(
-        `[recovery] A prior \`docker compose restart\` was attempted because the running app stopped responding to HTTP probes, but it did not restore health. Diagnostics from that attempt:\n${r.diagnostics}\nPlease account for this when bringing the app back up — e.g. clean stale state files, force-recreate the affected container, or fix the underlying config so the same failure doesn't repeat.`,
-      );
-    }
-    console.warn(`[Recover] Escalating to full LLM-driven restart`);
-  } else if (isContentLevelIssue) {
-    console.warn(
-      `[Recover] Skipping fast compose restart — content-level issue requires LLM repair`,
-    );
-  }
-
-  // Stage 2: full restart (kills process + LLM repair loop), with hints from stage 1
-  try {
-    const result = await restartApp(
-      appProcess,
-      llm,
-      repoPath,
-      techStack,
-      startupConfig,
-      modelSelector,
-      registration,
-      stageHints.length > 0 ? stageHints : undefined,
-    );
-    return {
-      ok: true,
-      process: result.process,
-      detail: "full restartApp succeeded",
-    };
-  } catch (err) {
-    return { ok: false, detail: `full restart failed: ${toErrorMessage(err)}` };
-  }
-}
-
-/**
  * Run the first-run setup phase if the app appears to need it.
  * Used both at the initial setup point and after every bounce-back rebuild
  * (since rebuilds can wipe runtime state). Returns updated credentials and
@@ -340,10 +259,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       `Application running at ${baseUrl}`,
     );
 
-    // Start the background health monitor. It polls the app and, on
-    // sustained failure, fires our two-stage recoverApp() callback. Workers
-    // (entrypoint registration, scan loop) call waitHealthy() to gate work
-    // until the monitor confirms the app is up.
+    // Start the background health monitor. Recovery is limited to quick
+    // compose restart (no LLM, no Dockerfile edits). Full LLM-driven
+    // rebuilds are owned exclusively by the orchestrator's serial flow —
+    // this eliminates race conditions between concurrent repair sessions.
     healthMonitor = new AppHealthMonitor({
       port: startupConfig.port,
       healthCheckPath: startupConfig.healthCheckPath,
@@ -356,18 +275,28 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         ),
     });
     healthMonitor.setRecoveryCallback(async (hint) => {
-      const r = await recoverApp(
-        appProcess,
-        llm,
-        repoPath,
-        techStack,
-        startupConfig,
-        config.modelSelector,
-        authRegistration,
-        hint,
+      // Quick restart only — handles transient crashes (OOM, stuck
+      // process) without touching Dockerfiles or invoking the LLM.
+      // If this fails, we stay unhealthy and let the orchestrator's
+      // serial flow handle the full rebuild when it reaches a health
+      // check point.
+      if (!startupConfig.docker) {
+        return { ok: false, detail: "not dockerized — orchestrator will handle full restart" };
+      }
+      console.log(
+        `[Recovery] Quick compose restart${hint ? ` — hint: ${hint}` : ""}`,
       );
-      if (r.process) appProcess = r.process;
-      return { ok: r.ok, detail: r.detail };
+      const qr = await quickRestartCompose(repoPath, startupConfig);
+      if (qr.ok) {
+        return { ok: true, detail: "quick compose restart succeeded" };
+      }
+      console.warn(
+        `[Recovery] Quick restart failed — staying unhealthy for orchestrator to handle`,
+      );
+      if (qr.diagnostics) {
+        console.warn(`[Recovery] Diagnostics: ${qr.diagnostics}`);
+      }
+      return { ok: false, detail: qr.diagnostics ?? "quick restart failed" };
     });
     healthMonitor.start();
 
