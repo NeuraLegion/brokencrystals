@@ -334,7 +334,7 @@ export class DefaultPlatform implements Platform {
   }
 
   async reportError(message: string): Promise<void> {
-    console.error(`[Error] ${message}`);
+    console.error(`[Platform] ${message}`);
   }
 
   async reportPrDescription(description: string): Promise<void> {

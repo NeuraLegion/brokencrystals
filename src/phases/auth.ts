@@ -13,7 +13,7 @@ import {
   execInDocker,
 } from "../tools.js";
 import { listAuthObjects, getAuthObject } from "../bright-api.js";
-import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody, stripHtmlForAnalysis } from "../utils.js";
+import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody, stripHtmlForAnalysis, extractSetCookies, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_MEDIUM, FETCH_TIMEOUT_DEFAULT, FETCH_TIMEOUT_LONG, FETCH_TIMEOUT_EXTENDED } from "../utils.js";
 import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt, repairBrokenLoginPrompt } from "../prompts/auth.js";
 
 const CONTENT_TYPE_MAP: Record<string, string> = {
@@ -1377,7 +1377,7 @@ export async function registerUser(
       headers: { "Content-Type": ct },
       body,
       redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG),
     });
     console.log(`[Auth] Registration response: ${res.status}`);
     if (res.status >= 400) {
@@ -1415,7 +1415,7 @@ export async function reRegisterUser(
       headers: { "Content-Type": ct },
       body,
       redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG),
     });
     console.log(`[Auth] Re-registration response: ${res.status}`);
   } catch (err) {
@@ -1527,7 +1527,7 @@ export async function testAuthObject(
       const res = await fetch(url, {
         method: "GET",
         headers,
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTENDED),
       });
 
       if (res.status === 503) {
@@ -1810,7 +1810,7 @@ async function autoProbeCsrf(csrfUrl: string): Promise<string | undefined> {
       method: "GET",
       headers: { Accept: "application/json" },
       redirect: "manual",
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
     });
     const body = await res.text();
 
@@ -1876,7 +1876,7 @@ async function preProbeForAuth(
           method: "GET",
           headers: { Accept: "application/json" },
           redirect: "manual",
-          signal: AbortSignal.timeout(8_000),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM),
         });
         const body = await res.text();
         if (res.status === 200 && body.length > 0) {
@@ -1896,7 +1896,7 @@ async function preProbeForAuth(
         method: "GET",
         headers: { Accept: "text/html, application/json, */*" },
         redirect: "manual",
-        signal: AbortSignal.timeout(8_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM),
       });
       const getBody = await getRes.text();
       const ct = getRes.headers.get("content-type") ?? "";
@@ -1931,7 +1931,7 @@ async function preProbeForAuth(
               headers: { "Content-Type": "application/json", Accept: "application/json" },
               body: "{}",
               redirect: "manual",
-              signal: AbortSignal.timeout(8_000),
+              signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM),
             });
             const apiBody = await apiRes.text();
             const apiPreview = apiBody.length > 500 ? apiBody.slice(0, 500) + "..." : apiBody;
@@ -1966,7 +1966,7 @@ async function preProbeForAuth(
         method: "GET",
         headers: { Accept: "application/json" },
         redirect: "manual",
-        signal: AbortSignal.timeout(8_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM),
       });
       const body = await res.text();
       const preview = body.length > 300 ? body.slice(0, 300) + "..." : body;
@@ -2084,7 +2084,7 @@ async function preAuthLoginSanityCheck(
           method: "GET",
           headers: { Accept: "application/json" },
           redirect: "manual",
-          signal: AbortSignal.timeout(8_000),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM),
         });
         const body = await res.text();
         if (res.status === 200 && !body.trimStart().startsWith("<")) {
@@ -2095,7 +2095,7 @@ async function preAuthLoginSanityCheck(
           }
           // Extract session cookie
           const setCookies: string[] =
-            (res.headers as any).getSetCookie?.() ?? [];
+            extractSetCookies(res.headers);
           for (const sc of setCookies) {
             const pair = sc.split(";")[0]?.trim();
             if (pair?.includes("=")) {
@@ -2130,7 +2130,7 @@ async function preAuthLoginSanityCheck(
         headers,
         body: loginBody,
         redirect: "manual",
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
       });
       const body = await res.text();
       const preview = body.length > 300 ? body.slice(0, 300) + "..." : body;
@@ -2210,7 +2210,7 @@ async function discoverLoginEndpoint(baseUrl: string): Promise<string | null> {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: "{}",
         redirect: "manual",
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
       });
       // 404 = endpoint doesn't exist. Anything else (200, 400, 403, 422) = it exists.
       if (res.status !== 404) {
@@ -2245,13 +2245,13 @@ async function verifySeededCredentials(
         method: "GET",
         headers: { Accept: "application/json" },
         redirect: "manual",
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
       });
       if (res.status === 200) {
         const body = await res.text();
         const csrfMatch = body.match(/"csrf"\s*:\s*"([^"]*)"/);
         if (csrfMatch?.[1]) csrfToken = csrfMatch[1];
-        const setCookies: string[] = (res.headers as any).getSetCookie?.() ?? [];
+        const setCookies: string[] = extractSetCookies(res.headers);
         for (const sc of setCookies) {
           const pair = sc.split(";")[0]?.trim();
           if (pair?.includes("=")) {
@@ -2278,7 +2278,7 @@ async function verifySeededCredentials(
       headers,
       body: formBody,
       redirect: "manual",
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
     });
     const body = await res.text();
 
@@ -2300,7 +2300,7 @@ async function verifySeededCredentials(
     // Check for success indicators
     if (res.status === 200 || res.status === 302) {
       // Look for session cookies in response
-      const setCookies: string[] = (res.headers as any).getSetCookie?.() ?? [];
+      const setCookies: string[] = extractSetCookies(res.headers);
       const hasSessionCookie = setCookies.some(
         (c: string) => /(_t|_session|session_id|token|jwt)/i.test(c),
       );
@@ -2359,7 +2359,7 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
       ...extraHeaders,
     },
     redirect: "manual",
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG),
   };
 
   if (args.body && (method === "POST" || method === "PUT")) {
@@ -2373,7 +2373,7 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
     // Store cookies from set-cookie response headers
     try {
       const setCookies: string[] =
-        (res.headers as any).getSetCookie?.() ?? [];
+        extractSetCookies(res.headers);
       for (const sc of setCookies) {
         const pair = sc.split(";")[0]?.trim();
         if (pair) {

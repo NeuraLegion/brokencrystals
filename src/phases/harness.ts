@@ -12,7 +12,7 @@ import type {
 } from "../types.js";
 import { chatWithTools, type ToolHandler, type ModelSelector } from "../inference.js";
 import { codebaseTools, createToolHandler } from "../tools.js";
-import { extractJson, extractCodeBlock, formatTechStack, sleep, toErrorMessage } from "../utils.js";
+import { extractJson, extractCodeBlock, formatTechStack, sleep, toErrorMessage, FETCH_TIMEOUT_QUICK, FETCH_TIMEOUT_DEFAULT } from "../utils.js";
 import {
   identifyHarnessTargetsPrompt,
   generateHarnessPrompt,
@@ -797,7 +797,7 @@ async function probeEndpoints(
 
       const opts: RequestInit = {
         method: ep.method,
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
       };
       if (ep.method !== "GET" && ep.sampleBody) {
         opts.headers = { "Content-Type": "application/json" };
@@ -899,7 +899,7 @@ async function waitForHarnessHealthy(
     }
     try {
       const res = await fetch(`http://localhost:${port}/health`, {
-        signal: AbortSignal.timeout(3_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_QUICK),
       });
       if (res.ok) {
         ready = true;

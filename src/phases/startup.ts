@@ -21,7 +21,7 @@ import {
   webSearchTools,
   createWebSearchHandler,
 } from "../tools.js";
-import { sleep, formatTechStack, toErrorMessage, toDetailedErrorMessage, extractJson, extractCodeBlock, stripHtmlForAnalysis } from "../utils.js";
+import { sleep, formatTechStack, toErrorMessage, toDetailedErrorMessage, extractJson, extractCodeBlock, stripHtmlForAnalysis, FETCH_TIMEOUT_QUICK, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_MEDIUM } from "../utils.js";
 import {
   identifyStartupPrompt,
   rebuildStartupPrompt,
@@ -2500,7 +2500,7 @@ export async function waitForPort(
       const response = await fetch(`http://localhost:${port}${probePath}`, {
         method: "GET",
         headers: probeHeaders(probePath),
-        signal: AbortSignal.timeout(3_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_QUICK),
       });
       lastStatus = response.status;
       portHasEverResponded = true;
@@ -2973,7 +2973,7 @@ export async function checkAppHealth(port: number, healthCheckPath = "/"): Promi
     const res = await fetch(`http://localhost:${port}${probePath}`, {
       method: "GET",
       headers: probeHeaders(probePath),
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
     });
     // Server errors mean the process is listening but the app is broken
     return res.status < 500;
@@ -3116,7 +3116,7 @@ async function deepProbeSingleUrl(
     res = await fetch(`http://localhost:${port}${probePath}`, {
       method: "GET",
       headers: probeHeaders(probePath),
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM),
     });
   } catch (err) {
     return { healthy: false, reason: `connection failed on ${probePath}: ${toErrorMessage(err)}` };

@@ -12,7 +12,7 @@ import {
   execInDocker,
   handleEditFile,
 } from "../tools.js";
-import { extractJson, runShellCommand, formatTechStack } from "../utils.js";
+import { extractJson, runShellCommand, formatTechStack, extractSetCookies, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_DEFAULT, FETCH_TIMEOUT_LONG } from "../utils.js";
 import { firstRunSetupPrompt } from "../prompts/setup.js";
 import type { TechStack, StartupConfig } from "../types.js";
 
@@ -105,7 +105,7 @@ export async function detectFirstRunSetup(
       const resp = await fetch(`${baseUrl}${path}`, {
         method: "GET",
         redirect: "manual",
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
       });
       if (resp.status === 200) {
         const body = await resp.text();
@@ -124,7 +124,7 @@ export async function detectFirstRunSetup(
     const rootResp = await fetch(baseUrl, {
       method: "GET",
       redirect: "manual",
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
     });
     if (rootResp.status >= 300 && rootResp.status < 400) {
       const location = (rootResp.headers.get("location") ?? "").toLowerCase();
@@ -188,7 +188,7 @@ async function gatherSetupContext(
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
             Accept: "text/html",
           },
-          signal: AbortSignal.timeout(10_000),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
         },
       );
       if (res.ok) {
@@ -223,7 +223,7 @@ async function gatherSetupContext(
       const resp = await fetch(`${baseUrl}${path}`, {
         method: "GET",
         redirect: "manual",
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
       });
       const status = resp.status;
       if (status === 404) continue; // skip 404s
@@ -606,7 +606,7 @@ async function verifyStillInSetupMode(baseUrl: string): Promise<boolean> {
       const resp = await fetch(`${baseUrl}${path}`, {
         method: "GET",
         redirect: "follow",
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
       });
       if (resp.status === 200) {
         const body = await resp.text();
@@ -664,11 +664,11 @@ async function probeUrlWithCookies(
       headers,
       body: method !== "GET" && method !== "HEAD" ? body : undefined,
       redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG),
     });
 
     // Collect Set-Cookie headers
-    const setCookies = resp.headers.getSetCookie?.() ?? [];
+    const setCookies = extractSetCookies(resp.headers);
     for (const sc of setCookies) {
       const match = sc.match(/^([^=]+)=([^;]*)/);
       if (match) {

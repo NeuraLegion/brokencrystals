@@ -3,6 +3,37 @@ import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 
 // ---------------------------------------------------------------------------
+// Fetch timeout constants (milliseconds) — used across all phases
+// ---------------------------------------------------------------------------
+
+/** Quick connectivity poll (startup waiter, harness liveness) */
+export const FETCH_TIMEOUT_QUICK = 3_000;
+/** Simple health/status checks, setup wizard GETs */
+export const FETCH_TIMEOUT_SHORT = 5_000;
+/** Auth login flows, rendered page loads */
+export const FETCH_TIMEOUT_MEDIUM = 8_000;
+/** Standard API calls, Docker Hub verification */
+export const FETCH_TIMEOUT_DEFAULT = 10_000;
+/** Web search, HTML probes, complex requests */
+export const FETCH_TIMEOUT_LONG = 15_000;
+/** Long-running auth test operations */
+export const FETCH_TIMEOUT_EXTENDED = 120_000;
+
+// ---------------------------------------------------------------------------
+// HTTP helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract Set-Cookie values from a fetch Response's headers.
+ * Avoids the `as any` cast needed because TypeScript's built-in Headers
+ * type may not include `getSetCookie()` (added in Node 20 / undici).
+ */
+export function extractSetCookies(headers: Headers): string[] {
+  const h = headers as unknown as { getSetCookie?: () => string[] };
+  return h.getSetCookie?.() ?? [];
+}
+
+// ---------------------------------------------------------------------------
 // Severity helpers (shared across orchestrator, findings, progress)
 // ---------------------------------------------------------------------------
 

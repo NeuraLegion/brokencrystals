@@ -4,7 +4,7 @@ import { glob } from "glob";
 import { execFileSync, execSync } from "child_process";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import type { ToolHandler } from "./inference.js";
-import { runShellCommand, toErrorMessage, saveProbeBody, PROBE_RESPONSE_DIR } from "./utils.js";
+import { runShellCommand, toErrorMessage, saveProbeBody, PROBE_RESPONSE_DIR, FETCH_TIMEOUT_DEFAULT, FETCH_TIMEOUT_LONG } from "./utils.js";
 
 export const codebaseTools: ChatCompletionTool[] = [
   {
@@ -571,7 +571,7 @@ async function searchWeb(query: string): Promise<string> {
           "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
           Accept: "text/html",
         },
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG),
       },
     );
     if (!res.ok) return `Search failed (HTTP ${res.status})`;
@@ -623,7 +623,7 @@ async function fetchUrlContent(targetUrl: string, repoPath?: string): Promise<st
         Accept: "text/html, text/plain, application/json, */*",
       },
       redirect: "follow",
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG),
     });
     if (!res.ok) return `Failed to fetch (HTTP ${res.status})`;
 
@@ -838,7 +838,7 @@ export async function verifyDockerImage(imageRef: string): Promise<boolean> {
   const url = `https://hub.docker.com/v2/repositories/${hubRepo}/tags/${tag}`;
   try {
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
       headers: { Accept: "application/json" },
     });
     return res.ok;
@@ -861,7 +861,7 @@ async function verifyOciImage(imagePart: string, tag: string): Promise<boolean> 
   try {
     const res = await fetch(url, {
       method: "HEAD",
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
       headers: {
         Accept: [
           "application/vnd.docker.distribution.manifest.v2+json",
@@ -903,7 +903,7 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
       ...extraHeaders,
     },
     redirect: "manual",
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG),
   };
 
   if (args.body && (method === "POST" || method === "PUT" || method === "PATCH")) {

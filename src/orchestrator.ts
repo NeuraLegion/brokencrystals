@@ -830,7 +830,6 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     const allFixes: SecurityFix[] = [];
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-      const iterLabel = `${iteration + 1}/${MAX_ITERATIONS}`;
 
       // --- Verify auth before each scan round (after fixes) ---
       if (iteration > 0 && authResult.hasAuth && authResult.authObjectId) {

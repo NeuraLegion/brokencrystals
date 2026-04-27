@@ -3308,7 +3308,7 @@ var DefaultPlatform = class {
     console.log(`[Detail] ${toolName}: ${detail}`);
   }
   async reportError(message) {
-    console.error(`[Error] ${message}`);
+    console.error(`[Platform] ${message}`);
   }
   async reportPrDescription(description) {
     if (!this.gitToken || !this.prNumber) return;
@@ -11394,6 +11394,16 @@ function requireEnv(name) {
 import { execSync } from "child_process";
 import { writeFileSync, mkdirSync as mkdirSync2, readFileSync, existsSync as existsSync2 } from "fs";
 import { join } from "path";
+var FETCH_TIMEOUT_QUICK = 3e3;
+var FETCH_TIMEOUT_SHORT = 5e3;
+var FETCH_TIMEOUT_MEDIUM = 8e3;
+var FETCH_TIMEOUT_DEFAULT = 1e4;
+var FETCH_TIMEOUT_LONG = 15e3;
+var FETCH_TIMEOUT_EXTENDED = 12e4;
+function extractSetCookies(headers) {
+  const h = headers;
+  return h.getSetCookie?.() ?? [];
+}
 var SEVERITY_ORDER = {
   Critical: 0,
   High: 1,
@@ -19356,7 +19366,7 @@ async function probeSwaggerSpec(baseUrl) {
     const url = `${baseUrl.replace(/\/$/, "")}${path2}`;
     try {
       const res = await fetch(url, {
-        signal: AbortSignal.timeout(5e3),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
         headers: { Accept: "application/json" }
       });
       if (!res.ok) continue;
@@ -19957,7 +19967,7 @@ async function searchWeb(query) {
           "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
           Accept: "text/html"
         },
-        signal: AbortSignal.timeout(15e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
       }
     );
     if (!res.ok) return `Search failed (HTTP ${res.status})`;
@@ -19995,7 +20005,7 @@ async function fetchUrlContent(targetUrl, repoPath) {
         Accept: "text/html, text/plain, application/json, */*"
       },
       redirect: "follow",
-      signal: AbortSignal.timeout(15e3)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
     });
     if (!res.ok) return `Failed to fetch (HTTP ${res.status})`;
     const contentType = res.headers.get("content-type") || "";
@@ -20157,7 +20167,7 @@ async function verifyDockerImage(imageRef) {
   const url = `https://hub.docker.com/v2/repositories/${hubRepo}/tags/${tag}`;
   try {
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(1e4),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
       headers: { Accept: "application/json" }
     });
     return res.ok;
@@ -20173,7 +20183,7 @@ async function verifyOciImage(imagePart, tag) {
   try {
     const res = await fetch(url, {
       method: "HEAD",
-      signal: AbortSignal.timeout(1e4),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
       headers: {
         Accept: [
           "application/vnd.docker.distribution.manifest.v2+json",
@@ -20207,7 +20217,7 @@ async function probeUrl(args) {
       ...extraHeaders
     },
     redirect: "manual",
-    signal: AbortSignal.timeout(15e3)
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
   };
   if (args.body && (method === "POST" || method === "PUT" || method === "PATCH")) {
     fetchOpts.body = String(args.body);
@@ -22548,7 +22558,7 @@ ${logs}`;
       const response = await fetch(`http://localhost:${port}${probePath}`, {
         method: "GET",
         headers: probeHeaders(probePath),
-        signal: AbortSignal.timeout(3e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_QUICK)
       });
       lastStatus = response.status;
       portHasEverResponded = true;
@@ -22891,7 +22901,7 @@ async function checkAppHealth(port, healthCheckPath = "/") {
     const res = await fetch(`http://localhost:${port}${probePath}`, {
       method: "GET",
       headers: probeHeaders(probePath),
-      signal: AbortSignal.timeout(5e3)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
     });
     return res.status < 500;
   } catch {
@@ -22975,7 +22985,7 @@ async function deepProbeSingleUrl(port, path2, llm, modelSelector) {
     res = await fetch(`http://localhost:${port}${probePath}`, {
       method: "GET",
       headers: probeHeaders(probePath),
-      signal: AbortSignal.timeout(8e3)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM)
     });
   } catch (err) {
     return { healthy: false, reason: `connection failed on ${probePath}: ${toErrorMessage(err)}` };
@@ -24658,7 +24668,7 @@ async function registerUser(baseUrl, detection) {
       headers: { "Content-Type": ct },
       body,
       redirect: "manual",
-      signal: AbortSignal.timeout(15e3)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
     });
     console.log(`[Auth] Registration response: ${res.status}`);
     if (res.status >= 400) {
@@ -24686,7 +24696,7 @@ async function reRegisterUser(registration) {
       headers: { "Content-Type": ct },
       body,
       redirect: "manual",
-      signal: AbortSignal.timeout(15e3)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
     });
     console.log(`[Auth] Re-registration response: ${res.status}`);
   } catch (err) {
@@ -24762,7 +24772,7 @@ async function testAuthObject(api, authObjectId) {
       const res = await fetch(url, {
         method: "GET",
         headers,
-        signal: AbortSignal.timeout(12e4)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_EXTENDED)
       });
       if (res.status === 503) {
         const body = await res.text().catch(() => "");
@@ -24943,7 +24953,7 @@ async function autoProbeCsrf(csrfUrl) {
       method: "GET",
       headers: { Accept: "application/json" },
       redirect: "manual",
-      signal: AbortSignal.timeout(1e4)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
     });
     const body = await res.text();
     try {
@@ -24996,7 +25006,7 @@ async function preProbeForAuth(baseUrl, detection) {
           method: "GET",
           headers: { Accept: "application/json" },
           redirect: "manual",
-          signal: AbortSignal.timeout(8e3)
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM)
         });
         const body = await res.text();
         if (res.status === 200 && body.length > 0) {
@@ -25018,7 +25028,7 @@ ${preview}
         method: "GET",
         headers: { Accept: "text/html, application/json, */*" },
         redirect: "manual",
-        signal: AbortSignal.timeout(8e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM)
       });
       const getBody = await getRes.text();
       const ct = getRes.headers.get("content-type") ?? "";
@@ -25054,7 +25064,7 @@ ${preview}
               headers: { "Content-Type": "application/json", Accept: "application/json" },
               body: "{}",
               redirect: "manual",
-              signal: AbortSignal.timeout(8e3)
+              signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM)
             });
             const apiBody = await apiRes.text();
             const apiPreview = apiBody.length > 500 ? apiBody.slice(0, 500) + "..." : apiBody;
@@ -25087,7 +25097,7 @@ ${apiPreview}
         method: "GET",
         headers: { Accept: "application/json" },
         redirect: "manual",
-        signal: AbortSignal.timeout(8e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM)
       });
       const body = await res.text();
       const preview = body.length > 300 ? body.slice(0, 300) + "..." : body;
@@ -25171,7 +25181,7 @@ async function preAuthLoginSanityCheck(baseUrl, detection) {
           method: "GET",
           headers: { Accept: "application/json" },
           redirect: "manual",
-          signal: AbortSignal.timeout(8e3)
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM)
         });
         const body = await res.text();
         if (res.status === 200 && !body.trimStart().startsWith("<")) {
@@ -25179,7 +25189,7 @@ async function preAuthLoginSanityCheck(baseUrl, detection) {
           if (csrfMatch?.[1]) {
             csrfToken = csrfMatch[1];
           }
-          const setCookies = res.headers.getSetCookie?.() ?? [];
+          const setCookies = extractSetCookies(res.headers);
           for (const sc of setCookies) {
             const pair = sc.split(";")[0]?.trim();
             if (pair?.includes("=")) {
@@ -25209,7 +25219,7 @@ async function preAuthLoginSanityCheck(baseUrl, detection) {
         headers,
         body: loginBody,
         redirect: "manual",
-        signal: AbortSignal.timeout(1e4)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
       });
       const body = await res.text();
       const preview = body.length > 300 ? body.slice(0, 300) + "..." : body;
@@ -25274,7 +25284,7 @@ async function discoverLoginEndpoint(baseUrl) {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: "{}",
         redirect: "manual",
-        signal: AbortSignal.timeout(5e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
       });
       if (res.status !== 404) {
         return path2;
@@ -25296,13 +25306,13 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
         method: "GET",
         headers: { Accept: "application/json" },
         redirect: "manual",
-        signal: AbortSignal.timeout(5e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
       });
       if (res.status === 200) {
         const body = await res.text();
         const csrfMatch = body.match(/"csrf"\s*:\s*"([^"]*)"/);
         if (csrfMatch?.[1]) csrfToken = csrfMatch[1];
-        const setCookies = res.headers.getSetCookie?.() ?? [];
+        const setCookies = extractSetCookies(res.headers);
         for (const sc of setCookies) {
           const pair = sc.split(";")[0]?.trim();
           if (pair?.includes("=")) {
@@ -25327,7 +25337,7 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
       headers,
       body: formBody,
       redirect: "manual",
-      signal: AbortSignal.timeout(1e4)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
     });
     const body = await res.text();
     if (res.status >= 500) {
@@ -25343,7 +25353,7 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
       return { valid: false, reason: `Login rejected credentials: ${preview}` };
     }
     if (res.status === 200 || res.status === 302) {
-      const setCookies = res.headers.getSetCookie?.() ?? [];
+      const setCookies = extractSetCookies(res.headers);
       const hasSessionCookie = setCookies.some(
         (c3) => /(_t|_session|session_id|token|jwt)/i.test(c3)
       );
@@ -25383,7 +25393,7 @@ async function probeUrl2(args) {
       ...extraHeaders
     },
     redirect: "manual",
-    signal: AbortSignal.timeout(15e3)
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
   };
   if (args.body && (method === "POST" || method === "PUT")) {
     fetchOpts.body = String(args.body);
@@ -25392,7 +25402,7 @@ async function probeUrl2(args) {
     console.log(`[Auth] Probing ${method} ${url}`);
     const res = await fetch(url, fetchOpts);
     try {
-      const setCookies = res.headers.getSetCookie?.() ?? [];
+      const setCookies = extractSetCookies(res.headers);
       for (const sc of setCookies) {
         const pair = sc.split(";")[0]?.trim();
         if (pair) {
@@ -25616,7 +25626,7 @@ async function detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints) 
       const resp = await fetch(`${baseUrl}${path2}`, {
         method: "GET",
         redirect: "manual",
-        signal: AbortSignal.timeout(5e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
       });
       if (resp.status === 200) {
         const body = await resp.text();
@@ -25632,7 +25642,7 @@ async function detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints) 
     const rootResp = await fetch(baseUrl, {
       method: "GET",
       redirect: "manual",
-      signal: AbortSignal.timeout(5e3)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
     });
     if (rootResp.status >= 300 && rootResp.status < 400) {
       const location = (rootResp.headers.get("location") ?? "").toLowerCase();
@@ -25668,7 +25678,7 @@ async function gatherSetupContext(baseUrl, techStack) {
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
             Accept: "text/html"
           },
-          signal: AbortSignal.timeout(1e4)
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
         }
       );
       if (res.ok) {
@@ -25703,7 +25713,7 @@ ${results.join("\n")}`);
       const resp = await fetch(`${baseUrl}${path2}`, {
         method: "GET",
         redirect: "manual",
-        signal: AbortSignal.timeout(5e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
       });
       const status = resp.status;
       if (status === 404) continue;
@@ -25993,7 +26003,7 @@ async function verifyStillInSetupMode(baseUrl) {
       const resp = await fetch(`${baseUrl}${path2}`, {
         method: "GET",
         redirect: "follow",
-        signal: AbortSignal.timeout(5e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
       });
       if (resp.status === 200) {
         const body = await resp.text();
@@ -26032,9 +26042,9 @@ async function probeUrlWithCookies(args, cookieJar) {
       headers,
       body: method !== "GET" && method !== "HEAD" ? body : void 0,
       redirect: "manual",
-      signal: AbortSignal.timeout(15e3)
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
     });
-    const setCookies = resp.headers.getSetCookie?.() ?? [];
+    const setCookies = extractSetCookies(resp.headers);
     for (const sc of setCookies) {
       const match2 = sc.match(/^([^=]+)=([^;]*)/);
       if (match2) {
@@ -28104,7 +28114,7 @@ async function probeEndpoints(port, endpoints) {
       ).toString()}` : `${baseUrl}${ep.path}`;
       const opts = {
         method: ep.method,
-        signal: AbortSignal.timeout(1e4)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
       };
       if (ep.method !== "GET" && ep.sampleBody) {
         opts.headers = { "Content-Type": "application/json" };
@@ -28186,7 +28196,7 @@ ${outputLines.slice(-20).join("\n")}`
     }
     try {
       const res = await fetch(`http://localhost:${port}/health`, {
-        signal: AbortSignal.timeout(3e3)
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_QUICK)
       });
       if (res.ok) {
         ready = true;
@@ -29037,7 +29047,6 @@ This user should work for authentication. Skip user registration/seeding and go 
     );
     const allFixes = [];
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-      const iterLabel = `${iteration + 1}/${MAX_ITERATIONS}`;
       if (iteration > 0 && authResult.hasAuth && authResult.authObjectId) {
         console.log(`[Auth] Verifying auth before round ${iteration + 1}...`);
         const authOk = await verifyAndRepairAuth(

@@ -1,4 +1,5 @@
 import type { TechStack, DiscoveredEndpoint } from "../types.js";
+import { FETCH_TIMEOUT_SHORT } from "../utils.js";
 
 // ---------------------------------------------------------------------------
 // Common Swagger / OpenAPI spec paths (ordered roughly by popularity)
@@ -49,7 +50,7 @@ export async function probeSwaggerSpec(
     const url = `${baseUrl.replace(/\/$/, "")}${path}`;
     try {
       const res = await fetch(url, {
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
         headers: { Accept: "application/json" },
       });
       if (!res.ok) continue;
