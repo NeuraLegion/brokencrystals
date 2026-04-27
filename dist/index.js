@@ -26836,6 +26836,8 @@ function isFailureStatus(status) {
 async function waitForScanCompletion(api, scanId, onProgress, healthMonitor) {
   const pollInterval = 3e4;
   let pausedByMonitor = false;
+  let unhealthySince;
+  const UNHEALTHY_BAIL_MS = 12e4;
   await sleep2(pollInterval);
   while (true) {
     if (healthMonitor) {
@@ -26848,12 +26850,25 @@ async function waitForScanCompletion(api, scanId, onProgress, healthMonitor) {
             `[Scan] Paused ${scanId} \u2014 app unhealthy, will resume after recovery`
           );
         }
+        if (!unhealthySince) unhealthySince = Date.now();
+      } else if (!healthy && unhealthySince) {
+        const elapsed = Date.now() - unhealthySince;
+        if (elapsed >= UNHEALTHY_BAIL_MS) {
+          console.warn(
+            `[Scan] App unhealthy for ${Math.round(elapsed / 1e3)}s \u2014 bailing out of scan wait for orchestrator to handle`
+          );
+          await setScanLifecycle(api, scanId, "stop");
+          return "disrupted";
+        }
       } else if (healthy && pausedByMonitor) {
         const ok = await setScanLifecycle(api, scanId, "resume");
         if (ok) {
           pausedByMonitor = false;
           console.log(`[Scan] Resumed ${scanId} \u2014 app healthy again`);
         }
+        unhealthySince = void 0;
+      } else if (healthy) {
+        unhealthySince = void 0;
       }
     }
     const scanStatus = await getScanStatusViaRest(
@@ -28470,55 +28485,6 @@ async function restartApp(current, llm, repoPath, techStack, startupConfig, mode
   if (registration) await reRegisterUser(registration);
   return result;
 }
-async function recoverApp(appProcess, llm, repoPath, techStack, startupConfig, modelSelector, registration, hint) {
-  const stageHints = [];
-  if (hint) {
-    stageHints.push(
-      `[recovery] The app health monitor triggered this recovery because: ${hint}
-Please address the underlying cause (set the missing env var, fix the config, etc.) \u2014 a plain rebuild will not be enough if the same condition reappears.`
-    );
-  }
-  const isContentLevelIssue = !!hint && hint.includes("deep health probe");
-  if (startupConfig.docker && !isContentLevelIssue) {
-    const r = await quickRestartCompose(repoPath, startupConfig);
-    if (r.ok) {
-      return { ok: true, detail: "compose restart succeeded" };
-    }
-    if (r.diagnostics) {
-      console.warn(`[Recover] Compose restart failed:
-${r.diagnostics}`);
-      stageHints.push(
-        `[recovery] A prior \`docker compose restart\` was attempted because the running app stopped responding to HTTP probes, but it did not restore health. Diagnostics from that attempt:
-${r.diagnostics}
-Please account for this when bringing the app back up \u2014 e.g. clean stale state files, force-recreate the affected container, or fix the underlying config so the same failure doesn't repeat.`
-      );
-    }
-    console.warn(`[Recover] Escalating to full LLM-driven restart`);
-  } else if (isContentLevelIssue) {
-    console.warn(
-      `[Recover] Skipping fast compose restart \u2014 content-level issue requires LLM repair`
-    );
-  }
-  try {
-    const result = await restartApp(
-      appProcess,
-      llm,
-      repoPath,
-      techStack,
-      startupConfig,
-      modelSelector,
-      registration,
-      stageHints.length > 0 ? stageHints : void 0
-    );
-    return {
-      ok: true,
-      process: result.process,
-      detail: "full restartApp succeeded"
-    };
-  } catch (err) {
-    return { ok: false, detail: `full restart failed: ${toErrorMessage(err)}` };
-  }
-}
 async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, modelSelector, progress, context) {
   const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
   if (!needs) return { ran: false, completed: false, summary: "Setup not needed" };
@@ -28667,18 +28633,23 @@ async function runOrchestrator(ctx) {
       )
     });
     healthMonitor.setRecoveryCallback(async (hint) => {
-      const r = await recoverApp(
-        appProcess,
-        llm,
-        repoPath,
-        techStack,
-        startupConfig,
-        config.modelSelector,
-        authRegistration,
-        hint
+      if (!startupConfig.docker) {
+        return { ok: false, detail: "not dockerized \u2014 orchestrator will handle full restart" };
+      }
+      console.log(
+        `[Recovery] Quick compose restart${hint ? ` \u2014 hint: ${hint}` : ""}`
       );
-      if (r.process) appProcess = r.process;
-      return { ok: r.ok, detail: r.detail };
+      const qr = await quickRestartCompose(repoPath, startupConfig);
+      if (qr.ok) {
+        return { ok: true, detail: "quick compose restart succeeded" };
+      }
+      console.warn(
+        `[Recovery] Quick restart failed \u2014 staying unhealthy for orchestrator to handle`
+      );
+      if (qr.diagnostics) {
+        console.warn(`[Recovery] Diagnostics: ${qr.diagnostics}`);
+      }
+      return { ok: false, detail: qr.diagnostics ?? "quick restart failed" };
     });
     healthMonitor.start();
     await progress.phaseStart(
