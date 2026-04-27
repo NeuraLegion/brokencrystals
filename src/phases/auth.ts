@@ -912,7 +912,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
             csrfUrl: {
               type: "string",
               description:
-                "(Session auth) URL that returns a CSRF token in JSON body. The token is extracted via regex and sent as X-CSRF-Token header on the login request. E.g. http://localhost:3000/session/csrf. IMPORTANT: probe_url the csrfUrl first to verify the response body format, then set csrfExtractPattern if the default regex doesn't match.",
+                "(Session auth) URL that returns a CSRF token in a **JSON endpoint** or **Rails meta tag**. The token is extracted via regex and sent as an HTTP header (X-CSRF-Token) on the login request. E.g. http://localhost:3000/session/csrf. ⚠️ IMPORTANT: This only works when CSRF is delivered via JSON or Rails meta tag and sent as a HEADER. If the app uses HTML form hidden inputs (Django csrfmiddlewaretoken, Laravel _token), you MUST use create_auth_raw instead — it lets you embed the CSRF token directly in the POST body via NexTemplate.",
             },
             cookieUrl: {
               type: "string",
@@ -977,11 +977,22 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
       function: {
         name: "create_auth_raw",
         description: `Create a Bright auth object with FULL control over the multistep configuration.
-Use this when the simplified create_auth tool cannot express the auth flow — e.g. OAuth2 PKCE, multi-step token exchanges, authorization code flows, or any flow requiring more than a single login POST.
+Use this when the simplified create_auth tool cannot express the auth flow. REQUIRED for:
+1. **HTML form CSRF** (Django, Laravel, etc.) — the CSRF token is a hidden input in the form and must go in the POST body, not a header.
+2. **OAuth2 PKCE / authorization code** — multi-step flows with token exchange.
+3. **Any flow where create_auth keeps failing** — gives you full control.
 
 You define the exact steps array, embedders, reauthTriggers, and test request. Steps execute in order. Each step can reference previous step responses via NexTemplate expressions:
 - Extract from response body: {{ auth_object.stages.<step_name>.response.body | match: /<regex_with_capture_group>/ }}
 - Extract from response header: {{ auth_object.stages.<step_name>.response.headers.Location | match: /code=([^&]+)/ }}
+
+Example — Django CSRF (csrfmiddlewaretoken in form body):
+  steps: [
+    { name: "get_csrf", request: { method: "GET", url: "http://localhost:8080/login", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
+    { name: "login", request: { method: "POST", url: "http://localhost:8080/login", protocol: "http", headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }], body: "csrfmiddlewaretoken={{ auth_object.stages.get_csrf.response.body | match: /csrfmiddlewaretoken\\"\\s+value=\\"([^\\"]+)\\"/ }}&username=bright_test&password=BrightTest123%21", followRedirects: false, maxRedirects: 0 }, successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
+  ]
+  reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }, { type: "OR" }, { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] }]
+  Key: CSRF token goes IN the body via NexTemplate. URL-encode special chars in password (! → %21).
 
 Example — OAuth2 PKCE flow:
   steps: [
@@ -1837,7 +1848,7 @@ async function autoProbeCsrf(csrfUrl: string): Promise<string | undefined> {
         }
       }
     } catch {
-      // Not JSON — try HTML meta tag pattern
+      // Not JSON — try HTML meta tag pattern (Rails)
       const metaMatch = body.match(/<meta\s+name=["']csrf-token["']\s+content=["']([^"']+)["']/i);
       if (metaMatch) {
         const pattern = `<meta\\s+name=["']csrf-token["']\\s+content=["']([^"']+)["']`;

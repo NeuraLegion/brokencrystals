@@ -156,22 +156,54 @@ ${credentialNote}
 - **read_file / search_files / list_files** — Inspect the codebase to understand auth flow.
 - **search_web** — Search the internet for how this app handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough.
 - **fetch_url** — Fetch full content of a web page (e.g. app documentation, Stack Overflow answer). Large pages are saved to .bright-fetched-page.txt — use read_file to see full content.
-- **create_auth** — Create a Bright auth object with simplified parameters. Best for standard session/cookie, JWT, and API key flows.
-- **create_auth_raw** — Create a Bright auth object with FULL multistep control. Use this for complex flows like OAuth2 PKCE, authorization code grants, or any flow needing multiple HTTP steps with value extraction between them. You define the exact steps, embedders, and triggers.
+- **create_auth** — Create a Bright auth object with simplified parameters. Best for standard session/cookie, JWT, and API key flows where CSRF is in a **JSON endpoint** or a **Rails meta tag**. Do NOT use for Django/Laravel-style CSRF hidden form fields.
+- **create_auth_raw** — Create a Bright auth object with FULL multistep control. Use this for:
+  - **CSRF tokens embedded in HTML form fields** (Django csrfmiddlewaretoken, Laravel _token, etc.) — you MUST use this because create_auth only injects CSRF as a header, but these frameworks expect it in the POST body
+  - OAuth2 PKCE, authorization code grants, or any multi-step token exchange
+  - Any flow where you need to extract values between steps using NexTemplate
 - **test_auth_object** — Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** — Delete a broken auth object to recreate with different settings.
 
 ## When to use create_auth vs create_auth_raw
-- **create_auth**: Standard flows — single login POST that returns a cookie or JWT. Handles CSRF, redirects automatically.
-- **create_auth_raw**: Complex multi-step flows — OAuth2 PKCE (login → authorize → token exchange), OpenID Connect authorization code, or any flow where:
-  - Login returns a cookie but you need a SECOND request to get an authorization code
-  - You need to extract values from redirect Location headers (e.g. ?code=...)
-  - You need to exchange an auth code for an access token
-  - The final auth is a Bearer token obtained through multiple HTTP round-trips
+- **create_auth**: Standard flows — single login POST that returns a cookie or JWT. CSRF must come from a **JSON endpoint** (e.g. /session/csrf returns {"csrf":"token"}). Works for: Discourse, Rails (API mode), Express, most SPA backends.
+- **create_auth_raw**: Use when you need full control over steps and request bodies. **REQUIRED for:**
+  1. **HTML form CSRF** (Django, Laravel, classic server-rendered apps) — the CSRF token is a hidden input field in the HTML form. You extract it from the GET response body and inject it into the POST body (not a header).
+  2. **OAuth2 PKCE / authorization code** — multi-step flows with token exchange.
+  3. **Any flow where create_auth fails** — when you need to customize exactly what gets sent.
+
   With create_auth_raw, you define each step and use NexTemplate expressions to pass values between steps:
   - Body extraction: {{ auth_object.stages.<step_name>.response.body | match: /<regex_with_capture_group>/ }}
   - Header extraction: {{ auth_object.stages.<step_name>.response.headers.<HeaderName> | match: /<regex>/ }}
   Use followRedirects: false on steps where you need to capture the Location header (e.g. OAuth2 authorize → 302).
+
+### Example: Django CSRF (csrfmiddlewaretoken in HTML form)
+Django renders a hidden input \`<input type="hidden" name="csrfmiddlewaretoken" value="TOKEN...">\` in the login page.
+You MUST use create_auth_raw to embed it in the POST body:
+\`\`\`
+steps: [
+  { name: "get_csrf", request: { method: "GET", url: "http://localhost:8080/login", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
+  { name: "login", request: { method: "POST", url: "http://localhost:8080/login", protocol: "http",
+    headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }],
+    body: "csrfmiddlewaretoken={{ auth_object.stages.get_csrf.response.body | match: /csrfmiddlewaretoken\"\\s+value=\"([^\"]+)\"/ }}&username=bright_test&password=BrightTest123%21",
+    followRedirects: false, maxRedirects: 0 },
+    successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
+]
+reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }, { type: "OR" }, { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] }]
+\`\`\`
+Key: the CSRF token goes IN the body with NexTemplate, NOT as a header. URL-encode special characters in the password (! → %21).
+
+### Example: Laravel CSRF (_token in HTML form)
+Same pattern — extract _token from the HTML form and inject into POST body:
+\`\`\`
+steps: [
+  { name: "get_csrf", request: { method: "GET", url: "http://localhost:8000/login", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
+  { name: "login", request: { method: "POST", url: "http://localhost:8000/login", protocol: "http",
+    headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }],
+    body: "_token={{ auth_object.stages.get_csrf.response.body | match: /name=\"_token\"\\s+value=\"([^\"]+)\"/ }}&email=bright@test.com&password=BrightTest123%21",
+    followRedirects: false, maxRedirects: 0 },
+    successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
+]
+\`\`\`
 
 ## Workflow
 
@@ -242,7 +274,8 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - Add/remove csrfUrl
    - Add loginAccept='application/json' if login returns HTML error pages
    - Add cookieUrl (app root URL) if CSRF token fails despite being correct (session cookie needed before CSRF)
-   - **Switch to create_auth_raw** if the app uses OAuth2, PKCE, OpenID Connect, or any multi-step token exchange. Signs: login returns 200 with a cookie but the test request still fails with 401; app has /authorize, /token, or /oauth endpoints; WWW-Authenticate: Bearer in responses; OpenAPI spec mentions OAuth2 flows.
+   - **Switch to create_auth_raw if CSRF is in an HTML form field** — if the login page has a hidden input like \`<input type="hidden" name="csrfmiddlewaretoken" value="...">\` (Django) or \`<input type="hidden" name="_token" value="...">\` (Laravel), you MUST use create_auth_raw because create_auth only injects CSRF as a header, but these frameworks require it in the POST body. See the Django/Laravel examples in the "When to use create_auth vs create_auth_raw" section above. This is NOT an infrastructure problem — do NOT respond with INFRA_REPAIR for CSRF issues.
+   - **Switch to create_auth_raw for OAuth2/PKCE/multi-step flows** — if the app uses Bearer tokens obtained via authorization code exchange, build the full step chain: login POST → authorize GET (followRedirects:false) → token POST → Bearer embedder.
    - **If the application itself is misconfigured**, diagnose with command tools and respond with INFRA_REPAIR
 
 ## CRITICAL PERSISTENCE RULES
@@ -253,7 +286,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
   4. Both json and form loginContentType
   5. With and without csrfUrl
   6. Different credential field names — try "username", "email", "login" as the identifier field; some apps use the email address in the "username" field, others have a separate "email" field
-  7. **create_auth_raw for OAuth2/PKCE/multi-step flows** — if the app uses Bearer tokens obtained via authorization code exchange, build the full step chain: login POST → authorize GET (followRedirects:false) → token POST → Bearer embedder
+  7. **create_auth_raw is MANDATORY before giving up** — you MUST try create_auth_raw for: (a) HTML form CSRF (Django csrfmiddlewaretoken, Laravel _token, any hidden form field), (b) OAuth2/PKCE/multi-step token exchange, (c) any case where create_auth keeps failing. CSRF extraction issues are auth config problems — do NOT request INFRA_REPAIR for them.
   8. **If login responses contain HTML error pages or misconfiguration warnings**, diagnose with command tools and respond with INFRA_REPAIR — do NOT try to fix the app yourself (no killing processes, no restarting containers, no modifying files)
 - **After each failed test_auth_object, analyze the response body previews for EACH stage to understand the root cause.**
 - **Use probe_url between attempts to gather more data** — probe new endpoints, check response formats, search the codebase for auth routes.
