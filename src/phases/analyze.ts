@@ -1044,6 +1044,15 @@ function extractEndpointsFromFile(
         filePath,
       });
     }
+    // Django re_path / url: re_path(r'^questionnaire/(?P<sid>\d+)/edit$', ...)
+    const djangoRePathRe = /(?:re_path|url)\(\s*r?["'](?:\^)?([^"']+?)(?:\$)?["']/gi;
+    while ((m = djangoRePathRe.exec(content)) !== null) {
+      let p = m[1];
+      // Strip leading/trailing regex anchors that slipped through
+      p = p.replace(/^\^/, "").replace(/\$$/, "");
+      if (!p.startsWith("/")) p = "/" + p;
+      endpoints.push({ method: "GET", path: p, filePath });
+    }
   }
 
   // ---- Go / Gin / Echo / Chi ----
@@ -1235,6 +1244,48 @@ function extractParamsFromCode(
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Path parameter normalization — convert all framework regex syntax to {param}
+// ---------------------------------------------------------------------------
+
+let _unnamedCounter = 0;
+
+/**
+ * Normalize framework-specific path parameter syntax into the standard {param}
+ * format so downstream checks (hasPathParams, LLM enrichment) work uniformly.
+ *
+ *  (?P<sid>\d+)  → {sid}       (Django named groups)
+ *  (<sid>\d+)    → {sid}       (variant without ?P)
+ *  <int:id>      → {id}        (Flask typed params)
+ *  <pk>          → {pk}        (Flask untyped)
+ *  (\d+)         → {id}        (unnamed regex capture group)
+ *  [^/]+         → {param}     (bare regex character class in a path segment)
+ */
+function normalizePathParams(path: string): string {
+  _unnamedCounter = 0;
+  return (
+    path
+      // Django named groups: (?P<name>pattern)
+      .replace(/\(\?P<(\w+)>[^)]*\)/g, (_m, name) => `{${name}}`)
+      // Named groups without ?P: (<name>pattern)  (rare but exists)
+      .replace(/\(<(\w+)>[^)]*\)/g, (_m, name) => `{${name}}`)
+      // Flask typed params: <int:id>, <string:slug>
+      .replace(/<\w+:(\w+)>/g, (_m, name) => `{${name}}`)
+      // Flask untyped params: <pk>
+      .replace(/<(\w+)>/g, (_m, name) => `{${name}}`)
+      // Unnamed capture groups: (\d+), ([^/]+), (.+)
+      .replace(/\([^?][^)]*\)/g, () => `{id${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`)
+      // Bare regex fragments left in a segment: [^/]+, \d+, .+ (between slashes)
+      .replace(/(?<=\/)\[?\^?[/\\dws.*+]+\]?\+?(?=\/|$)/g, () => `{param${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`)
+      // Clean up leftover regex anchors
+      .replace(/[\^$]/g, "")
+      // Collapse double slashes from empty replacements
+      .replace(/\/{2,}/g, "/")
+      // Remove trailing slash (consistency)
+      .replace(/\/$/, "") || "/"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1512,13 +1563,19 @@ Look for:
 - Direct route registrations (app.get, router.post, etc.)
 - Helper functions that register routes (registerRoutes, addCrudRoutes, etc.) — follow them with grep_code if needed
 - Route configuration objects, arrays, or maps
+- Django url() and re_path() patterns in urls.py files
+
+IMPORTANT: Convert path parameters to {param} format. Do NOT return raw regex.
+- Django (?P<sid>\\d+) → {sid}
+- Express :id → {id}
+- Flask <int:pk> → {pk}
 
 You have tools:
 - read_lines: read more of this or other files
 - grep_code: search the codebase for function definitions, route registrations, etc.
 
 Return ONLY a JSON array of endpoints:
-[{"method": "GET", "path": "/api/users"}, {"method": "POST", "path": "/api/users"}]
+[{"method": "GET", "path": "/api/users"}, {"method": "POST", "path": "/api/users/{id}"}]
 
 If no HTTP endpoints are found, return an empty array: []`,
       },
@@ -1664,6 +1721,11 @@ export async function discoverEndpoints(
       }
     }
     allEndpoints.push(...llmEndpoints);
+  }
+
+  // Normalize regex-style path params to {param} format (all sources)
+  for (const ep of allEndpoints) {
+    ep.path = normalizePathParams(ep.path);
   }
 
   // De-duplicate by method+path
@@ -1814,7 +1876,7 @@ You have tools to inspect more code:
 Return a JSON array with one entry per endpoint (matching the [index]):
 [{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
 
-For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params (:id, {id}), provide realistic values.`,
+For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"sid": "1", "pk": "42"}).`,
         },
         {
           role: "user" as const,

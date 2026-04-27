@@ -18684,6 +18684,13 @@ function extractEndpointsFromFile(content, filePath) {
         filePath
       });
     }
+    const djangoRePathRe = /(?:re_path|url)\(\s*r?["'](?:\^)?([^"']+?)(?:\$)?["']/gi;
+    while ((m = djangoRePathRe.exec(content)) !== null) {
+      let p = m[1];
+      p = p.replace(/^\^/, "").replace(/\$$/, "");
+      if (!p.startsWith("/")) p = "/" + p;
+      endpoints.push({ method: "GET", path: p, filePath });
+    }
   }
   if (ext2 === ".go") {
     const goRe = /\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*"([^"]+)"/gi;
@@ -18818,6 +18825,11 @@ function extractParamsFromCode(content, endpoint) {
     return queryParams.length > 0 ? { queryParams } : null;
   }
   return null;
+}
+var _unnamedCounter = 0;
+function normalizePathParams(path2) {
+  _unnamedCounter = 0;
+  return path2.replace(/\(\?P<(\w+)>[^)]*\)/g, (_m, name) => `{${name}}`).replace(/\(<(\w+)>[^)]*\)/g, (_m, name) => `{${name}}`).replace(/<\w+:(\w+)>/g, (_m, name) => `{${name}}`).replace(/<(\w+)>/g, (_m, name) => `{${name}}`).replace(/\([^?][^)]*\)/g, () => `{id${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`).replace(/(?<=\/)\[?\^?[/\\dws.*+]+\]?\+?(?=\/|$)/g, () => `{param${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`).replace(/[\^$]/g, "").replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
 }
 function extractSnippet(content, anchor, contextLines = 30) {
   const lines = content.split("\n");
@@ -19036,13 +19048,19 @@ Look for:
 - Direct route registrations (app.get, router.post, etc.)
 - Helper functions that register routes (registerRoutes, addCrudRoutes, etc.) \u2014 follow them with grep_code if needed
 - Route configuration objects, arrays, or maps
+- Django url() and re_path() patterns in urls.py files
+
+IMPORTANT: Convert path parameters to {param} format. Do NOT return raw regex.
+- Django (?P<sid>\\d+) \u2192 {sid}
+- Express :id \u2192 {id}
+- Flask <int:pk> \u2192 {pk}
 
 You have tools:
 - read_lines: read more of this or other files
 - grep_code: search the codebase for function definitions, route registrations, etc.
 
 Return ONLY a JSON array of endpoints:
-[{"method": "GET", "path": "/api/users"}, {"method": "POST", "path": "/api/users"}]
+[{"method": "GET", "path": "/api/users"}, {"method": "POST", "path": "/api/users/{id}"}]
 
 If no HTTP endpoints are found, return an empty array: []`
       },
@@ -19162,6 +19180,9 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
     }
     allEndpoints.push(...llmEndpoints);
   }
+  for (const ep of allEndpoints) {
+    ep.path = normalizePathParams(ep.path);
+  }
   const validMethods = /* @__PURE__ */ new Set([
     "GET",
     "POST",
@@ -19275,7 +19296,7 @@ You have tools to inspect more code:
 Return a JSON array with one entry per endpoint (matching the [index]):
 [{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
 
-For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params (:id, {id}), provide realistic values.`
+For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"sid": "1", "pk": "42"}).`
         },
         {
           role: "user",
