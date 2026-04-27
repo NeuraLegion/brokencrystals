@@ -28351,13 +28351,15 @@ var AppHealthMonitor = class {
         if (!this.healthy) this.markHealthy();
       } else {
         this.consecutiveFailures += 1;
-        console.warn(
-          `[AppHealth] Probe failed (${reason}) \u2014 ${this.consecutiveFailures}/${this.failureThreshold}`
-        );
-        if (this.healthy && this.consecutiveFailures >= this.failureThreshold) {
-          this.lastUnhealthyReason = `app stopped responding to HTTP probes at http://localhost:${this.port}${this.healthCheckPath}`;
-          this.markUnhealthy();
-          void this.runRecovery();
+        if (this.healthy) {
+          console.warn(
+            `[AppHealth] Probe failed (${reason}) \u2014 ${this.consecutiveFailures}/${this.failureThreshold}`
+          );
+          if (this.consecutiveFailures >= this.failureThreshold) {
+            this.lastUnhealthyReason = `app stopped responding to HTTP probes at http://localhost:${this.port}${this.healthCheckPath}`;
+            this.markUnhealthy();
+            void this.runRecovery();
+          }
         }
       }
       if (this.healthy && this.onDeepProbe && reason === "scheduled" && ++this.probeCount % this.deepProbeEveryNth === 0) {

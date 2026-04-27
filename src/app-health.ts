@@ -192,18 +192,18 @@ export class AppHealthMonitor {
         if (!this.healthy) this.markHealthy();
       } else {
         this.consecutiveFailures += 1;
-        console.warn(
-          `[AppHealth] Probe failed (${reason}) — ${this.consecutiveFailures}/${this.failureThreshold}`,
-        );
-        if (
-          this.healthy &&
-          this.consecutiveFailures >= this.failureThreshold
-        ) {
-          this.lastUnhealthyReason = `app stopped responding to HTTP probes at http://localhost:${this.port}${this.healthCheckPath}`;
-          this.markUnhealthy();
-          // Fire recovery (don't await — probe is allowed to return)
-          void this.runRecovery();
+        if (this.healthy) {
+          console.warn(
+            `[AppHealth] Probe failed (${reason}) — ${this.consecutiveFailures}/${this.failureThreshold}`,
+          );
+          if (this.consecutiveFailures >= this.failureThreshold) {
+            this.lastUnhealthyReason = `app stopped responding to HTTP probes at http://localhost:${this.port}${this.healthCheckPath}`;
+            this.markUnhealthy();
+            // Fire recovery (don't await — probe is allowed to return)
+            void this.runRecovery();
+          }
         }
+        // Once already unhealthy, stay quiet — recovery will log when it acts.
       }
 
       // Periodic body-aware probe: catches degraded states (Ember CLI
