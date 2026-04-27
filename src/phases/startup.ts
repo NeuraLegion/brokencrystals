@@ -2499,6 +2499,7 @@ export async function waitForPort(
     try {
       const response = await fetch(`http://localhost:${port}${probePath}`, {
         method: "GET",
+        headers: probeHeaders(probePath),
         signal: AbortSignal.timeout(3_000),
       });
       lastStatus = response.status;
@@ -2921,11 +2922,57 @@ async function pollContainerAlive(
  * Quick, non-throwing health check: returns true if the app responds on
  * the given port within a short timeout.
  */
+// Request headers used by health probes.
+//
+// Why we don't just send `Accept: *\/*`: some apps (notably Rails apps
+// with format negotiation, e.g. Discourse) serve a DIFFERENT response
+// based on Accept — a route can return HTTP 200 with a cached
+// crawler/JSON variant for the bare-fetch Accept while the real
+// browser-rendered HTML throws a 500. If we probe without realistic
+// headers we end up cheerfully reporting "healthy" against a page users
+// see as broken.
+//
+// We pick the Accept header based on what the path looks like:
+//   - API/JSON-shaped paths (e.g. /api/..., /healthz, /*.json) →
+//     `application/json` first, so we exercise the API code path.
+//   - Anything else → browser-like `text/html` first, so we exercise
+//     the same view rendering a real user would hit.
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+const HTML_ACCEPT =
+  "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+
+const JSON_ACCEPT = "application/json,application/problem+json;q=0.9,*/*;q=0.8";
+
+// Heuristic: does this path look like a JSON/API endpoint vs an HTML page?
+// Conservative — when in doubt, treat as HTML (that's the common case and
+// matches what a browser would do).
+function probeWantsJson(probePath: string): boolean {
+  const p = probePath.toLowerCase().split("?")[0]!.split("#")[0]!;
+  if (p.endsWith(".json")) return true;
+  if (/(^|\/)(api|graphql|rest|rpc|v\d+)(\/|$)/.test(p)) return true;
+  // Common JSON-returning health/status endpoints
+  if (/(^|\/)(healthz|readyz|livez|ping|status|health|metrics)(\/|$)/.test(p)) {
+    return true;
+  }
+  return false;
+}
+
+function probeHeaders(probePath: string): Record<string, string> {
+  return {
+    Accept: probeWantsJson(probePath) ? JSON_ACCEPT : HTML_ACCEPT,
+    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent": BROWSER_USER_AGENT,
+  };
+}
+
 export async function checkAppHealth(port: number, healthCheckPath = "/"): Promise<boolean> {
   const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
   try {
     const res = await fetch(`http://localhost:${port}${probePath}`, {
       method: "GET",
+      headers: probeHeaders(probePath),
       signal: AbortSignal.timeout(5_000),
     });
     // Server errors mean the process is listening but the app is broken
@@ -3028,6 +3075,7 @@ export async function deepHealthCheck(
   try {
     res = await fetch(`http://localhost:${port}${probePath}`, {
       method: "GET",
+      headers: probeHeaders(probePath),
       signal: AbortSignal.timeout(8_000),
     });
   } catch (err) {

@@ -22535,6 +22535,7 @@ ${logs}`;
     try {
       const response = await fetch(`http://localhost:${port}${probePath}`, {
         method: "GET",
+        headers: probeHeaders(probePath),
         signal: AbortSignal.timeout(3e3)
       });
       lastStatus = response.status;
@@ -22853,11 +22854,31 @@ async function pollContainerAlive(containerName, timeoutMs) {
   }
   throw new Error(`Container health poll timed out`);
 }
+var BROWSER_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+var HTML_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
+var JSON_ACCEPT = "application/json,application/problem+json;q=0.9,*/*;q=0.8";
+function probeWantsJson(probePath) {
+  const p = probePath.toLowerCase().split("?")[0].split("#")[0];
+  if (p.endsWith(".json")) return true;
+  if (/(^|\/)(api|graphql|rest|rpc|v\d+)(\/|$)/.test(p)) return true;
+  if (/(^|\/)(healthz|readyz|livez|ping|status|health|metrics)(\/|$)/.test(p)) {
+    return true;
+  }
+  return false;
+}
+function probeHeaders(probePath) {
+  return {
+    Accept: probeWantsJson(probePath) ? JSON_ACCEPT : HTML_ACCEPT,
+    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent": BROWSER_USER_AGENT
+  };
+}
 async function checkAppHealth(port, healthCheckPath = "/") {
   const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
   try {
     const res = await fetch(`http://localhost:${port}${probePath}`, {
       method: "GET",
+      headers: probeHeaders(probePath),
       signal: AbortSignal.timeout(5e3)
     });
     return res.status < 500;
@@ -22926,6 +22947,7 @@ async function deepHealthCheck(port, healthCheckPath, llm, modelSelector) {
   try {
     res = await fetch(`http://localhost:${port}${probePath}`, {
       method: "GET",
+      headers: probeHeaders(probePath),
       signal: AbortSignal.timeout(8e3)
     });
   } catch (err) {
