@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, readdirSync } from "fs";
 import { resolve, extname } from "path";
 import { execFileSync } from "child_process";
 import { glob } from "glob";
@@ -500,11 +500,16 @@ async function scoreCandidate(
     return { path: dir, name, score: -100 };
   }
 
-  // Bonus: has its own Dockerfile
-  if (
+  // Bonus: has its own Dockerfile (standard name or Dockerfile.* variant)
+  const hasDockerfile =
     existsSync(resolve(absDir, "Dockerfile")) ||
-    existsSync(resolve(absDir, "dockerfile"))
-  ) {
+    existsSync(resolve(absDir, "dockerfile"));
+  const hasDockerfileVariant = !hasDockerfile && (() => {
+    try {
+      return readdirSync(absDir).some((f) => /^Dockerfile\./i.test(f));
+    } catch { return false; }
+  })();
+  if (hasDockerfile || hasDockerfileVariant) {
     score += 10;
   }
 

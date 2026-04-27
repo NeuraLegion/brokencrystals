@@ -10,6 +10,7 @@ export function generateComposePrompt(
   discovery: ProjectDiscovery,
   hasDockerfile: boolean,
   hints?: string[],
+  dockerfileName?: string,
 ): ChatCompletionMessageParam[] {
   const discoveryJson = JSON.stringify(discovery, null, 2);
 
@@ -30,7 +31,11 @@ ${hintsSection}
 Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that includes:
 
 1. **App service**:
-   - ${hasDockerfile ? '`build: .` (Dockerfile already exists)' : '`build: .` (a Dockerfile will be generated separately)'}
+   - ${hasDockerfile
+      ? dockerfileName && dockerfileName !== "Dockerfile"
+        ? `\`build:\\n  context: .\\n  dockerfile: ${dockerfileName}\` (non-standard Dockerfile name — you MUST use the extended build syntax)`
+        : '`build: .` (Dockerfile already exists)'
+      : '`build: .` (a Dockerfile will be generated separately)'}
    - Maps port ${discovery.port}
    - Sets all environment variables from appEnvironment
    - Depends on all other services with \`condition: service_healthy\` (or \`service_started\` if no healthcheck)

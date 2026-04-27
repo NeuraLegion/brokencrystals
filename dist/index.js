@@ -11906,7 +11906,7 @@ ${lines.join("\n")}`
 };
 
 // src/phases/analyze.ts
-import { readFileSync as readFileSync2, existsSync as existsSync3 } from "fs";
+import { readFileSync as readFileSync2, existsSync as existsSync3, readdirSync as readdirSync2 } from "fs";
 import { resolve, extname } from "path";
 import { execFileSync as execFileSync2 } from "child_process";
 
@@ -18301,7 +18301,15 @@ async function scoreCandidate(repoPath, dir, name) {
   if (SKIP_PROJECT_PATTERNS.some((p) => p.test(name))) {
     return { path: dir, name, score: -100 };
   }
-  if (existsSync3(resolve(absDir, "Dockerfile")) || existsSync3(resolve(absDir, "dockerfile"))) {
+  const hasDockerfile = existsSync3(resolve(absDir, "Dockerfile")) || existsSync3(resolve(absDir, "dockerfile"));
+  const hasDockerfileVariant = !hasDockerfile && (() => {
+    try {
+      return readdirSync2(absDir).some((f) => /^Dockerfile\./i.test(f));
+    } catch {
+      return false;
+    }
+  })();
+  if (hasDockerfile || hasDockerfileVariant) {
     score += 10;
   }
   const entryPoints = [
@@ -19522,7 +19530,7 @@ import {
   execFileSync as execFileSync4
 } from "child_process";
 import { createInterface } from "readline";
-import { existsSync as existsSync5, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync5, readFileSync as readFileSync4, readdirSync as readdirSync3, writeFileSync as writeFileSync3 } from "fs";
 
 // src/tools.ts
 import { readFileSync as readFileSync3, existsSync as existsSync4, statSync, writeFileSync as writeFileSync2 } from "fs";
@@ -20689,7 +20697,7 @@ Rules:
 }
 
 // src/prompts/generate-compose.ts
-function generateComposePrompt(techStack, discovery, hasDockerfile, hints) {
+function generateComposePrompt(techStack, discovery, hasDockerfile, hints, dockerfileName) {
   const discoveryJson = JSON.stringify(discovery, null, 2);
   const hintsSection = hints && hints.length > 0 ? `
 ## Hints from previous attempts
@@ -20709,7 +20717,7 @@ ${hintsSection}
 Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that includes:
 
 1. **App service**:
-   - ${hasDockerfile ? "`build: .` (Dockerfile already exists)" : "`build: .` (a Dockerfile will be generated separately)"}
+   - ${hasDockerfile ? dockerfileName && dockerfileName !== "Dockerfile" ? `\`build:\\n  context: .\\n  dockerfile: ${dockerfileName}\` (non-standard Dockerfile name \u2014 you MUST use the extended build syntax)` : "`build: .` (Dockerfile already exists)" : "`build: .` (a Dockerfile will be generated separately)"}
    - Maps port ${discovery.port}
    - Sets all environment variables from appEnvironment
    - Depends on all other services with \`condition: service_healthy\` (or \`service_started\` if no healthcheck)
@@ -20803,9 +20811,8 @@ function isSourceCodeError(errorMsg, previousErrors) {
   );
 }
 function canBuildFromSource(repoPath) {
+  if (findDockerfile(repoPath)) return true;
   const buildIndicators = [
-    "Dockerfile",
-    "Dockerfile-dev",
     "docker-compose.yml",
     "compose.yml",
     "docker-compose.local.yml",
@@ -20846,6 +20853,53 @@ function canBuildFromSource(repoPath) {
   } catch {
   }
   return false;
+}
+var BRIGHT_DOCKERFILE = "Dockerfile.bright";
+function dockerfileBuildsFromSource(content) {
+  const lines = content.split("\n").map((l) => l.trim());
+  const copiesSource = lines.some(
+    (l) => /^COPY\s/i.test(l) && !/^COPY\s+--from=/i.test(l) || /^ADD\s/i.test(l) && !/^ADD\s+https?:/i.test(l)
+  );
+  return copiesSource;
+}
+function findDockerfile(repoPath) {
+  if (existsSync5(`${repoPath}/${BRIGHT_DOCKERFILE}`))
+    return BRIGHT_DOCKERFILE;
+  for (const name of ["Dockerfile", "dockerfile"]) {
+    const path2 = `${repoPath}/${name}`;
+    if (!existsSync5(path2)) continue;
+    try {
+      if (dockerfileBuildsFromSource(readFileSync4(path2, "utf-8"))) return name;
+      console.log(`[Startup] ${name} found but only pulls a remote image \u2014 skipping`);
+    } catch {
+    }
+  }
+  let variants;
+  try {
+    variants = readdirSync3(repoPath).filter(
+      (f) => /^Dockerfile\./i.test(f) && f !== BRIGHT_DOCKERFILE
+    );
+  } catch {
+    return void 0;
+  }
+  if (variants.length === 0) return void 0;
+  const preferred = [/prod/i, /web/i, /app/i, /debian/i, /alpine/i];
+  const avoid = [/test/i, /ci/i, /lint/i, /integration/i, /dev\b/i];
+  const scored = variants.map((f) => {
+    let score = 0;
+    for (const p of preferred) if (p.test(f)) score += 10;
+    for (const a of avoid) if (a.test(f)) score -= 20;
+    return { f, score };
+  }).sort((a, b) => b.score - a.score);
+  for (const { f } of scored) {
+    try {
+      if (dockerfileBuildsFromSource(readFileSync4(`${repoPath}/${f}`, "utf-8")))
+        return f;
+      console.log(`[Startup] ${f} found but only pulls a remote image \u2014 skipping`);
+    } catch {
+    }
+  }
+  return void 0;
 }
 async function discoverProject(llm, repoPath, stackStr, model) {
   console.log("[Startup] Running project discovery \u2014 analyzing infrastructure requirements...");
@@ -20919,8 +20973,9 @@ async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config
   for (let attempt = 1; attempt <= MAX_COMPOSE_GEN_RETRIES; attempt++) {
     console.log(`[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`);
     try {
-      const hasDockerfile = existsSync5(`${repoPath}/Dockerfile`);
-      const messages = generateComposePrompt(stackStr, discovery, hasDockerfile, hints);
+      const dfName = findDockerfile(repoPath);
+      const hasDockerfile = !!dfName;
+      const messages = generateComposePrompt(stackStr, discovery, hasDockerfile, hints, dfName);
       const handler = createToolHandler(repoPath);
       const response = await chatWithTools(llm, messages, codebaseTools, handler, model);
       const content = extractCodeBlock(response);
@@ -21038,10 +21093,12 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         `[Startup] Config uses pre-built image without build step \u2014 forcing docker build from source`
       );
       const imageName = "bright-app-local";
+      const df = findDockerfile(repoPath);
+      const fFlag = df && df !== "Dockerfile" ? `-f ${df} ` : "";
       config = {
         command: `docker run --name ${imageName} -p ${config.port}:${config.port} -d ${imageName}`,
         port: config.port,
-        prerequisites: [`docker build -t ${imageName} .`],
+        prerequisites: [`docker build ${fFlag}-t ${imageName} .`.trim()],
         envVars: config.envVars,
         docker: true
       };
@@ -21103,9 +21160,10 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         }
       }
     }
-    if (config.docker && !existsSync5(`${repoPath}/Dockerfile`)) {
+    const existingDockerfile = config.docker ? findDockerfile(repoPath) : void 0;
+    if (config.docker && !existingDockerfile) {
       console.log(
-        "[Startup] No Dockerfile found \u2014 generating one for this project"
+        "[Startup] No source-building Dockerfile found \u2014 generating one for this project"
       );
       await generateDockerfile(
         llm,
@@ -21114,6 +21172,10 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         modelSelector?.current(),
         discovery
       );
+    }
+    const dockerfileName = findDockerfile(repoPath) ?? "Dockerfile";
+    if (dockerfileName !== "Dockerfile") {
+      console.log(`[Startup] Using Dockerfile: ${dockerfileName}`);
     }
     const usesCompose = /docker\s+compose/.test(
       [...config.prerequisites ?? [], config.command].join(" ")
@@ -21218,7 +21280,7 @@ ${logs.slice(-3e3)}
       const detailedError = toDetailedErrorMessage(err);
       console.error(`[Startup] Attempt ${attempt} failed: ${errorMsg}`);
       attemptErrors.push({ config, error: detailedError });
-      const isDockerBuildError = config.docker && existsSync5(`${repoPath}/Dockerfile`) && /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(detailedError);
+      const isDockerBuildError = config.docker && !!findDockerfile(repoPath) && /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(detailedError);
       const isTimeoutError = /did not start on port.*within/i.test(detailedError);
       const previousErrorMsgs = attemptErrors.slice(0, -1).map((a) => a.error);
       const isCompilationError = isSourceCodeError(detailedError, previousErrorMsgs);
@@ -21398,16 +21460,20 @@ function findComposeFile(repoPath) {
 function generateComposeFile(repoPath, config) {
   const port = config.port || 3e3;
   const envLines = Object.entries(config.envVars ?? {}).map(([k, v]) => `      ${k}: "${v}"`).join("\n");
+  const df = findDockerfile(repoPath);
+  const buildSection = df && df !== "Dockerfile" ? `    build:
+      context: .
+      dockerfile: ${df}` : "    build: .";
   const content = `services:
   app:
-    build: .
+${buildSection}
     ports:
       - "${port}:${port}"
 ${envLines ? `    environment:
 ${envLines}
 ` : ""}`;
   writeFileSync3(`${repoPath}/compose.yml`, content);
-  console.log(`[Startup] Generated compose.yml (port ${port})`);
+  console.log(`[Startup] Generated compose.yml (port ${port}, dockerfile: ${df ?? "Dockerfile"})`);
 }
 function validateComposeBuildContexts(repoPath, composeFile) {
   const filePath = `${repoPath}/${composeFile}`;
@@ -21442,7 +21508,9 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   return true;
 }
 async function repairDockerBuild(llm, repoPath, buildError, model, previousErrors, hints, previousRepairs, repeatedRootCause) {
-  const dockerfilePath = `${repoPath}/Dockerfile`;
+  const dockerfileName = findDockerfile(repoPath);
+  if (!dockerfileName) return;
+  const dockerfilePath = `${repoPath}/${dockerfileName}`;
   let currentDockerfile;
   try {
     currentDockerfile = readFileSync4(dockerfilePath, "utf-8");
@@ -21793,9 +21861,9 @@ async function generateDockerfile(llm, repoPath, stackStr, model, discovery) {
   if (content !== contentRaw) {
     console.log("[Startup] Auto-fixed invalid Docker image tags in generated Dockerfile");
   }
-  writeFileSync3(`${repoPath}/Dockerfile`, content);
+  writeFileSync3(`${repoPath}/${BRIGHT_DOCKERFILE}`, content);
   console.log(
-    `[Startup] Generated Dockerfile (${content.split("\n").length} lines)`
+    `[Startup] Generated ${BRIGHT_DOCKERFILE} (${content.split("\n").length} lines)`
   );
 }
 async function retryStartupConfig(llm, repoPath, stackStr, previousConfig, errorOutput, attempt, model, allPreviousAttempts, hints) {
@@ -21969,10 +22037,12 @@ function ensureToolsAvailable(repoPath, config) {
         `[Startup] "${name}" not found on host \u2014 switching to Docker build`
       );
       const imageName = "bright-app-local";
+      const df = findDockerfile(repoPath);
+      const fFlag = df && df !== "Dockerfile" ? `-f ${df} ` : "";
       return {
         command: `docker run --name ${imageName} -p ${config.port}:${config.port} -d ${imageName}`,
         port: config.port,
-        prerequisites: [`docker build -t ${imageName} .`],
+        prerequisites: [`docker build ${fFlag}-t ${imageName} .`.trim()],
         envVars: config.envVars,
         docker: true
       };
