@@ -207,7 +207,7 @@ async function discoverProject(
 
   try {
     const messages = discoverProjectPrompt(stackStr);
-    const baseHandler = createToolHandler(repoPath);
+    const baseHandler = createDockerfileToolHandler(repoPath);
     const webHandler = createWebSearchHandler(repoPath);
     const handler: ToolHandler = async (name, args) => {
       if (name === "search_web" || name === "fetch_url") {
@@ -1049,7 +1049,7 @@ APPROACH:
    This avoids wasting a full rebuild cycle on a wrong guess.
 4. Fix the ROOT CAUSE. Don't just suppress errors — understand WHY the command failed.
 5. If the error is in a multi-stage build, check whether a later stage is missing tools/files from an earlier stage. Consider collapsing to a single stage.
-6. This Dockerfile is for DEVELOPMENT/TESTING, not production. Prefer simplicity over optimization — a single stage with all tools is better than a fragile multi-stage build.
+6. This Dockerfile is for **production-like security testing** (DAST scanning). The app must run in production mode (RAILS_ENV=production, NODE_ENV=production, etc.) with precompiled assets and all runtime system dependencies (ImageMagick, fonts, wkhtmltopdf, ffmpeg, etc.) installed. A single stage with all tools is better than a fragile multi-stage build.
 7. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
 8. Always verify base image tags exist with verify_docker_image before using them.
 
@@ -1319,7 +1319,7 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
     let usedMutatingTools = false;
     const trackingHandler: ToolHandler = async (name, args) => {
       const result = await infraHandler(name, args);
-      if (name === "write_file" || name === "edit_file" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
+      if (name === "write_file" || name === "edit_file" || name === "run_command_on_host" || name === "run_command_in_docker") {
         usedMutatingTools = true;
       }
       return result;
@@ -1506,7 +1506,7 @@ function parseStartupConfig(response: string): StartupConfig {
       command: "npm start",
       port: 3000,
       prerequisites: ["npm install"],
-      envVars: { NODE_ENV: "development" },
+      envVars: { NODE_ENV: "production" },
       docker: false,
     };
   }
@@ -3061,6 +3061,13 @@ When in doubt about whether the app is running vs broken, check: does the page c
  * required page, or a framework error that the status-code-only check would
  * miss.
  *
+ * When a dedicated healthCheckPath is configured (i.e. not "/"), this also
+ * probes "/" (the root page) with browser-like headers. This catches the
+ * common case where a tiny health endpoint (e.g. /srv/status → "ok") is
+ * perfectly healthy while every real user-facing page returns a 500. Both
+ * the health endpoint AND the root page must be healthy for the deep probe
+ * to pass.
+ *
  * Used by AppHealthMonitor periodically (every Nth shallow probe) and
  * synchronously before each scan round.
  */
@@ -3070,7 +3077,40 @@ export async function deepHealthCheck(
   llm: Parameters<typeof chatWithTools>[0],
   modelSelector: ModelSelector | undefined,
 ): Promise<ResponseHealthResult> {
-  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
+  // 1. Probe the configured health endpoint
+  const healthResult = await deepProbeSingleUrl(port, healthCheckPath, llm, modelSelector);
+  if (!healthResult.healthy) return healthResult;
+
+  // 2. If the health endpoint is not "/" itself, also probe the root page.
+  //    A healthy /srv/status + broken "/" means the app is NOT healthy for
+  //    real users. This catches missing runtime deps (e.g. ImageMagick),
+  //    broken view rendering, pending migrations, etc.
+  const normalizedHealth = healthCheckPath.replace(/\/+$/, "") || "/";
+  if (normalizedHealth !== "/") {
+    const rootResult = await deepProbeSingleUrl(port, "/", llm, modelSelector);
+    if (!rootResult.healthy) {
+      return {
+        healthy: false,
+        reason: `health endpoint (${healthCheckPath}) is ok, but root page (/) is broken: ${rootResult.reason}`,
+      };
+    }
+  }
+
+  return healthResult;
+}
+
+/**
+ * Probe a single URL and analyze the response with the LLM. Extracted from
+ * deepHealthCheck so it can be called for both the health endpoint and the
+ * root page.
+ */
+async function deepProbeSingleUrl(
+  port: number,
+  path: string,
+  llm: Parameters<typeof chatWithTools>[0],
+  modelSelector: ModelSelector | undefined,
+): Promise<ResponseHealthResult> {
+  const probePath = path.startsWith("/") ? path : `/${path}`;
   let res: Response;
   try {
     res = await fetch(`http://localhost:${port}${probePath}`, {
@@ -3079,10 +3119,10 @@ export async function deepHealthCheck(
       signal: AbortSignal.timeout(8_000),
     });
   } catch (err) {
-    return { healthy: false, reason: `connection failed: ${toErrorMessage(err)}` };
+    return { healthy: false, reason: `connection failed on ${probePath}: ${toErrorMessage(err)}` };
   }
   if (res.status >= 500) {
-    return { healthy: false, reason: `HTTP ${res.status} server error` };
+    return { healthy: false, reason: `HTTP ${res.status} server error on ${probePath}` };
   }
   let body = "";
   try {
@@ -3090,7 +3130,7 @@ export async function deepHealthCheck(
   } catch {
     /* empty body OK */
   }
-  if (!body) return { healthy: true, reason: "empty body, status acceptable" };
+  if (!body) return { healthy: true, reason: `empty body on ${probePath}, status acceptable` };
   const ct = res.headers.get("content-type") ?? "";
   const text = ct.includes("html") ? stripHtmlForAnalysis(body) : body;
   const preview = text.length > 3000 ? text.slice(0, 3000) + "..." : text;

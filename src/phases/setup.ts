@@ -1,14 +1,16 @@
 import type OpenAI from "openai";
 import type { ChatCompletionTool, ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
-import { execSync } from "child_process";
-import { readFileSync, writeFileSync } from "fs";
-import { resolve } from "path";
 import { chatWithTools, type ToolHandler } from "../inference.js";
 import {
   codebaseTools,
   createToolHandler,
   webSearchTools,
   createWebSearchHandler,
+  runCommandOnHostTool,
+  runCommandInDockerTool,
+  editFileTool,
+  execInDocker,
+  handleEditFile,
 } from "../tools.js";
 import { extractJson, runShellCommand, formatTechStack } from "../utils.js";
 import { firstRunSetupPrompt } from "../prompts/setup.js";
@@ -319,79 +321,13 @@ export async function completeFirstRunSetup(
     console.log(`[Setup] Pre-gathered ${preContext.length} chars of setup context`);
   }
 
-  // Build tool set — same as auth seed/repair (host commands, docker, probe, codebase, web)
+  // Build tool set — shared tools + setup-specific probe_url (with cookie tracking) + evidence reporter
   const setupTools: ChatCompletionTool[] = [
     ...codebaseTools,
     ...webSearchTools,
-    {
-      type: "function",
-      function: {
-        name: "run_command_on_host",
-        description:
-          "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and host-level diagnostics. Timeout: 120 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description: 'Host shell command (e.g. "docker ps --format \'{{.ID}} {{.Image}}\'")',
-            },
-          },
-          required: ["command"],
-          additionalProperties: false,
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "run_command_in_docker",
-        description:
-          "Run a command INSIDE a Docker container. Use to run migrations, CLI setup, etc. Timeout: 120 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            container: {
-              type: "string",
-              description: 'Container name or ID',
-            },
-            command: {
-              type: "string",
-              description: 'Command to run inside the container',
-            },
-          },
-          required: ["container", "command"],
-          additionalProperties: false,
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "edit_file",
-        description:
-          "Make a targeted edit to a file by replacing an exact string match. Safer than rewriting the whole file — use for adding env vars to compose.yml, tweaking config, etc. The old_string must match EXACTLY one occurrence.",
-        parameters: {
-          type: "object",
-          properties: {
-            path: {
-              type: "string",
-              description: "Relative file path from the repository root",
-            },
-            old_string: {
-              type: "string",
-              description: "The exact string to find in the file. Must match exactly one occurrence.",
-            },
-            new_string: {
-              type: "string",
-              description: "The replacement string.",
-            },
-          },
-          required: ["path", "old_string", "new_string"],
-          additionalProperties: false,
-        },
-      },
-    },
+    runCommandOnHostTool,
+    runCommandInDockerTool,
+    editFileTool,
     {
       type: "function",
       function: {
@@ -469,38 +405,10 @@ export async function completeFirstRunSetup(
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Setup] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const isRunning = (() => {
-        try {
-          const out = execSync(
-            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-            { encoding: "utf-8", timeout: 5_000 },
-          ).trim();
-          return out === "true";
-        } catch {
-          return false;
-        }
-      })();
-      const dockerCmd = isRunning
-        ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
-        : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-      return runShellCommand(repoPath, dockerCmd, 120_000);
+      return execInDocker(repoPath, container, cmd, 120_000);
     }
     if (name === "edit_file") {
-      const filePath = resolve(repoPath, String(args.path ?? ""));
-      if (!filePath.startsWith(repoPath)) return "Error: path traversal attempt blocked";
-      const oldStr = String(args.old_string ?? "");
-      const newStr = String(args.new_string ?? "");
-      if (!oldStr) return "Error: old_string is required";
-      try {
-        const existing = readFileSync(filePath, "utf-8");
-        const count = existing.split(oldStr).length - 1;
-        if (count === 0) return `Error: old_string not found in ${args.path}. Make sure it matches exactly (including whitespace).`;
-        if (count > 1) return `Error: old_string found ${count} times in ${args.path}. Include more context to make it unique.`;
-        writeFileSync(filePath, existing.replace(oldStr, newStr));
-        return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
-      } catch (err: unknown) {
-        return `Error editing file: ${err instanceof Error ? err.message : String(err)}`;
-      }
+      return handleEditFile(repoPath, args);
     }
     if (name === "probe_url") {
       return probeUrlWithCookies(args, cookieJar);

@@ -6,7 +6,7 @@ export function identifyStartupPrompt(
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files, list directories, search code, run shell commands, and write files.
+      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally in **production-like mode** for security testing (DAST scanning). You have tools to read files, list directories, search code, run shell commands, and write files.
 
 If the tech stack description says "(service: <path>)", focus on running THAT specific service.
 
@@ -35,11 +35,12 @@ Return a JSON object:
   "command": "docker compose up -d",
   "port": 3000,
   "prerequisites": ["docker compose build"],
-  "envVars": { "NODE_ENV": "development" },
+  "envVars": { "NODE_ENV": "production" },
   "docker": true,
   "healthCheckPath": "/health"
 }
 
+- **envVars**: Use production-like environment variables (NODE_ENV=production, RAILS_ENV=production, etc.). The app will be security-tested by a DAST scanner — it must behave like a production deployment.
 - **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated health/status endpoint like "/health", "/srv/status", or "/api/health".`,
     },
     {

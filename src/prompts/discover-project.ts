@@ -72,7 +72,7 @@ Return a JSON object:
       "name": "db",
       "image": "pgvector/pgvector:pg16",
       "reason": "Gemfile includes 'pg' gem + AI plugin needs pgvector",
-      "environment": {"POSTGRES_USER": "postgres", "POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "app_development"},
+      "environment": {"POSTGRES_USER": "postgres", "POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "app"},
       "port": 5432
     },
     {
@@ -86,7 +86,7 @@ Return a JSON object:
     "config/database.yml: development section has no 'host' key — must add 'host: db' for Docker networking"
   ],
   "appEnvironment": {
-    "RAILS_ENV": "development",
+    "RAILS_ENV": "production",
     "DISCOURSE_DB_HOST": "db",
     "DISCOURSE_REDIS_HOST": "redis"
   },
@@ -106,11 +106,13 @@ Rules:
 - Only include services the app ACTUALLY needs based on code evidence — don't guess
 - The "name" field is the Docker Compose service name (used for DNS: app connects to "db", "redis", etc.)
 - appEnvironment should only include vars the APP container needs, not service containers
+- **PRODUCTION-LIKE ENVIRONMENT**: Always set environment variables for production-like operation (e.g. RAILS_ENV=production, NODE_ENV=production, DJANGO_SETTINGS_MODULE=project.settings.production, MIX_ENV=prod). The app will be security-tested by a DAST scanner — it must behave like a production deployment (precompiled assets, optimized mode, no dev-mode warnings). Development mode causes false positives, slow responses, and debug pages that break security testing.
 - Be specific in configNotes — mention exact file paths and what to change
 - If you find NO required services (e.g. a simple Node app with SQLite), return an empty services array
 - **Use search_web to find build-from-source setup guides** — this helps identify tricky env vars, build steps, and known issues
 - postStartSetup: list any steps that must run AFTER the app starts (setup wizards, admin registration, data seeds, etc.)
-- buildNotes: include ALL known gotchas from web search results (env vars, compile flags, migration quirks, etc.)`,
+- buildNotes: include ALL known gotchas from web search results (env vars, compile flags, migration quirks, etc.)
+- buildNotes: list ALL runtime system dependencies the app needs (e.g. ImageMagick/magick for image processing, wkhtmltopdf for PDF generation, ffmpeg for media, gifsicle, optipng, etc.). These must be installed in the Dockerfile — missing runtime tools cause 500 errors in production.`,
     },
     {
       role: "user",

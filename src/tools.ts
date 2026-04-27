@@ -205,7 +205,7 @@ const writeFileTool: ChatCompletionTool = {
   },
 };
 
-const editFileTool: ChatCompletionTool = {
+export const editFileTool: ChatCompletionTool = {
   type: "function",
   function: {
     name: "edit_file",
@@ -236,7 +236,7 @@ const editFileTool: ChatCompletionTool = {
   },
 };
 
-const runCommandOnHostTool: ChatCompletionTool = {
+export const runCommandOnHostTool: ChatCompletionTool = {
   type: "function",
   function: {
     name: "run_command_on_host",
@@ -257,7 +257,7 @@ const runCommandOnHostTool: ChatCompletionTool = {
   },
 };
 
-const runCommandInDockerTool: ChatCompletionTool = {
+export const runCommandInDockerTool: ChatCompletionTool = {
   type: "function",
   function: {
     name: "run_command_in_docker",
@@ -285,6 +285,73 @@ const runCommandInDockerTool: ChatCompletionTool = {
 
 // infraTools is defined after verifyDockerImageTool below
 
+// ---------------------------------------------------------------------------
+// Shared handler helpers — reused by auth.ts, setup.ts, and infra handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute a command inside a Docker container.
+ * Automatically detects whether `container` is a running container (→ docker exec)
+ * or an image name (→ docker run --rm).
+ */
+export function execInDocker(
+  repoPath: string,
+  container: string,
+  command: string,
+  timeout = 120_000,
+): string {
+  const isRunning = (() => {
+    try {
+      const out = execSync(
+        `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+        { encoding: "utf-8", timeout: 5_000 },
+      ).trim();
+      return out === "true";
+    } catch {
+      return false;
+    }
+  })();
+  const dockerCmd = isRunning
+    ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(command)}`
+    : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(command)}`;
+  return runShellCommand(repoPath, dockerCmd, timeout);
+}
+
+/**
+ * Handle an edit_file tool call — find-and-replace exactly one occurrence.
+ * Returns a human-readable result string.
+ */
+export function handleEditFile(
+  repoPath: string,
+  args: Record<string, unknown>,
+): string {
+  const filePath = resolve(repoPath, String(args.path ?? ""));
+  if (!filePath.startsWith(repoPath)) {
+    return "Error: path traversal attempt blocked";
+  }
+  const oldStr = String(args.old_string ?? "");
+  const newStr = String(args.new_string ?? "");
+  if (!oldStr) return "Error: old_string is required";
+  try {
+    const existing = readFileSync(filePath, "utf-8");
+    const count = existing.split(oldStr).length - 1;
+    if (count === 0) {
+      return `Error: old_string not found in ${args.path}. Make sure the string matches exactly (including whitespace and indentation).`;
+    }
+    if (count > 1) {
+      return `Error: old_string found ${count} times in ${args.path}. Include more surrounding context to make it unique.`;
+    }
+    const updated = existing.replace(oldStr, newStr);
+    writeFileSync(filePath, updated);
+    return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
+  } catch (err) {
+    return `Error editing file: ${toErrorMessage(err)}`;
+  }
+}
+
+/** Export the infra probeUrl for phases that don't need cookie tracking */
+export { probeUrl as handleProbeUrl };
+
 export function createInfraToolHandler(repoPath: string, onHint?: (hint: string) => void, onRemoveHint?: (hint: string) => void): ToolHandler {
   const baseHandler = createDockerfileToolHandler(repoPath);
   return async (name: string, args: Record<string, unknown>) => {
@@ -303,32 +370,9 @@ export function createInfraToolHandler(repoPath: string, onHint?: (hint: string)
         }
       }
 
-      case "edit_file": {
-        const filePath = resolve(repoPath, String(args.path ?? ""));
-        if (!filePath.startsWith(repoPath)) {
-          return "Error: path traversal attempt blocked";
-        }
-        const oldStr = String(args.old_string ?? "");
-        const newStr = String(args.new_string ?? "");
-        if (!oldStr) return "Error: old_string is required";
-        try {
-          const existing = readFileSync(filePath, "utf-8");
-          const count = existing.split(oldStr).length - 1;
-          if (count === 0) {
-            return `Error: old_string not found in ${args.path}. Make sure the string matches exactly (including whitespace and indentation).`;
-          }
-          if (count > 1) {
-            return `Error: old_string found ${count} times in ${args.path}. Include more surrounding context to make it unique.`;
-          }
-          const updated = existing.replace(oldStr, newStr);
-          writeFileSync(filePath, updated);
-          return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
-        } catch (err) {
-          return `Error editing file: ${toErrorMessage(err)}`;
-        }
-      }
+      case "edit_file":
+        return handleEditFile(repoPath, args);
 
-      case "run_command":
       case "run_command_on_host": {
         const command = String(args.command ?? "");
         // Guard: block blanket volume destruction — infra repair should target specific volumes
@@ -347,22 +391,7 @@ export function createInfraToolHandler(repoPath: string, onHint?: (hint: string)
         const container = String(args.container ?? "");
         const cmd = String(args.command ?? "");
         console.log(`[Tool] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-        // Determine if 'container' is a running container or an image
-        const isRunning = (() => {
-          try {
-            const out = execSync(
-              `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-              { encoding: "utf-8", timeout: 5_000 },
-            ).trim();
-            return out === "true";
-          } catch {
-            return false;
-          }
-        })();
-        const dockerCmd = isRunning
-          ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
-          : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-        return runShellCommand(repoPath, dockerCmd, 120_000);
+        return execInDocker(repoPath, container, cmd, 120_000);
       }
 
       case "wait": {
@@ -700,7 +729,7 @@ export function createWebSearchHandler(repoPath: string): ToolHandler {
   };
 }
 
-const probeUrlTool: ChatCompletionTool = {
+export const probeUrlTool: ChatCompletionTool = {
   type: "function",
   function: {
     name: "probe_url",

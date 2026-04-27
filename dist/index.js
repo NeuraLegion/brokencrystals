@@ -4036,7 +4036,7 @@ function consumeBody() {
   let accum = [];
   let accumBytes = 0;
   let abort = false;
-  return new Body.Promise(function(resolve6, reject) {
+  return new Body.Promise(function(resolve5, reject) {
     let resTimeout;
     if (_this4.timeout) {
       resTimeout = setTimeout(function() {
@@ -4070,7 +4070,7 @@ function consumeBody() {
       }
       clearTimeout(resTimeout);
       try {
-        resolve6(Buffer.concat(accum, accumBytes));
+        resolve5(Buffer.concat(accum, accumBytes));
       } catch (err) {
         reject(new FetchError(`Could not create Buffer from response body for ${_this4.url}: ${err.message}`, "system", err));
       }
@@ -4745,7 +4745,7 @@ function fetch3(url, opts) {
     throw new Error("native promise missing, set fetch.Promise to your favorite alternative");
   }
   Body.Promise = fetch3.Promise;
-  return new fetch3.Promise(function(resolve6, reject) {
+  return new fetch3.Promise(function(resolve5, reject) {
     const request = new Request2(url, opts);
     const options = getNodeRequestOptions(request);
     const send = (options.protocol === "https:" ? https : http).request;
@@ -4878,7 +4878,7 @@ function fetch3(url, opts) {
               requestOpts.body = void 0;
               requestOpts.headers.delete("content-length");
             }
-            resolve6(fetch3(new Request2(locationURL, requestOpts)));
+            resolve5(fetch3(new Request2(locationURL, requestOpts)));
             finalize();
             return;
         }
@@ -4899,7 +4899,7 @@ function fetch3(url, opts) {
       const codings = headers.get("Content-Encoding");
       if (!request.compress || request.method === "HEAD" || codings === null || res.statusCode === 204 || res.statusCode === 304) {
         response = new Response2(body, response_options);
-        resolve6(response);
+        resolve5(response);
         return;
       }
       const zlibOptions = {
@@ -4909,7 +4909,7 @@ function fetch3(url, opts) {
       if (codings == "gzip" || codings == "x-gzip") {
         body = body.pipe(zlib.createGunzip(zlibOptions));
         response = new Response2(body, response_options);
-        resolve6(response);
+        resolve5(response);
         return;
       }
       if (codings == "deflate" || codings == "x-deflate") {
@@ -4921,12 +4921,12 @@ function fetch3(url, opts) {
             body = body.pipe(zlib.createInflateRaw());
           }
           response = new Response2(body, response_options);
-          resolve6(response);
+          resolve5(response);
         });
         raw.on("end", function() {
           if (!response) {
             response = new Response2(body, response_options);
-            resolve6(response);
+            resolve5(response);
           }
         });
         return;
@@ -4934,11 +4934,11 @@ function fetch3(url, opts) {
       if (codings == "br" && typeof zlib.createBrotliDecompress === "function") {
         body = body.pipe(zlib.createBrotliDecompress());
         response = new Response2(body, response_options);
-        resolve6(response);
+        resolve5(response);
         return;
       }
       response = new Response2(body, response_options);
-      resolve6(response);
+      resolve5(response);
     });
     writeToStream(req, request);
   });
@@ -5988,8 +5988,8 @@ function _addRequestID(value, response) {
 }
 var APIPromise = class _APIPromise extends Promise {
   constructor(responsePromise, parseResponse2 = defaultParseResponse) {
-    super((resolve6) => {
-      resolve6(null);
+    super((resolve5) => {
+      resolve5(null);
     });
     this.responsePromise = responsePromise;
     this.parseResponse = parseResponse2;
@@ -6564,7 +6564,7 @@ var startsWithSchemeRegexp = /^[a-z][a-z0-9+.-]*:/i;
 var isAbsoluteURL = (url) => {
   return startsWithSchemeRegexp.test(url);
 };
-var sleep = (ms) => new Promise((resolve6) => setTimeout(resolve6, ms));
+var sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
 var validatePositiveInteger = (name, n) => {
   if (typeof n !== "number" || !Number.isInteger(n)) {
     throw new OpenAIError(`${name} must be an integer`);
@@ -6997,12 +6997,12 @@ var EventStream = class {
     _EventStream_errored.set(this, false);
     _EventStream_aborted.set(this, false);
     _EventStream_catchingPromiseCreated.set(this, false);
-    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve6, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve6, "f");
+    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve5, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve5, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectConnectedPromise, reject, "f");
     }), "f");
-    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve6, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve6, "f");
+    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve5, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve5, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectEndPromise, reject, "f");
     }), "f");
     __classPrivateFieldGet5(this, _EventStream_connectedPromise, "f").catch(() => {
@@ -7086,11 +7086,11 @@ var EventStream = class {
    *   const message = await stream.emitted('message') // rejects if the stream errors
    */
   emitted(event) {
-    return new Promise((resolve6, reject) => {
+    return new Promise((resolve5, reject) => {
       __classPrivateFieldSet4(this, _EventStream_catchingPromiseCreated, true, "f");
       if (event !== "error")
         this.once("error", reject);
-      this.once(event, resolve6);
+      this.once(event, resolve5);
     });
   }
   async done() {
@@ -7243,7 +7243,7 @@ var AssistantStream = class _AssistantStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve6, reject) => readQueue.push({ resolve: resolve6, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -8861,7 +8861,7 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve6, reject) => readQueue.push({ resolve: resolve6, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -10512,7 +10512,7 @@ var ResponseStream = class _ResponseStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve6, reject) => readQueue.push({ resolve: resolve6, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
         }
         const event = pushQueue.shift();
         return { value: event, done: false };
@@ -11411,7 +11411,7 @@ function buildSeveritySummary(findings) {
   return Object.entries(bySev).sort(([a], [b]) => (SEVERITY_ORDER[a] ?? 4) - (SEVERITY_ORDER[b] ?? 4)).map(([sev, count]) => `${count} ${sev}`).join(", ");
 }
 function sleep2(ms) {
-  return new Promise((resolve6) => setTimeout(resolve6, ms));
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function formatTechStack(techStack) {
   const stack = [...techStack.languages, ...techStack.frameworks].join(", ");
@@ -14989,10 +14989,10 @@ var Minipass = class extends EventEmitter {
    * Return a void Promise that resolves once the stream ends.
    */
   async promise() {
-    return new Promise((resolve6, reject) => {
+    return new Promise((resolve5, reject) => {
       this.on(DESTROYED, () => reject(new Error("stream destroyed")));
       this.on("error", (er) => reject(er));
-      this.on("end", () => resolve6());
+      this.on("end", () => resolve5());
     });
   }
   /**
@@ -15016,7 +15016,7 @@ var Minipass = class extends EventEmitter {
         return Promise.resolve({ done: false, value: res });
       if (this[EOF])
         return stop();
-      let resolve6;
+      let resolve5;
       let reject;
       const onerr = (er) => {
         this.off("data", ondata);
@@ -15030,19 +15030,19 @@ var Minipass = class extends EventEmitter {
         this.off("end", onend);
         this.off(DESTROYED, ondestroy);
         this.pause();
-        resolve6({ value, done: !!this[EOF] });
+        resolve5({ value, done: !!this[EOF] });
       };
       const onend = () => {
         this.off("error", onerr);
         this.off("data", ondata);
         this.off(DESTROYED, ondestroy);
         stop();
-        resolve6({ done: true, value: void 0 });
+        resolve5({ done: true, value: void 0 });
       };
       const ondestroy = () => onerr(new Error("stream destroyed"));
       return new Promise((res2, rej) => {
         reject = rej;
-        resolve6 = res2;
+        resolve5 = res2;
         this.once(DESTROYED, ondestroy);
         this.once("error", onerr);
         this.once("end", onend);
@@ -16018,9 +16018,9 @@ var PathBase = class {
     if (this.#asyncReaddirInFlight) {
       await this.#asyncReaddirInFlight;
     } else {
-      let resolve6 = () => {
+      let resolve5 = () => {
       };
-      this.#asyncReaddirInFlight = new Promise((res) => resolve6 = res);
+      this.#asyncReaddirInFlight = new Promise((res) => resolve5 = res);
       try {
         for (const e of await this.#fs.promises.readdir(fullpath, {
           withFileTypes: true
@@ -16033,7 +16033,7 @@ var PathBase = class {
         children.provisional = 0;
       }
       this.#asyncReaddirInFlight = void 0;
-      resolve6();
+      resolve5();
     }
     return children.slice(0, children.provisional);
   }
@@ -19755,6 +19755,45 @@ var runCommandInDockerTool = {
     }
   }
 };
+function execInDocker(repoPath, container, command, timeout = 12e4) {
+  const isRunning = (() => {
+    try {
+      const out = execSync2(
+        `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
+        { encoding: "utf-8", timeout: 5e3 }
+      ).trim();
+      return out === "true";
+    } catch {
+      return false;
+    }
+  })();
+  const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(command)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(command)}`;
+  return runShellCommand(repoPath, dockerCmd, timeout);
+}
+function handleEditFile(repoPath, args) {
+  const filePath = resolve2(repoPath, String(args.path ?? ""));
+  if (!filePath.startsWith(repoPath)) {
+    return "Error: path traversal attempt blocked";
+  }
+  const oldStr = String(args.old_string ?? "");
+  const newStr = String(args.new_string ?? "");
+  if (!oldStr) return "Error: old_string is required";
+  try {
+    const existing = readFileSync3(filePath, "utf-8");
+    const count = existing.split(oldStr).length - 1;
+    if (count === 0) {
+      return `Error: old_string not found in ${args.path}. Make sure the string matches exactly (including whitespace and indentation).`;
+    }
+    if (count > 1) {
+      return `Error: old_string found ${count} times in ${args.path}. Include more surrounding context to make it unique.`;
+    }
+    const updated = existing.replace(oldStr, newStr);
+    writeFileSync2(filePath, updated);
+    return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
+  } catch (err) {
+    return `Error editing file: ${toErrorMessage(err)}`;
+  }
+}
 function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
   const baseHandler = createDockerfileToolHandler(repoPath);
   return async (name, args) => {
@@ -19772,31 +19811,8 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
           return `Error writing file: ${toErrorMessage(err)}`;
         }
       }
-      case "edit_file": {
-        const filePath = resolve2(repoPath, String(args.path ?? ""));
-        if (!filePath.startsWith(repoPath)) {
-          return "Error: path traversal attempt blocked";
-        }
-        const oldStr = String(args.old_string ?? "");
-        const newStr = String(args.new_string ?? "");
-        if (!oldStr) return "Error: old_string is required";
-        try {
-          const existing = readFileSync3(filePath, "utf-8");
-          const count = existing.split(oldStr).length - 1;
-          if (count === 0) {
-            return `Error: old_string not found in ${args.path}. Make sure the string matches exactly (including whitespace and indentation).`;
-          }
-          if (count > 1) {
-            return `Error: old_string found ${count} times in ${args.path}. Include more surrounding context to make it unique.`;
-          }
-          const updated = existing.replace(oldStr, newStr);
-          writeFileSync2(filePath, updated);
-          return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
-        } catch (err) {
-          return `Error editing file: ${toErrorMessage(err)}`;
-        }
-      }
-      case "run_command":
+      case "edit_file":
+        return handleEditFile(repoPath, args);
       case "run_command_on_host": {
         const command = String(args.command ?? "");
         if (/docker\s+compose\s+down\s+[^|]*-v/i.test(command) || /docker-compose\s+down\s+[^|]*-v/i.test(command) || /docker\s+volume\s+prune/i.test(command) || /docker\s+system\s+prune/i.test(command)) {
@@ -19810,19 +19826,7 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
         const container = String(args.container ?? "");
         const cmd = String(args.command ?? "");
         console.log(`[Tool] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-        const isRunning = (() => {
-          try {
-            const out = execSync2(
-              `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-              { encoding: "utf-8", timeout: 5e3 }
-            ).trim();
-            return out === "true";
-          } catch {
-            return false;
-          }
-        })();
-        const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-        return runShellCommand(repoPath, dockerCmd, 12e4);
+        return execInDocker(repoPath, container, cmd, 12e4);
       }
       case "wait": {
         const seconds = Math.min(60, Math.max(1, Number(args.seconds ?? 10)));
@@ -20326,7 +20330,7 @@ function identifyStartupPrompt(techStack) {
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally for development/testing. You have tools to read files, list directories, search code, run shell commands, and write files.
+      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally in **production-like mode** for security testing (DAST scanning). You have tools to read files, list directories, search code, run shell commands, and write files.
 
 If the tech stack description says "(service: <path>)", focus on running THAT specific service.
 
@@ -20355,11 +20359,12 @@ Return a JSON object:
   "command": "docker compose up -d",
   "port": 3000,
   "prerequisites": ["docker compose build"],
-  "envVars": { "NODE_ENV": "development" },
+  "envVars": { "NODE_ENV": "production" },
   "docker": true,
   "healthCheckPath": "/health"
 }
 
+- **envVars**: Use production-like environment variables (NODE_ENV=production, RAILS_ENV=production, etc.). The app will be security-tested by a DAST scanner \u2014 it must behave like a production deployment.
 - **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated health/status endpoint like "/health", "/srv/status", or "/api/health".`
     },
     {
@@ -20471,9 +20476,11 @@ Return a JSON object with the new approach:
 var FRAMEWORK_HINTS = [
   {
     keywords: ["ruby", "rails"],
-    hint: `- Rails apps with JavaScript frontends need BOTH Ruby AND Node.js/pnpm in the same build environment. Prefer a single-stage Dockerfile for dev/test.
+    hint: `- Rails apps with JavaScript frontends need BOTH Ruby AND Node.js/pnpm in the same build environment. Prefer a single-stage Dockerfile.
 - If the project has bin/docker/ scripts, those use "docker exec -it" which fails in CI \u2014 call commands directly instead.
-- Native extensions (psych, nokogiri) need dev headers: libyaml-dev, libxml2-dev, libxslt-dev, build-essential.`
+- Native extensions (psych, nokogiri) need dev headers: libyaml-dev, libxml2-dev, libxslt-dev, build-essential.
+- **Production mode is required**: set RAILS_ENV=production, SECRET_KEY_BASE (use a dummy value for testing), run \`bundle exec rake assets:precompile\` during the build. Use \`bundle config set without 'development test'\` (NOT without 'production').
+- **Install runtime system tools**: ImageMagick (imagemagick), fonts (fonts-noto, fonts-liberation), and any other system deps used by gems like mini_magick, letter_avatar, wicked_pdf, etc. Check the Gemfile for gems that wrap system tools.`
   },
   {
     keywords: ["typescript", "node", "express", "nestjs", "next"],
@@ -20523,7 +20530,7 @@ function generateDockerfilePrompt(techStack, discovery) {
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer. Generate a Dockerfile for a ${techStack} project so it can be built and run in a Docker container for DEVELOPMENT/TESTING (not production).
+      content: `You are a DevOps engineer. Generate a Dockerfile for a ${techStack} project so it can be built and run in a Docker container in **production-like mode** for security testing (DAST scanning).
 
 If the tech stack description says "(service: <path>)", this is a monorepo. Build and run THAT specific service.
 
@@ -20536,13 +20543,16 @@ You have tools to read files, list directories, and verify Docker image tags. Us
 IMPORTANT: Use verify_docker_image to check that base image:tag EXISTS before including it in a FROM line.
 
 Principles:
+- **PRODUCTION-LIKE BUILD**. The container will be security-tested by a DAST scanner, so it MUST behave like a production deployment: precompiled/bundled assets, production-mode settings (RAILS_ENV=production, NODE_ENV=production, etc.), and all runtime dependencies installed. Development mode causes slow responses, debug error pages, and false positives that break security testing.
 - BUILD FROM SOURCE. All compilation, asset building, and dependency installation must happen from the local source code inside the container. Never rely on downloading pre-built artifacts, binaries, or asset bundles from external URLs during the build.
 - Prefer a SINGLE-STAGE Dockerfile. Multi-stage adds complexity that often breaks (missing tools/files across stages). Only use multi-stage if you have a clear reason.
 - If the project needs BOTH a backend runtime (Ruby, Python, etc.) AND a JS build tool (Node, pnpm, etc.), install them ALL in the same stage. Asset compilation steps (e.g. rake assets:precompile) often shell out to node/pnpm \u2014 they must be available.
+- **INSTALL ALL RUNTIME SYSTEM DEPENDENCIES.** Many apps need system tools at runtime \u2014 not just at build time. Common ones: ImageMagick (magick/convert for image processing), wkhtmltopdf (PDF generation), ffmpeg (media processing), gifsicle, optipng, jpegoptim, poppler-utils, ghostscript, brotli. Check the app's Gemfile/package.json/requirements.txt for gems/packages that wrap system tools (e.g. mini_magick \u2192 needs ImageMagick, wicked_pdf \u2192 needs wkhtmltopdf). Install them with apt-get. Missing runtime tools cause 500 errors on pages that use them.
+- **PRECOMPILE ASSETS** for frameworks that need it. Rails: \`bundle exec rake assets:precompile\`. Next.js: \`npm run build\`. Django: \`python manage.py collectstatic --noinput\`. This is essential for production-like behavior \u2014 without it, pages load slowly or not at all.
 - Use "COPY . ." for source code instead of cherry-picking individual directories \u2014 you will miss required files.
 - Copy dependency manifests FIRST and install dependencies for layer caching, then COPY the rest.
 - Install git if any build step might need it.
-- EXPOSE the correct port and set CMD to start the application.${frameworkHints}${discoveryContext}
+- EXPOSE the correct port and set CMD to start the application in production mode (e.g. \`bundle exec rails s -e production\`, \`node dist/server.js\`, etc.).${frameworkHints}${discoveryContext}
 
 Return ONLY the Dockerfile content inside a single fenced code block. No explanation outside the code block.`
     },
@@ -20619,7 +20629,7 @@ Return a JSON object:
       "name": "db",
       "image": "pgvector/pgvector:pg16",
       "reason": "Gemfile includes 'pg' gem + AI plugin needs pgvector",
-      "environment": {"POSTGRES_USER": "postgres", "POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "app_development"},
+      "environment": {"POSTGRES_USER": "postgres", "POSTGRES_PASSWORD": "postgres", "POSTGRES_DB": "app"},
       "port": 5432
     },
     {
@@ -20633,7 +20643,7 @@ Return a JSON object:
     "config/database.yml: development section has no 'host' key \u2014 must add 'host: db' for Docker networking"
   ],
   "appEnvironment": {
-    "RAILS_ENV": "development",
+    "RAILS_ENV": "production",
     "DISCOURSE_DB_HOST": "db",
     "DISCOURSE_REDIS_HOST": "redis"
   },
@@ -20653,11 +20663,13 @@ Rules:
 - Only include services the app ACTUALLY needs based on code evidence \u2014 don't guess
 - The "name" field is the Docker Compose service name (used for DNS: app connects to "db", "redis", etc.)
 - appEnvironment should only include vars the APP container needs, not service containers
+- **PRODUCTION-LIKE ENVIRONMENT**: Always set environment variables for production-like operation (e.g. RAILS_ENV=production, NODE_ENV=production, DJANGO_SETTINGS_MODULE=project.settings.production, MIX_ENV=prod). The app will be security-tested by a DAST scanner \u2014 it must behave like a production deployment (precompiled assets, optimized mode, no dev-mode warnings). Development mode causes false positives, slow responses, and debug pages that break security testing.
 - Be specific in configNotes \u2014 mention exact file paths and what to change
 - If you find NO required services (e.g. a simple Node app with SQLite), return an empty services array
 - **Use search_web to find build-from-source setup guides** \u2014 this helps identify tricky env vars, build steps, and known issues
 - postStartSetup: list any steps that must run AFTER the app starts (setup wizards, admin registration, data seeds, etc.)
-- buildNotes: include ALL known gotchas from web search results (env vars, compile flags, migration quirks, etc.)`
+- buildNotes: include ALL known gotchas from web search results (env vars, compile flags, migration quirks, etc.)
+- buildNotes: list ALL runtime system dependencies the app needs (e.g. ImageMagick/magick for image processing, wkhtmltopdf for PDF generation, ffmpeg for media, gifsicle, optipng, etc.). These must be installed in the Dockerfile \u2014 missing runtime tools cause 500 errors in production.`
     },
     {
       role: "user",
@@ -20830,7 +20842,7 @@ async function discoverProject(llm, repoPath, stackStr, model) {
   const t0 = Date.now();
   try {
     const messages = discoverProjectPrompt(stackStr);
-    const baseHandler = createToolHandler(repoPath);
+    const baseHandler = createDockerfileToolHandler(repoPath);
     const webHandler = createWebSearchHandler(repoPath);
     const handler = async (name, args) => {
       if (name === "search_web" || name === "fetch_url") {
@@ -21474,7 +21486,7 @@ APPROACH:
    This avoids wasting a full rebuild cycle on a wrong guess.
 4. Fix the ROOT CAUSE. Don't just suppress errors \u2014 understand WHY the command failed.
 5. If the error is in a multi-stage build, check whether a later stage is missing tools/files from an earlier stage. Consider collapsing to a single stage.
-6. This Dockerfile is for DEVELOPMENT/TESTING, not production. Prefer simplicity over optimization \u2014 a single stage with all tools is better than a fragile multi-stage build.
+6. This Dockerfile is for **production-like security testing** (DAST scanning). The app must run in production mode (RAILS_ENV=production, NODE_ENV=production, etc.) with precompiled assets and all runtime system dependencies (ImageMagick, fonts, wkhtmltopdf, ffmpeg, etc.) installed. A single stage with all tools is better than a fragile multi-stage build.
 7. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
 8. Always verify base image tags exist with verify_docker_image before using them.
 
@@ -21690,7 +21702,7 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
     let usedMutatingTools = false;
     const trackingHandler = async (name, args) => {
       const result2 = await infraHandler(name, args);
-      if (name === "write_file" || name === "edit_file" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
+      if (name === "write_file" || name === "edit_file" || name === "run_command_on_host" || name === "run_command_in_docker") {
         usedMutatingTools = true;
       }
       return result2;
@@ -21832,7 +21844,7 @@ function parseStartupConfig(response) {
       command: "npm start",
       port: 3e3,
       prerequisites: ["npm install"],
-      envVars: { NODE_ENV: "development" },
+      envVars: { NODE_ENV: "production" },
       docker: false
     };
   }
@@ -22114,13 +22126,13 @@ ${containerLogs}`);
     });
   });
   if (config.docker && command.includes("--wait")) {
-    const composeExitPromise = new Promise((resolve6, reject) => {
+    const composeExitPromise = new Promise((resolve5, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("docker compose --wait timed out after 300s"));
       }, 3e5);
       child.on("exit", (code) => {
         clearTimeout(timer);
-        if (code === 0) resolve6();
+        if (code === 0) resolve5();
         else {
           const head = outputLines.slice(0, 30).join("\n");
           const tail = outputLines.slice(-30).join("\n");
@@ -22341,7 +22353,7 @@ function runPrerequisite(cmd, cwd, envVars) {
   const EXTENSION_MS = 3e5;
   const MAX_EXTENSIONS = 5;
   const STALL_THRESHOLD_MS = 6e4;
-  return new Promise((resolve6, reject) => {
+  return new Promise((resolve5, reject) => {
     const child = spawn("sh", ["-c", cmd], {
       cwd,
       env: { ...process.env, ...envVars },
@@ -22421,7 +22433,7 @@ ${tail}`;
       if (code === 0) {
         const elapsed = Math.round((Date.now() - startTime) / 1e3);
         console.log(`[Startup] Prerequisite completed in ${elapsed}s`);
-        resolve6();
+        resolve5();
       } else {
         const tail = outputLines.slice(-30).join("\n");
         reject(
@@ -22942,7 +22954,22 @@ ${body}
   }
 }
 async function deepHealthCheck(port, healthCheckPath, llm, modelSelector) {
-  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
+  const healthResult = await deepProbeSingleUrl(port, healthCheckPath, llm, modelSelector);
+  if (!healthResult.healthy) return healthResult;
+  const normalizedHealth = healthCheckPath.replace(/\/+$/, "") || "/";
+  if (normalizedHealth !== "/") {
+    const rootResult = await deepProbeSingleUrl(port, "/", llm, modelSelector);
+    if (!rootResult.healthy) {
+      return {
+        healthy: false,
+        reason: `health endpoint (${healthCheckPath}) is ok, but root page (/) is broken: ${rootResult.reason}`
+      };
+    }
+  }
+  return healthResult;
+}
+async function deepProbeSingleUrl(port, path2, llm, modelSelector) {
+  const probePath = path2.startsWith("/") ? path2 : `/${path2}`;
   let res;
   try {
     res = await fetch(`http://localhost:${port}${probePath}`, {
@@ -22951,17 +22978,17 @@ async function deepHealthCheck(port, healthCheckPath, llm, modelSelector) {
       signal: AbortSignal.timeout(8e3)
     });
   } catch (err) {
-    return { healthy: false, reason: `connection failed: ${toErrorMessage(err)}` };
+    return { healthy: false, reason: `connection failed on ${probePath}: ${toErrorMessage(err)}` };
   }
   if (res.status >= 500) {
-    return { healthy: false, reason: `HTTP ${res.status} server error` };
+    return { healthy: false, reason: `HTTP ${res.status} server error on ${probePath}` };
   }
   let body = "";
   try {
     body = await res.text();
   } catch {
   }
-  if (!body) return { healthy: true, reason: "empty body, status acceptable" };
+  if (!body) return { healthy: true, reason: `empty body on ${probePath}, status acceptable` };
   const ct = res.headers.get("content-type") ?? "";
   const text = ct.includes("html") ? stripHtmlForAnalysis(body) : body;
   const preview = text.length > 3e3 ? text.slice(0, 3e3) + "..." : text;
@@ -23242,9 +23269,6 @@ ${composeConfig.slice(0, 3e3)}
 # DIAGNOSTIC SNAPSHOT (current Docker state)
 ${sections.join("\n\n")}`;
 }
-
-// src/phases/auth.ts
-import { execSync as execSync4 } from "child_process";
 
 // src/prompts/auth.ts
 function detectAuthPrompt(stackStr, baseUrl, contextSummary) {
@@ -24416,46 +24440,8 @@ Example \u2014 OAuth2 PKCE flow:
         }
       }
     },
-    {
-      type: "function",
-      function: {
-        name: "run_command_on_host",
-        description: "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and other host-level diagnostics. Commands are killed after 30 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description: `Host shell command (e.g. "docker ps --format '{{.ID}} {{.Image}}'", "curl -v http://localhost:3000/session/csrf")`
-            }
-          },
-          required: ["command"],
-          additionalProperties: false
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "run_command_in_docker",
-        description: "Run a command INSIDE a Docker container. Use to create test users (rails runner, python manage.py), inspect the app environment, or run framework CLI commands. Commands are killed after 30 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            container: {
-              type: "string",
-              description: 'Container name or ID (e.g. "bright-app-local", "abc123")'
-            },
-            command: {
-              type: "string",
-              description: `Command to run inside the container (e.g. "rails runner 'User.create!(...)'", "python manage.py createsuperuser --noinput")`
-            }
-          },
-          required: ["container", "command"],
-          additionalProperties: false
-        }
-      }
-    }
+    runCommandOnHostTool,
+    runCommandInDockerTool
   ];
   let lastCreateArgs = {};
   const customHandler = async (name, args) => {
@@ -24602,7 +24588,7 @@ Example \u2014 OAuth2 PKCE flow:
     if (name === "probe_url") {
       return probeUrl2(args);
     }
-    if (name === "run_command" || name === "run_command_on_host") {
+    if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
       console.log(`[Auth] run_command_on_host: ${cmd.slice(0, 200)}`);
       return runShellCommand(repoPath, cmd);
@@ -24611,25 +24597,13 @@ Example \u2014 OAuth2 PKCE flow:
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Auth] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const isRunning = (() => {
-        try {
-          const out = execSync4(
-            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-            { encoding: "utf-8", timeout: 5e3 }
-          ).trim();
-          return out === "true";
-        } catch {
-          return false;
-        }
-      })();
-      const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-      return runShellCommand(repoPath, dockerCmd);
+      return execInDocker(repoPath, container, cmd);
     }
     return `Unknown tool: ${name}`;
   };
   const webHandler = createWebSearchHandler(repoPath);
   const combinedHandler = async (name, args) => {
-    if (name === "create_auth" || name === "create_auth_raw" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command" || name === "run_command_on_host" || name === "run_command_in_docker") {
+    if (name === "create_auth" || name === "create_auth_raw" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command_on_host" || name === "run_command_in_docker") {
       return customHandler(name, args);
     }
     if (name === "search_web" || name === "fetch_url") {
@@ -24726,69 +24700,14 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model, activation
   const seedTools = [
     ...codebaseTools,
     ...webSearchTools,
-    {
-      type: "function",
-      function: {
-        name: "run_command_on_host",
-        description: "Run a shell command on the HOST machine. Use for docker ps, docker logs, and host-level diagnostics. Timeout: 60 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description: `Host shell command (e.g. "docker ps --format '{{.ID}} {{.Image}}'")`
-            }
-          },
-          required: ["command"],
-          additionalProperties: false
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "run_command_in_docker",
-        description: "Run a command INSIDE a Docker container. Use to create test users via framework CLI (rails runner, python manage.py, etc.). Timeout: 60 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            container: {
-              type: "string",
-              description: 'Container name or ID (e.g. "bright-app-local", "abc123")'
-            },
-            command: {
-              type: "string",
-              description: `Command to run inside the container (e.g. "rails runner 'User.create!(...)'", "python manage.py createsuperuser")`
-            }
-          },
-          required: ["container", "command"],
-          additionalProperties: false
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "probe_url",
-        description: "Make an HTTP request to the running app. Use to verify the user was created by testing login.",
-        parameters: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "Full URL to probe" },
-            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
-            headers: { type: "string", description: `JSON headers, e.g. '{"Content-Type":"application/json"}'` },
-            body: { type: "string", description: "Request body for POST/PUT" }
-          },
-          required: ["url"],
-          additionalProperties: false
-        }
-      }
-    }
+    runCommandOnHostTool,
+    runCommandInDockerTool,
+    probeUrlTool
   ];
   const baseCodeHandler = createToolHandler(repoPath);
   const seedWebHandler = createWebSearchHandler(repoPath);
   const handler = async (name, args) => {
-    if (name === "run_command" || name === "run_command_on_host") {
+    if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Seed] run_command_on_host: ${cmd.slice(0, 200)}`);
       return runShellCommand(repoPath, cmd);
@@ -24797,19 +24716,7 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model, activation
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Seed] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const isRunning = (() => {
-        try {
-          const out = execSync4(
-            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-            { encoding: "utf-8", timeout: 5e3 }
-          ).trim();
-          return out === "true";
-        } catch {
-          return false;
-        }
-      })();
-      const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-      return runShellCommand(repoPath, dockerCmd);
+      return execInDocker(repoPath, container, cmd);
     }
     if (name === "probe_url") {
       return probeUrl2(args);
@@ -25202,69 +25109,14 @@ async function repairBrokenLogin(llm, repoPath, baseUrl, diagnostic, model) {
   const repairTools = [
     ...codebaseTools,
     ...webSearchTools,
-    {
-      type: "function",
-      function: {
-        name: "run_command_on_host",
-        description: "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and host-level diagnostics. Timeout: 60 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description: 'Host shell command (e.g. "docker logs bright-app-local --tail 200")'
-            }
-          },
-          required: ["command"],
-          additionalProperties: false
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "run_command_in_docker",
-        description: "Run a command INSIDE a Docker container. Use to run migrations, edit config, restart services, complete setup wizards, etc. Timeout: 120 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            container: {
-              type: "string",
-              description: 'Container name or ID (e.g. "bright-app-local", "abc123")'
-            },
-            command: {
-              type: "string",
-              description: 'Command to run inside the container (e.g. "rails db:migrate", "python manage.py migrate")'
-            }
-          },
-          required: ["container", "command"],
-          additionalProperties: false
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "probe_url",
-        description: "Make an HTTP request to the running app. Use to check if login is working after a fix attempt. Cookies are tracked across calls.",
-        parameters: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "Full URL to probe" },
-            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
-            headers: { type: "string", description: `JSON headers, e.g. '{"Accept":"application/json"}'` },
-            body: { type: "string", description: "Request body for POST/PUT" }
-          },
-          required: ["url"],
-          additionalProperties: false
-        }
-      }
-    }
+    runCommandOnHostTool,
+    runCommandInDockerTool,
+    probeUrlTool
   ];
   const baseCodeHandler = createToolHandler(repoPath);
   const repairWebHandler = createWebSearchHandler(repoPath);
   const handler = async (name, args) => {
-    if (name === "run_command" || name === "run_command_on_host") {
+    if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Repair] run_command_on_host: ${cmd.slice(0, 200)}`);
       return runShellCommand(repoPath, cmd);
@@ -25273,19 +25125,7 @@ async function repairBrokenLogin(llm, repoPath, baseUrl, diagnostic, model) {
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Repair] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const isRunning = (() => {
-        try {
-          const out = execSync4(
-            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-            { encoding: "utf-8", timeout: 5e3 }
-          ).trim();
-          return out === "true";
-        } catch {
-          return false;
-        }
-      })();
-      const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-      return runShellCommand(repoPath, dockerCmd, 12e4);
+      return execInDocker(repoPath, container, cmd, 12e4);
     }
     if (name === "probe_url") {
       return probeUrl2(args);
@@ -25597,11 +25437,6 @@ Use read_file to inspect for errors, setup instructions, or configuration requir
     return `Error: ${msg}`;
   }
 }
-
-// src/phases/setup.ts
-import { execSync as execSync5 } from "child_process";
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync4 } from "fs";
-import { resolve as resolve3 } from "path";
 
 // src/prompts/setup.ts
 function firstRunSetupPrompt(baseUrl, techStack, healthCheckSummary, postStartSetupHints) {
@@ -25937,72 +25772,9 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
   const setupTools = [
     ...codebaseTools,
     ...webSearchTools,
-    {
-      type: "function",
-      function: {
-        name: "run_command_on_host",
-        description: "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and host-level diagnostics. Timeout: 120 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description: `Host shell command (e.g. "docker ps --format '{{.ID}} {{.Image}}'")`
-            }
-          },
-          required: ["command"],
-          additionalProperties: false
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "run_command_in_docker",
-        description: "Run a command INSIDE a Docker container. Use to run migrations, CLI setup, etc. Timeout: 120 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            container: {
-              type: "string",
-              description: "Container name or ID"
-            },
-            command: {
-              type: "string",
-              description: "Command to run inside the container"
-            }
-          },
-          required: ["container", "command"],
-          additionalProperties: false
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "edit_file",
-        description: "Make a targeted edit to a file by replacing an exact string match. Safer than rewriting the whole file \u2014 use for adding env vars to compose.yml, tweaking config, etc. The old_string must match EXACTLY one occurrence.",
-        parameters: {
-          type: "object",
-          properties: {
-            path: {
-              type: "string",
-              description: "Relative file path from the repository root"
-            },
-            old_string: {
-              type: "string",
-              description: "The exact string to find in the file. Must match exactly one occurrence."
-            },
-            new_string: {
-              type: "string",
-              description: "The replacement string."
-            }
-          },
-          required: ["path", "old_string", "new_string"],
-          additionalProperties: false
-        }
-      }
-    },
+    runCommandOnHostTool,
+    runCommandInDockerTool,
+    editFileTool,
     {
       type: "function",
       function: {
@@ -26068,36 +25840,10 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Setup] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const isRunning = (() => {
-        try {
-          const out = execSync5(
-            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-            { encoding: "utf-8", timeout: 5e3 }
-          ).trim();
-          return out === "true";
-        } catch {
-          return false;
-        }
-      })();
-      const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-      return runShellCommand(repoPath, dockerCmd, 12e4);
+      return execInDocker(repoPath, container, cmd, 12e4);
     }
     if (name === "edit_file") {
-      const filePath = resolve3(repoPath, String(args.path ?? ""));
-      if (!filePath.startsWith(repoPath)) return "Error: path traversal attempt blocked";
-      const oldStr = String(args.old_string ?? "");
-      const newStr = String(args.new_string ?? "");
-      if (!oldStr) return "Error: old_string is required";
-      try {
-        const existing = readFileSync5(filePath, "utf-8");
-        const count = existing.split(oldStr).length - 1;
-        if (count === 0) return `Error: old_string not found in ${args.path}. Make sure it matches exactly (including whitespace).`;
-        if (count > 1) return `Error: old_string found ${count} times in ${args.path}. Include more context to make it unique.`;
-        writeFileSync4(filePath, existing.replace(oldStr, newStr));
-        return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
-      } catch (err) {
-        return `Error editing file: ${err instanceof Error ? err.message : String(err)}`;
-      }
+      return handleEditFile(repoPath, args);
     }
     if (name === "probe_url") {
       return probeUrlWithCookies(args, cookieJar);
@@ -26517,7 +26263,7 @@ async function pMap(items, fn, concurrency) {
   await Promise.all(workers);
 }
 function sleep3(ms) {
-  return new Promise((resolve6) => setTimeout(resolve6, ms));
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function resolvePath(path2) {
   let resolved = path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
@@ -26730,13 +26476,13 @@ async function setupRepeater(projectId, api) {
   return { repeaterId, process: proc2 };
 }
 async function waitForRepeaterReady(proc2, timeoutMs) {
-  return new Promise((resolve6, reject) => {
+  return new Promise((resolve5, reject) => {
     const timer = setTimeout(() => {
       console.warn(
         "[Repeater] Timed out waiting for connection \u2014 proceeding anyway"
       );
       cleanup();
-      resolve6();
+      resolve5();
     }, timeoutMs);
     function cleanup() {
       clearTimeout(timer);
@@ -26747,7 +26493,7 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
       const text = d.toString();
       if (/connect(ed|ion established)|started/i.test(text)) {
         cleanup();
-        resolve6();
+        resolve5();
       }
     }
     function onExit(code) {
@@ -27240,8 +26986,8 @@ function normalizeSeverity(s) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync6, writeFileSync as writeFileSync5, mkdirSync as mkdirSync3 } from "fs";
-import { resolve as resolve4, dirname } from "path";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
+import { resolve as resolve3, dirname } from "path";
 
 // src/prompts/generate-fix.ts
 function taintAnalysisPrompt(techStack, finding) {
@@ -27370,7 +27116,7 @@ ${contextSummary}`;
     const filePaths = extractFilePaths(taintAnalysis, repoPath);
     const affectedFiles = filePaths.map((p) => ({
       path: p,
-      content: safeReadFile(resolve4(repoPath, p))
+      content: safeReadFile(resolve3(repoPath, p))
     }));
     const fixMessages = generateFixPrompt(
       stackStr,
@@ -27405,9 +27151,9 @@ ${contextSummary}`;
 function applyFixes(repoPath, fixes) {
   for (const fix of fixes) {
     for (const file of fix.files) {
-      const fullPath = resolve4(repoPath, file.path);
+      const fullPath = resolve3(repoPath, file.path);
       mkdirSync3(dirname(fullPath), { recursive: true });
-      writeFileSync5(fullPath, file.content, "utf-8");
+      writeFileSync4(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
   }
@@ -27419,7 +27165,7 @@ function extractFilePaths(text, repoPath) {
   while ((match2 = regex.exec(text)) !== null) {
     const p = match2[1].replace(/^\.\//, "");
     try {
-      readFileSync6(resolve4(repoPath, p));
+      readFileSync5(resolve3(repoPath, p));
       paths.add(p);
     } catch {
     }
@@ -27428,16 +27174,16 @@ function extractFilePaths(text, repoPath) {
 }
 function safeReadFile(fullPath) {
   try {
-    return readFileSync6(fullPath, "utf-8");
+    return readFileSync5(fullPath, "utf-8");
   } catch {
     return "";
   }
 }
 
 // src/phases/harness.ts
-import { execSync as execSync6, spawn as spawn3 } from "child_process";
-import { writeFileSync as writeFileSync6, existsSync as existsSync6, readFileSync as readFileSync7 } from "fs";
-import { resolve as resolve5 } from "path";
+import { execSync as execSync4, spawn as spawn3 } from "child_process";
+import { writeFileSync as writeFileSync5, existsSync as existsSync6, readFileSync as readFileSync6 } from "fs";
+import { resolve as resolve4 } from "path";
 import { createInterface as createInterface2 } from "readline";
 
 // src/prompts/harness.ts
@@ -27943,12 +27689,12 @@ async function startMinimalInfra(repoPath, infra) {
     console.log("[Harness] No essential infrastructure services");
     return;
   }
-  if (infra.composeFile && existsSync6(resolve5(repoPath, infra.composeFile))) {
+  if (infra.composeFile && existsSync6(resolve4(repoPath, infra.composeFile))) {
     const serviceNames = essentialServices.map((s) => s.name).join(" ");
     const cmd = `docker compose -f ${infra.composeFile} up -d ${serviceNames}`;
     console.log(`[Harness] Starting infra: ${cmd}`);
     try {
-      execSync6(cmd, {
+      execSync4(cmd, {
         cwd: repoPath,
         stdio: "pipe",
         timeout: 12e4,
@@ -27999,7 +27745,7 @@ async function startServicesStandalone(services) {
     const cmd = `docker run -d --name harness_${svc.name} ${portFlags} ${envFlags} ${image}`;
     console.log(`[Harness] Starting standalone: ${cmd}`);
     try {
-      execSync6(cmd, { stdio: "pipe", timeout: 6e4 });
+      execSync4(cmd, { stdio: "pipe", timeout: 6e4 });
     } catch (err) {
       console.warn(`[Harness] Failed to start ${svc.name}: ${toErrorMessage(err)}`);
     }
@@ -28019,7 +27765,7 @@ async function identifyTargets(llm, repoPath, stackStr, handleTool, model) {
         console.warn(`[Harness] Skipping invalid target: ${JSON.stringify(t).slice(0, 200)}`);
         return false;
       }
-      if (!existsSync6(resolve5(repoPath, String(t.file)))) {
+      if (!existsSync6(resolve4(repoPath, String(t.file)))) {
         console.warn(`[Harness] Skipping target with missing file: ${t.file}`);
         return false;
       }
@@ -28079,7 +27825,7 @@ async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTo
     const ext2 = extMap[language] ?? "." + language;
     harnessFileName = `harness${ext2}`;
   }
-  const harnessPath = resolve5(repoPath, harnessFileName);
+  const harnessPath = resolve4(repoPath, harnessFileName);
   if (!startCommand) {
     const cmdMap = {
       ".rb": `ruby ${harnessFileName}`,
@@ -28091,7 +27837,7 @@ async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTo
     const ext2 = harnessFileName.slice(harnessFileName.lastIndexOf("."));
     startCommand = cmdMap[ext2] ?? `node ${harnessFileName}`;
   }
-  writeFileSync6(harnessPath, harnessCode, "utf-8");
+  writeFileSync5(harnessPath, harnessCode, "utf-8");
   console.log(`[Harness] Wrote harness to ${harnessFileName} (${harnessCode.length} bytes)`);
   const endpoints = targets.map((t) => {
     const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
@@ -28121,8 +27867,8 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
   console.log(`[Harness] All targets are tier \u2264${maxTier} \u2014 skipping full app build, using stock runtime image`);
   ensureDockerIgnore(repoPath);
   const harnessFileName = config.harnessFile.split("/").pop();
-  let harnessCode = readFileSync7(config.harnessFile, "utf-8");
-  const harnessDockerfilePath = resolve5(repoPath, "Dockerfile.harness");
+  let harnessCode = readFileSync6(config.harnessFile, "utf-8");
+  const harnessDockerfilePath = resolve4(repoPath, "Dockerfile.harness");
   console.log("[Harness] Generating Dockerfile.harness via LLM...");
   const genMessages = standaloneHarnessDockerfilePrompt(
     techStack,
@@ -28164,13 +27910,13 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
       throw new Error("LLM failed to generate Dockerfile.harness after retry");
     }
   }
-  writeFileSync6(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
+  writeFileSync5(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
   console.log(`[Harness] Generated Dockerfile.harness (${harnessDockerfileContent.split("\n").length} lines)`);
   const MAX_HARNESS_ATTEMPTS = 5;
   for (let attempt = 0; attempt < MAX_HARNESS_ATTEMPTS; attempt++) {
     console.log(`[Harness] Building harness image (attempt ${attempt + 1}/${MAX_HARNESS_ATTEMPTS})...`);
     try {
-      execSync6(`docker build -t ${HARNESS_IMAGE} -f Dockerfile.harness .`, {
+      execSync4(`docker build -t ${HARNESS_IMAGE} -f Dockerfile.harness .`, {
         cwd: repoPath,
         stdio: "pipe",
         timeout: 12e4
@@ -28192,7 +27938,7 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
       continue;
     }
     try {
-      execSync6(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
+      execSync4(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
         stdio: "ignore",
         timeout: 1e4
       });
@@ -28245,7 +27991,7 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
           handleTool,
           modelSelector
         );
-        harnessCode = readFileSync7(config.harnessFile, "utf-8");
+        harnessCode = readFileSync6(config.harnessFile, "utf-8");
       }
       continue;
     } catch (err) {
@@ -28264,7 +28010,7 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
             handleTool,
             modelSelector
           );
-          harnessCode = readFileSync7(config.harnessFile, "utf-8");
+          harnessCode = readFileSync6(config.harnessFile, "utf-8");
         } else {
           await repairHarnessDockerfile(
             llm,
@@ -28307,10 +28053,10 @@ function extractExecError(err) {
   return errMsg;
 }
 async function repairHarnessDockerfile(llm, repoPath, error, harnessCode, harnessFileName, handleTool, modelSelector) {
-  const dockerfilePath = resolve5(repoPath, "Dockerfile.harness");
+  const dockerfilePath = resolve4(repoPath, "Dockerfile.harness");
   let currentDockerfile;
   try {
-    currentDockerfile = readFileSync7(dockerfilePath, "utf-8");
+    currentDockerfile = readFileSync6(dockerfilePath, "utf-8");
   } catch {
     return;
   }
@@ -28338,7 +28084,7 @@ async function repairHarnessDockerfile(llm, repoPath, error, harnessCode, harnes
       return;
     }
     const changed = fixed !== currentDockerfile;
-    writeFileSync6(dockerfilePath, fixed, "utf-8");
+    writeFileSync5(dockerfilePath, fixed, "utf-8");
     console.log(
       `[Harness] LLM repaired Dockerfile.harness (${fixed.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
     );
@@ -28383,7 +28129,7 @@ async function probeEndpoints(port, endpoints) {
   return { errors, healthyPaths };
 }
 async function repairHarnessCode(llm, repoPath, config, probeErrors, targets, handleTool, modelSelector) {
-  const harnessCode = readFileSync7(config.harnessFile, "utf-8");
+  const harnessCode = readFileSync6(config.harnessFile, "utf-8");
   const harnessFileName = config.harnessFile.split("/").pop();
   modelSelector.escalate();
   const messages = harnessCodeRepairPrompt(harnessCode, harnessFileName, probeErrors, targets);
@@ -28404,7 +28150,7 @@ async function repairHarnessCode(llm, repoPath, config, probeErrors, targets, ha
     }
     const fixedCode = codeMatch[2];
     const changed = fixedCode !== harnessCode;
-    writeFileSync6(config.harnessFile, fixedCode, "utf-8");
+    writeFileSync5(config.harnessFile, fixedCode, "utf-8");
     console.log(
       `[Harness] LLM repaired harness code (${fixedCode.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
     );
@@ -28462,11 +28208,11 @@ ${outputLines.slice(-30).join("\n")}`
 }
 function cleanupHarnessInfra(repoPath) {
   try {
-    execSync6(
+    execSync4(
       `docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`,
       { stdio: "ignore", timeout: 15e3 }
     );
-    execSync6(
+    execSync4(
       "docker rm -f $(docker ps -aq --filter name=harness_) 2>/dev/null || true",
       { stdio: "ignore", timeout: 15e3 }
     );
@@ -28542,11 +28288,11 @@ var AppHealthMonitor = class {
   async waitHealthy() {
     if (this.healthy) return;
     if (!this.gate) {
-      let resolve6;
+      let resolve5;
       const promise = new Promise((r) => {
-        resolve6 = r;
+        resolve5 = r;
       });
-      this.gate = { promise, resolve: resolve6 };
+      this.gate = { promise, resolve: resolve5 };
     }
     await this.gate.promise;
   }
@@ -28642,11 +28388,11 @@ var AppHealthMonitor = class {
   markUnhealthy() {
     this.healthy = false;
     if (!this.gate) {
-      let resolve6;
+      let resolve5;
       const promise = new Promise((r) => {
-        resolve6 = r;
+        resolve5 = r;
       });
-      this.gate = { promise, resolve: resolve6 };
+      this.gate = { promise, resolve: resolve5 };
     }
     console.warn(
       `[AppHealth] App marked UNHEALTHY \u2014 pausing dependent operations`
@@ -29921,12 +29667,12 @@ function mergeQueryParams(a, b) {
   return merged.length > 0 ? merged : void 0;
 }
 function killProcess(proc2) {
-  return new Promise((resolve6) => {
+  return new Promise((resolve5) => {
     if (!proc2 || !proc2.pid) {
-      resolve6();
+      resolve5();
       return;
     }
-    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve6());
+    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve5());
   });
 }
 async function stopRunningScans(api, scanIds) {

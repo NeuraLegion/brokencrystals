@@ -1,13 +1,16 @@
 import type OpenAI from "openai";
 import type { TechStack, BrightApiContext } from "../types.js";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
-import { execSync } from "child_process";
 import { chatWithTools, type ToolHandler } from "../inference.js";
 import {
   codebaseTools,
   createToolHandler,
   webSearchTools,
   createWebSearchHandler,
+  runCommandOnHostTool,
+  runCommandInDockerTool,
+  probeUrlTool,
+  execInDocker,
 } from "../tools.js";
 import { listAuthObjects, getAuthObject } from "../bright-api.js";
 import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody, stripHtmlForAnalysis } from "../utils.js";
@@ -1093,51 +1096,8 @@ Example — OAuth2 PKCE flow:
         },
       },
     },
-    {
-      type: "function",
-      function: {
-        name: "run_command_on_host",
-        description:
-          "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and other host-level diagnostics. Commands are killed after 30 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description:
-                'Host shell command (e.g. "docker ps --format \'{{.ID}} {{.Image}}\'", "curl -v http://localhost:3000/session/csrf")',
-            },
-          },
-          required: ["command"],
-          additionalProperties: false,
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "run_command_in_docker",
-        description:
-          "Run a command INSIDE a Docker container. Use to create test users (rails runner, python manage.py), inspect the app environment, or run framework CLI commands. Commands are killed after 30 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            container: {
-              type: "string",
-              description:
-                'Container name or ID (e.g. "bright-app-local", "abc123")',
-            },
-            command: {
-              type: "string",
-              description:
-                'Command to run inside the container (e.g. "rails runner \'User.create!(...)\'", "python manage.py createsuperuser --noinput")',
-            },
-          },
-          required: ["container", "command"],
-          additionalProperties: false,
-        },
-      },
-    },
+    runCommandOnHostTool,
+    runCommandInDockerTool,
   ];
 
   let lastCreateArgs: Record<string, unknown> = {};
@@ -1309,7 +1269,7 @@ Example — OAuth2 PKCE flow:
     if (name === "probe_url") {
       return probeUrl(args);
     }
-    if (name === "run_command" || name === "run_command_on_host") {
+    if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
       console.log(`[Auth] run_command_on_host: ${cmd.slice(0, 200)}`);
       return runShellCommand(repoPath, cmd);
@@ -1318,21 +1278,7 @@ Example — OAuth2 PKCE flow:
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Auth] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const isRunning = (() => {
-        try {
-          const out = execSync(
-            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-            { encoding: "utf-8", timeout: 5_000 },
-          ).trim();
-          return out === "true";
-        } catch {
-          return false;
-        }
-      })();
-      const dockerCmd = isRunning
-        ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
-        : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-      return runShellCommand(repoPath, dockerCmd);
+      return execInDocker(repoPath, container, cmd);
     }
     return `Unknown tool: ${name}`;
   };
@@ -1345,7 +1291,6 @@ Example — OAuth2 PKCE flow:
       name === "test_auth_object" ||
       name === "delete_auth_object" ||
       name === "probe_url" ||
-      name === "run_command" ||
       name === "run_command_on_host" ||
       name === "run_command_in_docker"
     ) {
@@ -1505,73 +1450,15 @@ async function seedTestUser(
   const seedTools: ChatCompletionTool[] = [
     ...codebaseTools,
     ...webSearchTools,
-    {
-      type: "function",
-      function: {
-        name: "run_command_on_host",
-        description:
-          "Run a shell command on the HOST machine. Use for docker ps, docker logs, and host-level diagnostics. Timeout: 60 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description: 'Host shell command (e.g. "docker ps --format \'{{.ID}} {{.Image}}\'")',
-            },
-          },
-          required: ["command"],
-          additionalProperties: false,
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "run_command_in_docker",
-        description:
-          "Run a command INSIDE a Docker container. Use to create test users via framework CLI (rails runner, python manage.py, etc.). Timeout: 60 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            container: {
-              type: "string",
-              description: 'Container name or ID (e.g. "bright-app-local", "abc123")',
-            },
-            command: {
-              type: "string",
-              description: 'Command to run inside the container (e.g. "rails runner \'User.create!(...)\'", "python manage.py createsuperuser")',
-            },
-          },
-          required: ["container", "command"],
-          additionalProperties: false,
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "probe_url",
-        description:
-          "Make an HTTP request to the running app. Use to verify the user was created by testing login.",
-        parameters: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "Full URL to probe" },
-            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
-            headers: { type: "string", description: 'JSON headers, e.g. \'{"Content-Type":"application/json"}\'' },
-            body: { type: "string", description: "Request body for POST/PUT" },
-          },
-          required: ["url"],
-          additionalProperties: false,
-        },
-      },
-    },
+    runCommandOnHostTool,
+    runCommandInDockerTool,
+    probeUrlTool,
   ];
 
   const baseCodeHandler = createToolHandler(repoPath);
   const seedWebHandler = createWebSearchHandler(repoPath);
   const handler: ToolHandler = async (name, args) => {
-    if (name === "run_command" || name === "run_command_on_host") {
+    if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Seed] run_command_on_host: ${cmd.slice(0, 200)}`);
       return runShellCommand(repoPath, cmd);
@@ -1580,21 +1467,7 @@ async function seedTestUser(
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Seed] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const isRunning = (() => {
-        try {
-          const out = execSync(
-            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-            { encoding: "utf-8", timeout: 5_000 },
-          ).trim();
-          return out === "true";
-        } catch {
-          return false;
-        }
-      })();
-      const dockerCmd = isRunning
-        ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
-        : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-      return runShellCommand(repoPath, dockerCmd);
+      return execInDocker(repoPath, container, cmd);
     }
     if (name === "probe_url") {
       return probeUrl(args);
@@ -2126,73 +1999,15 @@ async function repairBrokenLogin(
   const repairTools: ChatCompletionTool[] = [
     ...codebaseTools,
     ...webSearchTools,
-    {
-      type: "function",
-      function: {
-        name: "run_command_on_host",
-        description:
-          "Run a shell command on the HOST machine. Use for docker ps, docker logs, curl, and host-level diagnostics. Timeout: 60 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description: 'Host shell command (e.g. "docker logs bright-app-local --tail 200")',
-            },
-          },
-          required: ["command"],
-          additionalProperties: false,
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "run_command_in_docker",
-        description:
-          "Run a command INSIDE a Docker container. Use to run migrations, edit config, restart services, complete setup wizards, etc. Timeout: 120 seconds.",
-        parameters: {
-          type: "object",
-          properties: {
-            container: {
-              type: "string",
-              description: 'Container name or ID (e.g. "bright-app-local", "abc123")',
-            },
-            command: {
-              type: "string",
-              description: 'Command to run inside the container (e.g. "rails db:migrate", "python manage.py migrate")',
-            },
-          },
-          required: ["container", "command"],
-          additionalProperties: false,
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "probe_url",
-        description:
-          "Make an HTTP request to the running app. Use to check if login is working after a fix attempt. Cookies are tracked across calls.",
-        parameters: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "Full URL to probe" },
-            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
-            headers: { type: "string", description: 'JSON headers, e.g. \'{"Accept":"application/json"}\'' },
-            body: { type: "string", description: "Request body for POST/PUT" },
-          },
-          required: ["url"],
-          additionalProperties: false,
-        },
-      },
-    },
+    runCommandOnHostTool,
+    runCommandInDockerTool,
+    probeUrlTool,
   ];
 
   const baseCodeHandler = createToolHandler(repoPath);
   const repairWebHandler = createWebSearchHandler(repoPath);
   const handler: ToolHandler = async (name, args) => {
-    if (name === "run_command" || name === "run_command_on_host") {
+    if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Repair] run_command_on_host: ${cmd.slice(0, 200)}`);
       return runShellCommand(repoPath, cmd);
@@ -2201,22 +2016,7 @@ async function repairBrokenLogin(
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Repair] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const isRunning = (() => {
-        try {
-          const out = execSync(
-            `docker inspect --format='{{.State.Running}}' ${JSON.stringify(container)} 2>/dev/null`,
-            { encoding: "utf-8", timeout: 5_000 },
-          ).trim();
-          return out === "true";
-        } catch {
-          return false;
-        }
-      })();
-      const dockerCmd = isRunning
-        ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`
-        : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(cmd)}`;
-      // Longer timeout for repair ops (migrations can be slow)
-      return runShellCommand(repoPath, dockerCmd, 120_000);
+      return execInDocker(repoPath, container, cmd, 120_000);
     }
     if (name === "probe_url") {
       return probeUrl(args);
