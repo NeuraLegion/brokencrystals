@@ -68,6 +68,7 @@ export class AppHealthMonitor {
 
   private timer?: NodeJS.Timeout;
   private running = false;
+  private paused = false;
   private healthy = true;
   private consecutiveFailures = 0;
   private probeCount = 0;
@@ -110,6 +111,7 @@ export class AppHealthMonitor {
   stop(): void {
     if (!this.running) return;
     this.running = false;
+    this.paused = false;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
@@ -119,6 +121,37 @@ export class AppHealthMonitor {
       this.gate.resolve();
       this.gate = undefined;
     }
+  }
+
+  /**
+   * Temporarily suspend probing and recovery. Use when the orchestrator
+   * is rebuilding/restarting the app — avoids the health monitor racing
+   * with docker compose up --build. If a recovery is already in flight,
+   * waits for it to complete before returning.
+   */
+  async pause(): Promise<void> {
+    if (this.paused) return;
+    this.paused = true;
+    // Wait for any in-flight recovery to complete so there's no concurrent
+    // quickRestartCompose racing with the orchestrator's rebuild.
+    if (this.recoveryInFlight) {
+      try { await this.recoveryInFlight; } catch { /* ignore */ }
+    }
+    console.log("[AppHealth] Monitor paused (orchestrator owns the app lifecycle)");
+  }
+
+  /**
+   * Resume probing after the orchestrator finishes its rebuild/restart.
+   * Resets the failure counter so stale failures from the rebuild window
+   * don't immediately trip the unhealthy threshold. Also marks healthy and
+   * opens the gate if needed — the orchestrator already verified the app.
+   */
+  resume(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    this.consecutiveFailures = 0;
+    if (!this.healthy) this.markHealthy();
+    console.log("[AppHealth] Monitor resumed");
   }
 
   isHealthy(): boolean {
@@ -148,7 +181,7 @@ export class AppHealthMonitor {
    * Triggers an immediate probe outside the regular polling cadence.
    */
   signalProbableUnhealthy(reason: string): void {
-    if (!this.running) return;
+    if (!this.running || this.paused) return;
     if (this.probeInFlight) return;
     void this.probe(`signal: ${reason}`);
   }
@@ -177,7 +210,7 @@ export class AppHealthMonitor {
   }
 
   private async probe(reason: string): Promise<void> {
-    if (!this.running) return;
+    if (!this.running || this.paused) return;
     if (this.probeInFlight) return;
     this.probeInFlight = true;
     try {
@@ -279,6 +312,7 @@ export class AppHealthMonitor {
 
   private async runRecovery(): Promise<RecoveryResult> {
     if (this.recoveryInFlight) return this.recoveryInFlight;
+    if (this.paused) return { ok: false, detail: "monitor paused — orchestrator handling restart" };
     if (!this.onRecover) {
       console.warn(`[AppHealth] No recovery callback registered — staying paused`);
       return { ok: false, detail: "no recovery callback" };

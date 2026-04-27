@@ -67,18 +67,24 @@ async function restartApp(
   modelSelector: ModelSelector,
   registration?: AuthResult["registration"],
   recoveryHints?: string[],
+  monitor?: AppHealthMonitor,
 ): Promise<StartupResult> {
-  await killProcess(current);
-  const result = await startApplicationWithRetries(
-    llm,
-    repoPath,
-    techStack,
-    startupConfig,
-    modelSelector,
-    recoveryHints,
-  );
-  if (registration) await reRegisterUser(registration);
-  return result;
+  await monitor?.pause();
+  try {
+    await killProcess(current);
+    const result = await startApplicationWithRetries(
+      llm,
+      repoPath,
+      techStack,
+      startupConfig,
+      modelSelector,
+      recoveryHints,
+    );
+    if (registration) await reRegisterUser(registration);
+    return result;
+  } finally {
+    monitor?.resume();
+  }
 }
 
 /**
@@ -776,7 +782,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           // Auth is broken and couldn't be repaired — need to restart the app
           // in case a code repair was applied, then retry
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
             appProcess = restart.process;
             // Retest after restart
             const retryOk = await verifyAndRepairAuth(
@@ -819,7 +825,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           `[Scan] App is unreachable on port ${startupConfig.port} — restarting before scan`,
         );
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
           appProcess = restart.process;
           console.log("[Scan] App restarted successfully");
         } catch (err) {
@@ -940,7 +946,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             "[Scan] App appears to have crashed during scanning — attempting restart and retry",
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
             appProcess = restart.process;
             console.log(
               "[Scan] App restarted — will retry scans on next iteration",
@@ -989,7 +995,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             "[Scan] App appears to have crashed during scanning — attempting restart before processing findings",
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
             appProcess = restart.process;
             console.log("[Scan] App restarted");
           } catch (restartErr) {
@@ -1135,7 +1141,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         let healthy = false;
 
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
           appProcess = restart.process;
           healthy = true;
         } catch (startupErr) {
@@ -1157,7 +1163,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             config.modelSelector,
           );
           if (healthy) {
-            const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+            const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
             appProcess = restart.process;
           } else {
             // Last resort: revert ALL fix commits from this round
@@ -1171,7 +1177,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
                 { cwd: repoPath, stdio: "pipe" },
               );
               execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+              const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
               appProcess = restart.process;
             } catch {
               console.error("[Fix] Could not recover — aborting fix round");

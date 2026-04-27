@@ -2579,6 +2579,11 @@ export async function waitForPort(
   let fatalDiagnosis = "";
   let consecutive500s = 0;
   const max500sBeforeFail = 5; // fail fast after 5 consecutive 500s (~10s)
+  let consecutiveGatewayErrors = 0;
+  // Gateway errors (502/503/504) during boot are normal — the reverse proxy
+  // is up but the backend (uwsgi, gunicorn, puma) isn't ready yet. Give them
+  // a much longer grace window, especially when the AI confirms "still progressing".
+  const MAX_GATEWAY_ERRORS_BEFORE_FAIL = 60; // ~2 minutes at 2s interval
   let consecutiveConnFailures = 0; // track connection refused / reset
   let localhostBindingChecked = false; // only check once
   let responseAnalysisDone = false; // only analyze once per health check cycle
@@ -2612,6 +2617,7 @@ export async function waitForPort(
       // But ask the AI to verify the response looks like a real working app.
       if (response.status < 500) {
         consecutive500s = 0;
+        consecutiveGatewayErrors = 0;
         consecutiveConnFailures = 0; // got a real response
 
         // Read the body for AI analysis
@@ -2658,22 +2664,51 @@ export async function waitForPort(
         lastBody = extractErrorFromHtml(text);
       } catch { /* ignore body read failure */ }
 
-      consecutive500s++;
+      // Distinguish gateway errors (502/503/504) from real app errors (500).
+      // Gateway errors mean the reverse proxy (nginx, caddy) is up but the
+      // backend (uwsgi, gunicorn, puma) isn't ready — normal during boot.
+      const isGatewayError = response.status === 502 || response.status === 503 || response.status === 504;
 
-      // Fail fast on persistent 500s — the app is running but broken
-      if (consecutive500s >= max500sBeforeFail) {
-        let errMsg = `Application returning HTTP ${response.status} persistently on port ${port}`;
-        if (lastBody) errMsg += `\n\nHTTP ${response.status} response body:\n${lastBody}`;
-        if (repoPath) {
-          const logs = getContainerLogTail(repoPath, 40);
-          if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
+      if (isGatewayError) {
+        consecutiveGatewayErrors++;
+        consecutive500s = 0; // reset real-500 counter
+        // If the AI has been reporting "still progressing", extend the
+        // gateway patience dynamically — the backend is clearly booting.
+        const gatewayLimit = progressCount > 0
+          ? MAX_GATEWAY_ERRORS_BEFORE_FAIL * 2  // ~4 minutes if AI says progressing
+          : MAX_GATEWAY_ERRORS_BEFORE_FAIL;
+        if (consecutiveGatewayErrors >= gatewayLimit) {
+          let errMsg = `Application returning HTTP ${response.status} (gateway error) persistently on port ${port} — backend never became ready`;
+          if (lastBody) errMsg += `\n\nHTTP ${response.status} response body:\n${lastBody}`;
+          if (repoPath) {
+            const logs = getContainerLogTail(repoPath, 40);
+            if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
+          }
+          throw new StartupFailedError(errMsg);
         }
-        throw new StartupFailedError(errMsg);
+        // Log sparingly — every 10th occurrence (~20s)
+        if (consecutiveGatewayErrors % 10 === 1) {
+          console.log(
+            `[Startup] Port ${port} responding with HTTP ${response.status} (gateway error ${consecutiveGatewayErrors}/${gatewayLimit}) — backend not ready yet, waiting...`,
+          );
+        }
+      } else {
+        // Real 500 errors — the app is running but broken
+        consecutive500s++;
+        consecutiveGatewayErrors = 0;
+        if (consecutive500s >= max500sBeforeFail) {
+          let errMsg = `Application returning HTTP ${response.status} persistently on port ${port}`;
+          if (lastBody) errMsg += `\n\nHTTP ${response.status} response body:\n${lastBody}`;
+          if (repoPath) {
+            const logs = getContainerLogTail(repoPath, 40);
+            if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
+          }
+          throw new StartupFailedError(errMsg);
+        }
+        console.log(
+          `[Startup] Port ${port} responding with HTTP ${response.status} (${consecutive500s}/${max500sBeforeFail}) — will fail fast if persistent...`,
+        );
       }
-
-      console.log(
-        `[Startup] Port ${port} responding with HTTP ${response.status} (${consecutive500s}/${max500sBeforeFail}) — will fail fast if persistent...`,
-      );
     } catch (err) {
       if (err instanceof StartupFailedError) throw err;
       // Connection refused / timeout — server not ready yet
@@ -2878,7 +2913,9 @@ async function pollComposeContainersAlive(
           const [name, state] = line.trim().split(/\s+/);
           if (!name || !state) continue;
           // Skip infrastructure services — we only care about the app container
-          if (/^(postgres|redis|mysql|mongo|memcached|rabbitmq|elasticsearch|kafka|zookeeper)/i.test(name)) continue;
+          if (/^(postgres|redis|valkey|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|opensearch|kafka|zookeeper|minio|mailhog|mailpit)/i.test(name)) continue;
+          // Skip background worker containers — they don't serve HTTP
+          if (/celery|sidekiq|resque|worker|cron|scheduler|beat/i.test(name)) continue;
           if (state === "exited" || state === "dead") {
             // Grab the exit code for richer error context
             let exitInfo = "";
@@ -2888,6 +2925,20 @@ async function pollComposeContainersAlive(
                 { encoding: "utf-8", timeout: 5_000 },
               ).trim();
             } catch { /* ignore */ }
+
+            // One-shot init/migration containers that exit with code 0 are
+            // normal — DefectDojo initializer, Rails db:migrate, Django
+            // collectstatic, etc. Don't treat them as crashes.
+            if (exitInfo === "0") {
+              const isInitContainer = /init|migrat|setup|seed|bootstrap|collect|fixture/i.test(name);
+              if (isInitContainer) continue; // expected one-shot exit
+              // Even non-init containers exiting with code 0 might be fine
+              // (e.g. a health-check sidecar). Only flag as crash if the name
+              // looks like it should serve HTTP.
+              const looksLikeAppServer = /web|app|api|server|uwsgi|gunicorn|puma|nginx|caddy|rails|django|node|flask/i.test(name);
+              if (!looksLikeAppServer) continue;
+            }
+
             throw new Error(
               `Compose container "${name}" crashed (state: ${state}${exitInfo ? `, exit code: ${exitInfo}` : ""})`,
             );

@@ -22600,6 +22600,8 @@ async function waitForPort(port, timeoutMs, healthCheckPath = "/", repoPath, ana
   let fatalDiagnosis = "";
   let consecutive500s = 0;
   const max500sBeforeFail = 5;
+  let consecutiveGatewayErrors = 0;
+  const MAX_GATEWAY_ERRORS_BEFORE_FAIL = 60;
   let consecutiveConnFailures = 0;
   let localhostBindingChecked = false;
   let responseAnalysisDone = false;
@@ -22634,6 +22636,7 @@ ${logs}`;
       portHasEverResponded = true;
       if (response.status < 500) {
         consecutive500s = 0;
+        consecutiveGatewayErrors = 0;
         consecutiveConnFailures = 0;
         let responseBody = "";
         try {
@@ -22675,25 +22678,53 @@ ${logs}`;
         lastBody = extractErrorFromHtml(text);
       } catch {
       }
-      consecutive500s++;
-      if (consecutive500s >= max500sBeforeFail) {
-        let errMsg2 = `Application returning HTTP ${response.status} persistently on port ${port}`;
-        if (lastBody) errMsg2 += `
+      const isGatewayError = response.status === 502 || response.status === 503 || response.status === 504;
+      if (isGatewayError) {
+        consecutiveGatewayErrors++;
+        consecutive500s = 0;
+        const gatewayLimit = progressCount > 0 ? MAX_GATEWAY_ERRORS_BEFORE_FAIL * 2 : MAX_GATEWAY_ERRORS_BEFORE_FAIL;
+        if (consecutiveGatewayErrors >= gatewayLimit) {
+          let errMsg2 = `Application returning HTTP ${response.status} (gateway error) persistently on port ${port} \u2014 backend never became ready`;
+          if (lastBody) errMsg2 += `
 
 HTTP ${response.status} response body:
 ${lastBody}`;
-        if (repoPath) {
-          const logs = getContainerLogTail(repoPath, 40);
-          if (logs) errMsg2 += `
+          if (repoPath) {
+            const logs = getContainerLogTail(repoPath, 40);
+            if (logs) errMsg2 += `
 
 Container logs:
 ${logs}`;
+          }
+          throw new StartupFailedError(errMsg2);
         }
-        throw new StartupFailedError(errMsg2);
+        if (consecutiveGatewayErrors % 10 === 1) {
+          console.log(
+            `[Startup] Port ${port} responding with HTTP ${response.status} (gateway error ${consecutiveGatewayErrors}/${gatewayLimit}) \u2014 backend not ready yet, waiting...`
+          );
+        }
+      } else {
+        consecutive500s++;
+        consecutiveGatewayErrors = 0;
+        if (consecutive500s >= max500sBeforeFail) {
+          let errMsg2 = `Application returning HTTP ${response.status} persistently on port ${port}`;
+          if (lastBody) errMsg2 += `
+
+HTTP ${response.status} response body:
+${lastBody}`;
+          if (repoPath) {
+            const logs = getContainerLogTail(repoPath, 40);
+            if (logs) errMsg2 += `
+
+Container logs:
+${logs}`;
+          }
+          throw new StartupFailedError(errMsg2);
+        }
+        console.log(
+          `[Startup] Port ${port} responding with HTTP ${response.status} (${consecutive500s}/${max500sBeforeFail}) \u2014 will fail fast if persistent...`
+        );
       }
-      console.log(
-        `[Startup] Port ${port} responding with HTTP ${response.status} (${consecutive500s}/${max500sBeforeFail}) \u2014 will fail fast if persistent...`
-      );
     } catch (err) {
       if (err instanceof StartupFailedError) throw err;
       consecutiveConnFailures++;
@@ -22849,7 +22880,8 @@ async function pollComposeContainersAlive(repoPath, timeoutMs) {
         for (const line of ps.split("\n")) {
           const [name, state] = line.trim().split(/\s+/);
           if (!name || !state) continue;
-          if (/^(postgres|redis|mysql|mongo|memcached|rabbitmq|elasticsearch|kafka|zookeeper)/i.test(name)) continue;
+          if (/^(postgres|redis|valkey|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|opensearch|kafka|zookeeper|minio|mailhog|mailpit)/i.test(name)) continue;
+          if (/celery|sidekiq|resque|worker|cron|scheduler|beat/i.test(name)) continue;
           if (state === "exited" || state === "dead") {
             let exitInfo = "";
             try {
@@ -22858,6 +22890,12 @@ async function pollComposeContainersAlive(repoPath, timeoutMs) {
                 { encoding: "utf-8", timeout: 5e3 }
               ).trim();
             } catch {
+            }
+            if (exitInfo === "0") {
+              const isInitContainer = /init|migrat|setup|seed|bootstrap|collect|fixture/i.test(name);
+              if (isInitContainer) continue;
+              const looksLikeAppServer = /web|app|api|server|uwsgi|gunicorn|puma|nginx|caddy|rails|django|node|flask/i.test(name);
+              if (!looksLikeAppServer) continue;
             }
             throw new Error(
               `Compose container "${name}" crashed (state: ${state}${exitInfo ? `, exit code: ${exitInfo}` : ""})`
@@ -28327,6 +28365,7 @@ var AppHealthMonitor = class {
   onDeepProbe;
   timer;
   running = false;
+  paused = false;
   healthy = true;
   consecutiveFailures = 0;
   probeCount = 0;
@@ -28364,6 +28403,7 @@ var AppHealthMonitor = class {
   stop() {
     if (!this.running) return;
     this.running = false;
+    this.paused = false;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = void 0;
@@ -28372,6 +28412,36 @@ var AppHealthMonitor = class {
       this.gate.resolve();
       this.gate = void 0;
     }
+  }
+  /**
+   * Temporarily suspend probing and recovery. Use when the orchestrator
+   * is rebuilding/restarting the app — avoids the health monitor racing
+   * with docker compose up --build. If a recovery is already in flight,
+   * waits for it to complete before returning.
+   */
+  async pause() {
+    if (this.paused) return;
+    this.paused = true;
+    if (this.recoveryInFlight) {
+      try {
+        await this.recoveryInFlight;
+      } catch {
+      }
+    }
+    console.log("[AppHealth] Monitor paused (orchestrator owns the app lifecycle)");
+  }
+  /**
+   * Resume probing after the orchestrator finishes its rebuild/restart.
+   * Resets the failure counter so stale failures from the rebuild window
+   * don't immediately trip the unhealthy threshold. Also marks healthy and
+   * opens the gate if needed — the orchestrator already verified the app.
+   */
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.consecutiveFailures = 0;
+    if (!this.healthy) this.markHealthy();
+    console.log("[AppHealth] Monitor resumed");
   }
   isHealthy() {
     return this.healthy;
@@ -28397,7 +28467,7 @@ var AppHealthMonitor = class {
    * Triggers an immediate probe outside the regular polling cadence.
    */
   signalProbableUnhealthy(reason) {
-    if (!this.running) return;
+    if (!this.running || this.paused) return;
     if (this.probeInFlight) return;
     void this.probe(`signal: ${reason}`);
   }
@@ -28421,7 +28491,7 @@ var AppHealthMonitor = class {
     return result;
   }
   async probe(reason) {
-    if (!this.running) return;
+    if (!this.running || this.paused) return;
     if (this.probeInFlight) return;
     this.probeInFlight = true;
     try {
@@ -28504,6 +28574,7 @@ var AppHealthMonitor = class {
   }
   async runRecovery() {
     if (this.recoveryInFlight) return this.recoveryInFlight;
+    if (this.paused) return { ok: false, detail: "monitor paused \u2014 orchestrator handling restart" };
     if (!this.onRecover) {
       console.warn(`[AppHealth] No recovery callback registered \u2014 staying paused`);
       return { ok: false, detail: "no recovery callback" };
@@ -28542,18 +28613,23 @@ var AppHealthMonitor = class {
 // src/orchestrator.ts
 var MAX_ITERATIONS = 5;
 var MAX_FIX_REPAIR_ATTEMPTS = 2;
-async function restartApp(current, llm, repoPath, techStack, startupConfig, modelSelector, registration, recoveryHints) {
-  await killProcess(current);
-  const result = await startApplicationWithRetries(
-    llm,
-    repoPath,
-    techStack,
-    startupConfig,
-    modelSelector,
-    recoveryHints
-  );
-  if (registration) await reRegisterUser(registration);
-  return result;
+async function restartApp(current, llm, repoPath, techStack, startupConfig, modelSelector, registration, recoveryHints, monitor) {
+  await monitor?.pause();
+  try {
+    await killProcess(current);
+    const result = await startApplicationWithRetries(
+      llm,
+      repoPath,
+      techStack,
+      startupConfig,
+      modelSelector,
+      recoveryHints
+    );
+    if (registration) await reRegisterUser(registration);
+    return result;
+  } finally {
+    monitor?.resume();
+  }
 }
 async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, modelSelector, progress, context) {
   const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
@@ -29103,7 +29179,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         );
         if (!authOk) {
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
             appProcess = restart.process;
             const retryOk = await verifyAndRepairAuth(
               llm,
@@ -29143,7 +29219,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           `[Scan] App is unreachable on port ${startupConfig.port} \u2014 restarting before scan`
         );
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
           appProcess = restart.process;
           console.log("[Scan] App restarted successfully");
         } catch (err) {
@@ -29248,7 +29324,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart and retry"
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
             appProcess = restart.process;
             console.log(
               "[Scan] App restarted \u2014 will retry scans on next iteration"
@@ -29291,7 +29367,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart before processing findings"
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
             appProcess = restart.process;
             console.log("[Scan] App restarted");
           } catch (restartErr) {
@@ -29406,7 +29482,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       if (fixCommitCount.value > 0) {
         let healthy = false;
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
           appProcess = restart.process;
           healthy = true;
         } catch (startupErr) {
@@ -29426,7 +29502,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             config.modelSelector
           );
           if (healthy) {
-            const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+            const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
             appProcess = restart.process;
           } else {
             console.log(
@@ -29439,7 +29515,7 @@ This user should work for authentication. Skip user registration/seeding and go 
                 { cwd: repoPath, stdio: "pipe" }
               );
               execFileSync5("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration);
+              const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
               appProcess = restart.process;
             } catch {
               console.error("[Fix] Could not recover \u2014 aborting fix round");
