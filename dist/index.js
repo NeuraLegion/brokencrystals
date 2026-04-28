@@ -26540,37 +26540,70 @@ async function pruneDeadEntrypoints(api, projectId, entries) {
     },
     CONCURRENCY
   );
-  await Promise.allSettled(
-    dead.map((epId) => deleteEntrypoint(api, projectId, epId))
-  );
   if (dead.length > 0) {
+    await deleteEntrypoints(api, projectId, dead);
     console.log(
       `[Entrypoints] Pruned ${dead.length} dead (404) entrypoint(s), ${alive.length} remaining`
     );
   }
   return alive;
 }
-async function deleteEntrypoint(api, projectId, entrypointId) {
-  try {
-    const res = await fetch(
-      `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Api-Key ${api.brightToken}` }
+var DELETE_MAX_RETRIES = 5;
+var DELETE_BACKOFF_MS = 2e3;
+async function deleteEntrypoints(api, projectId, ids) {
+  const baseUrl = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
+  let deleted = 0;
+  let skipped = 0;
+  for (const id of ids) {
+    let attempt = 0;
+    while (attempt <= DELETE_MAX_RETRIES) {
+      try {
+        const res = await fetch(`${baseUrl}/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Api-Key ${api.brightToken}` }
+        });
+        if (res.ok || res.status === 204) {
+          deleted++;
+          break;
+        }
+        if (res.status === 404) {
+          break;
+        }
+        if (res.status === 429) {
+          attempt++;
+          if (attempt > DELETE_MAX_RETRIES) {
+            console.warn(
+              `[Entrypoints] Giving up deleting ${id} after ${DELETE_MAX_RETRIES} rate-limit retries`
+            );
+            skipped++;
+            break;
+          }
+          const backoff = DELETE_BACKOFF_MS * Math.pow(2, attempt - 1);
+          console.warn(
+            `[Entrypoints] Rate limited (429) deleting ${id} \u2014 retry ${attempt}/${DELETE_MAX_RETRIES} in ${(backoff / 1e3).toFixed(0)}s`
+          );
+          await sleep3(backoff);
+          continue;
+        }
+        console.warn(
+          `[Entrypoints] Failed to delete entrypoint ${id}: ${res.status}`
+        );
+        skipped++;
+        break;
+      } catch (err) {
+        console.warn(
+          `[Entrypoints] Failed to delete entrypoint ${id}: ${err}`
+        );
+        skipped++;
+        break;
       }
-    );
-    if (res.ok || res.status === 204) {
-      console.log(`[Entrypoints] Deleted entrypoint ${entrypointId}`);
-    } else if (res.status === 404) {
-    } else {
-      console.warn(
-        `[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${res.status}`
-      );
     }
-  } catch (err) {
-    console.warn(
-      `[Entrypoints] Failed to delete entrypoint ${entrypointId}: ${err}`
-    );
+    if (ids.indexOf(id) < ids.length - 1) {
+      await sleep3(200);
+    }
+  }
+  if (skipped > 0) {
+    console.warn(`[Entrypoints] ${skipped}/${ids.length} deletes failed`);
   }
 }
 function sanitizeBody(body) {
