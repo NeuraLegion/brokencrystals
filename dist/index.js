@@ -26548,62 +26548,45 @@ async function pruneDeadEntrypoints(api, projectId, entries) {
   }
   return alive;
 }
-var DELETE_MAX_RETRIES = 5;
+var DELETE_MAX_RETRIES = 3;
 var DELETE_BACKOFF_MS = 2e3;
 async function deleteEntrypoints(api, projectId, ids) {
-  const baseUrl = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
-  let deleted = 0;
-  let skipped = 0;
-  for (const id of ids) {
-    let attempt = 0;
-    while (attempt <= DELETE_MAX_RETRIES) {
-      try {
-        const res = await fetch(`${baseUrl}/${encodeURIComponent(id)}`, {
-          method: "DELETE",
-          headers: { Authorization: `Api-Key ${api.brightToken}` }
-        });
-        if (res.ok || res.status === 204) {
-          deleted++;
-          break;
-        }
-        if (res.status === 404) {
-          break;
-        }
-        if (res.status === 429) {
-          attempt++;
-          if (attempt > DELETE_MAX_RETRIES) {
-            console.warn(
-              `[Entrypoints] Giving up deleting ${id} after ${DELETE_MAX_RETRIES} rate-limit retries`
-            );
-            skipped++;
-            break;
-          }
-          const backoff = DELETE_BACKOFF_MS * Math.pow(2, attempt - 1);
-          console.warn(
-            `[Entrypoints] Rate limited (429) deleting ${id} \u2014 retry ${attempt}/${DELETE_MAX_RETRIES} in ${(backoff / 1e3).toFixed(0)}s`
-          );
-          await sleep3(backoff);
-          continue;
-        }
-        console.warn(
-          `[Entrypoints] Failed to delete entrypoint ${id}: ${res.status}`
-        );
-        skipped++;
-        break;
-      } catch (err) {
-        console.warn(
-          `[Entrypoints] Failed to delete entrypoint ${id}: ${err}`
-        );
-        skipped++;
-        break;
+  const url = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
+  for (let attempt = 0; attempt <= DELETE_MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Api-Key ${api.brightToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ ids })
+      });
+      if (res.ok || res.status === 204) {
+        return;
       }
+      if (res.status === 429) {
+        if (attempt >= DELETE_MAX_RETRIES) {
+          console.warn(
+            `[Entrypoints] Bulk delete rate-limited after ${DELETE_MAX_RETRIES} retries`
+          );
+          return;
+        }
+        const backoff = DELETE_BACKOFF_MS * Math.pow(2, attempt);
+        console.warn(
+          `[Entrypoints] Rate limited (429) on bulk delete \u2014 retry ${attempt + 1}/${DELETE_MAX_RETRIES} in ${(backoff / 1e3).toFixed(0)}s`
+        );
+        await sleep3(backoff);
+        continue;
+      }
+      console.warn(
+        `[Entrypoints] Bulk delete failed: ${res.status} ${res.statusText}`
+      );
+      return;
+    } catch (err) {
+      console.warn(`[Entrypoints] Bulk delete error: ${err}`);
+      return;
     }
-    if (ids.indexOf(id) < ids.length - 1) {
-      await sleep3(200);
-    }
-  }
-  if (skipped > 0) {
-    console.warn(`[Entrypoints] ${skipped}/${ids.length} deletes failed`);
   }
 }
 function sanitizeBody(body) {
