@@ -11424,7 +11424,11 @@ function sleep2(ms) {
   return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function formatTechStack(techStack) {
-  const stack = [...techStack.languages, ...techStack.frameworks].join(", ");
+  const parts = [...techStack.languages, ...techStack.frameworks];
+  if (techStack.databases?.length) {
+    parts.push(...techStack.databases);
+  }
+  const stack = parts.join(", ");
   if (techStack.serviceRoot && techStack.serviceRoot !== ".") {
     return `${stack} (service: ${techStack.serviceRoot})`;
   }
