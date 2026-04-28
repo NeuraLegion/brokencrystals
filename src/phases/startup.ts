@@ -3143,6 +3143,26 @@ export interface ResponseHealthResult {
 }
 
 /**
+ * Cached regex fingerprints for a single probed URL path.
+ * After the first LLM-based deep probe, subsequent probes use these
+ * patterns for a pure HTTP + regex check — no LLM call needed.
+ */
+interface DeepProbeFingerprint {
+  /** Regex that, when matched in the body, means the app is healthy. */
+  healthyPattern: RegExp;
+  /** Regex that, when matched in the body, means the app is unhealthy. */
+  unhealthyPattern: RegExp | null;
+  /** The HTTP status seen when the fingerprint was created. */
+  expectedStatus: number;
+}
+
+/**
+ * Per-path cache of probe fingerprints. Passed by the caller (orchestrator)
+ * so it persists across deep-probe invocations without module-level state.
+ */
+export type DeepProbeCache = Map<string, DeepProbeFingerprint>;
+
+/**
  * Ask the LLM whether an HTTP response body looks like a real working app
  * vs. a setup-required / dev-mode-warning / error page that happens to
  * return HTTP 200.
@@ -3210,6 +3230,95 @@ When in doubt about whether the app is running vs broken, check: does the page c
 }
 
 /**
+ * LLM call that analyzes a response AND generates reusable regex fingerprints.
+ * Called only on the first deep probe for a given path; subsequent probes use
+ * the cached fingerprint for a pure HTTP + regex check.
+ */
+async function analyzeAndFingerprint(
+  llm: Parameters<typeof chatWithTools>[0],
+  modelSelector: ModelSelector | undefined,
+  status: number,
+  body: string,
+): Promise<ResponseHealthResult & { fingerprint?: DeepProbeFingerprint }> {
+  const resp = await llm.chat.completions.create({
+    model: modelSelector?.current() ?? "gpt-4o-mini",
+    max_completion_tokens: 400,
+    messages: [
+      {
+        role: "system",
+        content: `You are checking if a web application's HTTP response indicates a FULLY WORKING application.
+
+Respond with EXACTLY one JSON object:
+{
+  "healthy": true/false,
+  "reason": "<one sentence>",
+  "healthyRegex": "<regex pattern that matches something unique in the body that proves the app is healthy>",
+  "unhealthyRegex": "<regex pattern that matches error indicators, or empty string if none>"
+}
+
+For healthyRegex: pick a distinctive string/pattern from the response body that would ONLY appear when the app is working correctly. Examples:
+- A page title like "DefectDojo" or "Discourse"
+- A navigation element like "Dashboard|Settings|Profile"
+- A login form indicator like "csrfmiddlewaretoken|password"
+- An API response key like "status.*ok|results"
+- An SPA root element like "app-root|id=\\"root\\"|id=\\"app\\""
+- A health endpoint like "^ok$|^healthy$|status.*ok"
+The regex should be simple, reliable, and match on the stripped/text version of the body.
+
+For unhealthyRegex: pick patterns that indicate breakage if they appear. Examples:
+- "Internal Server Error|stack.?trace|Traceback|ENOENT"
+- "run bin/setup|set DATABASE_URL|migration.*pending"
+- "" (empty string if the healthy response has no obvious error markers to watch for)
+
+UNHEALTHY indicators: error pages, stack traces, "run a command"/"set env var" pages, framework defaults ("Yay! You're on Rails!"), blank pages (NOT SPA shells), JSON errors.
+HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundles, health endpoint "ok"/"healthy", setup wizards.`,
+      },
+      {
+        role: "user",
+        content: `HTTP ${status} response body:\n\`\`\`\n${body}\n\`\`\``,
+      },
+    ],
+  });
+
+  try {
+    const text = resp.choices[0]?.message.content ?? "";
+    const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+    const result: ResponseHealthResult = {
+      healthy: json.healthy === true,
+      reason: String(json.reason ?? "").slice(0, 200) || "no reason given",
+    };
+
+    // Build fingerprint from the LLM's regex suggestions
+    let fingerprint: DeepProbeFingerprint | undefined;
+    const healthyRaw = String(json.healthyRegex ?? "").trim();
+    if (healthyRaw) {
+      try {
+        const healthyPattern = new RegExp(healthyRaw, "i");
+        let unhealthyPattern: RegExp | null = null;
+        const unhealthyRaw = String(json.unhealthyRegex ?? "").trim();
+        if (unhealthyRaw) {
+          try {
+            unhealthyPattern = new RegExp(unhealthyRaw, "i");
+          } catch { /* ignore bad regex */ }
+        }
+        fingerprint = { healthyPattern, unhealthyPattern, expectedStatus: status };
+        console.log(
+          `[AppHealth] Deep probe fingerprint: healthy=/${healthyRaw}/i` +
+            (unhealthyRaw ? ` unhealthy=/${unhealthyRaw}/i` : ""),
+        );
+      } catch {
+        // LLM produced an invalid regex — proceed without fingerprint
+        console.warn(`[AppHealth] LLM produced invalid healthyRegex: ${healthyRaw}`);
+      }
+    }
+
+    return { ...result, fingerprint };
+  } catch {
+    return { healthy: true, reason: "failed to parse AI response — assuming healthy" };
+  }
+}
+
+/**
  * Body-aware health probe. Fetches the health-check URL and asks the LLM to
  * judge whether the response is from a real working app — catches cases
  * where the app returns HTTP 200 with a dev-mode warning page, a setup
@@ -3231,18 +3340,16 @@ export async function deepHealthCheck(
   healthCheckPath: string,
   llm: Parameters<typeof chatWithTools>[0],
   modelSelector: ModelSelector | undefined,
+  cache?: DeepProbeCache,
 ): Promise<ResponseHealthResult> {
   // 1. Probe the configured health endpoint
-  const healthResult = await deepProbeSingleUrl(port, healthCheckPath, llm, modelSelector);
+  const healthResult = await deepProbeSingleUrl(port, healthCheckPath, llm, modelSelector, cache);
   if (!healthResult.healthy) return healthResult;
 
   // 2. If the health endpoint is not "/" itself, also probe the root page.
-  //    A healthy /srv/status + broken "/" means the app is NOT healthy for
-  //    real users. This catches missing runtime deps (e.g. ImageMagick),
-  //    broken view rendering, pending migrations, etc.
   const normalizedHealth = healthCheckPath.replace(/\/+$/, "") || "/";
   if (normalizedHealth !== "/") {
-    const rootResult = await deepProbeSingleUrl(port, "/", llm, modelSelector);
+    const rootResult = await deepProbeSingleUrl(port, "/", llm, modelSelector, cache);
     if (!rootResult.healthy) {
       return {
         healthy: false,
@@ -3255,15 +3362,16 @@ export async function deepHealthCheck(
 }
 
 /**
- * Probe a single URL and analyze the response with the LLM. Extracted from
- * deepHealthCheck so it can be called for both the health endpoint and the
- * root page.
+ * Probe a single URL. If a cached fingerprint exists for this path,
+ * validates with pure HTTP + regex. Otherwise calls the LLM to analyze
+ * the response AND generate a fingerprint for future probes.
  */
 async function deepProbeSingleUrl(
   port: number,
   path: string,
   llm: Parameters<typeof chatWithTools>[0],
   modelSelector: ModelSelector | undefined,
+  cache?: DeepProbeCache,
 ): Promise<ResponseHealthResult> {
   const probePath = path.startsWith("/") ? path : `/${path}`;
   let res: Response;
@@ -3288,8 +3396,68 @@ async function deepProbeSingleUrl(
   if (!body) return { healthy: true, reason: `empty body on ${probePath}, status acceptable` };
   const ct = res.headers.get("content-type") ?? "";
   const text = ct.includes("html") ? stripHtmlForAnalysis(body) : body;
+
+  // Fast path: use cached fingerprint if available
+  const cached = cache?.get(probePath);
+  if (cached) {
+    return applyFingerprint(cached, res.status, text, probePath);
+  }
+
+  // Slow path: LLM analysis + fingerprint generation
   const preview = text.length > 3000 ? text.slice(0, 3000) + "..." : text;
-  return analyzeResponseWithLLM(llm, modelSelector, res.status, preview);
+  const result = await analyzeAndFingerprint(llm, modelSelector, res.status, preview);
+
+  // Cache the fingerprint for future probes
+  if (result.fingerprint && cache) {
+    // Validate the fingerprint actually works on the current response
+    // before caching — prevents caching a bad regex that would always
+    // report the opposite of reality.
+    const check = applyFingerprint(result.fingerprint, res.status, text, probePath);
+    if (check.healthy === result.healthy) {
+      cache.set(probePath, result.fingerprint);
+    } else {
+      console.warn(
+        `[AppHealth] Fingerprint didn't match LLM verdict for ${probePath} — not caching`,
+      );
+    }
+  }
+
+  return { healthy: result.healthy, reason: result.reason };
+}
+
+/**
+ * Apply a cached fingerprint to a response body. Checks the unhealthy
+ * pattern first (error signals take priority), then the healthy pattern.
+ */
+function applyFingerprint(
+  fp: DeepProbeFingerprint,
+  status: number,
+  text: string,
+  path: string,
+): ResponseHealthResult {
+  // Status code regression (was 200, now 500+)
+  if (status >= 500) {
+    return { healthy: false, reason: `HTTP ${status} server error on ${path} (was ${fp.expectedStatus})` };
+  }
+
+  // Check for unhealthy signals first
+  if (fp.unhealthyPattern && fp.unhealthyPattern.test(text)) {
+    return {
+      healthy: false,
+      reason: `error pattern matched on ${path}: ${fp.unhealthyPattern.source}`,
+    };
+  }
+
+  // Check for healthy signals
+  if (fp.healthyPattern.test(text)) {
+    return { healthy: true, reason: `fingerprint match on ${path}` };
+  }
+
+  // Healthy pattern disappeared — the app content changed unexpectedly
+  return {
+    healthy: false,
+    reason: `expected content missing on ${path} (/${fp.healthyPattern.source}/ not found)`,
+  };
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   deepHealthCheck,
   quickRestartCompose,
   type StartupResult,
+  type DeepProbeCache,
 } from "./phases/startup.js";
 import {
   detectAndConfigureAuth,
@@ -269,6 +270,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // compose restart (no LLM, no Dockerfile edits). Full LLM-driven
     // rebuilds are owned exclusively by the orchestrator's serial flow —
     // this eliminates race conditions between concurrent repair sessions.
+    const deepProbeCache: DeepProbeCache = new Map();
     healthMonitor = new AppHealthMonitor({
       port: startupConfig.port,
       healthCheckPath: startupConfig.healthCheckPath,
@@ -278,6 +280,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           startupConfig.healthCheckPath ?? "/",
           llm,
           config.modelSelector,
+          deepProbeCache,
         ),
     });
     healthMonitor.setRecoveryCallback(async (hint) => {
@@ -294,6 +297,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
       const qr = await quickRestartCompose(repoPath, startupConfig);
       if (qr.ok) {
+        // Clear fingerprint cache — the restarted app may render differently
+        deepProbeCache.clear();
         return { ok: true, detail: "quick compose restart succeeded" };
       }
       console.warn(

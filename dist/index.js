@@ -23096,12 +23096,88 @@ ${body}
     return { healthy: true, reason: "failed to parse AI response \u2014 assuming healthy" };
   }
 }
-async function deepHealthCheck(port, healthCheckPath, llm, modelSelector) {
-  const healthResult = await deepProbeSingleUrl(port, healthCheckPath, llm, modelSelector);
+async function analyzeAndFingerprint(llm, modelSelector, status, body) {
+  const resp = await llm.chat.completions.create({
+    model: modelSelector?.current() ?? "gpt-4o-mini",
+    max_completion_tokens: 400,
+    messages: [
+      {
+        role: "system",
+        content: `You are checking if a web application's HTTP response indicates a FULLY WORKING application.
+
+Respond with EXACTLY one JSON object:
+{
+  "healthy": true/false,
+  "reason": "<one sentence>",
+  "healthyRegex": "<regex pattern that matches something unique in the body that proves the app is healthy>",
+  "unhealthyRegex": "<regex pattern that matches error indicators, or empty string if none>"
+}
+
+For healthyRegex: pick a distinctive string/pattern from the response body that would ONLY appear when the app is working correctly. Examples:
+- A page title like "DefectDojo" or "Discourse"
+- A navigation element like "Dashboard|Settings|Profile"
+- A login form indicator like "csrfmiddlewaretoken|password"
+- An API response key like "status.*ok|results"
+- An SPA root element like "app-root|id=\\"root\\"|id=\\"app\\""
+- A health endpoint like "^ok$|^healthy$|status.*ok"
+The regex should be simple, reliable, and match on the stripped/text version of the body.
+
+For unhealthyRegex: pick patterns that indicate breakage if they appear. Examples:
+- "Internal Server Error|stack.?trace|Traceback|ENOENT"
+- "run bin/setup|set DATABASE_URL|migration.*pending"
+- "" (empty string if the healthy response has no obvious error markers to watch for)
+
+UNHEALTHY indicators: error pages, stack traces, "run a command"/"set env var" pages, framework defaults ("Yay! You're on Rails!"), blank pages (NOT SPA shells), JSON errors.
+HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundles, health endpoint "ok"/"healthy", setup wizards.`
+      },
+      {
+        role: "user",
+        content: `HTTP ${status} response body:
+\`\`\`
+${body}
+\`\`\``
+      }
+    ]
+  });
+  try {
+    const text = resp.choices[0]?.message.content ?? "";
+    const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+    const result = {
+      healthy: json.healthy === true,
+      reason: String(json.reason ?? "").slice(0, 200) || "no reason given"
+    };
+    let fingerprint;
+    const healthyRaw = String(json.healthyRegex ?? "").trim();
+    if (healthyRaw) {
+      try {
+        const healthyPattern = new RegExp(healthyRaw, "i");
+        let unhealthyPattern = null;
+        const unhealthyRaw = String(json.unhealthyRegex ?? "").trim();
+        if (unhealthyRaw) {
+          try {
+            unhealthyPattern = new RegExp(unhealthyRaw, "i");
+          } catch {
+          }
+        }
+        fingerprint = { healthyPattern, unhealthyPattern, expectedStatus: status };
+        console.log(
+          `[AppHealth] Deep probe fingerprint: healthy=/${healthyRaw}/i` + (unhealthyRaw ? ` unhealthy=/${unhealthyRaw}/i` : "")
+        );
+      } catch {
+        console.warn(`[AppHealth] LLM produced invalid healthyRegex: ${healthyRaw}`);
+      }
+    }
+    return { ...result, fingerprint };
+  } catch {
+    return { healthy: true, reason: "failed to parse AI response \u2014 assuming healthy" };
+  }
+}
+async function deepHealthCheck(port, healthCheckPath, llm, modelSelector, cache) {
+  const healthResult = await deepProbeSingleUrl(port, healthCheckPath, llm, modelSelector, cache);
   if (!healthResult.healthy) return healthResult;
   const normalizedHealth = healthCheckPath.replace(/\/+$/, "") || "/";
   if (normalizedHealth !== "/") {
-    const rootResult = await deepProbeSingleUrl(port, "/", llm, modelSelector);
+    const rootResult = await deepProbeSingleUrl(port, "/", llm, modelSelector, cache);
     if (!rootResult.healthy) {
       return {
         healthy: false,
@@ -23111,7 +23187,7 @@ async function deepHealthCheck(port, healthCheckPath, llm, modelSelector) {
   }
   return healthResult;
 }
-async function deepProbeSingleUrl(port, path2, llm, modelSelector) {
+async function deepProbeSingleUrl(port, path2, llm, modelSelector, cache) {
   const probePath = path2.startsWith("/") ? path2 : `/${path2}`;
   let res;
   try {
@@ -23134,8 +23210,41 @@ async function deepProbeSingleUrl(port, path2, llm, modelSelector) {
   if (!body) return { healthy: true, reason: `empty body on ${probePath}, status acceptable` };
   const ct = res.headers.get("content-type") ?? "";
   const text = ct.includes("html") ? stripHtmlForAnalysis(body) : body;
+  const cached = cache?.get(probePath);
+  if (cached) {
+    return applyFingerprint(cached, res.status, text, probePath);
+  }
   const preview = text.length > 3e3 ? text.slice(0, 3e3) + "..." : text;
-  return analyzeResponseWithLLM(llm, modelSelector, res.status, preview);
+  const result = await analyzeAndFingerprint(llm, modelSelector, res.status, preview);
+  if (result.fingerprint && cache) {
+    const check = applyFingerprint(result.fingerprint, res.status, text, probePath);
+    if (check.healthy === result.healthy) {
+      cache.set(probePath, result.fingerprint);
+    } else {
+      console.warn(
+        `[AppHealth] Fingerprint didn't match LLM verdict for ${probePath} \u2014 not caching`
+      );
+    }
+  }
+  return { healthy: result.healthy, reason: result.reason };
+}
+function applyFingerprint(fp, status, text, path2) {
+  if (status >= 500) {
+    return { healthy: false, reason: `HTTP ${status} server error on ${path2} (was ${fp.expectedStatus})` };
+  }
+  if (fp.unhealthyPattern && fp.unhealthyPattern.test(text)) {
+    return {
+      healthy: false,
+      reason: `error pattern matched on ${path2}: ${fp.unhealthyPattern.source}`
+    };
+  }
+  if (fp.healthyPattern.test(text)) {
+    return { healthy: true, reason: `fingerprint match on ${path2}` };
+  }
+  return {
+    healthy: false,
+    reason: `expected content missing on ${path2} (/${fp.healthyPattern.source}/ not found)`
+  };
 }
 function captureExitedContainers(repoPath, composeFile) {
   try {
@@ -29049,6 +29158,7 @@ async function runOrchestrator(ctx) {
       "app_running",
       `Application running at ${baseUrl}`
     );
+    const deepProbeCache = /* @__PURE__ */ new Map();
     healthMonitor = new AppHealthMonitor({
       port: startupConfig.port,
       healthCheckPath: startupConfig.healthCheckPath,
@@ -29056,7 +29166,8 @@ async function runOrchestrator(ctx) {
         startupConfig.port,
         startupConfig.healthCheckPath ?? "/",
         llm,
-        config.modelSelector
+        config.modelSelector,
+        deepProbeCache
       )
     });
     healthMonitor.setRecoveryCallback(async (hint) => {
@@ -29068,6 +29179,7 @@ async function runOrchestrator(ctx) {
       );
       const qr = await quickRestartCompose(repoPath, startupConfig);
       if (qr.ok) {
+        deepProbeCache.clear();
         return { ok: true, detail: "quick compose restart succeeded" };
       }
       console.warn(
