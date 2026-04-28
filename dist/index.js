@@ -26699,75 +26699,271 @@ var EXCLUDED_TESTS = /* @__PURE__ */ new Set([
   "header_security",
   "cookie_security"
 ]);
+var UNIVERSAL_TESTS = /* @__PURE__ */ new Set([
+  "secret_tokens",
+  "full_path_disclosure",
+  "http_method_fuzzing",
+  "version_control_systems",
+  "open_cloud_storage"
+]);
+var INPUT_TESTS = /* @__PURE__ */ new Set([
+  "sqli",
+  "xss",
+  "stored_xss",
+  "ssti",
+  "osi",
+  "lfi",
+  "rfi",
+  "html_injection",
+  "css_injection",
+  "iframe_injection",
+  "xpathi",
+  "xxe",
+  "ldapi",
+  "nosql",
+  "email_injection",
+  "ssrf",
+  "unvalidated_redirect",
+  "server_side_js_injection",
+  "proto_pollution",
+  "prompt_injection"
+]);
+function hasInputs(ep) {
+  return !!(ep.body || ep.queryParams?.length || /[:{}]/.test(ep.path) || ["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()));
+}
+var PATH_RULES = [
+  { pattern: /\/(login|signin|auth|session|token|oauth|saml)/i, tests: ["brute_force_login", "csrf", "broken_saml_auth", "jwt"] },
+  { pattern: /\/(upload|attach|import|file)/i, tests: ["file_upload"] },
+  { pattern: /\/(redirect|callback|return|next)/i, tests: ["unvalidated_redirect", "ssrf"] },
+  { pattern: /\/(search|query|filter|find|lookup)/i, tests: ["sqli", "xss", "nosql"] },
+  { pattern: /\/(admin|manage|settings|config|system)/i, tests: ["directory_listing", "common_files"] },
+  { pattern: /\/(user|profile|account|member)/i, tests: ["id_enumeration", "bopla", "excessive_data_exposure"] },
+  { pattern: /\/(api|rest|graphql|v\d)/i, tests: ["id_enumeration", "bopla", "excessive_data_exposure", "improper_asset_management"] },
+  { pattern: /graphql/i, tests: ["graphql_introspection"] },
+  { pattern: /\/(email|mail|contact|notify|message)/i, tests: ["email_injection"] },
+  { pattern: /\/(template|render|preview|report)/i, tests: ["ssti", "xss", "stored_xss"] },
+  { pattern: /\/(xml|feed|rss|soap|wsdl)/i, tests: ["xxe", "xpathi"] },
+  { pattern: /\/(ldap|directory|ad)/i, tests: ["ldapi"] },
+  { pattern: /\/(url|link|fetch|proxy|webhook|callback)/i, tests: ["ssrf"] },
+  { pattern: /\/(command|exec|run|shell|ping|process)/i, tests: ["osi"] },
+  { pattern: /\/(include|load|read|download|path|file)/i, tests: ["lfi", "rfi"] },
+  { pattern: /\/(date|time|schedule|booking|reservation)/i, tests: ["date_manipulation"] },
+  { pattern: /\/(price|quantity|amount|total|cart|order|checkout)/i, tests: ["business_constraint_bypass"] },
+  { pattern: /\/(ai|llm|chat|prompt|generate|completion)/i, tests: ["prompt_injection", "insecure_output_handling"] },
+  { pattern: /\/(s3|bucket|storage|blob|cloud)/i, tests: ["amazon_s3_takeover", "open_cloud_storage"] },
+  { pattern: /wordpress|wp-/i, tests: ["wordpress", "default_login_location"] }
+];
+function techStackTests(tech) {
+  const include = /* @__PURE__ */ new Set();
+  const exclude = /* @__PURE__ */ new Set();
+  const all = [...tech.languages, ...tech.frameworks, ...tech.databases].map((s) => s.toLowerCase());
+  const joined = all.join(" ");
+  if (all.some((d) => /postgres|mysql|mariadb|sqlite|mssql|oracle|sql/i.test(d))) {
+    include.add("sqli");
+  }
+  if (all.some((d) => /mongo|couch|dynamo|firestore|nosql/i.test(d))) {
+    include.add("nosql");
+  }
+  if (!all.some((d) => /mongo|couch|dynamo|firestore|nosql/i.test(d))) {
+    exclude.add("nosql");
+  }
+  if (/jinja|django|twig|blade|thymeleaf|freemarker|mustache|handlebars|ejs|pug|nunjucks|erb|slim|haml/i.test(joined)) {
+    include.add("ssti");
+  }
+  if (all.some((l) => /javascript|typescript|node|express|next|nuxt|react|angular|vue/i.test(l))) {
+    include.add("proto_pollution");
+    include.add("server_side_js_injection");
+    include.add("retire_js");
+  } else {
+    exclude.add("proto_pollution");
+    exclude.add("server_side_js_injection");
+    exclude.add("retire_js");
+  }
+  if (all.some((f) => /graphql|apollo|hasura/i.test(f))) {
+    include.add("graphql_introspection");
+  } else {
+    exclude.add("graphql_introspection");
+  }
+  if (!all.some((f) => /wordpress/i.test(f))) {
+    exclude.add("wordpress");
+  }
+  if (!all.some((d) => /ldap|active.?directory|openldap/i.test(d))) {
+    exclude.add("ldapi");
+  }
+  if (all.some((f) => /java|spring|\.net|asp|soap|xml/i.test(f))) {
+    include.add("xxe");
+    include.add("xpathi");
+  }
+  if (!/saml|sso|okta|onelogin|shibboleth/i.test(joined)) {
+    exclude.add("broken_saml_auth");
+  }
+  return { include, exclude };
+}
+function contentTypeTests(ep) {
+  const ct = ep.contentType?.toLowerCase() ?? "";
+  const body = ep.body?.toLowerCase() ?? "";
+  const tests = [];
+  if (ct.includes("xml") || body.startsWith("<?xml") || body.startsWith("<soap")) {
+    tests.push("xxe", "xpathi");
+  }
+  if (ct.includes("json") || body.startsWith("{") || body.startsWith("[")) {
+    tests.push("sqli", "nosql", "bopla");
+  }
+  if (ct.includes("form") || ct.includes("urlencoded")) {
+    tests.push("sqli", "xss", "csrf");
+  }
+  if (ct.includes("multipart")) {
+    tests.push("file_upload");
+  }
+  return tests;
+}
+function baselineTestsForEndpoint(ep, techRules, hasAuth, validTags) {
+  const tests = /* @__PURE__ */ new Set();
+  for (const t of UNIVERSAL_TESTS) tests.add(t);
+  if (hasInputs(ep)) {
+    for (const t of INPUT_TESTS) tests.add(t);
+  }
+  for (const rule of PATH_RULES) {
+    if (rule.pattern.test(ep.path)) {
+      for (const t of rule.tests) tests.add(t);
+    }
+  }
+  for (const t of contentTypeTests(ep)) tests.add(t);
+  if (hasAuth) {
+    tests.add("csrf");
+    if (/\{(id|pk|uid|uuid|slug)\}/i.test(ep.path) || /\/\d+/.test(ep.path)) {
+      tests.add("id_enumeration");
+      tests.add("bopla");
+      tests.add("excessive_data_exposure");
+    }
+  }
+  const method = ep.method.toUpperCase();
+  if (method === "GET" && !ep.queryParams?.length && !/[:{}]/.test(ep.path)) {
+    for (const t of ["sqli", "nosql", "xxe", "xpathi", "ldapi", "email_injection"]) {
+      tests.delete(t);
+    }
+  }
+  for (const t of techRules.include) tests.add(t);
+  for (const t of techRules.exclude) tests.delete(t);
+  tests.add("cve_test");
+  const final = [];
+  for (const t of tests) {
+    if (validTags.has(t)) final.push(t);
+  }
+  return final;
+}
 async function selectTestsPerEndpoint(llm, api, endpoints, entrypointIds, techStack, hasAuth, model) {
   const availableTests = await listTests(api);
   const eligibleTests = availableTests.filter(
     (t) => !MULTI_AUTH_TESTS.has(t.tag) && !EXCLUDED_TESTS.has(t.tag)
   );
+  const validTags = new Set(eligibleTests.map((t) => t.tag));
+  const techRules = techStackTests(techStack);
+  const baselinePerEndpoint = endpoints.map(
+    (ep) => baselineTestsForEndpoint(ep, techRules, hasAuth, validTags)
+  );
+  const baselineTotal = baselinePerEndpoint.reduce((sum, t) => sum + t.length, 0);
+  console.log(
+    `[Tests] Baseline: ${baselineTotal} test assignments across ${endpoints.length} endpoints (avg ${(baselineTotal / Math.max(endpoints.length, 1)).toFixed(1)}/ep)`
+  );
   const stackStr = formatTechStack(techStack);
+  const dbStr = techStack.databases?.length ? techStack.databases.join(", ") : "unknown";
   const testCatalog = eligibleTests.map((t) => `- ${t.tag}: ${t.name}`).join("\n");
-  const endpointList = endpoints.map((ep, i) => `[${i}] ${ep.method} ${ep.path} (${ep.filePath})`).join("\n");
+  const endpointList = endpoints.map((ep, i) => {
+    const parts = [`[${i}] ${ep.method} ${ep.path}`];
+    parts.push(`(${ep.filePath})`);
+    if (ep.queryParams?.length) {
+      parts.push(`params: ${ep.queryParams.map((p) => p.name).join(",")}`);
+    }
+    if (ep.body) {
+      const bodyPreview = ep.body.length > 80 ? ep.body.slice(0, 80) + "\u2026" : ep.body;
+      parts.push(`body: ${bodyPreview}`);
+    }
+    if (ep.contentType) parts.push(`type: ${ep.contentType}`);
+    parts.push(`baseline: [${baselinePerEndpoint[i].join(",")}]`);
+    return parts.join(" | ");
+  }).join("\n");
   const messages = [
     {
       role: "system",
-      content: `You are a DAST security expert selecting which vulnerability tests to run against each endpoint of a ${stackStr} application.
+      content: `You are a DAST security expert refining test selection for a ${stackStr} application (databases: ${dbStr}, auth: ${hasAuth ? "yes" : "no"}).
 
-For EACH endpoint, select ONLY tests that are relevant to it. Consider:
-- HTTP method: GET endpoints are less likely to have SQLi/body-based attacks
-- Path patterns: /auth/ endpoints are relevant for JWT/session tests, /upload for file_upload, etc.
-- Technology: skip WordPress/GraphQL tests for non-matching tech
-- Parameters: endpoints with query params \u2192 XSS, SSRF; with body \u2192 SQLi, XSS, SSTI
-- Be selective \u2014 irrelevant tests waste scan time.
-- Do NOT include header_security or cookie_security \u2014 they produce low-severity findings and are excluded.`
+Each endpoint below has a BASELINE set of tests selected by deterministic rules. Your job is to REFINE these \u2014 add tests that are missing or remove tests that are clearly irrelevant.
+
+Guidelines:
+- The baseline already considers: HTTP method, path patterns, query params, body/content-type, tech stack, auth status.
+- Focus on what the rules CAN'T see: semantic meaning of the endpoint, relationships between endpoints, domain-specific risks.
+- For most endpoints, the baseline is good \u2014 only change what you're confident about.
+- Add tests the rules missed (e.g. a /render endpoint that should get ssti, or an /import that should get xxe).
+- Remove tests that are wrong (e.g. sqli on an endpoint that clearly doesn't touch DB, or file_upload on a JSON-only endpoint).
+- If the baseline is fine for an endpoint, return its tests unchanged.
+- Do NOT add header_security, cookie_security, or lrrl \u2014 they are excluded by policy.`
     },
     {
       role: "user",
-      content: `For each endpoint (by index), select relevant security tests.
+      content: `Review and refine tests for each endpoint. Return the FINAL test list per endpoint.
 
-Endpoints:
+Endpoints (with baseline tests):
 ${endpointList}
 
 Available tests (use ONLY these exact tags):
 ${testCatalog}
 
-Return a JSON object with an array of entries, one per endpoint index.`
+Return a JSON object with the refined test list per endpoint index.`
     }
   ];
-  const result = await chatWithSchema(
-    llm,
-    messages,
-    "per_endpoint_tests",
-    {
-      type: "object",
-      properties: {
-        entries: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              index: { type: "number" },
-              tests: { type: "array", items: { type: "string" } }
-            },
-            required: ["index", "tests"],
-            additionalProperties: false
+  let perEndpoint;
+  try {
+    const result = await chatWithSchema(
+      llm,
+      messages,
+      "per_endpoint_tests",
+      {
+        type: "object",
+        properties: {
+          entries: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                index: { type: "number" },
+                tests: { type: "array", items: { type: "string" } }
+              },
+              required: ["index", "tests"],
+              additionalProperties: false
+            }
           }
-        }
+        },
+        required: ["entries"],
+        additionalProperties: false
       },
-      required: ["entries"],
-      additionalProperties: false
-    },
-    model
-  );
-  const indexToTests = /* @__PURE__ */ new Map();
-  for (const entry of result.entries) {
-    indexToTests.set(entry.index, entry.tests);
+      model
+    );
+    const indexToTests = /* @__PURE__ */ new Map();
+    for (const entry of result.entries) {
+      indexToTests.set(entry.index, entry.tests);
+    }
+    perEndpoint = endpoints.map((_, i) => {
+      const refined = indexToTests.get(i);
+      if (!refined) return baselinePerEndpoint[i];
+      const valid = refined.filter((t) => validTags.has(t));
+      return valid.length > 0 ? valid : baselinePerEndpoint[i];
+    });
+    let added = 0;
+    let removed = 0;
+    for (let i = 0; i < endpoints.length; i++) {
+      const base = new Set(baselinePerEndpoint[i]);
+      const final = new Set(perEndpoint[i]);
+      for (const t of final) if (!base.has(t)) added++;
+      for (const t of base) if (!final.has(t)) removed++;
+    }
+    console.log(
+      `[Tests] LLM refinement: +${added} added, -${removed} removed across ${endpoints.length} endpoints`
+    );
+  } catch (err) {
+    console.warn(`[Tests] LLM refinement failed (${err}), using baseline only`);
+    perEndpoint = baselinePerEndpoint;
   }
-  const validTags = new Set(eligibleTests.map((t) => t.tag));
-  const perEndpoint = endpoints.map((_, i) => {
-    const raw = indexToTests.get(i) ?? [];
-    const valid = raw.filter((t) => validTags.has(t));
-    return valid.length > 0 ? valid : [];
-  });
   const PATH_PARAM_RE = /[:{}]/;
   const groupMap = /* @__PURE__ */ new Map();
   for (let i = 0; i < endpoints.length; i++) {
