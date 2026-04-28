@@ -21577,6 +21577,8 @@ You have tools to:
 - **run_command_on_host** \u2014 run shell commands on the host (ls, find, cat, docker inspect, docker build, etc.)
 - **run_command_in_docker** \u2014 run commands inside a Docker container or image (check installed tools, read config files, test commands)
 - **verify_docker_image** \u2014 check if a Docker image:tag exists on Docker Hub before using it in FROM lines
+- **save_hint** \u2014 IMPORTANT: save facts you discover (e.g. "Node 22 required, not 18", "manage.py is at /usr/src/app/manage.py") so the NEXT repair attempt knows them. Use this for every non-obvious discovery.
+- **remove_hint** \u2014 remove a hint from a previous attempt that turned out wrong
 
 APPROACH:
 1. Read the error carefully. Identify the exact failing command and what it's missing.
@@ -21592,6 +21594,7 @@ APPROACH:
 6. This Dockerfile is for **production-like security testing** (DAST scanning). The app must run in production mode (RAILS_ENV=production, NODE_ENV=production, etc.) with precompiled assets and all runtime system dependencies (ImageMagick, fonts, wkhtmltopdf, ffmpeg, etc.) installed. A single stage with all tools is better than a fragile multi-stage build.
 7. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
 8. Always verify base image tags exist with verify_docker_image before using them.
+9. **SAVE HINTS** \u2014 whenever you discover a non-obvious fact (required Node version, correct package name, file path, config setting), call save_hint so it's available to the next repair attempt even if this one fails.
 
 Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`
     },
@@ -21625,7 +21628,19 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
   ];
   try {
     console.log("[Startup] Asking LLM to repair Dockerfile...");
-    const infraHandler = createInfraToolHandler(repoPath);
+    const onHint = (hint) => {
+      if (hints && !hints.includes(hint)) hints.push(hint);
+    };
+    const onRemoveHint = (hint) => {
+      if (hints) {
+        const idx = hints.findIndex((h) => h.includes(hint) || hint.includes(h));
+        if (idx !== -1) {
+          console.log(`[Startup] Hint removed: ${hints[idx].slice(0, 100)}`);
+          hints.splice(idx, 1);
+        }
+      }
+    };
+    const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
     const response = await chatWithTools(
       llm,
       messages,
