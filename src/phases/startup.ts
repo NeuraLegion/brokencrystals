@@ -3259,6 +3259,7 @@ async function analyzeAndFingerprint(
   modelSelector: ModelSelector | undefined,
   status: number,
   body: string,
+  probePath?: string,
 ): Promise<ResponseHealthResult & { fingerprint?: DeepProbeFingerprint }> {
   const resp = await llm.chat.completions.create({
     model: modelSelector?.current() ?? "gpt-4o-mini",
@@ -3290,6 +3291,9 @@ For unhealthyRegex: pick patterns that indicate breakage if they appear. Example
 - "Internal Server Error|stack.?trace|Traceback|ENOENT"
 - "run bin/setup|set DATABASE_URL|migration.*pending"
 - "" (empty string if the healthy response has no obvious error markers to watch for)
+IMPORTANT: The unhealthyRegex must NOT match content that is inherently expected for the
+probed path. For example if probing /robots.txt, do NOT use User-agent or Disallow patterns
+as unhealthy signals — that IS the expected content. Only flag actual error indicators.
 
 For apiProbePath: if the response is an SPA (React, Angular, Vue, Ember, etc.) that loads
 its content from API calls, suggest a lightweight GET API endpoint visible in the page source
@@ -3305,7 +3309,7 @@ HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundle
       },
       {
         role: "user",
-        content: `HTTP ${status} response body:\n\`\`\`\n${body}\n\`\`\``,
+        content: `HTTP ${status} response from ${probePath ?? "unknown path"}:\n\`\`\`\n${body}\n\`\`\``,
       },
     ],
   });
@@ -3470,7 +3474,7 @@ async function deepProbeSingleUrl(
 
   // Slow path: LLM analysis + fingerprint generation
   const preview = text.length > 3000 ? text.slice(0, 3000) + "..." : text;
-  const result = await analyzeAndFingerprint(llm, modelSelector, res.status, preview);
+  const result = await analyzeAndFingerprint(llm, modelSelector, res.status, preview, probePath);
 
   // Cache the fingerprint for future probes
   if (result.fingerprint && cache) {
@@ -3505,16 +3509,22 @@ function applyFingerprint(
     return { healthy: false, reason: `HTTP ${status} server error on ${path} (was ${fp.expectedStatus})` };
   }
 
-  // Check for unhealthy signals first
-  if (fp.unhealthyPattern && fp.unhealthyPattern.test(text)) {
+  // Check for unhealthy signals first — but skip if the healthy pattern
+  // ALSO matches. When the probe endpoint IS the content the unhealthy
+  // pattern targets (e.g. /robots.txt returning robots.txt content),
+  // the healthy match takes priority since the response is expected.
+  const unhealthyMatch = fp.unhealthyPattern?.test(text) ?? false;
+  const healthyMatch = fp.healthyPattern.test(text);
+
+  if (unhealthyMatch && !healthyMatch) {
     return {
       healthy: false,
-      reason: `error pattern matched on ${path}: ${fp.unhealthyPattern.source}`,
+      reason: `error pattern matched on ${path}: ${fp.unhealthyPattern!.source}`,
     };
   }
 
   // Check for healthy signals
-  if (fp.healthyPattern.test(text)) {
+  if (healthyMatch) {
     return { healthy: true, reason: `fingerprint match on ${path}` };
   }
 

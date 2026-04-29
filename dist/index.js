@@ -23111,7 +23111,7 @@ ${body}
     return { healthy: true, reason: "failed to parse AI response \u2014 assuming healthy" };
   }
 }
-async function analyzeAndFingerprint(llm, modelSelector, status, body) {
+async function analyzeAndFingerprint(llm, modelSelector, status, body, probePath) {
   const resp = await llm.chat.completions.create({
     model: modelSelector?.current() ?? "gpt-4o-mini",
     max_completion_tokens: 400,
@@ -23142,6 +23142,9 @@ For unhealthyRegex: pick patterns that indicate breakage if they appear. Example
 - "Internal Server Error|stack.?trace|Traceback|ENOENT"
 - "run bin/setup|set DATABASE_URL|migration.*pending"
 - "" (empty string if the healthy response has no obvious error markers to watch for)
+IMPORTANT: The unhealthyRegex must NOT match content that is inherently expected for the
+probed path. For example if probing /robots.txt, do NOT use User-agent or Disallow patterns
+as unhealthy signals \u2014 that IS the expected content. Only flag actual error indicators.
 
 For apiProbePath: if the response is an SPA (React, Angular, Vue, Ember, etc.) that loads
 its content from API calls, suggest a lightweight GET API endpoint visible in the page source
@@ -23157,7 +23160,7 @@ HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundle
       },
       {
         role: "user",
-        content: `HTTP ${status} response body:
+        content: `HTTP ${status} response from ${probePath ?? "unknown path"}:
 \`\`\`
 ${body}
 \`\`\``
@@ -23268,7 +23271,7 @@ async function deepProbeSingleUrl(port, path2, llm, modelSelector, cache) {
     return applyFingerprint(cached, res.status, text, probePath);
   }
   const preview = text.length > 3e3 ? text.slice(0, 3e3) + "..." : text;
-  const result = await analyzeAndFingerprint(llm, modelSelector, res.status, preview);
+  const result = await analyzeAndFingerprint(llm, modelSelector, res.status, preview, probePath);
   if (result.fingerprint && cache) {
     const check = applyFingerprint(result.fingerprint, res.status, text, probePath);
     if (check.healthy === result.healthy) {
@@ -23285,13 +23288,15 @@ function applyFingerprint(fp, status, text, path2) {
   if (status >= 500) {
     return { healthy: false, reason: `HTTP ${status} server error on ${path2} (was ${fp.expectedStatus})` };
   }
-  if (fp.unhealthyPattern && fp.unhealthyPattern.test(text)) {
+  const unhealthyMatch = fp.unhealthyPattern?.test(text) ?? false;
+  const healthyMatch = fp.healthyPattern.test(text);
+  if (unhealthyMatch && !healthyMatch) {
     return {
       healthy: false,
       reason: `error pattern matched on ${path2}: ${fp.unhealthyPattern.source}`
     };
   }
-  if (fp.healthyPattern.test(text)) {
+  if (healthyMatch) {
     return { healthy: true, reason: `fingerprint match on ${path2}` };
   }
   return {
