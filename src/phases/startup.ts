@@ -846,10 +846,14 @@ Respond with EXACTLY one JSON object:
             repairHistory.push({ kind: "infra", summary: infraResult.summary, targetErrorFp: currentFp });
           }
           // Apply any config modifications from the repair LLM
-          if (infraResult.command || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath) {
+          if (infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath) {
             if (infraResult.command) {
               console.log(`[Startup] Repair LLM overrode command: ${infraResult.command}`);
               config = { ...config, command: infraResult.command };
+            }
+            if (infraResult.port) {
+              console.log(`[Startup] Repair LLM overrode port: ${infraResult.port}`);
+              config = { ...config, port: infraResult.port };
             }
             if (infraResult.postStartCommands?.length) {
               // Replace rather than accumulate — each repair produces a fresh
@@ -881,7 +885,7 @@ Respond with EXACTLY one JSON object:
           const isPrereqFailure = /Command failed:.*\nprerequisite/i.test(detailedError) ||
             /prerequisite.*failed|Running prerequisite/i.test(detailedError) ||
             /command not found|not found.*command/i.test(detailedError);
-          const repairModifiedConfig = !!(infraResult.command || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.madeFileChanges);
+          const repairModifiedConfig = !!(infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.madeFileChanges);
           if (repairModifiedConfig || (!isTimeoutError && !isPrereqFailure && !isCrash)) {
             infraRepaired = true;
           }
@@ -1275,6 +1279,8 @@ interface InfraRepairResult {
   healthCheckPath?: string;
   /** Override the startup command itself (e.g. wrap bare command in 'docker run') */
   command?: string;
+  /** Override the host-side port if discovery got it wrong (e.g. app listens on 8080, not 80) */
+  port?: number;
   /** True if the repair LLM used mutating tools (write_file, run_command, etc.) */
   madeFileChanges?: boolean;
   /** One-line summary of what the repair LLM did, to feed into the NEXT repair if this one fails */
@@ -1393,12 +1399,14 @@ After fixing the issue, reply with a JSON object describing what changed:
 {
   "summary": "Brief description of what you fixed",
   "command": "docker run --name myapp -p 3000:3000 -d myapp-image bundle exec rails server",
+  "port": 8080,
   "postStartCommands": ["docker compose exec app rails db:create db:migrate"],
   "addEnvVars": {"DATABASE_URL": "postgres://..."},
   "healthCheckPath": "/srv/status"
 }
 \`\`\`
 - **command**: override the startup command if the current one is fundamentally wrong (e.g. bare "bundle exec" on the host when it should be "docker run ... bundle exec"). Only set this if the command itself needs to change.
+- **port**: override the host-side port the health check probes. Set this if the app is reachable on a different port than expected (use \`probe_url\` to verify before changing). This is the port mapped to the HOST, not the internal container port.
 - **postStartCommands**: commands that must run AFTER the app containers start but BEFORE the health check (e.g. DB migrations, cache warmup, seeding). These run on the HOST. If the command must run inside a container, wrap it with 'docker compose exec <service>' or 'docker exec <container>'. NEVER use streaming/follow commands here (e.g. 'logs -f', 'tail -f', 'watch') — they hang forever and block startup.
 - **addEnvVars**: environment variables to add/override for the next startup attempt.
 - **healthCheckPath**: if the app's root route ("/") returns errors but a different endpoint is healthy (e.g. "/health", "/srv/status"), specify it here so the health check uses that path instead.
@@ -1501,6 +1509,10 @@ function parseInfraRepairResult(response: string): InfraRepairResult {
     if (typeof parsed.command === "string" && parsed.command) {
       result.command = parsed.command;
       console.log(`[Startup] Infra repair overrode command: ${result.command}`);
+    }
+    if (typeof parsed.port === "number" && parsed.port > 0 && parsed.port < 65536) {
+      result.port = parsed.port;
+      console.log(`[Startup] Infra repair overrode port: ${result.port}`);
     }
     if (typeof parsed.summary === "string" && parsed.summary) {
       result.summary = parsed.summary.slice(0, 400);
