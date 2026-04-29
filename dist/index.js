@@ -19810,7 +19810,10 @@ function execInDocker(repoPath, container, command, timeout = 12e4) {
       return false;
     }
   })();
-  const dockerCmd = isRunning ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(command)}` : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(command)}`;
+  const prefix = isRunning ? `docker exec -i ${JSON.stringify(container)}` : `docker run --rm -i ${JSON.stringify(container)}`;
+  const dockerCmd = `${prefix} sh <<'__BRIGHT_EOF__'
+${command}
+__BRIGHT_EOF__`;
   return runShellCommand(repoPath, dockerCmd, timeout);
 }
 function handleEditFile(repoPath, args) {

@@ -311,9 +311,12 @@ export function execInDocker(
       return false;
     }
   })();
-  const dockerCmd = isRunning
-    ? `docker exec ${JSON.stringify(container)} sh -c ${JSON.stringify(command)}`
-    : `docker run --rm ${JSON.stringify(container)} sh -c ${JSON.stringify(command)}`;
+  // Pass command via stdin (here-doc) to avoid shell expansion of $-signs
+  // in values like bcrypt hashes ($2a$10$...) which get eaten by sh -c "...".
+  const prefix = isRunning
+    ? `docker exec -i ${JSON.stringify(container)}`
+    : `docker run --rm -i ${JSON.stringify(container)}`;
+  const dockerCmd = `${prefix} sh <<'__BRIGHT_EOF__'\n${command}\n__BRIGHT_EOF__`;
   return runShellCommand(repoPath, dockerCmd, timeout);
 }
 
