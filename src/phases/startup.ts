@@ -3169,6 +3169,11 @@ interface DeepProbeFingerprint {
   unhealthyPattern: RegExp | null;
   /** The HTTP status seen when the fingerprint was created. */
   expectedStatus: number;
+  /** Optional API endpoint path to probe in addition to the HTML page.
+   *  If the response looks like an SPA, the LLM suggests a lightweight
+   *  API endpoint visible in the page. A 5xx from this endpoint triggers
+   *  unhealthy even if the HTML shell is fine. */
+  apiProbePath?: string;
 }
 
 /**
@@ -3268,7 +3273,8 @@ Respond with EXACTLY one JSON object:
   "healthy": true/false,
   "reason": "<one sentence>",
   "healthyRegex": "<regex pattern that matches something unique in the body that proves the app is healthy>",
-  "unhealthyRegex": "<regex pattern that matches error indicators, or empty string if none>"
+  "unhealthyRegex": "<regex pattern that matches error indicators, or empty string if none>",
+  "apiProbePath": "<lightweight API endpoint path visible in the page, or empty string>"
 }
 
 For healthyRegex: pick a distinctive string/pattern from the response body that would ONLY appear when the app is working correctly. Examples:
@@ -3284,6 +3290,15 @@ For unhealthyRegex: pick patterns that indicate breakage if they appear. Example
 - "Internal Server Error|stack.?trace|Traceback|ENOENT"
 - "run bin/setup|set DATABASE_URL|migration.*pending"
 - "" (empty string if the healthy response has no obvious error markers to watch for)
+
+For apiProbePath: if the response is an SPA (React, Angular, Vue, Ember, etc.) that loads
+its content from API calls, suggest a lightweight GET API endpoint visible in the page source
+(e.g. from script tags, __initialData, API base URLs). This lets us verify the backend API
+layer is working even when the HTML shell looks fine. Examples:
+- "/api/0/internal/health/" (Sentry)
+- "/api/v2/users/me" (generic REST)
+- "/graphql" (GraphQL endpoint — will just check for non-5xx)
+- "" (empty string if not an SPA, or if no API path is visible in the page)
 
 UNHEALTHY indicators: error pages, stack traces, "run a command"/"set env var" pages, framework defaults ("Yay! You're on Rails!"), blank pages (NOT SPA shells), JSON errors.
 HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundles, health endpoint "ok"/"healthy", setup wizards.`,
@@ -3317,9 +3332,15 @@ HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundle
           } catch { /* ignore bad regex */ }
         }
         fingerprint = { healthyPattern, unhealthyPattern, expectedStatus: status };
+        // Include API probe path from LLM if provided
+        const apiPath = String(json.apiProbePath ?? "").trim();
+        if (apiPath && apiPath.startsWith("/")) {
+          fingerprint.apiProbePath = apiPath;
+        }
         console.log(
           `[AppHealth] Deep probe fingerprint: healthy=/${healthyRaw}/i` +
-            (unhealthyRaw ? ` unhealthy=/${unhealthyRaw}/i` : ""),
+            (unhealthyRaw ? ` unhealthy=/${unhealthyRaw}/i` : "") +
+            (fingerprint.apiProbePath ? ` api=${fingerprint.apiProbePath}` : ""),
         );
       } catch {
         // LLM produced an invalid regex — proceed without fingerprint
@@ -3370,6 +3391,35 @@ export async function deepHealthCheck(
         healthy: false,
         reason: `health endpoint (${healthCheckPath}) is ok, but root page (/) is broken: ${rootResult.reason}`,
       };
+    }
+  }
+
+  // 3. API layer probe: if any cached fingerprint includes an apiProbePath
+  //    (typically discovered from an SPA page), verify the backend API is
+  //    responding. An SPA shell can serve a perfect 200 HTML page while the
+  //    API layer it depends on is 500-ing.
+  if (cache) {
+    for (const [, fp] of cache) {
+      if (!fp.apiProbePath) continue;
+      try {
+        const apiRes = await fetch(`http://localhost:${port}${fp.apiProbePath}`, {
+          method: "GET",
+          headers: probeHeaders(fp.apiProbePath),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM),
+        });
+        if (apiRes.status >= 500) {
+          return {
+            healthy: false,
+            reason: `API probe ${fp.apiProbePath} returned HTTP ${apiRes.status} — backend is broken while HTML shell may look fine`,
+          };
+        }
+      } catch (err) {
+        return {
+          healthy: false,
+          reason: `API probe ${fp.apiProbePath} failed: ${toErrorMessage(err)}`,
+        };
+      }
+      break; // only probe the first API path found
     }
   }
 
@@ -3579,18 +3629,23 @@ export async function quickRestartCompose(
 ): Promise<QuickRestartResult> {
   if (!config.docker) return { ok: false, diagnostics: "Not a dockerized app" };
 
+  // Resolve compose file: first try to extract from the startup command,
+  // then fall back to scanning the repo root for common compose filenames.
   const composeFileMatch = config.command.match(/-f\s+(\S+)/);
   const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
-  const composeFile = composeFileMatch?.[1]
-    ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : "docker-compose.yml");
+  const cwd = cdMatch ? `${repoPath}/${cdMatch[1]}` : repoPath;
+  let composeFile = composeFileMatch?.[1] ?? undefined;
+  if (!composeFile) {
+    composeFile = findComposeFile(cwd) ?? findComposeFile(repoPath) ?? "docker-compose.yml";
+  }
   const probePath = config.healthCheckPath ?? "/";
 
   // Strategy 1: plain restart
-  console.log(`[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${repoPath})`);
+  console.log(`[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${cwd})`);
   const triedStrategies: string[] = [];
   try {
     execSync(`docker compose -f ${composeFile} restart`, {
-      cwd: repoPath, stdio: "pipe", timeout: 60_000,
+      cwd, stdio: "pipe", timeout: 60_000,
     });
     triedStrategies.push("docker compose restart");
     if (await waitForAppHealthy(config.port, probePath, waitMs)) {
@@ -3605,7 +3660,7 @@ export async function quickRestartCompose(
   console.log(`[AppHealth] Restart insufficient; trying force-recreate`);
   try {
     execSync(`docker compose -f ${composeFile} up -d --force-recreate`, {
-      cwd: repoPath, stdio: "pipe", timeout: 120_000,
+      cwd, stdio: "pipe", timeout: 120_000,
     });
     triedStrategies.push("docker compose up -d --force-recreate");
     if (await waitForAppHealthy(config.port, probePath, waitMs)) {
@@ -3617,7 +3672,7 @@ export async function quickRestartCompose(
   }
 
   // Both strategies exhausted — gather diagnostics for the LLM stage
-  const exited = captureExitedContainers(repoPath, composeFile);
+  const exited = captureExitedContainers(cwd, composeFile);
   const triedList = triedStrategies.map((s) => `  - ${s}`).join("\n");
   if (exited.length === 0) {
     return {

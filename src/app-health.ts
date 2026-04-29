@@ -77,6 +77,11 @@ export class AppHealthMonitor {
   private recoveryInFlight: Promise<RecoveryResult> | undefined;
   private gate: { promise: Promise<void>; resolve: () => void } | undefined;
   private lastUnhealthyReason: string | undefined;
+  /** When true, only a successful deep probe or recovery can clear the unhealthy state.
+   *  Prevents the shallow (status-only) probe from re-marking healthy while the
+   *  body-aware deep probe has identified a degraded state (e.g. SPA shell returns
+   *  200 but the API layer is 500-ing). */
+  private deepUnhealthy = false;
 
   constructor(opts: AppHealthMonitorOptions) {
     this.port = opts.port;
@@ -222,7 +227,12 @@ export class AppHealthMonitor {
           );
         }
         this.consecutiveFailures = 0;
-        if (!this.healthy) this.markHealthy();
+        // Only re-mark healthy if not held down by a deep probe verdict.
+        // When the deep probe flagged the app as degraded (e.g. API layer
+        // 500-ing while the HTML shell returns 200), the shallow status-
+        // only probe must NOT override that — only a successful deep probe
+        // or recovery can clear the deepUnhealthy flag.
+        if (!this.healthy && !this.deepUnhealthy) this.markHealthy();
       } else {
         this.consecutiveFailures += 1;
         if (this.healthy) {
@@ -242,8 +252,11 @@ export class AppHealthMonitor {
       // Periodic body-aware probe: catches degraded states (Ember CLI
       // warning, setup-required page, framework error) that return HTTP
       // 200 and so look healthy to the status-only check above.
+      // Also runs when deepUnhealthy — needed to detect natural recovery
+      // (e.g. a transient API outage resolves on its own) so the
+      // deepUnhealthy hold can be cleared without requiring a restart.
       if (
-        this.healthy &&
+        (this.healthy || this.deepUnhealthy) &&
         this.onDeepProbe &&
         reason === "scheduled" &&
         ++this.probeCount % this.deepProbeEveryNth === 0
@@ -269,11 +282,17 @@ export class AppHealthMonitor {
         );
         if (this.healthy) {
           this.lastUnhealthyReason = `deep health probe flagged the app as unhealthy: ${result.reason}`;
+          this.deepUnhealthy = true;
           this.markUnhealthy();
           void this.runRecovery();
         }
       } else {
         console.log(`[AppHealth] Deep probe (${reason}) healthy — ${result.reason}`);
+        // Clear deep-unhealthy hold if the app recovered on its own
+        if (this.deepUnhealthy) {
+          this.deepUnhealthy = false;
+          if (!this.healthy) this.markHealthy();
+        }
       }
       return result;
     } catch (err) {
@@ -329,6 +348,7 @@ export class AppHealthMonitor {
           // Probe immediately to confirm and open the gate
           this.consecutiveFailures = 0;
           this.lastUnhealthyReason = undefined;
+          this.deepUnhealthy = false; // recovery succeeded — clear deep hold
           await this.probe("post-recovery");
           if (!this.healthy) this.markHealthy(); // force-open even if probe was racy
         } else {

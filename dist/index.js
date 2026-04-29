@@ -23125,7 +23125,8 @@ Respond with EXACTLY one JSON object:
   "healthy": true/false,
   "reason": "<one sentence>",
   "healthyRegex": "<regex pattern that matches something unique in the body that proves the app is healthy>",
-  "unhealthyRegex": "<regex pattern that matches error indicators, or empty string if none>"
+  "unhealthyRegex": "<regex pattern that matches error indicators, or empty string if none>",
+  "apiProbePath": "<lightweight API endpoint path visible in the page, or empty string>"
 }
 
 For healthyRegex: pick a distinctive string/pattern from the response body that would ONLY appear when the app is working correctly. Examples:
@@ -23141,6 +23142,15 @@ For unhealthyRegex: pick patterns that indicate breakage if they appear. Example
 - "Internal Server Error|stack.?trace|Traceback|ENOENT"
 - "run bin/setup|set DATABASE_URL|migration.*pending"
 - "" (empty string if the healthy response has no obvious error markers to watch for)
+
+For apiProbePath: if the response is an SPA (React, Angular, Vue, Ember, etc.) that loads
+its content from API calls, suggest a lightweight GET API endpoint visible in the page source
+(e.g. from script tags, __initialData, API base URLs). This lets us verify the backend API
+layer is working even when the HTML shell looks fine. Examples:
+- "/api/0/internal/health/" (Sentry)
+- "/api/v2/users/me" (generic REST)
+- "/graphql" (GraphQL endpoint \u2014 will just check for non-5xx)
+- "" (empty string if not an SPA, or if no API path is visible in the page)
 
 UNHEALTHY indicators: error pages, stack traces, "run a command"/"set env var" pages, framework defaults ("Yay! You're on Rails!"), blank pages (NOT SPA shells), JSON errors.
 HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundles, health endpoint "ok"/"healthy", setup wizards.`
@@ -23175,8 +23185,12 @@ ${body}
           }
         }
         fingerprint = { healthyPattern, unhealthyPattern, expectedStatus: status };
+        const apiPath = String(json.apiProbePath ?? "").trim();
+        if (apiPath && apiPath.startsWith("/")) {
+          fingerprint.apiProbePath = apiPath;
+        }
         console.log(
-          `[AppHealth] Deep probe fingerprint: healthy=/${healthyRaw}/i` + (unhealthyRaw ? ` unhealthy=/${unhealthyRaw}/i` : "")
+          `[AppHealth] Deep probe fingerprint: healthy=/${healthyRaw}/i` + (unhealthyRaw ? ` unhealthy=/${unhealthyRaw}/i` : "") + (fingerprint.apiProbePath ? ` api=${fingerprint.apiProbePath}` : "")
         );
       } catch {
         console.warn(`[AppHealth] LLM produced invalid healthyRegex: ${healthyRaw}`);
@@ -23198,6 +23212,30 @@ async function deepHealthCheck(port, healthCheckPath, llm, modelSelector, cache)
         healthy: false,
         reason: `health endpoint (${healthCheckPath}) is ok, but root page (/) is broken: ${rootResult.reason}`
       };
+    }
+  }
+  if (cache) {
+    for (const [, fp] of cache) {
+      if (!fp.apiProbePath) continue;
+      try {
+        const apiRes = await fetch(`http://localhost:${port}${fp.apiProbePath}`, {
+          method: "GET",
+          headers: probeHeaders(fp.apiProbePath),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM)
+        });
+        if (apiRes.status >= 500) {
+          return {
+            healthy: false,
+            reason: `API probe ${fp.apiProbePath} returned HTTP ${apiRes.status} \u2014 backend is broken while HTML shell may look fine`
+          };
+        }
+      } catch (err) {
+        return {
+          healthy: false,
+          reason: `API probe ${fp.apiProbePath} failed: ${toErrorMessage(err)}`
+        };
+      }
+      break;
     }
   }
   return healthResult;
@@ -23309,13 +23347,17 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
   if (!config.docker) return { ok: false, diagnostics: "Not a dockerized app" };
   const composeFileMatch = config.command.match(/-f\s+(\S+)/);
   const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
-  const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : "docker-compose.yml");
+  const cwd = cdMatch ? `${repoPath}/${cdMatch[1]}` : repoPath;
+  let composeFile = composeFileMatch?.[1] ?? void 0;
+  if (!composeFile) {
+    composeFile = findComposeFile(cwd) ?? findComposeFile(repoPath) ?? "docker-compose.yml";
+  }
   const probePath = config.healthCheckPath ?? "/";
-  console.log(`[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${repoPath})`);
+  console.log(`[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${cwd})`);
   const triedStrategies = [];
   try {
     execSync3(`docker compose -f ${composeFile} restart`, {
-      cwd: repoPath,
+      cwd,
       stdio: "pipe",
       timeout: 6e4
     });
@@ -23330,7 +23372,7 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
   console.log(`[AppHealth] Restart insufficient; trying force-recreate`);
   try {
     execSync3(`docker compose -f ${composeFile} up -d --force-recreate`, {
-      cwd: repoPath,
+      cwd,
       stdio: "pipe",
       timeout: 12e4
     });
@@ -23342,7 +23384,7 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
   } catch (err) {
     triedStrategies.push(`docker compose up -d --force-recreate (failed: ${err instanceof Error ? err.message : String(err)})`);
   }
-  const exited = captureExitedContainers(repoPath, composeFile);
+  const exited = captureExitedContainers(cwd, composeFile);
   const triedList = triedStrategies.map((s) => `  - ${s}`).join("\n");
   if (exited.length === 0) {
     return {
@@ -28779,6 +28821,11 @@ var AppHealthMonitor = class {
   recoveryInFlight;
   gate;
   lastUnhealthyReason;
+  /** When true, only a successful deep probe or recovery can clear the unhealthy state.
+   *  Prevents the shallow (status-only) probe from re-marking healthy while the
+   *  body-aware deep probe has identified a degraded state (e.g. SPA shell returns
+   *  200 but the API layer is 500-ing). */
+  deepUnhealthy = false;
   constructor(opts) {
     this.port = opts.port;
     this.healthCheckPath = opts.healthCheckPath ?? "/";
@@ -28908,7 +28955,7 @@ var AppHealthMonitor = class {
           );
         }
         this.consecutiveFailures = 0;
-        if (!this.healthy) this.markHealthy();
+        if (!this.healthy && !this.deepUnhealthy) this.markHealthy();
       } else {
         this.consecutiveFailures += 1;
         if (this.healthy) {
@@ -28922,7 +28969,7 @@ var AppHealthMonitor = class {
           }
         }
       }
-      if (this.healthy && this.onDeepProbe && reason === "scheduled" && ++this.probeCount % this.deepProbeEveryNth === 0) {
+      if ((this.healthy || this.deepUnhealthy) && this.onDeepProbe && reason === "scheduled" && ++this.probeCount % this.deepProbeEveryNth === 0) {
         void this.runDeepProbe("scheduled-deep");
       }
     } finally {
@@ -28941,11 +28988,16 @@ var AppHealthMonitor = class {
         );
         if (this.healthy) {
           this.lastUnhealthyReason = `deep health probe flagged the app as unhealthy: ${result.reason}`;
+          this.deepUnhealthy = true;
           this.markUnhealthy();
           void this.runRecovery();
         }
       } else {
         console.log(`[AppHealth] Deep probe (${reason}) healthy \u2014 ${result.reason}`);
+        if (this.deepUnhealthy) {
+          this.deepUnhealthy = false;
+          if (!this.healthy) this.markHealthy();
+        }
       }
       return result;
     } catch (err) {
@@ -28995,6 +29047,7 @@ var AppHealthMonitor = class {
         if (result.ok) {
           this.consecutiveFailures = 0;
           this.lastUnhealthyReason = void 0;
+          this.deepUnhealthy = false;
           await this.probe("post-recovery");
           if (!this.healthy) this.markHealthy();
         } else {
