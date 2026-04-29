@@ -24811,6 +24811,14 @@ Example \u2014 OAuth2 PKCE flow:
               enum: ["GET", "POST", "PUT", "DELETE"],
               description: "HTTP method for the test request. Default: GET"
             },
+            testFollowRedirects: {
+              type: "boolean",
+              description: "Whether the test request should follow HTTP redirects. IMPORTANT: Set to true when using body-based reauthTriggers and the app redirects unauthenticated requests to a login page (302 \u2192 login). Without following redirects, the body pattern won't match the redirect response. Default: auto-detected (true when reauthTriggers use body patterns, false otherwise)."
+            },
+            testMaxRedirects: {
+              type: "number",
+              description: "Maximum redirects the test request will follow. Only relevant when testFollowRedirects is true. Default: 5."
+            },
             reauthTriggers: {
               type: "string",
               description: `JSON array of reauth triggers. Default: [{"type":"TRIGGER","location":"status","statuses":[401,403]}]. For redirect-based: [{"type":"TRIGGER","location":"header","name":"Location","patterns":["login"]}]. Can combine with OR: [..., {"type":"OR"}, ...].`
@@ -24977,6 +24985,11 @@ Example \u2014 OAuth2 PKCE flow:
       }
       const testMethod = args.testMethod ? String(args.testMethod) : "GET";
       const testUrl2 = String(args.testUrl);
+      const hasBodyTrigger = reauthTriggers.some(
+        (t) => t.location === "body" || t.location === "dom"
+      );
+      const testFollowRedirects = args.testFollowRedirects !== void 0 ? Boolean(args.testFollowRedirects) : hasBodyTrigger;
+      const testMaxRedirects = args.testMaxRedirects !== void 0 ? Number(args.testMaxRedirects) : testFollowRedirects ? 5 : 0;
       for (const step of steps) {
         const req = step.request;
         if (req) {
@@ -24994,7 +25007,10 @@ Example \u2014 OAuth2 PKCE flow:
             method: testMethod,
             url: testUrl2,
             protocol: "http",
-            bodyType: "clear_text"
+            bodyType: "clear_text",
+            followRedirects: testFollowRedirects,
+            maxRedirects: testMaxRedirects,
+            changeMethodOnRedirect: false
           }
         },
         successResponseDetection: successDetection,

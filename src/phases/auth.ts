@@ -1074,6 +1074,14 @@ Example — OAuth2 PKCE flow:
               enum: ["GET", "POST", "PUT", "DELETE"],
               description: "HTTP method for the test request. Default: GET",
             },
+            testFollowRedirects: {
+              type: "boolean",
+              description: "Whether the test request should follow HTTP redirects. IMPORTANT: Set to true when using body-based reauthTriggers and the app redirects unauthenticated requests to a login page (302 → login). Without following redirects, the body pattern won't match the redirect response. Default: auto-detected (true when reauthTriggers use body patterns, false otherwise).",
+            },
+            testMaxRedirects: {
+              type: "number",
+              description: "Maximum redirects the test request will follow. Only relevant when testFollowRedirects is true. Default: 5.",
+            },
             reauthTriggers: {
               type: "string",
               description: `JSON array of reauth triggers. Default: [{"type":"TRIGGER","location":"status","statuses":[401,403]}]. For redirect-based: [{"type":"TRIGGER","location":"header","name":"Location","patterns":["login"]}]. Can combine with OR: [..., {"type":"OR"}, ...].`,
@@ -1263,6 +1271,18 @@ Example — OAuth2 PKCE flow:
       const testMethod = args.testMethod ? String(args.testMethod) : "GET";
       const testUrl = String(args.testUrl);
 
+      // Determine if test request should follow redirects
+      // Auto-enable when reauthTriggers use body/dom patterns (need to see final page content)
+      const hasBodyTrigger = reauthTriggers.some(
+        (t: Record<string, unknown>) => t.location === "body" || t.location === "dom",
+      );
+      const testFollowRedirects = args.testFollowRedirects !== undefined
+        ? Boolean(args.testFollowRedirects)
+        : hasBodyTrigger; // auto-enable for body-based triggers
+      const testMaxRedirects = args.testMaxRedirects !== undefined
+        ? Number(args.testMaxRedirects)
+        : (testFollowRedirects ? 5 : 0);
+
       // Ensure each step has protocol and bodyType defaults
       for (const step of steps) {
         const req = step.request as Record<string, unknown> | undefined;
@@ -1283,6 +1303,9 @@ Example — OAuth2 PKCE flow:
             url: testUrl,
             protocol: "http",
             bodyType: "clear_text",
+            followRedirects: testFollowRedirects,
+            maxRedirects: testMaxRedirects,
+            changeMethodOnRedirect: false,
           },
         },
         successResponseDetection: successDetection,
