@@ -22,7 +22,9 @@ import {
   detectAndConfigureAuth,
   testAuthObject,
   reRegisterUser,
+  replaySeedCommands,
   type AuthResult,
+  type SeedCommand,
 } from "./phases/auth.js";
 import {
   detectFirstRunSetup,
@@ -69,6 +71,7 @@ async function restartApp(
   registration?: AuthResult["registration"],
   recoveryHints?: string[],
   monitor?: AppHealthMonitor,
+  seedCommands?: SeedCommand[],
 ): Promise<StartupResult> {
   await monitor?.pause();
   try {
@@ -81,7 +84,13 @@ async function restartApp(
       modelSelector,
       recoveryHints,
     );
-    if (registration) await reRegisterUser(registration);
+    // Re-seed the test user: try CLI replay first (handles docker exec cases),
+    // then fall back to HTTP registration
+    if (seedCommands?.length) {
+      await replaySeedCommands(repoPath, seedCommands);
+    } else if (registration) {
+      await reRegisterUser(registration);
+    }
     return result;
   } finally {
     monitor?.resume();
@@ -436,7 +445,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         appProcess = repairedStartup.process;
         startupConfig = repairedStartup.config;
         baseUrl = `http://localhost:${startupConfig.port}`;
-        if (authResult.registration) await reRegisterUser(authResult.registration);
+        // Re-seed test user: prefer CLI commands, fall back to HTTP registration
+        if (authResult.seedCommands?.length) {
+          await replaySeedCommands(repoPath, authResult.seedCommands);
+        } else if (authResult.registration) {
+          await reRegisterUser(authResult.registration);
+        }
         console.log(`[Engine] App restarted after infra repair — retrying auth`);
 
         // Re-run first-run setup if the app needs it again. Rebuilds wipe
@@ -787,7 +801,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           // Auth is broken and couldn't be repaired — need to restart the app
           // in case a code repair was applied, then retry
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
             appProcess = restart.process;
             // Retest after restart
             const retryOk = await verifyAndRepairAuth(
@@ -830,7 +844,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           `[Scan] App is unreachable on port ${startupConfig.port} — restarting before scan`,
         );
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
           appProcess = restart.process;
           console.log("[Scan] App restarted successfully");
         } catch (err) {
@@ -951,7 +965,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             "[Scan] App appears to have crashed during scanning — attempting restart and retry",
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
             appProcess = restart.process;
             console.log(
               "[Scan] App restarted — will retry scans on next iteration",
@@ -1000,7 +1014,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             "[Scan] App appears to have crashed during scanning — attempting restart before processing findings",
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
             appProcess = restart.process;
             console.log("[Scan] App restarted");
           } catch (restartErr) {
@@ -1146,7 +1160,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         let healthy = false;
 
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
           appProcess = restart.process;
           healthy = true;
         } catch (startupErr) {
@@ -1168,7 +1182,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             config.modelSelector,
           );
           if (healthy) {
-            const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
+            const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
             appProcess = restart.process;
           } else {
             // Last resort: revert ALL fix commits from this round
@@ -1182,7 +1196,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
                 { cwd: repoPath, stdio: "pipe" },
               );
               execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor);
+              const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
               appProcess = restart.process;
             } catch {
               console.error("[Fix] Could not recover — aborting fix round");
@@ -1948,13 +1962,37 @@ async function diagnoseAndRepairBrokenFix(
     )
     .join("\n");
 
+  // Capture git diff to show the LLM exactly what changed
+  let gitDiff = "";
+  let gitStatus = "";
+  try {
+    const commitCount = appliedFixes.length;
+    gitDiff = execFileSync(
+      "git", ["diff", `HEAD~${commitCount}`, "--stat", "--patch"],
+      { cwd: repoPath, encoding: "utf-8", maxBuffer: 50 * 1024 },
+    ).slice(0, 6000);
+  } catch { /* ignore */ }
+  try {
+    gitStatus = execFileSync(
+      "git", ["status", "--short"],
+      { cwd: repoPath, encoding: "utf-8" },
+    ).slice(0, 2000);
+  } catch { /* ignore */ }
+
   const messages: Parameters<typeof chatWithTools>[1] = [
     {
       role: "system",
       content: `You are a senior developer debugging a build/runtime failure.
 The application (${stackStr}) was working before security fixes were applied, but now it fails to start.
-You have tools to read files and search the codebase.
-Your job: analyze the container logs, identify what the fix broke, and produce corrected files.`,
+You have tools to read files, list directories, and search the codebase.
+
+Your job: analyze the container logs and the git diff below, identify what the fixes broke, and produce corrected files.
+
+IMPORTANT RULES:
+- If a fix modified an infrastructure/config file (Dockerfile, docker-compose.yml, .env, *.conf.py, nginx.conf, etc.) that broke the app, REVERT that file to its original content. Use \`git show HEAD~N:path/to/file\` to get the original.
+- Security fixes should ONLY modify application source code, not infrastructure files.
+- If the fix introduced a syntax error, import error, or logic error in source code, fix it while preserving the security improvement where possible.
+- If you cannot fix the source code without breaking the security fix, revert the file entirely.`,
     },
     {
       role: "user",
@@ -1962,15 +2000,27 @@ Your job: analyze the container logs, identify what the fix broke, and produce c
 
 ${fixSummary}
 
+Git diff showing all changes:
+\`\`\`
+${gitDiff || "(could not capture git diff)"}
+\`\`\`
+
+Git status:
+\`\`\`
+${gitStatus || "(clean)"}
+\`\`\`
+
 Container logs showing the error:
 \`\`\`
 ${containerLogs.slice(0, 4000)}
 \`\`\`
 
 Please:
-1. Read the files that were modified by the fixes
-2. Identify the syntax error, import error, or logic error introduced
-3. Fix it while preserving the security improvement where possible
+1. Read the files that were modified by the fixes (use the tools)
+2. Check \`git show HEAD~${appliedFixes.length}:path/to/file\` to see the original content if needed
+3. Identify the error introduced by the fixes
+4. If an infrastructure file was modified (Dockerfile, *.conf.py, compose files, etc.), revert it to the original
+5. For source code files, fix the error while preserving the security improvement
 
 Respond with a JSON array of file fixes:
 \`\`\`json

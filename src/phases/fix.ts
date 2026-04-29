@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { resolve, dirname } from "path";
+import { resolve, dirname, basename } from "path";
 import type { TechStack, Finding, SecurityFix } from "../types.js";
 import { chatWithTools, chatWithSchema } from "../inference.js";
 import { codebaseTools, createToolHandler } from "../tools.js";
@@ -10,6 +10,58 @@ import {
   generateFixPrompt,
   fixResultSchema,
 } from "../prompts/generate-fix.js";
+
+// ---------------------------------------------------------------------------
+// Infrastructure file guard — prevent fix phase from modifying files that
+// affect how the app boots rather than its application logic.
+// ---------------------------------------------------------------------------
+
+const INFRA_FILE_PATTERNS: RegExp[] = [
+  // Docker / compose files
+  /^Dockerfile/i,
+  /docker-compose\.ya?ml$/i,
+  /^compose\.ya?ml$/i,
+  // Server / deployment configuration
+  /\.conf\.py$/,           // e.g. sentry.conf.py
+  /nginx\.conf$/,
+  /apache2?\.conf$/,
+  /httpd\.conf$/,
+  /\.env$/,                // environment files
+  /\.env\.\w+$/,           // .env.local, .env.production, etc.
+  // CI / build pipeline
+  /^\.github\//,
+  /^\.gitlab-ci/,
+  /^Jenkinsfile/i,
+  /^Makefile$/i,
+  // Kubernetes / infrastructure-as-code
+  /\.ya?ml$.*(?:deploy|service|ingress|configmap|secret)/i,
+  /^k8s\//,
+  /^helm\//,
+  /^terraform\//,
+];
+
+/** Basename-only patterns for files that are always infra regardless of path */
+const INFRA_BASENAME_EXACT = new Set([
+  "dockerfile",
+  "docker-compose.yml",
+  "docker-compose.yaml",
+  "compose.yml",
+  "compose.yaml",
+  ".env",
+  "makefile",
+  "jenkinsfile",
+]);
+
+export function isInfrastructureFile(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/");
+  const base = basename(normalized).toLowerCase();
+
+  if (INFRA_BASENAME_EXACT.has(base)) return true;
+  for (const pattern of INFRA_FILE_PATTERNS) {
+    if (pattern.test(normalized)) return true;
+  }
+  return false;
+}
 
 export async function generateFixes(
   llm: OpenAI,
@@ -99,6 +151,13 @@ export async function generateFixes(
 export function applyFixes(repoPath: string, fixes: SecurityFix[]): void {
   for (const fix of fixes) {
     for (const file of fix.files) {
+      if (isInfrastructureFile(file.path)) {
+        console.warn(
+          `[Fix] BLOCKED infrastructure file modification: ${file.path} — ` +
+          `security fixes must only modify application source code`,
+        );
+        continue;
+      }
       const fullPath = resolve(repoPath, file.path);
       mkdirSync(dirname(fullPath), { recursive: true });
       writeFileSync(fullPath, file.content, "utf-8");

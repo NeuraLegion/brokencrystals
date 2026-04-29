@@ -37,10 +37,21 @@ export interface AuthResult {
     body: string;
     contentType: string;
   };
+  /** CLI commands that created/seeded the test user (docker exec, rails runner, etc.).
+   *  Replayed after restart to ensure the user exists without re-running the LLM. */
+  seedCommands?: SeedCommand[];
   /** When set, auth failed due to an infrastructure issue (e.g. missing env var,
    *  app returning HTML instead of JSON). The orchestrator should repair
    *  infrastructure, restart the app, and retry auth. */
   infraRepairHint?: string;
+}
+
+export interface SeedCommand {
+  /** "host" for run_command_on_host, "docker" for run_command_in_docker */
+  type: "host" | "docker";
+  command: string;
+  /** Container name, only for type === "docker" */
+  container?: string;
 }
 
 export interface AuthTestStageDetail {
@@ -289,9 +300,12 @@ export async function detectAndConfigureAuth(
         }
       : undefined;
 
+  // Collect seed commands from the seed user sub-phase for replay after restarts
+  const seedCommands = (seededCredentials as (SeedUserResult & { seedCommands?: SeedCommand[] }) | undefined)?.seedCommands;
+
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false, registration };
+    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands };
   }
 
   if (infraRepairHint) {
@@ -1436,6 +1450,32 @@ export async function reRegisterUser(
   }
 }
 
+/**
+ * Replay CLI seed commands captured during the initial seedTestUser phase.
+ * This handles apps that create users via CLI (docker exec, rails runner, etc.)
+ * rather than HTTP registration endpoints.
+ */
+export async function replaySeedCommands(
+  repoPath: string,
+  commands: SeedCommand[],
+): Promise<void> {
+  console.log(`[Auth] Replaying ${commands.length} seed command(s)...`);
+  for (const cmd of commands) {
+    try {
+      if (cmd.type === "docker" && cmd.container) {
+        console.log(`[Auth:Replay] docker exec [${cmd.container}]: ${cmd.command.slice(0, 200)}`);
+        await execInDocker(repoPath, cmd.container, cmd.command);
+      } else {
+        console.log(`[Auth:Replay] host: ${cmd.command.slice(0, 200)}`);
+        await runShellCommand(repoPath, cmd.command);
+      }
+    } catch (err) {
+      // Non-fatal — user may already exist (--force-update handles this)
+      console.warn(`[Auth:Replay] Command failed (may be OK if user exists): ${err}`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Seed test user sub-phase — dedicated LLM session for user creation
 // ---------------------------------------------------------------------------
@@ -1458,6 +1498,9 @@ async function seedTestUser(
 ): Promise<SeedUserResult | undefined> {
   console.log("[Auth] Starting seed user sub-phase...");
 
+  // Track CLI commands for replay after restart
+  const capturedCommands: SeedCommand[] = [];
+
   const seedTools: ChatCompletionTool[] = [
     ...codebaseTools,
     ...webSearchTools,
@@ -1472,12 +1515,14 @@ async function seedTestUser(
     if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Seed] run_command_on_host: ${cmd.slice(0, 200)}`);
+      capturedCommands.push({ type: "host", command: cmd });
       return runShellCommand(repoPath, cmd);
     }
     if (name === "run_command_in_docker") {
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Seed] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      capturedCommands.push({ type: "docker", command: cmd, container });
       return execInDocker(repoPath, container, cmd);
     }
     if (name === "probe_url") {
@@ -1501,6 +1546,11 @@ async function seedTestUser(
     const result = JSON.parse(json) as SeedUserResult;
     if (result.success) {
       console.log(`[Auth:Seed] User created: ${result.username} / ${result.email}`);
+      // Attach captured commands for replay
+      if (capturedCommands.length > 0) {
+        (result as SeedUserResult & { seedCommands?: SeedCommand[] }).seedCommands = capturedCommands;
+        console.log(`[Auth:Seed] Captured ${capturedCommands.length} seed command(s) for replay`);
+      }
       return result;
     }
     console.warn(`[Auth:Seed] Failed to create user: ${result.reason ?? "unknown"}`);

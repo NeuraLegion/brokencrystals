@@ -24166,9 +24166,10 @@ ${result.attemptLog.join("\n")}`);
     body: detection.registerBody,
     contentType: detection.registerContentType ?? detection.loginContentType
   } : void 0;
+  const seedCommands = seededCredentials?.seedCommands;
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false, registration };
+    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands };
   }
   if (infraRepairHint) {
     console.error(`[Auth] Failed \u2014 infrastructure repair needed: ${infraRepairHint.slice(0, 200)}`);
@@ -25048,8 +25049,25 @@ async function reRegisterUser(registration) {
     );
   }
 }
+async function replaySeedCommands(repoPath, commands) {
+  console.log(`[Auth] Replaying ${commands.length} seed command(s)...`);
+  for (const cmd of commands) {
+    try {
+      if (cmd.type === "docker" && cmd.container) {
+        console.log(`[Auth:Replay] docker exec [${cmd.container}]: ${cmd.command.slice(0, 200)}`);
+        await execInDocker(repoPath, cmd.container, cmd.command);
+      } else {
+        console.log(`[Auth:Replay] host: ${cmd.command.slice(0, 200)}`);
+        await runShellCommand(repoPath, cmd.command);
+      }
+    } catch (err) {
+      console.warn(`[Auth:Replay] Command failed (may be OK if user exists): ${err}`);
+    }
+  }
+}
 async function seedTestUser(llm, repoPath, baseUrl, detection, model, activationHint) {
   console.log("[Auth] Starting seed user sub-phase...");
+  const capturedCommands = [];
   const seedTools = [
     ...codebaseTools,
     ...webSearchTools,
@@ -25063,12 +25081,14 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model, activation
     if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Seed] run_command_on_host: ${cmd.slice(0, 200)}`);
+      capturedCommands.push({ type: "host", command: cmd });
       return runShellCommand(repoPath, cmd);
     }
     if (name === "run_command_in_docker") {
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[Auth:Seed] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      capturedCommands.push({ type: "docker", command: cmd, container });
       return execInDocker(repoPath, container, cmd);
     }
     if (name === "probe_url") {
@@ -25089,6 +25109,10 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model, activation
     const result = JSON.parse(json);
     if (result.success) {
       console.log(`[Auth:Seed] User created: ${result.username} / ${result.email}`);
+      if (capturedCommands.length > 0) {
+        result.seedCommands = capturedCommands;
+        console.log(`[Auth:Seed] Captured ${capturedCommands.length} seed command(s) for replay`);
+      }
       return result;
     }
     console.warn(`[Auth:Seed] Failed to create user: ${result.reason ?? "unknown"}`);
@@ -27567,7 +27591,7 @@ function normalizeSeverity(s) {
 
 // src/phases/fix.ts
 import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
-import { resolve as resolve3, dirname } from "path";
+import { resolve as resolve3, dirname, basename } from "path";
 
 // src/prompts/generate-fix.ts
 function taintAnalysisPrompt(techStack, finding) {
@@ -27607,7 +27631,8 @@ Guidelines:
 - Follow the framework's built-in security features and best practices
 - Validate and sanitize user inputs at the boundary
 - Preserve the existing code style and patterns
-- Only modify what is necessary to fix the vulnerability`
+- Only modify what is necessary to fix the vulnerability
+- NEVER modify infrastructure files (Dockerfile, docker-compose.yml, compose.yml, .env, *.conf.py, nginx.conf, Makefile, etc.) \u2014 only modify application source code. Infrastructure file changes will be rejected.`
     },
     {
       role: "user",
@@ -27670,6 +27695,51 @@ var fixResultSchema = {
 };
 
 // src/phases/fix.ts
+var INFRA_FILE_PATTERNS = [
+  // Docker / compose files
+  /^Dockerfile/i,
+  /docker-compose\.ya?ml$/i,
+  /^compose\.ya?ml$/i,
+  // Server / deployment configuration
+  /\.conf\.py$/,
+  // e.g. sentry.conf.py
+  /nginx\.conf$/,
+  /apache2?\.conf$/,
+  /httpd\.conf$/,
+  /\.env$/,
+  // environment files
+  /\.env\.\w+$/,
+  // .env.local, .env.production, etc.
+  // CI / build pipeline
+  /^\.github\//,
+  /^\.gitlab-ci/,
+  /^Jenkinsfile/i,
+  /^Makefile$/i,
+  // Kubernetes / infrastructure-as-code
+  /\.ya?ml$.*(?:deploy|service|ingress|configmap|secret)/i,
+  /^k8s\//,
+  /^helm\//,
+  /^terraform\//
+];
+var INFRA_BASENAME_EXACT = /* @__PURE__ */ new Set([
+  "dockerfile",
+  "docker-compose.yml",
+  "docker-compose.yaml",
+  "compose.yml",
+  "compose.yaml",
+  ".env",
+  "makefile",
+  "jenkinsfile"
+]);
+function isInfrastructureFile(filePath) {
+  const normalized = filePath.replace(/\\/g, "/");
+  const base = basename(normalized).toLowerCase();
+  if (INFRA_BASENAME_EXACT.has(base)) return true;
+  for (const pattern of INFRA_FILE_PATTERNS) {
+    if (pattern.test(normalized)) return true;
+  }
+  return false;
+}
 async function generateFixes(llm, repoPath, techStack, findings, previousFixes, model, contextSummary) {
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
@@ -27731,6 +27801,12 @@ ${contextSummary}`;
 function applyFixes(repoPath, fixes) {
   for (const fix of fixes) {
     for (const file of fix.files) {
+      if (isInfrastructureFile(file.path)) {
+        console.warn(
+          `[Fix] BLOCKED infrastructure file modification: ${file.path} \u2014 security fixes must only modify application source code`
+        );
+        continue;
+      }
       const fullPath = resolve3(repoPath, file.path);
       mkdirSync3(dirname(fullPath), { recursive: true });
       writeFileSync4(fullPath, file.content, "utf-8");
@@ -29071,7 +29147,7 @@ var AppHealthMonitor = class {
 // src/orchestrator.ts
 var MAX_ITERATIONS = 5;
 var MAX_FIX_REPAIR_ATTEMPTS = 2;
-async function restartApp(current, llm, repoPath, techStack, startupConfig, modelSelector, registration, recoveryHints, monitor) {
+async function restartApp(current, llm, repoPath, techStack, startupConfig, modelSelector, registration, recoveryHints, monitor, seedCommands) {
   await monitor?.pause();
   try {
     await killProcess(current);
@@ -29083,7 +29159,11 @@ async function restartApp(current, llm, repoPath, techStack, startupConfig, mode
       modelSelector,
       recoveryHints
     );
-    if (registration) await reRegisterUser(registration);
+    if (seedCommands?.length) {
+      await replaySeedCommands(repoPath, seedCommands);
+    } else if (registration) {
+      await reRegisterUser(registration);
+    }
     return result;
   } finally {
     monitor?.resume();
@@ -29358,7 +29438,11 @@ This user should work for authentication. Skip user registration/seeding and go 
         appProcess = repairedStartup.process;
         startupConfig = repairedStartup.config;
         baseUrl = `http://localhost:${startupConfig.port}`;
-        if (authResult.registration) await reRegisterUser(authResult.registration);
+        if (authResult.seedCommands?.length) {
+          await replaySeedCommands(repoPath, authResult.seedCommands);
+        } else if (authResult.registration) {
+          await reRegisterUser(authResult.registration);
+        }
         console.log(`[Engine] App restarted after infra repair \u2014 retrying auth`);
         try {
           const setupRetry = await runSetupIfNeeded(
@@ -29640,7 +29724,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         );
         if (!authOk) {
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
             appProcess = restart.process;
             const retryOk = await verifyAndRepairAuth(
               llm,
@@ -29680,7 +29764,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           `[Scan] App is unreachable on port ${startupConfig.port} \u2014 restarting before scan`
         );
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
           appProcess = restart.process;
           console.log("[Scan] App restarted successfully");
         } catch (err) {
@@ -29785,7 +29869,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart and retry"
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
             appProcess = restart.process;
             console.log(
               "[Scan] App restarted \u2014 will retry scans on next iteration"
@@ -29828,7 +29912,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart before processing findings"
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
             appProcess = restart.process;
             console.log("[Scan] App restarted");
           } catch (restartErr) {
@@ -29943,7 +30027,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       if (fixCommitCount.value > 0) {
         let healthy = false;
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
+          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
           appProcess = restart.process;
           healthy = true;
         } catch (startupErr) {
@@ -29963,7 +30047,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             config.modelSelector
           );
           if (healthy) {
-            const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
+            const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
             appProcess = restart.process;
           } else {
             console.log(
@@ -29976,7 +30060,7 @@ This user should work for authentication. Skip user registration/seeding and go 
                 { cwd: repoPath, stdio: "pipe" }
               );
               execFileSync5("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor);
+              const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
               appProcess = restart.process;
             } catch {
               console.error("[Fix] Could not recover \u2014 aborting fix round");
@@ -30559,13 +30643,39 @@ async function diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLog
     (f) => `- ${f.vulnerability.name}: ${f.summary}
   Files: ${f.files.map((ff) => ff.path).join(", ")}`
   ).join("\n");
+  let gitDiff = "";
+  let gitStatus = "";
+  try {
+    const commitCount = appliedFixes.length;
+    gitDiff = execFileSync5(
+      "git",
+      ["diff", `HEAD~${commitCount}`, "--stat", "--patch"],
+      { cwd: repoPath, encoding: "utf-8", maxBuffer: 50 * 1024 }
+    ).slice(0, 6e3);
+  } catch {
+  }
+  try {
+    gitStatus = execFileSync5(
+      "git",
+      ["status", "--short"],
+      { cwd: repoPath, encoding: "utf-8" }
+    ).slice(0, 2e3);
+  } catch {
+  }
   const messages = [
     {
       role: "system",
       content: `You are a senior developer debugging a build/runtime failure.
 The application (${stackStr}) was working before security fixes were applied, but now it fails to start.
-You have tools to read files and search the codebase.
-Your job: analyze the container logs, identify what the fix broke, and produce corrected files.`
+You have tools to read files, list directories, and search the codebase.
+
+Your job: analyze the container logs and the git diff below, identify what the fixes broke, and produce corrected files.
+
+IMPORTANT RULES:
+- If a fix modified an infrastructure/config file (Dockerfile, docker-compose.yml, .env, *.conf.py, nginx.conf, etc.) that broke the app, REVERT that file to its original content. Use \`git show HEAD~N:path/to/file\` to get the original.
+- Security fixes should ONLY modify application source code, not infrastructure files.
+- If the fix introduced a syntax error, import error, or logic error in source code, fix it while preserving the security improvement where possible.
+- If you cannot fix the source code without breaking the security fix, revert the file entirely.`
     },
     {
       role: "user",
@@ -30573,15 +30683,27 @@ Your job: analyze the container logs, identify what the fix broke, and produce c
 
 ${fixSummary}
 
+Git diff showing all changes:
+\`\`\`
+${gitDiff || "(could not capture git diff)"}
+\`\`\`
+
+Git status:
+\`\`\`
+${gitStatus || "(clean)"}
+\`\`\`
+
 Container logs showing the error:
 \`\`\`
 ${containerLogs.slice(0, 4e3)}
 \`\`\`
 
 Please:
-1. Read the files that were modified by the fixes
-2. Identify the syntax error, import error, or logic error introduced
-3. Fix it while preserving the security improvement where possible
+1. Read the files that were modified by the fixes (use the tools)
+2. Check \`git show HEAD~${appliedFixes.length}:path/to/file\` to see the original content if needed
+3. Identify the error introduced by the fixes
+4. If an infrastructure file was modified (Dockerfile, *.conf.py, compose files, etc.), revert it to the original
+5. For source code files, fix the error while preserving the security improvement
 
 Respond with a JSON array of file fixes:
 \`\`\`json

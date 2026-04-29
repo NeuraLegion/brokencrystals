@@ -48,7 +48,8 @@ Guidelines:
 - Follow the framework's built-in security features and best practices
 - Validate and sanitize user inputs at the boundary
 - Preserve the existing code style and patterns
-- Only modify what is necessary to fix the vulnerability`,
+- Only modify what is necessary to fix the vulnerability
+- NEVER modify infrastructure files (Dockerfile, docker-compose.yml, compose.yml, .env, *.conf.py, nginx.conf, Makefile, etc.) — only modify application source code. Infrastructure file changes will be rejected.`,
     },
     {
       role: "user",
