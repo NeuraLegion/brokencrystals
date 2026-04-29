@@ -986,6 +986,15 @@ function commandRunsInDocker(command: string): boolean {
 }
 
 /**
+ * Detect commands that stream indefinitely (logs -f, tail -f, watch, etc.)
+ * and would hang forever as a post-start command.
+ */
+function isStreamingCommand(cmd: string): boolean {
+  const trimmed = cmd.trim();
+  return /\blogs\s+(-\S+\s+)*-f\b|\blogs\s+(-\S+\s+)*--follow\b|\btail\s+(-\S+\s+)*-f\b|\btail\s+(-\S+\s+)*--follow\b|\b--follow\b.*\blogs\b|\bwatch\s|\btop\b/.test(trimmed);
+}
+
+/**
  * Extract the Docker image name from a config's prerequisites.
  * Looks for `docker build -t <name>` patterns.
  */
@@ -1390,7 +1399,7 @@ After fixing the issue, reply with a JSON object describing what changed:
 }
 \`\`\`
 - **command**: override the startup command if the current one is fundamentally wrong (e.g. bare "bundle exec" on the host when it should be "docker run ... bundle exec"). Only set this if the command itself needs to change.
-- **postStartCommands**: commands that must run AFTER the app containers start but BEFORE the health check (e.g. DB migrations, cache warmup, seeding). These run on the HOST. If the command must run inside a container, wrap it with 'docker compose exec <service>' or 'docker exec <container>'.
+- **postStartCommands**: commands that must run AFTER the app containers start but BEFORE the health check (e.g. DB migrations, cache warmup, seeding). These run on the HOST. If the command must run inside a container, wrap it with 'docker compose exec <service>' or 'docker exec <container>'. NEVER use streaming/follow commands here (e.g. 'logs -f', 'tail -f', 'watch') — they hang forever and block startup.
 - **addEnvVars**: environment variables to add/override for the next startup attempt.
 - **healthCheckPath**: if the app's root route ("/") returns errors but a different endpoint is healthy (e.g. "/health", "/srv/status"), specify it here so the health check uses that path instead.
 - Omit fields that don't apply — just include "summary" if you only edited files.`,
@@ -1475,7 +1484,7 @@ function parseInfraRepairResult(response: string): InfraRepairResult {
     const result: InfraRepairResult = {};
     if (Array.isArray(parsed.postStartCommands) && parsed.postStartCommands.length > 0) {
       result.postStartCommands = parsed.postStartCommands.filter(
-        (cmd: unknown) => typeof cmd === "string" && cmd.length > 0,
+        (cmd: unknown) => typeof cmd === "string" && cmd.length > 0 && !isStreamingCommand(cmd as string),
       );
       if (result.postStartCommands!.length > 0) {
         console.log(`[Startup] Infra repair added post-start commands: ${result.postStartCommands!.join(", ")}`);
@@ -2333,6 +2342,12 @@ async function runPostStartCommands(config: StartupConfig, repoPath: string): Pr
   if (!config.postStartCommands?.length) return;
 
   for (let cmd of config.postStartCommands) {
+    // Skip streaming/follow-mode commands that would hang forever
+    if (isStreamingCommand(cmd)) {
+      console.warn(`[Startup] Skipping streaming post-start command: ${cmd}`);
+      continue;
+    }
+
     // Inject env vars into docker compose run/exec commands so they reach
     // the container (host env vars don't automatically pass through).
     cmd = injectComposeEnvFlags(cmd, config.envVars);
