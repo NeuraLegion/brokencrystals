@@ -23640,11 +23640,19 @@ You have codebase tools (read_file, list_files, search_files) AND a **probe_url*
    - Whether it's session-based (cookies), JWT (token in body/header), or API key
    For loginEndpoint, always use the API endpoint path. If unsure, probe POST to candidate endpoints to find the one that accepts credentials.
 
-4. **Find real credentials** \u2014 search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials \u2014 only use values found in the actual codebase. If none found, set loginBody to null.
+4. **CSRF / pre-auth token analysis** \u2014 CRITICAL: Check whether the login form requires a CSRF token or similar pre-auth value:
+   - Probe the login page (GET the URL where the login form is rendered). If GET /login returns 405, try GET / \u2014 many apps redirect unauthenticated users to a login page at the root URL.
+   - Look for hidden form fields: \`<input type="hidden" name="csrf" value="...">\`, \`<input name="csrfmiddlewaretoken">\`, \`<input name="_token">\`, \`<input name="authenticity_token">\`, etc.
+   - Check the codebase for CSRF middleware or validation logic in the login handler.
+   - If a CSRF or hidden token field IS required in the login POST body, report: csrfRequired=true, the field name, the URL to GET the form from, and how the token is delivered (form_body vs header).
+   - If CSRF is only in a JSON endpoint (e.g. GET /session/csrf returns {"csrf":"..."}), that's csrfDelivery="header" (Bright handles it natively).
+   - If CSRF is embedded in HTML (hidden form input) and must be sent in the POST body, that's csrfDelivery="form_body" \u2014 this requires the raw auth tool with NexTemplate extraction.
 
-5. **Find the registration endpoint** (if applicable) \u2014 if no seeded users exist, find a signup/register route and build a registerBody with consistent test credentials.
+5. **Find real credentials** \u2014 search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials \u2014 only use values found in the actual codebase. If none found, set loginBody to null.
 
-6. **Identify a protected endpoint** \u2014 find a route with auth middleware applied (e.g. before_action, @login_required, passport.authenticate) that returns 401/403/302 when unauthenticated. Use probe_url to VERIFY it actually requires auth.
+6. **Find the registration endpoint** (if applicable) \u2014 if no seeded users exist, find a signup/register route and build a registerBody with consistent test credentials.
+
+7. **Identify a protected endpoint** \u2014 find a route with auth middleware applied (e.g. before_action, @login_required, passport.authenticate) that returns 401/403/302 when unauthenticated. Use probe_url to VERIFY it actually requires auth.
 
 CRITICAL RULES:
 - If the codebase has authentication mechanisms (login controllers, session management, auth middleware, password hashing, CSRF tokens), then requiresAuth IS true \u2014 regardless of what HTTP probes return.
@@ -23682,6 +23690,11 @@ Return a JSON object:
   "registerEndpoint": "/register" or null,
   "registerMethod": "POST" or null,
   "registerBody": "email=test@test.com&password=pass" or null,
+  "csrfRequired": true/false,
+  "csrfFieldName": "csrf" or "csrfmiddlewaretoken" or "_token" or null,
+  "csrfFormUrl": "/" or "/login" or null,
+  "csrfDelivery": "form_body" | "header" | null,
+  "csrfExtractPattern": "name=\\"csrf\\"\\s+value=\\"([^\\"]+)\\"" or null,
   "notes": "brief description"
 }
 
@@ -23690,7 +23703,12 @@ Key rules:
 - If no credentials found but registration exists, invent consistent test credentials for both registerBody and loginBody
 - loginBody format must match loginContentType: URL-encoded for "form", JSON for "json"
 - tokenLocation: read the login handler to determine if token is in response body, header, or cookie
-- protectedEndpointPath: find a route with auth middleware in the codebase and confirm it requires authentication`
+- protectedEndpointPath: find a route with auth middleware in the codebase and confirm it requires authentication
+- csrfRequired: set to true if the login POST requires a CSRF token or hidden form field. Probe the login page to verify.
+- csrfFieldName: the exact form field name (e.g. "csrf", "csrfmiddlewaretoken", "_token", "authenticity_token")
+- csrfFormUrl: the URL to GET that serves the login form HTML containing the CSRF token (may be "/" if the app redirects there)
+- csrfDelivery: "form_body" if the token must be in the POST body (HTML hidden input), "header" if it goes in an X-CSRF-Token header (JSON API)
+- csrfExtractPattern: regex to extract the CSRF token from the HTML response body (capture group 1 = token value)`
     }
   ];
 }
@@ -23699,6 +23717,30 @@ function configureAuthPrompt(baseUrl, testUrl, detection, userConfirmed, preProb
   const credentialNote = userConfirmed ? `
 A test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.` : `
 No confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work \u2014 if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
+  let csrfGuidance = "";
+  if (detection.csrfRequired && detection.csrfDelivery === "form_body") {
+    const fieldName = detection.csrfFieldName ?? "csrf";
+    const formUrl = detection.csrfFormUrl ? `${baseUrl}${detection.csrfFormUrl}` : `${baseUrl}/`;
+    const extractPattern = detection.csrfExtractPattern ?? `name="${fieldName}"\\s+value="([^"]+)"`;
+    csrfGuidance = `
+
+## \u26A0\uFE0F MANDATORY: This app uses HTML form-body CSRF
+The detection phase confirmed this app embeds a CSRF token as a hidden form field ("${fieldName}") in the login page HTML.
+You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this. The CSRF token must be extracted from the HTML and included in the POST body.
+
+**Exact steps to use:**
+1. Step "get_csrf": GET ${formUrl} \u2192 extracts the CSRF token from the HTML response body
+2. Step "login": POST ${baseUrl}${detection.loginEndpoint ?? "/login"} with body containing:
+   \`${fieldName}={{ auth_object.stages.get_csrf.response.body | match: /${extractPattern}/ }}&username=...&password=...\`
+
+**Do NOT use create_auth** \u2014 it only supports CSRF as an HTTP header, but this app requires it in the POST body.
+**Do NOT skip the CSRF field** \u2014 login will appear to succeed (302) but the session won't actually be authenticated.`;
+  } else if (detection.csrfRequired && detection.csrfDelivery === "header") {
+    csrfGuidance = `
+
+## CSRF Note
+This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You can use \`create_auth\` with a csrfUrl parameter, or \`create_auth_raw\` with a pre-step that fetches the token.`;
+  }
   return [
     {
       role: "system",
@@ -23716,6 +23758,7 @@ No confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "u
 - Reauth: ${detection.reauthIndicator}
 - Suggested test URL: ${testUrl}
 ${credentialNote}
+${csrfGuidance}
 
 ## Available tools
 - **probe_url** \u2014 Make HTTP requests to the running app. Use for DISCOVERY: finding real endpoints, checking response formats, understanding what the app returns. Cookies are tracked automatically across calls.
@@ -24274,6 +24317,11 @@ async function detectAuthFromCode(llm, repoPath, techStack, baseUrl, model, cont
       registerMethod: parsed.registerMethod ?? "POST",
       registerBody: parsed.registerBody ?? null,
       registerContentType: parsed.registerContentType ?? null,
+      csrfRequired: parsed.csrfRequired ?? false,
+      csrfFieldName: parsed.csrfFieldName ?? null,
+      csrfFormUrl: parsed.csrfFormUrl ?? null,
+      csrfDelivery: parsed.csrfDelivery ?? null,
+      csrfExtractPattern: parsed.csrfExtractPattern ?? null,
       notes: parsed.notes ?? ""
     };
   } catch {
@@ -24302,6 +24350,11 @@ async function detectAuthFromCode(llm, repoPath, techStack, baseUrl, model, cont
       registerMethod: null,
       registerBody: null,
       registerContentType: null,
+      csrfRequired: false,
+      csrfFieldName: null,
+      csrfFormUrl: null,
+      csrfDelivery: null,
+      csrfExtractPattern: null,
       notes: "Detection parse failed \u2014 assuming auth required"
     };
   }
@@ -25452,7 +25505,45 @@ Content-Type: ${ct}
 \`\`\`
 ${preview}
 \`\`\``);
+      if (getRes.status === 405 || getRes.status === 404) {
+        lines.push(`
+**NOTE**: GET ${loginUrl} returned ${getRes.status} \u2014 the login form is NOT at this URL. Probing root URL for the actual login form...`);
+        try {
+          const rootRes = await fetch(baseUrl + "/", {
+            method: "GET",
+            headers: { Accept: "text/html, */*" },
+            redirect: "follow",
+            signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM)
+          });
+          const rootBody = await rootRes.text();
+          const rootCt = rootRes.headers.get("content-type") ?? "";
+          const rootIsHtml = rootCt.includes("html") || rootBody.trimStart().startsWith("<");
+          if (rootIsHtml && rootBody.length > 0) {
+            const rootPreview = rootBody.length > 1500 ? rootBody.slice(0, 1500) + "..." : rootBody;
+            lines.push(`### Login form fallback: GET ${baseUrl}/ \u2192 ${rootRes.status} (login form found at root)
+Content-Type: ${rootCt}
+\`\`\`
+${rootPreview}
+\`\`\``);
+            const csrfInputMatch = rootBody.match(/<input[^>]+type=["']hidden["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i) || rootBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+type=["']hidden["'][^>]*value=["']([^"']+)["']/i) || rootBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+value=["']([^"']+)["']/i);
+            if (csrfInputMatch) {
+              lines.push(`
+**\u26A0\uFE0F CSRF TOKEN FOUND**: Hidden input field name="${csrfInputMatch[1]}" with a live token value. The login POST **requires** this field in the body. Use \`create_auth_raw\` with NexTemplate extraction.`);
+            }
+            const formActionMatch = rootBody.match(/<form[^>]+action=["']([^"']+)["']/i);
+            if (formActionMatch?.[1]) {
+              lines.push(`**Login form action**: ${formActionMatch[1]}`);
+            }
+          }
+        } catch {
+        }
+      }
       if (isHtml) {
+        const csrfInputMatch = getBody.match(/<input[^>]+type=["']hidden["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i) || getBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+type=["']hidden["'][^>]*value=["']([^"']+)["']/i) || getBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+value=["']([^"']+)["']/i);
+        if (csrfInputMatch) {
+          lines.push(`
+**\u26A0\uFE0F CSRF TOKEN FOUND**: Hidden input field name="${csrfInputMatch[1]}" with a live token value. The login POST **requires** this field in the body. Use \`create_auth_raw\` with NexTemplate extraction from GET ${loginUrl}.`);
+        }
         const actionMatch = getBody.match(/action=["']([^"']+)["']/i);
         const apiCandidates = /* @__PURE__ */ new Set();
         if (actionMatch?.[1]) {
@@ -25710,6 +25801,7 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
   const loginEndpoint = detection.loginEndpoint ?? "/session";
   const loginUrl = `${baseUrl}${loginEndpoint}`;
   let csrfToken;
+  let csrfFieldName;
   let sessionCookie;
   const csrfCandidates = [`${baseUrl}/session/csrf`, `${baseUrl}/csrf`];
   for (const csrfUrl of csrfCandidates) {
@@ -25736,12 +25828,50 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
     } catch {
     }
   }
-  const formBody = `login=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
+  if (!csrfToken) {
+    const formCsrfCandidates = detection.csrfFormUrl ? [`${baseUrl}${detection.csrfFormUrl}`] : [loginUrl, `${baseUrl}/`];
+    for (const formUrl of formCsrfCandidates) {
+      try {
+        const res = await fetch(formUrl, {
+          method: "GET",
+          headers: { Accept: "text/html, */*" },
+          redirect: "follow",
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
+        });
+        if (res.status === 200) {
+          const body = await res.text();
+          const csrfInputMatch = body.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i) || body.match(/<input[^>]+value=["']([^"']+)["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["']/i);
+          if (csrfInputMatch) {
+            if (csrfInputMatch[2] && /^(csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)$/i.test(csrfInputMatch[1])) {
+              csrfFieldName = csrfInputMatch[1];
+              csrfToken = csrfInputMatch[2];
+            } else {
+              csrfToken = csrfInputMatch[1];
+              csrfFieldName = csrfInputMatch[2];
+            }
+          }
+          const setCookies = extractSetCookies(res.headers);
+          for (const sc of setCookies) {
+            const pair = sc.split(";")[0]?.trim();
+            if (pair?.includes("=")) {
+              sessionCookie = (sessionCookie ? sessionCookie + "; " : "") + pair;
+            }
+          }
+          if (csrfToken) break;
+        }
+      } catch {
+      }
+    }
+  }
+  let formBody = `login=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
+  if (csrfToken && csrfFieldName) {
+    formBody = `${csrfFieldName}=${encodeURIComponent(csrfToken)}&${formBody}`;
+  }
   const headers = {
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json"
   };
-  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  if (csrfToken && !csrfFieldName) headers["X-CSRF-Token"] = csrfToken;
   if (sessionCookie) headers["Cookie"] = sessionCookie;
   try {
     const res = await fetch(loginUrl, {
@@ -25767,9 +25897,27 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
     if (res.status === 200 || res.status === 302) {
       const setCookies = extractSetCookies(res.headers);
       const hasSessionCookie = setCookies.some(
-        (c3) => /(_t|_session|session_id|token|jwt)/i.test(c3)
+        (c3) => /(_t|_session|session_id|token|jwt|Session)/i.test(c3)
       );
       if (hasSessionCookie || res.status === 302) {
+        if (detection.protectedEndpointPath || detection.csrfRequired) {
+          const verifyCookie = setCookies.map((c3) => c3.split(";")[0]?.trim()).filter(Boolean).join("; ") || sessionCookie || "";
+          const verifyUrl = detection.protectedEndpointPath ? `${baseUrl}${detection.protectedEndpointPath}` : `${baseUrl}/`;
+          try {
+            const verifyRes = await fetch(verifyUrl, {
+              method: "GET",
+              headers: { Accept: "text/html, application/json, */*", Cookie: verifyCookie },
+              redirect: "follow",
+              signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
+            });
+            const verifyBody = await verifyRes.text();
+            const stillShowsLogin = /<form[^>]*action=["'][^"']*login/i.test(verifyBody) || /<input[^>]+name=["']password["']/i.test(verifyBody) || /Sign\s*In|Log\s*In/i.test(verifyBody.slice(0, 500));
+            if (stillShowsLogin && verifyRes.status === 200) {
+              return { valid: false, reason: "Login returned 302 but session was NOT authenticated \u2014 protected resource still shows login form (likely missing CSRF token in login POST)" };
+            }
+          } catch {
+          }
+        }
         return { valid: true, reason: "Login succeeded with session cookie" };
       }
       if (/"user"/.test(body) || /"username"/.test(body)) {

@@ -14,6 +14,11 @@ interface AuthDetectionInput {
   registerEndpoint: string | null;
   registerMethod: string | null;
   registerBody: string | null;
+  csrfRequired?: boolean;
+  csrfFieldName?: string | null;
+  csrfFormUrl?: string | null;
+  csrfDelivery?: "form_body" | "header" | null;
+  csrfExtractPattern?: string | null;
 }
 
 /**
@@ -56,11 +61,19 @@ You have codebase tools (read_file, list_files, search_files) AND a **probe_url*
    - Whether it's session-based (cookies), JWT (token in body/header), or API key
    For loginEndpoint, always use the API endpoint path. If unsure, probe POST to candidate endpoints to find the one that accepts credentials.
 
-4. **Find real credentials** — search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials — only use values found in the actual codebase. If none found, set loginBody to null.
+4. **CSRF / pre-auth token analysis** — CRITICAL: Check whether the login form requires a CSRF token or similar pre-auth value:
+   - Probe the login page (GET the URL where the login form is rendered). If GET /login returns 405, try GET / — many apps redirect unauthenticated users to a login page at the root URL.
+   - Look for hidden form fields: \`<input type="hidden" name="csrf" value="...">\`, \`<input name="csrfmiddlewaretoken">\`, \`<input name="_token">\`, \`<input name="authenticity_token">\`, etc.
+   - Check the codebase for CSRF middleware or validation logic in the login handler.
+   - If a CSRF or hidden token field IS required in the login POST body, report: csrfRequired=true, the field name, the URL to GET the form from, and how the token is delivered (form_body vs header).
+   - If CSRF is only in a JSON endpoint (e.g. GET /session/csrf returns {"csrf":"..."}), that's csrfDelivery="header" (Bright handles it natively).
+   - If CSRF is embedded in HTML (hidden form input) and must be sent in the POST body, that's csrfDelivery="form_body" — this requires the raw auth tool with NexTemplate extraction.
 
-5. **Find the registration endpoint** (if applicable) — if no seeded users exist, find a signup/register route and build a registerBody with consistent test credentials.
+5. **Find real credentials** — search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials — only use values found in the actual codebase. If none found, set loginBody to null.
 
-6. **Identify a protected endpoint** — find a route with auth middleware applied (e.g. before_action, @login_required, passport.authenticate) that returns 401/403/302 when unauthenticated. Use probe_url to VERIFY it actually requires auth.
+6. **Find the registration endpoint** (if applicable) — if no seeded users exist, find a signup/register route and build a registerBody with consistent test credentials.
+
+7. **Identify a protected endpoint** — find a route with auth middleware applied (e.g. before_action, @login_required, passport.authenticate) that returns 401/403/302 when unauthenticated. Use probe_url to VERIFY it actually requires auth.
 
 CRITICAL RULES:
 - If the codebase has authentication mechanisms (login controllers, session management, auth middleware, password hashing, CSRF tokens), then requiresAuth IS true — regardless of what HTTP probes return.
@@ -98,6 +111,11 @@ Return a JSON object:
   "registerEndpoint": "/register" or null,
   "registerMethod": "POST" or null,
   "registerBody": "email=test@test.com&password=pass" or null,
+  "csrfRequired": true/false,
+  "csrfFieldName": "csrf" or "csrfmiddlewaretoken" or "_token" or null,
+  "csrfFormUrl": "/" or "/login" or null,
+  "csrfDelivery": "form_body" | "header" | null,
+  "csrfExtractPattern": "name=\\"csrf\\"\\s+value=\\"([^\\"]+)\\"" or null,
   "notes": "brief description"
 }
 
@@ -106,7 +124,12 @@ Key rules:
 - If no credentials found but registration exists, invent consistent test credentials for both registerBody and loginBody
 - loginBody format must match loginContentType: URL-encoded for "form", JSON for "json"
 - tokenLocation: read the login handler to determine if token is in response body, header, or cookie
-- protectedEndpointPath: find a route with auth middleware in the codebase and confirm it requires authentication`,
+- protectedEndpointPath: find a route with auth middleware in the codebase and confirm it requires authentication
+- csrfRequired: set to true if the login POST requires a CSRF token or hidden form field. Probe the login page to verify.
+- csrfFieldName: the exact form field name (e.g. "csrf", "csrfmiddlewaretoken", "_token", "authenticity_token")
+- csrfFormUrl: the URL to GET that serves the login form HTML containing the CSRF token (may be "/" if the app redirects there)
+- csrfDelivery: "form_body" if the token must be in the POST body (HTML hidden input), "header" if it goes in an X-CSRF-Token header (JSON API)
+- csrfExtractPattern: regex to extract the CSRF token from the HTML response body (capture group 1 = token value)`,
     },
   ];
 }
@@ -131,6 +154,32 @@ export function configureAuthPrompt(
     ? `\nA test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.`
     : `\nNo confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work — if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
 
+  // Build CSRF guidance block when the detection LLM reported form-body CSRF
+  let csrfGuidance = "";
+  if (detection.csrfRequired && detection.csrfDelivery === "form_body") {
+    const fieldName = detection.csrfFieldName ?? "csrf";
+    const formUrl = detection.csrfFormUrl ? `${baseUrl}${detection.csrfFormUrl}` : `${baseUrl}/`;
+    const extractPattern = detection.csrfExtractPattern ?? `name="${fieldName}"\\s+value="([^"]+)"`;
+    csrfGuidance = `
+
+## ⚠️ MANDATORY: This app uses HTML form-body CSRF
+The detection phase confirmed this app embeds a CSRF token as a hidden form field ("${fieldName}") in the login page HTML.
+You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this. The CSRF token must be extracted from the HTML and included in the POST body.
+
+**Exact steps to use:**
+1. Step "get_csrf": GET ${formUrl} → extracts the CSRF token from the HTML response body
+2. Step "login": POST ${baseUrl}${detection.loginEndpoint ?? "/login"} with body containing:
+   \`${fieldName}={{ auth_object.stages.get_csrf.response.body | match: /${extractPattern}/ }}&username=...&password=...\`
+
+**Do NOT use create_auth** — it only supports CSRF as an HTTP header, but this app requires it in the POST body.
+**Do NOT skip the CSRF field** — login will appear to succeed (302) but the session won't actually be authenticated.`;
+  } else if (detection.csrfRequired && detection.csrfDelivery === "header") {
+    csrfGuidance = `
+
+## CSRF Note
+This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You can use \`create_auth\` with a csrfUrl parameter, or \`create_auth_raw\` with a pre-step that fetches the token.`;
+  }
+
   return [
     {
       role: "system",
@@ -148,6 +197,7 @@ export function configureAuthPrompt(
 - Reauth: ${detection.reauthIndicator}
 - Suggested test URL: ${testUrl}
 ${credentialNote}
+${csrfGuidance}
 
 ## Available tools
 - **probe_url** — Make HTTP requests to the running app. Use for DISCOVERY: finding real endpoints, checking response formats, understanding what the app returns. Cookies are tracked automatically across calls.

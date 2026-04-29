@@ -353,6 +353,12 @@ interface AuthDetection {
   registerMethod: string | null;
   registerBody: string | null;
   registerContentType: "json" | "form" | "xml" | null;
+  // CSRF detection fields — reported by the detection LLM
+  csrfRequired: boolean;
+  csrfFieldName: string | null;
+  csrfFormUrl: string | null;
+  csrfDelivery: "form_body" | "header" | null;
+  csrfExtractPattern: string | null;
   notes: string;
 }
 
@@ -430,6 +436,11 @@ async function detectAuthFromCode(
       registerMethod: parsed.registerMethod ?? "POST",
       registerBody: parsed.registerBody ?? null,
       registerContentType: parsed.registerContentType ?? null,
+      csrfRequired: parsed.csrfRequired ?? false,
+      csrfFieldName: parsed.csrfFieldName ?? null,
+      csrfFormUrl: parsed.csrfFormUrl ?? null,
+      csrfDelivery: parsed.csrfDelivery ?? null,
+      csrfExtractPattern: parsed.csrfExtractPattern ?? null,
       notes: parsed.notes ?? "",
     };
   } catch {
@@ -458,6 +469,11 @@ async function detectAuthFromCode(
       registerMethod: null,
       registerBody: null,
       registerContentType: null,
+      csrfRequired: false,
+      csrfFieldName: null,
+      csrfFormUrl: null,
+      csrfDelivery: null,
+      csrfExtractPattern: null,
       notes: "Detection parse failed — assuming auth required",
     };
   }
@@ -1989,8 +2005,51 @@ async function preProbeForAuth(
       const loginType = isHtml ? "HTML page (NOT an API endpoint)" : "API endpoint";
       lines.push(`### Login endpoint probe: GET ${loginUrl} → ${getRes.status} (${loginType})\nContent-Type: ${ct}\n\`\`\`\n${preview}\n\`\`\``);
 
+      // If GET /login returned 405/404, the login form is likely at a different URL
+      // Many apps (Miniflux, etc.) redirect unauthenticated users to / which shows the login form
+      if (getRes.status === 405 || getRes.status === 404) {
+        lines.push(`\n**NOTE**: GET ${loginUrl} returned ${getRes.status} — the login form is NOT at this URL. Probing root URL for the actual login form...`);
+        try {
+          const rootRes = await fetch(baseUrl + "/", {
+            method: "GET",
+            headers: { Accept: "text/html, */*" },
+            redirect: "follow",
+            signal: AbortSignal.timeout(FETCH_TIMEOUT_MEDIUM),
+          });
+          const rootBody = await rootRes.text();
+          const rootCt = rootRes.headers.get("content-type") ?? "";
+          const rootIsHtml = rootCt.includes("html") || rootBody.trimStart().startsWith("<");
+          if (rootIsHtml && rootBody.length > 0) {
+            const rootPreview = rootBody.length > 1500 ? rootBody.slice(0, 1500) + "..." : rootBody;
+            lines.push(`### Login form fallback: GET ${baseUrl}/ → ${rootRes.status} (login form found at root)\nContent-Type: ${rootCt}\n\`\`\`\n${rootPreview}\n\`\`\``);
+
+            // Extract CSRF hidden inputs from the form HTML
+            const csrfInputMatch = rootBody.match(/<input[^>]+type=["']hidden["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i)
+              || rootBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+type=["']hidden["'][^>]*value=["']([^"']+)["']/i)
+              || rootBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+value=["']([^"']+)["']/i);
+            if (csrfInputMatch) {
+              lines.push(`\n**⚠️ CSRF TOKEN FOUND**: Hidden input field name="${csrfInputMatch[1]}" with a live token value. The login POST **requires** this field in the body. Use \`create_auth_raw\` with NexTemplate extraction.`);
+            }
+
+            // Extract form action
+            const formActionMatch = rootBody.match(/<form[^>]+action=["']([^"']+)["']/i);
+            if (formActionMatch?.[1]) {
+              lines.push(`**Login form action**: ${formActionMatch[1]}`);
+            }
+          }
+        } catch { /* skip root fallback */ }
+      }
+
       // If it's HTML, look for form action to find the real API endpoint
       if (isHtml) {
+        // Check for CSRF hidden inputs in the login form HTML
+        const csrfInputMatch = getBody.match(/<input[^>]+type=["']hidden["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i)
+          || getBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+type=["']hidden["'][^>]*value=["']([^"']+)["']/i)
+          || getBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+value=["']([^"']+)["']/i);
+        if (csrfInputMatch) {
+          lines.push(`\n**⚠️ CSRF TOKEN FOUND**: Hidden input field name="${csrfInputMatch[1]}" with a live token value. The login POST **requires** this field in the body. Use \`create_auth_raw\` with NexTemplate extraction from GET ${loginUrl}.`);
+        }
+
         const actionMatch = getBody.match(/action=["']([^"']+)["']/i);
         const apiCandidates = new Set<string>();
         if (actionMatch?.[1]) {
@@ -2321,7 +2380,10 @@ async function verifySeededCredentials(
 
   // Step 1: Try to get a CSRF token (many apps need this)
   let csrfToken: string | undefined;
+  let csrfFieldName: string | undefined;
   let sessionCookie: string | undefined;
+
+  // Step 1a: Check JSON CSRF endpoints (Discourse, Rails API mode)
   const csrfCandidates = [`${baseUrl}/session/csrf`, `${baseUrl}/csrf`];
   for (const csrfUrl of csrfCandidates) {
     try {
@@ -2347,13 +2409,61 @@ async function verifySeededCredentials(
     } catch { /* skip */ }
   }
 
+  // Step 1b: If no JSON CSRF found, check for HTML form CSRF
+  // Try the login page first, then root URL (for apps like Miniflux where GET /login → 405)
+  if (!csrfToken) {
+    const formCsrfCandidates = detection.csrfFormUrl
+      ? [`${baseUrl}${detection.csrfFormUrl}`]
+      : [loginUrl, `${baseUrl}/`];
+    for (const formUrl of formCsrfCandidates) {
+      try {
+        const res = await fetch(formUrl, {
+          method: "GET",
+          headers: { Accept: "text/html, */*" },
+          redirect: "follow",
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
+        });
+        if (res.status === 200) {
+          const body = await res.text();
+          // Look for hidden CSRF inputs in the HTML
+          const csrfInputMatch = body.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i)
+            || body.match(/<input[^>]+value=["']([^"']+)["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["']/i);
+          if (csrfInputMatch) {
+            // The regex may capture groups in different orders depending on which pattern matched
+            if (csrfInputMatch[2] && /^(csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)$/i.test(csrfInputMatch[1]!)) {
+              csrfFieldName = csrfInputMatch[1]!;
+              csrfToken = csrfInputMatch[2];
+            } else {
+              csrfToken = csrfInputMatch[1]!;
+              csrfFieldName = csrfInputMatch[2]!;
+            }
+          }
+          // Also grab session cookie from this page (needed to pair with the CSRF token)
+          const setCookies: string[] = extractSetCookies(res.headers);
+          for (const sc of setCookies) {
+            const pair = sc.split(";")[0]?.trim();
+            if (pair?.includes("=")) {
+              sessionCookie = (sessionCookie ? sessionCookie + "; " : "") + pair;
+            }
+          }
+          if (csrfToken) break;
+        }
+      } catch { /* skip */ }
+    }
+  }
+
   // Step 2: Attempt login with form-encoded body (most common for session auth)
-  const formBody = `login=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
+  // Include CSRF token in the body if it came from an HTML form, or as header if from JSON API
+  let formBody = `login=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
+  if (csrfToken && csrfFieldName) {
+    // HTML form CSRF — include in POST body
+    formBody = `${csrfFieldName}=${encodeURIComponent(csrfToken)}&${formBody}`;
+  }
   const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
   };
-  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  if (csrfToken && !csrfFieldName) headers["X-CSRF-Token"] = csrfToken;
   if (sessionCookie) headers["Cookie"] = sessionCookie;
 
   try {
@@ -2386,9 +2496,34 @@ async function verifySeededCredentials(
       // Look for session cookies in response
       const setCookies: string[] = extractSetCookies(res.headers);
       const hasSessionCookie = setCookies.some(
-        (c: string) => /(_t|_session|session_id|token|jwt)/i.test(c),
+        (c: string) => /(_t|_session|session_id|token|jwt|Session)/i.test(c),
       );
       if (hasSessionCookie || res.status === 302) {
+        // Step 3: Verify the session actually works by hitting a protected resource
+        // This catches the case where login returns 302 but CSRF was missing (session not created)
+        if (detection.protectedEndpointPath || detection.csrfRequired) {
+          const verifyCookie = setCookies.map(c => c.split(";")[0]?.trim()).filter(Boolean).join("; ")
+            || sessionCookie || "";
+          const verifyUrl = detection.protectedEndpointPath
+            ? `${baseUrl}${detection.protectedEndpointPath}`
+            : `${baseUrl}/`;
+          try {
+            const verifyRes = await fetch(verifyUrl, {
+              method: "GET",
+              headers: { Accept: "text/html, application/json, */*", Cookie: verifyCookie },
+              redirect: "follow",
+              signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
+            });
+            const verifyBody = await verifyRes.text();
+            // If the protected resource still shows a login form, auth didn't actually work
+            const stillShowsLogin = /<form[^>]*action=["'][^"']*login/i.test(verifyBody)
+              || /<input[^>]+name=["']password["']/i.test(verifyBody)
+              || /Sign\s*In|Log\s*In/i.test(verifyBody.slice(0, 500));
+            if (stillShowsLogin && verifyRes.status === 200) {
+              return { valid: false, reason: "Login returned 302 but session was NOT authenticated — protected resource still shows login form (likely missing CSRF token in login POST)" };
+            }
+          } catch { /* verification fetch failed — don't block on this */ }
+        }
         return { valid: true, reason: "Login succeeded with session cookie" };
       }
       // 200 without session cookie — might be an error-in-200 we didn't catch
