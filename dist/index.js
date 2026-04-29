@@ -24813,7 +24813,7 @@ Example \u2014 OAuth2 PKCE flow:
             },
             testFollowRedirects: {
               type: "boolean",
-              description: "Whether the test request should follow HTTP redirects. IMPORTANT: Set to true when using body-based reauthTriggers and the app redirects unauthenticated requests to a login page (302 \u2192 login). Without following redirects, the body pattern won't match the redirect response. Default: auto-detected (true when reauthTriggers use body patterns, false otherwise)."
+              description: "Whether the test request should follow HTTP redirects. Default: false. Set to TRUE when your reauthTriggers use body/dom patterns AND the app redirects unauthenticated requests (302 \u2192 login page) \u2014 without this the test sees only the raw 302 body which won't match. Keep FALSE when reauthTriggers check status codes or Location headers \u2014 following would hide the 302 you're trying to detect."
             },
             testMaxRedirects: {
               type: "number",
@@ -24985,10 +24985,7 @@ Example \u2014 OAuth2 PKCE flow:
       }
       const testMethod = args.testMethod ? String(args.testMethod) : "GET";
       const testUrl2 = String(args.testUrl);
-      const hasBodyTrigger = reauthTriggers.some(
-        (t) => t.location === "body" || t.location === "dom"
-      );
-      const testFollowRedirects = args.testFollowRedirects !== void 0 ? Boolean(args.testFollowRedirects) : hasBodyTrigger;
+      const testFollowRedirects = args.testFollowRedirects !== void 0 ? Boolean(args.testFollowRedirects) : false;
       const testMaxRedirects = args.testMaxRedirects !== void 0 ? Number(args.testMaxRedirects) : testFollowRedirects ? 5 : 0;
       for (const step of steps) {
         const req = step.request;

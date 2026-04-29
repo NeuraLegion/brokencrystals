@@ -1076,7 +1076,7 @@ Example — OAuth2 PKCE flow:
             },
             testFollowRedirects: {
               type: "boolean",
-              description: "Whether the test request should follow HTTP redirects. IMPORTANT: Set to true when using body-based reauthTriggers and the app redirects unauthenticated requests to a login page (302 → login). Without following redirects, the body pattern won't match the redirect response. Default: auto-detected (true when reauthTriggers use body patterns, false otherwise).",
+              description: "Whether the test request should follow HTTP redirects. Default: false. Set to TRUE when your reauthTriggers use body/dom patterns AND the app redirects unauthenticated requests (302 → login page) — without this the test sees only the raw 302 body which won't match. Keep FALSE when reauthTriggers check status codes or Location headers — following would hide the 302 you're trying to detect.",
             },
             testMaxRedirects: {
               type: "number",
@@ -1271,14 +1271,12 @@ Example — OAuth2 PKCE flow:
       const testMethod = args.testMethod ? String(args.testMethod) : "GET";
       const testUrl = String(args.testUrl);
 
-      // Determine if test request should follow redirects
-      // Auto-enable when reauthTriggers use body/dom patterns (need to see final page content)
-      const hasBodyTrigger = reauthTriggers.some(
-        (t: Record<string, unknown>) => t.location === "body" || t.location === "dom",
-      );
+      // Follow redirects on test request — LLM decides based on context:
+      // - true when reauthTriggers use body/dom patterns and app redirects to login
+      // - false when reauthTriggers use header/status (need to see raw 302)
       const testFollowRedirects = args.testFollowRedirects !== undefined
         ? Boolean(args.testFollowRedirects)
-        : hasBodyTrigger; // auto-enable for body-based triggers
+        : false;
       const testMaxRedirects = args.testMaxRedirects !== undefined
         ? Number(args.testMaxRedirects)
         : (testFollowRedirects ? 5 : 0);
