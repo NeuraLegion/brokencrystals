@@ -24341,6 +24341,19 @@ async function createAuthViaRestApi(api, projectId, repeaterId, params) {
   }
   const isSession = authStyle === "session";
   const reauthStrat = params.reauthStrategy ?? (isSession ? "both" : "status");
+  let loginBodyTrigger = null;
+  if (isSession) {
+    try {
+      const loginPath = new URL(loginUrl).pathname;
+      const escaped = loginPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      loginBodyTrigger = {
+        type: "TRIGGER",
+        location: "body",
+        patterns: [`action=["'][^"']*${escaped}["']`]
+      };
+    } catch {
+    }
+  }
   let reauthTriggers;
   if (reauthStrat === "body" && params.reauthBodyPattern) {
     reauthTriggers = [
@@ -24348,13 +24361,15 @@ async function createAuthViaRestApi(api, projectId, repeaterId, params) {
     ];
   } else if (reauthStrat === "redirect") {
     reauthTriggers = [
-      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] }
+      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login|signin|sign_in|auth"] },
+      ...loginBodyTrigger ? [{ type: "OR" }, loginBodyTrigger] : []
     ];
   } else if (reauthStrat === "both") {
     reauthTriggers = [
       { type: "TRIGGER", location: "status", statuses: [401, 403] },
       { type: "OR" },
-      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] }
+      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login|signin|sign_in|auth"] },
+      ...loginBodyTrigger ? [{ type: "OR" }, loginBodyTrigger] : []
     ];
   } else {
     reauthTriggers = [
@@ -24402,9 +24417,13 @@ async function createAuthViaRestApi(api, projectId, repeaterId, params) {
         method: "GET",
         url: testUrl,
         protocol: "http",
-        bodyType: "clear_text"
-        // Test request should follow redirects normally — only login steps
-        // need followRedirects:false to capture raw Set-Cookie on 302
+        bodyType: "clear_text",
+        // For session auth: follow redirects so Bright sees the final page
+        // (login page vs protected page) rather than a raw 302. This lets the
+        // body reauthTrigger detect unauthenticated state, and lets Bright
+        // compare validation (login page) vs authorization (protected page).
+        // Login steps still use followRedirects:false to capture raw Set-Cookie.
+        ...isSession ? { followRedirects: true } : {}
       }
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],

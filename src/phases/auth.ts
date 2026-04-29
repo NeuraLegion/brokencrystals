@@ -536,8 +536,25 @@ async function createAuthViaRestApi(
   // --- Session or JWT: multistep auth ---
   const isSession = authStyle === "session";
 
-  // reauthTriggers — default to "both" for session (status OR redirect), status for JWT
+  // reauthTriggers — default to "both" for session (status OR redirect OR body), status for JWT
   const reauthStrat = params.reauthStrategy ?? (isSession ? "both" : "status");
+
+  // For session auth: build a body trigger from the login path so that after
+  // following redirects (where there's no Location header), we can still detect
+  // an unauthenticated response by matching the login form's action attribute.
+  let loginBodyTrigger: Record<string, unknown> | null = null;
+  if (isSession) {
+    try {
+      const loginPath = new URL(loginUrl).pathname;
+      const escaped = loginPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      loginBodyTrigger = {
+        type: "TRIGGER",
+        location: "body",
+        patterns: [`action=["'][^"']*${escaped}["']`],
+      };
+    } catch { /* bad URL — skip body trigger */ }
+  }
+
   let reauthTriggers: Record<string, unknown>[];
   if (reauthStrat === "body" && params.reauthBodyPattern) {
     reauthTriggers = [
@@ -545,13 +562,15 @@ async function createAuthViaRestApi(
     ];
   } else if (reauthStrat === "redirect") {
     reauthTriggers = [
-      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] },
+      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login|signin|sign_in|auth"] },
+      ...(loginBodyTrigger ? [{ type: "OR" } as Record<string, unknown>, loginBodyTrigger] : []),
     ];
   } else if (reauthStrat === "both") {
     reauthTriggers = [
       { type: "TRIGGER", location: "status", statuses: [401, 403] },
       { type: "OR" },
-      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] },
+      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login|signin|sign_in|auth"] },
+      ...(loginBodyTrigger ? [{ type: "OR" } as Record<string, unknown>, loginBodyTrigger] : []),
     ];
   } else {
     reauthTriggers = [
@@ -623,8 +642,12 @@ async function createAuthViaRestApi(
         url: testUrl,
         protocol: "http",
         bodyType: "clear_text",
-        // Test request should follow redirects normally — only login steps
-        // need followRedirects:false to capture raw Set-Cookie on 302
+        // For session auth: follow redirects so Bright sees the final page
+        // (login page vs protected page) rather than a raw 302. This lets the
+        // body reauthTrigger detect unauthenticated state, and lets Bright
+        // compare validation (login page) vs authorization (protected page).
+        // Login steps still use followRedirects:false to capture raw Set-Cookie.
+        ...(isSession ? { followRedirects: true } : {}),
       },
     },
     successResponseDetection: [{ type: "status", statuses: [200] }],
