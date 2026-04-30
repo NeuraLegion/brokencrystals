@@ -71,13 +71,15 @@ export class ProductsService {
     }
   }
 
-  async updateProduct(query: string): Promise<void> {
+  async updateProduct(productName: string): Promise<void> {
     try {
-      this.logger.debug(`Updating products table with query "${query}"`);
-      await this.em.getConnection().execute(query);
+      this.logger.debug(`Updating product views for product name "${productName}"`);
+      await this.em.getConnection().execute(
+        'UPDATE product SET views_count = views_count + 1 WHERE name = ?',[productName]
+      );
       return;
     } catch (err) {
-      this.logger.warn(`Failed to execute query. Error: ${err.message}`);
+      this.logger.warn(`Failed to execute update. Error: ${err.message}`);
       throw new InternalServerErrorException(err.message);
     }
   }

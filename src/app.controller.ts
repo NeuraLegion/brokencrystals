@@ -216,7 +216,9 @@ export class AppController {
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
     try {
-      const result = eval(processNumbersExpression);
+      // Use Function constructor to safely evaluate the expression
+      const func = new Function('numbers', `return ${processNumbersExpression}`);
+      const result = func(numbers);
 
       // SSJI payload may already end the response
       if (response.sent || response.raw.writableEnded) {
