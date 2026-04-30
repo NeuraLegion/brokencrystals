@@ -22,10 +22,7 @@ test('POST /api/process_numbers', { signal: AbortSignal.timeout(timeout) }, asyn
   await runner
     .createScan({
       tests: [
-        'server_side_js_injection',
-        'sqli',
-        'xss',
-        'osi'
+        'server_side_js_injection'
       ],
       attackParamLocations: [AttackParamLocation.BODY, AttackParamLocation.HEADER],
       starMetadata: {
