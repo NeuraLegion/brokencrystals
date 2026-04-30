@@ -19046,18 +19046,21 @@ async function extractEndpointsViaLlm(llm, repoPath, files, handleTool, model) {
     const messages = [
       {
         role: "system",
-        content: `You are an API route analyst. Given source code from a controller/route file, identify all HTTP endpoints it registers.
+        content: `You are an API route analyst. Given source code from a controller/route file, identify all HTTP endpoints it registers or calls.
 
 Look for:
 - Direct route registrations (app.get, router.post, etc.)
 - Helper functions that register routes (registerRoutes, addCrudRoutes, etc.) \u2014 follow them with grep_code if needed
 - Route configuration objects, arrays, or maps
 - Django url() and re_path() patterns in urls.py files
+- Frontend fetch/axios/xhr calls that indicate API endpoints exist
 
 IMPORTANT: Convert path parameters to {param} format. Do NOT return raw regex.
 - Django (?P<sid>\\d+) \u2192 {sid}
 - Express :id \u2192 {id}
 - Flask <int:pk> \u2192 {pk}
+
+IMPORTANT: If URLs are constructed using a variable prefix (e.g. \`API + "/users"\`, \`BASE_URL + path\`), use grep_code to find the value of that variable in the same file or other files. Always return the FULL resolved path (e.g. "/api/users", not just "/users").
 
 You have tools:
 - read_lines: read more of this or other files
@@ -19086,7 +19089,7 @@ Find all HTTP endpoints registered in this file. If routes are registered via he
         endpointDiscoveryTools,
         handleTool,
         model,
-        3
+        5
       );
       const parsed = JSON.parse(extractJson(response));
       const eps = Array.isArray(parsed) ? parsed : Array.isArray(parsed.endpoints) ? parsed.endpoints : [];
