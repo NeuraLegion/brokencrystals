@@ -30082,6 +30082,11 @@ This user should work for authentication. Skip user registration/seeding and go 
       }
       const scanIds = [];
       for (const [gi, group] of scanGroups.entries()) {
+        if (gi > 0) {
+          const jitterMs = 3e4 + Math.floor(Math.random() * 3e4);
+          console.log(`[Scan] Waiting ${Math.round(jitterMs / 1e3)}s before launching group ${gi + 1}...`);
+          await sleep2(jitterMs);
+        }
         try {
           const scanId = await runSecurityScan(
             projectId,
@@ -30453,6 +30458,11 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
     await progress.phaseStart("scan", "Running security scans on harness endpoints");
     const scanIds = [];
     for (const [gi, group] of scanGroups.entries()) {
+      if (gi > 0) {
+        const jitterMs = 3e4 + Math.floor(Math.random() * 3e4);
+        console.log(`[Scan] Waiting ${Math.round(jitterMs / 1e3)}s before launching harness group ${gi + 1}...`);
+        await sleep2(jitterMs);
+      }
       try {
         const scanId = await runSecurityScan(
           projectId,

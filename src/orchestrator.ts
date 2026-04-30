@@ -3,7 +3,7 @@ import { execFileSync, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
 import type { OrchestratorContext, SecurityFix, Finding, DiscoveredEndpoint, TechStack, StartupConfig, BrightApiContext } from "./types.js";
 import { ProgressReporter, type FindingSummary } from "./progress.js";
-import { formatTechStack, toErrorMessage, findingKey, buildSeveritySummary, SEVERITY_ORDER, injectEnvVarsFromHint } from "./utils.js";
+import { formatTechStack, toErrorMessage, findingKey, buildSeveritySummary, SEVERITY_ORDER, injectEnvVarsFromHint, sleep } from "./utils.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import {
   discoverEndpointsViaSwagger,
@@ -965,6 +965,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       const scanIds: string[] = [];
       for (const [gi, group] of scanGroups.entries()) {
+        // Stagger scan launches to avoid overwhelming Bright's auth subsystem
+        if (gi > 0) {
+          const jitterMs = 30_000 + Math.floor(Math.random() * 30_000);
+          console.log(`[Scan] Waiting ${Math.round(jitterMs / 1000)}s before launching group ${gi + 1}...`);
+          await sleep(jitterMs);
+        }
         try {
           const scanId = await runSecurityScan(
             projectId,
@@ -1419,6 +1425,12 @@ async function runScanLoop(
     await progress.phaseStart("scan", "Running security scans on harness endpoints");
     const scanIds: string[] = [];
     for (const [gi, group] of scanGroups.entries()) {
+      // Stagger scan launches to avoid overwhelming Bright's auth subsystem
+      if (gi > 0) {
+        const jitterMs = 30_000 + Math.floor(Math.random() * 30_000);
+        console.log(`[Scan] Waiting ${Math.round(jitterMs / 1000)}s before launching harness group ${gi + 1}...`);
+        await sleep(jitterMs);
+      }
       try {
         const scanId = await runSecurityScan(
           projectId,
