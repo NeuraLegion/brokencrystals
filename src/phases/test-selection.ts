@@ -82,7 +82,7 @@ const PATH_RULES: Array<{ pattern: RegExp; tests: string[] }> = [
   { pattern: /\/(include|load|read|download|path|file)/i, tests: ["lfi", "rfi"] },
   { pattern: /\/(date|time|schedule|booking|reservation)/i, tests: ["date_manipulation"] },
   { pattern: /\/(price|quantity|amount|total|cart|order|checkout)/i, tests: ["business_constraint_bypass"] },
-  { pattern: /\/(ai|llm|chat|prompt|generate|completion)/i, tests: ["prompt_injection", "insecure_output_handling"] },
+  { pattern: /\/(ai|llm|chat|prompt|generate|completion|rag)/i, tests: ["prompt_injection", "insecure_output_handling"] },
   { pattern: /\/(s3|bucket|storage|blob|cloud)/i, tests: ["amazon_s3_takeover", "open_cloud_storage"] },
   { pattern: /wordpress|wp-/i, tests: ["wordpress", "default_login_location"] },
 ];
@@ -320,7 +320,8 @@ Guidelines:
 - Add tests the rules missed (e.g. a /render endpoint that should get ssti, or an /import that should get xxe).
 - Remove tests that are wrong (e.g. sqli on an endpoint that clearly doesn't touch DB, or file_upload on a JSON-only endpoint).
 - If the baseline is fine for an endpoint, return its tests unchanged.
-- Do NOT add header_security, cookie_security, or lrrl — they are excluded by policy.`,
+- Do NOT add header_security, cookie_security, or lrrl — they are excluded by policy.
+- IMPORTANT: For AI/LLM/chat/RAG endpoints (paths containing /chat, /ai, /llm, /prompt, /generate, /completion, /rag, or similar), ALWAYS keep prompt_injection and insecure_output_handling tests. These are critical for AI application security and must not be removed.`,
     },
     {
       role: "user",
