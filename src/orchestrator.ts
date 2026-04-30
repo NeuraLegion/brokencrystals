@@ -113,7 +113,7 @@ async function runSetupIfNeeded(
   modelSelector: ModelSelector,
   progress: ProgressReporter,
   context: string,
-): Promise<{ ran: boolean; completed: boolean; credentials?: FirstRunSetupResult["credentials"]; summary: string }> {
+): Promise<{ ran: boolean; completed: boolean; credentials?: FirstRunSetupResult["credentials"]; summary: string; infraRepairHint?: string }> {
   const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
   if (!needs) return { ran: false, completed: false, summary: "Setup not needed" };
 
@@ -133,6 +133,13 @@ async function runSetupIfNeeded(
     criticModel,
   );
 
+  // If infra repair needed, return immediately — caller will rebuild and retry
+  if (!setupResult.completed && setupResult.infraRepairHint) {
+    console.log(`[Engine] First-run setup needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
+    await progress.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
+    return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
+  }
+
   if (!setupResult.completed && modelSelector.escalate()) {
     console.log(`[Engine] First-run setup failed (${context}) — retrying with escalated model`);
     setupResult = await completeFirstRunSetup(
@@ -145,6 +152,13 @@ async function runSetupIfNeeded(
       modelSelector.current(),
       criticModel,
     );
+
+    // Check again for infra repair after escalated retry
+    if (!setupResult.completed && setupResult.infraRepairHint) {
+      console.log(`[Engine] Escalated setup also needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
+      await progress.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
+      return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
+    }
   }
 
   if (setupResult.completed) {
@@ -349,7 +363,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // before auth can work. Detect and complete it before the auth phase.
     let setupCredentials: FirstRunSetupResult["credentials"] | undefined;
     let setupCompleted = false;
-    {
+    const MAX_SETUP_BOUNCEBACKS = 3;
+    for (let setupBounce = 0; setupBounce <= MAX_SETUP_BOUNCEBACKS; setupBounce++) {
       const r = await runSetupIfNeeded(
         llm,
         repoPath,
@@ -359,11 +374,78 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         startup.postStartSetupHints,
         config.modelSelector,
         progress,
-        "initial",
+        setupBounce === 0 ? "initial" : `bounce-${setupBounce}`,
       );
       if (r.completed) {
         setupCredentials = r.credentials;
         setupCompleted = true;
+        break;
+      }
+      if (!r.infraRepairHint || setupBounce >= MAX_SETUP_BOUNCEBACKS) break;
+
+      // ----- Setup infra bounce-back: rebuild with the hint and retry -----
+      console.log(`[Engine] Setup infra bounce-back ${setupBounce + 1}/${MAX_SETUP_BOUNCEBACKS} — repairing infrastructure`);
+      console.log(`[Engine] Hint: ${r.infraRepairHint.slice(0, 200)}`);
+      await progress.phaseDetail(
+        "first_run_setup",
+        "infra_repair",
+        `Bounce-back ${setupBounce + 1}: ${r.infraRepairHint.slice(0, 120)}`,
+      );
+
+      try {
+        const injected = injectEnvVarsFromHint(repoPath, r.infraRepairHint);
+        if (injected.length > 0) {
+          console.log(`[Engine] Auto-injected env vars from hint: ${injected.join(", ")}`);
+        }
+
+        const repairHints = [
+          `[setup-infra-repair] ${r.infraRepairHint}`,
+          `[setup-infra-repair] The first-run setup phase identified this infrastructure problem. Fix it in compose.yml/Dockerfile/environment and rebuild.`,
+        ];
+
+        healthMonitor?.stop();
+        await killProcess(appProcess);
+        const repairedStartup = await startApplicationWithRetries(
+          llm,
+          repoPath,
+          techStack,
+          startupConfig,
+          config.modelSelector,
+          repairHints,
+        );
+
+        appProcess = repairedStartup.process;
+        startupConfig = repairedStartup.config;
+        baseUrl = `http://localhost:${startupConfig.port}`;
+        // Restart health monitor with new port
+        healthMonitor = new AppHealthMonitor({
+          port: startupConfig.port,
+          healthCheckPath: startupConfig.healthCheckPath,
+          onDeepProbe: () =>
+            deepHealthCheck(
+              startupConfig.port,
+              startupConfig.healthCheckPath ?? "/",
+              llm,
+              config.modelSelector,
+              deepProbeCache,
+            ),
+        });
+        healthMonitor.setRecoveryCallback(async (hint) => {
+          if (!startupConfig.docker) {
+            return { ok: false, detail: "not dockerized — orchestrator will handle full restart" };
+          }
+          const qr = await quickRestartCompose(repoPath, startupConfig);
+          if (qr.ok) {
+            deepProbeCache.clear();
+            return { ok: true, detail: "quick compose restart succeeded" };
+          }
+          return { ok: false, detail: qr.diagnostics ?? "quick restart failed" };
+        });
+        healthMonitor.start();
+        console.log(`[Engine] App restarted after setup infra repair — retrying setup`);
+      } catch (rebuildErr) {
+        console.error(`[Engine] Setup bounce-back rebuild failed: ${toErrorMessage(rebuildErr)}`);
+        break;
       }
     }
 

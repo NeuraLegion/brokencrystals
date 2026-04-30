@@ -138,6 +138,10 @@ IMPORTANT: Do NOT return alreadySetUp:true if you're unsure. The orchestrator wi
 If you tried everything and setup cannot be completed, respond with:
 {"completed": false, "reason": "brief explanation of what went wrong"}
 
+If setup is BLOCKED by an infrastructure issue you cannot fix from within the running containers (e.g. missing database extension, wrong Docker image, missing system package that requires a Docker rebuild), respond with:
+{"completed": false, "reason": "brief explanation", "infraRepairHint": "Specific instruction for fixing the infrastructure. Be precise: e.g. 'PostgreSQL needs the pgvector extension. Replace postgres:16 image with pgvector/pgvector:pg16 in compose.yml and rebuild' or 'The app container needs imagemagick installed. Add apt-get install imagemagick to the Dockerfile.'"}
+Use infraRepairHint ONLY for issues that require rebuilding/restarting containers — NOT for issues you can fix with commands inside the container.
+
 ## Rules
 - Be persistent. Try at least 5 different approaches before giving up.
 - Read HTML responses carefully — they contain form fields, CSRF tokens, and action URLs.

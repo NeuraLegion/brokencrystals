@@ -26147,6 +26147,10 @@ IMPORTANT: Do NOT return alreadySetUp:true if you're unsure. The orchestrator wi
 If you tried everything and setup cannot be completed, respond with:
 {"completed": false, "reason": "brief explanation of what went wrong"}
 
+If setup is BLOCKED by an infrastructure issue you cannot fix from within the running containers (e.g. missing database extension, wrong Docker image, missing system package that requires a Docker rebuild), respond with:
+{"completed": false, "reason": "brief explanation", "infraRepairHint": "Specific instruction for fixing the infrastructure. Be precise: e.g. 'PostgreSQL needs the pgvector extension. Replace postgres:16 image with pgvector/pgvector:pg16 in compose.yml and rebuild' or 'The app container needs imagemagick installed. Add apt-get install imagemagick to the Dockerfile.'"}
+Use infraRepairHint ONLY for issues that require rebuilding/restarting containers \u2014 NOT for issues you can fix with commands inside the container.
+
 ## Rules
 - Be persistent. Try at least 5 different approaches before giving up.
 - Read HTML responses carefully \u2014 they contain form fields, CSRF tokens, and action URLs.
@@ -26460,6 +26464,14 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
   try {
     const json = extractJson(response);
     const result = JSON.parse(json);
+    if (!result.completed && result.infraRepairHint) {
+      console.log(`[Setup] Infrastructure repair requested: ${result.infraRepairHint.slice(0, 200)}`);
+      return {
+        completed: false,
+        summary: result.reason ?? result.infraRepairHint,
+        infraRepairHint: result.infraRepairHint
+      };
+    }
     if (result.completed) {
       if (collectedEvidence.length === 0) {
         console.warn("[Setup] LLM claimed completed=true but provided NO evidence \u2014 rejecting");
@@ -29392,6 +29404,11 @@ async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig
     baseModel,
     criticModel
   );
+  if (!setupResult.completed && setupResult.infraRepairHint) {
+    console.log(`[Engine] First-run setup needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
+    await progress.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
+    return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
+  }
   if (!setupResult.completed && modelSelector.escalate()) {
     console.log(`[Engine] First-run setup failed (${context}) \u2014 retrying with escalated model`);
     setupResult = await completeFirstRunSetup(
@@ -29404,6 +29421,11 @@ async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig
       modelSelector.current(),
       criticModel
     );
+    if (!setupResult.completed && setupResult.infraRepairHint) {
+      console.log(`[Engine] Escalated setup also needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
+      await progress.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
+      return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
+    }
   }
   if (setupResult.completed) {
     await progress.phaseDetail("first_run_setup", "done", `Setup completed: ${setupResult.summary}`);
@@ -29567,7 +29589,8 @@ async function runOrchestrator(ctx) {
     );
     let setupCredentials;
     let setupCompleted = false;
-    {
+    const MAX_SETUP_BOUNCEBACKS = 3;
+    for (let setupBounce = 0; setupBounce <= MAX_SETUP_BOUNCEBACKS; setupBounce++) {
       const r = await runSetupIfNeeded(
         llm,
         repoPath,
@@ -29577,11 +29600,70 @@ async function runOrchestrator(ctx) {
         startup.postStartSetupHints,
         config.modelSelector,
         progress,
-        "initial"
+        setupBounce === 0 ? "initial" : `bounce-${setupBounce}`
       );
       if (r.completed) {
         setupCredentials = r.credentials;
         setupCompleted = true;
+        break;
+      }
+      if (!r.infraRepairHint || setupBounce >= MAX_SETUP_BOUNCEBACKS) break;
+      console.log(`[Engine] Setup infra bounce-back ${setupBounce + 1}/${MAX_SETUP_BOUNCEBACKS} \u2014 repairing infrastructure`);
+      console.log(`[Engine] Hint: ${r.infraRepairHint.slice(0, 200)}`);
+      await progress.phaseDetail(
+        "first_run_setup",
+        "infra_repair",
+        `Bounce-back ${setupBounce + 1}: ${r.infraRepairHint.slice(0, 120)}`
+      );
+      try {
+        const injected = injectEnvVarsFromHint(repoPath, r.infraRepairHint);
+        if (injected.length > 0) {
+          console.log(`[Engine] Auto-injected env vars from hint: ${injected.join(", ")}`);
+        }
+        const repairHints = [
+          `[setup-infra-repair] ${r.infraRepairHint}`,
+          `[setup-infra-repair] The first-run setup phase identified this infrastructure problem. Fix it in compose.yml/Dockerfile/environment and rebuild.`
+        ];
+        healthMonitor?.stop();
+        await killProcess(appProcess);
+        const repairedStartup = await startApplicationWithRetries(
+          llm,
+          repoPath,
+          techStack,
+          startupConfig,
+          config.modelSelector,
+          repairHints
+        );
+        appProcess = repairedStartup.process;
+        startupConfig = repairedStartup.config;
+        baseUrl = `http://localhost:${startupConfig.port}`;
+        healthMonitor = new AppHealthMonitor({
+          port: startupConfig.port,
+          healthCheckPath: startupConfig.healthCheckPath,
+          onDeepProbe: () => deepHealthCheck(
+            startupConfig.port,
+            startupConfig.healthCheckPath ?? "/",
+            llm,
+            config.modelSelector,
+            deepProbeCache
+          )
+        });
+        healthMonitor.setRecoveryCallback(async (hint) => {
+          if (!startupConfig.docker) {
+            return { ok: false, detail: "not dockerized \u2014 orchestrator will handle full restart" };
+          }
+          const qr = await quickRestartCompose(repoPath, startupConfig);
+          if (qr.ok) {
+            deepProbeCache.clear();
+            return { ok: true, detail: "quick compose restart succeeded" };
+          }
+          return { ok: false, detail: qr.diagnostics ?? "quick restart failed" };
+        });
+        healthMonitor.start();
+        console.log(`[Engine] App restarted after setup infra repair \u2014 retrying setup`);
+      } catch (rebuildErr) {
+        console.error(`[Engine] Setup bounce-back rebuild failed: ${toErrorMessage(rebuildErr)}`);
+        break;
       }
     }
     await progress.phaseStart("auth", "Detecting authentication requirements");

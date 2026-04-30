@@ -31,6 +31,8 @@ export interface FirstRunSetupResult {
   };
   /** Brief description of what happened. */
   summary: string;
+  /** If set, the setup phase needs an infrastructure change (e.g. missing DB extension, wrong image). */
+  infraRepairHint?: string;
 }
 
 /** Captured evidence from a single report_setup_evidence call. */
@@ -455,7 +457,19 @@ export async function completeFirstRunSetup(
       email?: string;
       summary?: string;
       reason?: string;
+      infraRepairHint?: string;
     };
+
+    // Check for infra repair request — setup discovered an infrastructure issue
+    // it cannot fix from within (e.g. missing DB extension, wrong Docker image)
+    if (!result.completed && result.infraRepairHint) {
+      console.log(`[Setup] Infrastructure repair requested: ${result.infraRepairHint.slice(0, 200)}`);
+      return {
+        completed: false,
+        summary: result.reason ?? result.infraRepairHint,
+        infraRepairHint: result.infraRepairHint,
+      };
+    }
 
     if (result.completed) {
       // Gate 1: Evidence required
