@@ -11910,7 +11910,7 @@ ${lines.join("\n")}`
 };
 
 // src/phases/analyze.ts
-import { readFileSync as readFileSync2, existsSync as existsSync3, readdirSync as readdirSync2 } from "fs";
+import { readFileSync as readFileSync2, existsSync as existsSync3, readdirSync as readdirSync2, statSync } from "fs";
 import { resolve, extname } from "path";
 import { execFileSync as execFileSync2 } from "child_process";
 
@@ -19119,6 +19119,127 @@ Find all HTTP endpoints registered in this file. If routes are registered via he
   }
   return results;
 }
+async function checkForMissedRouteFiles(llm, repoPath, alreadyScannedFiles, existingEndpoints, model) {
+  const sourceExts = /* @__PURE__ */ new Set([
+    ".ts",
+    ".js",
+    ".py",
+    ".rb",
+    ".go",
+    ".java",
+    ".kt",
+    ".cs",
+    ".php",
+    ".tsx",
+    ".jsx",
+    ".mjs",
+    ".cjs"
+  ]);
+  const ignoreDirs = /* @__PURE__ */ new Set([
+    "node_modules",
+    ".git",
+    "vendor",
+    "dist",
+    "build",
+    "__pycache__",
+    ".next",
+    "coverage",
+    "tmp",
+    ".cache",
+    "venv",
+    "env"
+  ]);
+  const tree = [];
+  function walkDir(dir, prefix, depth) {
+    if (depth > 4 || tree.length >= 200) return;
+    let entries;
+    try {
+      entries = readdirSync2(resolve(repoPath, dir));
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort()) {
+      if (entry.startsWith(".") || ignoreDirs.has(entry)) continue;
+      const rel = dir ? `${dir}/${entry}` : entry;
+      const fullPath = resolve(repoPath, rel);
+      let isDir = false;
+      try {
+        isDir = statSync(fullPath).isDirectory();
+      } catch {
+        continue;
+      }
+      if (isDir) {
+        tree.push(rel + "/");
+        walkDir(rel, prefix + "  ", depth + 1);
+      } else {
+        const ext2 = extname(entry).toLowerCase();
+        if (sourceExts.has(ext2)) {
+          tree.push(rel);
+        }
+      }
+    }
+  }
+  walkDir("", "", 0);
+  if (tree.length === 0) return [];
+  const scannedSet = new Set(alreadyScannedFiles);
+  const foundRoutes = existingEndpoints.slice(0, 40).map((ep) => `${ep.method} ${ep.path}`).join("\n");
+  const handleTool = createBodyExtractionToolHandler(repoPath);
+  const messages = [
+    {
+      role: "system",
+      content: `You are verifying endpoint discovery completeness. We already found these endpoints:
+
+${foundRoutes || "(none yet)"}
+
+From these files: ${alreadyScannedFiles.slice(0, 30).join(", ")}
+
+Below is the project file tree. Your job: identify any source files that likely define HTTP routes/endpoints but were NOT in our scanned list.
+
+Look for files that:
+- Import/use HTTP frameworks (Flask, Express, Gin, Echo, Spring, etc.)
+- Have "route", "endpoint", "handler", "api" in their name or content
+- Are Python/JS/Go/Java/etc. files at the root or in api/ server/ backend/ directories
+
+Use grep_code to check suspicious files for route patterns (e.g. "@app.route", "router.get", "http.HandleFunc", "app.get(", "RequestMapping", etc.)
+
+Then use read_lines to extract the actual endpoints from any files that do define routes.
+
+Return ONLY a JSON array of newly discovered endpoints (NOT ones already listed above):
+[{"method": "GET", "path": "/api/example", "filePath": "relative/path.py"}]
+
+If nothing was missed, return: []`
+    },
+    {
+      role: "user",
+      content: `Project file tree (${tree.length} source files):
+${tree.join("\n")}
+
+Which of these files might define HTTP endpoints that we haven't scanned yet? Check with grep_code and extract any missed routes.`
+    }
+  ];
+  try {
+    const response = await chatWithTools(
+      llm,
+      messages,
+      endpointDiscoveryTools,
+      handleTool,
+      model,
+      5
+    );
+    const parsed = JSON.parse(extractJson(response));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (ep) => ep.method && ep.path && !scannedSet.has(ep.filePath ?? "")
+    ).map((ep) => ({
+      method: ep.method.toUpperCase(),
+      path: ep.path,
+      filePath: ep.filePath ?? "unknown"
+    }));
+  } catch (err) {
+    console.warn(`[Analyze] Completeness check failed: ${err}`);
+    return [];
+  }
+}
 async function discoverEndpoints(llm, repoPath, techStack, model) {
   const controllerFiles = await findControllerFiles(repoPath);
   console.log(
@@ -19190,6 +19311,19 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
       }
     }
     allEndpoints.push(...llmEndpoints);
+  }
+  const missedEndpoints = await checkForMissedRouteFiles(
+    llm,
+    repoPath,
+    controllerFiles,
+    allEndpoints,
+    model
+  );
+  if (missedEndpoints.length > 0) {
+    console.log(
+      `[Analyze] Completeness check found ${missedEndpoints.length} additional endpoint(s) in files missed by globs`
+    );
+    allEndpoints.push(...missedEndpoints);
   }
   for (const ep of allEndpoints) {
     ep.path = normalizePathParams(ep.path);
@@ -19565,7 +19699,7 @@ import { createInterface } from "readline";
 import { existsSync as existsSync5, readFileSync as readFileSync4, readdirSync as readdirSync3, writeFileSync as writeFileSync3 } from "fs";
 
 // src/tools.ts
-import { readFileSync as readFileSync3, existsSync as existsSync4, statSync, writeFileSync as writeFileSync2 } from "fs";
+import { readFileSync as readFileSync3, existsSync as existsSync4, statSync as statSync2, writeFileSync as writeFileSync2 } from "fs";
 import { resolve as resolve2 } from "path";
 import { execFileSync as execFileSync3, execSync as execSync2 } from "child_process";
 var codebaseTools = [
@@ -19644,7 +19778,7 @@ function createToolHandler(repoPath) {
         if (!existsSync4(filePath)) {
           return `Error: file not found: ${args.path}`;
         }
-        if (statSync(filePath).isDirectory()) {
+        if (statSync2(filePath).isDirectory()) {
           return `Error: path is a directory, not a file: ${args.path}`;
         }
         const content = readFileSync3(filePath, "utf-8");

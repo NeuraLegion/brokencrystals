@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { readFileSync, existsSync, readdirSync } from "fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { resolve, extname } from "path";
 import { execFileSync } from "child_process";
 import { glob } from "glob";
@@ -1637,6 +1637,130 @@ Find all HTTP endpoints registered in this file. If routes are registered via he
   return results;
 }
 
+// ---------------------------------------------------------------------------
+// LLM completeness check — search for route files our globs may have missed
+// ---------------------------------------------------------------------------
+
+async function checkForMissedRouteFiles(
+  llm: OpenAI,
+  repoPath: string,
+  alreadyScannedFiles: string[],
+  existingEndpoints: DiscoveredEndpoint[],
+  model?: string,
+): Promise<DiscoveredEndpoint[]> {
+  // Build a compact directory tree (source files only, max 200 entries)
+  const sourceExts = new Set([
+    ".ts", ".js", ".py", ".rb", ".go", ".java", ".kt", ".cs", ".php",
+    ".tsx", ".jsx", ".mjs", ".cjs",
+  ]);
+  const ignoreDirs = new Set([
+    "node_modules", ".git", "vendor", "dist", "build", "__pycache__",
+    ".next", "coverage", "tmp", ".cache", "venv", "env",
+  ]);
+
+  const tree: string[] = [];
+  function walkDir(dir: string, prefix: string, depth: number) {
+    if (depth > 4 || tree.length >= 200) return;
+    let entries: string[];
+    try {
+      entries = readdirSync(resolve(repoPath, dir));
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort()) {
+      if (entry.startsWith(".") || ignoreDirs.has(entry)) continue;
+      const rel = dir ? `${dir}/${entry}` : entry;
+      const fullPath = resolve(repoPath, rel);
+      let isDir = false;
+      try {
+        isDir = statSync(fullPath).isDirectory();
+      } catch {
+        continue;
+      }
+      if (isDir) {
+        tree.push(rel + "/");
+        walkDir(rel, prefix + "  ", depth + 1);
+      } else {
+        const ext = extname(entry).toLowerCase();
+        if (sourceExts.has(ext)) {
+          tree.push(rel);
+        }
+      }
+    }
+  }
+  walkDir("", "", 0);
+
+  if (tree.length === 0) return [];
+
+  const scannedSet = new Set(alreadyScannedFiles);
+  const foundRoutes = existingEndpoints
+    .slice(0, 40)
+    .map((ep) => `${ep.method} ${ep.path}`)
+    .join("\n");
+
+  const handleTool = createBodyExtractionToolHandler(repoPath);
+
+  const messages = [
+    {
+      role: "system" as const,
+      content: `You are verifying endpoint discovery completeness. We already found these endpoints:
+
+${foundRoutes || "(none yet)"}
+
+From these files: ${alreadyScannedFiles.slice(0, 30).join(", ")}
+
+Below is the project file tree. Your job: identify any source files that likely define HTTP routes/endpoints but were NOT in our scanned list.
+
+Look for files that:
+- Import/use HTTP frameworks (Flask, Express, Gin, Echo, Spring, etc.)
+- Have "route", "endpoint", "handler", "api" in their name or content
+- Are Python/JS/Go/Java/etc. files at the root or in api/ server/ backend/ directories
+
+Use grep_code to check suspicious files for route patterns (e.g. "@app.route", "router.get", "http.HandleFunc", "app.get(", "RequestMapping", etc.)
+
+Then use read_lines to extract the actual endpoints from any files that do define routes.
+
+Return ONLY a JSON array of newly discovered endpoints (NOT ones already listed above):
+[{"method": "GET", "path": "/api/example", "filePath": "relative/path.py"}]
+
+If nothing was missed, return: []`,
+    },
+    {
+      role: "user" as const,
+      content: `Project file tree (${tree.length} source files):
+${tree.join("\n")}
+
+Which of these files might define HTTP endpoints that we haven't scanned yet? Check with grep_code and extract any missed routes.`,
+    },
+  ];
+
+  try {
+    const response = await chatWithTools(
+      llm,
+      messages,
+      endpointDiscoveryTools,
+      handleTool,
+      model,
+      5,
+    );
+    const parsed = JSON.parse(extractJson(response));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (ep: { method?: string; path?: string; filePath?: string }) =>
+          ep.method && ep.path && !scannedSet.has(ep.filePath ?? ""),
+      )
+      .map((ep: { method: string; path: string; filePath?: string }) => ({
+        method: ep.method.toUpperCase(),
+        path: ep.path,
+        filePath: ep.filePath ?? "unknown",
+      }));
+  } catch (err) {
+    console.warn(`[Analyze] Completeness check failed: ${err}`);
+    return [];
+  }
+}
+
 export async function discoverEndpoints(
   llm: OpenAI,
   repoPath: string,
@@ -1728,6 +1852,22 @@ export async function discoverEndpoints(
       }
     }
     allEndpoints.push(...llmEndpoints);
+  }
+
+  // Step 2d: LLM completeness check — let AI grep for route patterns in files
+  // that our glob may have missed (e.g. server2.py, custom_api.go, etc.)
+  const missedEndpoints = await checkForMissedRouteFiles(
+    llm,
+    repoPath,
+    controllerFiles,
+    allEndpoints,
+    model,
+  );
+  if (missedEndpoints.length > 0) {
+    console.log(
+      `[Analyze] Completeness check found ${missedEndpoints.length} additional endpoint(s) in files missed by globs`,
+    );
+    allEndpoints.push(...missedEndpoints);
   }
 
   // Normalize regex-style path params to {param} format (all sources)
