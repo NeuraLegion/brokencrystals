@@ -688,9 +688,13 @@ const CONTROLLER_GLOBS = [
   "**/routes.py",
   "**/api.py",
   "**/endpoints.py",
+  "**/server.py",
+  "**/app.py",
+  "**/main.py",
   "**/*_views.py",
   "**/*_routes.py",
   "**/urls.py",
+  "api/**/*.py",
   // Ruby
   "app/controllers/**/*.rb",
   "config/routes.rb",
