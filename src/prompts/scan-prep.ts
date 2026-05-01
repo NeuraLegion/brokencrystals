@@ -38,10 +38,12 @@ There may be others specific to this app — use your judgment.
 
 ## How to find them
 
-1. **Search the codebase** — use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
-2. **Search the web** — use \`search_web\` to find official documentation for this framework/app on how to configure or disable rate limiting. For example: "How to disable rate limiting in <framework name>" or "<app name> rate limit configuration". This is the fastest way to find the right approach for any given stack.
-3. **Inspect configuration files** — .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
-4. **Check for admin CLI tools** — many frameworks have CLI commands to change runtime settings (rails runner, wp-cli, manage.py, etc.). Run them inside the Docker container.
+1. **Search the web FIRST** — use \`search_web\` to find: "<app/framework name> disable rate limiting for testing" or "<app/framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits.
+2. **Search the codebase** — use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
+3. **Search for runtime settings / admin APIs** — many apps store rate limits in database-backed settings (e.g. Rails SiteSetting, Django constance, WordPress wp_options). Look for admin CLI tools or settings APIs that can change them at runtime without editing source code.
+4. **Inspect configuration files** — .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
+5. **Check for admin CLI tools** — many frameworks have CLI commands to change runtime settings (rails runner, wp-cli, manage.py, etc.). Run them inside the Docker container.
+6. **Check middleware/initializer files** — look for Rack::Attack, express-rate-limit, django-ratelimit, Spring Security, etc. in middleware configs or initializers.
 
 Be thorough: apps often have MULTIPLE rate limit controls at different layers (middleware, framework, database-backed settings, reverse proxy). Find ALL of them.
 
@@ -80,10 +82,11 @@ If you tried but failed:
 {"completed": false, "changes": [], "summary": "what went wrong"}
 
 ## Rules
-- Search the web early — don't guess how a framework configures rate limits, look it up.
+- Search the web FIRST — don't guess how a framework configures rate limits, look it up.
 - Don't break the app. If unsure, search the web for docs before making changes.
 - Be thorough — find ALL rate-limit and throttle settings, not just the first one.
-- Prefer config/settings over patching source code.
+- Prefer runtime settings (admin API, CLI, DB settings) over patching source code.
+- If codebase search finds nothing, check if the framework has built-in rate limiting enabled by default (many do).
 - Always verify your changes took effect before reporting success.`,
     },
     {

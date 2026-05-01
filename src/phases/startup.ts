@@ -1139,6 +1139,43 @@ function findComposeFile(repoPath: string): string | undefined {
 }
 
 /**
+ * Detect the main application service name from compose.yml.
+ * Used by quickRestartCompose to only recreate the app container, preserving
+ * DB/Redis volumes. Heuristics:
+ *   1. If the startup command references a specific service (e.g. "docker compose up app")
+ *   2. Parse compose.yml for a service with `build:` that isn't a known infra image
+ */
+function detectAppService(cwd: string, composeFile: string, startupCmd: string): string | undefined {
+  // Heuristic 1: startup command explicitly names a service
+  const upMatch = startupCmd.match(/docker\s+compose[^|]*up\s+(?:-d\s+)?([a-zA-Z][\w-]*)/);
+  if (upMatch) return upMatch[1];
+
+  // Heuristic 2: parse compose file for the service with a `build:` directive
+  try {
+    const content = readFileSync(`${cwd}/${composeFile}`, "utf-8");
+    const infraImages = /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit/i;
+    const serviceBlocks = content.match(/^\s{2}(\w[\w-]*):\s*$/gm);
+    if (!serviceBlocks) return undefined;
+
+    for (const block of serviceBlocks) {
+      const name = block.trim().replace(/:$/, "");
+      // Find this service's section — check if it has `build:` and isn't infra
+      const serviceRegex = new RegExp(`^\\s{2}${name}:.*?(?=^\\s{2}\\w|\\Z)`, "ms");
+      const match = content.match(serviceRegex);
+      if (match) {
+        const section = match[0];
+        if (/^\s+build:/m.test(section) && !infraImages.test(section)) {
+          return name;
+        }
+      }
+    }
+  } catch {
+    // Can't read compose file — fall back to recreating all
+  }
+  return undefined;
+}
+
+/**
  * Generate a minimal compose file from the existing Dockerfile and startup config.
  * This avoids wasting an attempt when the LLM picks docker compose but no file exists.
  */
@@ -2539,8 +2576,10 @@ function runPrerequisite(
   const BASE_TIMEOUT_MS = 600_000; // 10 min base
   const EXTENSION_MS = 300_000;    // 5 min per extension
   const MAX_EXTENSIONS = 5;        // up to 25 min extra → 35 min max
-  // "Still making progress" = new output appeared in the last 60s
-  const STALL_THRESHOLD_MS = 60_000;
+  // "Still making progress" = new output appeared in the last 180s.
+  // Native extensions (Rust gems, C modules) compile silently for 3+ minutes
+  // so a short threshold incorrectly triggers "stalled" and refuses extensions.
+  const STALL_THRESHOLD_MS = 180_000;
 
   return new Promise((resolve, reject) => {
     const child = spawn("sh", ["-c", cmd], {
@@ -3765,10 +3804,10 @@ async function waitForAppHealthy(
  *
  * Tries two framework-agnostic strategies in order:
  *   1. `docker compose restart` — quickest; restarts the container process.
- *   2. `docker compose up -d --force-recreate` — recreates the container
- *      (fresh filesystem layer, fresh PID 1, preserves named volumes).
- *      Strictly stronger than restart for cases where in-container state
- *      got corrupted but the image and config are still fine.
+ *   2. `docker compose up -d --force-recreate <app-service>` — recreates ONLY
+ *      the application container (fresh filesystem layer, fresh PID 1).
+ *      Database/cache services are NOT recreated, preserving volumes and
+ *      avoiding loss of first-run setup data.
  *
  * On success returns `{ ok: true }`. On failure returns `{ ok: false,
  * diagnostics }` with a structured summary of which strategies were
@@ -3809,19 +3848,22 @@ export async function quickRestartCompose(
     triedStrategies.push(`docker compose restart (failed: ${err instanceof Error ? err.message : String(err)})`);
   }
 
-  // Strategy 2: force-recreate (generic stronger restart — same image, fresh container)
-  console.log(`[AppHealth] Restart insufficient; trying force-recreate`);
+  // Strategy 2: force-recreate only the APP service (preserve DB/Redis volumes)
+  // Detect app service name from the startup command or compose config
+  const appService = detectAppService(cwd, composeFile, config.command);
+  const recreateTarget = appService ? `--force-recreate ${appService}` : "--force-recreate";
+  console.log(`[AppHealth] Restart insufficient; trying force-recreate${appService ? ` (service: ${appService})` : " (all services)"}`);
   try {
-    execSync(`docker compose -f ${composeFile} up -d --force-recreate`, {
+    execSync(`docker compose -f ${composeFile} up -d ${recreateTarget}`, {
       cwd, stdio: "pipe", timeout: 120_000,
     });
-    triedStrategies.push("docker compose up -d --force-recreate");
+    triedStrategies.push(`docker compose up -d ${recreateTarget}`);
     if (await waitForAppHealthy(config.port, probePath, waitMs)) {
       console.log(`[AppHealth] App responsive again after force-recreate`);
       return { ok: true };
     }
   } catch (err) {
-    triedStrategies.push(`docker compose up -d --force-recreate (failed: ${err instanceof Error ? err.message : String(err)})`);
+    triedStrategies.push(`docker compose up -d ${recreateTarget} (failed: ${err instanceof Error ? err.message : String(err)})`);
   }
 
   // Both strategies exhausted — gather diagnostics for the LLM stage

@@ -21800,6 +21800,29 @@ function findComposeFile(repoPath) {
   ];
   return candidates.find((f) => existsSync5(`${repoPath}/${f}`));
 }
+function detectAppService(cwd, composeFile, startupCmd) {
+  const upMatch = startupCmd.match(/docker\s+compose[^|]*up\s+(?:-d\s+)?([a-zA-Z][\w-]*)/);
+  if (upMatch) return upMatch[1];
+  try {
+    const content = readFileSync4(`${cwd}/${composeFile}`, "utf-8");
+    const infraImages = /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit/i;
+    const serviceBlocks = content.match(/^\s{2}(\w[\w-]*):\s*$/gm);
+    if (!serviceBlocks) return void 0;
+    for (const block of serviceBlocks) {
+      const name = block.trim().replace(/:$/, "");
+      const serviceRegex = new RegExp(`^\\s{2}${name}:.*?(?=^\\s{2}\\w|\\Z)`, "ms");
+      const match2 = content.match(serviceRegex);
+      if (match2) {
+        const section = match2[0];
+        if (/^\s+build:/m.test(section) && !infraImages.test(section)) {
+          return name;
+        }
+      }
+    }
+  } catch {
+  }
+  return void 0;
+}
 function generateComposeFile(repoPath, config) {
   const port = config.port || 3e3;
   const envLines = Object.entries(config.envVars ?? {}).map(([k, v]) => `      ${k}: "${v}"`).join("\n");
@@ -22801,7 +22824,7 @@ function runPrerequisite(cmd, cwd, envVars) {
   const BASE_TIMEOUT_MS = 6e5;
   const EXTENSION_MS = 3e5;
   const MAX_EXTENSIONS = 5;
-  const STALL_THRESHOLD_MS = 6e4;
+  const STALL_THRESHOLD_MS = 18e4;
   return new Promise((resolve5, reject) => {
     const child = spawn("sh", ["-c", cmd], {
       cwd,
@@ -23703,20 +23726,22 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
   } catch (err) {
     triedStrategies.push(`docker compose restart (failed: ${err instanceof Error ? err.message : String(err)})`);
   }
-  console.log(`[AppHealth] Restart insufficient; trying force-recreate`);
+  const appService = detectAppService(cwd, composeFile, config.command);
+  const recreateTarget = appService ? `--force-recreate ${appService}` : "--force-recreate";
+  console.log(`[AppHealth] Restart insufficient; trying force-recreate${appService ? ` (service: ${appService})` : " (all services)"}`);
   try {
-    execSync3(`docker compose -f ${composeFile} up -d --force-recreate`, {
+    execSync3(`docker compose -f ${composeFile} up -d ${recreateTarget}`, {
       cwd,
       stdio: "pipe",
       timeout: 12e4
     });
-    triedStrategies.push("docker compose up -d --force-recreate");
+    triedStrategies.push(`docker compose up -d ${recreateTarget}`);
     if (await waitForAppHealthy(config.port, probePath, waitMs)) {
       console.log(`[AppHealth] App responsive again after force-recreate`);
       return { ok: true };
     }
   } catch (err) {
-    triedStrategies.push(`docker compose up -d --force-recreate (failed: ${err instanceof Error ? err.message : String(err)})`);
+    triedStrategies.push(`docker compose up -d ${recreateTarget} (failed: ${err instanceof Error ? err.message : String(err)})`);
   }
   const exited = captureExitedContainers(cwd, composeFile);
   const triedList = triedStrategies.map((s) => `  - ${s}`).join("\n");
@@ -27459,10 +27484,12 @@ There may be others specific to this app \u2014 use your judgment.
 
 ## How to find them
 
-1. **Search the codebase** \u2014 use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
-2. **Search the web** \u2014 use \`search_web\` to find official documentation for this framework/app on how to configure or disable rate limiting. For example: "How to disable rate limiting in <framework name>" or "<app name> rate limit configuration". This is the fastest way to find the right approach for any given stack.
-3. **Inspect configuration files** \u2014 .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
-4. **Check for admin CLI tools** \u2014 many frameworks have CLI commands to change runtime settings (rails runner, wp-cli, manage.py, etc.). Run them inside the Docker container.
+1. **Search the web FIRST** \u2014 use \`search_web\` to find: "<app/framework name> disable rate limiting for testing" or "<app/framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits.
+2. **Search the codebase** \u2014 use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
+3. **Search for runtime settings / admin APIs** \u2014 many apps store rate limits in database-backed settings (e.g. Rails SiteSetting, Django constance, WordPress wp_options). Look for admin CLI tools or settings APIs that can change them at runtime without editing source code.
+4. **Inspect configuration files** \u2014 .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
+5. **Check for admin CLI tools** \u2014 many frameworks have CLI commands to change runtime settings (rails runner, wp-cli, manage.py, etc.). Run them inside the Docker container.
+6. **Check middleware/initializer files** \u2014 look for Rack::Attack, express-rate-limit, django-ratelimit, Spring Security, etc. in middleware configs or initializers.
 
 Be thorough: apps often have MULTIPLE rate limit controls at different layers (middleware, framework, database-backed settings, reverse proxy). Find ALL of them.
 
@@ -27501,10 +27528,11 @@ If you tried but failed:
 {"completed": false, "changes": [], "summary": "what went wrong"}
 
 ## Rules
-- Search the web early \u2014 don't guess how a framework configures rate limits, look it up.
+- Search the web FIRST \u2014 don't guess how a framework configures rate limits, look it up.
 - Don't break the app. If unsure, search the web for docs before making changes.
 - Be thorough \u2014 find ALL rate-limit and throttle settings, not just the first one.
-- Prefer config/settings over patching source code.
+- Prefer runtime settings (admin API, CLI, DB settings) over patching source code.
+- If codebase search finds nothing, check if the framework has built-in rate limiting enabled by default (many do).
 - Always verify your changes took effect before reporting success.`
     },
     {
@@ -30120,6 +30148,7 @@ async function runOrchestrator(ctx) {
       }
     }
     await progress.phaseStart("scan_prep", "Preparing application for security scanning");
+    await healthMonitor?.pause();
     try {
       const prepResult = await prepareScanEnvironment(
         llm,
@@ -30138,8 +30167,11 @@ async function runOrchestrator(ctx) {
       }
     } catch (prepErr) {
       console.warn(`[Engine] Scan prep error: ${toErrorMessage(prepErr)} \u2014 continuing anyway`);
+    } finally {
+      healthMonitor?.resume();
     }
     await progress.phaseStart("auth", "Detecting authentication requirements");
+    await healthMonitor?.pause();
     let preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
     if (setupCredentials) {
       preAuthContext += `
@@ -30300,6 +30332,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       }
     }
     config.modelSelector.reset();
+    healthMonitor?.resume();
     const swaggerResult = await discoverEndpointsViaSwagger(baseUrl);
     let swaggerEndpoints = [];
     if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {

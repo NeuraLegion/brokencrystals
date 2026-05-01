@@ -452,6 +452,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // ----- Phase 2.7: Scan preparation (relax rate limits, CAPTCHA, etc.) -----
     await progress.phaseStart("scan_prep", "Preparing application for security scanning");
+    // Pause health monitor — scan-prep makes rapid requests that look like app failure
+    await healthMonitor?.pause();
     try {
       const prepResult = await prepareScanEnvironment(
         llm,
@@ -470,10 +472,15 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
     } catch (prepErr) {
       console.warn(`[Engine] Scan prep error: ${toErrorMessage(prepErr)} — continuing anyway`);
+    } finally {
+      healthMonitor?.resume();
     }
 
     // ----- Phase 3: Auth configuration (fail fast — before expensive EP analysis) -----
     await progress.phaseStart("auth", "Detecting authentication requirements");
+    // Pause health monitor — auth probes the app and transient 500s during
+    // CSRF/login testing shouldn't trigger an infrastructure restart
+    await healthMonitor?.pause();
 
     // Build a lightweight context summary (no endpoints yet)
     let preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
@@ -669,6 +676,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // Reset model to base tier after auth — endpoint discovery is less demanding
     config.modelSelector.reset();
+    // Resume health monitor — auth phase complete, app is stable
+    healthMonitor?.resume();
 
     // ----- Phase 4: Swagger / OpenAPI discovery -----
     // Only surface this phase to the user if we actually find a spec — otherwise
