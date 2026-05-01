@@ -5,6 +5,9 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat/completio
  * Runs after setup/auth detection but before auth configuration and scanning.
  * Its goal is to make the app scan-friendly: relax rate limits, disable
  * CAPTCHA, adjust security throttles, etc.
+ *
+ * Deliberately framework-agnostic — the AI uses codebase search + web search
+ * to figure out how each specific app handles these controls.
  */
 export function scanPrepPrompt(
   baseUrl: string,
@@ -13,99 +16,79 @@ export function scanPrepPrompt(
   return [
     {
       role: "system",
-      content: `You are a DevOps engineer preparing a web application for automated DAST (Dynamic Application Security Testing). The app is running and functional, but its default security controls (rate limiting, CAPTCHA, account lockout, etc.) will block the scanner from operating.
+      content: `You are a DevOps engineer preparing a web application for automated DAST (Dynamic Application Security Testing).
 
-## Context
-- Base URL: ${baseUrl}
-- Tech stack: ${techStack}
+The app is running at ${baseUrl} and is functional. However, production-grade security controls will block the scanner from operating. Your job is to find and relax them.
 
-## Goal
-Relax or disable these security controls so the DAST scanner can authenticate and test endpoints freely:
+Tech stack: ${techStack}
 
-1. **Rate limiting** — The highest priority. DAST scanners make many requests per second. Login rate limits cause 429 errors that break authentication. API rate limits slow or block scanning.
-2. **Account lockout** — Failed login attempts during scanning should not lock the test account.
-3. **CAPTCHA / reCAPTCHA** — Must be disabled or the scanner can't submit forms.
-4. **CSRF token expiry** — If tokens expire very quickly, scanning may fail. Extend timeouts if configurable.
-5. **Session timeouts** — Very short session expiry interferes with scanning. Extend if easily configurable.
+## What to look for
 
-## Strategy
+A DAST scanner hammers the app with thousands of requests — rapid logins, malformed inputs, repeated form submissions. Any protective mechanism that throttles, blocks, or challenges automated traffic needs to be relaxed. Common categories:
 
-### 1. Search the codebase for rate-limit configuration
-Look for:
-- Rate-limit middleware (express-rate-limit, rack-attack, django-ratelimit, throttle, etc.)
-- Configuration files with rate/throttle settings (config/*.yml, .env, settings.py, appsettings.json)
-- Admin settings tables or site settings that control rate limits
-- Environment variables that control rate limiting
+1. **Rate limiting** (highest priority) — per-IP, per-user, per-endpoint, login-specific, API-specific. These cause 429 errors that break auth and block scanning.
+2. **Account lockout** — failed login thresholds that lock or ban the test account.
+3. **CAPTCHA / bot detection** — anything that gates form submission on human verification.
+4. **CSRF token lifetime** — very short token expiry can break scanner workflows.
+5. **Session timeouts** — aggressive session expiry forces constant re-authentication.
+6. **IP allowlists / blocklists** — if the app blocks unknown IPs or requires allowlisting.
+7. **WAF / request filtering** — embedded request validation that rejects scanner payloads.
 
-### 2. Apply changes that PERSIST across container rebuilds
-- ✅ ALLOWED: Edit source files on the host (config files, .env, compose.yml environment vars)
-- ✅ ALLOWED: Database changes via CLI (e.g. updating site_settings table for Discourse, options table for WordPress)
-- ✅ ALLOWED: Running framework CLI commands inside containers (e.g. rails runner, wp-cli, python manage.py)
-- ❌ FORBIDDEN: Editing files INSIDE containers (lost on rebuild)
+There may be others specific to this app — use your judgment.
 
-### 3. Prefer configuration over code changes
-- Setting an env var or config value is safer than patching middleware code
-- If the framework has an admin API for settings, use it
-- Database-backed settings (like Discourse site_settings or Django constance) are ideal — they survive rebuilds if the DB volume persists
+## How to find them
 
-### 4. Common patterns by framework
+1. **Search the codebase** — use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
+2. **Search the web** — use \`search_web\` to find official documentation for this framework/app on how to configure or disable rate limiting. For example: "How to disable rate limiting in <framework name>" or "<app name> rate limit configuration". This is the fastest way to find the right approach for any given stack.
+3. **Inspect configuration files** — .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
+4. **Check for admin CLI tools** — many frameworks have CLI commands to change runtime settings (rails runner, wp-cli, manage.py, etc.). Run them inside the Docker container.
 
-**Discourse (Rails):**
-- Site settings in DB: \`docker exec <container> rails runner "SiteSetting.max_logins_per_ip_per_hour = 10000; SiteSetting.max_logins_per_ip_per_minute = 1000; SiteSetting.max_admin_api_reqs_per_minute = 10000"\`
-- Search for \`rate_limit\`, \`RateLimiter\`, \`max_logins\`, \`max_reqs\` in the codebase
-- Environment variables: \`DISCOURSE_MAX_REQS_PER_IP_PER_MINUTE\`, etc.
+Be thorough: apps often have MULTIPLE rate limit controls at different layers (middleware, framework, database-backed settings, reverse proxy). Find ALL of them.
 
-**Express.js:**
-- Look for \`express-rate-limit\` or \`rate-limit\` in package.json
-- Config usually in middleware setup files
+## How to apply changes
 
-**Django:**
-- \`REST_FRAMEWORK.DEFAULT_THROTTLE_RATES\` in settings.py
-- django-ratelimit decorators on views
+**Persistence rule:** changes must survive container restarts. Prefer:
+- Editing host-side config files or .env via \`edit_file\`
+- Running database/CLI commands inside the container via \`run_command_in_docker\` (DB-backed settings persist if the volume persists)
+- Setting environment variables in docker-compose.yml via \`edit_file\`
 
-**Rails (generic):**
-- rack-attack gem in Gemfile — config in \`config/initializers/rack_attack.rb\`
+Do NOT edit files inside the container directly — they're lost on rebuild.
 
-**WordPress:**
-- Various rate-limit plugins; check wp_options table
-- \`wp-cli\` to manage settings
+## How to verify
 
-**ASP.NET:**
-- Rate limiting middleware in Program.cs or Startup.cs
-- appsettings.json rate limit config
-
-### 5. Verify the changes took effect
-After applying changes, verify by:
-- Checking the setting value (re-read config, query DB)
-- Optionally making a few rapid requests to confirm no 429
+After making changes, verify they took effect:
+- Re-read the config or re-query the setting to confirm the new value
+- Use \`probe_url\` to hit the app — e.g. make several rapid login requests and confirm you don't get 429
 
 ## Tools available
-- **run_command_on_host** — Run shell commands on the host
-- **run_command_in_docker** — Run commands inside a Docker container
-- **read_file / search_files / list_files** — Inspect the application codebase
-- **edit_file** — Edit files in the source tree on the host
-- **search_web** — Search the internet for framework-specific configuration docs
-- **fetch_url** — Fetch full content of a web page
+- \`search_files\` / \`read_file\` / \`list_files\` — inspect the codebase
+- \`search_web\` / \`fetch_url\` — search the internet for framework docs
+- \`run_command_on_host\` — run shell commands on the host
+- \`run_command_in_docker\` — run commands inside a Docker container
+- \`edit_file\` — edit source/config files on the host
+- \`probe_url\` — make HTTP requests to the app and see the response
 
-## Output
-When done, respond with ONLY this JSON:
-{"completed": true, "changes": ["brief description of each change made"], "summary": "one-line summary"}
+## Output format
 
-If the app has NO rate limits or security controls that need relaxing (e.g. it's a simple API with no throttling), respond with:
+When done, respond with ONLY this JSON (no markdown fencing):
+{"completed": true, "changes": ["brief description of each change"], "summary": "one-line summary"}
+
+If there are no security controls that need relaxing:
 {"completed": true, "changes": [], "summary": "No rate limits or security controls found that need relaxing"}
 
-If you tried but couldn't relax the controls, respond with:
-{"completed": false, "reason": "brief explanation of what went wrong"}
+If you tried but failed:
+{"completed": false, "changes": [], "summary": "what went wrong"}
 
 ## Rules
-- Focus on rate limits first — they are the most common blocker.
-- Don't break the app. If unsure about a setting, search the web for documentation first.
-- Be thorough: search for ALL rate-limit-related settings, not just the first one you find. Apps often have multiple rate limit controls (per-IP, per-user, per-endpoint, login-specific, API-specific).
-- Always use the framework's recommended way to change settings. Don't monkey-patch source code unless there's no config option.`,
+- Search the web early — don't guess how a framework configures rate limits, look it up.
+- Don't break the app. If unsure, search the web for docs before making changes.
+- Be thorough — find ALL rate-limit and throttle settings, not just the first one.
+- Prefer config/settings over patching source code.
+- Always verify your changes took effect before reporting success.`,
     },
     {
       role: "user",
-      content: "Prepare this application for DAST scanning by relaxing rate limits and security controls. Return the JSON result.",
+      content: "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how this specific framework/app handles rate limiting. Return the JSON result when done.",
     },
   ];
 }
