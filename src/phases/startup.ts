@@ -30,6 +30,7 @@ import {
 import { generateDockerfilePrompt } from "../prompts/generate-dockerfile.js";
 import { discoverProjectPrompt } from "../prompts/discover-project.js";
 import { generateComposePrompt } from "../prompts/generate-compose.js";
+import { preflightStartupPrompt } from "../prompts/preflight-startup.js";
 
 const MAX_STARTUP_ATTEMPTS = parseInt(process.env.MAX_STARTUP_ATTEMPTS ?? "15", 10);
 
@@ -359,6 +360,140 @@ async function discoverProject(
 }
 
 // ---------------------------------------------------------------------------
+// Pre-flight validation — review Dockerfile + compose BEFORE the first build
+// ---------------------------------------------------------------------------
+
+interface PreflightIssue {
+  severity: "critical" | "warning";
+  description: string;
+  file: string;
+  fix?: { old_string: string; new_string: string };
+}
+
+/**
+ * Run an LLM review of the generated Dockerfile and compose.yml before the
+ * first Docker build.  Returns the number of fixes applied.
+ */
+async function preflightValidation(
+  llm: OpenAI,
+  repoPath: string,
+  dockerfileName: string,
+  discoveryNotes: string[],
+  techStack: string,
+  model?: string,
+): Promise<number> {
+  const t0 = Date.now();
+  console.log("[Startup] Running pre-flight build validation...");
+
+  // Read current files
+  const dfPath = `${repoPath}/${dockerfileName}`;
+  let dockerfile: string;
+  try {
+    dockerfile = readFileSync(dfPath, "utf-8");
+  } catch {
+    console.warn("[Startup] Pre-flight: could not read Dockerfile — skipping");
+    return 0;
+  }
+
+  let composeContent: string | undefined;
+  for (const name of ["compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"]) {
+    try {
+      composeContent = readFileSync(`${repoPath}/${name}`, "utf-8");
+      break;
+    } catch { /* try next */ }
+  }
+
+  const messages = preflightStartupPrompt(
+    dockerfile,
+    dockerfileName,
+    composeContent,
+    discoveryNotes,
+    techStack,
+  );
+
+  // Tools: codebase inspection + web search + Docker Hub image check
+  const tools = [...codebaseTools, ...webSearchTools, verifyDockerImageTool];
+  const baseHandler = createDockerfileToolHandler(repoPath);
+  const webHandler = createWebSearchHandler(repoPath);
+  const handler: ToolHandler = async (name, args) => {
+    if (name === "search_web" || name === "fetch_url") {
+      return webHandler(name, args);
+    }
+    return baseHandler(name, args);
+  };
+
+  try {
+    const response = await chatWithTools(llm, messages, tools, handler, model, 10);
+    const jsonStr = extractJson(response);
+    const parsed = JSON.parse(jsonStr);
+
+    const issues: PreflightIssue[] = Array.isArray(parsed.issues) ? parsed.issues : [];
+    const summary = String(parsed.summary ?? "no summary");
+
+    if (issues.length === 0) {
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      console.log(`[Startup] Pre-flight validation passed in ${elapsed}s — ${summary}`);
+      return 0;
+    }
+
+    // Apply fixes
+    let applied = 0;
+    for (const issue of issues) {
+      const label = issue.severity === "critical" ? "CRITICAL" : "WARNING";
+      console.log(`[Startup] Pre-flight ${label}: ${issue.description}`);
+
+      if (!issue.fix?.old_string || !issue.fix?.new_string) continue;
+
+      // Determine which file to patch
+      let targetPath: string | undefined;
+      const issueLower = (issue.file ?? "").toLowerCase();
+      if (issueLower.includes("compose")) {
+        for (const name of ["compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"]) {
+          if (existsSync(`${repoPath}/${name}`)) {
+            targetPath = `${repoPath}/${name}`;
+            break;
+          }
+        }
+      } else {
+        targetPath = dfPath;
+      }
+
+      if (!targetPath) {
+        console.warn(`[Startup] Pre-flight: cannot find target file for "${issue.file}" — skipping fix`);
+        continue;
+      }
+
+      try {
+        const content = readFileSync(targetPath, "utf-8");
+        if (!content.includes(issue.fix.old_string)) {
+          console.warn(`[Startup] Pre-flight: old_string not found in ${issue.file} — skipping fix`);
+          continue;
+        }
+        const count = content.split(issue.fix.old_string).length - 1;
+        if (count > 1) {
+          console.warn(`[Startup] Pre-flight: old_string found ${count} times in ${issue.file} — skipping ambiguous fix`);
+          continue;
+        }
+        const updated = content.replace(issue.fix.old_string, issue.fix.new_string);
+        writeFileSync(targetPath, updated);
+        applied++;
+        console.log(`[Startup] Pre-flight: applied fix to ${issue.file}`);
+      } catch (fixErr) {
+        console.warn(`[Startup] Pre-flight: failed to apply fix to ${issue.file}: ${toErrorMessage(fixErr)}`);
+      }
+    }
+
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(`[Startup] Pre-flight validation completed in ${elapsed}s — ${applied}/${issues.length} fixes applied. ${summary}`);
+    return applied;
+  } catch (err) {
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.warn(`[Startup] Pre-flight validation failed in ${elapsed}s: ${toErrorMessage(err)} — proceeding with build`);
+    return 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LLM-based Docker Compose generation
 // ---------------------------------------------------------------------------
 
@@ -650,6 +785,19 @@ export async function startApplicationWithRetries(
         console.log("[Startup] No compose file found — generating one from Dockerfile (no discovery available)");
         generateComposeFile(repoPath, config);
       }
+    }
+
+    // Pre-flight validation: review Dockerfile + compose BEFORE the first build
+    // Only on attempt 1 (retries already have repair context from the error)
+    if (attempt === 1 && config.docker && existsSync(`${repoPath}/${dockerfileName}`)) {
+      await preflightValidation(
+        llm,
+        repoPath,
+        dockerfileName,
+        startupHints,
+        stackStr,
+        modelSelector?.current(),
+      );
     }
 
     console.log(
