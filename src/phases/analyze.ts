@@ -1089,7 +1089,10 @@ function extractEndpointsFromFile(
     const railsRe = /\b(get|post|put|patch|delete)\s+["']([^"']+)["']/gi;
     let m;
     while ((m = railsRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+      const routePath = m[2];
+      // Skip paths with Ruby interpolation (#{...}) — can't resolve at static analysis time
+      if (routePath.includes("#{")) continue;
+      endpoints.push({ method: m[1].toUpperCase(), path: routePath, filePath });
     }
 
     // Rails resources/resource — generates standard CRUD endpoints

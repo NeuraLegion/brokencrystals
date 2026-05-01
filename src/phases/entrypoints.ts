@@ -309,6 +309,8 @@ function resolvePath(path: string): string {
     .replace(/\{(\w+)\}/g, "1")
     // Ruby interpolation: #{...}
     .replace(/#\{[^}]*\}/g, "placeholder")
+    // Broken Ruby interpolation leftovers: #word (LLM outputs like #1, #u from #{root_path})
+    .replace(/#\w+/g, "placeholder")
     // JS/TS template literals: ${...}
     .replace(/\$\{[^}]*\}/g, "placeholder")
     // ERB tags: <%= ... %>
@@ -326,9 +328,11 @@ function resolvePath(path: string): string {
  */
 const JUNK_URL_PATTERNS = [
   /[#$]?\{/, // leftover template interpolation
+  /#/, // URL fragment — never sent to server; indicates client-side route or broken interpolation
   /<%/, // ERB tags
   /\(\d+\)/, // Rails route constraint like (42)
   /\s/, // whitespace in path
+  /placeholder/, // unresolved interpolation that resolvePath couldn't handle
 ];
 
 /**

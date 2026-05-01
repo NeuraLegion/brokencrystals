@@ -18722,7 +18722,9 @@ function extractEndpointsFromFile(content, filePath) {
     const railsRe = /\b(get|post|put|patch|delete)\s+["']([^"']+)["']/gi;
     let m;
     while ((m = railsRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+      const routePath = m[2];
+      if (routePath.includes("#{")) continue;
+      endpoints.push({ method: m[1].toUpperCase(), path: routePath, filePath });
     }
     const lines = content.split("\n");
     const prefixStack = [];
@@ -27002,7 +27004,7 @@ function sleep3(ms) {
   return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function resolvePath(path2) {
-  let resolved = path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
+  let resolved = path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/#\w+/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
   if (resolved && !resolved.startsWith("/")) {
     resolved = "/" + resolved;
   }
@@ -27011,12 +27013,16 @@ function resolvePath(path2) {
 var JUNK_URL_PATTERNS = [
   /[#$]?\{/,
   // leftover template interpolation
+  /#/,
+  // URL fragment — never sent to server; indicates client-side route or broken interpolation
   /<%/,
   // ERB tags
   /\(\d+\)/,
   // Rails route constraint like (42)
-  /\s/
+  /\s/,
   // whitespace in path
+  /placeholder/
+  // unresolved interpolation that resolvePath couldn't handle
 ];
 function isScannablePath(path2) {
   return !JUNK_URL_PATTERNS.some((re) => re.test(path2));
