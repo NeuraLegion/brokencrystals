@@ -91,6 +91,13 @@ Principles:
 - **INSTALL ALL RUNTIME SYSTEM DEPENDENCIES.** Many apps need system tools at runtime — not just at build time. Common ones: ImageMagick (magick/convert for image processing), wkhtmltopdf (PDF generation), ffmpeg (media processing), gifsicle, optipng, jpegoptim, poppler-utils, ghostscript, brotli. Check the app's Gemfile/package.json/requirements.txt for gems/packages that wrap system tools (e.g. mini_magick → needs ImageMagick, wicked_pdf → needs wkhtmltopdf). Install them with apt-get. Missing runtime tools cause 500 errors on pages that use them.
 - **PRECOMPILE ASSETS** for frameworks that need it. Rails: \`bundle exec rake assets:precompile\`. Next.js: \`npm run build\`. Django: \`python manage.py collectstatic --noinput\`. This is essential for production-like behavior — without it, pages load slowly or not at all.
 - Use "COPY . ." for source code instead of cherry-picking individual directories — you will miss required files.
+- **PARALLELIZE DEPENDENCY INSTALLATION.** Large projects have many native extensions that compile slowly. Always enable parallel builds:
+  - Ruby/Bundler: \`bundle config set --local jobs \$(nproc)\` before \`bundle install\`
+  - Python/pip: pip parallelizes by default, but add \`--compile\` for bytecode
+  - Node/npm: \`npm ci\` (already parallel); pnpm is parallel by default
+  - Rust/Cargo: set \`ENV CARGO_BUILD_JOBS=\$(nproc)\`
+  - C/Make-based extensions: \`ENV MAKEFLAGS="-j\$(nproc)"\` speeds up native gem/wheel compilation
+  For Ruby projects with many native extensions (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby), this can cut build time from 15+ minutes to under 5 minutes.
 - Copy dependency manifests FIRST and install dependencies for layer caching, then COPY the rest.
 - Install git if any build step might need it.
 - EXPOSE the correct port and set CMD to start the application in production mode (e.g. \`bundle exec rails s -e production\`, \`node dist/server.js\`, etc.).${frameworkHints}${discoveryContext}

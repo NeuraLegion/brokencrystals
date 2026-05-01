@@ -1318,6 +1318,7 @@ APPROACH:
 7. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
 8. Always verify base image tags exist with verify_docker_image before using them.
 9. **SAVE HINTS** — whenever you discover a non-obvious fact (required Node version, correct package name, file path, config setting), call save_hint so it's available to the next repair attempt even if this one fails.
+10. **PARALLELIZE BUILDS** — if the build is timing out on dependency installation (especially native extensions), ensure parallel jobs are enabled: \`bundle config set --local jobs \$(nproc)\` for Ruby, \`ENV MAKEFLAGS="-j\$(nproc)"\` for C/Make-based extensions. This dramatically reduces build time for projects with heavy native gems (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby).
 
 Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`,
     },

@@ -20739,6 +20739,13 @@ Principles:
 - **INSTALL ALL RUNTIME SYSTEM DEPENDENCIES.** Many apps need system tools at runtime \u2014 not just at build time. Common ones: ImageMagick (magick/convert for image processing), wkhtmltopdf (PDF generation), ffmpeg (media processing), gifsicle, optipng, jpegoptim, poppler-utils, ghostscript, brotli. Check the app's Gemfile/package.json/requirements.txt for gems/packages that wrap system tools (e.g. mini_magick \u2192 needs ImageMagick, wicked_pdf \u2192 needs wkhtmltopdf). Install them with apt-get. Missing runtime tools cause 500 errors on pages that use them.
 - **PRECOMPILE ASSETS** for frameworks that need it. Rails: \`bundle exec rake assets:precompile\`. Next.js: \`npm run build\`. Django: \`python manage.py collectstatic --noinput\`. This is essential for production-like behavior \u2014 without it, pages load slowly or not at all.
 - Use "COPY . ." for source code instead of cherry-picking individual directories \u2014 you will miss required files.
+- **PARALLELIZE DEPENDENCY INSTALLATION.** Large projects have many native extensions that compile slowly. Always enable parallel builds:
+  - Ruby/Bundler: \`bundle config set --local jobs $(nproc)\` before \`bundle install\`
+  - Python/pip: pip parallelizes by default, but add \`--compile\` for bytecode
+  - Node/npm: \`npm ci\` (already parallel); pnpm is parallel by default
+  - Rust/Cargo: set \`ENV CARGO_BUILD_JOBS=$(nproc)\`
+  - C/Make-based extensions: \`ENV MAKEFLAGS="-j$(nproc)"\` speeds up native gem/wheel compilation
+  For Ruby projects with many native extensions (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby), this can cut build time from 15+ minutes to under 5 minutes.
 - Copy dependency manifests FIRST and install dependencies for layer caching, then COPY the rest.
 - Install git if any build step might need it.
 - EXPOSE the correct port and set CMD to start the application in production mode (e.g. \`bundle exec rails s -e production\`, \`node dist/server.js\`, etc.).${frameworkHints}${discoveryContext}
@@ -20962,6 +20969,7 @@ Review these files as a unit and look for issues in these categories:
 7. **Environment variables** \u2014 Are required env vars set in compose? Does the app need specific vars to boot (SECRET_KEY_BASE, DATABASE_URL, etc.)?
 8. **Port mapping** \u2014 Does compose expose the right port? Does the app actually listen on the port specified?
 9. **Bundle/dependency groups** \u2014 Are required runtime gems/packages excluded by BUNDLE_WITHOUT or similar? (e.g. if puma is in the :test group and you exclude test, puma won't be available)
+10. **Build parallelism** \u2014 For projects with native extensions (Ruby gems with C/Rust, Python wheels, etc.), are parallel jobs enabled? Check for \`bundle config set jobs\`, \`MAKEFLAGS="-j$(nproc)"\`, etc. Without parallelism, builds with gems like cppjieba_rb, tokenizers, tiktoken_ruby can take 15+ minutes and time out.
 
 ## Tools available
 - **read_file / search_files / list_files** \u2014 Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
@@ -21932,6 +21940,7 @@ APPROACH:
 7. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
 8. Always verify base image tags exist with verify_docker_image before using them.
 9. **SAVE HINTS** \u2014 whenever you discover a non-obvious fact (required Node version, correct package name, file path, config setting), call save_hint so it's available to the next repair attempt even if this one fails.
+10. **PARALLELIZE BUILDS** \u2014 if the build is timing out on dependency installation (especially native extensions), ensure parallel jobs are enabled: \`bundle config set --local jobs $(nproc)\` for Ruby, \`ENV MAKEFLAGS="-j$(nproc)"\` for C/Make-based extensions. This dramatically reduces build time for projects with heavy native gems (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby).
 
 Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`
     },

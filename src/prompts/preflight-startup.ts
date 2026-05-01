@@ -48,6 +48,7 @@ Review these files as a unit and look for issues in these categories:
 7. **Environment variables** — Are required env vars set in compose? Does the app need specific vars to boot (SECRET_KEY_BASE, DATABASE_URL, etc.)?
 8. **Port mapping** — Does compose expose the right port? Does the app actually listen on the port specified?
 9. **Bundle/dependency groups** — Are required runtime gems/packages excluded by BUNDLE_WITHOUT or similar? (e.g. if puma is in the :test group and you exclude test, puma won't be available)
+10. **Build parallelism** — For projects with native extensions (Ruby gems with C/Rust, Python wheels, etc.), are parallel jobs enabled? Check for \`bundle config set jobs\`, \`MAKEFLAGS="-j\$(nproc)"\`, etc. Without parallelism, builds with gems like cppjieba_rb, tokenizers, tiktoken_ruby can take 15+ minutes and time out.
 
 ## Tools available
 - **read_file / search_files / list_files** — Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
