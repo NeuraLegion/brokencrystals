@@ -5,6 +5,9 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat/completio
  * Runs ONCE after Dockerfile + compose.yml are generated but BEFORE the first
  * `docker compose build`. Reviews both files as a unit and catches issues that
  * would otherwise surface one-per-attempt across multiple slow Docker builds.
+ *
+ * The LLM applies fixes directly via edit_file (getting feedback on failures)
+ * rather than returning a JSON blob for post-hoc application.
  */
 export function preflightStartupPrompt(
   dockerfile: string,
@@ -52,38 +55,37 @@ Review these files as a unit and look for issues in these categories:
 
 ## Tools available
 - **read_file / search_files / list_files** — Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
+- **edit_file** — Apply fixes directly to ${dockerfileName} or compose.yml. The tool returns an error if old_string doesn't match — if that happens, use read_file to get the current content and retry with the correct string.
 - **search_web** — Search the internet to verify image capabilities (e.g. "does postgres:16 include pgvector extension?")
 - **verify_docker_image** — Check if a Docker image:tag exists on Docker Hub
 
-## Output format
+## Workflow
 
-After your review, respond with ONLY this JSON (no markdown fencing):
+1. Use read_file / search_files / list_files to investigate the codebase
+2. For each issue you find, log it clearly, then use **edit_file** to fix it directly
+3. If edit_file returns an error (old_string not found), read the file again and retry with the correct string
+4. After all fixes are applied, respond with a final summary
+
+## Final response format
+
+After investigating and applying any fixes, respond with ONLY this JSON (no markdown fencing):
 {
-  "issues": [
-    {
-      "severity": "critical" | "warning",
-      "description": "what's wrong",
-      "file": "Dockerfile.bright" | "compose.yml",
-      "fix": {
-        "old_string": "exact string to find in the file",
-        "new_string": "replacement string"
-      }
-    }
-  ],
-  "summary": "one-line summary of what was found"
+  "issues_found": 3,
+  "fixes_applied": 2,
+  "summary": "one-line summary of what was found and fixed"
 }
 
 Rules:
 - Only report issues you're confident about — don't guess.
 - Use search_web to verify when unsure (e.g. whether an image includes a package).
-- Each fix must use exact find-and-replace strings that match the file content.
-- "critical" = will definitely cause build failure or runtime crash. "warning" = might cause issues.
-- If everything looks good: {"issues": [], "summary": "No issues found"}
+- "critical" issues = will definitely cause build failure or runtime crash. Fix these with edit_file.
+- "warning" issues = might cause issues. Log them but fix if you can.
+- If everything looks good: {"issues_found": 0, "fixes_applied": 0, "summary": "No issues found"}
 - Focus on problems that would cause the FIRST build/startup to fail. Don't optimize.`,
     },
     {
       role: "user",
-      content: "Review these build files and report any issues that would cause the Docker build or application startup to fail. Use the tools to check the codebase for dependencies, migration files, and runtime requirements.",
+      content: "Review these build files and report any issues that would cause the Docker build or application startup to fail. Use the tools to check the codebase for dependencies, migration files, and runtime requirements. Apply fixes directly with edit_file.",
     },
   ];
 }

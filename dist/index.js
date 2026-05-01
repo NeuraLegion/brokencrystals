@@ -20973,38 +20973,37 @@ Review these files as a unit and look for issues in these categories:
 
 ## Tools available
 - **read_file / search_files / list_files** \u2014 Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
+- **edit_file** \u2014 Apply fixes directly to ${dockerfileName} or compose.yml. The tool returns an error if old_string doesn't match \u2014 if that happens, use read_file to get the current content and retry with the correct string.
 - **search_web** \u2014 Search the internet to verify image capabilities (e.g. "does postgres:16 include pgvector extension?")
 - **verify_docker_image** \u2014 Check if a Docker image:tag exists on Docker Hub
 
-## Output format
+## Workflow
 
-After your review, respond with ONLY this JSON (no markdown fencing):
+1. Use read_file / search_files / list_files to investigate the codebase
+2. For each issue you find, log it clearly, then use **edit_file** to fix it directly
+3. If edit_file returns an error (old_string not found), read the file again and retry with the correct string
+4. After all fixes are applied, respond with a final summary
+
+## Final response format
+
+After investigating and applying any fixes, respond with ONLY this JSON (no markdown fencing):
 {
-  "issues": [
-    {
-      "severity": "critical" | "warning",
-      "description": "what's wrong",
-      "file": "Dockerfile.bright" | "compose.yml",
-      "fix": {
-        "old_string": "exact string to find in the file",
-        "new_string": "replacement string"
-      }
-    }
-  ],
-  "summary": "one-line summary of what was found"
+  "issues_found": 3,
+  "fixes_applied": 2,
+  "summary": "one-line summary of what was found and fixed"
 }
 
 Rules:
 - Only report issues you're confident about \u2014 don't guess.
 - Use search_web to verify when unsure (e.g. whether an image includes a package).
-- Each fix must use exact find-and-replace strings that match the file content.
-- "critical" = will definitely cause build failure or runtime crash. "warning" = might cause issues.
-- If everything looks good: {"issues": [], "summary": "No issues found"}
+- "critical" issues = will definitely cause build failure or runtime crash. Fix these with edit_file.
+- "warning" issues = might cause issues. Log them but fix if you can.
+- If everything looks good: {"issues_found": 0, "fixes_applied": 0, "summary": "No issues found"}
 - Focus on problems that would cause the FIRST build/startup to fail. Don't optimize.`
     },
     {
       role: "user",
-      content: "Review these build files and report any issues that would cause the Docker build or application startup to fail. Use the tools to check the codebase for dependencies, migration files, and runtime requirements."
+      content: "Review these build files and report any issues that would cause the Docker build or application startup to fail. Use the tools to check the codebase for dependencies, migration files, and runtime requirements. Apply fixes directly with edit_file."
     }
   ];
 }
@@ -21250,10 +21249,21 @@ async function preflightValidation(llm, repoPath, dockerfileName, discoveryNotes
     discoveryNotes,
     techStack
   );
-  const tools = [...codebaseTools, ...webSearchTools, verifyDockerImageTool];
+  const tools = [...codebaseTools, editFileTool, ...webSearchTools, verifyDockerImageTool];
   const baseHandler = createDockerfileToolHandler(repoPath);
   const webHandler = createWebSearchHandler(repoPath);
+  let editsApplied = 0;
   const handler = async (name, args) => {
+    if (name === "edit_file") {
+      const result = handleEditFile(repoPath, args);
+      if (!result.startsWith("Error")) {
+        editsApplied++;
+        console.log(`[Startup] Pre-flight: applied fix to ${args.path}`);
+      } else {
+        console.warn(`[Startup] Pre-flight: edit_file failed on ${args.path}: ${result}`);
+      }
+      return result;
+    }
     if (name === "search_web" || name === "fetch_url") {
       return webHandler(name, args);
     }
@@ -21261,58 +21271,21 @@ async function preflightValidation(llm, repoPath, dockerfileName, discoveryNotes
   };
   try {
     const response = await chatWithTools(llm, messages, tools, handler, model, 10);
-    const jsonStr = extractJson(response);
-    const parsed = JSON.parse(jsonStr);
-    const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
-    const summary = String(parsed.summary ?? "no summary");
-    if (issues.length === 0) {
-      const elapsed2 = ((Date.now() - t0) / 1e3).toFixed(1);
-      console.log(`[Startup] Pre-flight validation passed in ${elapsed2}s \u2014 ${summary}`);
-      return 0;
-    }
-    let applied = 0;
-    for (const issue of issues) {
-      const label = issue.severity === "critical" ? "CRITICAL" : "WARNING";
-      console.log(`[Startup] Pre-flight ${label}: ${issue.description}`);
-      if (!issue.fix?.old_string || !issue.fix?.new_string) continue;
-      let targetPath;
-      const issueLower = (issue.file ?? "").toLowerCase();
-      if (issueLower.includes("compose")) {
-        for (const name of ["compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"]) {
-          if (existsSync5(`${repoPath}/${name}`)) {
-            targetPath = `${repoPath}/${name}`;
-            break;
-          }
-        }
-      } else {
-        targetPath = dfPath;
-      }
-      if (!targetPath) {
-        console.warn(`[Startup] Pre-flight: cannot find target file for "${issue.file}" \u2014 skipping fix`);
-        continue;
-      }
-      try {
-        const content = readFileSync4(targetPath, "utf-8");
-        if (!content.includes(issue.fix.old_string)) {
-          console.warn(`[Startup] Pre-flight: old_string not found in ${issue.file} \u2014 skipping fix`);
-          continue;
-        }
-        const count = content.split(issue.fix.old_string).length - 1;
-        if (count > 1) {
-          console.warn(`[Startup] Pre-flight: old_string found ${count} times in ${issue.file} \u2014 skipping ambiguous fix`);
-          continue;
-        }
-        const updated = content.replace(issue.fix.old_string, issue.fix.new_string);
-        writeFileSync3(targetPath, updated);
-        applied++;
-        console.log(`[Startup] Pre-flight: applied fix to ${issue.file}`);
-      } catch (fixErr) {
-        console.warn(`[Startup] Pre-flight: failed to apply fix to ${issue.file}: ${toErrorMessage(fixErr)}`);
-      }
+    let summary = "no summary";
+    try {
+      const jsonStr = extractJson(response);
+      const parsed = JSON.parse(jsonStr);
+      summary = String(parsed.summary ?? "no summary");
+    } catch {
+      summary = response.slice(0, 200);
     }
     const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
-    console.log(`[Startup] Pre-flight validation completed in ${elapsed}s \u2014 ${applied}/${issues.length} fixes applied. ${summary}`);
-    return applied;
+    if (editsApplied === 0) {
+      console.log(`[Startup] Pre-flight validation completed in ${elapsed}s \u2014 no fixes needed. ${summary}`);
+    } else {
+      console.log(`[Startup] Pre-flight validation completed in ${elapsed}s \u2014 ${editsApplied} fix(es) applied. ${summary}`);
+    }
+    return editsApplied;
   } catch (err) {
     const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
     console.warn(`[Startup] Pre-flight validation failed in ${elapsed}s: ${toErrorMessage(err)} \u2014 proceeding with build`);

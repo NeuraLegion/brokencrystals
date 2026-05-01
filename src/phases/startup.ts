@@ -20,6 +20,8 @@ import {
   verifyDockerImageTool,
   webSearchTools,
   createWebSearchHandler,
+  editFileTool,
+  handleEditFile,
 } from "../tools.js";
 import { sleep, formatTechStack, toErrorMessage, toDetailedErrorMessage, extractJson, extractCodeBlock, stripHtmlForAnalysis, FETCH_TIMEOUT_QUICK, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_MEDIUM } from "../utils.js";
 import {
@@ -363,16 +365,11 @@ async function discoverProject(
 // Pre-flight validation — review Dockerfile + compose BEFORE the first build
 // ---------------------------------------------------------------------------
 
-interface PreflightIssue {
-  severity: "critical" | "warning";
-  description: string;
-  file: string;
-  fix?: { old_string: string; new_string: string };
-}
-
 /**
  * Run an LLM review of the generated Dockerfile and compose.yml before the
- * first Docker build.  Returns the number of fixes applied.
+ * first Docker build.  The LLM applies fixes directly via edit_file (getting
+ * error feedback if old_string doesn't match) rather than returning a JSON
+ * blob for post-hoc application.  Returns the number of fixes applied.
  */
 async function preflightValidation(
   llm: OpenAI,
@@ -411,11 +408,24 @@ async function preflightValidation(
     techStack,
   );
 
-  // Tools: codebase inspection + web search + Docker Hub image check
-  const tools = [...codebaseTools, ...webSearchTools, verifyDockerImageTool];
+  // Tools: codebase inspection + edit_file + web search + Docker Hub image check
+  const tools = [...codebaseTools, editFileTool, ...webSearchTools, verifyDockerImageTool];
   const baseHandler = createDockerfileToolHandler(repoPath);
   const webHandler = createWebSearchHandler(repoPath);
+
+  // Track how many edits were successfully applied
+  let editsApplied = 0;
   const handler: ToolHandler = async (name, args) => {
+    if (name === "edit_file") {
+      const result = handleEditFile(repoPath, args);
+      if (!result.startsWith("Error")) {
+        editsApplied++;
+        console.log(`[Startup] Pre-flight: applied fix to ${args.path}`);
+      } else {
+        console.warn(`[Startup] Pre-flight: edit_file failed on ${args.path}: ${result}`);
+      }
+      return result;
+    }
     if (name === "search_web" || name === "fetch_url") {
       return webHandler(name, args);
     }
@@ -424,68 +434,25 @@ async function preflightValidation(
 
   try {
     const response = await chatWithTools(llm, messages, tools, handler, model, 10);
-    const jsonStr = extractJson(response);
-    const parsed = JSON.parse(jsonStr);
 
-    const issues: PreflightIssue[] = Array.isArray(parsed.issues) ? parsed.issues : [];
-    const summary = String(parsed.summary ?? "no summary");
-
-    if (issues.length === 0) {
-      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      console.log(`[Startup] Pre-flight validation passed in ${elapsed}s — ${summary}`);
-      return 0;
-    }
-
-    // Apply fixes
-    let applied = 0;
-    for (const issue of issues) {
-      const label = issue.severity === "critical" ? "CRITICAL" : "WARNING";
-      console.log(`[Startup] Pre-flight ${label}: ${issue.description}`);
-
-      if (!issue.fix?.old_string || !issue.fix?.new_string) continue;
-
-      // Determine which file to patch
-      let targetPath: string | undefined;
-      const issueLower = (issue.file ?? "").toLowerCase();
-      if (issueLower.includes("compose")) {
-        for (const name of ["compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"]) {
-          if (existsSync(`${repoPath}/${name}`)) {
-            targetPath = `${repoPath}/${name}`;
-            break;
-          }
-        }
-      } else {
-        targetPath = dfPath;
-      }
-
-      if (!targetPath) {
-        console.warn(`[Startup] Pre-flight: cannot find target file for "${issue.file}" — skipping fix`);
-        continue;
-      }
-
-      try {
-        const content = readFileSync(targetPath, "utf-8");
-        if (!content.includes(issue.fix.old_string)) {
-          console.warn(`[Startup] Pre-flight: old_string not found in ${issue.file} — skipping fix`);
-          continue;
-        }
-        const count = content.split(issue.fix.old_string).length - 1;
-        if (count > 1) {
-          console.warn(`[Startup] Pre-flight: old_string found ${count} times in ${issue.file} — skipping ambiguous fix`);
-          continue;
-        }
-        const updated = content.replace(issue.fix.old_string, issue.fix.new_string);
-        writeFileSync(targetPath, updated);
-        applied++;
-        console.log(`[Startup] Pre-flight: applied fix to ${issue.file}`);
-      } catch (fixErr) {
-        console.warn(`[Startup] Pre-flight: failed to apply fix to ${issue.file}: ${toErrorMessage(fixErr)}`);
-      }
+    // Try to parse the summary from the response
+    let summary = "no summary";
+    try {
+      const jsonStr = extractJson(response);
+      const parsed = JSON.parse(jsonStr);
+      summary = String(parsed.summary ?? "no summary");
+    } catch {
+      // If we can't parse JSON, use the raw response as summary
+      summary = response.slice(0, 200);
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[Startup] Pre-flight validation completed in ${elapsed}s — ${applied}/${issues.length} fixes applied. ${summary}`);
-    return applied;
+    if (editsApplied === 0) {
+      console.log(`[Startup] Pre-flight validation completed in ${elapsed}s — no fixes needed. ${summary}`);
+    } else {
+      console.log(`[Startup] Pre-flight validation completed in ${elapsed}s — ${editsApplied} fix(es) applied. ${summary}`);
+    }
+    return editsApplied;
   } catch (err) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.warn(`[Startup] Pre-flight validation failed in ${elapsed}s: ${toErrorMessage(err)} — proceeding with build`);
