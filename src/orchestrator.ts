@@ -38,6 +38,7 @@ import {
   type RegisteredEntrypoint,
 } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
+import { prepareScanEnvironment } from "./phases/scan-prep.js";
 import {
   selectTestsPerEndpoint,
   type ScanGroup,
@@ -447,6 +448,28 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         console.error(`[Engine] Setup bounce-back rebuild failed: ${toErrorMessage(rebuildErr)}`);
         break;
       }
+    }
+
+    // ----- Phase 2.7: Scan preparation (relax rate limits, CAPTCHA, etc.) -----
+    await progress.phaseStart("scan_prep", "Preparing application for security scanning");
+    try {
+      const prepResult = await prepareScanEnvironment(
+        llm,
+        repoPath,
+        baseUrl,
+        techStack,
+        config.modelSelector.current(),
+      );
+      if (prepResult.completed && prepResult.changes.length > 0) {
+        await progress.phaseDetail("scan_prep", "done", prepResult.summary);
+      } else if (prepResult.completed) {
+        await progress.phaseDetail("scan_prep", "done", "No changes needed");
+      } else {
+        console.warn(`[Engine] Scan prep failed: ${prepResult.summary} — continuing anyway`);
+        await progress.phaseDetail("scan_prep", "warning", prepResult.summary);
+      }
+    } catch (prepErr) {
+      console.warn(`[Engine] Scan prep error: ${toErrorMessage(prepErr)} — continuing anyway`);
     }
 
     // ----- Phase 3: Auth configuration (fail fast — before expensive EP analysis) -----
