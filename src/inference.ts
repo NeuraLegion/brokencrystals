@@ -315,7 +315,11 @@ export async function chatWithSchema<T>(
     },
   });
 
-  const content = response.choices[0]?.message.content;
+  const choice = response.choices[0];
+  const content = choice?.message.content;
   if (!content) throw new Error("No content in structured response");
+  if (choice.finish_reason === "length") {
+    throw new Error(`Structured response truncated (${content.length} chars) — output exceeded max_completion_tokens`);
+  }
   return JSON.parse(content) as T;
 }

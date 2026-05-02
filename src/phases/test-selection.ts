@@ -319,13 +319,13 @@ Guidelines:
 - For most endpoints, the baseline is good — only change what you're confident about.
 - Add tests the rules missed (e.g. a /render endpoint that should get ssti, or an /import that should get xxe).
 - Remove tests that are wrong (e.g. sqli on an endpoint that clearly doesn't touch DB, or file_upload on a JSON-only endpoint).
-- If the baseline is fine for an endpoint, return its tests unchanged.
+- If the baseline is fine for an endpoint, OMIT it from your response — only include endpoints you actually changed. This keeps the response small and avoids truncation.
 - Do NOT add header_security, cookie_security, or lrrl — they are excluded by policy.
 - IMPORTANT: For AI/LLM/chat/RAG endpoints (paths containing /chat, /ai, /llm, /prompt, /generate, /completion, /rag, or similar), ALWAYS keep prompt_injection and insecure_output_handling tests. These are critical for AI application security and must not be removed.`,
     },
     {
       role: "user",
-      content: `Review and refine tests for each endpoint. Return the FINAL test list per endpoint.
+      content: `Review and refine tests for each endpoint. Only include endpoints where you CHANGED the test list — omit endpoints where the baseline is already correct (they'll keep their baseline automatically).
 
 Endpoints (with baseline tests):
 ${endpointList}
@@ -333,7 +333,7 @@ ${endpointList}
 Available tests (use ONLY these exact tags):
 ${testCatalog}
 
-Return a JSON object with the refined test list per endpoint index.`,
+Return a JSON object with ONLY the entries you changed.`,
     },
   ];
 
