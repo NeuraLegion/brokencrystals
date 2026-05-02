@@ -27995,13 +27995,17 @@ async function runScanViaRest(api, projectId, entrypointIds, repeaterId, testTag
       name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`,
       projectId,
       module: "dast",
+      discoveryTypes: null,
       entryPointIds: eps,
       repeaters: [repeaterId],
       tests,
       attackParamLocations,
       smart: true,
       skipStaticParams: true,
-      poolSize: 10
+      poolSize: 10,
+      requestsRateLimit: 0,
+      singleTabScanActive: false,
+      exclusions: { requests: [] }
     };
     let res;
     try {

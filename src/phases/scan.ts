@@ -50,6 +50,7 @@ async function runScanViaRest(
       name: scanName ?? `Engine Scan ${new Date().toISOString()}`,
       projectId,
       module: "dast",
+      discoveryTypes: null,
       entryPointIds: eps,
       repeaters: [repeaterId],
       tests,
@@ -57,6 +58,9 @@ async function runScanViaRest(
       smart: true,
       skipStaticParams: true,
       poolSize: 10,
+      requestsRateLimit: 0,
+      singleTabScanActive: false,
+      exclusions: { requests: [] },
     };
 
     let res: Response;
