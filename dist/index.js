@@ -22536,6 +22536,9 @@ async function startApplication(repoPath, config, analyzeLogsFn, analyzeResponse
     }
     console.log(`[Startup] Running prerequisite: ${cmd}`);
     await runPrerequisite(cmd, repoPath, config.envVars);
+    if (/docker\s+(compose\s+)?build/.test(cmd)) {
+      pruneBuildArtifacts();
+    }
   }
   const env = { ...process.env, ...config.envVars };
   let command = stripDockerTtyFlags(config.command);
@@ -23787,6 +23790,26 @@ function cleanupDocker(repoPath) {
           timeout: 3e4
         });
       }
+    }
+    pruneBuildArtifacts();
+  } catch {
+  }
+}
+function pruneBuildArtifacts() {
+  try {
+    const imgOut = execSync3(
+      "docker image prune -f 2>/dev/null || true",
+      { encoding: "utf-8", stdio: "pipe", timeout: 3e4 }
+    ).trim();
+    if (imgOut && !imgOut.includes("0B")) {
+      console.log(`[Startup] Pruned dangling images: ${imgOut.split("\n").pop()}`);
+    }
+    const cacheOut = execSync3(
+      "docker builder prune -f --filter 'until=1h' 2>/dev/null || true",
+      { encoding: "utf-8", stdio: "pipe", timeout: 3e4 }
+    ).trim();
+    if (cacheOut && !cacheOut.includes("0B")) {
+      console.log(`[Startup] Pruned build cache: ${cacheOut.split("\n").pop()}`);
     }
   } catch {
   }

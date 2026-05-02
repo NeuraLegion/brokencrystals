@@ -2194,6 +2194,11 @@ async function startApplication(
     }
     console.log(`[Startup] Running prerequisite: ${cmd}`);
     await runPrerequisite(cmd, repoPath, config.envVars);
+    // After each Docker build, prune dangling images/build cache from failed
+    // attempts to prevent disk bloat (44GB+ observed with 8 retries)
+    if (/docker\s+(compose\s+)?build/.test(cmd)) {
+      pruneBuildArtifacts();
+    }
   }
 
   // Build environment
@@ -3908,8 +3913,40 @@ export function cleanupDocker(repoPath: string): void {
         });
       }
     }
+
+    // Final cleanup: prune all build artifacts to reclaim disk space
+    pruneBuildArtifacts();
   } catch {
     // Docker may not be installed or no containers running — that's fine
+  }
+}
+
+/**
+ * Prune dangling Docker images and build cache left by failed build attempts.
+ * Safe to call after each build — only removes unreferenced layers.
+ * Runs with a short timeout and ignores errors (best-effort).
+ */
+function pruneBuildArtifacts(): void {
+  try {
+    // Remove dangling images (unnamed layers from failed builds)
+    const imgOut = execSync(
+      "docker image prune -f 2>/dev/null || true",
+      { encoding: "utf-8", stdio: "pipe", timeout: 30_000 },
+    ).trim();
+    if (imgOut && !imgOut.includes("0B")) {
+      console.log(`[Startup] Pruned dangling images: ${imgOut.split("\n").pop()}`);
+    }
+
+    // Remove build cache (BuildKit layers from failed builds)
+    const cacheOut = execSync(
+      "docker builder prune -f --filter 'until=1h' 2>/dev/null || true",
+      { encoding: "utf-8", stdio: "pipe", timeout: 30_000 },
+    ).trim();
+    if (cacheOut && !cacheOut.includes("0B")) {
+      console.log(`[Startup] Pruned build cache: ${cacheOut.split("\n").pop()}`);
+    }
+  } catch {
+    // Pruning is best-effort — don't block the pipeline
   }
 }
 
