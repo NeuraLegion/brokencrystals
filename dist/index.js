@@ -25439,7 +25439,16 @@ Example \u2014 OAuth2 PKCE flow:
   const authId = parseAuthResponse(trimmed);
   if (!authId) {
     console.error(`[Auth] LLM could not configure auth (response: ${trimmed.slice(0, 200)})`);
+    return { authId: void 0, attemptLog };
   }
+  console.log(`[Auth] Verifying auth object ${authId} \u2014 running deterministic test...`);
+  const verification = await testAuthObject(api, authId);
+  if (!verification.passed) {
+    console.error(`[Auth] Verification FAILED for ${authId}: ${verification.summary?.slice(0, 300)}`);
+    attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed: ${verification.summary?.slice(0, 200)}`);
+    return { authId: void 0, attemptLog };
+  }
+  console.log(`[Auth] Verification PASSED for ${authId} \u2014 all stages successful`);
   return { authId, attemptLog };
 }
 async function registerUser(baseUrl, detection) {

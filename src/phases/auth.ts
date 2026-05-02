@@ -1431,7 +1431,20 @@ Example — OAuth2 PKCE flow:
   const authId = parseAuthResponse(trimmed);
   if (!authId) {
     console.error(`[Auth] LLM could not configure auth (response: ${trimmed.slice(0, 200)})`);
+    return { authId: undefined, attemptLog };
   }
+
+  // Deterministic verification: re-test the auth object ourselves to ensure
+  // every stage passes. The LLM may have returned an ID after a failed test,
+  // or modified the object after the last test.
+  console.log(`[Auth] Verifying auth object ${authId} — running deterministic test...`);
+  const verification = await testAuthObject(api, authId);
+  if (!verification.passed) {
+    console.error(`[Auth] Verification FAILED for ${authId}: ${verification.summary?.slice(0, 300)}`);
+    attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed: ${verification.summary?.slice(0, 200)}`);
+    return { authId: undefined, attemptLog };
+  }
+  console.log(`[Auth] Verification PASSED for ${authId} — all stages successful`);
   return { authId, attemptLog };
 }
 
