@@ -19007,6 +19007,42 @@ var bodyExtractionTools = [
         required: ["query"]
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_result",
+      description: "Save your final JSON result. You MUST call this tool with the complete JSON array as the result parameter. Do not return JSON in your text response \u2014 always use this tool.",
+      parameters: {
+        type: "object",
+        properties: {
+          result: {
+            type: "array",
+            description: "The JSON array of endpoint param objects",
+            items: {
+              type: "object",
+              properties: {
+                index: { type: "number", description: "Endpoint index from the list" },
+                body: { type: "string", description: "Request body JSON or empty" },
+                contentType: { type: "string" },
+                queryParams: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      value: { type: "string" }
+                    }
+                  }
+                },
+                pathParams: { type: "object" }
+              }
+            }
+          }
+        },
+        required: ["result"]
+      }
+    }
   }
 ];
 function createBodyExtractionToolHandler(repoPath) {
@@ -19100,6 +19136,9 @@ ${snippet}`;
       } catch {
         return "No matches found.";
       }
+    }
+    if (name === "save_result") {
+      return "Result saved.";
     }
     return `Unknown tool: ${name}`;
   };
@@ -19516,8 +19555,11 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
 You have tools to inspect more code:
 - read_lines: read specific line ranges from any file
 - find_type: search for a class/interface/DTO definition by name
+- grep_code: search for text patterns across source files
 
-Return a JSON array with one entry per endpoint (matching the [index]):
+IMPORTANT: When you have determined all endpoint parameters, you MUST call the save_result tool with the complete JSON array. Do NOT return JSON in your text response \u2014 always use save_result.
+
+The result array should have one entry per endpoint (matching the [index]):
 [{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
 
 For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"sid": "1", "pk": "42"}).`
@@ -19532,20 +19574,34 @@ Relevant code:
 ${combinedSnippet.slice(0, 6e3)}
 \`\`\`
 
-Look up any referenced DTOs/models. Return a JSON array with params for each endpoint index.`
+Look up any referenced DTOs/models. Call save_result with the JSON array of params for each endpoint index.`
         }
       ];
       try {
+        let savedResult;
+        const wrappedHandler = async (name, args) => {
+          if (name === "save_result") {
+            const r = args.result;
+            if (Array.isArray(r)) savedResult = r;
+            return "Result saved.";
+          }
+          return handleTool(name, args);
+        };
         const response = await chatWithTools(
           llm,
           messages,
           bodyExtractionTools,
-          handleTool,
+          wrappedHandler,
           model,
           5
         );
-        const parsed = parseJsonLenient(extractJson(response));
-        const entries = Array.isArray(parsed) ? parsed : Array.isArray(parsed.endpoints) ? parsed.endpoints : [parsed];
+        let entries;
+        if (savedResult && savedResult.length > 0) {
+          entries = savedResult;
+        } else {
+          const parsed = parseJsonLenient(extractJson(response));
+          entries = Array.isArray(parsed) ? parsed : Array.isArray(parsed.endpoints) ? parsed.endpoints : [parsed];
+        }
         for (const entry of entries) {
           const idx = typeof entry.index === "number" ? entry.index : 0;
           const ep = batch[idx] ?? batch[0];
@@ -19559,9 +19615,9 @@ Look up any referenced DTOs/models. Return a JSON array with params for each end
           enriched.push({
             ...ep,
             path: resolvedPath,
-            queryParams: entry.queryParams?.length > 0 ? entry.queryParams : ep.queryParams,
+            queryParams: Array.isArray(entry.queryParams) && entry.queryParams.length > 0 ? entry.queryParams : ep.queryParams,
             body: entry.body ? typeof entry.body === "string" ? entry.body : JSON.stringify(entry.body) : void 0,
-            contentType: entry.contentType || void 0
+            contentType: entry.contentType ? String(entry.contentType) : void 0
           });
         }
         const coveredIndices = new Set(

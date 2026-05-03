@@ -1411,6 +1411,43 @@ const bodyExtractionTools = [
       },
     },
   },
+  {
+    type: "function" as const,
+    function: {
+      name: "save_result",
+      description:
+        "Save your final JSON result. You MUST call this tool with the complete JSON array as the result parameter. Do not return JSON in your text response — always use this tool.",
+      parameters: {
+        type: "object",
+        properties: {
+          result: {
+            type: "array",
+            description: "The JSON array of endpoint param objects",
+            items: {
+              type: "object",
+              properties: {
+                index: { type: "number", description: "Endpoint index from the list" },
+                body: { type: "string", description: "Request body JSON or empty" },
+                contentType: { type: "string" },
+                queryParams: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      value: { type: "string" },
+                    },
+                  },
+                },
+                pathParams: { type: "object" },
+              },
+            },
+          },
+        },
+        required: ["result"],
+      },
+    },
+  },
 ];
 
 function createBodyExtractionToolHandler(repoPath: string): ToolHandler {
@@ -1517,6 +1554,9 @@ function createBodyExtractionToolHandler(repoPath: string): ToolHandler {
       } catch {
         return "No matches found.";
       }
+    }
+    if (name === "save_result") {
+      return "Result saved.";
     }
     return `Unknown tool: ${name}`;
   };
@@ -2022,8 +2062,11 @@ export async function discoverEndpoints(
 You have tools to inspect more code:
 - read_lines: read specific line ranges from any file
 - find_type: search for a class/interface/DTO definition by name
+- grep_code: search for text patterns across source files
 
-Return a JSON array with one entry per endpoint (matching the [index]):
+IMPORTANT: When you have determined all endpoint parameters, you MUST call the save_result tool with the complete JSON array. Do NOT return JSON in your text response — always use save_result.
+
+The result array should have one entry per endpoint (matching the [index]):
 [{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
 
 For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"sid": "1", "pk": "42"}).`,
@@ -2038,27 +2081,46 @@ Relevant code:
 ${combinedSnippet.slice(0, 6000)}
 \`\`\`
 
-Look up any referenced DTOs/models. Return a JSON array with params for each endpoint index.`,
+Look up any referenced DTOs/models. Call save_result with the JSON array of params for each endpoint index.`,
         },
       ];
 
       try {
+        // Capture save_result tool call args via closure
+        let savedResult: Record<string, unknown>[] | undefined;
+        const wrappedHandler: ToolHandler = async (name, args) => {
+          if (name === "save_result") {
+            const r = args.result;
+            if (Array.isArray(r)) savedResult = r as Record<string, unknown>[];
+            return "Result saved.";
+          }
+          return handleTool(name, args);
+        };
+
         const response = await chatWithTools(
           llm,
           messages,
           bodyExtractionTools,
-          handleTool,
+          wrappedHandler,
           model,
           5,
         );
-        const parsed = parseJsonLenient(extractJson(response)) as Record<string, unknown>;
-        const entries = Array.isArray(parsed)
-          ? parsed
-          : Array.isArray(parsed.endpoints)
-            ? parsed.endpoints
-            : [parsed]; // single object fallback
 
-        for (const entry of entries) {
+        // Prefer captured tool result over parsing text response
+        let entries: Record<string, unknown>[];
+        if (savedResult && savedResult.length > 0) {
+          entries = savedResult;
+        } else {
+          const parsed = parseJsonLenient(extractJson(response)) as Record<string, unknown>;
+          entries = Array.isArray(parsed)
+            ? parsed
+            : Array.isArray(parsed.endpoints)
+              ? parsed.endpoints
+              : [parsed];
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const entry of entries as any[]) {
           const idx = typeof entry.index === "number" ? entry.index : 0;
           const ep = batch[idx] ?? batch[0];
           if (!ep) continue;
@@ -2075,21 +2137,21 @@ Look up any referenced DTOs/models. Return a JSON array with params for each end
             ...ep,
             path: resolvedPath,
             queryParams:
-              entry.queryParams?.length > 0
+              Array.isArray(entry.queryParams) && entry.queryParams.length > 0
                 ? entry.queryParams
                 : ep.queryParams,
             body: entry.body
               ? (typeof entry.body === "string" ? entry.body : JSON.stringify(entry.body))
               : undefined,
-            contentType: entry.contentType || undefined,
+            contentType: entry.contentType ? String(entry.contentType) : undefined,
           });
         }
 
         // Add any batch entries that weren't covered by the LLM response
         const coveredIndices = new Set(
           entries
-            .filter((e: { index?: number }) => typeof e.index === "number")
-            .map((e: { index: number }) => e.index),
+            .filter((e) => typeof e.index === "number")
+            .map((e) => e.index as number),
         );
         for (let i = 0; i < batch.length; i++) {
           if (!coveredIndices.has(i) && entries.length !== 1) {
