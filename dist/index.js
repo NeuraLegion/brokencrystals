@@ -25468,7 +25468,9 @@ Example \u2014 OAuth2 PKCE flow:
   const verification = await testAuthObject(api, authId);
   if (!verification.passed) {
     console.error(`[Auth] Verification FAILED for ${authId}: ${verification.summary?.slice(0, 300)}`);
-    attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed: ${verification.summary?.slice(0, 200)}`);
+    attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed:
+${verification.summary?.slice(0, 600)}`);
+    await deleteAuthObject(api, authId);
     return { authId: void 0, attemptLog };
   }
   console.log(`[Auth] Verification PASSED for ${authId} \u2014 all stages successful`);
@@ -25704,11 +25706,33 @@ async function testAuthObject(api, authObjectId) {
       for (const l of lines) console.log(`[Auth] Test: ${l}`);
       const diagnosticHints = [];
       for (const s of stages) {
-        if (s.stage === "authentication" && s.status !== "success" && s.response && s.response.status === 500 && s.response.contentType?.includes("html")) {
-          diagnosticHints.push(
-            `DIAGNOSTIC: The "${s.name ?? "login"}" step returned HTTP 500 with Content-Type text/html. This usually means the server tried to render an HTML response but crashed (e.g. missing system dependency like ImageMagick). TWO actions to consider:
+        if (s.status === "success" || !s.response) continue;
+        const ct = s.response.contentType ?? "";
+        const isHtml = ct.includes("html");
+        const httpStatus = s.response.status ?? 0;
+        if (s.stage === "authentication" && isHtml) {
+          const reqHeaders = s.request;
+          const alreadyAskedForJson = JSON.stringify(reqHeaders ?? {}).toLowerCase().includes("application/json");
+          if (httpStatus === 500) {
+            diagnosticHints.push(
+              `DIAGNOSTIC: The "${s.name ?? "login"}" step returned HTTP 500 with Content-Type text/html. This usually means the server tried to render HTML but crashed (e.g. missing system dependency like ImageMagick). TWO actions to consider:
   1. QUICK FIX: Recreate the auth object with loginAccept='application/json' \u2014 this tells the server to return JSON instead of HTML, bypassing the render crash.
-  2. ROOT CAUSE: The app has broken HTML rendering. Use run_command_in_docker to check application logs for the actual error (e.g. 'magick' binary missing). This MUST be fixed for client-side security tests (XSS, CSS injection, etc.) to work. Consider this an infrastructure issue \u2014 report it so the startup phase can fix it.`
+  2. ROOT CAUSE: The app has broken HTML rendering. Use run_command_in_docker to check application logs for the actual error. Consider this an infrastructure issue \u2014 report via INFRA_REPAIR.`
+            );
+          } else if (!alreadyAskedForJson) {
+            diagnosticHints.push(
+              `DIAGNOSTIC: The "${s.name ?? "login"}" step returned Content-Type text/html (HTTP ${httpStatus}). The login request did NOT include an Accept header requesting JSON. Many web frameworks return HTML login pages by default and only return JSON when the client sends Accept: application/json.
+FIX: Recreate the auth object with loginAccept='application/json' (for create_auth) or add a { name: "Accept", value: "application/json" } header to the login step (for create_auth_raw). This is the most common cause of auth failures on server-rendered apps (Rails, Django, Laravel, etc.).`
+            );
+          } else {
+            diagnosticHints.push(
+              `DIAGNOSTIC: The "${s.name ?? "login"}" step returned Content-Type text/html (HTTP ${httpStatus}) even though Accept: application/json was sent. The server does not support JSON responses for this endpoint, or the URL is wrong (e.g. returns the login page instead of processing the login). Check that loginUrl points to the API login endpoint, not the HTML login page.`
+            );
+          }
+        }
+        if (s.stage === "validation" && isHtml && s.status !== "success") {
+          diagnosticHints.push(
+            `DIAGNOSTIC: The "${s.name ?? "validation"}" step (CSRF/cookie) returned HTML (HTTP ${httpStatus}). If this is a CSRF token fetch, make sure csrfUrl points to a JSON API endpoint (e.g. /session/csrf.json or /api/csrf) rather than an HTML page. Also try adding Accept: application/json header to the request.`
           );
         }
       }
@@ -30240,8 +30264,10 @@ This user should work for authentication. Skip user registration/seeding and go 
       authResult.authObjectId ? "Auth configured" : "No authentication required"
     );
     const MAX_INFRA_BOUNCEBACKS = 5;
+    let bouncedBack = false;
     for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {
       if (!authResult.authFailed || !authResult.infraRepairHint) break;
+      bouncedBack = true;
       config.modelSelector.escalate();
       console.log(`[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} \u2014 repairing infrastructure`);
       console.log(`[Engine] Hint: ${authResult.infraRepairHint.slice(0, 200)}`);
@@ -30373,6 +30399,28 @@ This user should work for authentication. Skip user registration/seeding and go 
     }
     config.modelSelector.reset();
     healthMonitor?.resume();
+    if (bouncedBack) {
+      console.log("[Engine] Re-running scan-prep after bounce-back (DB settings may have been wiped)...");
+      await healthMonitor?.pause();
+      try {
+        const rePrepResult = await prepareScanEnvironment(
+          llm,
+          repoPath,
+          baseUrl,
+          techStack,
+          config.modelSelector.current()
+        );
+        if (rePrepResult.completed && rePrepResult.changes.length > 0) {
+          console.log(`[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`);
+        } else {
+          console.log("[ScanPrep] Post-bounce re-run: no changes needed");
+        }
+      } catch (rePrepErr) {
+        console.warn(`[Engine] Post-bounce scan-prep error: ${toErrorMessage(rePrepErr)} \u2014 continuing anyway`);
+      } finally {
+        healthMonitor?.resume();
+      }
+    }
     const swaggerResult = await discoverEndpointsViaSwagger(baseUrl);
     let swaggerEndpoints = [];
     if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {

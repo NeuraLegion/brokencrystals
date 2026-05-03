@@ -516,8 +516,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // If auth was detected but failed to configure
     const MAX_INFRA_BOUNCEBACKS = 5;
+    let bouncedBack = false;
     for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {
       if (!authResult.authFailed || !authResult.infraRepairHint) break;
+      bouncedBack = true;
 
       // Escalate the model on each bounce — harder problems need stronger models
       config.modelSelector.escalate();
@@ -678,6 +680,32 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     config.modelSelector.reset();
     // Resume health monitor — auth phase complete, app is stable
     healthMonitor?.resume();
+
+    // ----- Re-run scan-prep if bounce-backs rebuilt the app -----
+    // Bounce-backs rebuild the DB/container which wipes DB-backed settings
+    // (rate limits, CAPTCHA toggles, etc.) that scan-prep configured earlier.
+    if (bouncedBack) {
+      console.log("[Engine] Re-running scan-prep after bounce-back (DB settings may have been wiped)...");
+      await healthMonitor?.pause();
+      try {
+        const rePrepResult = await prepareScanEnvironment(
+          llm,
+          repoPath,
+          baseUrl,
+          techStack,
+          config.modelSelector.current(),
+        );
+        if (rePrepResult.completed && rePrepResult.changes.length > 0) {
+          console.log(`[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`);
+        } else {
+          console.log("[ScanPrep] Post-bounce re-run: no changes needed");
+        }
+      } catch (rePrepErr) {
+        console.warn(`[Engine] Post-bounce scan-prep error: ${toErrorMessage(rePrepErr)} — continuing anyway`);
+      } finally {
+        healthMonitor?.resume();
+      }
+    }
 
     // ----- Phase 4: Swagger / OpenAPI discovery -----
     // Only surface this phase to the user if we actually find a spec — otherwise

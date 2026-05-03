@@ -1441,7 +1441,11 @@ Example — OAuth2 PKCE flow:
   const verification = await testAuthObject(api, authId);
   if (!verification.passed) {
     console.error(`[Auth] Verification FAILED for ${authId}: ${verification.summary?.slice(0, 300)}`);
-    attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed: ${verification.summary?.slice(0, 200)}`);
+    // Include full diagnostics (with DIAGNOSTIC hints) in the attempt log so
+    // the next LLM attempt has specific guidance on what to fix.
+    attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed:\n${verification.summary?.slice(0, 600)}`);
+    // Clean up the failed auth object so it doesn't pollute the project
+    await deleteAuthObject(api, authId);
     return { authId: undefined, attemptLog };
   }
   console.log(`[Auth] Verification PASSED for ${authId} — all stages successful`);
@@ -1788,29 +1792,65 @@ export async function testAuthObject(
       for (const l of lines) console.log(`[Auth] Test: ${l}`);
 
       // --- Smart diagnostic hints ---
-      // Detect "login returned 500 + HTML" pattern: the server tried to render
-      // HTML but crashed (e.g. missing ImageMagick). Surface both the quick fix
-      // (loginAccept) and the real problem (broken HTML rendering).
+      // Detect common auth failure patterns and provide actionable guidance.
       const diagnosticHints: string[] = [];
       for (const s of stages) {
-        if (
-          s.stage === "authentication" &&
-          s.status !== "success" &&
-          s.response &&
-          s.response.status === 500 &&
-          s.response.contentType?.includes("html")
-        ) {
+        if (s.status === "success" || !s.response) continue;
+
+        const ct = s.response.contentType ?? "";
+        const isHtml = ct.includes("html");
+        const httpStatus = s.response.status ?? 0;
+
+        // Pattern 1: Auth/login step returned HTML instead of JSON.
+        // Many frameworks (Rails, Django, Express) return HTML by default
+        // when no Accept header is set. The auth flow expects JSON.
+        // This covers: 500 + HTML (crash during render), 200 + HTML (login
+        // page instead of JSON), 302 + HTML (redirect), 422 + HTML, etc.
+        if (s.stage === "authentication" && isHtml) {
+          // Check if the request had an Accept header asking for JSON
+          const reqHeaders = s.request as Record<string, unknown> | undefined;
+          const alreadyAskedForJson = JSON.stringify(reqHeaders ?? {}).toLowerCase().includes("application/json");
+
+          if (httpStatus === 500) {
+            diagnosticHints.push(
+              `DIAGNOSTIC: The "${s.name ?? "login"}" step returned HTTP 500 with Content-Type text/html. ` +
+              `This usually means the server tried to render HTML but crashed ` +
+              `(e.g. missing system dependency like ImageMagick). ` +
+              `TWO actions to consider:\n` +
+              `  1. QUICK FIX: Recreate the auth object with loginAccept='application/json' — ` +
+              `this tells the server to return JSON instead of HTML, bypassing the render crash.\n` +
+              `  2. ROOT CAUSE: The app has broken HTML rendering. Use run_command_in_docker to ` +
+              `check application logs for the actual error. ` +
+              `Consider this an infrastructure issue — report via INFRA_REPAIR.`,
+            );
+          } else if (!alreadyAskedForJson) {
+            diagnosticHints.push(
+              `DIAGNOSTIC: The "${s.name ?? "login"}" step returned Content-Type text/html (HTTP ${httpStatus}). ` +
+              `The login request did NOT include an Accept header requesting JSON. ` +
+              `Many web frameworks return HTML login pages by default and only return ` +
+              `JSON when the client sends Accept: application/json.\n` +
+              `FIX: Recreate the auth object with loginAccept='application/json' (for create_auth) ` +
+              `or add a { name: "Accept", value: "application/json" } header to the login step (for create_auth_raw). ` +
+              `This is the most common cause of auth failures on server-rendered apps (Rails, Django, Laravel, etc.).`,
+            );
+          } else {
+            diagnosticHints.push(
+              `DIAGNOSTIC: The "${s.name ?? "login"}" step returned Content-Type text/html (HTTP ${httpStatus}) ` +
+              `even though Accept: application/json was sent. The server does not support JSON responses ` +
+              `for this endpoint, or the URL is wrong (e.g. returns the login page instead of processing the login). ` +
+              `Check that loginUrl points to the API login endpoint, not the HTML login page.`,
+            );
+          }
+        }
+
+        // Pattern 2: Validation stage got HTML — CSRF/cookie URL returned
+        // HTML instead of a JSON CSRF token endpoint.
+        if (s.stage === "validation" && isHtml && s.status !== "success") {
           diagnosticHints.push(
-            `DIAGNOSTIC: The "${s.name ?? "login"}" step returned HTTP 500 with Content-Type text/html. ` +
-            `This usually means the server tried to render an HTML response but crashed ` +
-            `(e.g. missing system dependency like ImageMagick). ` +
-            `TWO actions to consider:\n` +
-            `  1. QUICK FIX: Recreate the auth object with loginAccept='application/json' — ` +
-            `this tells the server to return JSON instead of HTML, bypassing the render crash.\n` +
-            `  2. ROOT CAUSE: The app has broken HTML rendering. Use run_command_in_docker to ` +
-            `check application logs for the actual error (e.g. 'magick' binary missing). ` +
-            `This MUST be fixed for client-side security tests (XSS, CSS injection, etc.) to work. ` +
-            `Consider this an infrastructure issue — report it so the startup phase can fix it.`,
+            `DIAGNOSTIC: The "${s.name ?? "validation"}" step (CSRF/cookie) returned HTML (HTTP ${httpStatus}). ` +
+            `If this is a CSRF token fetch, make sure csrfUrl points to a JSON API endpoint ` +
+            `(e.g. /session/csrf.json or /api/csrf) rather than an HTML page. ` +
+            `Also try adding Accept: application/json header to the request.`,
           );
         }
       }
