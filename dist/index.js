@@ -27561,14 +27561,33 @@ A DAST scanner hammers the app with thousands of requests \u2014 rapid logins, m
 
 There may be others specific to this app \u2014 use your judgment.
 
+## CRITICAL: Use web search to find framework-specific rate limiting
+
+Most frameworks and applications have BUILT-IN rate limiting that is NOT visible in middleware lists or grep results. It is often stored in:
+- Database-backed settings (e.g. Discourse SiteSetting, WordPress wp_options, Django constance)
+- Framework internals that are always active (Rails ActionController::HttpAuthentication, Rack::Utils)
+- Application-level throttle logic embedded in controllers/models
+
+**You MUST use \`search_web\` to search for how THIS SPECIFIC application handles rate limiting.** Do not rely solely on grepping the codebase \u2014 that will miss built-in framework rate limits.
+
+Example searches to make:
+- "<app name> disable rate limiting"
+- "<app name> rate limit site settings"
+- "<app name> max logins per minute configuration"
+- "<framework> built-in rate limiting disable for testing"
+
+If your codebase search finds NOTHING related to rate limiting, that is a RED FLAG \u2014 it almost certainly means rate limiting is built into the framework at a level you can't see by grepping. Use \`search_web\` immediately to find out how to disable it.
+
 ## How to find them
 
 1. **Search the web FIRST** \u2014 use \`search_web\` to find: "<app/framework name> disable rate limiting for testing" or "<app/framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits.
-2. **Search the codebase** \u2014 use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
-3. **Search for runtime settings / admin APIs** \u2014 many apps store rate limits in database-backed settings (e.g. Rails SiteSetting, Django constance, WordPress wp_options). Look for admin CLI tools or settings APIs that can change them at runtime without editing source code.
+2. **Query runtime settings inside the container** \u2014 many apps store rate limits in database-backed settings. Run CLI commands inside the container to LIST all settings related to rate/limit/throttle/max. For example:
+   - Rails/Discourse: \`rails runner "puts SiteSetting.all_settings.select { |s| s[:setting].to_s =~ /rate|limit|max.*per|throttle|lock/ }.map { |s| [s[:setting], s[:value]].join('=') }"\`
+   - Django: \`python manage.py shell -c "from constance import config; ..."\`
+   - WordPress: \`wp option list --search='*rate*' --search='*limit*'\`
+3. **Search the codebase** \u2014 use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
 4. **Inspect configuration files** \u2014 .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
-5. **Check for admin CLI tools** \u2014 many frameworks have CLI commands to change runtime settings (rails runner, wp-cli, manage.py, etc.). Run them inside the Docker container.
-6. **Check middleware/initializer files** \u2014 look for Rack::Attack, express-rate-limit, django-ratelimit, Spring Security, etc. in middleware configs or initializers.
+5. **Check middleware/initializer files** \u2014 look for Rack::Attack, express-rate-limit, django-ratelimit, Spring Security, etc. in middleware configs or initializers.
 
 Be thorough: apps often have MULTIPLE rate limit controls at different layers (middleware, framework, database-backed settings, reverse proxy). Find ALL of them.
 
@@ -27581,15 +27600,18 @@ Be thorough: apps often have MULTIPLE rate limit controls at different layers (m
 
 Do NOT edit files inside the container directly \u2014 they're lost on rebuild.
 
-## How to verify
+## How to verify \u2014 MANDATORY
 
-After making changes, verify they took effect:
-- Re-read the config or re-query the setting to confirm the new value
-- Use \`probe_url\` to hit the app \u2014 e.g. make several rapid login requests and confirm you don't get 429
+After making changes, you MUST verify they actually work by stress-testing:
+1. Re-read the config or re-query the setting to confirm the new value is set
+2. Use \`probe_url\` to make 5+ rapid requests to the SAME endpoint (especially login/session endpoints) and confirm you do NOT get HTTP 429
+3. If you still get 429 after your changes, you missed something \u2014 search the web again for additional rate limit mechanisms
+
+Do NOT report success without performing the rapid-request verification.
 
 ## Tools available
 - \`search_files\` / \`read_file\` / \`list_files\` \u2014 inspect the codebase
-- \`search_web\` / \`fetch_url\` \u2014 search the internet for framework docs
+- \`search_web\` / \`fetch_url\` \u2014 search the internet for framework-specific docs (USE THIS \u2014 it's your most powerful tool for finding hidden rate limits)
 - \`run_command_on_host\` \u2014 run shell commands on the host
 - \`run_command_in_docker\` \u2014 run commands inside a Docker container
 - \`edit_file\` \u2014 edit source/config files on the host
@@ -27600,19 +27622,17 @@ After making changes, verify they took effect:
 When done, respond with ONLY this JSON (no markdown fencing):
 {"completed": true, "changes": ["brief description of each change"], "summary": "one-line summary"}
 
-If there are no security controls that need relaxing:
-{"completed": true, "changes": [], "summary": "No rate limits or security controls found that need relaxing"}
-
 If you tried but failed:
 {"completed": false, "changes": [], "summary": "what went wrong"}
 
 ## Rules
-- Search the web FIRST \u2014 don't guess how a framework configures rate limits, look it up.
+- **USE \`search_web\` \u2014 if you can't find rate limits via code inspection, search the web for how this specific app/framework handles them. Do NOT give up just because grep found nothing.**
 - Don't break the app. If unsure, search the web for docs before making changes.
 - Be thorough \u2014 find ALL rate-limit and throttle settings, not just the first one.
 - Prefer runtime settings (admin API, CLI, DB settings) over patching source code.
-- If codebase search finds nothing, check if the framework has built-in rate limiting enabled by default (many do).
-- Always verify your changes took effect before reporting success.`
+- If codebase search finds nothing, that means rate limiting is BUILT INTO the framework \u2014 use \`search_web\` to find out how to disable it.
+- NEVER report "no rate limits found" without first: (a) searching the web for "<app name> rate limiting", AND (b) querying runtime/DB settings inside the container.
+- Always verify your changes with rapid requests before reporting success.`
     },
     {
       role: "user",
