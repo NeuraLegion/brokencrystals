@@ -22832,6 +22832,22 @@ function runPrerequisite(cmd, cwd, envVars) {
   const EXTENSION_MS = 3e5;
   const MAX_EXTENSIONS = 5;
   const STALL_THRESHOLD_MS = 18e4;
+  const isBuildStillActive = () => {
+    try {
+      const { readFileSync: readFileSync7 } = __require("fs");
+      const loadStr = readFileSync7("/proc/loadavg", "utf8").trim().split(" ")[0];
+      const load1m = parseFloat(loadStr);
+      if (load1m >= 1) return true;
+      const { execSync: execSync5 } = __require("child_process");
+      const count = execSync5(
+        `ps -eo comm= 2>/dev/null | grep -cE '^(cc1|cc1plus|as|ld|make|cmake|gcc|g\\+\\+|cargo|rustc|bundle|gem|pip)$' || echo 0`,
+        { timeout: 3e3 }
+      ).toString().trim();
+      return parseInt(count, 10) > 0;
+    } catch {
+      return false;
+    }
+  };
   return new Promise((resolve5, reject) => {
     const child = spawn("sh", ["-c", cmd], {
       cwd,
@@ -22873,15 +22889,18 @@ function runPrerequisite(cmd, cwd, envVars) {
       const remaining = effectiveTimeoutMs - elapsed;
       if (remaining < 6e4 && extensionsGranted < MAX_EXTENSIONS) {
         const sinceLastOutput = Date.now() - lastOutputTime;
-        if (sinceLastOutput < STALL_THRESHOLD_MS) {
+        const buildActive = isBuildStillActive();
+        const stillActive = sinceLastOutput < STALL_THRESHOLD_MS || buildActive;
+        if (stillActive) {
           extensionsGranted++;
           effectiveTimeoutMs += EXTENSION_MS;
           const totalExtra = extensionsGranted * EXTENSION_MS / 1e3;
+          const reason = sinceLastOutput < STALL_THRESHOLD_MS ? "output still flowing" : `no output for ${Math.round(sinceLastOutput / 1e3)}s but system is busy (build processes or high CPU load detected)`;
           console.log(
-            `[Startup] Prerequisite still producing output \u2014 extending timeout by ${EXTENSION_MS / 1e3}s (extension ${extensionsGranted}/${MAX_EXTENSIONS}, +${totalExtra}s total)`
+            `[Startup] Prerequisite ${reason} \u2014 extending timeout by ${EXTENSION_MS / 1e3}s (extension ${extensionsGranted}/${MAX_EXTENSIONS}, +${totalExtra}s total)`
           );
         } else {
-          console.log(`[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1e3)}s \u2014 will not extend`);
+          console.log(`[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1e3)}s and system is idle \u2014 will not extend`);
         }
       }
       if (elapsed >= effectiveTimeoutMs) {

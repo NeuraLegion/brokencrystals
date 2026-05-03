@@ -2582,9 +2582,42 @@ function runPrerequisite(
   const EXTENSION_MS = 300_000;    // 5 min per extension
   const MAX_EXTENSIONS = 5;        // up to 25 min extra → 35 min max
   // "Still making progress" = new output appeared in the last 180s.
-  // Native extensions (Rust gems, C modules) compile silently for 3+ minutes
-  // so a short threshold incorrectly triggers "stalled" and refuses extensions.
   const STALL_THRESHOLD_MS = 180_000;
+
+  /**
+   * Check whether the build is still actively working, even when stdout is
+   * silent.  Docker/BuildKit builds run compilation (cc1plus, make, cargo …)
+   * inside the daemon's process namespace — our child process is just the
+   * docker CLI blocking on the daemon.  Checking `ps --ppid` on our child
+   * would only see the idle docker CLI, not the real work.
+   *
+   * Instead we check two host-visible signals:
+   *  1. System load average (from /proc/loadavg) — reflects ALL CPU work
+   *     including Docker build containers.  A load ≥ 1.0 means at least one
+   *     core is fully saturated (typical during native compilation).
+   *  2. Running build-related processes visible in the host PID namespace —
+   *     Docker containers' processes show up in host `ps` unless PID
+   *     namespaces are fully isolated (rare for BuildKit).
+   */
+  const isBuildStillActive = (): boolean => {
+    try {
+      // Signal 1: system load average — cheap, always available
+      const { readFileSync } = require("fs");
+      const loadStr = readFileSync("/proc/loadavg", "utf8").trim().split(" ")[0];
+      const load1m = parseFloat(loadStr);
+      if (load1m >= 1.0) return true;
+
+      // Signal 2: look for build/compilation processes from Docker containers
+      const { execSync } = require("child_process");
+      const count = execSync(
+        `ps -eo comm= 2>/dev/null | grep -cE '^(cc1|cc1plus|as|ld|make|cmake|gcc|g\\+\\+|cargo|rustc|bundle|gem|pip)$' || echo 0`,
+        { timeout: 3_000 },
+      ).toString().trim();
+      return parseInt(count, 10) > 0;
+    } catch {
+      return false;
+    }
+  };
 
   return new Promise((resolve, reject) => {
     const child = spawn("sh", ["-c", cmd], {
@@ -2636,18 +2669,26 @@ function runPrerequisite(
       // Near the deadline? Check if we should extend.
       if (remaining < 60_000 && extensionsGranted < MAX_EXTENSIONS) {
         const sinceLastOutput = Date.now() - lastOutputTime;
-        if (sinceLastOutput < STALL_THRESHOLD_MS) {
-          // Output still flowing — extend
+        // Check both output recency AND system-level build activity.
+        // Docker builds compile inside BuildKit (daemon namespace), so our
+        // child's stdout can be silent for 5+ min while CPU is at 100%.
+        const buildActive = isBuildStillActive();
+        const stillActive = sinceLastOutput < STALL_THRESHOLD_MS || buildActive;
+
+        if (stillActive) {
           extensionsGranted++;
           effectiveTimeoutMs += EXTENSION_MS;
           const totalExtra = extensionsGranted * EXTENSION_MS / 1000;
+          const reason = sinceLastOutput < STALL_THRESHOLD_MS
+            ? "output still flowing"
+            : `no output for ${Math.round(sinceLastOutput / 1000)}s but system is busy (build processes or high CPU load detected)`;
           console.log(
-            `[Startup] Prerequisite still producing output — extending timeout by ${EXTENSION_MS / 1000}s `
+            `[Startup] Prerequisite ${reason} — extending timeout by ${EXTENSION_MS / 1000}s `
             + `(extension ${extensionsGranted}/${MAX_EXTENSIONS}, +${totalExtra}s total)`,
           );
         } else {
-          // Output stalled — let it time out
-          console.log(`[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1000)}s — will not extend`);
+          // No output AND no system activity — genuinely stalled
+          console.log(`[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1000)}s and system is idle — will not extend`);
         }
       }
 
