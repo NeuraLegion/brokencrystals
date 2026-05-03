@@ -27581,10 +27581,11 @@ If your codebase search finds NOTHING related to rate limiting, that is a RED FL
 ## How to find them
 
 1. **Search the web FIRST** \u2014 use \`search_web\` to find: "<app/framework name> disable rate limiting for testing" or "<app/framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits.
-2. **Query runtime settings inside the container** \u2014 many apps store rate limits in database-backed settings. Run CLI commands inside the container to LIST all settings related to rate/limit/throttle/max. For example:
-   - Rails/Discourse: \`rails runner "puts SiteSetting.all_settings.select { |s| s[:setting].to_s =~ /rate|limit|max.*per|throttle|lock/ }.map { |s| [s[:setting], s[:value]].join('=') }"\`
+2. **Query ALL runtime settings inside the container** \u2014 many apps store rate limits in database-backed settings. Run CLI commands inside the container to LIST ALL settings related to rate/limit/throttle/max/login. Cast a WIDE net \u2014 use a broad regex. For example:
+   - Rails/Discourse: \`rails runner "puts SiteSetting.all_settings.select { |s| s[:setting].to_s =~ /rate|limit|max.*per|throttle|lock|login|attempt|spam/ }.map { |s| [s[:setting], s[:value]].join('=') }"\`
    - Django: \`python manage.py shell -c "from constance import config; ..."\`
    - WordPress: \`wp option list --search='*rate*' --search='*limit*'\`
+   **IMPORTANT:** Look at EVERY setting returned. Login-specific rate limits (max_logins_per_ip_per_hour, max_logins_per_ip_per_minute, etc.) are the #1 cause of scanner auth failures. You must disable ALL of them, not just the ones with "rate_limit" in the name.
 3. **Search the codebase** \u2014 use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
 4. **Inspect configuration files** \u2014 .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
 5. **Check middleware/initializer files** \u2014 look for Rack::Attack, express-rate-limit, django-ratelimit, Spring Security, etc. in middleware configs or initializers.
@@ -27604,8 +27605,10 @@ Do NOT edit files inside the container directly \u2014 they're lost on rebuild.
 
 After making changes, you MUST verify they actually work by stress-testing:
 1. Re-read the config or re-query the setting to confirm the new value is set
-2. Use \`probe_url\` to make 5+ rapid requests to the SAME endpoint (especially login/session endpoints) and confirm you do NOT get HTTP 429
-3. If you still get 429 after your changes, you missed something \u2014 search the web again for additional rate limit mechanisms
+2. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) \u2014 NOT the login HTML page. Use the same credentials/body each time. Confirm you do NOT get HTTP 429.
+3. If you still get 429 after your changes, you missed something \u2014 search the web again for additional rate limit mechanisms (especially login-specific ones like "max_logins_per_ip_per_hour")
+
+**CRITICAL:** Testing GET requests to the login PAGE proves nothing \u2014 rate limits apply to the LOGIN ACTION (POST). Always verify with POST requests to the auth endpoint.
 
 Do NOT report success without performing the rapid-request verification.
 
