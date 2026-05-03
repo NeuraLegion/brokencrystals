@@ -28578,78 +28578,6 @@ Use the read_file and search_files tools to trace the data flow from the HTTP en
     }
   ];
 }
-function generateFixPrompt(techStack, finding, taintAnalysis, affectedFiles, previousAttempt) {
-  const messages = [
-    {
-      role: "system",
-      content: `You are a security engineer fixing vulnerabilities in a ${techStack} application. Generate secure code fixes that properly remediate the vulnerability without breaking functionality.
-
-Guidelines:
-- Follow the framework's built-in security features and best practices
-- Validate and sanitize user inputs at the boundary
-- Preserve the existing code style and patterns
-- Only modify what is necessary to fix the vulnerability
-- NEVER modify infrastructure files (Dockerfile, docker-compose.yml, compose.yml, .env, *.conf.py, nginx.conf, Makefile, etc.) \u2014 only modify application source code. Infrastructure file changes will be rejected.`
-    },
-    {
-      role: "user",
-      content: `Fix this vulnerability:
-
-Vulnerability: ${finding.name}
-Severity: ${finding.severity}
-Details: ${finding.details}
-Remedy: ${finding.remedy}
-
-Taint Analysis:
-${taintAnalysis}
-
-Affected files:
-${affectedFiles.map((f) => `--- ${f.path} ---
-${f.content}`).join("\n\n")}
-
-Return a JSON object with the fixed file contents:
-{
-  "summary": "Brief description of the fix",
-  "files": [
-    { "path": "relative/path/to/file.ts", "content": "...entire fixed file content..." }
-  ]
-}`
-    }
-  ];
-  if (previousAttempt) {
-    messages.push({
-      role: "assistant",
-      content: previousAttempt.fix
-    });
-    messages.push({
-      role: "user",
-      content: `The previous fix attempt did not resolve the vulnerability \u2014 the DAST scan still found the same issue. Analyze why the previous fix was insufficient and generate a more thorough fix using a different approach.
-
-Return the fix in the same JSON format.`
-    });
-  }
-  return messages;
-}
-var fixResultSchema = {
-  type: "object",
-  properties: {
-    summary: { type: "string" },
-    files: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          path: { type: "string" },
-          content: { type: "string" }
-        },
-        required: ["path", "content"],
-        additionalProperties: false
-      }
-    }
-  },
-  required: ["summary", "files"],
-  additionalProperties: false
-};
 
 // src/phases/fix.ts
 var INFRA_FILE_PATTERNS = [
@@ -28701,6 +28629,7 @@ async function generateFixes(llm, repoPath, techStack, findings, previousFixes, 
   const stackStr = formatTechStack(techStack);
   const handleTool = createToolHandler(repoPath);
   const fixes = [];
+  const fixTools = [...codebaseTools, editFileTool];
   for (const finding of findings) {
     console.log(`[Fix] Analyzing: ${finding.name} at ${finding.url}`);
     const previousAttempt = previousFixes.find(
@@ -28720,33 +28649,96 @@ ${contextSummary}`;
       handleTool,
       model
     );
-    const filePaths = extractFilePaths(taintAnalysis, repoPath);
-    const affectedFiles = filePaths.map((p) => ({
-      path: p,
-      content: safeReadFile(resolve3(repoPath, p))
-    }));
-    const fixMessages = generateFixPrompt(
-      stackStr,
-      finding,
-      taintAnalysis,
-      affectedFiles,
-      previousAttempt ? {
-        fix: JSON.stringify({
-          summary: previousAttempt.summary,
-          files: previousAttempt.files
-        }),
-        stillVulnerable: true
-      } : void 0
-    );
+    const editedFiles = /* @__PURE__ */ new Map();
+    const fixToolHandler = async (name, args) => {
+      if (name === "edit_file") {
+        const filePath = String(args.path ?? "");
+        if (isInfrastructureFile(filePath)) {
+          return `Error: cannot modify infrastructure file ${filePath} \u2014 only application source code can be changed.`;
+        }
+        if (!editedFiles.has(filePath)) {
+          try {
+            editedFiles.set(filePath, readFileSync5(resolve3(repoPath, filePath), "utf-8"));
+          } catch {
+            editedFiles.set(filePath, "");
+          }
+        }
+        const result = handleEditFile(repoPath, args);
+        if (!result.startsWith("Error")) {
+          console.log(`[Fix] Edited ${filePath}`);
+        }
+        return result;
+      }
+      return handleTool(name, args);
+    };
+    let previousContext = "";
+    if (previousAttempt) {
+      previousContext = `
+
+IMPORTANT: A previous fix attempt was made but DID NOT resolve the vulnerability \u2014 the DAST scan still found the same issue. Previous attempt summary: "${previousAttempt.summary}". You must use a DIFFERENT, more thorough approach this time.`;
+    }
+    const fixMessages = [
+      {
+        role: "system",
+        content: `You are a security engineer fixing vulnerabilities in a ${stackStr} application. You have tools to read code and apply edits directly.
+
+Use edit_file to make surgical, targeted fixes. Each edit_file call replaces exactly one occurrence of old_string with new_string.
+
+Guidelines:
+- Use read_file to examine the affected code first if needed
+- Apply minimal, targeted fixes \u2014 only change what's necessary
+- Follow the framework's built-in security features and best practices
+- Validate and sanitize user inputs at the boundary
+- NEVER modify infrastructure files (Dockerfile, docker-compose.yml, .env, etc.)
+- After applying your fix, briefly summarize what you changed${previousContext}${contextSummary ? `
+
+Application context:
+${contextSummary}` : ""}`
+      },
+      {
+        role: "user",
+        content: `Fix this vulnerability by editing the source code:
+
+Vulnerability: ${finding.name}
+Severity: ${finding.severity}
+URL: ${finding.url}
+Method: ${finding.method}
+Details: ${finding.details}
+Remedy: ${finding.remedy}
+
+Taint Analysis:
+${taintAnalysis}
+
+Use edit_file to apply the fix directly. Then summarize what you changed.`
+      }
+    ];
     try {
-      const result = await chatWithSchema(llm, fixMessages, "fix_result", fixResultSchema, model);
+      const summary = await chatWithTools(
+        llm,
+        fixMessages,
+        fixTools,
+        fixToolHandler,
+        model
+      );
+      if (editedFiles.size === 0) {
+        console.warn(`[Fix] No edits applied for ${finding.name}`);
+        continue;
+      }
+      const patchedFiles = [];
+      for (const [filePath] of editedFiles) {
+        try {
+          const content = readFileSync5(resolve3(repoPath, filePath), "utf-8");
+          patchedFiles.push({ path: filePath, content });
+        } catch {
+        }
+      }
       fixes.push({
         vulnerability: finding,
-        files: result.files,
-        summary: result.summary,
+        files: patchedFiles,
+        summary: summary.slice(0, 500),
         verified: false
       });
-      console.log(`[Fix] Generated fix: ${result.summary}`);
+      console.log(`[Fix] Generated fix (${patchedFiles.length} file(s)): ${summary.slice(0, 200)}`);
     } catch (err) {
       console.error(
         `[Fix] Failed to generate fix for ${finding.name}: ${toErrorMessage(err)}`
@@ -28769,27 +28761,6 @@ function applyFixes(repoPath, fixes) {
       writeFileSync4(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
-  }
-}
-function extractFilePaths(text, repoPath) {
-  const regex = /(?:^|\s|`)((?:\.\/)?(?:[\w./-]+\/)+[\w.-]+\.\w+)/gm;
-  const paths = /* @__PURE__ */ new Set();
-  let match2;
-  while ((match2 = regex.exec(text)) !== null) {
-    const p = match2[1].replace(/^\.\//, "");
-    try {
-      readFileSync5(resolve3(repoPath, p));
-      paths.add(p);
-    } catch {
-    }
-  }
-  return [...paths];
-}
-function safeReadFile(fullPath) {
-  try {
-    return readFileSync5(fullPath, "utf-8");
-  } catch {
-    return "";
   }
 }
 
