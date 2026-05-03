@@ -61,6 +61,7 @@ If your codebase search finds NOTHING related to rate limiting, that is a RED FL
    - Django: \`python manage.py shell -c "from constance import config; ..."\`
    - WordPress: \`wp option list --search='*rate*' --search='*limit*'\`
    **IMPORTANT:** Look at EVERY setting returned. Login-specific rate limits (max_logins_per_ip_per_hour, max_logins_per_ip_per_minute, etc.) are the #1 cause of scanner auth failures. You must disable ALL of them, not just the ones with "rate_limit" in the name.
+   **VALUE RULE:** Always set rate limits to very high numbers like 999999. NEVER use 0 (ambiguous — could mean "disabled" or "zero allowed") and NEVER use small numbers like 1 or 10. Use 999999 to be safe.
 3. **Search the codebase** — use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
 4. **Inspect configuration files** — .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
 5. **Check middleware/initializer files** — look for Rack::Attack, express-rate-limit, django-ratelimit, Spring Security, etc. in middleware configs or initializers.

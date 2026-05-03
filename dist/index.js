@@ -27586,6 +27586,7 @@ If your codebase search finds NOTHING related to rate limiting, that is a RED FL
    - Django: \`python manage.py shell -c "from constance import config; ..."\`
    - WordPress: \`wp option list --search='*rate*' --search='*limit*'\`
    **IMPORTANT:** Look at EVERY setting returned. Login-specific rate limits (max_logins_per_ip_per_hour, max_logins_per_ip_per_minute, etc.) are the #1 cause of scanner auth failures. You must disable ALL of them, not just the ones with "rate_limit" in the name.
+   **VALUE RULE:** Always set rate limits to very high numbers like 999999. NEVER use 0 (ambiguous \u2014 could mean "disabled" or "zero allowed") and NEVER use small numbers like 1 or 10. Use 999999 to be safe.
 3. **Search the codebase** \u2014 use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
 4. **Inspect configuration files** \u2014 .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
 5. **Check middleware/initializer files** \u2014 look for Rack::Attack, express-rate-limit, django-ratelimit, Spring Security, etc. in middleware configs or initializers.
@@ -27657,6 +27658,7 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
   ];
   const baseCodeHandler = createToolHandler(repoPath);
   const webHandler = createWebSearchHandler(repoPath);
+  const dockerCommands = [];
   const handler = async (name, args) => {
     if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
@@ -27667,7 +27669,11 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[ScanPrep] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      return execInDocker(repoPath, container, cmd, 12e4);
+      const result = execInDocker(repoPath, container, cmd, 12e4);
+      if (/set\(|=\s*\d|=\s*true|=\s*false|update|disable|enable/i.test(cmd)) {
+        dockerCommands.push({ container, command: cmd });
+      }
+      return result;
     }
     if (name === "edit_file") {
       return handleEditFile(repoPath, args);
@@ -27692,7 +27698,7 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
       for (const c3 of changes) {
         console.log(`[ScanPrep]   \u2022 ${c3}`);
       }
-      return { completed: true, changes, summary: result.summary ?? "Done" };
+      return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
     }
     console.warn(`[ScanPrep] Failed: ${result.reason ?? result.summary ?? "unknown"}`);
     return { completed: false, changes: [], summary: result.reason ?? "Failed" };
@@ -27700,6 +27706,23 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
     console.warn(`[ScanPrep] Could not parse response: ${err}`);
     return { completed: false, changes: [], summary: `Parse error: ${err}` };
   }
+}
+function replayScanPrep(repoPath, commands) {
+  console.log(`[ScanPrep] Replaying ${commands.length} previously-successful command(s)...`);
+  let applied = 0;
+  let failed = 0;
+  for (const { container, command } of commands) {
+    try {
+      console.log(`[ScanPrep] replay [${container}]: ${command.slice(0, 200)}`);
+      execInDocker(repoPath, container, command, 6e4);
+      applied++;
+    } catch (err) {
+      console.warn(`[ScanPrep] replay failed: ${err}`);
+      failed++;
+    }
+  }
+  console.log(`[ScanPrep] Replay done \u2014 ${applied} applied, ${failed} failed`);
+  return { success: failed === 0, applied, failed };
 }
 
 // src/phases/test-selection.ts
@@ -30255,6 +30278,7 @@ async function runOrchestrator(ctx) {
     }
     await progress.phaseStart("scan_prep", "Preparing application for security scanning");
     await healthMonitor?.pause();
+    let scanPrepReplayCommands = [];
     try {
       const prepResult = await prepareScanEnvironment(
         llm,
@@ -30265,6 +30289,9 @@ async function runOrchestrator(ctx) {
       );
       if (prepResult.completed && prepResult.changes.length > 0) {
         await progress.phaseDetail("scan_prep", "done", prepResult.summary);
+        if (prepResult.replayCommands?.length) {
+          scanPrepReplayCommands = prepResult.replayCommands;
+        }
       } else if (prepResult.completed) {
         await progress.phaseDetail("scan_prep", "done", "No changes needed");
       } else {
@@ -30442,20 +30469,26 @@ This user should work for authentication. Skip user registration/seeding and go 
     config.modelSelector.reset();
     healthMonitor?.resume();
     if (bouncedBack) {
-      console.log("[Engine] Re-running scan-prep after bounce-back (DB settings may have been wiped)...");
       await healthMonitor?.pause();
       try {
-        const rePrepResult = await prepareScanEnvironment(
-          llm,
-          repoPath,
-          baseUrl,
-          techStack,
-          config.modelSelector.current()
-        );
-        if (rePrepResult.completed && rePrepResult.changes.length > 0) {
-          console.log(`[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`);
+        if (scanPrepReplayCommands.length > 0) {
+          console.log("[Engine] Replaying scan-prep commands after bounce-back (deterministic)...");
+          const { applied, failed } = replayScanPrep(repoPath, scanPrepReplayCommands);
+          console.log(`[ScanPrep] Post-bounce replay: ${applied} applied, ${failed} failed`);
         } else {
-          console.log("[ScanPrep] Post-bounce re-run: no changes needed");
+          console.log("[Engine] Re-running scan-prep after bounce-back (no replay commands, using LLM)...");
+          const rePrepResult = await prepareScanEnvironment(
+            llm,
+            repoPath,
+            baseUrl,
+            techStack,
+            config.modelSelector.current()
+          );
+          if (rePrepResult.completed && rePrepResult.changes.length > 0) {
+            console.log(`[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`);
+          } else {
+            console.log("[ScanPrep] Post-bounce re-run: no changes needed");
+          }
         }
       } catch (rePrepErr) {
         console.warn(`[Engine] Post-bounce scan-prep error: ${toErrorMessage(rePrepErr)} \u2014 continuing anyway`);

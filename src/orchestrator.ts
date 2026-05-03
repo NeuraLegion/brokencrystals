@@ -38,7 +38,7 @@ import {
   type RegisteredEntrypoint,
 } from "./phases/entrypoints.js";
 import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
-import { prepareScanEnvironment } from "./phases/scan-prep.js";
+import { prepareScanEnvironment, replayScanPrep } from "./phases/scan-prep.js";
 import {
   selectTestsPerEndpoint,
   type ScanGroup,
@@ -454,6 +454,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     await progress.phaseStart("scan_prep", "Preparing application for security scanning");
     // Pause health monitor — scan-prep makes rapid requests that look like app failure
     await healthMonitor?.pause();
+    let scanPrepReplayCommands: { container: string; command: string }[] = [];
     try {
       const prepResult = await prepareScanEnvironment(
         llm,
@@ -464,6 +465,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
       if (prepResult.completed && prepResult.changes.length > 0) {
         await progress.phaseDetail("scan_prep", "done", prepResult.summary);
+        if (prepResult.replayCommands?.length) {
+          scanPrepReplayCommands = prepResult.replayCommands;
+        }
       } else if (prepResult.completed) {
         await progress.phaseDetail("scan_prep", "done", "No changes needed");
       } else {
@@ -684,21 +688,29 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // ----- Re-run scan-prep if bounce-backs rebuilt the app -----
     // Bounce-backs rebuild the DB/container which wipes DB-backed settings
     // (rate limits, CAPTCHA toggles, etc.) that scan-prep configured earlier.
+    // Use deterministic replay of the exact commands that worked the first time.
     if (bouncedBack) {
-      console.log("[Engine] Re-running scan-prep after bounce-back (DB settings may have been wiped)...");
       await healthMonitor?.pause();
       try {
-        const rePrepResult = await prepareScanEnvironment(
-          llm,
-          repoPath,
-          baseUrl,
-          techStack,
-          config.modelSelector.current(),
-        );
-        if (rePrepResult.completed && rePrepResult.changes.length > 0) {
-          console.log(`[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`);
+        if (scanPrepReplayCommands.length > 0) {
+          console.log("[Engine] Replaying scan-prep commands after bounce-back (deterministic)...");
+          const { applied, failed } = replayScanPrep(repoPath, scanPrepReplayCommands);
+          console.log(`[ScanPrep] Post-bounce replay: ${applied} applied, ${failed} failed`);
         } else {
-          console.log("[ScanPrep] Post-bounce re-run: no changes needed");
+          // No replay commands stored — fall back to full LLM re-run
+          console.log("[Engine] Re-running scan-prep after bounce-back (no replay commands, using LLM)...");
+          const rePrepResult = await prepareScanEnvironment(
+            llm,
+            repoPath,
+            baseUrl,
+            techStack,
+            config.modelSelector.current(),
+          );
+          if (rePrepResult.completed && rePrepResult.changes.length > 0) {
+            console.log(`[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`);
+          } else {
+            console.log("[ScanPrep] Post-bounce re-run: no changes needed");
+          }
         }
       } catch (rePrepErr) {
         console.warn(`[Engine] Post-bounce scan-prep error: ${toErrorMessage(rePrepErr)} — continuing anyway`);

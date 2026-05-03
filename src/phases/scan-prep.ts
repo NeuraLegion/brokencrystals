@@ -26,6 +26,8 @@ export interface ScanPrepResult {
   completed: boolean;
   changes: string[];
   summary: string;
+  /** Docker commands that successfully modified settings — replayed on re-run */
+  replayCommands?: { container: string; command: string }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +57,9 @@ export async function prepareScanEnvironment(
   const baseCodeHandler = createToolHandler(repoPath);
   const webHandler = createWebSearchHandler(repoPath);
 
+  // Track docker commands that modify settings (for deterministic re-run)
+  const dockerCommands: { container: string; command: string }[] = [];
+
   const handler: ToolHandler = async (name, args) => {
     if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
@@ -65,7 +70,12 @@ export async function prepareScanEnvironment(
       const container = String(args.container ?? "");
       const cmd = String(args.command ?? "");
       console.log(`[ScanPrep] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      return execInDocker(repoPath, container, cmd, 120_000);
+      const result = execInDocker(repoPath, container, cmd, 120_000);
+      // Capture commands that set/modify settings (not read-only queries)
+      if (/set\(|=\s*\d|=\s*true|=\s*false|update|disable|enable/i.test(cmd)) {
+        dockerCommands.push({ container, command: cmd });
+      }
+      return result;
     }
     if (name === "edit_file") {
       return handleEditFile(repoPath, args);
@@ -99,7 +109,7 @@ export async function prepareScanEnvironment(
       for (const c of changes) {
         console.log(`[ScanPrep]   • ${c}`);
       }
-      return { completed: true, changes, summary: result.summary ?? "Done" };
+      return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
     }
 
     console.warn(`[ScanPrep] Failed: ${result.reason ?? result.summary ?? "unknown"}`);
@@ -108,4 +118,29 @@ export async function prepareScanEnvironment(
     console.warn(`[ScanPrep] Could not parse response: ${err}`);
     return { completed: false, changes: [], summary: `Parse error: ${err}` };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic replay — re-applies the exact commands that worked before
+// ---------------------------------------------------------------------------
+
+export function replayScanPrep(
+  repoPath: string,
+  commands: { container: string; command: string }[],
+): { success: boolean; applied: number; failed: number } {
+  console.log(`[ScanPrep] Replaying ${commands.length} previously-successful command(s)...`);
+  let applied = 0;
+  let failed = 0;
+  for (const { container, command } of commands) {
+    try {
+      console.log(`[ScanPrep] replay [${container}]: ${command.slice(0, 200)}`);
+      execInDocker(repoPath, container, command, 60_000);
+      applied++;
+    } catch (err) {
+      console.warn(`[ScanPrep] replay failed: ${err}`);
+      failed++;
+    }
+  }
+  console.log(`[ScanPrep] Replay done — ${applied} applied, ${failed} failed`);
+  return { success: failed === 0, applied, failed };
 }
