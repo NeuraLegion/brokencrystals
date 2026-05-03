@@ -172,6 +172,88 @@ export function extractJson(text: string): string {
 }
 
 /**
+ * Attempt to repair truncated JSON from LLM output.
+ * Handles: unterminated strings, missing closing brackets, trailing commas.
+ * Returns parsed value or throws if unrecoverable.
+ */
+export function parseJsonLenient(text: string): unknown {
+  // First try normal parse
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Continue to repair
+  }
+
+  let s = text.trim();
+
+  // Strip trailing comma before repair
+  s = s.replace(/,\s*$/, "");
+
+  // Close unterminated strings: find last unescaped open quote
+  let inStr = false;
+  let lastQuoteIdx = -1;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" && inStr) { i++; continue; }
+    if (s[i] === '"') {
+      inStr = !inStr;
+      if (inStr) lastQuoteIdx = i;
+    }
+  }
+  if (inStr) {
+    // Truncate from the last open quote (remove partial string value)
+    s = s.slice(0, lastQuoteIdx).replace(/,\s*$/, "").replace(/:\s*$/, ': null');
+  }
+
+  // Remove trailing partial object/key fragments (e.g. `{"key":` or `{"key": {`)
+  // by stripping from the last comma that leaves a valid prefix
+  const closeStack: string[] = [];
+  let cleaned = s;
+  // Find what closers are needed
+  let inStr2 = false;
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (ch === "\\" && inStr2) { i++; continue; }
+    if (ch === '"') { inStr2 = !inStr2; continue; }
+    if (inStr2) continue;
+    if (ch === "{" || ch === "[") closeStack.push(ch === "{" ? "}" : "]");
+    else if (ch === "}" || ch === "]") closeStack.pop();
+  }
+
+  // Remove trailing incomplete key-value (after last comma if any)
+  if (closeStack.length > 0) {
+    // Try trimming from the last top-level comma
+    const lastComma = cleaned.lastIndexOf(",");
+    if (lastComma > 0) {
+      const candidate = cleaned.slice(0, lastComma);
+      // Re-count needed closers for candidate
+      const needed: string[] = [];
+      let inS = false;
+      for (let i = 0; i < candidate.length; i++) {
+        const ch = candidate[i];
+        if (ch === "\\" && inS) { i++; continue; }
+        if (ch === '"') { inS = !inS; continue; }
+        if (inS) continue;
+        if (ch === "{" || ch === "[") needed.push(ch === "{" ? "}" : "]");
+        else if (ch === "}" || ch === "]") needed.pop();
+      }
+      const repaired = candidate + needed.reverse().join("");
+      try {
+        return JSON.parse(repaired);
+      } catch { /* try next strategy */ }
+    }
+
+    // Just close everything
+    const repaired = cleaned + closeStack.reverse().join("");
+    try {
+      return JSON.parse(repaired);
+    } catch { /* give up */ }
+  }
+
+  // Final attempt: just parse cleaned as-is
+  return JSON.parse(s);
+}
+
+/**
  * Block dangerous shell commands that could damage the system.
  */
 /**

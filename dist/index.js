@@ -11504,6 +11504,79 @@ function extractJson(text) {
   }
   return text.slice(start);
 }
+function parseJsonLenient(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+  }
+  let s = text.trim();
+  s = s.replace(/,\s*$/, "");
+  let inStr = false;
+  let lastQuoteIdx = -1;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" && inStr) {
+      i++;
+      continue;
+    }
+    if (s[i] === '"') {
+      inStr = !inStr;
+      if (inStr) lastQuoteIdx = i;
+    }
+  }
+  if (inStr) {
+    s = s.slice(0, lastQuoteIdx).replace(/,\s*$/, "").replace(/:\s*$/, ": null");
+  }
+  const closeStack = [];
+  let cleaned = s;
+  let inStr2 = false;
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (ch === "\\" && inStr2) {
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inStr2 = !inStr2;
+      continue;
+    }
+    if (inStr2) continue;
+    if (ch === "{" || ch === "[") closeStack.push(ch === "{" ? "}" : "]");
+    else if (ch === "}" || ch === "]") closeStack.pop();
+  }
+  if (closeStack.length > 0) {
+    const lastComma = cleaned.lastIndexOf(",");
+    if (lastComma > 0) {
+      const candidate = cleaned.slice(0, lastComma);
+      const needed = [];
+      let inS = false;
+      for (let i = 0; i < candidate.length; i++) {
+        const ch = candidate[i];
+        if (ch === "\\" && inS) {
+          i++;
+          continue;
+        }
+        if (ch === '"') {
+          inS = !inS;
+          continue;
+        }
+        if (inS) continue;
+        if (ch === "{" || ch === "[") needed.push(ch === "{" ? "}" : "]");
+        else if (ch === "}" || ch === "]") needed.pop();
+      }
+      const repaired2 = candidate + needed.reverse().join("");
+      try {
+        return JSON.parse(repaired2);
+      } catch {
+      }
+    }
+    const repaired = cleaned + closeStack.reverse().join("");
+    try {
+      return JSON.parse(repaired);
+    } catch {
+    }
+  }
+  return JSON.parse(s);
+}
 var SAFE_HOST_COMMANDS = /* @__PURE__ */ new Set([
   "cat",
   "ls",
@@ -19101,7 +19174,7 @@ Find all HTTP endpoints registered in this file. If routes are registered via he
         model,
         5
       );
-      const parsed = JSON.parse(extractJson(response));
+      const parsed = parseJsonLenient(extractJson(response));
       const eps = Array.isArray(parsed) ? parsed : Array.isArray(parsed.endpoints) ? parsed.endpoints : [];
       for (const ep of eps) {
         if (ep.method && ep.path) {
@@ -19232,7 +19305,7 @@ Which of these files might define HTTP endpoints that we haven't scanned yet? Ch
       model,
       5
     );
-    const parsed = JSON.parse(extractJson(response));
+    const parsed = parseJsonLenient(extractJson(response));
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
       (ep) => ep.method && ep.path && !scannedSet.has(ep.filePath ?? "")
@@ -19471,7 +19544,7 @@ Look up any referenced DTOs/models. Return a JSON array with params for each end
           model,
           5
         );
-        const parsed = JSON.parse(extractJson(response));
+        const parsed = parseJsonLenient(extractJson(response));
         const entries = Array.isArray(parsed) ? parsed : Array.isArray(parsed.endpoints) ? parsed.endpoints : [parsed];
         for (const entry of entries) {
           const idx = typeof entry.index === "number" ? entry.index : 0;

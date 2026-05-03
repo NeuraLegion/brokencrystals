@@ -5,7 +5,7 @@ import { execFileSync } from "child_process";
 import { glob } from "glob";
 import type { TechStack, DiscoveredEndpoint } from "../types.js";
 import { chatWithTools, type ToolHandler } from "../inference.js";
-import { extractJson } from "../utils.js";
+import { extractJson, parseJsonLenient } from "../utils.js";
 
 // ---------------------------------------------------------------------------
 // Phase 1: Deterministic tech-stack detection (zero LLM calls)
@@ -1610,11 +1610,11 @@ Find all HTTP endpoints registered in this file. If routes are registered via he
         model,
         5,
       );
-      const parsed = JSON.parse(extractJson(response));
+      const parsed = parseJsonLenient(extractJson(response)) as Record<string, unknown>;
       const eps = Array.isArray(parsed)
         ? parsed
-        : Array.isArray(parsed.endpoints)
-          ? parsed.endpoints
+        : Array.isArray((parsed as Record<string, unknown>).endpoints)
+          ? (parsed as Record<string, unknown>).endpoints as unknown[]
           : [];
       for (const ep of eps) {
         if (ep.method && ep.path) {
@@ -1746,7 +1746,7 @@ Which of these files might define HTTP endpoints that we haven't scanned yet? Ch
       model,
       5,
     );
-    const parsed = JSON.parse(extractJson(response));
+    const parsed = parseJsonLenient(extractJson(response));
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter(
@@ -2051,7 +2051,7 @@ Look up any referenced DTOs/models. Return a JSON array with params for each end
           model,
           5,
         );
-        const parsed = JSON.parse(extractJson(response));
+        const parsed = parseJsonLenient(extractJson(response)) as Record<string, unknown>;
         const entries = Array.isArray(parsed)
           ? parsed
           : Array.isArray(parsed.endpoints)
