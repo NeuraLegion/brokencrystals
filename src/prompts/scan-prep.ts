@@ -29,7 +29,7 @@ A DAST scanner hammers the app with thousands of requests — rapid logins, malf
 1. **Rate limiting** (highest priority) — per-IP, per-user, per-endpoint, login-specific, API-specific. These cause 429 errors that break auth and block scanning.
 2. **Account lockout** — failed login thresholds that lock or ban the test account.
 3. **CAPTCHA / bot detection** — anything that gates form submission on human verification.
-4. **CSRF token lifetime** — very short token expiry can break scanner workflows.
+4. **CSRF token lifetime / enforcement** — very short token expiry can break scanner workflows. If the app has a setting to DISABLE CSRF checking entirely, do so — the scanner handles CSRF independently via the auth object. Do NOT make CSRF stricter.
 5. **Session timeouts** — aggressive session expiry forces constant re-authentication.
 6. **IP allowlists / blocklists** — if the app blocks unknown IPs or requires allowlisting.
 7. **WAF / request filtering** — embedded request validation that rejects scanner payloads.
@@ -111,7 +111,9 @@ If you tried but failed:
 - Prefer runtime settings (admin API, CLI, DB settings) over patching source code.
 - If codebase search finds nothing, that means rate limiting is BUILT INTO the framework — use \`search_web\` to find out how to disable it.
 - NEVER report "no rate limits found" without first: (a) searching the web for "<app name> rate limiting", AND (b) querying runtime/DB settings inside the container.
-- Always verify your changes with rapid requests before reporting success.`,
+- Always verify your changes with rapid requests before reporting success.
+- **NEVER make security STRICTER.** Your goal is to RELAX all security controls so the scanner can operate freely. If a setting controls CSRF enforcement, disable it or make it permissive — do NOT enable stricter checking. The scanner needs to send requests without CSRF tokens, so CSRF validation should be DISABLED or set to its most permissive mode.
+- Think about each change from the scanner's perspective: "Will this make it EASIER or HARDER for the scanner to send requests?" If harder → don't do it.`,
     },
     {
       role: "user",
