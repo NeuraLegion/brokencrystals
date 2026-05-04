@@ -137,8 +137,9 @@ export async function detectAndConfigureAuth(
     if (seededCredentials?.success) {
       registrationOk = true;
       // Update detection with the seeded credentials so configureAuth uses them
+      // Use generic field names — the auth config LLM will adapt to the app's actual API
       detection.loginBody = JSON.stringify({
-        login: seededCredentials.username,
+        username: seededCredentials.username,
         password: seededCredentials.password,
       });
 
@@ -2412,12 +2413,14 @@ async function preAuthLoginSanityCheck(
 
 async function discoverLoginEndpoint(baseUrl: string): Promise<string | null> {
   const candidates = [
-    "/session",
-    "/api/session",
-    "/api/auth/login",
-    "/auth/sign_in",
-    "/login",
     "/api/login",
+    "/api/auth/login",
+    "/login",
+    "/auth/sign_in",
+    "/api/session",
+    "/session",
+    "/api/v1/auth/login",
+    "/api/v1/session",
   ];
 
   for (const path of candidates) {
@@ -2449,7 +2452,7 @@ async function verifySeededCredentials(
   creds: SeedUserResult,
   detection: AuthDetection,
 ): Promise<{ valid: boolean; reason: string }> {
-  const loginEndpoint = detection.loginEndpoint ?? "/session";
+  const loginEndpoint = detection.loginEndpoint ?? "/login";
   const loginUrl = `${baseUrl}${loginEndpoint}`;
 
   // Step 1: Try to get a CSRF token (many apps need this)
@@ -2457,8 +2460,8 @@ async function verifySeededCredentials(
   let csrfFieldName: string | undefined;
   let sessionCookie: string | undefined;
 
-  // Step 1a: Check JSON CSRF endpoints (Discourse, Rails API mode)
-  const csrfCandidates = [`${baseUrl}/session/csrf`, `${baseUrl}/csrf`];
+  // Step 1a: Check JSON CSRF endpoints
+  const csrfCandidates = [`${baseUrl}/csrf`, `${baseUrl}/session/csrf`, `${baseUrl}/api/csrf`];
   for (const csrfUrl of csrfCandidates) {
     try {
       const res = await fetch(csrfUrl, {
@@ -2526,8 +2529,55 @@ async function verifySeededCredentials(
     }
   }
 
-  // Step 2: Attempt login with form-encoded body (most common for session auth)
-  // Include CSRF token in the body if it came from an HTML form, or as header if from JSON API
+  // Step 2: Attempt login — try JSON first (modern APIs), then form-encoded (classic apps)
+  // Try JSON body with common field name variations
+  const jsonBodies = [
+    JSON.stringify({ user: creds.username, password: creds.password }),
+    JSON.stringify({ login: creds.username, password: creds.password }),
+    JSON.stringify({ username: creds.username, password: creds.password }),
+    JSON.stringify({ email: creds.email ?? creds.username, password: creds.password }),
+  ];
+
+  for (const jsonBody of jsonBodies) {
+    try {
+      const jsonHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      };
+      if (csrfToken && !csrfFieldName) jsonHeaders["X-CSRF-Token"] = csrfToken;
+      if (sessionCookie) jsonHeaders["Cookie"] = sessionCookie;
+
+      const res = await fetch(loginUrl, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: jsonBody,
+        redirect: "manual",
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
+      });
+      const body = await res.text();
+
+      if (res.status >= 500) continue; // try next format
+
+      // Success indicators — login worked
+      if (res.status === 200 || res.status === 302) {
+        const setCookies: string[] = extractSetCookies(res.headers);
+        const hasSessionCookie = setCookies.some(
+          (c: string) => /(_t|_session|session_id|token|jwt|Session|grafana_session)/i.test(c),
+        );
+        if (hasSessionCookie || (res.status === 200 && !/"error|invalid|incorrect|denied"/i.test(body))) {
+          return { valid: true, reason: "" };
+        }
+      }
+
+      // 401/400 with specific error — credentials wrong but endpoint is correct
+      if ((res.status === 400 || res.status === 401) && /invalid|incorrect|wrong|bad.*login|unauthorized/i.test(body)) {
+        const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
+        return { valid: false, reason: `Login rejected credentials: ${preview}` };
+      }
+    } catch { /* skip, try next */ }
+  }
+
+  // Fallback: form-encoded body
   let formBody = `login=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
   if (csrfToken && csrfFieldName) {
     // HTML form CSRF — include in POST body

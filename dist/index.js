@@ -24284,7 +24284,7 @@ ${csrfGuidance}
 - **delete_auth_object** \u2014 Delete a broken auth object to recreate with different settings.
 
 ## When to use create_auth vs create_auth_raw
-- **create_auth**: Standard flows \u2014 single login POST that returns a cookie or JWT. CSRF must come from a **JSON endpoint** (e.g. /session/csrf returns {"csrf":"token"}). Works for: Discourse, Rails (API mode), Express, most SPA backends.
+- **create_auth**: Standard flows \u2014 single login POST that returns a cookie or JWT. CSRF must come from a **JSON endpoint** (e.g. GET /csrf returns {"csrf":"token"}). Works for: Rails (API mode), Express, most SPA backends, Grafana, Gitea, etc.
 - **create_auth_raw**: Use when you need full control over steps and request bodies. **REQUIRED for:**
   1. **HTML form CSRF** (Django, Laravel, classic server-rendered apps) \u2014 the CSRF token is a hidden input field in the HTML form. You extract it from the GET response body and inject it into the POST body (not a header).
   2. **OAuth2 PKCE / authorization code** \u2014 multi-step flows with token exchange.
@@ -24330,12 +24330,14 @@ steps: [
 The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API endpoint that processes credentials.
 1. Check the pre-probe results \u2014 if loginEndpoint is marked as "HTML page", do NOT use it as loginUrl
 2. Look for "Candidate API login" entries in the pre-probe \u2014 those are the real API endpoints
-3. If unsure, probe POST to common API patterns with an empty body \u2014 403/422/400 means it's the right endpoint (rejected creds), 404 means wrong:
-   - POST ${baseUrl}/session
-   - POST ${baseUrl}/api/session
+3. If unsure, probe POST to common API patterns with an empty JSON body \u2014 400/401/403/422 means it's a real endpoint (rejected creds), 404 means wrong:
+   - POST ${baseUrl}/api/login
    - POST ${baseUrl}/api/auth/login
    - POST ${baseUrl}/auth/sign_in
-4. Also search the codebase: search for route definitions that handle POST login/session
+   - POST ${baseUrl}/api/session
+   - POST ${baseUrl}/login
+   - POST ${baseUrl}/api/v1/auth/login
+4. Also search the codebase: search for route definitions that handle POST login/auth/session
 
 ### Step 2: Discover test URL candidates using probe_url
 1. Probe several .json endpoints WITHOUT auth to find ones that return different content when authenticated:
@@ -24416,7 +24418,7 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
 - If the problem is an **infrastructure issue that requires restarting the application** (e.g. missing environment variable in docker-compose, wrong Dockerfile config, app needs to be rebuilt with different settings), respond with:
   \`INFRA_REPAIR: <description of what needs to change>\`
   Examples:
-  - \`INFRA_REPAIR: Add ALLOW_EMBER_CLI_PROXY_BYPASS=1 to the app service environment in compose.yml \u2014 without it, Discourse returns HTML for all API requests instead of processing them\`
+  - \`INFRA_REPAIR: The app requires an environment variable (e.g. ALLOW_EMBER_CLI_PROXY_BYPASS=1) in compose.yml \u2014 without it, API requests return HTML instead of JSON\`
   - \`INFRA_REPAIR: The app's DATABASE_URL points to localhost but the DB is in a separate container \u2014 change it to postgres://db:5432 in compose.yml\`
   - \`INFRA_REPAIR: The Rails app needs RAILS_ENV=production in compose.yml \u2014 development mode requires Ember CLI which is not available\`
   Use INFRA_REPAIR when: you've identified the root cause, it requires changing compose.yml/Dockerfile/environment, and you CANNOT fix it from inside the running container (e.g. env vars set at startup, Docker build changes, service configuration). Do NOT use INFRA_REPAIR for auth config issues \u2014 only for app infrastructure problems.
@@ -24452,6 +24454,11 @@ Create a user with these exact credentials:
 - password: BrightTest123!
 - Make the user an admin/superuser if possible
 
+**IMPORTANT:** Some applications have a built-in admin user (e.g. Grafana uses "admin/admin", Jenkins uses "admin"). In that case:
+- Reset the built-in admin password to "BrightTest123!" instead of creating a new user
+- Report the admin's actual username (e.g. "admin") in your output \u2014 do NOT assume it's "bright_test"
+- If you can ALSO create a separate "bright_test" user, do that too, but prioritize getting working credentials
+
 ## Tools available
 - **run_command_on_host** \u2014 Run shell commands on the host (docker ps, docker logs, etc.)
 - **run_command_in_docker** \u2014 Run commands inside a Docker container (create users, framework CLI)
@@ -24470,14 +24477,17 @@ Create a user with these exact credentials:
    - **Rails**: run_command_in_docker(container: "<id>", command: "cd /src && RAILS_ENV=development bundle exec rails runner "u = User.new(username: :bright_test, email: :bright@test.com, password: :BrightTest123!, admin: true, active: true, approved: true); u.save!(validate: false)"")
    - **Django**: run_command_in_docker(container: "<id>", command: "python manage.py shell -c "from django.contrib.auth.models import User; User.objects.create_superuser('bright_test', 'bright@test.com', 'BrightTest123!')"")
    - **Laravel**: run_command_in_docker(container: "<id>", command: "php artisan tinker --execute="\\App\\Models\\User::create(['name'=>'bright','email'=>'bright@test.com','password'=>Hash::make('BrightTest123!')])"")
+   - **Grafana**: run_command_in_docker(container: "<id>", command: "grafana-cli admin reset-admin-password 'BrightTest123!'") \u2014 username is "admin"
    - **Node/Express**: run_command_in_docker(container: "<id>", command: "node -e "const db = require('./models'); db.User.create({...})"")
+   - **Apps with built-in admin**: Reset the admin password via CLI tool or direct DB update, then report the built-in username
 4. **CRITICAL \u2014 Activate/confirm the user account:**
    Many apps require email verification before login works. After creating the user, you MUST ensure the account is fully activated:
-   - **Rails/Discourse**: run_command_in_docker to execute: "u = User.find_by(username: 'bright_test'); u.active = true; u.approved = true; u.save!(validate: false); u.email_tokens.each { |t| EmailToken.confirm(t.token) rescue nil }; u.user_emails.update_all(confirmed: true) rescue nil"
+   - **Rails**: run_command_in_docker to execute: "u = User.find_by(username: 'bright_test') || User.find_by(email: 'bright@test.com'); u.active = true; u.approved = true; u.save!(validate: false)" \u2014 also confirm email tokens if the model has them
    - **Django**: Ensure is_active=True (usually default for create_superuser)
    - **Laravel**: Set email_verified_at = now()
+   - **Grafana**: Use grafana-cli admin reset-admin-password or the API: POST /api/admin/users with the provisioning API
    - **General**: Look for email_confirmed, verified, activated, or similar fields and set them to true
-   - **Check**: After activation, verify with a query: "User.find_by(username: 'bright_test').active?" or equivalent
+   - **Check**: After activation, verify by probing the login endpoint with the credentials
 5. If the first attempt fails, READ the error message, then:
    - Read the User model source code to understand required fields and validations
    - Try save!(validate: false) or equivalent to bypass validations
@@ -24486,8 +24496,8 @@ Create a user with these exact credentials:
    - Try the app's built-in admin/seed commands
    - Try raw SQL: docker exec <db-container> psql -U postgres -d <dbname> -c "INSERT INTO users..."
 6. VERIFY the user exists AND is activated:
-   - Run a query: docker exec <id> ... "puts User.find_by(username: 'bright_test').present?"
-   - Or probe the login endpoint to confirm credentials work
+   - Probe the login endpoint with the credentials (POST with username/password JSON or form data)
+   - Or run a query inside the container to confirm the user exists
 
 ## Output
 When the user is created and verified, respond with ONLY this JSON:
@@ -24619,7 +24629,7 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
     if (seededCredentials?.success) {
       registrationOk = true;
       detection.loginBody = JSON.stringify({
-        login: seededCredentials.username,
+        username: seededCredentials.username,
         password: seededCredentials.password
       });
       if (!detection.loginEndpoint) {
@@ -26327,12 +26337,14 @@ Response: \`${preview}\``
 }
 async function discoverLoginEndpoint(baseUrl) {
   const candidates = [
-    "/session",
-    "/api/session",
+    "/api/login",
     "/api/auth/login",
-    "/auth/sign_in",
     "/login",
-    "/api/login"
+    "/auth/sign_in",
+    "/api/session",
+    "/session",
+    "/api/v1/auth/login",
+    "/api/v1/session"
   ];
   for (const path2 of candidates) {
     try {
@@ -26352,12 +26364,12 @@ async function discoverLoginEndpoint(baseUrl) {
   return null;
 }
 async function verifySeededCredentials(baseUrl, creds, detection) {
-  const loginEndpoint = detection.loginEndpoint ?? "/session";
+  const loginEndpoint = detection.loginEndpoint ?? "/login";
   const loginUrl = `${baseUrl}${loginEndpoint}`;
   let csrfToken;
   let csrfFieldName;
   let sessionCookie;
-  const csrfCandidates = [`${baseUrl}/session/csrf`, `${baseUrl}/csrf`];
+  const csrfCandidates = [`${baseUrl}/csrf`, `${baseUrl}/session/csrf`, `${baseUrl}/api/csrf`];
   for (const csrfUrl of csrfCandidates) {
     try {
       const res = await fetch(csrfUrl, {
@@ -26415,6 +26427,45 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
         }
       } catch {
       }
+    }
+  }
+  const jsonBodies = [
+    JSON.stringify({ user: creds.username, password: creds.password }),
+    JSON.stringify({ login: creds.username, password: creds.password }),
+    JSON.stringify({ username: creds.username, password: creds.password }),
+    JSON.stringify({ email: creds.email ?? creds.username, password: creds.password })
+  ];
+  for (const jsonBody of jsonBodies) {
+    try {
+      const jsonHeaders = {
+        "Content-Type": "application/json",
+        Accept: "application/json"
+      };
+      if (csrfToken && !csrfFieldName) jsonHeaders["X-CSRF-Token"] = csrfToken;
+      if (sessionCookie) jsonHeaders["Cookie"] = sessionCookie;
+      const res = await fetch(loginUrl, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: jsonBody,
+        redirect: "manual",
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
+      });
+      const body = await res.text();
+      if (res.status >= 500) continue;
+      if (res.status === 200 || res.status === 302) {
+        const setCookies = extractSetCookies(res.headers);
+        const hasSessionCookie = setCookies.some(
+          (c3) => /(_t|_session|session_id|token|jwt|Session|grafana_session)/i.test(c3)
+        );
+        if (hasSessionCookie || res.status === 200 && !/"error|invalid|incorrect|denied"/i.test(body)) {
+          return { valid: true, reason: "" };
+        }
+      }
+      if ((res.status === 400 || res.status === 401) && /invalid|incorrect|wrong|bad.*login|unauthorized/i.test(body)) {
+        const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
+        return { valid: false, reason: `Login rejected credentials: ${preview}` };
+      }
+    } catch {
     }
   }
   let formBody = `login=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
