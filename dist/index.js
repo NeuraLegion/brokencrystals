@@ -18539,6 +18539,9 @@ var CONTROLLER_GLOBS = [
   // Go
   "**/*handler*.go",
   "**/*router*.go",
+  "**/api/**/*.go",
+  "**/routes/**/*.go",
+  "**/server/**/*.go",
   // PHP
   "**/Controller/**/*.php",
   "**/Controllers/**/*.php",
@@ -18553,6 +18556,7 @@ var GLOB_IGNORE = [
   "**/tests/**",
   "**/*.test.*",
   "**/*.spec.*",
+  "**/*_test.go",
   "**/TestData/**",
   "**/data/**",
   "**/.data/**",
@@ -18778,14 +18782,18 @@ function extractEndpointsFromFile(content, filePath) {
     }
   }
   if (ext2 === ".go") {
-    const goRe = /\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*"([^"]+)"/gi;
+    const goRe = /\.\s*(Get|Post|Put|Patch|Delete|Head|Options|GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*"([^"]+)"/gi;
     let m;
     while ((m = goRe.exec(content)) !== null) {
       endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
     }
-    const handleRe = /HandleFunc\(\s*"([^"]+)"/gi;
+    const handleRe = /(?:HandleFunc|Handle)\(\s*"([^"]+)"/gi;
     while ((m = handleRe.exec(content)) !== null) {
       endpoints.push({ method: "GET", path: m[1], filePath });
+    }
+    const muxMethodRe = /(?:HandleFunc|Handle)\(\s*"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+([^"]+)"/gi;
+    while ((m = muxMethodRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
     }
   }
   if (ext2 === ".php") {

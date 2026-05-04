@@ -701,6 +701,9 @@ const CONTROLLER_GLOBS = [
   // Go
   "**/*handler*.go",
   "**/*router*.go",
+  "**/api/**/*.go",
+  "**/routes/**/*.go",
+  "**/server/**/*.go",
   // PHP
   "**/Controller/**/*.php",
   "**/Controllers/**/*.php",
@@ -716,6 +719,7 @@ const GLOB_IGNORE = [
   "**/tests/**",
   "**/*.test.*",
   "**/*.spec.*",
+  "**/*_test.go",
   "**/TestData/**",
   "**/data/**",
   "**/.data/**",
@@ -1059,18 +1063,24 @@ function extractEndpointsFromFile(
     }
   }
 
-  // ---- Go / Gin / Echo / Chi ----
+  // ---- Go / Gin / Echo / Chi / Grafana routing ----
   if (ext === ".go") {
+    // Matches: .GET(, .Get(, .POST(, .Post(, r.Get(, router.Post(, group.Delete( etc.
     const goRe =
-      /\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*"([^"]+)"/gi;
+      /\.\s*(Get|Post|Put|Patch|Delete|Head|Options|GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*"([^"]+)"/gi;
     let m;
     while ((m = goRe.exec(content)) !== null) {
       endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
     }
-    // HandleFunc pattern
-    const handleRe = /HandleFunc\(\s*"([^"]+)"/gi;
+    // HandleFunc / Handle pattern: http.HandleFunc("/path", handler)
+    const handleRe = /(?:HandleFunc|Handle)\(\s*"([^"]+)"/gi;
     while ((m = handleRe.exec(content)) !== null) {
       endpoints.push({ method: "GET", path: m[1], filePath });
+    }
+    // http.NewServeMux / mux patterns: mux.HandleFunc("GET /path", handler)
+    const muxMethodRe = /(?:HandleFunc|Handle)\(\s*"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+([^"]+)"/gi;
+    while ((m = muxMethodRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
     }
   }
 
