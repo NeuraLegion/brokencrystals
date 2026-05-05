@@ -260,6 +260,18 @@ export class DefaultPlatform implements Platform {
       });
       console.log(`[Platform] Pushed branch ${this.job.branchName}`);
     } catch (err) {
+      const msg = String(err);
+      // Authentication failures are fatal — no point running the scan if we
+      // can't push results back.
+      if (
+        msg.includes("Authentication failed") ||
+        msg.includes("Invalid username or token") ||
+        msg.includes("could not read Username")
+      ) {
+        throw new Error(
+          `[Platform] Git authentication failed — check your GITHUB_TOKEN or GIT_TOKEN. The scan cannot push results without valid credentials.`,
+        );
+      }
       console.warn(`[Platform] Failed to push branch: ${err}`);
       return;
     }

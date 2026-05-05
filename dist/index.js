@@ -3252,6 +3252,12 @@ var DefaultPlatform = class {
       });
       console.log(`[Platform] Pushed branch ${this.job.branchName}`);
     } catch (err) {
+      const msg = String(err);
+      if (msg.includes("Authentication failed") || msg.includes("Invalid username or token") || msg.includes("could not read Username")) {
+        throw new Error(
+          `[Platform] Git authentication failed \u2014 check your GITHUB_TOKEN or GIT_TOKEN. The scan cannot push results without valid credentials.`
+        );
+      }
       console.warn(`[Platform] Failed to push branch: ${err}`);
       return;
     }
