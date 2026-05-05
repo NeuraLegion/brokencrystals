@@ -3978,10 +3978,11 @@ function pruneBuildArtifacts(): void {
       console.log(`[Startup] Pruned dangling images: ${imgOut.split("\n").pop()}`);
     }
 
-    // Remove build cache (BuildKit layers from failed builds)
+    // Remove ALL build cache including mount-type cache layers (pnpm stores, etc.)
+    // No time filter — failed builds from the current run are the main disk hog.
     const cacheOut = execSync(
-      "docker builder prune -f --filter 'until=1h' 2>/dev/null || true",
-      { encoding: "utf-8", stdio: "pipe", timeout: 30_000 },
+      "docker builder prune -f --all 2>/dev/null || true",
+      { encoding: "utf-8", stdio: "pipe", timeout: 60_000 },
     ).trim();
     if (cacheOut && !cacheOut.includes("0B")) {
       console.log(`[Startup] Pruned build cache: ${cacheOut.split("\n").pop()}`);

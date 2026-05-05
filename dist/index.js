@@ -23961,8 +23961,8 @@ function pruneBuildArtifacts() {
       console.log(`[Startup] Pruned dangling images: ${imgOut.split("\n").pop()}`);
     }
     const cacheOut = execSync3(
-      "docker builder prune -f --filter 'until=1h' 2>/dev/null || true",
-      { encoding: "utf-8", stdio: "pipe", timeout: 3e4 }
+      "docker builder prune -f --all 2>/dev/null || true",
+      { encoding: "utf-8", stdio: "pipe", timeout: 6e4 }
     ).trim();
     if (cacheOut && !cacheOut.includes("0B")) {
       console.log(`[Startup] Pruned build cache: ${cacheOut.split("\n").pop()}`);
