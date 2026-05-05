@@ -59,6 +59,12 @@ Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that 
 4. **Networking**:
    - All services share the default compose network — they reference each other by service name (e.g. app connects to "db" on port 5432)
 
+5. **Healthcheck & restart policy for the app service**:
+   - Many apps run database migrations on first boot — this can take 30-120 seconds
+   - Use a generous \`start_period\` (at least 120s) so Docker doesn't restart the container mid-migration
+   - Use \`restart: on-failure\` (NOT \`restart: always\`) — if the app crashes during migration, "always" can spawn a second instance that hits a migration lock
+   - If the framework has a separate migration command (e.g. \`rails db:migrate\`, \`knex migrate:latest\`, \`npx prisma migrate\`), run it in the entrypoint BEFORE starting the app server, using a lock or single-execution guard
+
 ## Output
 
 Return ONLY the compose.yml content inside a single fenced code block (\`\`\`yaml ... \`\`\`). No explanation outside the code block.`,

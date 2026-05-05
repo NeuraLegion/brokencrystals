@@ -52,6 +52,10 @@ Review these files as a unit and look for issues in these categories:
 8. **Port mapping** — Does compose expose the right port? Does the app actually listen on the port specified?
 9. **Bundle/dependency groups** — Are required runtime gems/packages excluded by BUNDLE_WITHOUT or similar? (e.g. if puma is in the :test group and you exclude test, puma won't be available)
 10. **Build parallelism** — For projects with native extensions (Ruby gems with C/Rust, Python wheels, etc.), are parallel jobs enabled? Check for \`bundle config set jobs\`, \`MAKEFLAGS="-j\$(nproc)"\`, etc. Without parallelism, builds with gems like cppjieba_rb, tokenizers, tiktoken_ruby can take 15+ minutes and time out.
+11. **Migration safety** — If the app runs DB migrations on boot (Rails, Knex, Prisma, Django, etc.), verify:
+    - compose.yml uses \`restart: on-failure\` (NOT \`restart: always\`) — "always" can spawn a second instance that hits a migration lock while the first is still migrating
+    - Healthcheck \`start_period\` is at least 120s to avoid premature restarts during first-boot migrations
+    - If possible, migrations should run as a one-shot init command in the entrypoint before starting the app server
 
 ## Tools available
 - **read_file / search_files / list_files** — Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)

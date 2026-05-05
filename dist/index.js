@@ -21066,6 +21066,12 @@ Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that 
 4. **Networking**:
    - All services share the default compose network \u2014 they reference each other by service name (e.g. app connects to "db" on port 5432)
 
+5. **Healthcheck & restart policy for the app service**:
+   - Many apps run database migrations on first boot \u2014 this can take 30-120 seconds
+   - Use a generous \`start_period\` (at least 120s) so Docker doesn't restart the container mid-migration
+   - Use \`restart: on-failure\` (NOT \`restart: always\`) \u2014 if the app crashes during migration, "always" can spawn a second instance that hits a migration lock
+   - If the framework has a separate migration command (e.g. \`rails db:migrate\`, \`knex migrate:latest\`, \`npx prisma migrate\`), run it in the entrypoint BEFORE starting the app server, using a lock or single-execution guard
+
 ## Output
 
 Return ONLY the compose.yml content inside a single fenced code block (\`\`\`yaml ... \`\`\`). No explanation outside the code block.`
@@ -21117,6 +21123,10 @@ Review these files as a unit and look for issues in these categories:
 8. **Port mapping** \u2014 Does compose expose the right port? Does the app actually listen on the port specified?
 9. **Bundle/dependency groups** \u2014 Are required runtime gems/packages excluded by BUNDLE_WITHOUT or similar? (e.g. if puma is in the :test group and you exclude test, puma won't be available)
 10. **Build parallelism** \u2014 For projects with native extensions (Ruby gems with C/Rust, Python wheels, etc.), are parallel jobs enabled? Check for \`bundle config set jobs\`, \`MAKEFLAGS="-j$(nproc)"\`, etc. Without parallelism, builds with gems like cppjieba_rb, tokenizers, tiktoken_ruby can take 15+ minutes and time out.
+11. **Migration safety** \u2014 If the app runs DB migrations on boot (Rails, Knex, Prisma, Django, etc.), verify:
+    - compose.yml uses \`restart: on-failure\` (NOT \`restart: always\`) \u2014 "always" can spawn a second instance that hits a migration lock while the first is still migrating
+    - Healthcheck \`start_period\` is at least 120s to avoid premature restarts during first-boot migrations
+    - If possible, migrations should run as a one-shot init command in the entrypoint before starting the app server
 
 ## Tools available
 - **read_file / search_files / list_files** \u2014 Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
