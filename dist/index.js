@@ -30250,7 +30250,8 @@ async function runOrchestrator(ctx) {
       } catch (err) {
         const msg = toErrorMessage(err);
         console.error(`[Harness] Function harness failed: ${msg}`);
-        await progress.phaseStart("done", `Function harness mode failed: ${msg}`);
+        const brief = msg.length > 200 ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "\u2026" : msg;
+        await progress.phaseStart("done", `Function harness mode failed: ${brief}`);
         return;
       }
       await progress.phaseDetail(
@@ -30280,7 +30281,8 @@ async function runOrchestrator(ctx) {
       const msg = toErrorMessage(startupErr);
       console.warn(`[Engine] Full app startup failed: ${msg}`);
       if (config.runMode === "dynamic") {
-        await progress.phaseStart("done", `Application startup failed: ${msg}`);
+        const brief = msg.length > 200 ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "\u2026" : msg;
+        await progress.phaseStart("done", `Application startup failed: ${brief}`);
         return;
       }
       console.log("[Engine] Falling back to function harness mode...");

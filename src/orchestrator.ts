@@ -217,7 +217,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       } catch (err) {
         const msg = toErrorMessage(err);
         console.error(`[Harness] Function harness failed: ${msg}`);
-        await progress.phaseStart("done", `Function harness mode failed: ${msg}`);
+        const brief = msg.length > 200
+          ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "…"
+          : msg;
+        await progress.phaseStart("done", `Function harness mode failed: ${brief}`);
         return;
       }
       await progress.phaseDetail(
@@ -256,7 +259,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       // In dynamic mode, no harness fallback — fail hard
       if (config.runMode === "dynamic") {
-        await progress.phaseStart("done", `Application startup failed: ${msg}`);
+        // Show a concise message in the PR — the full error goes to run.log only
+        const brief = msg.length > 200
+          ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "…"
+          : msg;
+        await progress.phaseStart("done", `Application startup failed: ${brief}`);
         return;
       }
 
