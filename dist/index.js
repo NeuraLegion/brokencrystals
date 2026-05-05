@@ -27806,12 +27806,28 @@ Be thorough: apps often have MULTIPLE rate limit controls at different layers (m
 
 Do NOT edit files inside the container directly \u2014 they're lost on rebuild.
 
+### In-memory rate limiters (express-brute, node-rate-limiter, etc.)
+
+Many apps use IN-MEMORY rate limiters (e.g. \`express-brute\` with \`MemoryStore\`, \`rate-limiter-flexible\` with memory backend, etc.). These CANNOT be disabled via database or config alone \u2014 the state lives in the Node/Ruby/Python process. To disable them:
+
+1. **Patch the source code** \u2014 find the middleware file that sets up the rate limiter and either:
+   - Comment out or remove the middleware registration entirely (\`app.use(rateLimiter)\` \u2192 remove it)
+   - Set impossibly high limits (maxRetries: 999999, freeRetries: 999999, lifetime: 1)
+   - Replace the limiter with a pass-through: \`(req, res, next) => next()\`
+2. **Restart the container** after patching \u2014 in-memory state is only cleared on process restart: \`docker restart <container>\`
+3. **Verify after restart** \u2014 the old in-memory state is gone, and the patched code won't re-create limits
+
+If you cleared a DB table or changed a config but still get 429, the rate limiter is almost certainly in-memory. Search the codebase for the middleware (\`express-brute\`, \`rate-limiter\`, \`Rack::Attack\`, etc.) and patch it at the source.
+
+**IMPORTANT:** After making source code changes, you MUST restart the container for them to take effect. Use \`run_command_on_host\` with \`docker restart <container>\` and wait a few seconds before re-testing.
+
 ## How to verify \u2014 MANDATORY
 
 After making changes, you MUST verify they actually work by stress-testing:
-1. Re-read the config or re-query the setting to confirm the new value is set
-2. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) \u2014 NOT the login HTML page. Use the same credentials/body each time. Confirm you do NOT get HTTP 429.
-3. If you still get 429 after your changes, you missed something \u2014 search the web again for additional rate limit mechanisms (especially login-specific ones like "max_logins_per_ip_per_hour")
+1. If you patched source code, **restart the container first**: \`docker restart <container>\` and wait 5-10 seconds
+2. Re-read the config or re-query the setting to confirm the new value is set
+3. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) \u2014 NOT the login HTML page. Use the same credentials/body each time. Confirm you do NOT get HTTP 429.
+4. If you still get 429 after your changes, you missed something \u2014 the rate limiter is likely IN-MEMORY. Search the codebase for rate-limiting middleware (express-brute, Rack::Attack, etc.), patch it out, restart, and re-test.
 
 **CRITICAL:** Testing GET requests to the login PAGE proves nothing \u2014 rate limits apply to the LOGIN ACTION (POST). Always verify with POST requests to the auth endpoint.
 
@@ -27837,7 +27853,7 @@ If you tried but failed:
 - **USE \`search_web\` \u2014 if you can't find rate limits via code inspection, search the web for how this specific app/framework handles them. Do NOT give up just because grep found nothing.**
 - Don't break the app. If unsure, search the web for docs before making changes.
 - Be thorough \u2014 find ALL rate-limit and throttle settings, not just the first one.
-- Prefer runtime settings (admin API, CLI, DB settings) over patching source code.
+- Prefer runtime settings (admin API, CLI, DB settings) when they exist, but if the rate limiter is in-memory (express-brute, Rack::Attack memory store, etc.), you MUST patch the source code \u2014 DB/config changes alone won't work.
 - If codebase search finds nothing, that means rate limiting is BUILT INTO the framework \u2014 use \`search_web\` to find out how to disable it.
 - NEVER report "no rate limits found" without first: (a) searching the web for "<app name> rate limiting", AND (b) querying runtime/DB settings inside the container.
 - Always verify your changes with rapid requests before reporting success.
