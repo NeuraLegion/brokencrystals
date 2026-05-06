@@ -2817,7 +2817,7 @@ export async function waitForPort(
   const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
   let lastLogSnapshot = "";
   let lastLogCheckTime = 0;
-  const logCheckInterval = 20_000; // check container logs every 20s
+  const logCheckInterval = 40_000; // check container logs every 40s
   let analysisInFlight = false;
   let fatalDiagnosis = "";
   let consecutive500s = 0;
@@ -3079,14 +3079,33 @@ export async function waitForPort(
 
 /**
  * Grab both the first and last N lines from the compose app container's logs.
- * Exception messages (e.g. Rails, Django) typically appear near the top of
- * output while recent activity is at the tail — capturing both gives the AI
- * the full picture.
+ * Only fetches the main app service logs — DB, cache, and other infra service
+ * logs are noise that confuses the AI analyzer.
  */
 function getContainerLogTail(repoPath: string, lines = 30): string {
   try {
+    // Try to get only the app service logs (first service in compose, or the
+    // one whose name contains "app" / matches the project name).
+    // Fall back to all logs if service detection fails.
+    let serviceName = "";
+    try {
+      const config = execSync(
+        `docker compose config --services 2>/dev/null`,
+        { cwd: repoPath, encoding: "utf-8", timeout: 5_000 },
+      ).trim();
+      const services = config.split("\n").filter(Boolean);
+      // Prefer a service named "app" or containing "app", otherwise take the first non-db/redis/cache service
+      const infraPatterns = /^(db|mysql|postgres|redis|memcached|mongo|minio|mailpit|elasticsearch|kafka|rabbitmq|zookeeper|tinybird|analytics)/i;
+      serviceName =
+        services.find(s => s === "app") ??
+        services.find(s => s.includes("app")) ??
+        services.find(s => !infraPatterns.test(s)) ??
+        "";
+    } catch { /* fall through to all logs */ }
+
+    const serviceArg = serviceName ? ` ${serviceName}` : "";
     const full = execSync(
-      `docker compose logs 2>/dev/null || true`,
+      `docker compose logs${serviceArg} 2>/dev/null || true`,
       { cwd: repoPath, encoding: "utf-8", timeout: 10_000, maxBuffer: 5 * 1024 * 1024 },
     ).trim();
     if (!full) return "";

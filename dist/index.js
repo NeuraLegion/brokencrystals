@@ -23166,7 +23166,7 @@ async function waitForPort(port, timeoutMs, healthCheckPath = "/", repoPath, ana
   const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
   let lastLogSnapshot = "";
   let lastLogCheckTime = 0;
-  const logCheckInterval = 2e4;
+  const logCheckInterval = 4e4;
   let analysisInFlight = false;
   let fatalDiagnosis = "";
   let consecutive500s = 0;
@@ -23402,8 +23402,20 @@ ${finalLogs}`;
 }
 function getContainerLogTail(repoPath, lines = 30) {
   try {
+    let serviceName = "";
+    try {
+      const config = execSync3(
+        `docker compose config --services 2>/dev/null`,
+        { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
+      ).trim();
+      const services = config.split("\n").filter(Boolean);
+      const infraPatterns = /^(db|mysql|postgres|redis|memcached|mongo|minio|mailpit|elasticsearch|kafka|rabbitmq|zookeeper|tinybird|analytics)/i;
+      serviceName = services.find((s) => s === "app") ?? services.find((s) => s.includes("app")) ?? services.find((s) => !infraPatterns.test(s)) ?? "";
+    } catch {
+    }
+    const serviceArg = serviceName ? ` ${serviceName}` : "";
     const full = execSync3(
-      `docker compose logs 2>/dev/null || true`,
+      `docker compose logs${serviceArg} 2>/dev/null || true`,
       { cwd: repoPath, encoding: "utf-8", timeout: 1e4, maxBuffer: 5 * 1024 * 1024 }
     ).trim();
     if (!full) return "";
