@@ -11372,7 +11372,7 @@ function loadConfig() {
   const brightToken = requireEnv("BRIGHT_TOKEN");
   const brightHostname = process.env.BRIGHT_HOSTNAME ?? "app.brightsec.com";
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
-  const runMode = process.env.RUN_MODE ?? "full";
+  const runMode = parseRunMode(process.env.RUN_MODE);
   const models = (process.env.AI_MODEL ?? DEFAULT_MODEL).split(",").map((s) => s.trim()).filter(Boolean);
   const modelSelector = new ModelSelector(models);
   const gitToken = process.env.GITHUB_GIT_TOKEN ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
@@ -11398,6 +11398,18 @@ function requireEnv(name) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+function parseRunMode(value) {
+  const raw = (value ?? "full").trim().toLowerCase();
+  if (raw === "full" || raw === "dynamic" || raw === "function") {
+    return raw;
+  }
+  if (raw === "functional") {
+    return "function";
+  }
+  throw new Error(
+    `Invalid RUN_MODE "${value}". Expected one of: full, dynamic, function (or functional).`
+  );
 }
 
 // src/utils.ts

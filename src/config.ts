@@ -7,7 +7,7 @@ export function loadConfig(): EngineConfig {
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
 
   // RUN_MODE: "full" (default), "dynamic" (no harness fallback), or "function"
-  const runMode = (process.env.RUN_MODE ?? "full") as RunMode;
+  const runMode = parseRunMode(process.env.RUN_MODE);
 
   // AI_MODEL: single model or comma-separated escalation chain
   // e.g. "gpt-4.1-mini" or "gpt-4.1-mini,gpt-4.1,o3"
@@ -51,4 +51,17 @@ function requireEnv(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+function parseRunMode(value: string | undefined): RunMode {
+  const raw = (value ?? "full").trim().toLowerCase();
+  if (raw === "full" || raw === "dynamic" || raw === "function") {
+    return raw;
+  }
+  if (raw === "functional") {
+    return "function";
+  }
+  throw new Error(
+    `Invalid RUN_MODE "${value}". Expected one of: full, dynamic, function (or functional).`,
+  );
 }

@@ -25,6 +25,10 @@ inputs:
   BRIGHT_PROJECT_ID:
     description: "Bright project ID to use for scanning. Falls back to the first available project."
     required: false
+  RUN_MODE:
+    description: "Run flow: full, dynamic, or function/functional."
+    required: false
+    default: "full"
 
 runs:
   using: "node20"
@@ -37,3 +41,4 @@ runs:
     BRIGHT_TOKEN: ${{ inputs.BRIGHT_TOKEN }}
     BRIGHT_HOSTNAME: ${{ inputs.BRIGHT_HOSTNAME }}
     BRIGHT_PROJECT_ID: ${{ inputs.BRIGHT_PROJECT_ID }}
+    RUN_MODE: ${{ inputs.RUN_MODE }}
