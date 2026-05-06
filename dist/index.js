@@ -27787,7 +27787,13 @@ async function waitForRepeaterReady(proc2, timeoutMs) {
 }
 
 // src/prompts/scan-prep.ts
-function scanPrepPrompt(baseUrl, techStack) {
+function scanPrepPrompt(baseUrl, techStack, activeIssue) {
+  const activeIssueSection = activeIssue ? `
+## Active blocker from the previous phase
+${activeIssue}
+
+Treat this as a targeted repair. Do NOT perform broad startup/Dockerfile rewrites. Fix the specific rate-limit/security-control blocker, restart or rebuild only what is necessary, then verify with rapid POSTs.
+` : "";
   return [
     {
       role: "system",
@@ -27796,6 +27802,7 @@ function scanPrepPrompt(baseUrl, techStack) {
 The app is running at ${baseUrl} and is functional. However, production-grade security controls will block the scanner from operating. Your job is to find and relax them.
 
 Tech stack: ${techStack}
+${activeIssueSection}
 
 ## What to look for
 
@@ -27860,20 +27867,23 @@ Many apps use IN-MEMORY rate limiters (e.g. \`express-brute\` with \`MemoryStore
    - Comment out or remove the middleware registration entirely (\`app.use(rateLimiter)\` \u2192 remove it)
    - Set impossibly high limits (maxRetries: 999999, freeRetries: 999999, lifetime: 1)
    - Replace the limiter with a pass-through: \`(req, res, next) => next()\`
-2. **Restart the container** after patching \u2014 in-memory state is only cleared on process restart: \`docker restart <container>\`
-3. **Verify after restart** \u2014 the old in-memory state is gone, and the patched code won't re-create limits
+2. **Restart or rebuild the app after patching**:
+   - If the app runs source code directly from a mounted working tree, \`docker restart <container>\` is enough.
+   - If the source code is copied/built into the Docker image, run a targeted rebuild/recreate of the app service, e.g. \`docker compose up -d --build app\` (or the actual app service name). Do NOT rewrite the Dockerfile unless the rate-limit patch requires it.
+3. **Verify after restart/rebuild** \u2014 the old in-memory state is gone, and the patched code won't re-create limits
 
 If you cleared a DB table or changed a config but still get 429, the rate limiter is almost certainly in-memory. Search the codebase for the middleware (\`express-brute\`, \`rate-limiter\`, \`Rack::Attack\`, etc.) and patch it at the source.
 
-**IMPORTANT:** After making source code changes, you MUST restart the container for them to take effect. Use \`run_command_on_host\` with \`docker restart <container>\` and wait a few seconds before re-testing.
+**IMPORTANT:** After making source code changes, you MUST restart or rebuild/recreate the app container for them to take effect. Use \`run_command_on_host\` and wait a few seconds before re-testing.
 
 ## How to verify \u2014 MANDATORY
 
 After making changes, you MUST verify they actually work by stress-testing:
-1. If you patched source code, **restart the container first**: \`docker restart <container>\` and wait 5-10 seconds
+1. If you patched source code, **restart or rebuild/recreate the app first** and wait 5-10 seconds
 2. Re-read the config or re-query the setting to confirm the new value is set
 3. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) \u2014 NOT the login HTML page. Use the same credentials/body each time. Confirm you do NOT get HTTP 429.
-4. If you still get 429 after your changes, you missed something \u2014 the rate limiter is likely IN-MEMORY. Search the codebase for rate-limiting middleware (express-brute, Rack::Attack, etc.), patch it out, restart, and re-test.
+4. The verification must hit the real auth processing path. Five POSTs that only return HTTP 404/user-not-found do NOT prove rate limiting is disabled \u2014 they may bypass the limiter. Use a stable existing username/email from setup/seed data when possible, or create a test account first. Acceptable failed-login verification responses are typically 400/401/422 JSON errors, not 404 and not 429.
+5. If you still get 429 after your changes, you missed something \u2014 the rate limiter is likely IN-MEMORY. Search the codebase for rate-limiting middleware (express-brute, Rack::Attack, etc.), patch it out, restart/rebuild, and re-test.
 
 **CRITICAL:** Testing GET requests to the login PAGE proves nothing \u2014 rate limits apply to the LOGIN ACTION (POST). Always verify with POST requests to the auth endpoint.
 
@@ -27903,6 +27913,7 @@ If you tried but failed:
 - If codebase search finds nothing, that means rate limiting is BUILT INTO the framework \u2014 use \`search_web\` to find out how to disable it.
 - NEVER report "no rate limits found" without first: (a) searching the web for "<app name> rate limiting", AND (b) querying runtime/DB settings inside the container.
 - Always verify your changes with rapid requests before reporting success.
+- Do not count HTTP 404-only login POSTs as successful rate-limit verification. They usually mean the request did not reach the real login limiter path.
 - **NEVER make security STRICTER.** Your goal is to RELAX all security controls so the scanner can operate freely. If a setting controls CSRF enforcement, disable it or make it permissive \u2014 do NOT enable stricter checking. The scanner needs to send requests without CSRF tokens, so CSRF validation should be DISABLED or set to its most permissive mode.
 - Think about each change from the scanner's perspective: "Will this make it EASIER or HARDER for the scanner to send requests?" If harder \u2192 don't do it.`
     },
@@ -27914,7 +27925,7 @@ If you tried but failed:
 }
 
 // src/phases/scan-prep.ts
-async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) {
+async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, activeIssue) {
   console.log("[ScanPrep] Starting scan preparation phase \u2014 relaxing rate limits and security controls...");
   const tools = [
     ...codebaseTools,
@@ -27929,6 +27940,7 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
   const dockerCommands = [];
   let editFileCalls = 0;
   let postProbeCalls = 0;
+  const postProbeStatuses = [];
   let saw429 = false;
   const handler = async (name, args) => {
     if (name === "run_command_on_host") {
@@ -27954,7 +27966,13 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
       const method = String(args.method ?? "GET").toUpperCase();
       console.log(`[ScanPrep] probe_url: ${method} ${String(args.url ?? "")}`);
       const result = await probeUrl(args);
-      if (method === "POST") postProbeCalls += 1;
+      if (method === "POST") {
+        postProbeCalls += 1;
+        const statusMatch = result.match(/HTTP\s+(\d{3})\b/);
+        if (statusMatch?.[1]) {
+          postProbeStatuses.push(Number(statusMatch[1]));
+        }
+      }
       if (/HTTP\s+429\b/.test(result)) saw429 = true;
       return result;
     }
@@ -27963,7 +27981,7 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
     }
     return baseCodeHandler(name, args);
   };
-  const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack));
+  const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue);
   const response = await chatWithTools(llm, messages, tools, handler, model, 20);
   try {
     const json = extractJson(response);
@@ -27983,6 +28001,11 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
       }
       if (saw429) {
         const summary = "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
+      if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status === 404)) {
+        const summary = "Scan-prep verification only observed HTTP 404 on login POSTs; this does not prove rate limits were relaxed";
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary };
       }
@@ -30611,6 +30634,64 @@ This user should work for authentication. Skip user registration/seeding and go 
         `Bounce-back ${bounce}: ${authResult.infraRepairHint.slice(0, 120)}`
       );
       try {
+        if (isAuthRateLimitHint(authResult.infraRepairHint)) {
+          console.log("[Engine] Auth failure is rate-limit related \u2014 running targeted scan-prep repair instead of full startup rebuild");
+          await healthMonitor?.pause();
+          const rateLimitRepair = await prepareScanEnvironment(
+            llm,
+            repoPath,
+            baseUrl,
+            techStack,
+            config.modelSelector.current(),
+            authResult.infraRepairHint
+          );
+          if (rateLimitRepair.completed) {
+            await progress.phaseDetail("auth", "rate_limit_repair", rateLimitRepair.summary);
+            if (rateLimitRepair.replayCommands?.length) {
+              scanPrepReplayCommands = [
+                ...scanPrepReplayCommands,
+                ...rateLimitRepair.replayCommands
+              ];
+            }
+          } else {
+            console.warn(`[Engine] Targeted rate-limit repair did not complete: ${rateLimitRepair.summary}`);
+            await progress.phaseDetail("auth", "rate_limit_repair_failed", rateLimitRepair.summary);
+          }
+          if (startupConfig.docker) {
+            const qr = await quickRestartCompose(repoPath, startupConfig, 9e4);
+            if (!qr.ok) {
+              console.warn(`[Engine] Quick restart after rate-limit repair failed: ${qr.diagnostics ?? "unknown"}`);
+            }
+          }
+          const retryAuthResult2 = await detectAndConfigureAuth(
+            llm,
+            repoPath,
+            techStack,
+            projectId,
+            baseUrl,
+            repeater.repeaterId,
+            config,
+            config.modelSelector.current(),
+            preAuthContext
+          );
+          Object.assign(authResult, retryAuthResult2);
+          authRegistration = authResult.registration;
+          if (retryAuthResult2.authObjectId) {
+            console.log(`[Engine] Auth rate-limit repair ${bounce} succeeded: ${retryAuthResult2.authObjectId}`);
+            await progress.phaseDetail(
+              "auth",
+              "auth_done",
+              "Auth configured (after rate-limit repair)"
+            );
+            break;
+          }
+          if (retryAuthResult2.infraRepairHint) {
+            console.warn(`[Engine] Auth still needs repair: ${retryAuthResult2.infraRepairHint.slice(0, 120)}`);
+            continue;
+          }
+          console.error("[Engine] Auth still failed after targeted rate-limit repair (not infra-related)");
+          break;
+        }
         const injected = injectEnvVarsFromHint(repoPath, authResult.infraRepairHint);
         if (injected.length > 0) {
           console.log(`[Engine] Auto-injected env vars from hint: ${injected.join(", ")}`);
@@ -31579,6 +31660,10 @@ function killProcess(proc2) {
     }
     (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve5());
   });
+}
+function isAuthRateLimitHint(hint) {
+  if (!hint) return false;
+  return /\b(?:429|too\s*many\s*requests|rate[-\s]?limit|rate\s*limiting|throttle|throttling|brute|lockout|login attempt)\b/i.test(hint);
 }
 async function stopRunningScans(api, scanIds) {
   if (scanIds.length === 0) return;

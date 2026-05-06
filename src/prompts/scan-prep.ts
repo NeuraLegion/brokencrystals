@@ -12,7 +12,12 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat/completio
 export function scanPrepPrompt(
   baseUrl: string,
   techStack: string,
+  activeIssue?: string,
 ): ChatCompletionMessageParam[] {
+  const activeIssueSection = activeIssue
+    ? `\n## Active blocker from the previous phase\n${activeIssue}\n\nTreat this as a targeted repair. Do NOT perform broad startup/Dockerfile rewrites. Fix the specific rate-limit/security-control blocker, restart or rebuild only what is necessary, then verify with rapid POSTs.\n`
+    : "";
+
   return [
     {
       role: "system",
@@ -21,6 +26,7 @@ export function scanPrepPrompt(
 The app is running at ${baseUrl} and is functional. However, production-grade security controls will block the scanner from operating. Your job is to find and relax them.
 
 Tech stack: ${techStack}
+${activeIssueSection}
 
 ## What to look for
 
@@ -85,20 +91,23 @@ Many apps use IN-MEMORY rate limiters (e.g. \`express-brute\` with \`MemoryStore
    - Comment out or remove the middleware registration entirely (\`app.use(rateLimiter)\` → remove it)
    - Set impossibly high limits (maxRetries: 999999, freeRetries: 999999, lifetime: 1)
    - Replace the limiter with a pass-through: \`(req, res, next) => next()\`
-2. **Restart the container** after patching — in-memory state is only cleared on process restart: \`docker restart <container>\`
-3. **Verify after restart** — the old in-memory state is gone, and the patched code won't re-create limits
+2. **Restart or rebuild the app after patching**:
+   - If the app runs source code directly from a mounted working tree, \`docker restart <container>\` is enough.
+   - If the source code is copied/built into the Docker image, run a targeted rebuild/recreate of the app service, e.g. \`docker compose up -d --build app\` (or the actual app service name). Do NOT rewrite the Dockerfile unless the rate-limit patch requires it.
+3. **Verify after restart/rebuild** — the old in-memory state is gone, and the patched code won't re-create limits
 
 If you cleared a DB table or changed a config but still get 429, the rate limiter is almost certainly in-memory. Search the codebase for the middleware (\`express-brute\`, \`rate-limiter\`, \`Rack::Attack\`, etc.) and patch it at the source.
 
-**IMPORTANT:** After making source code changes, you MUST restart the container for them to take effect. Use \`run_command_on_host\` with \`docker restart <container>\` and wait a few seconds before re-testing.
+**IMPORTANT:** After making source code changes, you MUST restart or rebuild/recreate the app container for them to take effect. Use \`run_command_on_host\` and wait a few seconds before re-testing.
 
 ## How to verify — MANDATORY
 
 After making changes, you MUST verify they actually work by stress-testing:
-1. If you patched source code, **restart the container first**: \`docker restart <container>\` and wait 5-10 seconds
+1. If you patched source code, **restart or rebuild/recreate the app first** and wait 5-10 seconds
 2. Re-read the config or re-query the setting to confirm the new value is set
 3. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) — NOT the login HTML page. Use the same credentials/body each time. Confirm you do NOT get HTTP 429.
-4. If you still get 429 after your changes, you missed something — the rate limiter is likely IN-MEMORY. Search the codebase for rate-limiting middleware (express-brute, Rack::Attack, etc.), patch it out, restart, and re-test.
+4. The verification must hit the real auth processing path. Five POSTs that only return HTTP 404/user-not-found do NOT prove rate limiting is disabled — they may bypass the limiter. Use a stable existing username/email from setup/seed data when possible, or create a test account first. Acceptable failed-login verification responses are typically 400/401/422 JSON errors, not 404 and not 429.
+5. If you still get 429 after your changes, you missed something — the rate limiter is likely IN-MEMORY. Search the codebase for rate-limiting middleware (express-brute, Rack::Attack, etc.), patch it out, restart/rebuild, and re-test.
 
 **CRITICAL:** Testing GET requests to the login PAGE proves nothing — rate limits apply to the LOGIN ACTION (POST). Always verify with POST requests to the auth endpoint.
 
@@ -128,6 +137,7 @@ If you tried but failed:
 - If codebase search finds nothing, that means rate limiting is BUILT INTO the framework — use \`search_web\` to find out how to disable it.
 - NEVER report "no rate limits found" without first: (a) searching the web for "<app name> rate limiting", AND (b) querying runtime/DB settings inside the container.
 - Always verify your changes with rapid requests before reporting success.
+- Do not count HTTP 404-only login POSTs as successful rate-limit verification. They usually mean the request did not reach the real login limiter path.
 - **NEVER make security STRICTER.** Your goal is to RELAX all security controls so the scanner can operate freely. If a setting controls CSRF enforcement, disable it or make it permissive — do NOT enable stricter checking. The scanner needs to send requests without CSRF tokens, so CSRF validation should be DISABLED or set to its most permissive mode.
 - Think about each change from the scanner's perspective: "Will this make it EASIER or HARDER for the scanner to send requests?" If harder → don't do it.`,
     },

@@ -40,6 +40,7 @@ export async function prepareScanEnvironment(
   baseUrl: string,
   techStack: TechStack,
   model?: string,
+  activeIssue?: string,
 ): Promise<ScanPrepResult> {
   console.log("[ScanPrep] Starting scan preparation phase — relaxing rate limits and security controls...");
 
@@ -61,6 +62,7 @@ export async function prepareScanEnvironment(
   const dockerCommands: { container: string; command: string }[] = [];
   let editFileCalls = 0;
   let postProbeCalls = 0;
+  const postProbeStatuses: number[] = [];
   let saw429 = false;
 
   const handler: ToolHandler = async (name, args) => {
@@ -88,7 +90,13 @@ export async function prepareScanEnvironment(
       const method = String(args.method ?? "GET").toUpperCase();
       console.log(`[ScanPrep] probe_url: ${method} ${String(args.url ?? "")}`);
       const result = await handleProbeUrl(args);
-      if (method === "POST") postProbeCalls += 1;
+      if (method === "POST") {
+        postProbeCalls += 1;
+        const statusMatch = result.match(/HTTP\s+(\d{3})\b/);
+        if (statusMatch?.[1]) {
+          postProbeStatuses.push(Number(statusMatch[1]));
+        }
+      }
       if (/HTTP\s+429\b/.test(result)) saw429 = true;
       return result;
     }
@@ -98,7 +106,7 @@ export async function prepareScanEnvironment(
     return baseCodeHandler(name, args);
   };
 
-  const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack));
+  const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue);
 
   const response = await chatWithTools(llm, messages, tools, handler, model, 20);
 
@@ -126,6 +134,11 @@ export async function prepareScanEnvironment(
       }
       if (saw429) {
         const summary = "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
+      if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status === 404)) {
+        const summary = "Scan-prep verification only observed HTTP 404 on login POSTs; this does not prove rate limits were relaxed";
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary };
       }

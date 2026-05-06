@@ -545,6 +545,74 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
 
       try {
+        if (isAuthRateLimitHint(authResult.infraRepairHint)) {
+          console.log("[Engine] Auth failure is rate-limit related — running targeted scan-prep repair instead of full startup rebuild");
+          await healthMonitor?.pause();
+
+          const rateLimitRepair = await prepareScanEnvironment(
+            llm,
+            repoPath,
+            baseUrl,
+            techStack,
+            config.modelSelector.current(),
+            authResult.infraRepairHint,
+          );
+          if (rateLimitRepair.completed) {
+            await progress.phaseDetail("auth", "rate_limit_repair", rateLimitRepair.summary);
+            if (rateLimitRepair.replayCommands?.length) {
+              scanPrepReplayCommands = [
+                ...scanPrepReplayCommands,
+                ...rateLimitRepair.replayCommands,
+              ];
+            }
+          } else {
+            console.warn(`[Engine] Targeted rate-limit repair did not complete: ${rateLimitRepair.summary}`);
+            await progress.phaseDetail("auth", "rate_limit_repair_failed", rateLimitRepair.summary);
+          }
+
+          // Source-code limiter patches may already have rebuilt/recreated the
+          // app from scan-prep. A quick restart is safe and clears in-memory
+          // limiter state without letting the generic startup repair rewrite
+          // Dockerfile/compose again.
+          if (startupConfig.docker) {
+            const qr = await quickRestartCompose(repoPath, startupConfig, 90_000);
+            if (!qr.ok) {
+              console.warn(`[Engine] Quick restart after rate-limit repair failed: ${qr.diagnostics ?? "unknown"}`);
+            }
+          }
+
+          const retryAuthResult = await detectAndConfigureAuth(
+            llm,
+            repoPath,
+            techStack,
+            projectId,
+            baseUrl,
+            repeater.repeaterId,
+            config,
+            config.modelSelector.current(),
+            preAuthContext,
+          );
+
+          Object.assign(authResult, retryAuthResult);
+          authRegistration = authResult.registration;
+
+          if (retryAuthResult.authObjectId) {
+            console.log(`[Engine] Auth rate-limit repair ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
+            await progress.phaseDetail(
+              "auth",
+              "auth_done",
+              "Auth configured (after rate-limit repair)",
+            );
+            break;
+          }
+          if (retryAuthResult.infraRepairHint) {
+            console.warn(`[Engine] Auth still needs repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`);
+            continue;
+          }
+          console.error("[Engine] Auth still failed after targeted rate-limit repair (not infra-related)");
+          break;
+        }
+
         // C2: Programmatically inject env vars from hint before rebuilding
         const injected = injectEnvVarsFromHint(repoPath, authResult.infraRepairHint);
         if (injected.length > 0) {
@@ -1749,6 +1817,11 @@ function killProcess(proc: ChildProcess | undefined): Promise<void> {
     }
     treeKill(proc.pid, "SIGTERM", () => resolve());
   });
+}
+
+function isAuthRateLimitHint(hint: string | undefined): boolean {
+  if (!hint) return false;
+  return /\b(?:429|too\s*many\s*requests|rate[-\s]?limit|rate\s*limiting|throttle|throttling|brute|lockout|login attempt)\b/i.test(hint);
 }
 
 async function stopRunningScans(
