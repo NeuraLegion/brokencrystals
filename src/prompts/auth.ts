@@ -395,6 +395,12 @@ Create a user with these exact credentials:
 - password: BrightTest123!
 - Make the user an admin/superuser if possible
 
+**Credential consistency is mandatory:**
+- Do NOT change the stored username or email to satisfy a login form. Keep username=bright_test and email=bright@test.com.
+- If the app's login API calls the email field "username", use bright@test.com in the login request's "username" field — do NOT rewrite the database email to bright_test.
+- Your final JSON must report the credentials that actually exist in the database after your changes.
+- Before returning success, verify the exact reported username/email/password can authenticate, or explain why direct login verification is impossible.
+
 **IMPORTANT:** Some applications have a built-in admin user (e.g. Grafana uses "admin/admin", Jenkins uses "admin"). In that case:
 - Reset the built-in admin password to "BrightTest123!" instead of creating a new user
 - Report the admin's actual username (e.g. "admin") in your output — do NOT assume it's "bright_test"

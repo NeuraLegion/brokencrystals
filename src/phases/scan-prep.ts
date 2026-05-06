@@ -59,6 +59,9 @@ export async function prepareScanEnvironment(
 
   // Track docker commands that modify settings (for deterministic re-run)
   const dockerCommands: { container: string; command: string }[] = [];
+  let editFileCalls = 0;
+  let postProbeCalls = 0;
+  let saw429 = false;
 
   const handler: ToolHandler = async (name, args) => {
     if (name === "run_command_on_host") {
@@ -78,11 +81,16 @@ export async function prepareScanEnvironment(
       return result;
     }
     if (name === "edit_file") {
+      editFileCalls += 1;
       return handleEditFile(repoPath, args);
     }
     if (name === "probe_url") {
-      console.log(`[ScanPrep] probe_url: ${String(args.method ?? "GET")} ${String(args.url ?? "")}`);
-      return handleProbeUrl(args);
+      const method = String(args.method ?? "GET").toUpperCase();
+      console.log(`[ScanPrep] probe_url: ${method} ${String(args.url ?? "")}`);
+      const result = await handleProbeUrl(args);
+      if (method === "POST") postProbeCalls += 1;
+      if (/HTTP\s+429\b/.test(result)) saw429 = true;
+      return result;
     }
     if (name === "search_web" || name === "fetch_url") {
       return webHandler(name, args);
@@ -105,6 +113,22 @@ export async function prepareScanEnvironment(
 
     if (result.completed) {
       const changes = result.changes ?? [];
+      const actualMutations = dockerCommands.length + editFileCalls;
+      if (postProbeCalls < 5) {
+        const summary = "Scan-prep reported success without performing the mandatory 5+ rapid POST verification";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
+      if (actualMutations === 0 && changes.length === 0) {
+        const summary = "Scan-prep reported success without applying or documenting any rate-limit/security-control change";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
+      if (saw429) {
+        const summary = "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
       console.log(`[ScanPrep] Completed — ${changes.length} change(s): ${result.summary}`);
       for (const c of changes) {
         console.log(`[ScanPrep]   • ${c}`);

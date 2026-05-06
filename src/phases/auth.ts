@@ -136,18 +136,24 @@ export async function detectAndConfigureAuth(
     seededCredentials = await seedTestUser(llm, repoPath, baseUrl, detection, model);
     if (seededCredentials?.success) {
       registrationOk = true;
-      // Update detection with the seeded credentials so configureAuth uses them
-      // Use generic field names — the auth config LLM will adapt to the app's actual API
+      // Update detection with the seeded credentials so configureAuth uses them.
+      // Keep the canonical identity in notes too so the auth LLM can choose the
+      // app's actual login field (some apps call an email field "username").
       detection.loginBody = JSON.stringify({
         username: seededCredentials.username,
+        email: seededCredentials.email,
         password: seededCredentials.password,
       });
+      detection.notes = `${detection.notes}\nSeeded credentials: username=${seededCredentials.username}, email=${seededCredentials.email}, password=${seededCredentials.password}. Use the app's actual login identifier field; do not mutate the stored username/email.`;
 
-      // If detection didn't find a loginEndpoint, try common patterns so the
-      // sanity check and auth config have something to work with.
-      if (!detection.loginEndpoint) {
-        const discovered = await discoverLoginEndpoint(baseUrl);
+      // If detection didn't find a loginEndpoint, or confused setup/register
+      // with login, try live endpoint discovery before verifying credentials.
+      if (!detection.loginEndpoint || isSetupLikeEndpoint(detection.loginEndpoint)) {
+        const discovered = await discoverLoginEndpoint(baseUrl, detection.loginEndpoint ?? undefined);
         if (discovered) {
+          if (detection.loginEndpoint && detection.loginEndpoint !== discovered) {
+            console.log(`[Auth] Replaced setup-like login endpoint ${detection.loginEndpoint} → ${discovered}`);
+          }
           detection.loginEndpoint = discovered;
           console.log(`[Auth] Discovered login endpoint: ${discovered}`);
         }
@@ -2322,8 +2328,7 @@ async function preAuthLoginSanityCheck(
           }
           break;
         } else if (res.status >= 500) {
-          lines.push(`⚠️ CSRF endpoint ${csrfUrl} returned HTTP ${res.status} — the app's session system may be broken.`);
-          functional = false;
+          lines.push(`⚠️ Optional CSRF probe ${csrfUrl} returned HTTP ${res.status}. Ignoring this unless the actual login endpoint also fails; many apps do not expose generic CSRF routes.`);
         }
       } catch { /* skip */ }
     }
@@ -2411,8 +2416,35 @@ async function preAuthLoginSanityCheck(
 // responds (non-404). Used when detection didn't find a loginEndpoint.
 // ---------------------------------------------------------------------------
 
-async function discoverLoginEndpoint(baseUrl: string): Promise<string | null> {
+function isSetupLikeEndpoint(endpoint: string | null | undefined): boolean {
+  return !!endpoint && /(?:^|\/)(?:setup|install|register|registration)(?:\/|$)|authentication\/setup/i.test(endpoint);
+}
+
+function deriveLoginCandidatesFromSetupEndpoint(endpoint: string | undefined): string[] {
+  if (!endpoint) return [];
+  const candidates = new Set<string>();
+  const trimmed = endpoint.replace(/\/+$/, "");
+
+  for (const suffix of [
+    /\/authentication\/setup$/i,
+    /\/setup$/i,
+    /\/install$/i,
+    /\/finish-installation\/register$/i,
+    /\/register$/i,
+    /\/registration$/i,
+  ]) {
+    if (suffix.test(trimmed)) {
+      candidates.add(trimmed.replace(suffix, "/session/"));
+      candidates.add(trimmed.replace(suffix, "/login/"));
+    }
+  }
+
+  return [...candidates];
+}
+
+async function discoverLoginEndpoint(baseUrl: string, nearbyEndpoint?: string): Promise<string | null> {
   const candidates = [
+    ...deriveLoginCandidatesFromSetupEndpoint(nearbyEndpoint),
     "/api/login",
     "/api/auth/login",
     "/login",
@@ -2559,12 +2591,12 @@ async function verifySeededCredentials(
       if (res.status >= 500) continue; // try next format
 
       // Success indicators — login worked
-      if (res.status === 200 || res.status === 302) {
+      if (res.status === 200 || res.status === 201 || res.status === 302) {
         const setCookies: string[] = extractSetCookies(res.headers);
         const hasSessionCookie = setCookies.some(
           (c: string) => /(_t|_session|session_id|token|jwt|Session|grafana_session)/i.test(c),
         );
-        if (hasSessionCookie || (res.status === 200 && !/"error|invalid|incorrect|denied"/i.test(body))) {
+        if (hasSessionCookie || ((res.status === 200 || res.status === 201) && !/"error|invalid|incorrect|denied"/i.test(body))) {
           return { valid: true, reason: "" };
         }
       }
@@ -2616,13 +2648,13 @@ async function verifySeededCredentials(
     }
 
     // Check for success indicators
-    if (res.status === 200 || res.status === 302) {
+    if (res.status === 200 || res.status === 201 || res.status === 302) {
       // Look for session cookies in response
       const setCookies: string[] = extractSetCookies(res.headers);
       const hasSessionCookie = setCookies.some(
         (c: string) => /(_t|_session|session_id|token|jwt|Session)/i.test(c),
       );
-      if (hasSessionCookie || res.status === 302) {
+      if (hasSessionCookie || res.status === 302 || res.status === 201) {
         // Step 3: Verify the session actually works by hitting a protected resource
         // This catches the case where login returns 302 but CSRF was missing (session not created)
         if (detection.protectedEndpointPath || detection.csrfRequired) {

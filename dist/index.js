@@ -24490,6 +24490,12 @@ Create a user with these exact credentials:
 - password: BrightTest123!
 - Make the user an admin/superuser if possible
 
+**Credential consistency is mandatory:**
+- Do NOT change the stored username or email to satisfy a login form. Keep username=bright_test and email=bright@test.com.
+- If the app's login API calls the email field "username", use bright@test.com in the login request's "username" field \u2014 do NOT rewrite the database email to bright_test.
+- Your final JSON must report the credentials that actually exist in the database after your changes.
+- Before returning success, verify the exact reported username/email/password can authenticate, or explain why direct login verification is impossible.
+
 **IMPORTANT:** Some applications have a built-in admin user (e.g. Grafana uses "admin/admin", Jenkins uses "admin"). In that case:
 - Reset the built-in admin password to "BrightTest123!" instead of creating a new user
 - Report the admin's actual username (e.g. "admin") in your output \u2014 do NOT assume it's "bright_test"
@@ -24666,11 +24672,17 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
       registrationOk = true;
       detection.loginBody = JSON.stringify({
         username: seededCredentials.username,
+        email: seededCredentials.email,
         password: seededCredentials.password
       });
-      if (!detection.loginEndpoint) {
-        const discovered = await discoverLoginEndpoint(baseUrl);
+      detection.notes = `${detection.notes}
+Seeded credentials: username=${seededCredentials.username}, email=${seededCredentials.email}, password=${seededCredentials.password}. Use the app's actual login identifier field; do not mutate the stored username/email.`;
+      if (!detection.loginEndpoint || isSetupLikeEndpoint(detection.loginEndpoint)) {
+        const discovered = await discoverLoginEndpoint(baseUrl, detection.loginEndpoint ?? void 0);
         if (discovered) {
+          if (detection.loginEndpoint && detection.loginEndpoint !== discovered) {
+            console.log(`[Auth] Replaced setup-like login endpoint ${detection.loginEndpoint} \u2192 ${discovered}`);
+          }
           detection.loginEndpoint = discovered;
           console.log(`[Auth] Discovered login endpoint: ${discovered}`);
         }
@@ -26301,8 +26313,7 @@ async function preAuthLoginSanityCheck(baseUrl, detection) {
           }
           break;
         } else if (res.status >= 500) {
-          lines.push(`\u26A0\uFE0F CSRF endpoint ${csrfUrl} returned HTTP ${res.status} \u2014 the app's session system may be broken.`);
-          functional = false;
+          lines.push(`\u26A0\uFE0F Optional CSRF probe ${csrfUrl} returned HTTP ${res.status}. Ignoring this unless the actual login endpoint also fails; many apps do not expose generic CSRF routes.`);
         }
       } catch {
       }
@@ -26371,8 +26382,31 @@ Response: \`${preview}\``
   }
   return { functional, diagnostic };
 }
-async function discoverLoginEndpoint(baseUrl) {
+function isSetupLikeEndpoint(endpoint) {
+  return !!endpoint && /(?:^|\/)(?:setup|install|register|registration)(?:\/|$)|authentication\/setup/i.test(endpoint);
+}
+function deriveLoginCandidatesFromSetupEndpoint(endpoint) {
+  if (!endpoint) return [];
+  const candidates = /* @__PURE__ */ new Set();
+  const trimmed = endpoint.replace(/\/+$/, "");
+  for (const suffix of [
+    /\/authentication\/setup$/i,
+    /\/setup$/i,
+    /\/install$/i,
+    /\/finish-installation\/register$/i,
+    /\/register$/i,
+    /\/registration$/i
+  ]) {
+    if (suffix.test(trimmed)) {
+      candidates.add(trimmed.replace(suffix, "/session/"));
+      candidates.add(trimmed.replace(suffix, "/login/"));
+    }
+  }
+  return [...candidates];
+}
+async function discoverLoginEndpoint(baseUrl, nearbyEndpoint) {
   const candidates = [
+    ...deriveLoginCandidatesFromSetupEndpoint(nearbyEndpoint),
     "/api/login",
     "/api/auth/login",
     "/login",
@@ -26488,12 +26522,12 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
       });
       const body = await res.text();
       if (res.status >= 500) continue;
-      if (res.status === 200 || res.status === 302) {
+      if (res.status === 200 || res.status === 201 || res.status === 302) {
         const setCookies = extractSetCookies(res.headers);
         const hasSessionCookie = setCookies.some(
           (c3) => /(_t|_session|session_id|token|jwt|Session|grafana_session)/i.test(c3)
         );
-        if (hasSessionCookie || res.status === 200 && !/"error|invalid|incorrect|denied"/i.test(body)) {
+        if (hasSessionCookie || (res.status === 200 || res.status === 201) && !/"error|invalid|incorrect|denied"/i.test(body)) {
           return { valid: true, reason: "" };
         }
       }
@@ -26535,12 +26569,12 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
       const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
       return { valid: false, reason: `Login rejected credentials: ${preview}` };
     }
-    if (res.status === 200 || res.status === 302) {
+    if (res.status === 200 || res.status === 201 || res.status === 302) {
       const setCookies = extractSetCookies(res.headers);
       const hasSessionCookie = setCookies.some(
         (c3) => /(_t|_session|session_id|token|jwt|Session)/i.test(c3)
       );
-      if (hasSessionCookie || res.status === 302) {
+      if (hasSessionCookie || res.status === 302 || res.status === 201) {
         if (detection.protectedEndpointPath || detection.csrfRequired) {
           const verifyCookie = setCookies.map((c3) => c3.split(";")[0]?.trim()).filter(Boolean).join("; ") || sessionCookie || "";
           const verifyUrl = detection.protectedEndpointPath ? `${baseUrl}${detection.protectedEndpointPath}` : `${baseUrl}/`;
@@ -27893,6 +27927,9 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
   const baseCodeHandler = createToolHandler(repoPath);
   const webHandler = createWebSearchHandler(repoPath);
   const dockerCommands = [];
+  let editFileCalls = 0;
+  let postProbeCalls = 0;
+  let saw429 = false;
   const handler = async (name, args) => {
     if (name === "run_command_on_host") {
       const cmd = String(args.command ?? "");
@@ -27910,11 +27947,16 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
       return result;
     }
     if (name === "edit_file") {
+      editFileCalls += 1;
       return handleEditFile(repoPath, args);
     }
     if (name === "probe_url") {
-      console.log(`[ScanPrep] probe_url: ${String(args.method ?? "GET")} ${String(args.url ?? "")}`);
-      return probeUrl(args);
+      const method = String(args.method ?? "GET").toUpperCase();
+      console.log(`[ScanPrep] probe_url: ${method} ${String(args.url ?? "")}`);
+      const result = await probeUrl(args);
+      if (method === "POST") postProbeCalls += 1;
+      if (/HTTP\s+429\b/.test(result)) saw429 = true;
+      return result;
     }
     if (name === "search_web" || name === "fetch_url") {
       return webHandler(name, args);
@@ -27928,6 +27970,22 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model) 
     const result = JSON.parse(json);
     if (result.completed) {
       const changes = result.changes ?? [];
+      const actualMutations = dockerCommands.length + editFileCalls;
+      if (postProbeCalls < 5) {
+        const summary = "Scan-prep reported success without performing the mandatory 5+ rapid POST verification";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
+      if (actualMutations === 0 && changes.length === 0) {
+        const summary = "Scan-prep reported success without applying or documenting any rate-limit/security-control change";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
+      if (saw429) {
+        const summary = "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
       console.log(`[ScanPrep] Completed \u2014 ${changes.length} change(s): ${result.summary}`);
       for (const c3 of changes) {
         console.log(`[ScanPrep]   \u2022 ${c3}`);
