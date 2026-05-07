@@ -24620,7 +24620,7 @@ Common fixes:
 - **Complete setup wizard**: POST to the setup endpoint with admin credentials (e.g. register an admin user through the setup form)
 - **Run migrations**: \`docker exec <container> <migration-command>\` (e.g., rails db:migrate, python manage.py migrate)
 - **Set environment variables**: Restart container with correct env vars
-- **Fix configuration**: Edit config files inside the container
+- **Fix configuration/source code**: Prefer durable source-tree edits with \`edit_file\` over one-off edits inside a running container
 - **Install missing dependencies**: apt-get install, npm install, bundle install
 - **Restart services**: Restart the app process inside the container
 
@@ -24634,12 +24634,16 @@ After each fix attempt:
 When the login endpoint is functional (no longer returning 5xx), respond with:
 {"fixed": true, "action": "brief description of what you did"}
 
+If you found the source/config fix but it requires a full rebuild/recreate before it can be verified, respond with:
+{"fixed": false, "needsRebuild": true, "rebuildHint": "exact source/config change needed and why a full Docker rebuild/restart is required"}
+
 If you exhausted all approaches, respond with:
 {"fixed": false, "reason": "brief explanation of what's wrong"}
 
 ## Rules
 - Be persistent. Try at least 5 different diagnostic/fix approaches before giving up.
 - READ error messages and logs carefully \u2014 they tell you exactly what's wrong.
+- Prefer source-level repairs using edit_file. Avoid container-only source patches unless you can verify they affected the running app; production images often ignore in-place rebuild attempts.
 - After each fix attempt, ALWAYS re-probe the login endpoint to verify.
 - Focus on making login FUNCTIONAL, not perfect. A 403 "bad CSRF" or 422 "invalid credentials" means the endpoint WORKS.
 - You have up to 30 rounds. Use them wisely \u2014 diagnose first, then fix.`
@@ -24688,11 +24692,7 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
     seededCredentials = await seedTestUser(llm, repoPath, baseUrl, detection, model);
     if (seededCredentials?.success) {
       registrationOk = true;
-      detection.loginBody = JSON.stringify({
-        username: seededCredentials.username,
-        email: seededCredentials.email,
-        password: seededCredentials.password
-      });
+      updateLoginBodyFromSeededUser(detection, seededCredentials);
       detection.notes = `${detection.notes}
 Seeded credentials: username=${seededCredentials.username}, email=${seededCredentials.email}, password=${seededCredentials.password}. Use the app's actual login identifier field; do not mutate the stored username/email.`;
       if (!detection.loginEndpoint || isSetupLikeEndpoint(detection.loginEndpoint)) {
@@ -24739,18 +24739,19 @@ Seeded credentials: username=${seededCredentials.username}, email=${seededCreden
       }
     }
   }
+  const seedCommands = seededCredentials?.seedCommands;
   const probeContext = await preProbeForAuth(baseUrl, detection);
   let loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
   if (!loginCheck.functional) {
     console.warn("[Auth] Login endpoint broken \u2014 attempting repair...");
-    const repaired = await repairBrokenLogin(
+    const repair = await repairBrokenLogin(
       llm,
       repoPath,
       baseUrl,
       loginCheck.diagnostic,
       model
     );
-    if (repaired) {
+    if (repair.fixed) {
       loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
       if (!loginCheck.functional) {
         console.error("[Auth] Login still broken after repair attempt \u2014 aborting auth");
@@ -24758,7 +24759,10 @@ Seeded credentials: username=${seededCredentials.username}, email=${seededCreden
           authObjectId: void 0,
           hasAuth: false,
           authFailed: true,
-          registration: void 0
+          registration: void 0,
+          seedCommands,
+          infraRepairHint: repair.infraRepairHint ?? `Login endpoint is still returning 5xx after repair. Apply source-level fixes durably, rebuild the app image, restart the app, and re-run auth. Diagnostic:
+${loginCheck.diagnostic}`
         };
       }
       console.log("[Auth] Login repaired successfully \u2014 proceeding with auth setup");
@@ -24768,7 +24772,10 @@ Seeded credentials: username=${seededCredentials.username}, email=${seededCreden
         authObjectId: void 0,
         hasAuth: false,
         authFailed: true,
-        registration: void 0
+        registration: void 0,
+        seedCommands,
+        infraRepairHint: repair.infraRepairHint ?? `Login endpoint is returning 5xx and could not be repaired in the running app. Apply a source-level fix, rebuild/recreate the application containers, then retry auth. Diagnostic:
+${loginCheck.diagnostic}`
       };
     }
   }
@@ -24819,7 +24826,6 @@ ${result.attemptLog.join("\n")}`);
     body: detection.registerBody,
     contentType: detection.registerContentType ?? detection.loginContentType
   } : void 0;
-  const seedCommands = seededCredentials?.seedCommands;
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
     return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands };
@@ -25794,6 +25800,21 @@ function updateLoginBodyFromRegisteredUser(detection) {
 Registered credentials: ${identifierKey}=${identifier}, ${passwordKey}=${password}. Use these credentials for login sanity checks and Bright auth creation.`;
   console.log(`[Auth] Updated login body to use registered test user (${identifierKey}=${identifier})`);
 }
+function updateLoginBodyFromSeededUser(detection, credentials) {
+  const existingLogin = parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
+  const identifierKey = firstExistingKey(existingLogin, ["user", "username", "email", "login", "identifier"]) ?? (credentials.email ? "email" : "username");
+  const passwordKey = firstExistingKey(existingLogin, ["password", "pass", "pwd"]) ?? "password";
+  const identifier = identifierKey === "username" ? credentials.username : credentials.email || credentials.username;
+  const nextLogin = {
+    ...existingLogin,
+    [identifierKey]: identifier,
+    [passwordKey]: credentials.password
+  };
+  detection.loginBody = serializeRequestBody(nextLogin, detection.loginContentType);
+  detection.notes = `${detection.notes}
+Seeded login body updated: ${identifierKey}=${identifier}, ${passwordKey}=${credentials.password}. Preserve any other required login fields from detection.`;
+  console.log(`[Auth] Updated login body to use seeded test user (${identifierKey}=${identifier})`);
+}
 function parseRequestBody(body, contentType) {
   if (contentType === "form") {
     const params = new URLSearchParams(body);
@@ -26423,6 +26444,7 @@ async function repairBrokenLogin(llm, repoPath, baseUrl, diagnostic, model) {
     ...webSearchTools,
     runCommandOnHostTool,
     runCommandInDockerTool,
+    editFileTool,
     probeUrlTool
   ];
   const baseCodeHandler = createToolHandler(repoPath);
@@ -26442,6 +26464,9 @@ async function repairBrokenLogin(llm, repoPath, baseUrl, diagnostic, model) {
     if (name === "probe_url") {
       return probeUrl2(args);
     }
+    if (name === "edit_file") {
+      return handleEditFile(repoPath, args);
+    }
     if (name === "search_web" || name === "fetch_url") {
       return repairWebHandler(name, args);
     }
@@ -26454,13 +26479,19 @@ async function repairBrokenLogin(llm, repoPath, baseUrl, diagnostic, model) {
     const result = JSON.parse(json);
     if (result.fixed) {
       console.log(`[Auth:Repair] Login fixed: ${result.action ?? "unknown action"}`);
-      return true;
+      return { fixed: true };
     }
     console.warn(`[Auth:Repair] Could not fix login: ${result.reason ?? "unknown"}`);
-    return false;
+    return {
+      fixed: false,
+      infraRepairHint: result.rebuildHint ?? result.reason
+    };
   } catch {
     console.warn(`[Auth:Repair] Could not parse repair result: ${response.slice(0, 200)}`);
-    return false;
+    return {
+      fixed: false,
+      infraRepairHint: `Login repair could not produce a verified running fix. Use source-level repair and a full Docker rebuild/restart. Last response: ${response.slice(0, 500)}`
+    };
   }
 }
 async function preAuthLoginSanityCheck(baseUrl, detection) {
@@ -28183,27 +28214,27 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, 
       if (postProbeCalls < 5) {
         const summary = "Scan-prep reported success without performing the mandatory 5+ rapid POST verification";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "verification_missing" };
       }
       if (actualMutations === 0 && changes.length === 0) {
         const summary = "Scan-prep reported success without applying or documenting any rate-limit/security-control change";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "no_changes" };
       }
       if (saw429) {
         const summary = "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "rate_limit" };
       }
       if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status === 404)) {
         const summary = "Scan-prep verification only observed HTTP 404 on login POSTs; this does not prove rate limits were relaxed";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "login_404" };
       }
       if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status >= 500)) {
         const summary = "Scan-prep verification only observed HTTP 5xx on login POSTs; the login path is crashing, not verified as scanner-ready";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "login_5xx" };
       }
       console.log(`[ScanPrep] Completed \u2014 ${changes.length} change(s): ${result.summary}`);
       for (const c3 of changes) {
@@ -28212,10 +28243,10 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, 
       return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
     }
     console.warn(`[ScanPrep] Failed: ${result.reason ?? result.summary ?? "unknown"}`);
-    return { completed: false, changes: [], summary: result.reason ?? "Failed" };
+    return { completed: false, changes: [], summary: result.reason ?? "Failed", failureKind: "unknown" };
   } catch (err) {
     console.warn(`[ScanPrep] Could not parse response: ${err}`);
-    return { completed: false, changes: [], summary: `Parse error: ${err}` };
+    return { completed: false, changes: [], summary: `Parse error: ${err}`, failureKind: "parse_error" };
   }
 }
 function replayScanPrep(repoPath, commands) {
@@ -30820,6 +30851,51 @@ async function runOrchestrator(ctx) {
         }
       } else if (prepResult.completed) {
         await progress.phaseDetail("scan_prep", "done", "No changes needed");
+      } else if (prepResult.failureKind === "login_5xx" && config.runMode === "dynamic") {
+        console.warn(`[Engine] Scan prep found a crashing login endpoint \u2014 running durable source repair before auth`);
+        await progress.phaseDetail("scan_prep", "login_repair", prepResult.summary);
+        const repairHints = [
+          `[scan-prep-login-repair] ${prepResult.summary}`,
+          "[scan-prep-login-repair] The login endpoint returns only HTTP 5xx during scanner-prep verification. Diagnose the application error, apply durable source/config changes in the repository, rebuild/recreate the app containers, and verify login no longer returns 5xx before auth configuration."
+        ];
+        healthMonitor?.stop();
+        await killProcess(appProcess);
+        const repairedStartup = await startApplicationWithRetries(
+          llm,
+          repoPath,
+          techStack,
+          startupConfig,
+          config.modelSelector,
+          repairHints
+        );
+        appProcess = repairedStartup.process;
+        startup = repairedStartup;
+        startupConfig = repairedStartup.config;
+        baseUrl = `http://localhost:${startupConfig.port}`;
+        deepProbeCache.clear();
+        healthMonitor = new AppHealthMonitor({
+          port: startupConfig.port,
+          healthCheckPath: startupConfig.healthCheckPath,
+          onDeepProbe: () => deepHealthCheck(
+            startupConfig.port,
+            startupConfig.healthCheckPath ?? "/",
+            llm,
+            config.modelSelector,
+            deepProbeCache
+          )
+        });
+        healthMonitor.setRecoveryCallback(async (hint) => {
+          if (!startupConfig.docker) {
+            return { ok: false, detail: "not dockerized \u2014 orchestrator will handle full restart" };
+          }
+          const qr = await quickRestartCompose(repoPath, startupConfig);
+          if (qr.ok) {
+            deepProbeCache.clear();
+            return { ok: true, detail: "quick compose restart succeeded" };
+          }
+          return { ok: false, detail: qr.diagnostics ?? "quick restart failed" };
+        });
+        healthMonitor.start();
       } else {
         console.warn(`[Engine] Scan prep failed: ${prepResult.summary} \u2014 continuing anyway`);
         await progress.phaseDetail("scan_prep", "warning", prepResult.summary);
@@ -30853,11 +30929,17 @@ This user should work for authentication. Skip user registration/seeding and go 
       preAuthContext
     );
     authRegistration = authResult.registration;
-    await progress.phaseDetail(
-      "auth",
-      "auth_done",
-      authResult.authObjectId ? "Auth configured" : "No authentication required"
-    );
+    if (authResult.authObjectId) {
+      await progress.phaseDetail("auth", "auth_done", "Auth configured");
+    } else if (!authResult.authFailed) {
+      await progress.phaseDetail("auth", "auth_done", "No authentication required");
+    } else {
+      await progress.phaseDetail(
+        "auth",
+        "auth_attempt_failed",
+        authResult.infraRepairHint ? "Auth needs application repair before configuration can continue" : "Auth configuration attempt failed"
+      );
+    }
     const MAX_INFRA_BOUNCEBACKS = 5;
     let bouncedBack = false;
     for (let bounce = 1; bounce <= MAX_INFRA_BOUNCEBACKS; bounce++) {

@@ -525,7 +525,7 @@ Common fixes:
 - **Complete setup wizard**: POST to the setup endpoint with admin credentials (e.g. register an admin user through the setup form)
 - **Run migrations**: \`docker exec <container> <migration-command>\` (e.g., rails db:migrate, python manage.py migrate)
 - **Set environment variables**: Restart container with correct env vars
-- **Fix configuration**: Edit config files inside the container
+- **Fix configuration/source code**: Prefer durable source-tree edits with \`edit_file\` over one-off edits inside a running container
 - **Install missing dependencies**: apt-get install, npm install, bundle install
 - **Restart services**: Restart the app process inside the container
 
@@ -539,12 +539,16 @@ After each fix attempt:
 When the login endpoint is functional (no longer returning 5xx), respond with:
 {"fixed": true, "action": "brief description of what you did"}
 
+If you found the source/config fix but it requires a full rebuild/recreate before it can be verified, respond with:
+{"fixed": false, "needsRebuild": true, "rebuildHint": "exact source/config change needed and why a full Docker rebuild/restart is required"}
+
 If you exhausted all approaches, respond with:
 {"fixed": false, "reason": "brief explanation of what's wrong"}
 
 ## Rules
 - Be persistent. Try at least 5 different diagnostic/fix approaches before giving up.
 - READ error messages and logs carefully — they tell you exactly what's wrong.
+- Prefer source-level repairs using edit_file. Avoid container-only source patches unless you can verify they affected the running app; production images often ignore in-place rebuild attempts.
 - After each fix attempt, ALWAYS re-probe the login endpoint to verify.
 - Focus on making login FUNCTIONAL, not perfect. A 403 "bad CSRF" or 422 "invalid credentials" means the endpoint WORKS.
 - You have up to 30 rounds. Use them wisely — diagnose first, then fix.`,

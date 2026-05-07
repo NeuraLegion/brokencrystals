@@ -26,6 +26,8 @@ export interface ScanPrepResult {
   completed: boolean;
   changes: string[];
   summary: string;
+  /** Machine-readable reason for orchestration decisions. */
+  failureKind?: "login_5xx" | "login_404" | "rate_limit" | "verification_missing" | "no_changes" | "parse_error" | "unknown";
   /** Docker commands that successfully modified settings — replayed on re-run */
   replayCommands?: { container: string; command: string }[];
 }
@@ -125,27 +127,27 @@ export async function prepareScanEnvironment(
       if (postProbeCalls < 5) {
         const summary = "Scan-prep reported success without performing the mandatory 5+ rapid POST verification";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "verification_missing" };
       }
       if (actualMutations === 0 && changes.length === 0) {
         const summary = "Scan-prep reported success without applying or documenting any rate-limit/security-control change";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "no_changes" };
       }
       if (saw429) {
         const summary = "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "rate_limit" };
       }
       if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status === 404)) {
         const summary = "Scan-prep verification only observed HTTP 404 on login POSTs; this does not prove rate limits were relaxed";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "login_404" };
       }
       if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status >= 500)) {
         const summary = "Scan-prep verification only observed HTTP 5xx on login POSTs; the login path is crashing, not verified as scanner-ready";
         console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary };
+        return { completed: false, changes: [], summary, failureKind: "login_5xx" };
       }
       console.log(`[ScanPrep] Completed — ${changes.length} change(s): ${result.summary}`);
       for (const c of changes) {
@@ -155,10 +157,10 @@ export async function prepareScanEnvironment(
     }
 
     console.warn(`[ScanPrep] Failed: ${result.reason ?? result.summary ?? "unknown"}`);
-    return { completed: false, changes: [], summary: result.reason ?? "Failed" };
+    return { completed: false, changes: [], summary: result.reason ?? "Failed", failureKind: "unknown" };
   } catch (err) {
     console.warn(`[ScanPrep] Could not parse response: ${err}`);
-    return { completed: false, changes: [], summary: `Parse error: ${err}` };
+    return { completed: false, changes: [], summary: `Parse error: ${err}`, failureKind: "parse_error" };
   }
 }
 

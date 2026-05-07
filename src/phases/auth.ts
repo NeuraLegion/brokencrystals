@@ -9,8 +9,10 @@ import {
   createWebSearchHandler,
   runCommandOnHostTool,
   runCommandInDockerTool,
+  editFileTool,
   probeUrlTool,
   execInDocker,
+  handleEditFile,
 } from "../tools.js";
 import { listAuthObjects, getAuthObject } from "../bright-api.js";
 import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody, stripHtmlForAnalysis, extractSetCookies, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_MEDIUM, FETCH_TIMEOUT_DEFAULT, FETCH_TIMEOUT_LONG, FETCH_TIMEOUT_EXTENDED } from "../utils.js";
@@ -144,11 +146,7 @@ export async function detectAndConfigureAuth(
       // Update detection with the seeded credentials so configureAuth uses them.
       // Keep the canonical identity in notes too so the auth LLM can choose the
       // app's actual login field (some apps call an email field "username").
-      detection.loginBody = JSON.stringify({
-        username: seededCredentials.username,
-        email: seededCredentials.email,
-        password: seededCredentials.password,
-      });
+      updateLoginBodyFromSeededUser(detection, seededCredentials);
       detection.notes = `${detection.notes}\nSeeded credentials: username=${seededCredentials.username}, email=${seededCredentials.email}, password=${seededCredentials.password}. Use the app's actual login identifier field; do not mutate the stored username/email.`;
 
       // If detection didn't find a loginEndpoint, or confused setup/register
@@ -203,6 +201,9 @@ export async function detectAndConfigureAuth(
     }
   }
 
+  // Collect seed commands from the seed user sub-phase for replay after restarts.
+  const seedCommands = (seededCredentials as (SeedUserResult & { seedCommands?: SeedCommand[] }) | undefined)?.seedCommands;
+
   // Phase 4: Let the LLM create + test + fix the auth object via custom tools
   //   Pre-probe the app to give the LLM real data instead of forcing it to guess
   const probeContext = await preProbeForAuth(baseUrl, detection);
@@ -212,7 +213,7 @@ export async function detectAndConfigureAuth(
   if (!loginCheck.functional) {
     // Login is broken (HTTP 5xx) — give the LLM a chance to fix the app
     console.warn("[Auth] Login endpoint broken — attempting repair...");
-    const repaired = await repairBrokenLogin(
+    const repair = await repairBrokenLogin(
       llm,
       repoPath,
       baseUrl,
@@ -220,7 +221,7 @@ export async function detectAndConfigureAuth(
       model,
     );
 
-    if (repaired) {
+    if (repair.fixed) {
       // Re-run sanity check after repair
       loginCheck = await preAuthLoginSanityCheck(baseUrl, detection);
       if (!loginCheck.functional) {
@@ -230,6 +231,8 @@ export async function detectAndConfigureAuth(
           hasAuth: false,
           authFailed: true,
           registration: undefined,
+          seedCommands,
+          infraRepairHint: repair.infraRepairHint ?? `Login endpoint is still returning 5xx after repair. Apply source-level fixes durably, rebuild the app image, restart the app, and re-run auth. Diagnostic:\n${loginCheck.diagnostic}`,
         };
       }
       console.log("[Auth] Login repaired successfully — proceeding with auth setup");
@@ -240,6 +243,8 @@ export async function detectAndConfigureAuth(
         hasAuth: false,
         authFailed: true,
         registration: undefined,
+        seedCommands,
+        infraRepairHint: repair.infraRepairHint ?? `Login endpoint is returning 5xx and could not be repaired in the running app. Apply a source-level fix, rebuild/recreate the application containers, then retry auth. Diagnostic:\n${loginCheck.diagnostic}`,
       };
     }
   }
@@ -311,9 +316,6 @@ export async function detectAndConfigureAuth(
           contentType: detection.registerContentType ?? detection.loginContentType,
         }
       : undefined;
-
-  // Collect seed commands from the seed user sub-phase for replay after restarts
-  const seedCommands = (seededCredentials as (SeedUserResult & { seedCommands?: SeedCommand[] }) | undefined)?.seedCommands;
 
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
@@ -1588,6 +1590,29 @@ function updateLoginBodyFromRegisteredUser(detection: AuthDetection): void {
   console.log(`[Auth] Updated login body to use registered test user (${identifierKey}=${identifier})`);
 }
 
+function updateLoginBodyFromSeededUser(
+  detection: AuthDetection,
+  credentials: Pick<SeedUserResult, "username" | "email" | "password">,
+): void {
+  const existingLogin = parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
+  const identifierKey =
+    firstExistingKey(existingLogin, ["user", "username", "email", "login", "identifier"]) ??
+    (credentials.email ? "email" : "username");
+  const passwordKey = firstExistingKey(existingLogin, ["password", "pass", "pwd"]) ?? "password";
+  const identifier = identifierKey === "username"
+    ? credentials.username
+    : (credentials.email || credentials.username);
+
+  const nextLogin: Record<string, string> = {
+    ...existingLogin,
+    [identifierKey]: identifier,
+    [passwordKey]: credentials.password,
+  };
+  detection.loginBody = serializeRequestBody(nextLogin, detection.loginContentType);
+  detection.notes = `${detection.notes}\nSeeded login body updated: ${identifierKey}=${identifier}, ${passwordKey}=${credentials.password}. Preserve any other required login fields from detection.`;
+  console.log(`[Auth] Updated login body to use seeded test user (${identifierKey}=${identifier})`);
+}
+
 function parseRequestBody(
   body: string,
   contentType: AuthDetection["loginContentType"] | NonNullable<AuthDetection["registerContentType"]>,
@@ -2451,7 +2476,7 @@ async function repairBrokenLogin(
   baseUrl: string,
   diagnostic: string,
   model?: string,
-): Promise<boolean> {
+): Promise<{ fixed: boolean; infraRepairHint?: string }> {
   console.log("[Auth] Starting login repair sub-phase...");
 
   // Same tools as seedTestUser — docker access, probing, codebase, web search
@@ -2460,6 +2485,7 @@ async function repairBrokenLogin(
     ...webSearchTools,
     runCommandOnHostTool,
     runCommandInDockerTool,
+    editFileTool,
     probeUrlTool,
   ];
 
@@ -2480,6 +2506,9 @@ async function repairBrokenLogin(
     if (name === "probe_url") {
       return probeUrl(args);
     }
+    if (name === "edit_file") {
+      return handleEditFile(repoPath, args);
+    }
     if (name === "search_web" || name === "fetch_url") {
       return repairWebHandler(name, args);
     }
@@ -2491,16 +2520,22 @@ async function repairBrokenLogin(
 
   try {
     const json = extractJson(response);
-    const result = JSON.parse(json) as { fixed: boolean; action?: string; reason?: string };
+    const result = JSON.parse(json) as { fixed: boolean; action?: string; reason?: string; needsRebuild?: boolean; rebuildHint?: string };
     if (result.fixed) {
       console.log(`[Auth:Repair] Login fixed: ${result.action ?? "unknown action"}`);
-      return true;
+      return { fixed: true };
     }
     console.warn(`[Auth:Repair] Could not fix login: ${result.reason ?? "unknown"}`);
-    return false;
+    return {
+      fixed: false,
+      infraRepairHint: result.rebuildHint ?? result.reason,
+    };
   } catch {
     console.warn(`[Auth:Repair] Could not parse repair result: ${response.slice(0, 200)}`);
-    return false;
+    return {
+      fixed: false,
+      infraRepairHint: `Login repair could not produce a verified running fix. Use source-level repair and a full Docker rebuild/restart. Last response: ${response.slice(0, 500)}`,
+    };
   }
 }
 

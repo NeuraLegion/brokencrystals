@@ -477,6 +477,56 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         }
       } else if (prepResult.completed) {
         await progress.phaseDetail("scan_prep", "done", "No changes needed");
+      } else if (prepResult.failureKind === "login_5xx" && config.runMode === "dynamic") {
+        console.warn(`[Engine] Scan prep found a crashing login endpoint — running durable source repair before auth`);
+        await progress.phaseDetail("scan_prep", "login_repair", prepResult.summary);
+
+        const repairHints = [
+          `[scan-prep-login-repair] ${prepResult.summary}`,
+          "[scan-prep-login-repair] The login endpoint returns only HTTP 5xx during scanner-prep verification. Diagnose the application error, apply durable source/config changes in the repository, rebuild/recreate the app containers, and verify login no longer returns 5xx before auth configuration.",
+        ];
+
+        healthMonitor?.stop();
+        await killProcess(appProcess);
+        const repairedStartup = await startApplicationWithRetries(
+          llm,
+          repoPath,
+          techStack,
+          startupConfig,
+          config.modelSelector,
+          repairHints,
+        );
+
+        appProcess = repairedStartup.process;
+        startup = repairedStartup;
+        startupConfig = repairedStartup.config;
+        baseUrl = `http://localhost:${startupConfig.port}`;
+        deepProbeCache.clear();
+
+        healthMonitor = new AppHealthMonitor({
+          port: startupConfig.port,
+          healthCheckPath: startupConfig.healthCheckPath,
+          onDeepProbe: () =>
+            deepHealthCheck(
+              startupConfig.port,
+              startupConfig.healthCheckPath ?? "/",
+              llm,
+              config.modelSelector,
+              deepProbeCache,
+            ),
+        });
+        healthMonitor.setRecoveryCallback(async (hint) => {
+          if (!startupConfig.docker) {
+            return { ok: false, detail: "not dockerized — orchestrator will handle full restart" };
+          }
+          const qr = await quickRestartCompose(repoPath, startupConfig);
+          if (qr.ok) {
+            deepProbeCache.clear();
+            return { ok: true, detail: "quick compose restart succeeded" };
+          }
+          return { ok: false, detail: qr.diagnostics ?? "quick restart failed" };
+        });
+        healthMonitor.start();
       } else {
         console.warn(`[Engine] Scan prep failed: ${prepResult.summary} — continuing anyway`);
         await progress.phaseDetail("scan_prep", "warning", prepResult.summary);
@@ -517,13 +567,19 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       preAuthContext,
     );
     authRegistration = authResult.registration;
-    await progress.phaseDetail(
-      "auth",
-      "auth_done",
-      authResult.authObjectId
-        ? "Auth configured"
-        : "No authentication required",
-    );
+    if (authResult.authObjectId) {
+      await progress.phaseDetail("auth", "auth_done", "Auth configured");
+    } else if (!authResult.authFailed) {
+      await progress.phaseDetail("auth", "auth_done", "No authentication required");
+    } else {
+      await progress.phaseDetail(
+        "auth",
+        "auth_attempt_failed",
+        authResult.infraRepairHint
+          ? "Auth needs application repair before configuration can continue"
+          : "Auth configuration attempt failed",
+      );
+    }
 
     // If auth was detected but failed to configure
     const MAX_INFRA_BOUNCEBACKS = 5;
