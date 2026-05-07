@@ -172,7 +172,7 @@ You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this. The CSRF 
 **Exact steps to use:**
 1. Step "get_csrf": GET ${formUrl} → extracts the CSRF token from the HTML response body
 2. Step "login": POST ${baseUrl}${detection.loginEndpoint ?? "/login"} with body containing:
-   \`${fieldName}={{ auth_object.stages.get_csrf.response.body | match: /${extractPattern}/ }}&username=...&password=...\`
+   \`${fieldName}={{ auth_object.stages.get_csrf.response.body | match:/${extractPattern}/ }}&username=...&password=...\`
 
 **Do NOT use create_auth** — it only supports CSRF as an HTTP header, but this app requires it in the POST body.
 **Do NOT skip the CSRF field** — login will appear to succeed (302) but the session won't actually be authenticated.`;
@@ -233,8 +233,10 @@ ${hintsBlock}
   3. **Any flow where create_auth fails** — when you need to customize exactly what gets sent.
 
   With create_auth_raw, you define each step and use NexTemplate expressions to pass values between steps:
-  - Body extraction: {{ auth_object.stages.<step_name>.response.body | match: /<regex_with_capture_group>/ }}
-  - Header extraction: {{ auth_object.stages.<step_name>.response.headers.<HeaderName> | match: /<regex>/ }}
+  - Body extraction: {{ auth_object.stages.<step_name>.response.body | match:/<regex_with_capture_group>/ }}
+  - Header extraction MUST use Bright's documented \`get\` pipe, not dot notation: {{ auth_object.stages.<step_name>.response.headers | get: '/Header-Name' | match:/<regex>/ }}
+  - Example Authorization response header extraction: {{ auth_object.stages.login.response.headers | get: '/Authorization' | match:/(?:Bearer\s+)?([^\s,;]+)/ }}
+  - Do NOT use invalid header dot/bracket syntax such as \`response.headers.Authorization\`, \`response.headers.authorization\`, or \`response.headers["Authorization"]\`.
   Use followRedirects: false on steps where you need to capture the Location header (e.g. OAuth2 authorize → 302).
 
 ### Example: Django CSRF (csrfmiddlewaretoken in HTML form)
@@ -245,7 +247,7 @@ steps: [
   { name: "get_csrf", request: { method: "GET", url: "http://localhost:8080/login", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
   { name: "login", request: { method: "POST", url: "http://localhost:8080/login", protocol: "http",
     headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }],
-    body: "csrfmiddlewaretoken={{ auth_object.stages.get_csrf.response.body | match: /csrfmiddlewaretoken\"\\s+value=\"([^\"]+)\"/ }}&username=bright_test&password=BrightTest123%21",
+    body: "csrfmiddlewaretoken={{ auth_object.stages.get_csrf.response.body | match:/csrfmiddlewaretoken\"\\s+value=\"([^\"]+)\"/ }}&username=bright_test&password=BrightTest123%21",
     followRedirects: false, maxRedirects: 0 },
     successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
 ]
@@ -260,7 +262,7 @@ steps: [
   { name: "get_csrf", request: { method: "GET", url: "http://localhost:8000/login", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
   { name: "login", request: { method: "POST", url: "http://localhost:8000/login", protocol: "http",
     headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }],
-    body: "_token={{ auth_object.stages.get_csrf.response.body | match: /name=\"_token\"\\s+value=\"([^\"]+)\"/ }}&email=bright@test.com&password=BrightTest123%21",
+    body: "_token={{ auth_object.stages.get_csrf.response.body | match:/name=\"_token\"\\s+value=\"([^\"]+)\"/ }}&email=bright@test.com&password=BrightTest123%21",
     followRedirects: false, maxRedirects: 0 },
     successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
 ]

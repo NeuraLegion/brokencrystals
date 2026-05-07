@@ -736,10 +736,9 @@ async function createAuthViaRestApi(
   if (!isSession && params.tokenFieldPath) {
     const requestHeaderName = params.headerName || "Authorization";
     const headerPrefix = params.headerPrefix ?? (requestHeaderName.toLowerCase() === "authorization" ? "Bearer " : "");
-    const responseHeaderName = normalizeResponseHeaderName(params.tokenFieldPath || requestHeaderName);
     const template = tokenLocation === "header"
-      ? `${headerPrefix}{{ auth_object.stages.login.response.headers.${responseHeaderName} | match: /${headerTokenRegex(headerPrefix)}/ }}`
-      : `${headerPrefix}{{ auth_object.stages.login.response.body | match: /${bodyTokenRegex(params.tokenFieldPath)}/ }}`;
+      ? `${headerPrefix}${brightHeaderInterpolation("login", params.tokenFieldPath || requestHeaderName, headerTokenRegex(headerPrefix))}`
+      : `${headerPrefix}{{ auth_object.stages.login.response.body | match:/${bodyTokenRegex(params.tokenFieldPath)}/ }}`;
     embedders.push({
       type: "header",
       name: requestHeaderName,
@@ -779,7 +778,7 @@ async function createAuthViaRestApi(
     embedders.push({
       type: "header",
       name: headerName,
-      template: `{{ auth_object.stages.get_csrf.response.body | match: /${extractPattern}/ }}`,
+      template: `{{ auth_object.stages.get_csrf.response.body | match:/${extractPattern}/ }}`,
       templateType: "clear_text",
       mergeStrategy: "replace",
     });
@@ -859,6 +858,12 @@ function normalizeResponseHeaderName(headerName: string): string {
     return "Authorization";
   }
   return headerName;
+}
+
+function brightHeaderInterpolation(stageName: string, headerName: string, regex: string): string {
+  const normalizedHeader = normalizeResponseHeaderName(headerName);
+  const escapedHeader = normalizedHeader.replace(/'/g, "\\'");
+  return `{{ auth_object.stages.${stageName}.response.headers | get: '/${escapedHeader}' | match:/${regex}/ }}`;
 }
 
 /**
@@ -950,7 +955,7 @@ function buildLoginSteps(opts: {
     loginHeaders.push({
       name: headerName,
       value:
-        `{{ auth_object.stages.get_csrf.response.body | match: /${extractPattern}/ }}`,
+        `{{ auth_object.stages.get_csrf.response.body | match:/${extractPattern}/ }}`,
       type: "clear_text",
       mergeStrategy: "replace",
     });
@@ -1501,14 +1506,14 @@ Use this when the simplified create_auth tool cannot express the auth flow. REQU
 3. **Any flow where create_auth keeps failing** — gives you full control.
 
 You define the exact steps array, embedders, reauthTriggers, and test request. Steps execute in order. Each step can reference previous step responses via NexTemplate expressions:
-- Extract from response body: {{ auth_object.stages.<step_name>.response.body | match: /<regex_with_capture_group>/ }}
-- Extract from response header: {{ auth_object.stages.<step_name>.response.headers.Location | match: /code=([^&]+)/ }}
-- JWT returned in Authorization header: {{ auth_object.stages.login.response.headers.Authorization | match: /(?:Bearer\s+)?([^\s,;]+)/ }}
+- Extract from response body: {{ auth_object.stages.<step_name>.response.body | match:/<regex_with_capture_group>/ }}
+- Extract from response header using the documented Bright syntax: {{ auth_object.stages.<step_name>.response.headers | get: '/Location' | match:/code=([^&]+)/ }}
+- JWT returned in Authorization header: {{ auth_object.stages.login.response.headers | get: '/Authorization' | match:/(?:Bearer\s+)?([^\s,;]+)/ }}
 
 Example — Django CSRF (csrfmiddlewaretoken in form body):
   steps: [
     { name: "get_csrf", request: { method: "GET", url: "http://localhost:8080/login", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
-    { name: "login", request: { method: "POST", url: "http://localhost:8080/login", protocol: "http", headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }], body: "csrfmiddlewaretoken={{ auth_object.stages.get_csrf.response.body | match: /csrfmiddlewaretoken\\"\\s+value=\\"([^\\"]+)\\"/ }}&username=bright_test&password=BrightTest123%21", followRedirects: false, maxRedirects: 0 }, successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
+    { name: "login", request: { method: "POST", url: "http://localhost:8080/login", protocol: "http", headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }], body: "csrfmiddlewaretoken={{ auth_object.stages.get_csrf.response.body | match:/csrfmiddlewaretoken\\"\\s+value=\\"([^\\"]+)\\"/ }}&username=bright_test&password=BrightTest123%21", followRedirects: false, maxRedirects: 0 }, successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
   ]
   reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }, { type: "OR" }, { type: "TRIGGER", location: "header", name: "Location", patterns: ["login"] }]
   Key: CSRF token goes IN the body via NexTemplate. URL-encode special chars in password (! → %21).
@@ -1517,9 +1522,9 @@ Example — OAuth2 PKCE flow:
   steps: [
     { name: "login", request: { method: "POST", url: "http://localhost/login", body: '{"username":"...","password":"..."}', headers: [{ name: "Content-Type", value: "application/json" }], protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
     { name: "authorize", request: { method: "GET", url: "http://localhost/authorize?client_id=my-app&response_type=code&code_challenge=...&code_challenge_method=S256&redirect_uri=http://localhost/callback&scope=offline_access", protocol: "http", followRedirects: false }, successResponseDetection: [{ type: "status", statuses: [302] }] },
-    { name: "token", request: { method: "POST", url: "http://localhost/token", body: "grant_type=authorization_code&code={{ auth_object.stages.authorize.response.headers.Location | match: /code=([^&]+)/ }}&code_verifier=...&redirect_uri=http://localhost/callback&client_id=my-app", headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }], protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] }
+    { name: "token", request: { method: "POST", url: "http://localhost/token", body: "grant_type=authorization_code&code={{ auth_object.stages.authorize.response.headers | get: '/Location' | match:/code=([^&]+)/ }}&code_verifier=...&redirect_uri=http://localhost/callback&client_id=my-app", headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }], protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] }
   ]
-  embedders: [{ type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.token.response.body | match: /"access_token"\\s*:\\s*"([^"]*)"/ }}", mergeStrategy: "replace" }]`,
+  embedders: [{ type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.token.response.body | match:/"access_token"\\s*:\\s*"([^"]*)"/ }}", mergeStrategy: "replace" }]`,
         parameters: {
           type: "object",
           properties: {
@@ -1529,7 +1534,7 @@ Example — OAuth2 PKCE flow:
             },
             embedders: {
               type: "string",
-              description: `JSON array of embedders that inject tokens into scan requests. Body-token example: { type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.<step_name>.response.body | match: /<regex>/ }}", mergeStrategy: "replace" }. Header-token example: { type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.login.response.headers.Authorization | match: /(?:Bearer\\s+)?([^\\s,;]+)/ }}", mergeStrategy: "replace" }. For cookie/session auth (no explicit token), omit or pass empty array — Bright auto-replays cookies.`,
+              description: `JSON array of embedders that inject tokens into scan requests. Body-token example: { type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.<step_name>.response.body | match:/<regex>/ }}", mergeStrategy: "replace" }. Header-token example using Bright's documented string interpolation syntax: { type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.login.response.headers | get: '/Authorization' | match:/(?:Bearer\\\\s+)?([^\\\\s,;]+)/ }}", mergeStrategy: "replace" }. For cookie/session auth (no explicit token), omit or pass empty array — Bright auto-replays cookies.`,
             },
             testUrl: {
               type: "string",
@@ -2617,12 +2622,13 @@ function detectHeaderTokenAuthFailure(stages: AuthTestStageDetail[]): string | n
     return null;
   }
 
-  const headerRef = nexTemplateHeaderReference(tokenHeaderName);
+  const headerRef = normalizeResponseHeaderName(tokenHeaderName);
   return `DIAGNOSTIC: The "${loginStage.name ?? "login"}" step succeeded and returned a token-like response header "${tokenHeaderName}", but authorization still failed with HTTP ${failedAuthorization.response?.status}. ` +
     `The auth object is probably not extracting and embedding that header token.\n` +
     `FIX with create_auth: recreate with authStyle='jwt', tokenLocation='header', tokenFieldPath='${tokenHeaderName}', headerName='Authorization', headerPrefix='Bearer '.\n` +
     `FIX with create_auth_raw: use an embedder like ` +
-    `[{ "type": "header", "name": "Authorization", "template": "Bearer {{ auth_object.stages.login.response.headers.${headerRef} | match: /(?:Bearer\\\\s+)?([^\\\\s,;]+)/ }}", "mergeStrategy": "replace" }]. ` +
+    `[{ "type": "header", "name": "Authorization", "template": "Bearer {{ auth_object.stages.login.response.headers | get: '/${headerRef}' | match:/(?:Bearer\\\\s+)?([^\\\\s,;]+)/ }}", "mergeStrategy": "replace" }]. ` +
+    `Bright's documented string interpolation syntax requires reading response headers with the get pipe (headers | get: '/Header-Name'); do NOT use response.headers.${headerRef}, lowercase dot notation, or bracket syntax. ` +
     `Do NOT use body extractors such as "access_token" unless the login response body actually contains that field.`;
 }
 
@@ -2654,10 +2660,6 @@ function findLikelyTokenResponseHeader(headers: Record<string, string>): string 
     if (found) return found;
   }
   return Object.keys(headers).find((name) => name.toLowerCase().includes("token")) ?? null;
-}
-
-function nexTemplateHeaderReference(headerName: string): string {
-  return headerName;
 }
 
 /**
