@@ -164,7 +164,7 @@ export async function runFunctionHarness(
           ep.method === "GET" && ep.target.params.length > 0
             ? ep.target.params.map((p) => ({
                 name: p.name,
-                value: typeof p.sample === "string" ? p.sample : JSON.stringify(p.sample),
+                value: formatHarnessQuerySample(p.sample),
               }))
             : undefined,
       }),
@@ -176,6 +176,20 @@ export async function runFunctionHarness(
   console.log(`[Harness] Registering ${discoveredEndpoints.length}/${harnessConfig!.endpoints.length} healthy endpoints`);
 
   return { process: proc!, config: harnessConfig!, endpoints: discoveredEndpoints };
+}
+
+function formatHarnessQuerySample(sample: unknown): string {
+  if (sample === null || sample === undefined) {
+    return "";
+  }
+  if (typeof sample === "object") {
+    // Bright entrypoint templating treats JSON braces in query values as
+    // template delimiters and can leave stray "}" characters in scan requests.
+    // Harness routes generally default blank JSON params to {}, so keep the
+    // injection point without registering a malformed baseline URL.
+    return "";
+  }
+  return String(sample);
 }
 
 // ---------------------------------------------------------------------------

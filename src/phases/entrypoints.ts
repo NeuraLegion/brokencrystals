@@ -387,13 +387,16 @@ export async function verifyEntrypointAuth(
 }
 
 /**
- * Check each registered entrypoint's response status and remove any that
- * return 404 — these waste scan time and produce no useful results.
+ * Check each registered entrypoint's response status and remove dead targets.
+ * Full app scans only prune 404s; harness scans can opt into pruning any
+ * failed baseline response because harness endpoints were already probed
+ * healthy before registration.
  */
 export async function pruneDeadEntrypoints(
   api: BrightApiContext,
   projectId: string,
   entries: RegisteredEntrypoint[],
+  opts: { pruneFailedResponses?: boolean } = {},
 ): Promise<RegisteredEntrypoint[]> {
   const alive: RegisteredEntrypoint[] = [];
   const dead: string[] = [];
@@ -421,10 +424,19 @@ export async function pruneDeadEntrypoints(
         const resp = data.response as Record<string, unknown> | undefined;
         const status = resp?.status ?? data.status;
 
-        if (status === 404) {
+        const numericStatus = typeof status === "number" ? status : undefined;
+        const shouldPrune =
+          numericStatus === 404 ||
+          (opts.pruneFailedResponses &&
+            numericStatus !== undefined &&
+            numericStatus >= 400);
+
+        if (shouldPrune) {
           const req = data.request as Record<string, unknown> | undefined;
           const url = (req?.url ?? data.url ?? entry.entrypointId) as string;
-          console.log(`[Entrypoints] ✗ Removing 404 entrypoint: ${url}`);
+          console.log(
+            `[Entrypoints] ✗ Removing failed baseline entrypoint (HTTP ${numericStatus}): ${url}`,
+          );
           dead.push(entry.entrypointId);
         } else {
           alive.push(entry);
@@ -441,7 +453,7 @@ export async function pruneDeadEntrypoints(
   if (dead.length > 0) {
     await deleteEntrypoints(api, projectId, dead);
     console.log(
-      `[Entrypoints] Pruned ${dead.length} dead (404) entrypoint(s), ${alive.length} remaining`,
+      `[Entrypoints] Pruned ${dead.length} dead entrypoint(s), ${alive.length} remaining`,
     );
   }
 

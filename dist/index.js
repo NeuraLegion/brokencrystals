@@ -27590,7 +27590,7 @@ async function verifyEntrypointAuth(api, projectId, entrypointId) {
     return { ok: false, detail: `Could not verify: ${msg}` };
   }
 }
-async function pruneDeadEntrypoints(api, projectId, entries) {
+async function pruneDeadEntrypoints(api, projectId, entries, opts = {}) {
   const alive = [];
   const dead = [];
   console.log(
@@ -27612,10 +27612,14 @@ async function pruneDeadEntrypoints(api, projectId, entries) {
         const data = await res.json();
         const resp = data.response;
         const status = resp?.status ?? data.status;
-        if (status === 404) {
+        const numericStatus = typeof status === "number" ? status : void 0;
+        const shouldPrune = numericStatus === 404 || opts.pruneFailedResponses && numericStatus !== void 0 && numericStatus >= 400;
+        if (shouldPrune) {
           const req = data.request;
           const url = req?.url ?? data.url ?? entry.entrypointId;
-          console.log(`[Entrypoints] \u2717 Removing 404 entrypoint: ${url}`);
+          console.log(
+            `[Entrypoints] \u2717 Removing failed baseline entrypoint (HTTP ${numericStatus}): ${url}`
+          );
           dead.push(entry.entrypointId);
         } else {
           alive.push(entry);
@@ -27629,7 +27633,7 @@ async function pruneDeadEntrypoints(api, projectId, entries) {
   if (dead.length > 0) {
     await deleteEntrypoints(api, projectId, dead);
     console.log(
-      `[Entrypoints] Pruned ${dead.length} dead (404) entrypoint(s), ${alive.length} remaining`
+      `[Entrypoints] Pruned ${dead.length} dead entrypoint(s), ${alive.length} remaining`
     );
   }
   return alive;
@@ -29401,7 +29405,7 @@ async function runFunctionHarness(llm, repoPath, techStack, modelSelector) {
       // For GET endpoints, expose params as query params so the scanner has injection points
       queryParams: ep.method === "GET" && ep.target.params.length > 0 ? ep.target.params.map((p) => ({
         name: p.name,
-        value: typeof p.sample === "string" ? p.sample : JSON.stringify(p.sample)
+        value: formatHarnessQuerySample(p.sample)
       })) : void 0
     })
   );
@@ -29410,6 +29414,15 @@ async function runFunctionHarness(llm, repoPath, techStack, modelSelector) {
   }
   console.log(`[Harness] Registering ${discoveredEndpoints.length}/${harnessConfig.endpoints.length} healthy endpoints`);
   return { process: proc2, config: harnessConfig, endpoints: discoveredEndpoints };
+}
+function formatHarnessQuerySample(sample) {
+  if (sample === null || sample === void 0) {
+    return "";
+  }
+  if (typeof sample === "object") {
+    return "";
+  }
+  return String(sample);
 }
 async function identifyInfra(llm, repoPath, stackStr, handleTool, model) {
   const messages = identifyInfraPrompt(stackStr);
@@ -31446,7 +31459,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
   await progress.phaseDetail("setup", "repeater", "Repeater connected");
   try {
     await progress.phaseStart("entrypoints", "Registering harness endpoints");
-    const registered = await registerEntrypoints(
+    let registered = await registerEntrypoints(
       config,
       projectId,
       harnessResult.endpoints,
@@ -31455,6 +31468,9 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
       void 0
       // no auth
     );
+    registered = await pruneDeadEntrypoints(config, projectId, registered, {
+      pruneFailedResponses: true
+    });
     await progress.phaseDetail(
       "entrypoints",
       "registered",

@@ -1529,7 +1529,7 @@ async function runScanLoop(
   try {
     // Register harness endpoints (no auth)
     await progress.phaseStart("entrypoints", "Registering harness endpoints");
-    const registered = await registerEntrypoints(
+    let registered = await registerEntrypoints(
       config,
       projectId,
       harnessResult.endpoints,
@@ -1537,6 +1537,9 @@ async function runScanLoop(
       repeater.repeaterId,
       undefined, // no auth
     );
+    registered = await pruneDeadEntrypoints(config, projectId, registered, {
+      pruneFailedResponses: true,
+    });
     await progress.phaseDetail(
       "entrypoints",
       "registered",
