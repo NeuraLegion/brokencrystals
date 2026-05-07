@@ -1,0 +1,166 @@
+=== brokencrystals-db-1 ===
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+=== brokencrystals-grpcwebproxy-1 ===
+time="2026-05-07T13:54:50Z" level=info msg="[core] parsed scheme: \"\"" system=system
+time="2026-05-07T13:54:50Z" level=info msg="[core] scheme \"\" not registered, fallback to default scheme" system=system
+time="2026-05-07T13:54:50Z" level=info msg="[core] ccResolverWrapper: sending update to cc: {[{nodejs:5000  <nil> 0 <nil>}] <nil> <nil>}" system=system
+time="2026-05-07T13:54:50Z" level=info msg="[core] ClientConn switching balancer to \"pick_first\"" system=system
+time="2026-05-07T13:54:50Z" level=info msg="[core] Channel switches to new LB policy \"pick_first\"" system=system
+time="2026-05-07T13:54:50Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-07T13:54:50Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-07T13:54:50Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-07T13:54:50Z" level=info msg="listening for http on: [::]:8081"
+time="2026-05-07T13:54:50Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-07T13:54:50Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T13:54:50Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T13:54:51Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-07T13:54:51Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-07T13:54:51Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-07T13:54:51Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-07T13:54:51Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T13:54:51Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+
+=== brokencrystals-keycloak-1 ===
+Updating the configuration and installing your custom providers, if any. Please wait.
+2026-05-07 13:54:52,319 INFO  [io.qua.hib.orm.dep.HibernateOrmProcessor] (build-19) A legacy persistence.xml file is present in the classpath. This file will be used to configure JPA/Hibernate ORM persistence units, and any configuration of the Hibernate ORM extension will be ignored. To ignore persistence.xml files instead, set the configuration property 'quarkus.hibernate-orm.persistence-xml.ignore' to 'true'.
+
+=== brokencrystals-keycloak-db-1 ===
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+=== brokencrystals-mailcatcher-1 ===
+Starting MailCatcher v0.10.0
+==> smtp://0.0.0.0:1025
+==> http://0.0.0.0:1080
+
+=== brokencrystals-nodejs-1 ===
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+Worker 18 started
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mOrmModule dependencies initialized[39m[38;5;3m +20ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMikroOrmModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mHttpClientModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSubscriptionsModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mFileModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPartnersModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mEmailModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSafeFilesModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mChatModule dependencies initialized[39m[38;5;3m +0ms[39m
+[95m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [95m  DEBUG[39m [38;5;3m[McpSessionService] [39m[95mMCP sessions configured: sessionTtlMs=1800000[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mKeyCloakModule dependencies initialized[39m[38;5;3m +2ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[info] [39mMikroORM version: [32m6.3.13[39m[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39mORM entity discovery started, using [36mReflectMetadataProvider[39m[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mGraphQLSchemaBuilderModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mGraphQLModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- processing [36m8[39m files[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- ignoring file base.entity.js.map[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- ignoring file product.entity.js.map[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- ignoring file testimonial.entity.js.map[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- ignoring file user.entity.js.map[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- processing entity [36mBase[39m[90m (/usr/src/app/dist/model/base.entity.js)[39m[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- processing entity [36mProduct[39m[90m (/usr/src/app/dist/model/product.entity.js)[39m[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- processing entity [36mTestimonial[39m[90m (/usr/src/app/dist/model/testimonial.entity.js)[39m[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- processing entity [36mUser[39m[90m (/usr/src/app/dist/model/user.entity.js)[39m[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[discovery] [39m- entity discovery finished, found [32m4[39m entities, took [32m26 ms[39m[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[query] [39m[37m[1mselect[22m[39m [32m1[39m [37m[1mfrom[22m[39m pg_database [37m[1mwhere[22m[39m datname [0m=[0m [33m'bc'[39m[90m [took 19 ms, 1 result][39m[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[MikroORM] [39m[32m[90m[info] [39mMikroORM successfully connected to database [32mbc on postgresql://bc:*****@db:5432[39m[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMikroOrmCoreModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMikroOrmModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMcpModule dependencies initialized[39m[38;5;3m +2ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mUsersModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mTestimonialsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mProductsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[NestMicroservice] [39m[32mNest microservice successfully started[39m[38;5;3m +128ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAppController {/api}:[39m[38;5;3m +6ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/render, POST} route[39m[38;5;3m +3ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/goto, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/metadata, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api, OPTIONS} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/spawn, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/process_numbers, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/config, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/secrets, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/userinfo/:email, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v2/userinfo/:email, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/nestedJson, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/api/auth}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/admin/login, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/login, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/rsa/signature/validate, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/dom-csrf-flow, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/simple-csrf-flow, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/oidc-client, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/kid-sql/login, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/kid-sql/validate, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/weak-key/login, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/weak-key/validate, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/jku/login, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/jku/validate, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/jwk/login, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/jwk/validate, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/x5c/login, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/x5c/validate, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/x5u/login, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/x5u/validate, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/hmac/login, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/jwt/hmac/validate, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mUsersController {/api/users}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users, OPTIONS} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/one/:email, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/id/:id, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/fullinfo/:email, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/search/:name, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/one/:email/photo, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/one/:id/photo, DELETE} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/ldap, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/basic, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/oidc, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/one/:email/info, PUT} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/one/:email/info, GET} route[39m[38;5;3m +4ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/one/:email/adminpermission, GET} route[39m[38;5;3m +2ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/me, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/me, PUT} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/users/one/:email/photo, PUT} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mFileController {/api/file}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/file, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/file/google, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/file/aws, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/file/azure, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/file/digital_ocean, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/file, DELETE} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/file/raw, PUT} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/file/raw, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mHiddenUploadController {/api/hidden-upload}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/hidden-upload, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mSubscriptionsController {/api/subscriptions}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/subscriptions, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mTestimonialsController {/api/testimonials}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/testimonials, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/testimonials, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/testimonials/count, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mProductsController {/api/products}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/latest, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/search, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/views, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mPartnersController {/api/partners}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/partners/query, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/partners/partnerLogin, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/partners/searchPartners, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mEmailController {/api/email}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/email/sendSupportEmail, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/email/getEmails, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/email/deleteEmails, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mChatController {/api/chat}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/chat/query, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mSafeFilesController {/api/safe-files}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/safe-files, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mMcpController {/api/mcp}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/mcp, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 18  - [39m05/07/2026, 1:54:51 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/mcp, DELETE} route[39m[38;5;3m +0ms[39m

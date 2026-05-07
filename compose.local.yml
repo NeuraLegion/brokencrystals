@@ -71,7 +71,9 @@ services:
       test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/api/config']
       timeout: 30s
     environment:
+      NODE_ENV: development
       URL: http://localhost:3000
+      DISABLE_CSRF_CHECKS: 'true'
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}

@@ -18,6 +18,9 @@ services:
       - '.data/nodejs:/var/lib/postgresql/data/'
 
   nodejs:
+    build:
+      context: .
+      target: production
     image: 'brightsec/brokencrystals'
     restart: always
     healthcheck:
@@ -27,7 +30,8 @@ services:
         ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/api/config']
       timeout: 30s
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
+      DISABLE_CSRF_CHECKS: 'true'
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
@@ -43,6 +47,9 @@ services:
       options:
         max-file: '5'
         max-size: '10m'
+    ports:
+      - '3000:3000'
+      - '5000:5000'
     depends_on:
       - db
       - mailcatcher

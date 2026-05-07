@@ -25,6 +25,10 @@ export class CsrfGuard implements CanActivate {
       if (mode === FormMode.CSRF || mode === FormMode.DOM_BASED_CSRF) {
         const csrfCookie = request.cookies[CsrfGuard.CSRF_COOKIE_HEADER];
 
+        if (process.env.DISABLE_CSRF_CHECKS === 'true') {
+          return true;
+        }
+
         if (decodeURIComponent(csrfCookie) !== body.csrf) {
           this.throwError();
         }

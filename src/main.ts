@@ -84,6 +84,12 @@ async function bootstrap() {
         : false,
     trustProxy: true,
     onProtoPoisoning: 'ignore',
+    bodyLimit: 104857600,
+    pluginTimeout: 0,
+    requestTimeout: 0,
+    connectionTimeout: 0,
+    keepAliveTimeout: 0,
+    maxParamLength: 1000,
     https:
       process.env.NODE_ENV === 'production'
         ? {
