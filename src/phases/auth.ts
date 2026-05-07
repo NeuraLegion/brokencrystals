@@ -508,8 +508,10 @@ async function createAuthViaRestApi(
     loginBody: string;
     loginContentType: string;
     testUrl: string;
+    tokenLocation?: "body" | "header" | "cookie";
     tokenFieldPath?: string;
     headerName?: string;
+    headerPrefix?: string;
     headerValue?: string;
     csrfUrl?: string;
     csrfHeaderName?: string;
@@ -606,16 +608,18 @@ async function createAuthViaRestApi(
 
   // Embedders: none for session (Bright auto-replays cookies), bearer header for JWT
   const embedders: Record<string, unknown>[] = [];
+  const tokenLocation = params.tokenLocation ?? "body";
   if (!isSession && params.tokenFieldPath) {
-    const lastSegment = params.tokenFieldPath.includes(".")
-      ? params.tokenFieldPath.split(".").pop()!
-      : params.tokenFieldPath;
-    const escaped = lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const tokenRegex = `"${escaped}"\\s*:\\s*"([^"]*)"`;
+    const requestHeaderName = params.headerName || "Authorization";
+    const headerPrefix = params.headerPrefix ?? (requestHeaderName.toLowerCase() === "authorization" ? "Bearer " : "");
+    const responseHeaderName = normalizeResponseHeaderName(params.tokenFieldPath || requestHeaderName);
+    const template = tokenLocation === "header"
+      ? `${headerPrefix}{{ auth_object.stages.login.response.headers.${responseHeaderName} | match: /${headerTokenRegex(headerPrefix)}/ }}`
+      : `${headerPrefix}{{ auth_object.stages.login.response.body | match: /${bodyTokenRegex(params.tokenFieldPath)}/ }}`;
     embedders.push({
       type: "header",
-      name: "Authorization",
-      template: `Bearer {{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`,
+      name: requestHeaderName,
+      template,
       templateType: "clear_text",
       mergeStrategy: "replace",
     });
@@ -707,6 +711,30 @@ async function createAuthViaRestApi(
     console.log(`[Auth] Auth object steps: ${steps.map((s) => `${s.name}(${(s.request as Record<string, unknown>)?.method} ${(s.request as Record<string, unknown>)?.url})`).join(" → ")}`);
   }
   return postAuthObject(api, body);
+}
+
+function bodyTokenRegex(tokenFieldPath: string): string {
+  const lastSegment = tokenFieldPath.includes(".")
+    ? tokenFieldPath.split(".").pop()!
+    : tokenFieldPath;
+  const escaped = lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `"${escaped}"\\s*:\\s*"([^"]*)"`;
+}
+
+function headerTokenRegex(headerPrefix: string): string {
+  const trimmedPrefix = headerPrefix.trim();
+  if (!trimmedPrefix) {
+    return "(.+)";
+  }
+  const escapedPrefix = trimmedPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `(?:${escapedPrefix}\\s+)?([^\\s,;]+)`;
+}
+
+function normalizeResponseHeaderName(headerName: string): string {
+  if (headerName.toLowerCase() === "authorization") {
+    return "Authorization";
+  }
+  return headerName;
 }
 
 /**
@@ -938,7 +966,7 @@ async function createAuthViaMcp(
         name: "create_auth",
         description: `Create a Bright auth object with all the correct settings pre-configured.
 For session/cookie auth: disables redirect following, uses combined status+redirect reauthTrigger, no embedder needed.
-For JWT auth: uses status 401/403 reauthTrigger, adds Bearer header embedder.
+For JWT auth: uses status 401/403 reauthTrigger, adds a header embedder from either a response body token field or a response header token.
 For API key: creates a static header auth object.
 Supports CSRF token extraction: set csrfUrl to add a GET step that fetches the token before login.
 For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reauthStrategy='body' with reauthBodyPattern to detect unauthenticated responses by matching the response body.`,
@@ -1011,12 +1039,23 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
             tokenFieldPath: {
               type: "string",
               description:
-                "(JWT only) Dot-path to the token field in the login response body (e.g. 'token', 'data.accessToken')",
+                "(JWT only) If tokenLocation='body', dot-path to the token field in the login response body (e.g. 'token', 'data.accessToken'). If tokenLocation='header', the response header name that contains the token (e.g. 'Authorization').",
+            },
+            tokenLocation: {
+              type: "string",
+              enum: ["body", "header", "cookie"],
+              description:
+                "(JWT only) Where the login response returns the token. Use 'header' when the token is returned in a response header such as Authorization.",
             },
             headerName: {
               type: "string",
               description:
-                "(API key only) Header name for the API key (e.g. 'Authorization', 'X-API-Key')",
+                "(API key or JWT) Header name to send on authenticated requests (e.g. 'Authorization', 'X-API-Key'). For JWT this is usually Authorization.",
+            },
+            headerPrefix: {
+              type: "string",
+              description:
+                "(JWT only) Prefix to put before the extracted token in the request header, e.g. 'Bearer '. Use an empty string if the app expects the raw token.",
             },
             headerValue: {
               type: "string",
@@ -1212,10 +1251,16 @@ Example — OAuth2 PKCE flow:
           reauthBodyPattern: args.reauthBodyPattern
             ? String(args.reauthBodyPattern)
             : undefined,
+          tokenLocation: args.tokenLocation
+            ? String(args.tokenLocation) as "body" | "header" | "cookie"
+            : detection.tokenLocation,
           tokenFieldPath: args.tokenFieldPath
             ? String(args.tokenFieldPath)
-            : undefined,
-          headerName: args.headerName ? String(args.headerName) : undefined,
+            : (detection.tokenLocation === "header"
+              ? (detection.tokenFieldPath ?? detection.headerName ?? "Authorization")
+              : (detection.tokenFieldPath ?? undefined)),
+          headerName: args.headerName ? String(args.headerName) : (detection.headerName ?? undefined),
+          headerPrefix: args.headerPrefix ? String(args.headerPrefix) : (detection.headerPrefix ?? undefined),
           headerValue: args.headerValue ? String(args.headerValue) : undefined,
         },
       );

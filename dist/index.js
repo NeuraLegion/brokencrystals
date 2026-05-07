@@ -24310,6 +24310,7 @@ This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You ca
 - Content type: ${detection.loginContentType}
 - Token: ${detection.tokenLocation} \u2192 embed via ${detection.tokenEmbedLocation}
 - Token field: ${detection.tokenFieldPath ?? "unknown"}
+- Auth header: ${detection.headerName ?? "Authorization"}${detection.headerPrefix ? ` with prefix ${JSON.stringify(detection.headerPrefix)}` : ""}
 - Cookie: ${detection.cookieName ?? "none"}
 - Reauth: ${detection.reauthIndicator}
 - Suggested test URL: ${testUrl}
@@ -24333,6 +24334,7 @@ ${csrfGuidance}
 
 ## When to use create_auth vs create_auth_raw
 - **create_auth**: Standard flows \u2014 single login POST that returns a cookie or JWT. CSRF must come from a **JSON endpoint** (e.g. GET /csrf returns {"csrf":"token"}). Works for: Rails (API mode), Express, most SPA backends, Grafana, Gitea, etc.
+- **JWT in response header**: If login returns the token in a response header (commonly \`Authorization: Bearer <jwt>\`), use \`create_auth\` with \`authStyle="jwt"\`, \`tokenLocation="header"\`, \`tokenFieldPath="Authorization"\`, \`headerName="Authorization"\`, and \`headerPrefix="Bearer "\`. Do NOT try body regexes like \`"access_token"\` when the token is not in the body.
 - **create_auth_raw**: Use when you need full control over steps and request bodies. **REQUIRED for:**
   1. **HTML form CSRF** (Django, Laravel, classic server-rendered apps) \u2014 the CSRF token is a hidden input field in the HTML form. You extract it from the GET response body and inject it into the POST body (not a header).
   2. **OAuth2 PKCE / authorization code** \u2014 multi-step flows with token exchange.
@@ -24429,9 +24431,10 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
    \u2192 Login appeared to succeed but the test request was still unauthenticated.
    \u2192 **CHECK THE LOGIN RESPONSE** \u2014 look at the authentication stage's response body and Set-Cookie headers:
-     - If the login response body is HTML (not JSON), login did NOT actually work \u2014 fix the application first
-     - If the login response has no new Set-Cookie headers, the session wasn't established
-     - If the login response body contains error messages, credentials or format are wrong
+      - If the login response body is HTML (not JSON), login did NOT actually work \u2014 fix the application first
+      - If the login response has no new Set-Cookie headers, the session wasn't established
+      - If this is JWT auth and the login response body has no token but the app sends an Authorization response header, recreate with \`tokenLocation="header"\` and \`tokenFieldPath="Authorization"\`
+      - If the login response body contains error messages, credentials or format are wrong
    \u2192 Fix: address the root cause found in the login response, try different testUrl, try reauthStrategy='body'.
 
 4. Delete the failed auth object and try a DIFFERENT approach. Change one thing at a time:
@@ -25011,14 +25014,16 @@ async function createAuthViaRestApi(api, projectId, repeaterId, params) {
     ];
   }
   const embedders = [];
+  const tokenLocation = params.tokenLocation ?? "body";
   if (!isSession && params.tokenFieldPath) {
-    const lastSegment = params.tokenFieldPath.includes(".") ? params.tokenFieldPath.split(".").pop() : params.tokenFieldPath;
-    const escaped = lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const tokenRegex = `"${escaped}"\\s*:\\s*"([^"]*)"`;
+    const requestHeaderName = params.headerName || "Authorization";
+    const headerPrefix = params.headerPrefix ?? (requestHeaderName.toLowerCase() === "authorization" ? "Bearer " : "");
+    const responseHeaderName = normalizeResponseHeaderName(params.tokenFieldPath || requestHeaderName);
+    const template = tokenLocation === "header" ? `${headerPrefix}{{ auth_object.stages.login.response.headers.${responseHeaderName} | match: /${headerTokenRegex(headerPrefix)}/ }}` : `${headerPrefix}{{ auth_object.stages.login.response.body | match: /${bodyTokenRegex(params.tokenFieldPath)}/ }}`;
     embedders.push({
       type: "header",
-      name: "Authorization",
-      template: `Bearer {{ auth_object.stages.login.response.body | match: /${tokenRegex}/ }}`,
+      name: requestHeaderName,
+      template,
       templateType: "clear_text",
       mergeStrategy: "replace"
     });
@@ -25088,6 +25093,25 @@ async function createAuthViaRestApi(api, projectId, repeaterId, params) {
     console.log(`[Auth] Auth object steps: ${steps.map((s) => `${s.name}(${s.request?.method} ${s.request?.url})`).join(" \u2192 ")}`);
   }
   return postAuthObject(api, body);
+}
+function bodyTokenRegex(tokenFieldPath) {
+  const lastSegment = tokenFieldPath.includes(".") ? tokenFieldPath.split(".").pop() : tokenFieldPath;
+  const escaped = lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `"${escaped}"\\s*:\\s*"([^"]*)"`;
+}
+function headerTokenRegex(headerPrefix) {
+  const trimmedPrefix = headerPrefix.trim();
+  if (!trimmedPrefix) {
+    return "(.+)";
+  }
+  const escapedPrefix = trimmedPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `(?:${escapedPrefix}\\s+)?([^\\s,;]+)`;
+}
+function normalizeResponseHeaderName(headerName) {
+  if (headerName.toLowerCase() === "authorization") {
+    return "Authorization";
+  }
+  return headerName;
 }
 function buildLoginSteps(opts) {
   const steps = [];
@@ -25261,7 +25285,7 @@ async function createAuthViaMcp(llm, repoPath, detection, registrationOk, projec
         name: "create_auth",
         description: `Create a Bright auth object with all the correct settings pre-configured.
 For session/cookie auth: disables redirect following, uses combined status+redirect reauthTrigger, no embedder needed.
-For JWT auth: uses status 401/403 reauthTrigger, adds Bearer header embedder.
+For JWT auth: uses status 401/403 reauthTrigger, adds a header embedder from either a response body token field or a response header token.
 For API key: creates a static header auth object.
 Supports CSRF token extraction: set csrfUrl to add a GET step that fetches the token before login.
 For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reauthStrategy='body' with reauthBodyPattern to detect unauthenticated responses by matching the response body.`,
@@ -25321,11 +25345,20 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
             },
             tokenFieldPath: {
               type: "string",
-              description: "(JWT only) Dot-path to the token field in the login response body (e.g. 'token', 'data.accessToken')"
+              description: "(JWT only) If tokenLocation='body', dot-path to the token field in the login response body (e.g. 'token', 'data.accessToken'). If tokenLocation='header', the response header name that contains the token (e.g. 'Authorization')."
+            },
+            tokenLocation: {
+              type: "string",
+              enum: ["body", "header", "cookie"],
+              description: "(JWT only) Where the login response returns the token. Use 'header' when the token is returned in a response header such as Authorization."
             },
             headerName: {
               type: "string",
-              description: "(API key only) Header name for the API key (e.g. 'Authorization', 'X-API-Key')"
+              description: "(API key or JWT) Header name to send on authenticated requests (e.g. 'Authorization', 'X-API-Key'). For JWT this is usually Authorization."
+            },
+            headerPrefix: {
+              type: "string",
+              description: "(JWT only) Prefix to put before the extracted token in the request header, e.g. 'Bearer '. Use an empty string if the app expects the raw token."
             },
             headerValue: {
               type: "string",
@@ -25505,8 +25538,10 @@ Example \u2014 OAuth2 PKCE flow:
           loginAccept: args.loginAccept ? String(args.loginAccept) : void 0,
           reauthStrategy: args.reauthStrategy ? String(args.reauthStrategy) : void 0,
           reauthBodyPattern: args.reauthBodyPattern ? String(args.reauthBodyPattern) : void 0,
-          tokenFieldPath: args.tokenFieldPath ? String(args.tokenFieldPath) : void 0,
-          headerName: args.headerName ? String(args.headerName) : void 0,
+          tokenLocation: args.tokenLocation ? String(args.tokenLocation) : detection.tokenLocation,
+          tokenFieldPath: args.tokenFieldPath ? String(args.tokenFieldPath) : detection.tokenLocation === "header" ? detection.tokenFieldPath ?? detection.headerName ?? "Authorization" : detection.tokenFieldPath ?? void 0,
+          headerName: args.headerName ? String(args.headerName) : detection.headerName ?? void 0,
+          headerPrefix: args.headerPrefix ? String(args.headerPrefix) : detection.headerPrefix ?? void 0,
           headerValue: args.headerValue ? String(args.headerValue) : void 0
         }
       );

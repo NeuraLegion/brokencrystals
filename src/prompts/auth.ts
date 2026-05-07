@@ -9,6 +9,8 @@ interface AuthDetectionInput {
   tokenLocation: string;
   tokenFieldPath: string | null;
   tokenEmbedLocation: string;
+  headerName?: string | null;
+  headerPrefix?: string | null;
   cookieName: string | null;
   reauthIndicator: string;
   registerEndpoint: string | null;
@@ -193,6 +195,7 @@ This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You ca
 - Content type: ${detection.loginContentType}
 - Token: ${detection.tokenLocation} → embed via ${detection.tokenEmbedLocation}
 - Token field: ${detection.tokenFieldPath ?? "unknown"}
+- Auth header: ${detection.headerName ?? "Authorization"}${detection.headerPrefix ? ` with prefix ${JSON.stringify(detection.headerPrefix)}` : ""}
 - Cookie: ${detection.cookieName ?? "none"}
 - Reauth: ${detection.reauthIndicator}
 - Suggested test URL: ${testUrl}
@@ -216,6 +219,7 @@ ${csrfGuidance}
 
 ## When to use create_auth vs create_auth_raw
 - **create_auth**: Standard flows — single login POST that returns a cookie or JWT. CSRF must come from a **JSON endpoint** (e.g. GET /csrf returns {"csrf":"token"}). Works for: Rails (API mode), Express, most SPA backends, Grafana, Gitea, etc.
+- **JWT in response header**: If login returns the token in a response header (commonly \`Authorization: Bearer <jwt>\`), use \`create_auth\` with \`authStyle="jwt"\`, \`tokenLocation="header"\`, \`tokenFieldPath="Authorization"\`, \`headerName="Authorization"\`, and \`headerPrefix="Bearer "\`. Do NOT try body regexes like \`"access_token"\` when the token is not in the body.
 - **create_auth_raw**: Use when you need full control over steps and request bodies. **REQUIRED for:**
   1. **HTML form CSRF** (Django, Laravel, classic server-rendered apps) — the CSRF token is a hidden input field in the HTML form. You extract it from the GET response body and inject it into the POST body (not a header).
   2. **OAuth2 PKCE / authorization code** — multi-step flows with token exchange.
@@ -312,9 +316,10 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
    → Login appeared to succeed but the test request was still unauthenticated.
    → **CHECK THE LOGIN RESPONSE** — look at the authentication stage's response body and Set-Cookie headers:
-     - If the login response body is HTML (not JSON), login did NOT actually work — fix the application first
-     - If the login response has no new Set-Cookie headers, the session wasn't established
-     - If the login response body contains error messages, credentials or format are wrong
+      - If the login response body is HTML (not JSON), login did NOT actually work — fix the application first
+      - If the login response has no new Set-Cookie headers, the session wasn't established
+      - If this is JWT auth and the login response body has no token but the app sends an Authorization response header, recreate with \`tokenLocation="header"\` and \`tokenFieldPath="Authorization"\`
+      - If the login response body contains error messages, credentials or format are wrong
    → Fix: address the root cause found in the login response, try different testUrl, try reauthStrategy='body'.
 
 4. Delete the failed auth object and try a DIFFERENT approach. Change one thing at a time:
