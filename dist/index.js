@@ -25389,6 +25389,7 @@ Use this when the simplified create_auth tool cannot express the auth flow. REQU
 You define the exact steps array, embedders, reauthTriggers, and test request. Steps execute in order. Each step can reference previous step responses via NexTemplate expressions:
 - Extract from response body: {{ auth_object.stages.<step_name>.response.body | match: /<regex_with_capture_group>/ }}
 - Extract from response header: {{ auth_object.stages.<step_name>.response.headers.Location | match: /code=([^&]+)/ }}
+- JWT returned in Authorization header: {{ auth_object.stages.login.response.headers.Authorization | match: /(?:Bearers+)?([^s,;]+)/ }}
 
 Example \u2014 Django CSRF (csrfmiddlewaretoken in form body):
   steps: [
@@ -25414,7 +25415,7 @@ Example \u2014 OAuth2 PKCE flow:
             },
             embedders: {
               type: "string",
-              description: `JSON array of embedders that inject tokens into scan requests. Each: { type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.<step_name>.response.body | match: /<regex>/ }}", mergeStrategy: "replace" }. For cookie/session auth (no explicit token), omit or pass empty array \u2014 Bright auto-replays cookies.`
+              description: `JSON array of embedders that inject tokens into scan requests. Body-token example: { type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.<step_name>.response.body | match: /<regex>/ }}", mergeStrategy: "replace" }. Header-token example: { type: "header", name: "Authorization", template: "Bearer {{ auth_object.stages.login.response.headers.Authorization | match: /(?:Bearer\\s+)?([^\\s,;]+)/ }}", mergeStrategy: "replace" }. For cookie/session auth (no explicit token), omit or pass empty array \u2014 Bright auto-replays cookies.`
             },
             testUrl: {
               type: "string",
@@ -25990,6 +25991,9 @@ async function testAuthObject(api, authObjectId) {
           if (r.request.body) {
             detail.request.body = r.request.body.slice(0, BODY_PREVIEW_LIMIT);
           }
+          if (r.request.headers) {
+            detail.request.headers = sanitizeHeadersForAuthDiagnostics(r.request.headers);
+          }
         }
         if (r.response) {
           const rawBody = r.response.body ?? "";
@@ -26013,6 +26017,7 @@ async function testAuthObject(api, authObjectId) {
           }
           const hdrs = r.response.headers;
           if (hdrs) {
+            detail.response.headers = sanitizeHeadersForAuthDiagnostics(hdrs);
             const ct = hdrs["content-type"] ?? hdrs["Content-Type"];
             if (ct) {
               detail.response.contentType = Array.isArray(ct) ? ct[0] : ct;
@@ -26033,6 +26038,10 @@ async function testAuthObject(api, authObjectId) {
       );
       for (const l of lines) console.log(`[Auth] Test: ${l}`);
       const diagnosticHints = [];
+      const authHeaderHint = detectHeaderTokenAuthFailure(stages);
+      if (authHeaderHint) {
+        diagnosticHints.push(authHeaderHint);
+      }
       for (const s of stages) {
         if (s.status === "success" || !s.response) continue;
         const ct = s.response.contentType ?? "";
@@ -26078,6 +26087,62 @@ FIX: Recreate the auth object with loginAccept='application/json' (for create_au
     }
   }
   return { passed: false, summary: "Exhausted retries" };
+}
+function sanitizeHeadersForAuthDiagnostics(headers) {
+  const sanitized = {};
+  for (const [name, rawValue] of Object.entries(headers)) {
+    const value = Array.isArray(rawValue) ? rawValue.join(", ") : rawValue;
+    if (!value) continue;
+    sanitized[name] = sanitizeHeaderValueForAuthDiagnostics(name, value);
+  }
+  return sanitized;
+}
+function sanitizeHeaderValueForAuthDiagnostics(name, value) {
+  const lower = name.toLowerCase();
+  if (lower === "authorization") {
+    const scheme = value.match(/^\s*([A-Za-z][A-Za-z0-9_-]*)\s+/)?.[1];
+    return scheme ? `${scheme} <redacted>` : "<redacted>";
+  }
+  if (lower === "set-cookie" || lower === "cookie") {
+    return value.split(",").map((cookie) => {
+      const cookieName = cookie.trim().match(/^([^=;\s]+)/)?.[1] ?? "cookie";
+      return `${cookieName}=<redacted>`;
+    }).join(", ");
+  }
+  if (lower.includes("token") || lower.includes("secret") || lower.includes("api-key") || lower.includes("apikey")) {
+    return "<redacted>";
+  }
+  return value.length > 200 ? `${value.slice(0, 200)}...` : value;
+}
+function detectHeaderTokenAuthFailure(stages) {
+  const loginStage = stages.find(
+    (s) => s.stage === "authentication" && s.status === "success" && !!s.response?.headers
+  );
+  const failedAuthorization = stages.find(
+    (s) => s.stage === "authorization" && s.status !== "success" && (s.response?.status === 401 || s.response?.status === 403)
+  );
+  if (!loginStage?.response?.headers || !failedAuthorization) {
+    return null;
+  }
+  const tokenHeaderName = findLikelyTokenResponseHeader(loginStage.response.headers);
+  if (!tokenHeaderName) {
+    return null;
+  }
+  const headerRef = nexTemplateHeaderReference(tokenHeaderName);
+  return `DIAGNOSTIC: The "${loginStage.name ?? "login"}" step succeeded and returned a token-like response header "${tokenHeaderName}", but authorization still failed with HTTP ${failedAuthorization.response?.status}. The auth object is probably not extracting and embedding that header token.
+FIX with create_auth: recreate with authStyle='jwt', tokenLocation='header', tokenFieldPath='${tokenHeaderName}', headerName='Authorization', headerPrefix='Bearer '.
+FIX with create_auth_raw: use an embedder like [{ "type": "header", "name": "Authorization", "template": "Bearer {{ auth_object.stages.login.response.headers.${headerRef} | match: /(?:Bearer\\\\s+)?([^\\\\s,;]+)/ }}", "mergeStrategy": "replace" }]. Do NOT use body extractors such as "access_token" unless the login response body actually contains that field.`;
+}
+function findLikelyTokenResponseHeader(headers) {
+  const preferred = ["authorization", "x-access-token", "x-auth-token", "x-jwt-token"];
+  for (const preferredName of preferred) {
+    const found = Object.keys(headers).find((name) => name.toLowerCase() === preferredName);
+    if (found) return found;
+  }
+  return Object.keys(headers).find((name) => name.toLowerCase().includes("token")) ?? null;
+}
+function nexTemplateHeaderReference(headerName) {
+  return headerName;
 }
 function normalizeBody(body, contentType) {
   if (contentType !== "form") return body;
