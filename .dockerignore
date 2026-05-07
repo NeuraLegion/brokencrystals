@@ -1,2 +1,4 @@
 .git
 node_modules
+# Added by bright-agent to avoid permission errors
+.data/

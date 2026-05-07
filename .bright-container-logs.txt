@@ -1,0 +1,158 @@
+=== brokencrystals-db-1 ===
+The files belonging to this database system will be owned by user "postgres".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.utf8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+fixing permissions on existing directory /var/lib/postgresql/data ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default "max_connections" ... 100
+selecting default "shared_buffers" ... 128MB
+selecting default time zone ... UTC
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+
+Success. You can now start the database server using:
+
+    pg_ctl -D /var/lib/postgresql/data -l logfile start
+
+waiting for server to start....2026-05-07 15:50:55.388 UTC [42] LOG:  starting PostgreSQL 17.9 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+2026-05-07 15:50:55.390 UTC [42] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-05-07 15:50:55.391 UTC [45] LOG:  database system was shut down at 2026-05-07 15:50:55 UTC
+2026-05-07 15:50:55.395 UTC [42] LOG:  database system is ready to accept connections
+ done
+server started
+CREATE DATABASE
+
+
+/usr/local/bin/docker-entrypoint.sh: running /docker-entrypoint-initdb.d/pg.sql
+SET
+SET
+CREATE TABLE
+CREATE TABLE
+CREATE TABLE
+SET
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+CREATE INDEX
+
+
+waiting for server to shut down....2026-05-07 15:50:55.535 UTC [42] LOG:  received fast shutdown request
+2026-05-07 15:50:55.535 UTC [42] LOG:  aborting any active transactions
+2026-05-07 15:50:55.537 UTC [42] LOG:  background worker "logical replication launcher" (PID 48) exited with exit code 1
+2026-05-07 15:50:55.537 UTC [43] LOG:  shutting down
+2026-05-07 15:50:55.537 UTC [43] LOG:  checkpoint starting: shutdown immediate
+2026-05-07 15:50:55.540 UTC [43] LOG:  checkpoint complete: wrote 941 buffers (5.7%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.001 s, total=0.003 s; sync files=317, longest=0.001 s, average=0.000 s; distance=4327 kB, estimate=4327 kB; lsn=0/1926FE0, redo lsn=0/1926FE0
+2026-05-07 15:50:55.542 UTC [42] LOG:  database system is shut down
+ done
+server stopped
+
+PostgreSQL init process complete; ready for start up.
+
+=== brokencrystals-grpcwebproxy-1 ===
+time="2026-05-07T15:50:55Z" level=info msg="[core] parsed scheme: \"\"" system=system
+time="2026-05-07T15:50:55Z" level=info msg="[core] scheme \"\" not registered, fallback to default scheme" system=system
+time="2026-05-07T15:50:55Z" level=info msg="[core] ccResolverWrapper: sending update to cc: {[{nodejs:5000  <nil> 0 <nil>}] <nil> <nil>}" system=system
+time="2026-05-07T15:50:55Z" level=info msg="[core] ClientConn switching balancer to \"pick_first\"" system=system
+time="2026-05-07T15:50:55Z" level=info msg="[core] Channel switches to new LB policy \"pick_first\"" system=system
+time="2026-05-07T15:50:55Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-07T15:50:55Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-07T15:50:55Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-07T15:50:55Z" level=info msg="listening for http on: [::]:8081"
+time="2026-05-07T15:50:55Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-07T15:50:55Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T15:50:55Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T15:50:56Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-07T15:50:56Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-07T15:50:56Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-07T15:50:56Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-07T15:50:56Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T15:50:56Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T15:50:57Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-07T15:50:57Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-07T15:50:57Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-07T15:50:57Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-07T15:50:57Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T15:50:57Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+
+=== brokencrystals-keycloak-1 ===
+Updating the configuration and installing your custom providers, if any. Please wait.
+
+=== brokencrystals-keycloak-db-1 ===
+The files belonging to this database system will be owned by user "postgres".
+This user must also own the server process.
+
+The database cluster will be initialized with locale "en_US.utf8".
+The default database encoding has accordingly been set to "UTF8".
+The default text search configuration will be set to "english".
+
+Data page checksums are disabled.
+
+fixing permissions on existing directory /var/lib/postgresql/data ... ok
+creating subdirectories ... ok
+selecting dynamic shared memory implementation ... posix
+selecting default "max_connections" ... 100
+selecting default "shared_buffers" ... 128MB
+selecting default time zone ... UTC
+creating configuration files ... ok
+running bootstrap script ... ok
+performing post-bootstrap initialization ... ok
+syncing data to disk ... ok
+
+
+Success. You can now start the database server using:
+
+    pg_ctl -D /var/lib/postgresql/data -l logfile start
+
+waiting for server to start....2026-05-07 15:50:55.318 UTC [42] LOG:  starting PostgreSQL 17.9 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+2026-05-07 15:50:55.327 UTC [42] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-05-07 15:50:55.328 UTC [45] LOG:  database system was shut down at 2026-05-07 15:50:55 UTC
+2026-05-07 15:50:55.331 UTC [42] LOG:  database system is ready to accept connections
+ done
+server started
+CREATE DATABASE
+
+
+/usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+
+waiting for server to shut down....2026-05-07 15:50:55.451 UTC [42] LOG:  received fast shutdown request
+2026-05-07 15:50:55.451 UTC [42] LOG:  aborting any active transactions
+2026-05-07 15:50:55.453 UTC [42] LOG:  background worker "logical replication launcher" (PID 48) exited with exit code 1
+2026-05-07 15:50:55.454 UTC [43] LOG:  shutting down
+2026-05-07 15:50:55.454 UTC [43] LOG:  checkpoint starting: shutdown immediate
+2026-05-07 15:50:55.457 UTC [43] LOG:  checkpoint complete: wrote 925 buffers (5.6%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.003 s, sync=0.001 s, total=0.004 s; sync files=301, longest=0.001 s, average=0.000 s; distance=4255 kB, estimate=4255 kB; lsn=0/19150E0, redo lsn=0/19150E0
+2026-05-07 15:50:55.460 UTC [42] LOG:  database system is shut down
+ done
+server stopped
+
+PostgreSQL init process complete; ready for start up.
+
+=== brokencrystals-mailcatcher-1 ===
+Starting MailCatcher v0.10.0
+==> smtp://0.0.0.0:1025
+==> http://0.0.0.0:1080
+
+=== brokencrystals-nodejs-1 ===
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+Primary 18 is running

@@ -108,7 +108,8 @@ services:
     ports:
       - '8081:8081'
     depends_on:
-      - nodejs
+      nodejs:
+        condition: service_started
 
   mailcatcher:
     image: 'sj26/mailcatcher'

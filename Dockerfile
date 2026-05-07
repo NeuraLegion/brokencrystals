@@ -4,6 +4,8 @@
 
 FROM node:18-alpine AS build
 
+RUN apk add --no-cache python3 make g++ libc6-compat vips-dev xmlsec-dev pkgconfig
+
 WORKDIR /usr/src/app
 
 # Copy and build NestJS server project
