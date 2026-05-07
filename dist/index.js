@@ -19105,6 +19105,32 @@ var bodyExtractionTools = [
     }
   }
 ];
+var saveResultTool = bodyExtractionTools[3];
+var PARAM_EXTRACTION_BATCH_SIZE = 5;
+var PARAM_EXTRACTION_MAX_TURNS = 8;
+var PARAM_EXTRACTION_RETRY_TURNS = 3;
+function parseParamExtractionResponse(response) {
+  const trimmed = response.trim();
+  if (!trimmed || !/[\[{]/.test(trimmed)) {
+    return void 0;
+  }
+  const json = extractJson(trimmed).trim();
+  if (!json || !/^[\[{]/.test(json)) {
+    return void 0;
+  }
+  const parsed = parseJsonLenient(json);
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+  if (parsed && typeof parsed === "object" && Array.isArray(parsed.endpoints)) {
+    return parsed.endpoints;
+  }
+  return parsed && typeof parsed === "object" ? [parsed] : void 0;
+}
+function responseSnippet(response) {
+  const normalized = response.replace(/\s+/g, " ").trim();
+  return normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
+}
 function createBodyExtractionToolHandler(repoPath) {
   return async (name, args) => {
     if (name === "read_lines") {
@@ -19570,7 +19596,6 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
     byFile.get(key).push(ep);
   }
   let processedCount = 0;
-  const BATCH_SIZE = 15;
   for (const [filePath, fileEndpoints] of byFile) {
     const fullPath = resolve(repoPath, filePath);
     let content;
@@ -19581,8 +19606,8 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
       processedCount += fileEndpoints.length;
       continue;
     }
-    for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += BATCH_SIZE) {
-      const batch = fileEndpoints.slice(batchStart, batchStart + BATCH_SIZE);
+    for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += PARAM_EXTRACTION_BATCH_SIZE) {
+      const batch = fileEndpoints.slice(batchStart, batchStart + PARAM_EXTRACTION_BATCH_SIZE);
       processedCount += batch.length;
       console.log(
         `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`
@@ -19647,20 +19672,62 @@ Look up any referenced DTOs/models. Call save_result with the JSON array of para
           }
           return handleTool(name, args);
         };
-        const response = await chatWithTools(
+        let response = await chatWithTools(
           llm,
           messages,
           bodyExtractionTools,
           wrappedHandler,
           model,
-          5
+          PARAM_EXTRACTION_MAX_TURNS
         );
         let entries;
         if (savedResult && savedResult.length > 0) {
           entries = savedResult;
         } else {
-          const parsed = parseJsonLenient(extractJson(response));
-          entries = Array.isArray(parsed) ? parsed : Array.isArray(parsed.endpoints) ? parsed.endpoints : [parsed];
+          entries = parseParamExtractionResponse(response);
+        }
+        if (!entries) {
+          console.warn(
+            `[Analyze] Param extraction for ${filePath} did not call save_result; retrying focused extraction${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
+          );
+          let retrySavedResult;
+          const retryHandler = async (name, args) => {
+            if (name === "save_result") {
+              const r = args.result;
+              if (Array.isArray(r)) retrySavedResult = r;
+              return "Result saved.";
+            }
+            return handleTool(name, args);
+          };
+          const retryMessages = [
+            ...messages,
+            {
+              role: "assistant",
+              content: response.trim() || "I did not save a result."
+            },
+            {
+              role: "user",
+              content: `You must now call save_result with one result object for each endpoint index below. Do not inspect more files and do not answer in text.
+
+${endpointList}
+
+Use empty strings/objects for fields you cannot infer confidently, but preserve every endpoint index.`
+            }
+          ];
+          response = await chatWithTools(
+            llm,
+            retryMessages,
+            [saveResultTool],
+            retryHandler,
+            model,
+            PARAM_EXTRACTION_RETRY_TURNS
+          );
+          entries = retrySavedResult && retrySavedResult.length > 0 ? retrySavedResult : parseParamExtractionResponse(response);
+        }
+        if (!entries) {
+          throw new Error(
+            `LLM did not provide parseable param extraction JSON${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
+          );
         }
         for (const entry of entries) {
           const idx = typeof entry.index === "number" ? entry.index : 0;

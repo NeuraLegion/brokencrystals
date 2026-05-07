@@ -1,4 +1,5 @@
 import type OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { resolve, extname } from "path";
 import { execFileSync } from "child_process";
@@ -1460,6 +1461,37 @@ const bodyExtractionTools = [
   },
 ];
 
+const saveResultTool = bodyExtractionTools[3];
+const PARAM_EXTRACTION_BATCH_SIZE = 5;
+const PARAM_EXTRACTION_MAX_TURNS = 8;
+const PARAM_EXTRACTION_RETRY_TURNS = 3;
+
+function parseParamExtractionResponse(response: string): Record<string, unknown>[] | undefined {
+  const trimmed = response.trim();
+  if (!trimmed || !/[\[{]/.test(trimmed)) {
+    return undefined;
+  }
+
+  const json = extractJson(trimmed).trim();
+  if (!json || !/^[\[{]/.test(json)) {
+    return undefined;
+  }
+
+  const parsed = parseJsonLenient(json) as Record<string, unknown> | Record<string, unknown>[];
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+  if (parsed && typeof parsed === "object" && Array.isArray(parsed.endpoints)) {
+    return parsed.endpoints as Record<string, unknown>[];
+  }
+  return parsed && typeof parsed === "object" ? [parsed] : undefined;
+}
+
+function responseSnippet(response: string): string {
+  const normalized = response.replace(/\s+/g, " ").trim();
+  return normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
+}
+
 function createBodyExtractionToolHandler(repoPath: string): ToolHandler {
   return async (
     name: string,
@@ -2012,7 +2044,6 @@ export async function discoverEndpoints(
   }
 
   let processedCount = 0;
-  const BATCH_SIZE = 15; // Max endpoints per LLM call
 
   for (const [filePath, fileEndpoints] of byFile) {
     const fullPath = resolve(repoPath, filePath);
@@ -2025,9 +2056,9 @@ export async function discoverEndpoints(
       continue;
     }
 
-    // Process in batches of BATCH_SIZE
-    for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += BATCH_SIZE) {
-      const batch = fileEndpoints.slice(batchStart, batchStart + BATCH_SIZE);
+    // Keep param extraction batches small enough to leave turn budget for save_result.
+    for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += PARAM_EXTRACTION_BATCH_SIZE) {
+      const batch = fileEndpoints.slice(batchStart, batchStart + PARAM_EXTRACTION_BATCH_SIZE);
       processedCount += batch.length;
       console.log(
         `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`,
@@ -2064,7 +2095,7 @@ export async function discoverEndpoints(
         )
         .join("\n");
 
-      const messages = [
+      const messages: ChatCompletionMessageParam[] = [
         {
           role: "system" as const,
           content: `You are an API analyst. Given code snippets and a list of endpoints, determine the parameters for EACH endpoint with realistic sample values.
@@ -2107,26 +2138,68 @@ Look up any referenced DTOs/models. Call save_result with the JSON array of para
           return handleTool(name, args);
         };
 
-        const response = await chatWithTools(
+        let response = await chatWithTools(
           llm,
           messages,
           bodyExtractionTools,
           wrappedHandler,
           model,
-          5,
+          PARAM_EXTRACTION_MAX_TURNS,
         );
 
         // Prefer captured tool result over parsing text response
-        let entries: Record<string, unknown>[];
+        let entries: Record<string, unknown>[] | undefined;
         if (savedResult && savedResult.length > 0) {
           entries = savedResult;
         } else {
-          const parsed = parseJsonLenient(extractJson(response)) as Record<string, unknown>;
-          entries = Array.isArray(parsed)
-            ? parsed
-            : Array.isArray(parsed.endpoints)
-              ? parsed.endpoints
-              : [parsed];
+          entries = parseParamExtractionResponse(response);
+        }
+
+        if (!entries) {
+          console.warn(
+            `[Analyze] Param extraction for ${filePath} did not call save_result; retrying focused extraction${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`,
+          );
+          let retrySavedResult: Record<string, unknown>[] | undefined;
+          const retryHandler: ToolHandler = async (name, args) => {
+            if (name === "save_result") {
+              const r = args.result;
+              if (Array.isArray(r)) retrySavedResult = r as Record<string, unknown>[];
+              return "Result saved.";
+            }
+            return handleTool(name, args);
+          };
+          const retryMessages: ChatCompletionMessageParam[] = [
+            ...messages,
+            {
+              role: "assistant",
+              content: response.trim() || "I did not save a result.",
+            },
+            {
+              role: "user",
+              content: `You must now call save_result with one result object for each endpoint index below. Do not inspect more files and do not answer in text.
+
+${endpointList}
+
+Use empty strings/objects for fields you cannot infer confidently, but preserve every endpoint index.`,
+            },
+          ];
+          response = await chatWithTools(
+            llm,
+            retryMessages,
+            [saveResultTool],
+            retryHandler,
+            model,
+            PARAM_EXTRACTION_RETRY_TURNS,
+          );
+          entries = retrySavedResult && retrySavedResult.length > 0
+            ? retrySavedResult
+            : parseParamExtractionResponse(response);
+        }
+
+        if (!entries) {
+          throw new Error(
+            `LLM did not provide parseable param extraction JSON${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`,
+          );
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
