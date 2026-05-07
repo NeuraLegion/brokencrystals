@@ -6,6 +6,9 @@ FROM node:18-alpine AS build
 
 WORKDIR /usr/src/app
 
+# Install native build/runtime deps required by argon2/libxmljs and client proto generation
+RUN apk add --no-cache python3 make g++ protoc libxml2-dev xmlsec-dev
+
 # Copy and build NestJS server project
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node tsconfig.build.json ./

@@ -19,7 +19,9 @@ services:
 
   nodejs:
     image: 'brightsec/brokencrystals'
-    restart: always
+    restart: on-failure
+    ports:
+      - '3000:3000'
     healthcheck:
       interval: 5s
       retries: 10
@@ -112,6 +114,11 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: Pa55w0rd
       KC_HEALTH_ENABLED: true
+      KC_SPI_BRUTE_FORCE_PROTECTED: false
+      KC_SPI_BRUTE_FORCE_FAILURE_FACTOR: 999999
+      KC_SPI_BRUTE_FORCE_MAX_FAILURE_WAIT_SECONDS: 999999
+      KC_SPI_BRUTE_FORCE_MINIMUM_QUICK_LOGIN_WAIT_SECONDS: 999999
+      KC_SPI_BRUTE_FORCE_WAIT_INCREMENT_SECONDS: 999999
     healthcheck:
       test:
         [
