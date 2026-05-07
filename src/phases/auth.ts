@@ -1240,7 +1240,7 @@ Example — OAuth2 PKCE flow:
           loginUrl: String(args.loginUrl),
           loginBody: String(args.loginBody),
           loginContentType: String(args.loginContentType),
-          testUrl: String(args.testUrl),
+          testUrl: normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection),
           csrfUrl: args.csrfUrl ? String(args.csrfUrl) : undefined,
           csrfHeaderName: args.csrfHeaderName
             ? String(args.csrfHeaderName)
@@ -1329,7 +1329,7 @@ Example — OAuth2 PKCE flow:
       }
 
       const testMethod = args.testMethod ? String(args.testMethod) : "GET";
-      const testUrl = String(args.testUrl);
+      const testUrl = normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection);
 
       // Follow redirects on test request — LLM decides based on context:
       // - true when reauthTriggers use body/dom patterns and app redirects to login
@@ -1460,11 +1460,7 @@ Example — OAuth2 PKCE flow:
   const allTools = [...codebaseTools, ...inspectionTools, ...customTools, ...webSearchTools];
 
   // Resolve protected endpoint path for test URL
-  const resolvedPath = detection.protectedEndpointPath
-    ? detection.protectedEndpointPath
-        .replace(/:(\w+)/g, "1")
-        .replace(/\{(\w+)\}/g, "1")
-    : "/";
+  const resolvedPath = resolveProtectedEndpointPath(detection) ?? "/";
   const testUrl = `${baseUrl}${resolvedPath}`;
 
   const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext);
@@ -1611,6 +1607,70 @@ function updateLoginBodyFromSeededUser(
   detection.loginBody = serializeRequestBody(nextLogin, detection.loginContentType);
   detection.notes = `${detection.notes}\nSeeded login body updated: ${identifierKey}=${identifier}, ${passwordKey}=${credentials.password}. Preserve any other required login fields from detection.`;
   console.log(`[Auth] Updated login body to use seeded test user (${identifierKey}=${identifier})`);
+}
+
+function resolveProtectedEndpointPath(detection: AuthDetection): string | null {
+  if (!detection.protectedEndpointPath) return null;
+  const identity = authIdentityFromDetection(detection);
+  return detection.protectedEndpointPath.replace(/:(\w+)|\{(\w+)\}/g, (_match, colonName: string | undefined, braceName: string | undefined) => {
+    const name = (colonName ?? braceName ?? "").toLowerCase();
+    let value: string | undefined;
+    if (name.includes("email") || name.includes("mail")) {
+      value = identity.email ?? identity.user ?? identity.username;
+    } else if (name.includes("user") || name.includes("login") || name.includes("name")) {
+      value = identity.user ?? identity.username ?? identity.email;
+    } else if (name === "id" || name.endsWith("id")) {
+      value = identity.id;
+    }
+    return encodeURIComponent(value ?? "1");
+  });
+}
+
+function normalizeAuthTestUrl(
+  requestedUrl: string,
+  baseUrl: string,
+  detection: AuthDetection,
+): string {
+  const resolvedPath = resolveProtectedEndpointPath(detection);
+  if (!resolvedPath || !detection.protectedEndpointPath) {
+    return requestedUrl;
+  }
+
+  const preferredUrl = new URL(resolvedPath, baseUrl).toString();
+  const legacyResolvedPath = detection.protectedEndpointPath
+    .replace(/:(\w+)/g, "1")
+    .replace(/\{(\w+)\}/g, "1");
+  try {
+    const requested = new URL(requestedUrl, baseUrl);
+    const legacy = new URL(legacyResolvedPath, baseUrl);
+    if (
+      requested.pathname === legacy.pathname ||
+      requested.pathname.includes("/:") ||
+      requested.pathname.includes("%3A")
+    ) {
+      console.log(`[Auth] Rewrote auth test URL ${requested.toString()} → ${preferredUrl}`);
+      return preferredUrl;
+    }
+  } catch {
+    return requestedUrl;
+  }
+
+  return requestedUrl;
+}
+
+function authIdentityFromDetection(detection: AuthDetection): {
+  user?: string;
+  username?: string;
+  email?: string;
+  id?: string;
+} {
+  const login = parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
+  const user = firstStringValue(login, ["user", "login", "identifier"]);
+  const username = firstStringValue(login, ["username", "name"]);
+  const email = firstStringValue(login, ["email"])
+    ?? ([user, username].find((value) => value?.includes("@")));
+  const id = firstStringValue(login, ["id", "userId", "user_id"]);
+  return { user, username, email, id };
 }
 
 function parseRequestBody(
@@ -1979,6 +2039,10 @@ export async function testAuthObject(
       if (authHeaderHint) {
         diagnosticHints.push(authHeaderHint);
       }
+      const testUrlHint = detectBadAuthTestUrl(stages);
+      if (testUrlHint) {
+        diagnosticHints.push(testUrlHint);
+      }
       for (const s of stages) {
         if (s.status === "success" || !s.response) continue;
 
@@ -2126,6 +2190,27 @@ function detectHeaderTokenAuthFailure(stages: AuthTestStageDetail[]): string | n
     `FIX with create_auth_raw: use an embedder like ` +
     `[{ "type": "header", "name": "Authorization", "template": "Bearer {{ auth_object.stages.login.response.headers.${headerRef} | match: /(?:Bearer\\\\s+)?([^\\\\s,;]+)/ }}", "mergeStrategy": "replace" }]. ` +
     `Do NOT use body extractors such as "access_token" unless the login response body actually contains that field.`;
+}
+
+function detectBadAuthTestUrl(stages: AuthTestStageDetail[]): string | null {
+  const loginStage = stages.find((s) => s.stage === "authentication" && s.status === "success");
+  const validationStage = stages.find((s) => s.stage === "validation");
+  const authorizationStage = stages.find((s) => s.stage === "authorization" && s.status !== "success");
+  if (!loginStage || !authorizationStage?.response) return null;
+
+  const authStatus = authorizationStage.response.status;
+  const authBody = authorizationStage.response.bodyPreview ?? "";
+  const validationBody = validationStage?.response?.bodyPreview ?? "";
+  const validationStatus = validationStage?.response?.status;
+  const isForbidden = authStatus === 403 || /forbidden/i.test(authBody);
+  const sameAsValidation = validationStatus === authStatus &&
+    validationBody.slice(0, 120) === authBody.slice(0, 120);
+
+  if (!isForbidden || !sameAsValidation) return null;
+
+  return `DIAGNOSTIC: Login succeeded, but the auth test URL returned the same HTTP ${authStatus} Forbidden response before and after authentication. ` +
+    `This usually means the chosen testUrl requires a different user/role or an unresolved route parameter, not that token extraction failed. ` +
+    `Pick a protected endpoint that the configured test user can access. If the detected route contains an email placeholder such as /api/users/one/:email/photo, use the registered user's email in the URL, not a numeric placeholder like /api/users/one/1/photo.`;
 }
 
 function findLikelyTokenResponseHeader(headers: Record<string, string>): string | null {
@@ -2435,9 +2520,7 @@ async function preProbeForAuth(
   const candidateTestUrls = new Set<string>();
   // Add the detected protected endpoint
   if (detection.protectedEndpointPath) {
-    const resolved = detection.protectedEndpointPath
-      .replace(/:(\w+)/g, "1")
-      .replace(/\{(\w+)\}/g, "1");
+    const resolved = resolveProtectedEndpointPath(detection) ?? detection.protectedEndpointPath;
     candidateTestUrls.add(`${baseUrl}${resolved}`);
   }
   // Common .json endpoints
@@ -2931,7 +3014,7 @@ async function verifySeededCredentials(
           const verifyCookie = setCookies.map(c => c.split(";")[0]?.trim()).filter(Boolean).join("; ")
             || sessionCookie || "";
           const verifyUrl = detection.protectedEndpointPath
-            ? `${baseUrl}${detection.protectedEndpointPath}`
+            ? `${baseUrl}${resolveProtectedEndpointPath(detection) ?? detection.protectedEndpointPath}`
             : `${baseUrl}/`;
           try {
             const verifyRes = await fetch(verifyUrl, {

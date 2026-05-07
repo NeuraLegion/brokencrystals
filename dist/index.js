@@ -24391,10 +24391,12 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
 
 ### Step 2: Discover test URL candidates using probe_url
 1. Probe several .json endpoints WITHOUT auth to find ones that return different content when authenticated:
-   - Endpoints returning 401/403 are ideal testUrls
-   - Endpoints returning 200 with "login_required" or "not_logged_in" in the body need reauthStrategy='body'
-   - Endpoints returning 200 with the same content regardless of auth are USELESS as testUrls \u2014 skip them
-   - Endpoints returning 404 are USELESS \u2014 skip them
+    - Endpoints returning 401/403 are ideal testUrls
+    - If a detected protected route has placeholders, fill them with the actual registered user values (e.g. use /api/users/one/test%40test.com/photo for /api/users/one/:email/photo). Do NOT replace :email with "1".
+    - Avoid endpoints that return the same 403 "Forbidden" before and after login; those usually require a different role/user and are bad auth-validation URLs.
+    - Endpoints returning 200 with "login_required" or "not_logged_in" in the body need reauthStrategy='body'
+    - Endpoints returning 200 with the same content regardless of auth are USELESS as testUrls \u2014 skip them
+    - Endpoints returning 404 are USELESS \u2014 skip them
 2. Note down exactly what the unauthenticated response looks like (status, body pattern) for each candidate
 
 ### Step 3: Create auth object and use test_auth_object to verify
@@ -24428,14 +24430,15 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - User account not activated/confirmed (check with run_command_in_docker)
    \u2192 Fix: Use run_command_on_host/run_command_in_docker to DIAGNOSE the root cause, then respond with INFRA_REPAIR if it requires a container restart or compose change.
 
-   **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
-   \u2192 Login appeared to succeed but the test request was still unauthenticated.
-   \u2192 **CHECK THE LOGIN RESPONSE** \u2014 look at the authentication stage's response body and Set-Cookie headers:
+    **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
+    \u2192 Login appeared to succeed but the test request was still unauthenticated.
+    \u2192 **CHECK THE LOGIN RESPONSE** \u2014 look at the authentication stage's response body and Set-Cookie headers:
       - If the login response body is HTML (not JSON), login did NOT actually work \u2014 fix the application first
       - If the login response has no new Set-Cookie headers, the session wasn't established
       - If this is JWT auth and the login response body has no token but the app sends an Authorization response header, recreate with \`tokenLocation="header"\` and \`tokenFieldPath="Authorization"\`
       - If the login response body contains error messages, credentials or format are wrong
-   \u2192 Fix: address the root cause found in the login response, try different testUrl, try reauthStrategy='body'.
+      - If validation and authorization both return the same 403 "Forbidden" body, the testUrl is probably not accessible to this user. Change testUrl to a protected endpoint for the registered user instead of changing token extraction.
+    \u2192 Fix: address the root cause found in the login response, try different testUrl, try reauthStrategy='body'.
 
 4. Delete the failed auth object and try a DIFFERENT approach. Change one thing at a time:
    - Different loginUrl (API vs HTML)
@@ -25537,7 +25540,7 @@ Example \u2014 OAuth2 PKCE flow:
           loginUrl: String(args.loginUrl),
           loginBody: String(args.loginBody),
           loginContentType: String(args.loginContentType),
-          testUrl: String(args.testUrl),
+          testUrl: normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection),
           csrfUrl: args.csrfUrl ? String(args.csrfUrl) : void 0,
           csrfHeaderName: args.csrfHeaderName ? String(args.csrfHeaderName) : void 0,
           csrfExtractPattern: args.csrfExtractPattern ? String(args.csrfExtractPattern) : void 0,
@@ -25607,7 +25610,7 @@ Example \u2014 OAuth2 PKCE flow:
         }
       }
       const testMethod = args.testMethod ? String(args.testMethod) : "GET";
-      const testUrl2 = String(args.testUrl);
+      const testUrl2 = normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection);
       const testFollowRedirects = args.testFollowRedirects !== void 0 ? Boolean(args.testFollowRedirects) : false;
       const testMaxRedirects = args.testMaxRedirects !== void 0 ? Number(args.testMaxRedirects) : testFollowRedirects ? 5 : 0;
       for (const step of steps) {
@@ -25704,7 +25707,7 @@ Example \u2014 OAuth2 PKCE flow:
   };
   const baseCodeHandler = createToolHandler(repoPath);
   const allTools = [...codebaseTools, ...inspectionTools, ...customTools, ...webSearchTools];
-  const resolvedPath = detection.protectedEndpointPath ? detection.protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1") : "/";
+  const resolvedPath = resolveProtectedEndpointPath(detection) ?? "/";
   const testUrl = `${baseUrl}${resolvedPath}`;
   const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext);
   console.log("[Auth] Starting auth configuration with custom tools...");
@@ -25814,6 +25817,49 @@ function updateLoginBodyFromSeededUser(detection, credentials) {
   detection.notes = `${detection.notes}
 Seeded login body updated: ${identifierKey}=${identifier}, ${passwordKey}=${credentials.password}. Preserve any other required login fields from detection.`;
   console.log(`[Auth] Updated login body to use seeded test user (${identifierKey}=${identifier})`);
+}
+function resolveProtectedEndpointPath(detection) {
+  if (!detection.protectedEndpointPath) return null;
+  const identity = authIdentityFromDetection(detection);
+  return detection.protectedEndpointPath.replace(/:(\w+)|\{(\w+)\}/g, (_match, colonName, braceName) => {
+    const name = (colonName ?? braceName ?? "").toLowerCase();
+    let value;
+    if (name.includes("email") || name.includes("mail")) {
+      value = identity.email ?? identity.user ?? identity.username;
+    } else if (name.includes("user") || name.includes("login") || name.includes("name")) {
+      value = identity.user ?? identity.username ?? identity.email;
+    } else if (name === "id" || name.endsWith("id")) {
+      value = identity.id;
+    }
+    return encodeURIComponent(value ?? "1");
+  });
+}
+function normalizeAuthTestUrl(requestedUrl, baseUrl, detection) {
+  const resolvedPath = resolveProtectedEndpointPath(detection);
+  if (!resolvedPath || !detection.protectedEndpointPath) {
+    return requestedUrl;
+  }
+  const preferredUrl = new URL(resolvedPath, baseUrl).toString();
+  const legacyResolvedPath = detection.protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1");
+  try {
+    const requested = new URL(requestedUrl, baseUrl);
+    const legacy = new URL(legacyResolvedPath, baseUrl);
+    if (requested.pathname === legacy.pathname || requested.pathname.includes("/:") || requested.pathname.includes("%3A")) {
+      console.log(`[Auth] Rewrote auth test URL ${requested.toString()} \u2192 ${preferredUrl}`);
+      return preferredUrl;
+    }
+  } catch {
+    return requestedUrl;
+  }
+  return requestedUrl;
+}
+function authIdentityFromDetection(detection) {
+  const login = parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
+  const user = firstStringValue(login, ["user", "login", "identifier"]);
+  const username = firstStringValue(login, ["username", "name"]);
+  const email = firstStringValue(login, ["email"]) ?? [user, username].find((value) => value?.includes("@"));
+  const id = firstStringValue(login, ["id", "userId", "user_id"]);
+  return { user, username, email, id };
 }
 function parseRequestBody(body, contentType) {
   if (contentType === "form") {
@@ -26063,6 +26109,10 @@ async function testAuthObject(api, authObjectId) {
       if (authHeaderHint) {
         diagnosticHints.push(authHeaderHint);
       }
+      const testUrlHint = detectBadAuthTestUrl(stages);
+      if (testUrlHint) {
+        diagnosticHints.push(testUrlHint);
+      }
       for (const s of stages) {
         if (s.status === "success" || !s.response) continue;
         const ct = s.response.contentType ?? "";
@@ -26153,6 +26203,20 @@ function detectHeaderTokenAuthFailure(stages) {
   return `DIAGNOSTIC: The "${loginStage.name ?? "login"}" step succeeded and returned a token-like response header "${tokenHeaderName}", but authorization still failed with HTTP ${failedAuthorization.response?.status}. The auth object is probably not extracting and embedding that header token.
 FIX with create_auth: recreate with authStyle='jwt', tokenLocation='header', tokenFieldPath='${tokenHeaderName}', headerName='Authorization', headerPrefix='Bearer '.
 FIX with create_auth_raw: use an embedder like [{ "type": "header", "name": "Authorization", "template": "Bearer {{ auth_object.stages.login.response.headers.${headerRef} | match: /(?:Bearer\\\\s+)?([^\\\\s,;]+)/ }}", "mergeStrategy": "replace" }]. Do NOT use body extractors such as "access_token" unless the login response body actually contains that field.`;
+}
+function detectBadAuthTestUrl(stages) {
+  const loginStage = stages.find((s) => s.stage === "authentication" && s.status === "success");
+  const validationStage = stages.find((s) => s.stage === "validation");
+  const authorizationStage = stages.find((s) => s.stage === "authorization" && s.status !== "success");
+  if (!loginStage || !authorizationStage?.response) return null;
+  const authStatus = authorizationStage.response.status;
+  const authBody = authorizationStage.response.bodyPreview ?? "";
+  const validationBody = validationStage?.response?.bodyPreview ?? "";
+  const validationStatus = validationStage?.response?.status;
+  const isForbidden = authStatus === 403 || /forbidden/i.test(authBody);
+  const sameAsValidation = validationStatus === authStatus && validationBody.slice(0, 120) === authBody.slice(0, 120);
+  if (!isForbidden || !sameAsValidation) return null;
+  return `DIAGNOSTIC: Login succeeded, but the auth test URL returned the same HTTP ${authStatus} Forbidden response before and after authentication. This usually means the chosen testUrl requires a different user/role or an unresolved route parameter, not that token extraction failed. Pick a protected endpoint that the configured test user can access. If the detected route contains an email placeholder such as /api/users/one/:email/photo, use the registered user's email in the URL, not a numeric placeholder like /api/users/one/1/photo.`;
 }
 function findLikelyTokenResponseHeader(headers) {
   const preferred = ["authorization", "x-access-token", "x-auth-token", "x-jwt-token"];
@@ -26409,7 +26473,7 @@ ${apiPreview}
   }
   const candidateTestUrls = /* @__PURE__ */ new Set();
   if (detection.protectedEndpointPath) {
-    const resolved = detection.protectedEndpointPath.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1");
+    const resolved = resolveProtectedEndpointPath(detection) ?? detection.protectedEndpointPath;
     candidateTestUrls.add(`${baseUrl}${resolved}`);
   }
   candidateTestUrls.add(`${baseUrl}/notifications.json`);
@@ -26795,7 +26859,7 @@ async function verifySeededCredentials(baseUrl, creds, detection) {
       if (hasSessionCookie || res.status === 302 || res.status === 201) {
         if (detection.protectedEndpointPath || detection.csrfRequired) {
           const verifyCookie = setCookies.map((c3) => c3.split(";")[0]?.trim()).filter(Boolean).join("; ") || sessionCookie || "";
-          const verifyUrl = detection.protectedEndpointPath ? `${baseUrl}${detection.protectedEndpointPath}` : `${baseUrl}/`;
+          const verifyUrl = detection.protectedEndpointPath ? `${baseUrl}${resolveProtectedEndpointPath(detection) ?? detection.protectedEndpointPath}` : `${baseUrl}/`;
           try {
             const verifyRes = await fetch(verifyUrl, {
               method: "GET",

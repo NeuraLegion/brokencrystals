@@ -276,10 +276,12 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
 
 ### Step 2: Discover test URL candidates using probe_url
 1. Probe several .json endpoints WITHOUT auth to find ones that return different content when authenticated:
-   - Endpoints returning 401/403 are ideal testUrls
-   - Endpoints returning 200 with "login_required" or "not_logged_in" in the body need reauthStrategy='body'
-   - Endpoints returning 200 with the same content regardless of auth are USELESS as testUrls — skip them
-   - Endpoints returning 404 are USELESS — skip them
+    - Endpoints returning 401/403 are ideal testUrls
+    - If a detected protected route has placeholders, fill them with the actual registered user values (e.g. use /api/users/one/test%40test.com/photo for /api/users/one/:email/photo). Do NOT replace :email with "1".
+    - Avoid endpoints that return the same 403 "Forbidden" before and after login; those usually require a different role/user and are bad auth-validation URLs.
+    - Endpoints returning 200 with "login_required" or "not_logged_in" in the body need reauthStrategy='body'
+    - Endpoints returning 200 with the same content regardless of auth are USELESS as testUrls — skip them
+    - Endpoints returning 404 are USELESS — skip them
 2. Note down exactly what the unauthenticated response looks like (status, body pattern) for each candidate
 
 ### Step 3: Create auth object and use test_auth_object to verify
@@ -313,14 +315,15 @@ The detected loginEndpoint may be an HTML page (e.g. /login) rather than the API
    - User account not activated/confirmed (check with run_command_in_docker)
    → Fix: Use run_command_on_host/run_command_in_docker to DIAGNOSE the root cause, then respond with INFRA_REPAIR if it requires a container restart or compose change.
 
-   **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
-   → Login appeared to succeed but the test request was still unauthenticated.
-   → **CHECK THE LOGIN RESPONSE** — look at the authentication stage's response body and Set-Cookie headers:
+    **If "authorization" fails** ("Status is in Set{401, 403}" or body pattern match):
+    → Login appeared to succeed but the test request was still unauthenticated.
+    → **CHECK THE LOGIN RESPONSE** — look at the authentication stage's response body and Set-Cookie headers:
       - If the login response body is HTML (not JSON), login did NOT actually work — fix the application first
       - If the login response has no new Set-Cookie headers, the session wasn't established
       - If this is JWT auth and the login response body has no token but the app sends an Authorization response header, recreate with \`tokenLocation="header"\` and \`tokenFieldPath="Authorization"\`
       - If the login response body contains error messages, credentials or format are wrong
-   → Fix: address the root cause found in the login response, try different testUrl, try reauthStrategy='body'.
+      - If validation and authorization both return the same 403 "Forbidden" body, the testUrl is probably not accessible to this user. Change testUrl to a protected endpoint for the registered user instead of changing token extraction.
+    → Fix: address the root cause found in the login response, try different testUrl, try reauthStrategy='body'.
 
 4. Delete the failed auth object and try a DIFFERENT approach. Change one thing at a time:
    - Different loginUrl (API vs HTML)
