@@ -29,7 +29,7 @@ export class CsrfGuard implements CanActivate {
           this.throwError();
         }
 
-        if (mode === FormMode.DOM_BASED_CSRF && !body.fingerprint) {
+        if (mode === FormMode.DOM_BASED_CSRF && body.fingerprint) {
           const fpHash = createHash('md5')
             .update(body.fingerprint)
             .digest('hex');
