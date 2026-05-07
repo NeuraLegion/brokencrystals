@@ -182,7 +182,8 @@ This allows scanning applications that are difficult to start fully (complex inf
 
 | Variable                 | Required | Description                                                                                                                                                                                              |
 | ------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AI_MODEL`               | No       | Model name or comma-separated escalation chain. Single model stays fixed; multiple models auto-escalate on retry (e.g. `gpt-4.1-mini,gpt-4.1,o3`). Default: `gpt-5.4-mini`                               |
+| `AI_MODEL`               | No       | Model name or comma-separated escalation chain. Single model stays fixed; multiple models auto-escalate on retry (e.g. `gpt-4.1-mini,gpt-4.1,o3` or `gpt-5.4-mini,gpt-5.3-codex`). Default: `gpt-5.4-mini` |
+| `AI_REASONING_EFFORT`    | No       | Reasoning effort for thinking models (`o*`, `gpt-5*`, `*codex*`, `gpt-oss*`): `low`, `medium`, `high`, or `none`. Default: `medium` for detected reasoning models; ignored for regular chat models        |
 | `GITHUB_INFERENCE_URL`   | No       | Inference API base URL. Supports OpenAI (`https://api.openai.com/v1`), GitHub Models (`https://models.github.ai/inference`), and Ollama (`http://localhost:11434`). Default: `https://api.openai.com/v1` |
 | `OPENAI_API_KEY`         | Varies   | API key for OpenAI. Takes priority over other token vars                                                                                                                                                 |
 | `GITHUB_INFERENCE_TOKEN` | Varies   | Inference token for GitHub Models. Fallback after `OPENAI_API_KEY`                                                                                                                                       |
@@ -253,6 +254,13 @@ export AI_MODEL="llama4:latest"
 
 ```bash
 export AI_MODEL="gpt-4.1-mini,gpt-4.1,o3"
+```
+
+**Reasoning / Codex models:**
+
+```bash
+export AI_MODEL="gpt-5.4-mini,gpt-5.3-codex"
+export AI_REASONING_EFFORT="high"
 ```
 
 ### System Requirements

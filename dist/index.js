@@ -11197,6 +11197,40 @@ function createInferenceClient(inferenceUrl, token, provider) {
 function sanitizeForJson(s) {
   return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }
+var loggedReasoningModels = /* @__PURE__ */ new Set();
+function isReasoningModel(model) {
+  const normalized = model.toLowerCase();
+  return /(?:^|[-_.])o[1-9](?:$|[-_.])/.test(normalized) || normalized.startsWith("o1") || normalized.startsWith("o3") || normalized.startsWith("o4") || normalized.startsWith("gpt-5") || normalized.includes("codex") || normalized.startsWith("gpt-oss");
+}
+function configuredReasoningEffort(model) {
+  if (!isReasoningModel(model)) return void 0;
+  const raw = (process.env.AI_REASONING_EFFORT ?? "medium").trim().toLowerCase();
+  if (raw === "" || raw === "none" || raw === "off" || raw === "false" || raw === "0") {
+    return void 0;
+  }
+  if (raw === "low" || raw === "medium" || raw === "high") {
+    return raw;
+  }
+  throw new Error(`Invalid AI_REASONING_EFFORT "${process.env.AI_REASONING_EFFORT}". Expected low, medium, high, or none.`);
+}
+function chatCompletionParams(model, messages, extra = {}) {
+  const params = {
+    model,
+    messages,
+    max_completion_tokens: 16384,
+    ...extra
+  };
+  const reasoningEffort = configuredReasoningEffort(model);
+  if (reasoningEffort) {
+    params.reasoning_effort = reasoningEffort;
+    const key = `${model}:${reasoningEffort}`;
+    if (!loggedReasoningModels.has(key)) {
+      loggedReasoningModels.add(key);
+      console.log(`[Inference] Reasoning model enabled: ${model} (effort=${reasoningEffort})`);
+    }
+  }
+  return params;
+}
 var ModelSelector = class {
   tiers;
   level = 0;
@@ -11287,12 +11321,9 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
   const conversation = [...messages];
   for (let turn = 0; turn < maxTurns; turn++) {
     const isLastTurn = turn === maxTurns - 1;
-    const response = await client.chat.completions.create({
-      model,
-      messages: conversation,
-      tools: !isLastTurn && tools.length > 0 ? tools : void 0,
-      max_completion_tokens: 16384
-    });
+    const response = await client.chat.completions.create(chatCompletionParams(model, conversation, {
+      tools: !isLastTurn && tools.length > 0 ? tools : void 0
+    }));
     const choice = response.choices[0];
     if (!choice) throw new Error("No response from model");
     const msg = choice.message;
@@ -11345,10 +11376,7 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
   );
 }
 async function chatWithSchema(client, messages, schemaName, schema, model = DEFAULT_MODEL) {
-  const response = await client.chat.completions.create({
-    model,
-    messages,
-    max_completion_tokens: 16384,
+  const response = await client.chat.completions.create(chatCompletionParams(model, messages, {
     response_format: {
       type: "json_schema",
       json_schema: {
@@ -11357,7 +11385,7 @@ async function chatWithSchema(client, messages, schemaName, schema, model = DEFA
         schema
       }
     }
-  });
+  }));
   const choice = response.choices[0];
   const content = choice?.message.content;
   if (!content) throw new Error("No content in structured response");

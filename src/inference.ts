@@ -1,8 +1,10 @@
 import OpenAI from "openai";
 import type {
   ChatCompletionMessageParam,
+  ChatCompletionCreateParamsNonStreaming,
   ChatCompletionTool,
 } from "openai/resources/chat/completions.mjs";
+import type { ReasoningEffort } from "openai/resources/shared.mjs";
 
 // ---------------------------------------------------------------------------
 // Inference provider detection
@@ -90,6 +92,55 @@ export type ToolHandler = (
   name: string,
   args: Record<string, unknown>,
 ) => Promise<string>;
+
+const loggedReasoningModels = new Set<string>();
+
+function isReasoningModel(model: string): boolean {
+  const normalized = model.toLowerCase();
+  return /(?:^|[-_.])o[1-9](?:$|[-_.])/.test(normalized) ||
+    normalized.startsWith("o1") ||
+    normalized.startsWith("o3") ||
+    normalized.startsWith("o4") ||
+    normalized.startsWith("gpt-5") ||
+    normalized.includes("codex") ||
+    normalized.startsWith("gpt-oss");
+}
+
+function configuredReasoningEffort(model: string): ReasoningEffort | undefined {
+  if (!isReasoningModel(model)) return undefined;
+
+  const raw = (process.env.AI_REASONING_EFFORT ?? "medium").trim().toLowerCase();
+  if (raw === "" || raw === "none" || raw === "off" || raw === "false" || raw === "0") {
+    return undefined;
+  }
+  if (raw === "low" || raw === "medium" || raw === "high") {
+    return raw;
+  }
+  throw new Error(`Invalid AI_REASONING_EFFORT "${process.env.AI_REASONING_EFFORT}". Expected low, medium, high, or none.`);
+}
+
+function chatCompletionParams(
+  model: string,
+  messages: ChatCompletionMessageParam[],
+  extra: Omit<ChatCompletionCreateParamsNonStreaming, "model" | "messages" | "max_completion_tokens"> = {},
+): ChatCompletionCreateParamsNonStreaming {
+  const params: ChatCompletionCreateParamsNonStreaming = {
+    model,
+    messages,
+    max_completion_tokens: 16384,
+    ...extra,
+  };
+  const reasoningEffort = configuredReasoningEffort(model);
+  if (reasoningEffort) {
+    params.reasoning_effort = reasoningEffort;
+    const key = `${model}:${reasoningEffort}`;
+    if (!loggedReasoningModels.has(key)) {
+      loggedReasoningModels.add(key);
+      console.log(`[Inference] Reasoning model enabled: ${model} (effort=${reasoningEffort})`);
+    }
+  }
+  return params;
+}
 
 // ---------------------------------------------------------------------------
 // Model selection — always escalates through the configured tier list.
@@ -223,12 +274,9 @@ export async function chatWithTools(
   for (let turn = 0; turn < maxTurns; turn++) {
     // On the last turn, strip tools to force a text response
     const isLastTurn = turn === maxTurns - 1;
-    const response = await client.chat.completions.create({
-      model,
-      messages: conversation,
+    const response = await client.chat.completions.create(chatCompletionParams(model, conversation, {
       tools: !isLastTurn && tools.length > 0 ? tools : undefined,
-      max_completion_tokens: 16384,
-    });
+    }));
 
     const choice = response.choices[0];
     if (!choice) throw new Error("No response from model");
@@ -301,10 +349,7 @@ export async function chatWithSchema<T>(
   schema: Record<string, unknown>,
   model = DEFAULT_MODEL,
 ): Promise<T> {
-  const response = await client.chat.completions.create({
-    model,
-    messages,
-    max_completion_tokens: 16384,
+  const response = await client.chat.completions.create(chatCompletionParams(model, messages, {
     response_format: {
       type: "json_schema",
       json_schema: {
@@ -313,7 +358,7 @@ export async function chatWithSchema<T>(
         schema,
       },
     },
-  });
+  }));
 
   const choice = response.choices[0];
   const content = choice?.message.content;
