@@ -532,6 +532,8 @@ async function generateHarness(
 
 const HARNESS_IMAGE = "bright-harness-local";
 const HARNESS_CONTAINER = "bright-harness-local";
+const MIN_HARNESS_HEALTH_RATIO = 0.75;
+const MIN_HARNESS_HEALTHY_ENDPOINTS = 3;
 
 interface HarnessStartResult {
   process: ChildProcess;
@@ -654,15 +656,22 @@ async function startHarness(
         );
       }
 
-      // If at least some endpoints work, proceed with those
-      if (healthyPaths.size > 0) {
+      const minimumHealthy = minimumHealthyHarnessEndpoints(totalEps);
+      if (healthyPaths.size >= minimumHealthy) {
+        if (probeErrors.length > 0) {
+          console.warn(
+            `[Harness] Proceeding with partial coverage: ${healthyPaths.size}/${totalEps} endpoints healthy`,
+          );
+        }
         console.log(
           `[Harness] ${healthyPaths.size}/${totalEps} endpoints healthy — proceeding`,
         );
         return { process: child, healthyPaths };
       }
 
-      // All endpoints failing — try to repair harness code
+      console.warn(
+        `[Harness] Coverage too low: ${healthyPaths.size}/${totalEps} endpoints healthy; need at least ${minimumHealthy}`,
+      );
       child.kill();
       if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
         await repairHarnessCode(
@@ -671,7 +680,9 @@ async function startHarness(
         // Re-read updated harness code for next Docker build
         harnessCode = readFileSync(config.harnessFile, "utf-8");
       }
-      continue;
+      throw new Error(
+        `Harness coverage too low after ${MAX_HARNESS_ATTEMPTS} attempts: ${healthyPaths.size}/${totalEps} endpoints healthy; need at least ${minimumHealthy}`,
+      );
     } catch (err) {
       child.kill();
       const errStr = toErrorMessage(err);
@@ -697,6 +708,19 @@ async function startHarness(
   }
 
   throw new Error("Harness failed to build or start after all repair attempts");
+}
+
+function minimumHealthyHarnessEndpoints(totalEndpoints: number): number {
+  if (totalEndpoints <= 0) {
+    return 1;
+  }
+  return Math.min(
+    totalEndpoints,
+    Math.max(
+      MIN_HARNESS_HEALTHY_ENDPOINTS,
+      Math.ceil(totalEndpoints * MIN_HARNESS_HEALTH_RATIO),
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------

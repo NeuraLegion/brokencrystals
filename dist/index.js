@@ -29657,6 +29657,8 @@ async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTo
 }
 var HARNESS_IMAGE = "bright-harness-local";
 var HARNESS_CONTAINER = "bright-harness-local";
+var MIN_HARNESS_HEALTH_RATIO = 0.75;
+var MIN_HARNESS_HEALTHY_ENDPOINTS = 3;
 async function startHarness(repoPath, llm, techStack, config, infraInfo, handleTool, modelSelector, targets) {
   const maxTier = Math.max(...targets.map((t) => t.tier ?? 2));
   console.log(`[Harness] All targets are tier \u2264${maxTier} \u2014 skipping full app build, using stock runtime image`);
@@ -29769,12 +29771,21 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
           `[Harness] ${probeErrors.length}/${totalEps} endpoints returned errors after probe`
         );
       }
-      if (healthyPaths.size > 0) {
+      const minimumHealthy = minimumHealthyHarnessEndpoints(totalEps);
+      if (healthyPaths.size >= minimumHealthy) {
+        if (probeErrors.length > 0) {
+          console.warn(
+            `[Harness] Proceeding with partial coverage: ${healthyPaths.size}/${totalEps} endpoints healthy`
+          );
+        }
         console.log(
           `[Harness] ${healthyPaths.size}/${totalEps} endpoints healthy \u2014 proceeding`
         );
         return { process: child, healthyPaths };
       }
+      console.warn(
+        `[Harness] Coverage too low: ${healthyPaths.size}/${totalEps} endpoints healthy; need at least ${minimumHealthy}`
+      );
       child.kill();
       if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
         await repairHarnessCode(
@@ -29788,7 +29799,9 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
         );
         harnessCode = readFileSync6(config.harnessFile, "utf-8");
       }
-      continue;
+      throw new Error(
+        `Harness coverage too low after ${MAX_HARNESS_ATTEMPTS} attempts: ${healthyPaths.size}/${totalEps} endpoints healthy; need at least ${minimumHealthy}`
+      );
     } catch (err) {
       child.kill();
       const errStr = toErrorMessage(err);
@@ -29821,6 +29834,18 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
     }
   }
   throw new Error("Harness failed to build or start after all repair attempts");
+}
+function minimumHealthyHarnessEndpoints(totalEndpoints) {
+  if (totalEndpoints <= 0) {
+    return 1;
+  }
+  return Math.min(
+    totalEndpoints,
+    Math.max(
+      MIN_HARNESS_HEALTHY_ENDPOINTS,
+      Math.ceil(totalEndpoints * MIN_HARNESS_HEALTH_RATIO)
+    )
+  );
 }
 function isHarnessCodeError(error) {
   const codeErrorPatterns = [
