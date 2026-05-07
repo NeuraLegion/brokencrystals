@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
 import type { TechStack, BrightApiContext } from "../types.js";
-import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions.mjs";
 import { chatWithTools, type ToolHandler } from "../inference.js";
 import {
   codebaseTools,
@@ -249,13 +249,25 @@ export async function detectAndConfigureAuth(
     }
   }
 
+  const verifiedTestUrl = await resolveVerifiedAuthTestUrl(
+    llm,
+    repoPath,
+    baseUrl,
+    detection,
+    model,
+    probeContext + (loginCheck.diagnostic ? `\n\n${loginCheck.diagnostic}` : ""),
+  );
+
   const MAX_AUTH_ATTEMPTS = 3;
   let authObjectId: string | undefined;
   const allAttemptLogs: string[] = [];
   // Include login sanity diagnostics in the probe context for the LLM
-  const fullProbeContext = loginCheck.diagnostic
+  let fullProbeContext = loginCheck.diagnostic
     ? probeContext + "\n\n" + loginCheck.diagnostic
     : probeContext;
+  fullProbeContext += verifiedTestUrl
+    ? `\n\n### Verified auth test URL\n${verifiedTestUrl.testUrl}\nEvidence: ${verifiedTestUrl.evidence}`
+    : "\n\n### Verified auth test URL\nNo verified test URL was found before auth configuration. You MUST use probe_url and test_auth_object feedback to choose a user-accessible protected endpoint; do not use guessed placeholder values.";
 
   let infraRepairHint: string | undefined;
 
@@ -280,6 +292,7 @@ export async function detectAndConfigureAuth(
       api,
       model,
       attemptContext,
+      verifiedTestUrl?.testUrl,
     );
 
     if (result.authId) {
@@ -883,6 +896,296 @@ async function postAuthObject(
   }
 }
 
+async function resolveVerifiedAuthTestUrl(
+  llm: OpenAI,
+  repoPath: string,
+  baseUrl: string,
+  detection: AuthDetection,
+  model?: string,
+  context?: string,
+): Promise<VerifiedAuthTestUrl | undefined> {
+  console.log("[Auth] Resolving verified auth test URL...");
+  let lastVerified: VerifiedAuthTestUrl | undefined;
+  const fallbackCandidate = resolveProtectedEndpointPath(detection)
+    ? `${baseUrl}${resolveProtectedEndpointPath(detection)}`
+    : null;
+
+  const verifyTool: ChatCompletionTool = {
+    type: "function",
+    function: {
+      name: "verify_auth_test_url",
+      description:
+        "Verify that a candidate protected URL is usable for Bright auth validation. This logs in with the detected credentials internally, applies the returned token/cookies, then compares unauthenticated vs authenticated responses.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: {
+            type: "string",
+            description: "Full candidate protected URL to verify",
+          },
+          method: {
+            type: "string",
+            enum: ["GET", "POST"],
+            description: "HTTP method for the protected URL. Default: GET",
+          },
+          reason: {
+            type: "string",
+            description: "Why this URL should be accessible to the configured test user",
+          },
+        },
+        required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  };
+
+  const messages: ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: `You resolve the exact protected URL Bright should use to validate authentication.
+
+Do NOT guess route parameter values. Inspect code and use live probes. If a route has placeholders like :email, :username, :id, {email}, or {userId}, determine the correct value from the route/controller/service code and the configured test credentials.
+
+You MUST call verify_auth_test_url for candidate URLs. A good URL:
+- returns 401/403 or another clearly unauthenticated response without login
+- after login with the configured credentials, returns non-401/403 and not the same Forbidden body
+- is accessible to the configured test user; avoid admin/role-specific endpoints unless the test user has that role
+
+If no URL can be verified, return verified=false. Do not return a guessed URL as verified.`,
+    },
+    {
+      role: "user",
+      content: `Base URL: ${baseUrl}
+Detected protected endpoint path: ${detection.protectedEndpointPath ?? "unknown"}
+Fallback candidate from local placeholder substitution (UNVERIFIED; inspect/verify before using): ${fallbackCandidate ?? "none"}
+Login endpoint: ${detection.loginMethod ?? "POST"} ${detection.loginEndpoint ?? "unknown"}
+Login content type: ${detection.loginContentType}
+Login body/credentials: ${detection.loginBody ?? "unknown"}
+Auth type: ${detection.authType}
+Token location: ${detection.tokenLocation}
+Token field/header: ${detection.tokenFieldPath ?? detection.headerName ?? "unknown"}
+Notes: ${detection.notes}
+
+${context ? `Existing probe context:\n${context}\n` : ""}
+
+Return JSON only:
+{
+  "verified": true/false,
+  "testUrl": "http://localhost:3000/verified/protected/url" or null,
+  "evidence": "short explanation with unauth/auth status codes",
+  "reason": "why no URL was verified, if verified=false"
+}`,
+    },
+  ];
+
+  const codeHandler = createToolHandler(repoPath);
+  const handler: ToolHandler = async (name, args) => {
+    if (name === "probe_url") return probeUrl(args);
+    if (name === "verify_auth_test_url") {
+      const result = await verifyAuthTestUrl(
+        baseUrl,
+        detection,
+        String(args.url ?? ""),
+        String(args.method ?? "GET"),
+      );
+      if (result.verified) {
+        lastVerified = { testUrl: result.url, evidence: result.evidence };
+      }
+      return JSON.stringify(result, null, 2);
+    }
+    return codeHandler(name, args);
+  };
+
+  const response = await chatWithTools(
+    llm,
+    messages,
+    [...codebaseTools, probeUrlTool, verifyTool],
+    handler,
+    model,
+    20,
+  );
+
+  try {
+    const parsed = JSON.parse(extractJson(response)) as {
+      verified?: boolean;
+      testUrl?: string | null;
+      evidence?: string;
+      reason?: string;
+    };
+    if (parsed.verified && parsed.testUrl) {
+      const verified = {
+        testUrl: parsed.testUrl,
+        evidence: parsed.evidence ?? "verified by resolver",
+      };
+      console.log(`[Auth] Verified auth test URL: ${verified.testUrl} — ${verified.evidence}`);
+      return verified;
+    }
+    if (lastVerified) {
+      console.log(`[Auth] Using last tool-verified auth test URL: ${lastVerified.testUrl} — ${lastVerified.evidence}`);
+      return lastVerified;
+    }
+    console.warn(`[Auth] Could not verify auth test URL: ${parsed.reason ?? response.slice(0, 200)}`);
+    return undefined;
+  } catch {
+    if (lastVerified) {
+      console.log(`[Auth] Using last tool-verified auth test URL: ${lastVerified.testUrl} — ${lastVerified.evidence}`);
+      return lastVerified;
+    }
+    console.warn(`[Auth] Could not parse auth test URL resolver response: ${response.slice(0, 200)}`);
+    return undefined;
+  }
+}
+
+async function verifyAuthTestUrl(
+  baseUrl: string,
+  detection: AuthDetection,
+  candidateUrl: string,
+  method: string,
+): Promise<{
+  verified: boolean;
+  url: string;
+  evidence: string;
+  unauthStatus?: number;
+  loginStatus?: number;
+  authStatus?: number;
+  reason?: string;
+}> {
+  if (!candidateUrl) {
+    return { verified: false, url: candidateUrl, evidence: "missing URL", reason: "missing URL" };
+  }
+  if (!detection.loginEndpoint) {
+    return { verified: false, url: candidateUrl, evidence: "missing login endpoint", reason: "missing login endpoint" };
+  }
+
+  const url = new URL(candidateUrl, baseUrl).toString();
+  const requestMethod = method.toUpperCase() === "POST" ? "POST" : "GET";
+  const preview = (body: string) => body.replace(/\s+/g, " ").slice(0, 160);
+
+  try {
+    const unauth = await fetch(url, {
+      method: requestMethod,
+      headers: { Accept: "application/json, text/plain, */*" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
+    });
+    const unauthBody = await unauth.text().catch(() => "");
+
+    const loginUrl = `${baseUrl}${detection.loginEndpoint}`;
+    const loginContentType = detection.loginContentType === "form"
+      ? "application/x-www-form-urlencoded"
+      : "application/json";
+    const login = await fetch(loginUrl, {
+      method: detection.loginMethod ?? "POST",
+      headers: {
+        Accept: "application/json, text/plain, */*",
+        "Content-Type": loginContentType,
+      },
+      body: normalizeBody(detection.loginBody ?? "{}", detection.loginContentType),
+      redirect: "manual",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
+    });
+    const loginBody = await login.text().catch(() => "");
+    if (login.status >= 400) {
+      return {
+        verified: false,
+        url,
+        unauthStatus: unauth.status,
+        loginStatus: login.status,
+        evidence: `unauth=${unauth.status}, login=${login.status}`,
+        reason: `login failed: ${preview(loginBody)}`,
+      };
+    }
+
+    const authHeaders: Record<string, string> = { Accept: "application/json, text/plain, */*" };
+    const tokenHeaderName = detection.tokenLocation === "header"
+      ? (detection.tokenFieldPath ?? detection.headerName ?? "Authorization")
+      : undefined;
+    const tokenHeader = tokenHeaderName
+      ? login.headers.get(tokenHeaderName) ?? login.headers.get(tokenHeaderName.toLowerCase())
+      : undefined;
+    if (tokenHeader) {
+      const requestHeaderName = detection.headerName ?? "Authorization";
+      authHeaders[requestHeaderName] = tokenHeader.match(/^\s*[A-Za-z][A-Za-z0-9_-]*\s+/)
+        ? tokenHeader
+        : `${detection.headerPrefix ?? (requestHeaderName.toLowerCase() === "authorization" ? "Bearer " : "")}${tokenHeader}`;
+    } else if (detection.tokenLocation === "body" && detection.tokenFieldPath) {
+      const token = extractTokenFromBody(loginBody, detection.tokenFieldPath);
+      if (token) {
+        const requestHeaderName = detection.headerName ?? "Authorization";
+        authHeaders[requestHeaderName] = `${detection.headerPrefix ?? (requestHeaderName.toLowerCase() === "authorization" ? "Bearer " : "")}${token}`;
+      }
+    }
+
+    const cookies = extractSetCookies(login.headers)
+      .map((cookie) => cookie.split(";")[0]?.trim())
+      .filter(Boolean);
+    if (cookies.length > 0) {
+      authHeaders.Cookie = cookies.join("; ");
+    }
+
+    if (!authHeaders.Authorization && !authHeaders.Cookie && !(detection.headerName && authHeaders[detection.headerName])) {
+      return {
+        verified: false,
+        url,
+        unauthStatus: unauth.status,
+        loginStatus: login.status,
+        evidence: `unauth=${unauth.status}, login=${login.status}, no token/cookie extracted`,
+        reason: "login succeeded but no token or cookie could be extracted",
+      };
+    }
+
+    const auth = await fetch(url, {
+      method: requestMethod,
+      headers: authHeaders,
+      redirect: "manual",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
+    });
+    const authBody = await auth.text().catch(() => "");
+    const sameForbidden = unauth.status === auth.status &&
+      (auth.status === 401 || auth.status === 403) &&
+      preview(unauthBody) === preview(authBody);
+    const verified = (unauth.status === 401 || unauth.status === 403) &&
+      auth.status < 400 &&
+      !sameForbidden;
+
+    return {
+      verified,
+      url,
+      unauthStatus: unauth.status,
+      loginStatus: login.status,
+      authStatus: auth.status,
+      evidence: `unauth=${unauth.status} (${preview(unauthBody)}), login=${login.status}, auth=${auth.status} (${preview(authBody)})`,
+      reason: verified ? undefined : "authenticated request did not become an accessible protected response",
+    };
+  } catch (err) {
+    return {
+      verified: false,
+      url,
+      evidence: `verification request failed: ${toErrorMessage(err)}`,
+      reason: toErrorMessage(err),
+    };
+  }
+}
+
+function extractTokenFromBody(body: string, tokenFieldPath: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    const value = tokenFieldPath.split(".").reduce<unknown>((current, key) => {
+      if (current && typeof current === "object" && key in current) {
+        return (current as Record<string, unknown>)[key];
+      }
+      return undefined;
+    }, parsed);
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+  } catch {
+    const lastSegment = tokenFieldPath.includes(".")
+      ? tokenFieldPath.split(".").pop()!
+      : tokenFieldPath;
+    const match = body.match(new RegExp(`"${lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*"([^"]+)"`));
+    return match?.[1];
+  }
+}
+
 async function createAuthViaMcp(
   llm: OpenAI,
   repoPath: string,
@@ -894,6 +1197,7 @@ async function createAuthViaMcp(
   api: BrightApiContext,
   model?: string,
   preProbeContext?: string,
+  verifiedTestUrl?: string,
 ): Promise<{ authId: string | undefined; attemptLog: string[]; infraRepairHint?: string }> {
   // Bright auth-object inspection tools (read-only, REST-backed)
   _probeCookieJar = {};
@@ -1240,7 +1544,7 @@ Example — OAuth2 PKCE flow:
           loginUrl: String(args.loginUrl),
           loginBody: String(args.loginBody),
           loginContentType: String(args.loginContentType),
-          testUrl: normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection),
+          testUrl: normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection, verifiedTestUrl),
           csrfUrl: args.csrfUrl ? String(args.csrfUrl) : undefined,
           csrfHeaderName: args.csrfHeaderName
             ? String(args.csrfHeaderName)
@@ -1329,7 +1633,7 @@ Example — OAuth2 PKCE flow:
       }
 
       const testMethod = args.testMethod ? String(args.testMethod) : "GET";
-      const testUrl = normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection);
+      const testUrl = normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection, verifiedTestUrl);
 
       // Follow redirects on test request — LLM decides based on context:
       // - true when reauthTriggers use body/dom patterns and app redirects to login
@@ -1461,7 +1765,7 @@ Example — OAuth2 PKCE flow:
 
   // Resolve protected endpoint path for test URL
   const resolvedPath = resolveProtectedEndpointPath(detection) ?? "/";
-  const testUrl = `${baseUrl}${resolvedPath}`;
+  const testUrl = verifiedTestUrl ?? `${baseUrl}${resolvedPath}`;
 
   const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext);
 
@@ -1630,13 +1934,13 @@ function normalizeAuthTestUrl(
   requestedUrl: string,
   baseUrl: string,
   detection: AuthDetection,
+  verifiedTestUrl?: string,
 ): string {
-  const resolvedPath = resolveProtectedEndpointPath(detection);
-  if (!resolvedPath || !detection.protectedEndpointPath) {
+  if (!verifiedTestUrl || !detection.protectedEndpointPath) {
     return requestedUrl;
   }
 
-  const preferredUrl = new URL(resolvedPath, baseUrl).toString();
+  const preferredUrl = new URL(verifiedTestUrl, baseUrl).toString();
   const legacyResolvedPath = detection.protectedEndpointPath
     .replace(/:(\w+)/g, "1")
     .replace(/\{(\w+)\}/g, "1");
@@ -1648,7 +1952,7 @@ function normalizeAuthTestUrl(
       requested.pathname.includes("/:") ||
       requested.pathname.includes("%3A")
     ) {
-      console.log(`[Auth] Rewrote auth test URL ${requested.toString()} → ${preferredUrl}`);
+      console.log(`[Auth] Rewrote unverified auth test URL ${requested.toString()} → verified URL ${preferredUrl}`);
       return preferredUrl;
     }
   } catch {
@@ -2633,6 +2937,11 @@ interface LoginSanityResult {
   functional: boolean;
   /** Diagnostic text to include in LLM context. */
   diagnostic: string;
+}
+
+interface VerifiedAuthTestUrl {
+  testUrl: string;
+  evidence: string;
 }
 
 async function preAuthLoginSanityCheck(
