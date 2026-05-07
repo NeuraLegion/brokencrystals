@@ -24,6 +24,83 @@ const CONTENT_TYPE_MAP: Record<string, string> = {
   xml: "application/xml",
 };
 
+const saveAuthHintTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "save_hint",
+    description:
+      "Save an auth-specific fact for subsequent auth attempts. Use this for exact token/header behavior, required login body fields, verified test URL behavior, or failed Bright auth patterns to avoid.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "Concise factual hint that will help later auth attempts avoid rediscovery or repeated mistakes.",
+        },
+      },
+      required: ["hint"],
+      additionalProperties: false,
+    },
+  },
+};
+
+const removeAuthHintTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "remove_hint",
+    description:
+      "Remove a saved auth hint that has proven wrong or misleading. Pass exact text or a distinctive substring.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "Exact hint text or distinctive substring to remove.",
+        },
+      },
+      required: ["hint"],
+      additionalProperties: false,
+    },
+  },
+};
+
+function compactAuthHint(hint: string, max = 500): string {
+  return hint.replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function addAuthHint(hints: string[] | undefined, hint: string): void {
+  if (!hints) return;
+  const compacted = compactAuthHint(hint, 900);
+  if (!compacted) return;
+  if (hints.some((existing) => existing === compacted || existing.includes(compacted) || compacted.includes(existing))) {
+    return;
+  }
+  hints.push(compacted);
+  console.log(`[Auth] Saved hint: ${compacted.slice(0, 200)}`);
+}
+
+function removeAuthHint(hints: string[] | undefined, hint: string): void {
+  if (!hints) return;
+  const needle = compactAuthHint(hint, 900);
+  const idx = hints.findIndex((existing) => existing.includes(needle) || needle.includes(existing));
+  if (idx !== -1) {
+    console.log(`[Auth] Removed hint: ${hints[idx].slice(0, 200)}`);
+    hints.splice(idx, 1);
+  }
+}
+
+function dedupeAuthHints(hints: string[]): string[] {
+  const deduped: string[] = [];
+  for (const hint of hints) {
+    addAuthHint(deduped, hint);
+  }
+  return deduped;
+}
+
+function formatAuthHints(hints: string[]): string {
+  return hints.map((hint, i) => `${i + 1}. ${hint}`).join("\n");
+}
+
 export interface AuthResult {
   /** Single auth object ID for the whole app, or undefined if no auth. */
   authObjectId: string | undefined;
@@ -46,6 +123,8 @@ export interface AuthResult {
    *  app returning HTML instead of JSON). The orchestrator should repair
    *  infrastructure, restart the app, and retry auth. */
   infraRepairHint?: string;
+  /** Auth-specific facts learned during detection/configuration and reused on retries. */
+  authHints?: string[];
 }
 
 export interface SeedCommand {
@@ -105,7 +184,10 @@ export async function detectAndConfigureAuth(
   api: BrightApiContext,
   model?: string,
   contextSummary?: string,
+  initialAuthHints: string[] = [],
 ): Promise<AuthResult> {
+  const authHints = dedupeAuthHints(initialAuthHints);
+
   // Phase 1: Detect auth from source code
   const detection = await detectAuthFromCode(
     llm,
@@ -118,7 +200,7 @@ export async function detectAndConfigureAuth(
 
   if (!detection.requiresAuth) {
     console.log("[Auth] No auth required");
-    return { authObjectId: undefined, hasAuth: false, authFailed: false };
+    return { authObjectId: undefined, hasAuth: false, authFailed: false, authHints };
   }
 
   console.log(
@@ -130,11 +212,16 @@ export async function detectAndConfigureAuth(
   console.log(
     `[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`,
   );
+  addAuthHint(
+    authHints,
+    `[auth-detection] ${detection.authType} auth uses ${detection.loginMethod ?? "POST"} ${detection.loginEndpoint ?? "unknown"} with ${detection.loginContentType} body ${detection.loginBody ?? "unknown"}. Token location=${detection.tokenLocation}, field/header=${detection.tokenFieldPath ?? detection.headerName ?? "unknown"}, request header=${detection.headerName ?? "Authorization"}, prefix=${JSON.stringify(detection.headerPrefix ?? "")}.`,
+  );
 
   // Phase 2: Try quick HTTP registration if the detection found a registration endpoint
   let registrationOk = await registerUser(baseUrl, detection);
   if (registrationOk) {
     updateLoginBodyFromRegisteredUser(detection);
+    addAuthHint(authHints, `[auth-registration] HTTP registration succeeded. Use registered test credentials in login body: ${detection.loginBody ?? "unknown"}.`);
   }
 
   // Phase 3: If no confirmed user, run the seed user sub-phase (dedicated LLM session)
@@ -148,6 +235,10 @@ export async function detectAndConfigureAuth(
       // app's actual login field (some apps call an email field "username").
       updateLoginBodyFromSeededUser(detection, seededCredentials);
       detection.notes = `${detection.notes}\nSeeded credentials: username=${seededCredentials.username}, email=${seededCredentials.email}, password=${seededCredentials.password}. Use the app's actual login identifier field; do not mutate the stored username/email.`;
+      addAuthHint(
+        authHints,
+        `[auth-seed] Seeded credentials are username=${seededCredentials.username}, email=${seededCredentials.email}, password=${seededCredentials.password}. Preserve the app's detected login field names in the login body: ${detection.loginBody ?? "unknown"}.`,
+      );
 
       // If detection didn't find a loginEndpoint, or confused setup/register
       // with login, try live endpoint discovery before verifying credentials.
@@ -232,6 +323,7 @@ export async function detectAndConfigureAuth(
           authFailed: true,
           registration: undefined,
           seedCommands,
+          authHints,
           infraRepairHint: repair.infraRepairHint ?? `Login endpoint is still returning 5xx after repair. Apply source-level fixes durably, rebuild the app image, restart the app, and re-run auth. Diagnostic:\n${loginCheck.diagnostic}`,
         };
       }
@@ -244,6 +336,7 @@ export async function detectAndConfigureAuth(
         authFailed: true,
         registration: undefined,
         seedCommands,
+        authHints,
         infraRepairHint: repair.infraRepairHint ?? `Login endpoint is returning 5xx and could not be repaired in the running app. Apply a source-level fix, rebuild/recreate the application containers, then retry auth. Diagnostic:\n${loginCheck.diagnostic}`,
       };
     }
@@ -257,6 +350,12 @@ export async function detectAndConfigureAuth(
     model,
     probeContext + (loginCheck.diagnostic ? `\n\n${loginCheck.diagnostic}` : ""),
   );
+  if (verifiedTestUrl) {
+    addAuthHint(
+      authHints,
+      `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl.testUrl}. Do not mutate or re-encode it into a different identity. Evidence: ${verifiedTestUrl.evidence}`,
+    );
+  }
 
   const MAX_AUTH_ATTEMPTS = 3;
   let authObjectId: string | undefined;
@@ -279,6 +378,11 @@ export async function detectAndConfigureAuth(
         + "Learn from these mistakes. Do NOT repeat the same configurations.\n\n"
         + allAttemptLogs.join("\n\n---\n\n");
     }
+    if (authHints.length > 0) {
+      attemptContext += "\n\n## Saved auth hints\n"
+        + "These are durable facts from scan preparation, auth detection, verified probes, and previous auth attempts. Treat them as higher priority than guesses.\n"
+        + formatAuthHints(authHints);
+    }
 
     console.log(`[Auth] Auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS}...`);
     const result = await createAuthViaMcp(
@@ -293,6 +397,7 @@ export async function detectAndConfigureAuth(
       model,
       attemptContext,
       verifiedTestUrl?.testUrl,
+      authHints,
     );
 
     if (result.authId) {
@@ -332,7 +437,7 @@ export async function detectAndConfigureAuth(
 
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands };
+    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands, authHints };
   }
 
   if (infraRepairHint) {
@@ -342,6 +447,7 @@ export async function detectAndConfigureAuth(
       hasAuth: false,
       authFailed: true,
       registration,
+      authHints,
       infraRepairHint,
     };
   }
@@ -352,6 +458,7 @@ export async function detectAndConfigureAuth(
     hasAuth: false,
     authFailed: true,
     registration,
+    authHints,
   };
 }
 
@@ -1198,6 +1305,7 @@ async function createAuthViaMcp(
   model?: string,
   preProbeContext?: string,
   verifiedTestUrl?: string,
+  authHints?: string[],
 ): Promise<{ authId: string | undefined; attemptLog: string[]; infraRepairHint?: string }> {
   // Bright auth-object inspection tools (read-only, REST-backed)
   _probeCookieJar = {};
@@ -1528,6 +1636,8 @@ Example — OAuth2 PKCE flow:
     },
     runCommandOnHostTool,
     runCommandInDockerTool,
+    saveAuthHintTool,
+    removeAuthHintTool,
   ];
 
   let lastCreateArgs: Record<string, unknown> = {};
@@ -1575,6 +1685,7 @@ Example — OAuth2 PKCE flow:
       );
       if (result.error) {
         attemptLog.push(`- create_auth(loginUrl=${args.loginUrl}, testUrl=${args.testUrl}, authStyle=${args.authStyle}, reauthStrategy=${args.reauthStrategy ?? "default"}) → ERROR: ${result.error}`);
+        addAuthHint(authHints, `[auth-create-error] create_auth failed for authStyle=${args.authStyle}, testUrl=${args.testUrl}: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }
       return JSON.stringify({ authObjectId: result.id });
@@ -1689,6 +1800,7 @@ Example — OAuth2 PKCE flow:
       const result = await postAuthObject(api, body);
       if (result.error) {
         attemptLog.push(`- create_auth_raw(steps=[${stepNames}], testUrl=${testUrl}) → ERROR: ${result.error}`);
+        addAuthHint(authHints, `[auth-create-error] create_auth_raw failed for steps=[${stepNames}], testUrl=${testUrl}: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }
       return JSON.stringify({ authObjectId: result.id });
@@ -1705,6 +1817,7 @@ Example — OAuth2 PKCE flow:
         : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
       if (!result.passed) {
         attemptLog.push(`- create_auth(${configSummary}) → test FAILED: ${result.summary ?? summary.slice(0, 300)}`);
+        addAuthHint(authHints, `[auth-test-failure] ${configSummary} failed: ${compactAuthHint(result.summary ?? summary.slice(0, 300), 700)}`);
       }
       return JSON.stringify(result);
     }
@@ -1729,6 +1842,20 @@ Example — OAuth2 PKCE flow:
       console.log(`[Auth] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
       return execInDocker(repoPath, container, cmd);
     }
+    if (name === "save_hint") {
+      const hint = String(args.hint ?? "").trim();
+      if (!hint) return "Error: hint cannot be empty";
+      console.log(`[Auth] save_hint: ${hint.slice(0, 200)}`);
+      addAuthHint(authHints, hint);
+      return `Auth hint saved: "${hint.slice(0, 100)}". It will be shown to subsequent auth attempts.`;
+    }
+    if (name === "remove_hint") {
+      const hint = String(args.hint ?? "").trim();
+      if (!hint) return "Error: hint cannot be empty";
+      console.log(`[Auth] remove_hint: ${hint.slice(0, 200)}`);
+      removeAuthHint(authHints, hint);
+      return "Auth hint removed if it matched an existing hint.";
+    }
     return `Unknown tool: ${name}`;
   };
 
@@ -1741,7 +1868,9 @@ Example — OAuth2 PKCE flow:
       name === "delete_auth_object" ||
       name === "probe_url" ||
       name === "run_command_on_host" ||
-      name === "run_command_in_docker"
+      name === "run_command_in_docker" ||
+      name === "save_hint" ||
+      name === "remove_hint"
     ) {
       return customHandler(name, args);
     }
@@ -1767,7 +1896,7 @@ Example — OAuth2 PKCE flow:
   const resolvedPath = resolveProtectedEndpointPath(detection) ?? "/";
   const testUrl = verifiedTestUrl ?? `${baseUrl}${resolvedPath}`;
 
-  const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext);
+  const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext, authHints ?? []);
 
   console.log("[Auth] Starting auth configuration with custom tools...");
   const response = await chatWithTools(
@@ -1804,6 +1933,7 @@ Example — OAuth2 PKCE flow:
     // Include full diagnostics (with DIAGNOSTIC hints) in the attempt log so
     // the next LLM attempt has specific guidance on what to fix.
     attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed:\n${verification.summary?.slice(0, 600)}`);
+    addAuthHint(authHints, `[auth-final-verification-failure] Auth object ${authId} failed deterministic verification: ${compactAuthHint(verification.summary ?? "unknown", 700)}`);
     // Clean up the failed auth object so it doesn't pollute the project
     await deleteAuthObject(api, authId);
     return { authId: undefined, attemptLog };

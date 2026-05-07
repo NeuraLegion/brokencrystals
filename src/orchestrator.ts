@@ -58,6 +58,21 @@ import { AppHealthMonitor } from "./app-health.js";
 const MAX_ITERATIONS = 5;
 const MAX_FIX_REPAIR_ATTEMPTS = 2;
 
+function addHint(hints: string[], hint: string): void {
+  const compact = hint.replace(/\s+/g, " ").trim().slice(0, 900);
+  if (!compact) return;
+  if (hints.some((existing) => existing === compact || existing.includes(compact) || compact.includes(existing))) {
+    return;
+  }
+  hints.push(compact);
+}
+
+function mergeHints(target: string[], source: string[] | undefined): void {
+  for (const hint of source ?? []) {
+    addHint(target, hint);
+  }
+}
+
 /**
  * Kill the current app process, restart, and re-register the test user.
  * Returns the new StartupResult. Throws on failure.
@@ -462,6 +477,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // Pause health monitor — scan-prep makes rapid requests that look like app failure
     await healthMonitor?.pause();
     let scanPrepReplayCommands: { container: string; command: string }[] = [];
+    const authHints: string[] = [];
     try {
       const prepResult = await prepareScanEnvironment(
         llm,
@@ -475,11 +491,17 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         if (prepResult.replayCommands?.length) {
           scanPrepReplayCommands = prepResult.replayCommands;
         }
+        addHint(authHints, `[scan-prep] ${prepResult.summary}`);
+        for (const change of prepResult.changes) {
+          addHint(authHints, `[scan-prep] ${change}`);
+        }
       } else if (prepResult.completed) {
         await progress.phaseDetail("scan_prep", "done", "No changes needed");
+        addHint(authHints, "[scan-prep] Completed: no rate-limit/security-control changes needed.");
       } else if (prepResult.failureKind === "login_5xx" && config.runMode === "dynamic") {
         console.warn(`[Engine] Scan prep found a crashing login endpoint — running durable source repair before auth`);
         await progress.phaseDetail("scan_prep", "login_repair", prepResult.summary);
+        addHint(authHints, `[scan-prep] ${prepResult.summary}`);
 
         const repairHints = [
           `[scan-prep-login-repair] ${prepResult.summary}`,
@@ -530,9 +552,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       } else {
         console.warn(`[Engine] Scan prep failed: ${prepResult.summary} — continuing anyway`);
         await progress.phaseDetail("scan_prep", "warning", prepResult.summary);
+        addHint(authHints, `[scan-prep-warning] ${prepResult.summary}`);
       }
     } catch (prepErr) {
       console.warn(`[Engine] Scan prep error: ${toErrorMessage(prepErr)} — continuing anyway`);
+      addHint(authHints, `[scan-prep-error] ${toErrorMessage(prepErr)}`);
     } finally {
       healthMonitor?.resume();
     }
@@ -553,6 +577,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         `- email: ${setupCredentials.email}\n` +
         `- password: ${setupCredentials.password}\n` +
         `This user should work for authentication. Skip user registration/seeding and go straight to auth configuration.`;
+      addHint(
+        authHints,
+        `[setup-credentials] First-run setup created user username=${setupCredentials.username}, email=${setupCredentials.email}, password=${setupCredentials.password}. Prefer these credentials for auth.`,
+      );
     }
 
     const authResult = await detectAndConfigureAuth(
@@ -565,7 +593,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       config,
       config.modelSelector.current(),
       preAuthContext,
+      authHints,
     );
+    mergeHints(authHints, authResult.authHints);
     authRegistration = authResult.registration;
     if (authResult.authObjectId) {
       await progress.phaseDetail("auth", "auth_done", "Auth configured");
@@ -615,6 +645,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           );
           if (rateLimitRepair.completed) {
             await progress.phaseDetail("auth", "rate_limit_repair", rateLimitRepair.summary);
+            addHint(authHints, `[auth-rate-limit-repair] ${rateLimitRepair.summary}`);
             if (rateLimitRepair.replayCommands?.length) {
               scanPrepReplayCommands = [
                 ...scanPrepReplayCommands,
@@ -624,6 +655,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           } else {
             console.warn(`[Engine] Targeted rate-limit repair did not complete: ${rateLimitRepair.summary}`);
             await progress.phaseDetail("auth", "rate_limit_repair_failed", rateLimitRepair.summary);
+            addHint(authHints, `[auth-rate-limit-repair-failed] ${rateLimitRepair.summary}`);
           }
 
           // Source-code limiter patches may already have rebuilt/recreated the
@@ -647,7 +679,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             config,
             config.modelSelector.current(),
             preAuthContext,
+            authHints,
           );
+          mergeHints(authHints, retryAuthResult.authHints);
 
           Object.assign(authResult, retryAuthResult);
           authRegistration = authResult.registration;
@@ -730,6 +764,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
               `- email: ${setupCredentials.email}\n` +
               `- password: ${setupCredentials.password}\n` +
               `This user should work for authentication. Skip user registration/seeding and go straight to auth configuration.`;
+            addHint(
+              authHints,
+              `[setup-credentials] First-run setup created user username=${setupCredentials.username}, email=${setupCredentials.email}, password=${setupCredentials.password}. Prefer these credentials for auth.`,
+            );
           }
         } catch (setupErr) {
           console.warn(`[Engine] Setup re-run after bounce-back failed: ${toErrorMessage(setupErr)}`);
@@ -745,7 +783,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           config,
           config.modelSelector.current(),
           preAuthContext,
+          authHints,
         );
+        mergeHints(authHints, retryAuthResult.authHints);
 
         // Overwrite authResult so the loop re-checks infraRepairHint
         Object.assign(authResult, retryAuthResult);

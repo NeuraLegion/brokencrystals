@@ -146,6 +146,7 @@ export function configureAuthPrompt(
   detection: AuthDetectionInput,
   userConfirmed: boolean,
   preProbeContext?: string,
+  authHints: string[] = [],
 ): ChatCompletionMessageParam[] {
   const authStyle = detection.authType === "session" ? "session"
     : detection.authType === "jwt" ? "jwt"
@@ -181,6 +182,9 @@ You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this. The CSRF 
 ## CSRF Note
 This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You can use \`create_auth\` with a csrfUrl parameter, or \`create_auth_raw\` with a pre-step that fetches the token.`;
   }
+  const hintsBlock = authHints.length > 0
+    ? `\n## Saved auth hints\nThese facts were learned during scan preparation, auth detection, verified probes, or previous auth attempts. Trust them over guesses and do not rediscover or contradict them unless you have concrete evidence.\n${authHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
+    : "";
 
   return [
     {
@@ -216,6 +220,9 @@ ${csrfGuidance}
   - Any flow where you need to extract values between steps using NexTemplate
 - **test_auth_object** — Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** — Delete a broken auth object to recreate with different settings.
+- **save_hint** — Save a concise auth fact for later attempts. Use this whenever you learn something non-obvious from code/probes/test feedback, such as exact token location, required header prefix, required login body fields, verified test URL behavior, or a failed config pattern to avoid.
+- **remove_hint** — Remove a saved auth hint that is wrong or misleading.
+${hintsBlock}
 
 ## When to use create_auth vs create_auth_raw
 - **create_auth**: Standard flows — single login POST that returns a cookie or JWT. CSRF must come from a **JSON endpoint** (e.g. GET /csrf returns {"csrf":"token"}). Works for: Rails (API mode), Express, most SPA backends, Grafana, Gitea, etc.

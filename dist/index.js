@@ -24268,7 +24268,7 @@ Key rules:
     }
   ];
 }
-function configureAuthPrompt(baseUrl, testUrl, detection, userConfirmed, preProbeContext) {
+function configureAuthPrompt(baseUrl, testUrl, detection, userConfirmed, preProbeContext, authHints = []) {
   const authStyle = detection.authType === "session" ? "session" : detection.authType === "jwt" ? "jwt" : detection.authType === "api_key" ? "api_key" : "session";
   const credentialNote = userConfirmed ? `
 A test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.` : `
@@ -24297,6 +24297,11 @@ You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this. The CSRF 
 ## CSRF Note
 This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You can use \`create_auth\` with a csrfUrl parameter, or \`create_auth_raw\` with a pre-step that fetches the token.`;
   }
+  const hintsBlock = authHints.length > 0 ? `
+## Saved auth hints
+These facts were learned during scan preparation, auth detection, verified probes, or previous auth attempts. Trust them over guesses and do not rediscover or contradict them unless you have concrete evidence.
+${authHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
+` : "";
   return [
     {
       role: "system",
@@ -24331,6 +24336,9 @@ ${csrfGuidance}
   - Any flow where you need to extract values between steps using NexTemplate
 - **test_auth_object** \u2014 Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** \u2014 Delete a broken auth object to recreate with different settings.
+- **save_hint** \u2014 Save a concise auth fact for later attempts. Use this whenever you learn something non-obvious from code/probes/test feedback, such as exact token location, required header prefix, required login body fields, verified test URL behavior, or a failed config pattern to avoid.
+- **remove_hint** \u2014 Remove a saved auth hint that is wrong or misleading.
+${hintsBlock}
 
 ## When to use create_auth vs create_auth_raw
 - **create_auth**: Standard flows \u2014 single login POST that returns a cookie or JWT. CSRF must come from a **JSON endpoint** (e.g. GET /csrf returns {"csrf":"token"}). Works for: Rails (API mode), Express, most SPA backends, Grafana, Gitea, etc.
@@ -24664,7 +24672,76 @@ var CONTENT_TYPE_MAP = {
   form: "application/x-www-form-urlencoded",
   xml: "application/xml"
 };
-async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseUrl, repeaterId, api, model, contextSummary) {
+var saveAuthHintTool = {
+  type: "function",
+  function: {
+    name: "save_hint",
+    description: "Save an auth-specific fact for subsequent auth attempts. Use this for exact token/header behavior, required login body fields, verified test URL behavior, or failed Bright auth patterns to avoid.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "Concise factual hint that will help later auth attempts avoid rediscovery or repeated mistakes."
+        }
+      },
+      required: ["hint"],
+      additionalProperties: false
+    }
+  }
+};
+var removeAuthHintTool = {
+  type: "function",
+  function: {
+    name: "remove_hint",
+    description: "Remove a saved auth hint that has proven wrong or misleading. Pass exact text or a distinctive substring.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "Exact hint text or distinctive substring to remove."
+        }
+      },
+      required: ["hint"],
+      additionalProperties: false
+    }
+  }
+};
+function compactAuthHint(hint, max = 500) {
+  return hint.replace(/\s+/g, " ").trim().slice(0, max);
+}
+function addAuthHint(hints, hint) {
+  if (!hints) return;
+  const compacted = compactAuthHint(hint, 900);
+  if (!compacted) return;
+  if (hints.some((existing) => existing === compacted || existing.includes(compacted) || compacted.includes(existing))) {
+    return;
+  }
+  hints.push(compacted);
+  console.log(`[Auth] Saved hint: ${compacted.slice(0, 200)}`);
+}
+function removeAuthHint(hints, hint) {
+  if (!hints) return;
+  const needle = compactAuthHint(hint, 900);
+  const idx = hints.findIndex((existing) => existing.includes(needle) || needle.includes(existing));
+  if (idx !== -1) {
+    console.log(`[Auth] Removed hint: ${hints[idx].slice(0, 200)}`);
+    hints.splice(idx, 1);
+  }
+}
+function dedupeAuthHints(hints) {
+  const deduped = [];
+  for (const hint of hints) {
+    addAuthHint(deduped, hint);
+  }
+  return deduped;
+}
+function formatAuthHints(hints) {
+  return hints.map((hint, i) => `${i + 1}. ${hint}`).join("\n");
+}
+async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseUrl, repeaterId, api, model, contextSummary, initialAuthHints = []) {
+  const authHints = dedupeAuthHints(initialAuthHints);
   const detection = await detectAuthFromCode(
     llm,
     repoPath,
@@ -24675,7 +24752,7 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
   );
   if (!detection.requiresAuth) {
     console.log("[Auth] No auth required");
-    return { authObjectId: void 0, hasAuth: false, authFailed: false };
+    return { authObjectId: void 0, hasAuth: false, authFailed: false, authHints };
   }
   console.log(
     `[Auth] Detected auth: ${detection.authType} \u2014 ${detection.notes}`
@@ -24686,9 +24763,14 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
   console.log(
     `[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`
   );
+  addAuthHint(
+    authHints,
+    `[auth-detection] ${detection.authType} auth uses ${detection.loginMethod ?? "POST"} ${detection.loginEndpoint ?? "unknown"} with ${detection.loginContentType} body ${detection.loginBody ?? "unknown"}. Token location=${detection.tokenLocation}, field/header=${detection.tokenFieldPath ?? detection.headerName ?? "unknown"}, request header=${detection.headerName ?? "Authorization"}, prefix=${JSON.stringify(detection.headerPrefix ?? "")}.`
+  );
   let registrationOk = await registerUser(baseUrl, detection);
   if (registrationOk) {
     updateLoginBodyFromRegisteredUser(detection);
+    addAuthHint(authHints, `[auth-registration] HTTP registration succeeded. Use registered test credentials in login body: ${detection.loginBody ?? "unknown"}.`);
   }
   let seededCredentials;
   if (!registrationOk) {
@@ -24698,6 +24780,10 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
       updateLoginBodyFromSeededUser(detection, seededCredentials);
       detection.notes = `${detection.notes}
 Seeded credentials: username=${seededCredentials.username}, email=${seededCredentials.email}, password=${seededCredentials.password}. Use the app's actual login identifier field; do not mutate the stored username/email.`;
+      addAuthHint(
+        authHints,
+        `[auth-seed] Seeded credentials are username=${seededCredentials.username}, email=${seededCredentials.email}, password=${seededCredentials.password}. Preserve the app's detected login field names in the login body: ${detection.loginBody ?? "unknown"}.`
+      );
       if (!detection.loginEndpoint || isSetupLikeEndpoint(detection.loginEndpoint)) {
         const discovered = await discoverLoginEndpoint(baseUrl, detection.loginEndpoint ?? void 0);
         if (discovered) {
@@ -24764,6 +24850,7 @@ Seeded credentials: username=${seededCredentials.username}, email=${seededCreden
           authFailed: true,
           registration: void 0,
           seedCommands,
+          authHints,
           infraRepairHint: repair.infraRepairHint ?? `Login endpoint is still returning 5xx after repair. Apply source-level fixes durably, rebuild the app image, restart the app, and re-run auth. Diagnostic:
 ${loginCheck.diagnostic}`
         };
@@ -24777,6 +24864,7 @@ ${loginCheck.diagnostic}`
         authFailed: true,
         registration: void 0,
         seedCommands,
+        authHints,
         infraRepairHint: repair.infraRepairHint ?? `Login endpoint is returning 5xx and could not be repaired in the running app. Apply a source-level fix, rebuild/recreate the application containers, then retry auth. Diagnostic:
 ${loginCheck.diagnostic}`
       };
@@ -24792,6 +24880,12 @@ ${loginCheck.diagnostic}`
 
 ${loginCheck.diagnostic}` : "")
   );
+  if (verifiedTestUrl) {
+    addAuthHint(
+      authHints,
+      `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl.testUrl}. Do not mutate or re-encode it into a different identity. Evidence: ${verifiedTestUrl.evidence}`
+    );
+  }
   const MAX_AUTH_ATTEMPTS = 3;
   let authObjectId;
   const allAttemptLogs = [];
@@ -24807,6 +24901,9 @@ Evidence: ${verifiedTestUrl.evidence}` : "\n\n### Verified auth test URL\nNo ver
     if (allAttemptLogs.length > 0) {
       attemptContext += "\n\n## Previous attempt failures\nLearn from these mistakes. Do NOT repeat the same configurations.\n\n" + allAttemptLogs.join("\n\n---\n\n");
     }
+    if (authHints.length > 0) {
+      attemptContext += "\n\n## Saved auth hints\nThese are durable facts from scan preparation, auth detection, verified probes, and previous auth attempts. Treat them as higher priority than guesses.\n" + formatAuthHints(authHints);
+    }
     console.log(`[Auth] Auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS}...`);
     const result = await createAuthViaMcp(
       llm,
@@ -24819,7 +24916,8 @@ Evidence: ${verifiedTestUrl.evidence}` : "\n\n### Verified auth test URL\nNo ver
       api,
       model,
       attemptContext,
-      verifiedTestUrl?.testUrl
+      verifiedTestUrl?.testUrl,
+      authHints
     );
     if (result.authId) {
       authObjectId = result.authId;
@@ -24847,7 +24945,7 @@ ${result.attemptLog.join("\n")}`);
   } : void 0;
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands };
+    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands, authHints };
   }
   if (infraRepairHint) {
     console.error(`[Auth] Failed \u2014 infrastructure repair needed: ${infraRepairHint.slice(0, 200)}`);
@@ -24856,6 +24954,7 @@ ${result.attemptLog.join("\n")}`);
       hasAuth: false,
       authFailed: true,
       registration,
+      authHints,
       infraRepairHint
     };
   }
@@ -24864,7 +24963,8 @@ ${result.attemptLog.join("\n")}`);
     authObjectId: void 0,
     hasAuth: false,
     authFailed: true,
-    registration
+    registration,
+    authHints
   };
 }
 async function detectAuthFromCode(llm, repoPath, techStack, baseUrl, model, contextSummary) {
@@ -25474,7 +25574,7 @@ function extractTokenFromBody(body, tokenFieldPath) {
     return match2?.[1];
   }
 }
-async function createAuthViaMcp(llm, repoPath, detection, registrationOk, projectId, baseUrl, repeaterId, api, model, preProbeContext, verifiedTestUrl) {
+async function createAuthViaMcp(llm, repoPath, detection, registrationOk, projectId, baseUrl, repeaterId, api, model, preProbeContext, verifiedTestUrl, authHints) {
   _probeCookieJar = {};
   const inspectionTools = [
     {
@@ -25773,7 +25873,9 @@ Example \u2014 OAuth2 PKCE flow:
       }
     },
     runCommandOnHostTool,
-    runCommandInDockerTool
+    runCommandInDockerTool,
+    saveAuthHintTool,
+    removeAuthHintTool
   ];
   let lastCreateArgs = {};
   const customHandler = async (name, args) => {
@@ -25805,6 +25907,7 @@ Example \u2014 OAuth2 PKCE flow:
       );
       if (result.error) {
         attemptLog.push(`- create_auth(loginUrl=${args.loginUrl}, testUrl=${args.testUrl}, authStyle=${args.authStyle}, reauthStrategy=${args.reauthStrategy ?? "default"}) \u2192 ERROR: ${result.error}`);
+        addAuthHint(authHints, `[auth-create-error] create_auth failed for authStyle=${args.authStyle}, testUrl=${args.testUrl}: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }
       return JSON.stringify({ authObjectId: result.id });
@@ -25901,6 +26004,7 @@ Example \u2014 OAuth2 PKCE flow:
       const result = await postAuthObject(api, body);
       if (result.error) {
         attemptLog.push(`- create_auth_raw(steps=[${stepNames}], testUrl=${testUrl2}) \u2192 ERROR: ${result.error}`);
+        addAuthHint(authHints, `[auth-create-error] create_auth_raw failed for steps=[${stepNames}], testUrl=${testUrl2}: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }
       return JSON.stringify({ authObjectId: result.id });
@@ -25914,6 +26018,7 @@ Example \u2014 OAuth2 PKCE flow:
       const configSummary = lastCreateArgs.authStyle === "raw" ? `raw multistep, testUrl=${lastCreateArgs.testUrl}` : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
       if (!result.passed) {
         attemptLog.push(`- create_auth(${configSummary}) \u2192 test FAILED: ${result.summary ?? summary.slice(0, 300)}`);
+        addAuthHint(authHints, `[auth-test-failure] ${configSummary} failed: ${compactAuthHint(result.summary ?? summary.slice(0, 300), 700)}`);
       }
       return JSON.stringify(result);
     }
@@ -25938,11 +26043,25 @@ Example \u2014 OAuth2 PKCE flow:
       console.log(`[Auth] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
       return execInDocker(repoPath, container, cmd);
     }
+    if (name === "save_hint") {
+      const hint = String(args.hint ?? "").trim();
+      if (!hint) return "Error: hint cannot be empty";
+      console.log(`[Auth] save_hint: ${hint.slice(0, 200)}`);
+      addAuthHint(authHints, hint);
+      return `Auth hint saved: "${hint.slice(0, 100)}". It will be shown to subsequent auth attempts.`;
+    }
+    if (name === "remove_hint") {
+      const hint = String(args.hint ?? "").trim();
+      if (!hint) return "Error: hint cannot be empty";
+      console.log(`[Auth] remove_hint: ${hint.slice(0, 200)}`);
+      removeAuthHint(authHints, hint);
+      return "Auth hint removed if it matched an existing hint.";
+    }
     return `Unknown tool: ${name}`;
   };
   const webHandler = createWebSearchHandler(repoPath);
   const combinedHandler = async (name, args) => {
-    if (name === "create_auth" || name === "create_auth_raw" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command_on_host" || name === "run_command_in_docker") {
+    if (name === "create_auth" || name === "create_auth_raw" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command_on_host" || name === "run_command_in_docker" || name === "save_hint" || name === "remove_hint") {
       return customHandler(name, args);
     }
     if (name === "search_web" || name === "fetch_url") {
@@ -25957,7 +26076,7 @@ Example \u2014 OAuth2 PKCE flow:
   const allTools = [...codebaseTools, ...inspectionTools, ...customTools, ...webSearchTools];
   const resolvedPath = resolveProtectedEndpointPath(detection) ?? "/";
   const testUrl = verifiedTestUrl ?? `${baseUrl}${resolvedPath}`;
-  const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext);
+  const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext, authHints ?? []);
   console.log("[Auth] Starting auth configuration with custom tools...");
   const response = await chatWithTools(
     llm,
@@ -25984,6 +26103,7 @@ Example \u2014 OAuth2 PKCE flow:
     console.error(`[Auth] Verification FAILED for ${authId}: ${verification.summary?.slice(0, 300)}`);
     attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed:
 ${verification.summary?.slice(0, 600)}`);
+    addAuthHint(authHints, `[auth-final-verification-failure] Auth object ${authId} failed deterministic verification: ${compactAuthHint(verification.summary ?? "unknown", 700)}`);
     await deleteAuthObject(api, authId);
     return { authId: void 0, attemptLog };
   }
@@ -30841,6 +30961,19 @@ var AppHealthMonitor = class {
 // src/orchestrator.ts
 var MAX_ITERATIONS = 5;
 var MAX_FIX_REPAIR_ATTEMPTS = 2;
+function addHint(hints, hint) {
+  const compact = hint.replace(/\s+/g, " ").trim().slice(0, 900);
+  if (!compact) return;
+  if (hints.some((existing) => existing === compact || existing.includes(compact) || compact.includes(existing))) {
+    return;
+  }
+  hints.push(compact);
+}
+function mergeHints(target, source) {
+  for (const hint of source ?? []) {
+    addHint(target, hint);
+  }
+}
 async function restartApp(current, llm, repoPath, techStack, startupConfig, modelSelector, registration, recoveryHints, monitor, seedCommands) {
   await monitor?.pause();
   try {
@@ -31147,6 +31280,7 @@ async function runOrchestrator(ctx) {
     await progress.phaseStart("scan_prep", "Preparing application for security scanning");
     await healthMonitor?.pause();
     let scanPrepReplayCommands = [];
+    const authHints = [];
     try {
       const prepResult = await prepareScanEnvironment(
         llm,
@@ -31160,11 +31294,17 @@ async function runOrchestrator(ctx) {
         if (prepResult.replayCommands?.length) {
           scanPrepReplayCommands = prepResult.replayCommands;
         }
+        addHint(authHints, `[scan-prep] ${prepResult.summary}`);
+        for (const change of prepResult.changes) {
+          addHint(authHints, `[scan-prep] ${change}`);
+        }
       } else if (prepResult.completed) {
         await progress.phaseDetail("scan_prep", "done", "No changes needed");
+        addHint(authHints, "[scan-prep] Completed: no rate-limit/security-control changes needed.");
       } else if (prepResult.failureKind === "login_5xx" && config.runMode === "dynamic") {
         console.warn(`[Engine] Scan prep found a crashing login endpoint \u2014 running durable source repair before auth`);
         await progress.phaseDetail("scan_prep", "login_repair", prepResult.summary);
+        addHint(authHints, `[scan-prep] ${prepResult.summary}`);
         const repairHints = [
           `[scan-prep-login-repair] ${prepResult.summary}`,
           "[scan-prep-login-repair] The login endpoint returns only HTTP 5xx during scanner-prep verification. Diagnose the application error, apply durable source/config changes in the repository, rebuild/recreate the app containers, and verify login no longer returns 5xx before auth configuration."
@@ -31210,9 +31350,11 @@ async function runOrchestrator(ctx) {
       } else {
         console.warn(`[Engine] Scan prep failed: ${prepResult.summary} \u2014 continuing anyway`);
         await progress.phaseDetail("scan_prep", "warning", prepResult.summary);
+        addHint(authHints, `[scan-prep-warning] ${prepResult.summary}`);
       }
     } catch (prepErr) {
       console.warn(`[Engine] Scan prep error: ${toErrorMessage(prepErr)} \u2014 continuing anyway`);
+      addHint(authHints, `[scan-prep-error] ${toErrorMessage(prepErr)}`);
     } finally {
       healthMonitor?.resume();
     }
@@ -31227,6 +31369,10 @@ IMPORTANT: A test user was already created during first-run setup:
 - email: ${setupCredentials.email}
 - password: ${setupCredentials.password}
 This user should work for authentication. Skip user registration/seeding and go straight to auth configuration.`;
+      addHint(
+        authHints,
+        `[setup-credentials] First-run setup created user username=${setupCredentials.username}, email=${setupCredentials.email}, password=${setupCredentials.password}. Prefer these credentials for auth.`
+      );
     }
     const authResult = await detectAndConfigureAuth(
       llm,
@@ -31237,8 +31383,10 @@ This user should work for authentication. Skip user registration/seeding and go 
       repeater.repeaterId,
       config,
       config.modelSelector.current(),
-      preAuthContext
+      preAuthContext,
+      authHints
     );
+    mergeHints(authHints, authResult.authHints);
     authRegistration = authResult.registration;
     if (authResult.authObjectId) {
       await progress.phaseDetail("auth", "auth_done", "Auth configured");
@@ -31278,6 +31426,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           );
           if (rateLimitRepair.completed) {
             await progress.phaseDetail("auth", "rate_limit_repair", rateLimitRepair.summary);
+            addHint(authHints, `[auth-rate-limit-repair] ${rateLimitRepair.summary}`);
             if (rateLimitRepair.replayCommands?.length) {
               scanPrepReplayCommands = [
                 ...scanPrepReplayCommands,
@@ -31287,6 +31436,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           } else {
             console.warn(`[Engine] Targeted rate-limit repair did not complete: ${rateLimitRepair.summary}`);
             await progress.phaseDetail("auth", "rate_limit_repair_failed", rateLimitRepair.summary);
+            addHint(authHints, `[auth-rate-limit-repair-failed] ${rateLimitRepair.summary}`);
           }
           if (startupConfig.docker) {
             const qr = await quickRestartCompose(repoPath, startupConfig, 9e4);
@@ -31303,8 +31453,10 @@ This user should work for authentication. Skip user registration/seeding and go 
             repeater.repeaterId,
             config,
             config.modelSelector.current(),
-            preAuthContext
+            preAuthContext,
+            authHints
           );
+          mergeHints(authHints, retryAuthResult2.authHints);
           Object.assign(authResult, retryAuthResult2);
           authRegistration = authResult.registration;
           if (retryAuthResult2.authObjectId) {
@@ -31371,6 +31523,10 @@ IMPORTANT: A test user was already created during first-run setup:
 - email: ${setupCredentials.email}
 - password: ${setupCredentials.password}
 This user should work for authentication. Skip user registration/seeding and go straight to auth configuration.`;
+            addHint(
+              authHints,
+              `[setup-credentials] First-run setup created user username=${setupCredentials.username}, email=${setupCredentials.email}, password=${setupCredentials.password}. Prefer these credentials for auth.`
+            );
           }
         } catch (setupErr) {
           console.warn(`[Engine] Setup re-run after bounce-back failed: ${toErrorMessage(setupErr)}`);
@@ -31384,8 +31540,10 @@ This user should work for authentication. Skip user registration/seeding and go 
           repeater.repeaterId,
           config,
           config.modelSelector.current(),
-          preAuthContext
+          preAuthContext,
+          authHints
         );
+        mergeHints(authHints, retryAuthResult.authHints);
         Object.assign(authResult, retryAuthResult);
         authRegistration = authResult.registration;
         if (retryAuthResult.authObjectId) {
