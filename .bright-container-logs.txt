@@ -1,0 +1,37 @@
+=== brokencrystals-db-1 ===
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+=== brokencrystals-grpcwebproxy-1 ===
+time="2026-05-07T16:17:21Z" level=info msg="[core] parsed scheme: \"\"" system=system
+time="2026-05-07T16:17:21Z" level=info msg="[core] scheme \"\" not registered, fallback to default scheme" system=system
+time="2026-05-07T16:17:21Z" level=info msg="[core] ccResolverWrapper: sending update to cc: {[{nodejs:5000  <nil> 0 <nil>}] <nil> <nil>}" system=system
+time="2026-05-07T16:17:21Z" level=info msg="[core] ClientConn switching balancer to \"pick_first\"" system=system
+time="2026-05-07T16:17:21Z" level=info msg="[core] Channel switches to new LB policy \"pick_first\"" system=system
+time="2026-05-07T16:17:21Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-07T16:17:21Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-07T16:17:21Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-07T16:17:21Z" level=info msg="listening for http on: [::]:8081"
+time="2026-05-07T16:17:21Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-07T16:17:21Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T16:17:21Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T16:17:22Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-07T16:17:22Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-07T16:17:22Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-07T16:17:22Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-07T16:17:22Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-07T16:17:22Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+
+=== brokencrystals-keycloak-1 ===
+Updating the configuration and installing your custom providers, if any. Please wait.
+
+=== brokencrystals-keycloak-db-1 ===
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+=== brokencrystals-mailcatcher-1 ===
+Starting MailCatcher v0.10.0
+==> smtp://0.0.0.0:1025
+==> http://0.0.0.0:1080
+
+=== brokencrystals-nodejs-1 ===
+> broken-crystals@0.0.1 start:prod /var/www
+> node dist/main.js

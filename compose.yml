@@ -1,6 +1,7 @@
 services:
   db:
     image: 'postgres:17-alpine'
+    command: ['postgres', '-c', 'shared_preload_libraries=pg_stat_statements']
     restart: always
     healthcheck:
       interval: 10s
@@ -33,6 +34,9 @@ services:
       CHAT_API_MODEL: ${CHAT_API_MODEL}
       CHAT_API_TOKEN: ${CHAT_API_TOKEN}
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+    ports:
+      - '3000:3000'
+      - '5000:5000'
     deploy:
       restart_policy:
         condition: on-failure
@@ -49,22 +53,6 @@ services:
       - keycloak
       - ollama
 
-  watchtower:
-    image: 'containrrr/watchtower'
-    healthcheck:
-      test: ['CMD', '/watchtower', '--health-check']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-    restart: always
-    logging:
-      options:
-        max-file: '5'
-        max-size: '10m'
-    volumes:
-      - '/var/run/docker.sock:/var/run/docker.sock'
-    command: --interval 300 --debug
 
   grpcwebproxy:
     image: webis/grpcwebproxy:0.14.0
