@@ -679,6 +679,7 @@ async function startHarness(
         );
         // Re-read updated harness code for next Docker build
         harnessCode = readFileSync(config.harnessFile, "utf-8");
+        continue;
       }
       throw new Error(
         `Harness coverage too low after ${MAX_HARNESS_ATTEMPTS} attempts: ${healthyPaths.size}/${totalEps} endpoints healthy; need at least ${minimumHealthy}`,

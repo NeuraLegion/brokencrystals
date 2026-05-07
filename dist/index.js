@@ -29798,6 +29798,7 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
           modelSelector
         );
         harnessCode = readFileSync6(config.harnessFile, "utf-8");
+        continue;
       }
       throw new Error(
         `Harness coverage too low after ${MAX_HARNESS_ATTEMPTS} attempts: ${healthyPaths.size}/${totalEps} endpoints healthy; need at least ${minimumHealthy}`
