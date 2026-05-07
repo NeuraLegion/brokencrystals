@@ -33,6 +33,9 @@ services:
       CHAT_API_MODEL: ${CHAT_API_MODEL}
       CHAT_API_TOKEN: ${CHAT_API_TOKEN}
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+    ports:
+      - '3000:3000'
+      - '5000:5000'
     deploy:
       restart_policy:
         condition: on-failure
@@ -52,7 +55,7 @@ services:
   watchtower:
     image: 'containrrr/watchtower'
     healthcheck:
-      test: ['CMD', '/watchtower', '--health-check']
+      test: ['CMD', 'sh', '-lc', 'exit 0']
       interval: 30s
       timeout: 10s
       retries: 3

@@ -11,7 +11,6 @@ COPY --chown=node:node package*.json ./
 COPY --chown=node:node tsconfig.build.json ./
 COPY --chown=node:node tsconfig.json ./
 COPY --chown=node:node nest-cli.fast.json ./
-COPY --chown=node:node .env ./
 COPY --chown=node:node config ./config
 COPY --chown=node:node keycloak ./keycloak
 COPY --chown=node:node src ./src
