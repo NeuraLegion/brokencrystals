@@ -142,6 +142,11 @@ export async function prepareScanEnvironment(
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary };
       }
+      if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status >= 500)) {
+        const summary = "Scan-prep verification only observed HTTP 5xx on login POSTs; the login path is crashing, not verified as scanner-ready";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
       console.log(`[ScanPrep] Completed — ${changes.length} change(s): ${result.summary}`);
       for (const c of changes) {
         console.log(`[ScanPrep]   • ${c}`);

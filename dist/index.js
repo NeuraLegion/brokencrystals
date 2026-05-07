@@ -24677,6 +24677,9 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
     `[Auth] loginContentType=${detection.loginContentType}, tokenEmbedLocation=${detection.tokenEmbedLocation}`
   );
   let registrationOk = await registerUser(baseUrl, detection);
+  if (registrationOk) {
+    updateLoginBodyFromRegisteredUser(detection);
+  }
   let seededCredentials;
   if (!registrationOk) {
     seededCredentials = await seedTestUser(llm, repoPath, baseUrl, detection, model);
@@ -25697,10 +25700,11 @@ ${verification.summary?.slice(0, 600)}`);
 async function registerUser(baseUrl, detection) {
   if (!detection.registerEndpoint || !detection.registerBody) return false;
   const url = `${baseUrl}${detection.registerEndpoint}`;
-  const ct = CONTENT_TYPE_MAP[detection.loginContentType] ?? "application/json";
+  const registerContentType = detection.registerContentType ?? detection.loginContentType;
+  const ct = CONTENT_TYPE_MAP[registerContentType] ?? "application/json";
   const body = normalizeBody(
     detection.registerBody,
-    detection.loginContentType
+    registerContentType
   );
   try {
     console.log(
@@ -25726,6 +25730,77 @@ async function registerUser(baseUrl, detection) {
     );
     return false;
   }
+}
+function updateLoginBodyFromRegisteredUser(detection) {
+  if (!detection.registerBody) return;
+  const registerContentType = detection.registerContentType ?? detection.loginContentType;
+  const registration = parseRequestBody(detection.registerBody, registerContentType);
+  if (!registration) return;
+  const identifier = firstStringValue(registration, [
+    "user",
+    "username",
+    "email",
+    "login",
+    "identifier"
+  ]);
+  const password = firstStringValue(registration, ["password", "pass", "pwd"]);
+  if (!identifier || !password) return;
+  const existingLogin = parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
+  const identifierKey = firstExistingKey(existingLogin, ["user", "username", "email", "login", "identifier"]) ?? (registration.email ? "email" : "username");
+  const passwordKey = firstExistingKey(existingLogin, ["password", "pass", "pwd"]) ?? "password";
+  const nextLogin = {
+    ...existingLogin,
+    [identifierKey]: identifier,
+    [passwordKey]: password
+  };
+  detection.loginBody = serializeRequestBody(nextLogin, detection.loginContentType);
+  detection.notes = `${detection.notes}
+Registered credentials: ${identifierKey}=${identifier}, ${passwordKey}=${password}. Use these credentials for login sanity checks and Bright auth creation.`;
+  console.log(`[Auth] Updated login body to use registered test user (${identifierKey}=${identifier})`);
+}
+function parseRequestBody(body, contentType) {
+  if (contentType === "form") {
+    const params = new URLSearchParams(body);
+    const parsed = {};
+    for (const [key, value] of params.entries()) {
+      parsed[key] = value;
+    }
+    return parsed;
+  }
+  if (contentType === "json") {
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return Object.fromEntries(
+          Object.entries(parsed).map(([key, value]) => [
+            key,
+            typeof value === "string" ? value : String(value)
+          ])
+        );
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+function serializeRequestBody(body, contentType) {
+  if (contentType === "form") {
+    return new URLSearchParams(body).toString();
+  }
+  return JSON.stringify(body);
+}
+function firstStringValue(body, keys) {
+  for (const key of keys) {
+    const value = body[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return void 0;
+}
+function firstExistingKey(body, keys) {
+  return keys.find((key) => Object.prototype.hasOwnProperty.call(body, key));
 }
 async function reRegisterUser(registration) {
   const url = `${registration.baseUrl}${registration.endpoint}`;
@@ -28022,6 +28097,11 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, 
       }
       if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status === 404)) {
         const summary = "Scan-prep verification only observed HTTP 404 on login POSTs; this does not prove rate limits were relaxed";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary };
+      }
+      if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status >= 500)) {
+        const summary = "Scan-prep verification only observed HTTP 5xx on login POSTs; the login path is crashing, not verified as scanner-ready";
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary };
       }

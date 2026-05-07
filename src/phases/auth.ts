@@ -129,6 +129,9 @@ export async function detectAndConfigureAuth(
 
   // Phase 2: Try quick HTTP registration if the detection found a registration endpoint
   let registrationOk = await registerUser(baseUrl, detection);
+  if (registrationOk) {
+    updateLoginBodyFromRegisteredUser(detection);
+  }
 
   // Phase 3: If no confirmed user, run the seed user sub-phase (dedicated LLM session)
   let seededCredentials: SeedUserResult | undefined;
@@ -1470,10 +1473,11 @@ export async function registerUser(
   if (!detection.registerEndpoint || !detection.registerBody) return false;
 
   const url = `${baseUrl}${detection.registerEndpoint}`;
-  const ct = CONTENT_TYPE_MAP[detection.loginContentType] ?? "application/json";
+  const registerContentType = detection.registerContentType ?? detection.loginContentType;
+  const ct = CONTENT_TYPE_MAP[registerContentType] ?? "application/json";
   const body = normalizeBody(
     detection.registerBody,
-    detection.loginContentType,
+    registerContentType,
   );
 
   try {
@@ -1501,6 +1505,99 @@ export async function registerUser(
     );
     return false;
   }
+}
+
+function updateLoginBodyFromRegisteredUser(detection: AuthDetection): void {
+  if (!detection.registerBody) return;
+
+  const registerContentType = detection.registerContentType ?? detection.loginContentType;
+  const registration = parseRequestBody(detection.registerBody, registerContentType);
+  if (!registration) return;
+
+  const identifier = firstStringValue(registration, [
+    "user",
+    "username",
+    "email",
+    "login",
+    "identifier",
+  ]);
+  const password = firstStringValue(registration, ["password", "pass", "pwd"]);
+  if (!identifier || !password) return;
+
+  const existingLogin = parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
+  const identifierKey =
+    firstExistingKey(existingLogin, ["user", "username", "email", "login", "identifier"]) ??
+    (registration.email ? "email" : "username");
+  const passwordKey = firstExistingKey(existingLogin, ["password", "pass", "pwd"]) ?? "password";
+
+  const nextLogin: Record<string, string> = {
+    ...existingLogin,
+    [identifierKey]: identifier,
+    [passwordKey]: password,
+  };
+  detection.loginBody = serializeRequestBody(nextLogin, detection.loginContentType);
+  detection.notes = `${detection.notes}\nRegistered credentials: ${identifierKey}=${identifier}, ${passwordKey}=${password}. Use these credentials for login sanity checks and Bright auth creation.`;
+  console.log(`[Auth] Updated login body to use registered test user (${identifierKey}=${identifier})`);
+}
+
+function parseRequestBody(
+  body: string,
+  contentType: AuthDetection["loginContentType"] | NonNullable<AuthDetection["registerContentType"]>,
+): Record<string, string> | null {
+  if (contentType === "form") {
+    const params = new URLSearchParams(body);
+    const parsed: Record<string, string> = {};
+    for (const [key, value] of params.entries()) {
+      parsed[key] = value;
+    }
+    return parsed;
+  }
+  if (contentType === "json") {
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return Object.fromEntries(
+          Object.entries(parsed as Record<string, unknown>).map(([key, value]) => [
+            key,
+            typeof value === "string" ? value : String(value),
+          ]),
+        );
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function serializeRequestBody(
+  body: Record<string, string>,
+  contentType: AuthDetection["loginContentType"],
+): string {
+  if (contentType === "form") {
+    return new URLSearchParams(body).toString();
+  }
+  return JSON.stringify(body);
+}
+
+function firstStringValue(
+  body: Record<string, string>,
+  keys: string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = body[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function firstExistingKey(
+  body: Record<string, string>,
+  keys: string[],
+): string | undefined {
+  return keys.find((key) => Object.prototype.hasOwnProperty.call(body, key));
 }
 
 /**
