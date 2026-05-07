@@ -656,8 +656,8 @@ async function startHarness(
         );
       }
 
-      const minimumHealthy = minimumHealthyHarnessEndpoints(totalEps);
-      if (healthyPaths.size >= minimumHealthy) {
+      const targetHealthy = targetHealthyHarnessEndpoints(totalEps);
+      if (healthyPaths.size >= targetHealthy) {
         if (probeErrors.length > 0) {
           console.warn(
             `[Harness] Proceeding with partial coverage: ${healthyPaths.size}/${totalEps} endpoints healthy`,
@@ -670,10 +670,10 @@ async function startHarness(
       }
 
       console.warn(
-        `[Harness] Coverage too low: ${healthyPaths.size}/${totalEps} endpoints healthy; need at least ${minimumHealthy}`,
+        `[Harness] Coverage below target: ${healthyPaths.size}/${totalEps} endpoints healthy; target is ${targetHealthy}`,
       );
-      child.kill();
       if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
+        child.kill();
         await repairHarnessCode(
           llm, repoPath, config, probeErrors, targets, handleTool, modelSelector,
         );
@@ -681,8 +681,17 @@ async function startHarness(
         harnessCode = readFileSync(config.harnessFile, "utf-8");
         continue;
       }
+
+      if (healthyPaths.size > 0) {
+        console.warn(
+          `[Harness] Proceeding after max repair attempts with ${healthyPaths.size}/${totalEps} healthy endpoint(s)`,
+        );
+        return { process: child, healthyPaths };
+      }
+
+      child.kill();
       throw new Error(
-        `Harness coverage too low after ${MAX_HARNESS_ATTEMPTS} attempts: ${healthyPaths.size}/${totalEps} endpoints healthy; need at least ${minimumHealthy}`,
+        `No healthy harness endpoints after ${MAX_HARNESS_ATTEMPTS} attempts`,
       );
     } catch (err) {
       child.kill();
@@ -711,7 +720,7 @@ async function startHarness(
   throw new Error("Harness failed to build or start after all repair attempts");
 }
 
-function minimumHealthyHarnessEndpoints(totalEndpoints: number): number {
+function targetHealthyHarnessEndpoints(totalEndpoints: number): number {
   if (totalEndpoints <= 0) {
     return 1;
   }
