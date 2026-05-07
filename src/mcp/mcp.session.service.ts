@@ -101,7 +101,7 @@ export class McpSessionService {
   }
 
   private parseTtlMs(value: string | undefined): number {
-    const DEFAULT = 30 * 60 * 1000; // 30 minutes
+    const DEFAULT = 24 * 60 * 60 * 1000; // 24 hours
     if (!value?.trim()) {
       return DEFAULT;
     }

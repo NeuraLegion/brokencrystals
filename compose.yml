@@ -19,6 +19,8 @@ services:
 
   nodejs:
     image: 'brightsec/brokencrystals'
+    ports:
+      - '3000:3000'
     restart: always
     healthcheck:
       interval: 5s
@@ -65,6 +67,7 @@ services:
     volumes:
       - '/var/run/docker.sock:/var/run/docker.sock'
     command: --interval 300 --debug
+    profiles: ['ops']
 
   grpcwebproxy:
     image: webis/grpcwebproxy:0.14.0

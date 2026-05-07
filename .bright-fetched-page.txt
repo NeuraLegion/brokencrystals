@@ -1,0 +1,1059 @@
+Server Administration Guide
+
+Server Administration Guide
+
+Table of Contents
+
+Keycloak features and concepts
+
+Features
+
+Basic Keycloak operations
+
+Core concepts and terms
+
+Creating the first administrator
+
+Creating the account on the local host
+
+Creating the account remotely
+
+Configuring realms
+
+Using the Admin Console
+
+The master realm
+
+Creating a realm
+
+Configuring SSL for a realm
+
+Configuring email for a realm
+
+XOAUTH2 email configuration with third-party vendors
+
+Configuring themes
+
+Enabling internationalization
+
+User locale selection
+
+Controlling login options
+
+Enabling forgot password
+
+Enabling Remember Me
+
+ACR to Level of Authentication (LoA) Mapping
+
+Update Email Workflow (UpdateEmail)
+
+Configuring realm keys
+
+Rotating keys
+
+Adding a generated key pair
+
+Rotating keys by extracting a certificate
+
+Adding an existing key pair and certificate
+
+Loading keys from a Java Keystore
+
+Making keys passive
+
+Disabling keys
+
+Compromised keys
+
+Using external storage
+
+Adding a provider
+
+Dealing with provider failures
+
+Lightweight Directory Access Protocol (LDAP) and Active Directory
+
+Configuring federated LDAP storage
+
+Storage mode
+
+Edit mode
+
+Other configuration options
+
+Connecting to LDAP over SSL
+
+Synchronizing LDAP users to Keycloak
+
+LDAP mappers
+
+Password hashing
+
+Enabling password change after reset
+
+Configuring the connection pool
+
+Troubleshooting
+
+SSSD and FreeIPA Identity Management integration
+
+FreeIPA/IdM server
+
+SSSD and D-Bus
+
+Enabling the SSSD federation provider
+
+Configuring a federated SSSD store
+
+Custom providers
+
+Managing users
+
+Creating users
+
+Managing user attributes
+
+Understanding the Default Configuration
+
+Understanding the User Profile Contexts
+
+Understanding Managed and Unmanaged Attributes
+
+Managing the User Profile
+
+Managing Attributes
+
+Validating Attributes
+
+Defining UI Annotations
+
+Managing Attribute Groups
+
+Using the JSON configuration
+
+Customizing How UIs are Rendered
+
+Enabling Progressive Profiling
+
+Using Internationalized Messages
+
+Defining user credentials
+
+Setting a password for a user
+
+Requesting a user reset a password
+
+Creating an OTP
+
+Allowing users to self-register
+
+Enabling user registration
+
+Registering as a new user
+
+Requiring user to agree to terms and conditions during registration
+
+Defining actions required at login
+
+Setting required actions for one user
+
+Setting required actions for all users
+
+Enabling terms and conditions as a required action
+
+Application initiated actions
+
+Re-authentication during AIA
+
+Parameterized AIA
+
+Available actions
+
+Searching for a user
+
+Default search
+
+Attribute search
+
+Deleting a user
+
+Enabling account deletion by users
+
+Enabling the Delete Account Capability
+
+Giving a user the delete-account role
+
+Deleting your account
+
+Impersonating a user
+
+Enabling reCAPTCHA
+
+Setting up Google reCAPTCHA
+
+Setting up Google reCAPTCHA Enterprise
+
+Personal data collected by Keycloak
+
+Managing user sessions
+
+Administering sessions
+
+Signing out all active sessions
+
+Viewing client sessions
+
+Viewing user sessions
+
+Revoking active sessions
+
+Session and token timeouts
+
+Offline access
+
+Transient sessions
+
+Assigning permissions using roles and groups
+
+Creating a realm role
+
+Client roles
+
+Converting a role to a composite role
+
+Assigning role mappings
+
+Using default roles
+
+Role scope mappings
+
+Groups
+
+Groups compared to roles
+
+Using default groups
+
+Configuring authentication
+
+Password policies
+
+Password policy types
+
+One Time Password (OTP) policies
+
+Time-based or counter-based one time passwords
+
+TOTP configuration options
+
+HOTP configuration options
+
+Authentication flows
+
+Built-in flows
+
+Creating flows
+
+Creating a password-less browser login flow
+
+Using Client Policies to Select an Authentication Flow
+
+Creating a browser login flow with step-up mechanism
+
+Step-up authentication for SAML
+
+Registration or Reset credentials requested by client
+
+User session limits
+
+Script Authenticator
+
+Kerberos
+
+Setup of Kerberos server
+
+Setup and configuration of Keycloak server
+
+Setup and configuration of client machines
+
+Example setups
+
+Credential delegation
+
+Cross-realm trust
+
+Troubleshooting
+
+X.509 client certificate user authentication
+
+Features
+
+Adding X.509 client certificate authentication to browser flows
+
+Configuring X.509 client certificate authentication
+
+Adding X.509 Client Certificate Authentication to a Direct Grant Flow
+
+W3C Web Authentication (WebAuthn)
+
+Setup
+
+Enable WebAuthn authentication in the default browser flow
+
+Authenticate with WebAuthn authenticator
+
+Managing WebAuthn as an administrator
+
+Attestation statement verification
+
+Managing WebAuthn credentials as a user
+
+Registering WebAuthn credentials using AIA
+
+Passwordless WebAuthn together with Two-Factor
+
+LoginLess WebAuthn
+
+Passkeys
+
+Passkey Authentication with Conditional UI or autofill
+
+Passkeys Authentication with Modal UI
+
+Setup
+
+Recovery Codes
+
+Check Recovery Codes required action is enabled
+
+Configure the Recovery Codes required action
+
+Adding Recovery Codes to the browser flow
+
+Creating the Recovery Codes credential
+
+Conditions in conditional flows
+
+Available conditions
+
+Explicitly deny/allow access in conditional flows
+
+2FA conditional workflow examples
+
+Authentication sessions
+
+Authentication in more browser tabs
+
+Integrating identity providers
+
+Brokering overview
+
+Default Identity Provider
+
+General configuration
+
+Social Identity Providers
+
+Bitbucket
+
+Facebook
+
+GitHub
+
+GitLab
+
+Google
+
+Instagram
+
+LinkedIn
+
+Microsoft
+
+OpenShift 4
+
+PayPal
+
+Stack Overflow
+
+Twitter
+
+OpenID Connect v1.0 identity providers
+
+OAuth v2 identity providers
+
+SAML v2.0 Identity Providers
+
+Requesting specific AuthnContexts
+
+SP Descriptor
+
+Send subject in SAML requests
+
+SPIFFE identity providers
+
+Kubernetes identity providers
+
+Client-suggested Identity Provider
+
+Mapping claims and assertions
+
+Available user session data
+
+First login flow
+
+Default first login flow authenticators
+
+Automatically link existing first login flow
+
+Disabling automatic user creation
+
+Detect existing user first login flow
+
+Override existing broker link
+
+Post login flow
+
+Post login flow examples
+
+Requesting additional authentication steps for the dedicated clients
+
+Retrieving external IDP tokens
+
+Identity broker logout
+
+SSO protocols
+
+OpenID Connect
+
+OIDC auth flows
+
+OIDC Logout
+
+Keycloak server OIDC URI endpoints
+
+SAML
+
+SAML bindings
+
+Keycloak Server SAML URI Endpoints
+
+OpenID Connect compared to SAML
+
+Distribution Registry v2 authentication
+
+Docker authentication flow
+
+Keycloak Distribution registry v2 Authentication Server URI Endpoints
+
+Managing access to realm resources
+
+Master realm access control
+
+Global roles
+
+Realm specific roles
+
+Dedicated realm admin consoles
+
+Delegating realm administration using permissions
+
+Understanding the different types of realm administrators
+
+Understanding the Realm Resource Types
+
+Understanding the scopes of access
+
+Enabling admin permissions to a realm
+
+Managing Permissions
+
+Managing Policies
+
+Evaluating Permissions
+
+Accessing a Realm administration console as a Realm Administrator
+
+Understanding some common use cases
+
+Performance considerations
+
+Fine grained admin permissions V1
+
+Managing one specific client
+
+Restrict user role mapping
+
+Full list of permissions
+
+Managing organizations
+
+Enabling organizations in Keycloak
+
+Managing an organization
+
+Creating an organization
+
+Understanding organization domains
+
+Disabling an organization
+
+Deleting an organization
+
+Managing attributes
+
+Managing members
+
+Managed and unmanaged members
+
+Adding an existing realm user as a member
+
+Inviting users
+
+Managing invitations
+
+Onboarding members using an Identity Provider
+
+Removing a member
+
+Viewing organization group memberships
+
+Support for federated members
+
+Managing groups
+
+Creating groups
+
+Adding members to groups
+
+Understanding group paths
+
+Mapping groups to tokens
+
+Managing group attributes
+
+Important distinctions
+
+Deleting groups
+
+Managing identity providers
+
+Linking an identity provider to an organization
+
+Editing a linked identity provider
+
+Unlinking an identity provider from an organization
+
+Authenticating members
+
+Understanding the identity-first login
+
+Configuring existing authentication flows
+
+Configuring how users authenticate
+
+Mapping organization claims
+
+Managing workflows
+
+Understanding workflows
+
+Understanding the workflow definition
+
+Understanding the workflow expression language
+
+Managing workflows
+
+Managing workflows through the Admin Console
+
+Triggering workflows on events
+
+Event functions
+
+Scheduling workflows
+
+Defining conditions
+
+User functions
+
+Defining steps
+
+User steps
+
+Client steps
+
+Understanding immediate steps
+
+Understanding scheduled steps
+
+Understanding the workflows engine
+
+Configuring the scheduled steps execution interval
+
+Configuring the task execution timeout
+
+Performance considerations
+
+Handling failures
+
+Troubleshooting workflows
+
+Enabling workflow debug logging
+
+What to look for in the logs
+
+Useful log categories
+
+Understanding common use cases
+
+User Onboarding
+
+User Offboarding
+
+Tracking user activity and taking actions on inactivity
+
+Managing OpenID Connect and SAML Clients
+
+Managing OpenID Connect clients
+
+Creating an OpenID Connect client
+
+Basic configuration
+
+Advanced configuration
+
+Confidential client credentials
+
+DPoP
+
+Client Secret Rotation
+
+Creating an OIDC Client Secret Rotation Policy
+
+Using a service account
+
+Role mappings in the token
+
+Audience support
+
+Creating a SAML client
+
+Settings tab
+
+Keys tab
+
+Advanced tab
+
+IDP Initiated login
+
+Using an entity descriptor to create a client
+
+Client links
+
+OIDC token and SAML assertion mappings
+
+Priority order
+
+OIDC user session note mappers
+
+Script mapper
+
+Pairwise subject identifier mapper
+
+Using lightweight access token
+
+Generating client adapter config
+
+Client scopes
+
+Protocol
+
+Consent related settings
+
+Include in token scope
+
+Link client scope with the client
+
+Evaluating Client Scopes
+
+Client scopes permissions
+
+Realm default client scopes
+
+Downscoping
+
+Scopes explained
+
+Client Policies
+
+Use-cases
+
+Protocol
+
+Architecture
+
+Configuration
+
+Backward Compatibility
+
+Client Secret Rotation Example
+
+Securing Client URIs
+
+Configuring Keycloak as a Verifiable Credential Issuer
+
+Introduction
+
+What are Verifiable Credentials (VCs)?
+
+What is OID4VCI?
+
+Scope of This Chapter
+
+Prerequisites
+
+Keycloak Instance
+
+Configuring Credential Issuance in Keycloak
+
+Authentication
+
+Configuration Steps
+
+Creating a Realm
+
+Creating a User Account
+
+Key Management Configuration
+
+Configuring Key Providers
+
+Registering Realm Attributes
+
+Define Realm Attributes
+
+Attribute Breakdown
+
+Import Realm Attributes
+
+Time-claim correlation mitigation
+
+Create Client Scopes with Mappers
+
+Define a Client Scope with a Mapper
+
+Attribute Breakdown - ClientScope
+
+Attribute Breakdown - ProtocolMappers
+
+Import the Client Scope
+
+Create the Client
+
+Verify the Configuration
+
+Conclusion
+
+Using a vault to obtain secrets
+
+Key resolvers
+
+Configuring auditing to track events
+
+Auditing user events
+
+Event types
+
+Event listener
+
+Auditing admin events
+
+Mitigating security threats
+
+Host
+
+Admin endpoints and Admin Console
+
+Brute force attacks
+
+Lockout permanently
+
+Lockout temporarily
+
+Lockout permanently after temporary lockout
+
+Secondary Authentication Failures Lockout
+
+Downside of Keycloak brute force detection
+
+Password policies
+
+Read-only user attributes
+
+Validate user attributes
+
+Clickjacking
+
+SSL/HTTPS requirement
+
+CSRF attacks
+
+Unspecific redirect URIs
+
+FAPI compliance
+
+OAuth 2.1 compliance
+
+Compromised access and refresh tokens
+
+Compromised authorization code
+
+Open redirectors
+
+Mitigating Server-Side Request Forgery (SSRF)
+
+Secure Client URIs Pattern Executor
+
+Anti-SSRF Pattern Examples
+
+Password database compromised
+
+Limiting scope
+
+Scope availability
+
+Scope visibility
+
+Limit token audience
+
+Limit Authentication Sessions
+
+SQL injection attacks
+
+Account Console
+
+Accessing the Account Console
+
+Configuring ways to sign in
+
+Two-factor authentication with OTP
+
+Two-factor authentication with WebAuthn
+
+Passwordless authentication with WebAuthn
+
+Viewing device activity
+
+Adding an identity provider account
+
+Accessing other applications
+
+Viewing group memberships
+
+Admin CLI
+
+Installing the Admin CLI
+
+Using the Admin CLI
+
+Sensitive Options
+
+Authenticating
+
+Working with alternative configurations
+
+Basic operations and resource URIs
+
+Realm operations
+
+Role operations
+
+Client operations
+
+User operations
+
+Group operations
+
+Identity provider operations
+
+Storage provider operations
+
+Adding mappers
+
+Authentication operations
+
+Server Administration 
+
+Getting Started
+
+Securing applications
+
+Server Developer
+
+Authorization Services
+
+Upgrading
+
+Release Notes
+
+Version 26.6.1
+
+Keycloak features and concepts
+
+Edit this section
+Report an issue
+
+Keycloak is a single sign on solution for web apps and RESTful web services. The goal of Keycloak
+is to make security simple so that it is easy for application developers to secure the apps and services they have deployed
+in their organization. Security features that developers normally have to write for themselves are provided out of the box
+and are easily tailorable to the individual requirements of your organization. Keycloak provides customizable
+user interfaces for login, registration, administration, and account management. You can also use Keycloak as an
+integration platform to hook it into existing LDAP and Active Directory servers. You can also delegate authentication to third
+party identity providers like Facebook and Google.
+
+Features
+
+Edit this section
+Report an issue
+
+Keycloak provides the following features:
+
+Single Sign-On and Single Sign-Out for browser applications.
+
+OpenID Connect support.
+
+OAuth 2.0 support.
+
+SAML support.
+
+Identity Brokering - Authenticate with external OpenID Connect or SAML Identity Providers.
+
+Social Login - Enable login with Google, GitHub, Facebook, Twitter, and other social networks.
+
+User Federation - Sync users from LDAP and Active Directory servers.
+
+Kerberos bridge - Automatically authenticate users that are logged-in to a Kerberos server.
+
+Admin Console for central management of users, roles, role mappings, clients and configuration.
+
+Account Console that allows users to centrally manage their account.
+
+Theme support - Customize all user facing pages to integrate with your applications and branding.
+
+Flexible Authentication - Authenticate user with various mechanisms including passkey, password or X.509 certificates. Step-up authentication support
+
+Two-factor Authentication - Support for passkey, recovery codes and TOTP/HOTP via Google Authenticator or FreeOTP.
+
+Login flows - optional user self-registration, recover password, verify email, require password update, etc.
+
+Session management - Admins and users themselves can view and manage user sessions.
+
+Token mappers - Map user attributes, roles, etc. how you want into tokens and statements.
+
+Not-before revocation policies per realm, application and user.
+
+CORS support - Client adapters have built-in support for CORS.
+
+Service Provider Interfaces (SPI) - A number of SPIs to enable customizing various aspects of the server. Authentication flows, user federation providers,
+protocol mappers and many more.
+
+Supports any platform/language that has an OpenID Connect Relying Party library or SAML 2.0 Service Provider library.
+
+Basic Keycloak operations
+
+Edit this section
+Report an issue
+
+Keycloak is a separate server that you manage on your network. Applications are configured to point to and
+be secured by this server. Keycloak uses open protocol standards like OpenID Connect
+or SAML 2.0 to secure
+your applications. Browser applications redirect a user’s browser from the application to the Keycloak authentication
+server where they enter their credentials. This redirection is important because users are completely isolated from applications and
+applications never see a user’s credentials. Applications instead are given an identity token or assertion that is cryptographically
+signed. These tokens can have identity information like username, address, email, and other profile data. They can also
+hold permission data so that applications can make authorization decisions. These tokens can also be used to make secure
+invocations on REST-based services.
+
+Core concepts and terms
+
+Edit this section
+Report an issue
+
+Consider these core concepts and terms before attempting to use Keycloak to secure your web applications and REST services.
+
+users
+
+Users are entities that are able to log into your system. They can have attributes associated with themselves like email,
+username, address, phone number, and birthday. They can be assigned group membership and have specific roles assigned to them.
+
+authentication
+
+The process of identifying and validating a user.
+
+authorization
+
+The process of granting access to a user.
+
+credentials
+
+Credentials are pieces of data that Keycloak uses to verify the identity of a user. Some examples are passwords,
+one-time-passwords, digital certificates, or even fingerprints.
+
+roles
+
+Roles identify a type or category of user. Admin, user, manager, and employee are all typical roles that may exist
+in an organization. Applications often assign access and permissions to specific roles rather than individual users as dealing
+with users can be too fine-grained and hard to manage.
+
+user role mapping
+
+A user role mapping defines a mapping between a role and a user. A user can be associated with zero or more roles. This
+role mapping information can be encapsulated into tokens and assertions so that applications can decide access permissions on
+various resources they manage.
+
+composite roles
+
+A composite role is a role that can be associated with other roles. For example a superuser composite role could be associated with the
+sales-admin and order-entry-admin roles. If a user is mapped to the superuser role they also inherit the sales-admin and order-entry-admin roles.
+
+groups
+
+Groups manage groups of users. Attributes can be defined for a group. You can map roles to a group as well. Users that become members of a group
+inherit the attributes and role mappings that group defines.
+
+realms
+
+A realm manages a set of users, credentials, roles, and groups. A user belongs to and logs into a realm. Realms are isolated from one another
+and can only manage and authenticate the users that they control.
+
+clients
+
+Clients are entities that can request Keycloak to authenticate a user. Most often, clients are applications and services that
+want to use Keycloak to secure themselves and provide a single sign-on solution. Clients can also be entities that just want to request
+identity information or an access token so that they can securely invoke other services on the network that are secured by Keycloak.
+
+client adapters
+
+Client adapters are plugins that you install into your application environment to be able to communicate and be secured by Keycloak. Keycloak
+has a number of adapters for different platforms that you can download. There are also third-party adapters you can get for environments that we don’t cover.
+
+consent
+
+Consent is when you as an admin want a user to give permission to a client before that client can participate in the authentication process.
+After a user provides their credentials, Keycloak will pop up a screen identifying the client requesting a login and what identity
+information is requested of the user. User can decide whether or not to grant the request.
+
+client scopes
+
+When a client is registered, you must define protocol mappers and role scope mappings for that client. It is often useful to store
+a client scope, to make creating new clients easier by sharing some common settings. This is also useful for requesting some
+claims or roles to be conditionally based on the value of scope parameter. Keycloak provides the concept of a client scope for this.
+
+client role
+
+Clients can define roles that are specific to them. This is basically a role namespace dedicated to the client.
+
+identity token
+
+A token that provides identity information about the user. Part of the OpenID Connect specificati
+... [truncated at 20 000 chars]

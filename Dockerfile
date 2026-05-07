@@ -6,6 +6,8 @@ FROM node:18-alpine AS build
 
 WORKDIR /usr/src/app
 
+RUN apk add --no-cache python3 make g++ protobuf
+
 # Copy and build NestJS server project
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node tsconfig.build.json ./
@@ -31,7 +33,7 @@ COPY --chown=node:node client/tsconfig.json ./client/tsconfig.json
 COPY --chown=node:node client/vite.config.ts ./client/vite.config.ts
 COPY --chown=node:node client/index.html ./client/index.html
 
-ENV CYPRESS_INSTALL_BINARY=0
+ENV CYPRESS_INSTALL_BINARY=0 PATH="/usr/lib/go-1.21/bin:${PATH}"
 RUN npm ci --prefix=client --no-audit
 RUN npm run build --prefix=client
 

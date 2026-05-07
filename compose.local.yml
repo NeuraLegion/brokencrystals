@@ -71,7 +71,7 @@ services:
       test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/api/config']
       timeout: 30s
     environment:
-      URL: http://localhost:3000
+      URL: http://nodejs:3000
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
@@ -79,7 +79,6 @@ services:
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
     ports:
       - '3000:3000'
-      - '5000:5000'
     logging:
       options:
         max-file: '5'
@@ -98,13 +97,11 @@ services:
     image: webis/grpcwebproxy:0.14.0
     command:
       - grpcwebproxy
-      - '--backend_addr=host.docker.gateway:5000'
+      - '--backend_addr=nodejs:5000'
       - '--run_tls_server=false'
       - '--run_http_server=true'
       - '--server_http_debug_port=8081'
       - '--allow_all_origins'
-    extra_hosts:
-      - 'host.docker.gateway:host-gateway'
     ports:
       - '8081:8081'
     depends_on:
