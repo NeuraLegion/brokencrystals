@@ -1,0 +1,30 @@
+FROM node:20-bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    NODE_ENV=development
+
+WORKDIR /app
+
+# System deps for native node modules and to compile/run the TS-based harness.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      python3 \
+      make \
+      g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy package manifests first for better layer caching.
+COPY package*.json /app/
+
+# Install all deps, including devDependencies required by the harness.
+# The harness requires express, but this project does not declare it, so install it explicitly.
+RUN npm install && npm install express
+
+# Copy the full project source.
+COPY . /app
+
+EXPOSE 3001
+
+# harness.rb is actually a Node.js script; run it through node with ts-node registered
+# so the required TypeScript project files under src/ can be loaded at runtime.
+CMD ["node", "-r", "ts-node/register/transpile-only", "harness.rb"]
