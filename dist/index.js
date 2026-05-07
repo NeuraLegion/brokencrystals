@@ -11198,6 +11198,7 @@ function sanitizeForJson(s) {
   return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }
 var loggedReasoningModels = /* @__PURE__ */ new Set();
+var loggedReasoningSkippedForTools = /* @__PURE__ */ new Set();
 function isReasoningModel(model) {
   const normalized = model.toLowerCase();
   return /(?:^|[-_.])o[1-9](?:$|[-_.])/.test(normalized) || normalized.startsWith("o1") || normalized.startsWith("o3") || normalized.startsWith("o4") || normalized.startsWith("gpt-5") || normalized.includes("codex") || normalized.startsWith("gpt-oss");
@@ -11213,7 +11214,7 @@ function configuredReasoningEffort(model) {
   }
   throw new Error(`Invalid AI_REASONING_EFFORT "${process.env.AI_REASONING_EFFORT}". Expected low, medium, high, or none.`);
 }
-function chatCompletionParams(model, messages, extra = {}) {
+function chatCompletionParams(model, messages, extra = {}, options = {}) {
   const params = {
     model,
     messages,
@@ -11221,13 +11222,17 @@ function chatCompletionParams(model, messages, extra = {}) {
     ...extra
   };
   const reasoningEffort = configuredReasoningEffort(model);
-  if (reasoningEffort) {
+  const allowReasoningEffort = options.allowReasoningEffort ?? true;
+  if (reasoningEffort && allowReasoningEffort) {
     params.reasoning_effort = reasoningEffort;
     const key = `${model}:${reasoningEffort}`;
     if (!loggedReasoningModels.has(key)) {
       loggedReasoningModels.add(key);
       console.log(`[Inference] Reasoning model enabled: ${model} (effort=${reasoningEffort})`);
     }
+  } else if (reasoningEffort && !allowReasoningEffort && !loggedReasoningSkippedForTools.has(model)) {
+    loggedReasoningSkippedForTools.add(model);
+    console.log(`[Inference] Reasoning effort skipped for ${model} during function-tool calls`);
   }
   return params;
 }
@@ -11319,11 +11324,12 @@ Available models:
 var DEFAULT_MODEL = "gpt-5.4-mini";
 async function chatWithTools(client, messages, tools, handleToolCall, model = DEFAULT_MODEL, maxTurns = 25) {
   const conversation = [...messages];
+  const allowReasoningEffort = tools.length === 0;
   for (let turn = 0; turn < maxTurns; turn++) {
     const isLastTurn = turn === maxTurns - 1;
     const response = await client.chat.completions.create(chatCompletionParams(model, conversation, {
       tools: !isLastTurn && tools.length > 0 ? tools : void 0
-    }));
+    }, { allowReasoningEffort }));
     const choice = response.choices[0];
     if (!choice) throw new Error("No response from model");
     const msg = choice.message;

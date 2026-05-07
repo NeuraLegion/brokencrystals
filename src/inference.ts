@@ -94,6 +94,7 @@ export type ToolHandler = (
 ) => Promise<string>;
 
 const loggedReasoningModels = new Set<string>();
+const loggedReasoningSkippedForTools = new Set<string>();
 
 function isReasoningModel(model: string): boolean {
   const normalized = model.toLowerCase();
@@ -123,6 +124,7 @@ function chatCompletionParams(
   model: string,
   messages: ChatCompletionMessageParam[],
   extra: Omit<ChatCompletionCreateParamsNonStreaming, "model" | "messages" | "max_completion_tokens"> = {},
+  options: { allowReasoningEffort?: boolean } = {},
 ): ChatCompletionCreateParamsNonStreaming {
   const params: ChatCompletionCreateParamsNonStreaming = {
     model,
@@ -131,13 +133,17 @@ function chatCompletionParams(
     ...extra,
   };
   const reasoningEffort = configuredReasoningEffort(model);
-  if (reasoningEffort) {
+  const allowReasoningEffort = options.allowReasoningEffort ?? true;
+  if (reasoningEffort && allowReasoningEffort) {
     params.reasoning_effort = reasoningEffort;
     const key = `${model}:${reasoningEffort}`;
     if (!loggedReasoningModels.has(key)) {
       loggedReasoningModels.add(key);
       console.log(`[Inference] Reasoning model enabled: ${model} (effort=${reasoningEffort})`);
     }
+  } else if (reasoningEffort && !allowReasoningEffort && !loggedReasoningSkippedForTools.has(model)) {
+    loggedReasoningSkippedForTools.add(model);
+    console.log(`[Inference] Reasoning effort skipped for ${model} during function-tool calls`);
   }
   return params;
 }
@@ -270,13 +276,14 @@ export async function chatWithTools(
   maxTurns = 25,
 ): Promise<string> {
   const conversation = [...messages];
+  const allowReasoningEffort = tools.length === 0;
 
   for (let turn = 0; turn < maxTurns; turn++) {
     // On the last turn, strip tools to force a text response
     const isLastTurn = turn === maxTurns - 1;
     const response = await client.chat.completions.create(chatCompletionParams(model, conversation, {
       tools: !isLastTurn && tools.length > 0 ? tools : undefined,
-    }));
+    }, { allowReasoningEffort }));
 
     const choice = response.choices[0];
     if (!choice) throw new Error("No response from model");
