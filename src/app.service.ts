@@ -34,13 +34,13 @@ export class AppService {
           res(data.toString('ascii'));
         });
 
-        ps.on('error', (err) => rej(err.message));
+        ps.on('error', () => rej(new Error('Command execution failed')));
 
         ps.on('close', (code) =>
           this.logger.debug(`child process exited with code ${code}`)
         );
-      } catch (err) {
-        rej(err.message);
+      } catch {
+        rej(new Error('Command execution failed'));
       }
     });
   }
