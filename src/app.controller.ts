@@ -203,12 +203,15 @@ export class AppController {
     payload: { numbers: number[]; processing_expression: string },
     @Res() res: FastifyReply
   ): Promise<void> {
-    const numbers = Array.isArray(payload?.numbers) ? payload.numbers : [];
-    const processNumbersExpression =
-      typeof payload?.processing_expression === 'string' &&
-      payload.processing_expression.trim().length > 0
-        ? payload.processing_expression
-        : 'numbers.reduce((acc, num) => acc + num, 0)';
+    'use strict';
+
+    const numbers = Array.isArray(payload?.numbers)
+      ? payload.numbers.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+      : [];
+    const processingExpression =
+      typeof payload?.processing_expression === 'string'
+        ? payload.processing_expression.trim().toLowerCase()
+        : 'sum';
 
     // expose both names used by exploiter payloads
     const response = res;
@@ -216,22 +219,21 @@ export class AppController {
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
     try {
-      const result = eval(processNumbersExpression);
+      let result: number;
+      switch (processingExpression) {
+        case 'sum':
+        case 'numbers.reduce((acc, num) => acc + num, 0)':
+          result = numbers.reduce((acc, num) => acc + num, 0);
+          break;
+        default:
+          throw new HttpException('Invalid processing expression', HttpStatus.BAD_REQUEST);
+      }
 
-      // SSJI payload may already end the response
       if (response.sent || response.raw.writableEnded) {
         return;
       }
 
-      if (typeof result === 'string') {
-        response.status(200).type('text/plain').send(result);
-        return;
-      }
-
-      response
-        .status(200)
-        .type('application/json')
-        .send(JSON.stringify(result));
+      response.status(200).type('application/json').send(JSON.stringify(result));
     } catch (err: unknown) {
       if (!response.sent && !response.raw.writableEnded) {
         const errorMessage = err instanceof Error ? err.message : String(err);
