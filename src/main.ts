@@ -82,9 +82,13 @@ async function bootstrap() {
         'Framework error intercepted'
       );
       const statusCode = safeStatusCode(error?.statusCode);
-      res.statusCode = statusCode;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify(getGenericErrorBody(statusCode)));
+      if (!res.headersSent) {
+        res.statusCode = statusCode;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      }
+      if (!res.writableEnded) {
+        res.end(JSON.stringify(getGenericErrorBody(statusCode)));
+      }
     },
     setErrorHandler: (error, req, res) => {
       server.log.error(
@@ -96,7 +100,12 @@ async function bootstrap() {
         'Unhandled Fastify error'
       );
       const statusCode = safeStatusCode(error?.statusCode);
-      res.status(statusCode).type('application/json; charset=utf-8').send(getGenericErrorBody(statusCode));
+      if (!res.sent) {
+        res
+          .status(statusCode)
+          .type('application/json; charset=utf-8')
+          .send(getGenericErrorBody(statusCode));
+      }
     },
     https:
       process.env.NODE_ENV === 'production'

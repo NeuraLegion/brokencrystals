@@ -67,6 +67,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       );
     }
 
+    const response = host.switchToHttp().getResponse();
     const status = exception instanceof HttpException ? exception.getStatus() : 500;
     const responseBody = getGenericErrorBody(status);
 
@@ -74,7 +75,10 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       throw new HttpException(responseBody, status);
     }
 
-    const response = host.switchToHttp().getResponse();
+    if (response?.sent || response?.raw?.writableEnded) {
+      return;
+    }
+
     return applicationRef.reply(response, responseBody, status);
   }
 }

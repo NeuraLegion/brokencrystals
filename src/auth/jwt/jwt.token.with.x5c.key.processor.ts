@@ -4,6 +4,9 @@ import { X509Certificate } from 'crypto';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
+  private static readonly MAX_X5C_LENGTH = 8192;
+  private static readonly BASE64_CERTIFICATE_PATTERN = /^[A-Za-z0-9+/=]+$/;
+
   constructor(private key: string) {
     super(new Logger(JwtTokenWithX5CKeyProcessor.name));
   }
@@ -15,19 +18,32 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
       const [header] = this.parse(token);
       const x5c = header?.x5c;
 
-      if (
-        !Array.isArray(x5c) ||
-        x5c.length === 0 ||
-        typeof x5c[0] !== 'string' ||
-        !/^[A-Za-z0-9+/=\r\n]+$/.test(x5c[0])
-      ) {
+      if (!Array.isArray(x5c) || x5c.length !== 1 || typeof x5c[0] !== 'string') {
         throw new UnauthorizedException('Unauthorized');
       }
 
       const normalizedCertificate = x5c[0].replace(/\s+/g, '');
-      const certificate = new X509Certificate(
-        `-----BEGIN CERTIFICATE-----\n${normalizedCertificate}\n-----END CERTIFICATE-----`
-      );
+
+      if (
+        !normalizedCertificate.length ||
+        normalizedCertificate.length > JwtTokenWithX5CKeyProcessor.MAX_X5C_LENGTH ||
+        !JwtTokenWithX5CKeyProcessor.BASE64_CERTIFICATE_PATTERN.test(normalizedCertificate)
+      ) {
+        throw new UnauthorizedException('Unauthorized');
+      }
+
+      let certificateBuffer: Buffer;
+      try {
+        certificateBuffer = Buffer.from(normalizedCertificate, 'base64');
+      } catch {
+        throw new UnauthorizedException('Unauthorized');
+      }
+
+      if (!certificateBuffer.length) {
+        throw new UnauthorizedException('Unauthorized');
+      }
+
+      const certificate = new X509Certificate(certificateBuffer);
       const publicKey = certificate.publicKey.export({ type: 'spki', format: 'pem' });
       const keyLike = await jose.importSPKI(publicKey.toString(), 'RS256');
 
@@ -35,6 +51,8 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
         algorithms: ['RS256']
       });
     } catch (error) {
+      this.log.warn('X5C JWT validation failed');
+
       if (error instanceof UnauthorizedException) {
         throw error;
       }
