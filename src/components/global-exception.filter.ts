@@ -13,11 +13,22 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const gql = host.getType<GqlContextType>() === 'graphql';
 
     if (exception instanceof HttpException) {
+      const response = exception.getResponse();
+      const status = exception.getStatus();
+      const genericResponse =
+        typeof response === 'object' && response !== null
+          ? { error: 'An internal error has occurred' }
+          : 'An internal error has occurred';
+
       if (gql) {
-        throw exception;
+        throw new InternalServerErrorException(genericResponse);
       }
 
-      return super.catch(exception, host);
+      return applicationRef.reply(
+        host.getArgByIndex(1),
+        genericResponse,
+        status
+      );
     }
 
     const unprocessableException = new InternalServerErrorException(
