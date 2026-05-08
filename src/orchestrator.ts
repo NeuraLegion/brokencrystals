@@ -58,6 +58,45 @@ import { AppHealthMonitor } from "./app-health.js";
 const MAX_ITERATIONS = 5;
 const MAX_FIX_REPAIR_ATTEMPTS = 2;
 
+const FINDING_TEST_RULES: Array<{ pattern: RegExp; tests: string[] }> = [
+  { pattern: /\bcve\b|known vulnerable|vulnerable component|retire/i, tests: ["cve_test"] },
+  { pattern: /secret|token|credential|password|api key/i, tests: ["secret_tokens"] },
+  { pattern: /sql injection|\bsqli\b/i, tests: ["sqli"] },
+  { pattern: /no\s*sql|nosql/i, tests: ["nosql"] },
+  { pattern: /stored xss|stored cross.?site/i, tests: ["stored_xss"] },
+  { pattern: /cross.?site scripting|\bxss\b/i, tests: ["xss"] },
+  { pattern: /html injection/i, tests: ["html_injection"] },
+  { pattern: /css injection/i, tests: ["css_injection"] },
+  { pattern: /iframe injection/i, tests: ["iframe_injection"] },
+  { pattern: /local file inclusion|\blfi\b|path traversal|directory traversal/i, tests: ["lfi"] },
+  { pattern: /remote file inclusion|\brfi\b/i, tests: ["rfi"] },
+  { pattern: /server.?side request forgery|\bssrf\b/i, tests: ["ssrf"] },
+  { pattern: /open redirect|unvalidated redirect/i, tests: ["unvalidated_redirect"] },
+  { pattern: /\bcsrf\b|cross.?site request forgery/i, tests: ["csrf"] },
+  { pattern: /\bjwt\b|json web token/i, tests: ["jwt"] },
+  { pattern: /brute force/i, tests: ["brute_force_login"] },
+  { pattern: /file upload|upload/i, tests: ["file_upload"] },
+  { pattern: /command injection|os command|\bosi\b/i, tests: ["osi"] },
+  { pattern: /template injection|\bssti\b/i, tests: ["ssti"] },
+  { pattern: /\bxxe\b|xml external/i, tests: ["xxe"] },
+  { pattern: /xpath/i, tests: ["xpathi"] },
+  { pattern: /ldap/i, tests: ["ldapi"] },
+  { pattern: /prototype pollution|proto pollution/i, tests: ["proto_pollution"] },
+  { pattern: /server.?side javascript|server.?side js/i, tests: ["server_side_js_injection"] },
+  { pattern: /prompt injection/i, tests: ["prompt_injection"] },
+  { pattern: /insecure output/i, tests: ["insecure_output_handling"] },
+  { pattern: /id enumeration|identifier enumeration/i, tests: ["id_enumeration"] },
+  { pattern: /broken object property|bopla|property level authorization/i, tests: ["bopla"] },
+  { pattern: /excessive data exposure/i, tests: ["excessive_data_exposure"] },
+  { pattern: /full path disclosure/i, tests: ["full_path_disclosure"] },
+  { pattern: /directory listing/i, tests: ["directory_listing"] },
+  { pattern: /common files?/i, tests: ["common_files"] },
+  { pattern: /version control|\.git|\.svn/i, tests: ["version_control_systems"] },
+  { pattern: /open cloud storage|public bucket/i, tests: ["open_cloud_storage"] },
+  { pattern: /s3 takeover|bucket takeover/i, tests: ["amazon_s3_takeover"] },
+  { pattern: /email injection/i, tests: ["email_injection"] },
+];
+
 function addHint(hints: string[], hint: string): void {
   const compact = hint.replace(/\s+/g, " ").trim().slice(0, 900);
   if (!compact) return;
@@ -71,6 +110,126 @@ function mergeHints(target: string[], source: string[] | undefined): void {
   for (const hint of source ?? []) {
     addHint(target, hint);
   }
+}
+
+interface ValidationScanPlan {
+  groups: ScanGroup[];
+  targetKeys: Set<string>;
+  missed: Finding[];
+}
+
+function buildValidationScanPlan(
+  findings: Finding[],
+  registered: RegisteredEntrypoint[],
+  baselineGroups: ScanGroup[],
+): ValidationScanPlan {
+  const registeredById = new Map(registered.map((r) => [r.entrypointId, r]));
+  const testsByEntrypoint = new Map<string, Set<string>>();
+  for (const group of baselineGroups) {
+    for (const epId of group.entrypointIds) {
+      const tests = testsByEntrypoint.get(epId) ?? new Set<string>();
+      for (const test of group.tests) tests.add(test);
+      testsByEntrypoint.set(epId, tests);
+    }
+  }
+
+  const groupsByKey = new Map<string, ScanGroup>();
+  const targetKeys = new Set<string>();
+  const missed: Finding[] = [];
+
+  for (const finding of findings) {
+    const entrypointId = resolveFindingEntrypointId(finding, registeredById, registered);
+    if (!entrypointId) {
+      missed.push(finding);
+      continue;
+    }
+
+    const tests = testsForFinding(finding, testsByEntrypoint.get(entrypointId));
+    if (tests.length === 0) {
+      missed.push(finding);
+      continue;
+    }
+
+    targetKeys.add(findingKey(finding));
+    const registeredEntry = registeredById.get(entrypointId);
+    const hasPathParams = registeredEntry ? /[:{}]/.test(registeredEntry.endpoint.path) : false;
+
+    for (const test of tests) {
+      const key = `${entrypointId}::${test}`;
+      if (!groupsByKey.has(key)) {
+        groupsByKey.set(key, {
+          entrypointIds: [entrypointId],
+          tests: [test],
+          hasPathParams,
+        });
+      }
+    }
+  }
+
+  return { groups: [...groupsByKey.values()], targetKeys, missed };
+}
+
+function resolveFindingEntrypointId(
+  finding: Finding,
+  registeredById: Map<string, RegisteredEntrypoint>,
+  registered: RegisteredEntrypoint[],
+): string | undefined {
+  if (finding.entrypointId && registeredById.has(finding.entrypointId)) {
+    return finding.entrypointId;
+  }
+
+  const findingMethod = finding.method.toUpperCase();
+  const findingPath = normalizeUrlPath(finding.url);
+  if (!findingPath) return undefined;
+
+  const exact = registered.find((entry) =>
+    entry.endpoint.method.toUpperCase() === findingMethod &&
+    normalizeUrlPath(entry.endpoint.fullUrl ?? entry.endpoint.path) === findingPath,
+  );
+  if (exact) return exact.entrypointId;
+
+  const withoutQuery = findingPath.split("?")[0];
+  const pathOnly = registered.find((entry) =>
+    entry.endpoint.method.toUpperCase() === findingMethod &&
+    normalizeUrlPath(entry.endpoint.fullUrl ?? entry.endpoint.path).split("?")[0] === withoutQuery,
+  );
+  return pathOnly?.entrypointId;
+}
+
+function normalizeUrlPath(value: string): string {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    const path = value.startsWith("/") ? value : `/${value}`;
+    return path.replace(/\/+/g, "/");
+  }
+}
+
+function testsForFinding(
+  finding: Finding,
+  selectedTests: Set<string> | undefined,
+): string[] {
+  const tests = new Set<string>();
+  if (finding.testTag) {
+    tests.add(finding.testTag);
+  }
+
+  const haystack = `${finding.name}\n${finding.details}\n${finding.remedy}`;
+  for (const rule of FINDING_TEST_RULES) {
+    if (rule.pattern.test(haystack)) {
+      for (const test of rule.tests) tests.add(test);
+    }
+  }
+
+  if (tests.size === 0) {
+    for (const test of selectedTests ?? []) tests.add(test);
+  }
+
+  const filtered = [...tests].filter((test) => !selectedTests || selectedTests.has(test));
+  if (filtered.length > 0) return filtered;
+  return [...(selectedTests ?? [])];
 }
 
 /**
@@ -1107,6 +1266,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     );
 
     const allFixes: SecurityFix[] = [];
+    let validationFindings: Finding[] = [];
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
 
@@ -1182,10 +1342,29 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         }
       }
 
-      // --- Scan all groups ---
+      const validationPlan =
+        iteration > 0
+          ? buildValidationScanPlan(validationFindings, registered, scanGroups)
+          : undefined;
+      const useTargetedValidation =
+        !!validationPlan &&
+        validationPlan.groups.length > 0 &&
+        validationPlan.missed.length === 0;
+      if (validationPlan && validationPlan.missed.length > 0) {
+        console.warn(
+          `[Scan] Could not map ${validationPlan.missed.length}/${validationFindings.length} finding(s) to targeted validation scans — falling back to full scan groups`,
+        );
+      }
+      const roundScanGroups = useTargetedValidation
+        ? validationPlan.groups
+        : scanGroups;
+
+      // --- Scan selected groups ---
       await progress.phaseStart(
         "scan",
-        `Running scans — round ${iteration + 1}`,
+        useTargetedValidation
+          ? `Running targeted validation scans — round ${iteration + 1}`
+          : `Running scans — round ${iteration + 1}`,
       );
 
       // Body-aware pre-scan health check. The shallow checkAppHealth above
@@ -1207,11 +1386,18 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
 
       const scanIds: string[] = [];
-      for (const [gi, group] of scanGroups.entries()) {
+      if (useTargetedValidation) {
+        console.log(
+          `[Scan] Targeted validation: ${roundScanGroups.length} endpoint/test scan(s) for ${validationFindings.length} prior finding(s)`,
+        );
+      }
+      for (const [gi, group] of roundScanGroups.entries()) {
         // Stagger scan launches to avoid overwhelming Bright's auth subsystem
         if (gi > 0) {
-          const jitterMs = 30_000 + Math.floor(Math.random() * 30_000);
-          console.log(`[Scan] Waiting ${Math.round(jitterMs / 1000)}s before launching group ${gi + 1}...`);
+          const jitterMs = useTargetedValidation
+            ? 5_000 + Math.floor(Math.random() * 5_000)
+            : 30_000 + Math.floor(Math.random() * 30_000);
+          console.log(`[Scan] Waiting ${Math.round(jitterMs / 1000)}s before launching ${useTargetedValidation ? "validation scan" : "group"} ${gi + 1}...`);
           await sleep(jitterMs);
         }
         try {
@@ -1221,7 +1407,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             repeater.repeaterId,
             group.tests,
             config,
-            `Engine Pass ${iteration + 1} — Group ${gi + 1}`,
+            useTargetedValidation
+              ? `Engine Validation ${iteration + 1} — EP/Test ${gi + 1}`
+              : `Engine Pass ${iteration + 1} — Group ${gi + 1}`,
             group.hasPathParams,
           );
           scanIds.push(scanId);
@@ -1229,7 +1417,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           await progress.phaseDetail(
             "scan",
             "scan_launched",
-            `Group ${gi + 1}: ${group.entrypointIds.length} endpoints · tests: ${group.tests.join(", ")}`,
+            `${useTargetedValidation ? "Validation" : "Group"} ${gi + 1}: ${group.entrypointIds.length} endpoints · tests: ${group.tests.join(", ")}`,
           );
         } catch (err) {
           console.error(
@@ -1375,8 +1563,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       // Track all findings — mark previously-seen ones as fixed if they didn't reappear
       if (iteration > 0) {
         const currentKeys = new Set(findings.map(findingKey));
-        for (const key of allFindings.keys()) {
-          if (!currentKeys.has(key)) {
+        const keysEligibleForFixMark = useTargetedValidation
+          ? validationPlan.targetKeys
+          : new Set(allFindings.keys());
+        for (const key of keysEligibleForFixMark) {
+          if (allFindings.has(key) && !currentKeys.has(key)) {
             fixedKeys.add(key);
           }
         }
@@ -1406,6 +1597,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         await progress.phaseStart("done", msg);
         return;
       }
+
+      validationFindings = findings;
 
       // Escalate model if fixes didn't reduce the vulnerability count
       if (iteration > 0) {

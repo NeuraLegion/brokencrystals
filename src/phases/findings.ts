@@ -33,6 +33,7 @@ export async function fetchFindings(
         details: issue.details ?? "",
         remedy: issue.remedy ?? "",
         entrypointId: issue.entryPointId,
+        testTag: extractIssueTestTag(issue),
         issueId: issue.id,
       });
     }
@@ -50,6 +51,13 @@ interface ScanIssue {
   details?: string;
   remedy?: string;
   entryPointId?: string;
+  testTag?: string;
+  testId?: string;
+  testName?: string;
+  type?: string;
+  issueType?: string;
+  category?: string;
+  test?: string | { tag?: string; id?: string; name?: string };
 }
 
 async function fetchScanIssues(
@@ -82,4 +90,14 @@ function normalizeSeverity(s: string): "Critical" | "High" | "Medium" | "Low" {
   if (lower === "high") return "High";
   if (lower === "medium") return "Medium";
   return "Low";
+}
+
+function extractIssueTestTag(issue: ScanIssue): string | undefined {
+  if (typeof issue.testTag === "string") return issue.testTag;
+  if (typeof issue.testId === "string") return issue.testId;
+  if (typeof issue.test === "string") return issue.test;
+  if (issue.test && typeof issue.test === "object") {
+    return issue.test.tag ?? issue.test.id;
+  }
+  return undefined;
 }

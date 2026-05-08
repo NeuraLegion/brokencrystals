@@ -115,6 +115,7 @@ export interface Finding {
   details: string;
   remedy: string;
   entrypointId?: string;
+  testTag?: string;
   issueId: string;
 }
 

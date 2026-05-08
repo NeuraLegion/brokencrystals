@@ -29494,6 +29494,7 @@ async function fetchFindings(api, scanIds) {
         details: issue.details ?? "",
         remedy: issue.remedy ?? "",
         entrypointId: issue.entryPointId,
+        testTag: extractIssueTestTag(issue),
         issueId: issue.id
       });
     }
@@ -29523,6 +29524,15 @@ function normalizeSeverity(s) {
   if (lower === "high") return "High";
   if (lower === "medium") return "Medium";
   return "Low";
+}
+function extractIssueTestTag(issue) {
+  if (typeof issue.testTag === "string") return issue.testTag;
+  if (typeof issue.testId === "string") return issue.testId;
+  if (typeof issue.test === "string") return issue.test;
+  if (issue.test && typeof issue.test === "object") {
+    return issue.test.tag ?? issue.test.id;
+  }
+  return void 0;
 }
 
 // src/phases/fix.ts
@@ -31096,6 +31106,44 @@ var AppHealthMonitor = class {
 // src/orchestrator.ts
 var MAX_ITERATIONS = 5;
 var MAX_FIX_REPAIR_ATTEMPTS = 2;
+var FINDING_TEST_RULES = [
+  { pattern: /\bcve\b|known vulnerable|vulnerable component|retire/i, tests: ["cve_test"] },
+  { pattern: /secret|token|credential|password|api key/i, tests: ["secret_tokens"] },
+  { pattern: /sql injection|\bsqli\b/i, tests: ["sqli"] },
+  { pattern: /no\s*sql|nosql/i, tests: ["nosql"] },
+  { pattern: /stored xss|stored cross.?site/i, tests: ["stored_xss"] },
+  { pattern: /cross.?site scripting|\bxss\b/i, tests: ["xss"] },
+  { pattern: /html injection/i, tests: ["html_injection"] },
+  { pattern: /css injection/i, tests: ["css_injection"] },
+  { pattern: /iframe injection/i, tests: ["iframe_injection"] },
+  { pattern: /local file inclusion|\blfi\b|path traversal|directory traversal/i, tests: ["lfi"] },
+  { pattern: /remote file inclusion|\brfi\b/i, tests: ["rfi"] },
+  { pattern: /server.?side request forgery|\bssrf\b/i, tests: ["ssrf"] },
+  { pattern: /open redirect|unvalidated redirect/i, tests: ["unvalidated_redirect"] },
+  { pattern: /\bcsrf\b|cross.?site request forgery/i, tests: ["csrf"] },
+  { pattern: /\bjwt\b|json web token/i, tests: ["jwt"] },
+  { pattern: /brute force/i, tests: ["brute_force_login"] },
+  { pattern: /file upload|upload/i, tests: ["file_upload"] },
+  { pattern: /command injection|os command|\bosi\b/i, tests: ["osi"] },
+  { pattern: /template injection|\bssti\b/i, tests: ["ssti"] },
+  { pattern: /\bxxe\b|xml external/i, tests: ["xxe"] },
+  { pattern: /xpath/i, tests: ["xpathi"] },
+  { pattern: /ldap/i, tests: ["ldapi"] },
+  { pattern: /prototype pollution|proto pollution/i, tests: ["proto_pollution"] },
+  { pattern: /server.?side javascript|server.?side js/i, tests: ["server_side_js_injection"] },
+  { pattern: /prompt injection/i, tests: ["prompt_injection"] },
+  { pattern: /insecure output/i, tests: ["insecure_output_handling"] },
+  { pattern: /id enumeration|identifier enumeration/i, tests: ["id_enumeration"] },
+  { pattern: /broken object property|bopla|property level authorization/i, tests: ["bopla"] },
+  { pattern: /excessive data exposure/i, tests: ["excessive_data_exposure"] },
+  { pattern: /full path disclosure/i, tests: ["full_path_disclosure"] },
+  { pattern: /directory listing/i, tests: ["directory_listing"] },
+  { pattern: /common files?/i, tests: ["common_files"] },
+  { pattern: /version control|\.git|\.svn/i, tests: ["version_control_systems"] },
+  { pattern: /open cloud storage|public bucket/i, tests: ["open_cloud_storage"] },
+  { pattern: /s3 takeover|bucket takeover/i, tests: ["amazon_s3_takeover"] },
+  { pattern: /email injection/i, tests: ["email_injection"] }
+];
 function addHint(hints, hint) {
   const compact = hint.replace(/\s+/g, " ").trim().slice(0, 900);
   if (!compact) return;
@@ -31108,6 +31156,93 @@ function mergeHints(target, source) {
   for (const hint of source ?? []) {
     addHint(target, hint);
   }
+}
+function buildValidationScanPlan(findings, registered, baselineGroups) {
+  const registeredById = new Map(registered.map((r) => [r.entrypointId, r]));
+  const testsByEntrypoint = /* @__PURE__ */ new Map();
+  for (const group of baselineGroups) {
+    for (const epId of group.entrypointIds) {
+      const tests = testsByEntrypoint.get(epId) ?? /* @__PURE__ */ new Set();
+      for (const test of group.tests) tests.add(test);
+      testsByEntrypoint.set(epId, tests);
+    }
+  }
+  const groupsByKey = /* @__PURE__ */ new Map();
+  const targetKeys = /* @__PURE__ */ new Set();
+  const missed = [];
+  for (const finding of findings) {
+    const entrypointId = resolveFindingEntrypointId(finding, registeredById, registered);
+    if (!entrypointId) {
+      missed.push(finding);
+      continue;
+    }
+    const tests = testsForFinding(finding, testsByEntrypoint.get(entrypointId));
+    if (tests.length === 0) {
+      missed.push(finding);
+      continue;
+    }
+    targetKeys.add(findingKey(finding));
+    const registeredEntry = registeredById.get(entrypointId);
+    const hasPathParams = registeredEntry ? /[:{}]/.test(registeredEntry.endpoint.path) : false;
+    for (const test of tests) {
+      const key = `${entrypointId}::${test}`;
+      if (!groupsByKey.has(key)) {
+        groupsByKey.set(key, {
+          entrypointIds: [entrypointId],
+          tests: [test],
+          hasPathParams
+        });
+      }
+    }
+  }
+  return { groups: [...groupsByKey.values()], targetKeys, missed };
+}
+function resolveFindingEntrypointId(finding, registeredById, registered) {
+  if (finding.entrypointId && registeredById.has(finding.entrypointId)) {
+    return finding.entrypointId;
+  }
+  const findingMethod = finding.method.toUpperCase();
+  const findingPath = normalizeUrlPath(finding.url);
+  if (!findingPath) return void 0;
+  const exact = registered.find(
+    (entry) => entry.endpoint.method.toUpperCase() === findingMethod && normalizeUrlPath(entry.endpoint.fullUrl ?? entry.endpoint.path) === findingPath
+  );
+  if (exact) return exact.entrypointId;
+  const withoutQuery = findingPath.split("?")[0];
+  const pathOnly = registered.find(
+    (entry) => entry.endpoint.method.toUpperCase() === findingMethod && normalizeUrlPath(entry.endpoint.fullUrl ?? entry.endpoint.path).split("?")[0] === withoutQuery
+  );
+  return pathOnly?.entrypointId;
+}
+function normalizeUrlPath(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    const path2 = value.startsWith("/") ? value : `/${value}`;
+    return path2.replace(/\/+/g, "/");
+  }
+}
+function testsForFinding(finding, selectedTests) {
+  const tests = /* @__PURE__ */ new Set();
+  if (finding.testTag) {
+    tests.add(finding.testTag);
+  }
+  const haystack = `${finding.name}
+${finding.details}
+${finding.remedy}`;
+  for (const rule of FINDING_TEST_RULES) {
+    if (rule.pattern.test(haystack)) {
+      for (const test of rule.tests) tests.add(test);
+    }
+  }
+  if (tests.size === 0) {
+    for (const test of selectedTests ?? []) tests.add(test);
+  }
+  const filtered = [...tests].filter((test) => !selectedTests || selectedTests.has(test));
+  if (filtered.length > 0) return filtered;
+  return [...selectedTests ?? []];
 }
 async function restartApp(current, llm, repoPath, techStack, startupConfig, modelSelector, registration, recoveryHints, monitor, seedCommands) {
   await monitor?.pause();
@@ -31937,6 +32072,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       `Created ${scanGroups.length} scan group(s) with per-endpoint test selection`
     );
     const allFixes = [];
+    let validationFindings = [];
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
       if (iteration > 0 && authResult.hasAuth && authResult.authObjectId) {
         console.log(`[Auth] Verifying auth before round ${iteration + 1}...`);
@@ -32003,9 +32139,17 @@ This user should work for authentication. Skip user registration/seeding and go 
           break;
         }
       }
+      const validationPlan = iteration > 0 ? buildValidationScanPlan(validationFindings, registered, scanGroups) : void 0;
+      const useTargetedValidation = !!validationPlan && validationPlan.groups.length > 0 && validationPlan.missed.length === 0;
+      if (validationPlan && validationPlan.missed.length > 0) {
+        console.warn(
+          `[Scan] Could not map ${validationPlan.missed.length}/${validationFindings.length} finding(s) to targeted validation scans \u2014 falling back to full scan groups`
+        );
+      }
+      const roundScanGroups = useTargetedValidation ? validationPlan.groups : scanGroups;
       await progress.phaseStart(
         "scan",
-        `Running scans \u2014 round ${iteration + 1}`
+        useTargetedValidation ? `Running targeted validation scans \u2014 round ${iteration + 1}` : `Running scans \u2014 round ${iteration + 1}`
       );
       try {
         const deep = await healthMonitor.verifyDeepHealth();
@@ -32020,10 +32164,15 @@ This user should work for authentication. Skip user registration/seeding and go 
         );
       }
       const scanIds = [];
-      for (const [gi, group] of scanGroups.entries()) {
+      if (useTargetedValidation) {
+        console.log(
+          `[Scan] Targeted validation: ${roundScanGroups.length} endpoint/test scan(s) for ${validationFindings.length} prior finding(s)`
+        );
+      }
+      for (const [gi, group] of roundScanGroups.entries()) {
         if (gi > 0) {
-          const jitterMs = 3e4 + Math.floor(Math.random() * 3e4);
-          console.log(`[Scan] Waiting ${Math.round(jitterMs / 1e3)}s before launching group ${gi + 1}...`);
+          const jitterMs = useTargetedValidation ? 5e3 + Math.floor(Math.random() * 5e3) : 3e4 + Math.floor(Math.random() * 3e4);
+          console.log(`[Scan] Waiting ${Math.round(jitterMs / 1e3)}s before launching ${useTargetedValidation ? "validation scan" : "group"} ${gi + 1}...`);
           await sleep2(jitterMs);
         }
         try {
@@ -32033,7 +32182,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             repeater.repeaterId,
             group.tests,
             config,
-            `Engine Pass ${iteration + 1} \u2014 Group ${gi + 1}`,
+            useTargetedValidation ? `Engine Validation ${iteration + 1} \u2014 EP/Test ${gi + 1}` : `Engine Pass ${iteration + 1} \u2014 Group ${gi + 1}`,
             group.hasPathParams
           );
           scanIds.push(scanId);
@@ -32041,7 +32190,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           await progress.phaseDetail(
             "scan",
             "scan_launched",
-            `Group ${gi + 1}: ${group.entrypointIds.length} endpoints \xB7 tests: ${group.tests.join(", ")}`
+            `${useTargetedValidation ? "Validation" : "Group"} ${gi + 1}: ${group.entrypointIds.length} endpoints \xB7 tests: ${group.tests.join(", ")}`
           );
         } catch (err) {
           console.error(
@@ -32166,8 +32315,9 @@ This user should work for authentication. Skip user registration/seeding and go 
       );
       if (iteration > 0) {
         const currentKeys = new Set(findings.map(findingKey));
-        for (const key of allFindings.keys()) {
-          if (!currentKeys.has(key)) {
+        const keysEligibleForFixMark = useTargetedValidation ? validationPlan.targetKeys : new Set(allFindings.keys());
+        for (const key of keysEligibleForFixMark) {
+          if (allFindings.has(key) && !currentKeys.has(key)) {
             fixedKeys.add(key);
           }
         }
@@ -32192,6 +32342,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         await progress.phaseStart("done", msg);
         return;
       }
+      validationFindings = findings;
       if (iteration > 0) {
         const previousCount = allFindings.size - fixedKeys.size;
         if (findings.length >= previousCount) {
