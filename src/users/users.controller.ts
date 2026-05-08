@@ -119,7 +119,7 @@ export class UsersController {
   }
 
   @Get('/id/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(AuthGuard, AdminGuard)
   @JwtType(JwtProcessorType.RSA)
   @ApiQuery({ name: 'id', example: 1, required: true })
   @SerializeOptions({ groups: [BASIC_USER_INFO] })
@@ -131,34 +131,41 @@ export class UsersController {
     description: 'Returns basic user info if it exists'
   })
   @ApiForbiddenResponse({
-    description: 'invalid credentials',
+    description: 'user has no admin rights',
     schema: {
       type: 'object',
       properties: {
         statusCode: { type: 'number' },
-        message: { type: 'string' },
-        error: { type: 'string' }
+        message: { type: 'string' }
       }
     }
   })
-  async getById(@Param('id') id: number, @Req() req: FastifyRequest): Promise<UserDto> {
+  @ApiNotFoundResponse({
+    description: 'Resource not found',
+    schema: {
+      type: 'object',
+      properties: {
+        statusCode: { type: 'number' },
+        message: { type: 'string' }
+      }
+    }
+  })
+  async getById(@Param('id') id: number): Promise<UserDto> {
+    const normalizedId = Number(id);
+
+    if (!Number.isInteger(normalizedId) || normalizedId < 1) {
+      throw new NotFoundException('Resource not found');
+    }
+
     try {
-      const requester = await this.usersService.findByEmail(this.originEmail(req));
-      const normalizedId = Number(id);
-
-      if (!Number.isInteger(normalizedId) || normalizedId < 1) {
-        throw new NotFoundException('Resource not found');
-      }
-
-      if (!requester.isAdmin && requester.id !== normalizedId) {
-        throw new NotFoundException('Resource not found');
-      }
-
       const user = await this.usersService.findById(normalizedId);
       this.logger.debug(`Find a user by id: ${normalizedId}`);
       return new UserDto(user);
     } catch (err) {
-      throw new HttpException(err.message, err.status);
+      throw new HttpException(
+        err.message || 'Resource not found',
+        err.status || HttpStatus.NOT_FOUND
+      );
     }
   }
 
