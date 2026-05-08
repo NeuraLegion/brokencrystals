@@ -8,6 +8,17 @@ import {
 import { BaseExceptionFilter } from '@nestjs/core';
 import { GqlContextType } from '@nestjs/graphql';
 
+const sanitizeErrorForLog = (exception: unknown): { name?: string; message?: string } => {
+  if (!(exception instanceof Error)) {
+    return {};
+  }
+
+  return {
+    name: exception.name,
+    message: exception.message
+  };
+};
+
 @Catch()
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
@@ -26,13 +37,13 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     }
 
     if (exception instanceof HttpException) {
-      this.logger.warn(
-        `Handled exception with status ${exception.getStatus()}`
-      );
+      this.logger.warn({
+        status: exception.getStatus(),
+        error: sanitizeErrorForLog(exception)
+      });
     } else {
       this.logger.error(
-        'Unhandled exception',
-        exception instanceof Error ? exception.stack : undefined
+        `Unhandled exception: ${JSON.stringify(sanitizeErrorForLog(exception))}`
       );
     }
 

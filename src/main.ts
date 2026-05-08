@@ -23,6 +23,17 @@ import { join } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
+const sanitizeErrorForLog = (error: unknown): Record<string, unknown> => {
+  if (!(error instanceof Error)) {
+    return {};
+  }
+
+  return {
+    name: error.name,
+    message: error.message
+  };
+};
+
 
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
@@ -38,7 +49,7 @@ async function bootstrap() {
     frameworkErrors: (error, req, res) => {
       server.log.warn(
         {
-          err: error,
+          error: sanitizeErrorForLog(error),
           url: req.url,
           method: req.method
         },
@@ -63,7 +74,7 @@ async function bootstrap() {
     setErrorHandler: (error, req, res) => {
       server.log.error(
         {
-          err: error,
+          error: sanitizeErrorForLog(error),
           url: req.url,
           method: req.method
         },

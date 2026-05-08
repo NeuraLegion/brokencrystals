@@ -72,8 +72,8 @@ export class AuthService {
           'utf8'
         )
       );
-    } catch (error) {
-      this.logger.error('Failed to initialize JWT key material', error instanceof Error ? error.stack : undefined);
+    } catch {
+      this.logger.error('Failed to initialize JWT key material');
       throw new InternalServerErrorException('Authentication configuration is invalid');
     }
     const jkuUrl = this.configService.get<string>(
@@ -137,10 +137,9 @@ export class AuthService {
   ): Promise<unknown> {
     try {
       return await this.processors.get(processor).validateToken(token);
-    } catch (error) {
+    } catch {
       this.logger.warn(
-        `JWT validation failed for processor ${JwtProcessorType[processor] ?? processor}`,
-        error instanceof Error ? error.stack : undefined
+        `JWT validation failed for processor ${JwtProcessorType[processor] ?? processor}`
       );
       throw new UnauthorizedException('Unauthorized');
     }

@@ -37,11 +37,8 @@ export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
       const x509 = await jose.importX509(crtPayload, 'RS256');
 
       return await jose.jwtVerify(token, x509);
-    } catch (error) {
-      this.log.warn(
-        'Failed to validate X5U JWT',
-        error instanceof Error ? error.stack : undefined
-      );
+    } catch {
+      this.log.warn('Failed to validate X5U JWT');
       throw new UnauthorizedException('Unauthorized');
     }
   }
