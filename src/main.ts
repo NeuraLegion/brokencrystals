@@ -138,6 +138,19 @@ async function bootstrap() {
   });
 
   server.addHook('onRequest', async (req, reply) => {
+    if (req.url === '/config.js') {
+      reply.code(404);
+      return reply.send({
+        success: false,
+        error: {
+          kind: 'not_found',
+          message: 'Not Found'
+        }
+      });
+    }
+  });
+
+  server.addHook('onRequest', async (req, reply) => {
     if (req.url && /^\/(?:\.hg|\.git|\.svn)(?:\/|$)/.test(req.url)) {
       reply.code(404);
       return reply.send({
