@@ -18,6 +18,12 @@ const sanitizeErrorForLog = (exception: unknown): { name?: string; message?: str
   };
 };
 
+const redactSensitiveText = (value: string): string => {
+  return value
+    .replace(/([A-Za-z]:\\[^\s'"`<>]+)/g, '[redacted-path]')
+    .replace(/((?:\/[^\s'"`<>]+)+)/g, '[redacted-path]');
+};
+
 const getGenericErrorBody = (statusCode: number): { error: string } => {
   if (statusCode === 401) {
     return { error: 'Unauthorized' };
@@ -67,9 +73,15 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const response = host.switchToHttp().getResponse();
     const status = exception instanceof HttpException ? exception.getStatus() : 500;
     const responseBody = getGenericErrorBody(status);
+    const safeResponseBody =
+      exception instanceof Error &&
+      typeof exception.message === 'string' &&
+      redactSensitiveText(exception.message) !== exception.message
+        ? { ...responseBody, message: responseBody.error }
+        : responseBody;
 
     if (gql) {
-      throw new HttpException(responseBody, status);
+      throw new HttpException(safeResponseBody, status);
     }
 
     if (response?.sent || response?.raw?.writableEnded) {
@@ -80,6 +92,6 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     applicationRef.setHeader(response, 'X-Content-Type-Options', 'nosniff');
     applicationRef.setHeader(response, 'X-Powered-By', '');
 
-    return applicationRef.reply(response, responseBody, status);
+    return applicationRef.reply(response, safeResponseBody, status);
   }
 }

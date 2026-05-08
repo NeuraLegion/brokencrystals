@@ -35,6 +35,12 @@ const sanitizeErrorForLog = (error: unknown): Record<string, unknown> => {
   };
 };
 
+const redactSensitiveText = (value: string): string => {
+  return value
+    .replace(/([A-Za-z]:\\[^\s'"`<>]+)/g, '[redacted-path]')
+    .replace(/((?:\/[^\s'"`<>]+)+)/g, '[redacted-path]');
+};
+
 const getGenericErrorBody = (statusCode: number): { error: string } => {
   if (statusCode === 401) {
     return { error: 'Unauthorized' };
@@ -117,7 +123,14 @@ async function bootstrap() {
       const statusCode = safeStatusCode(error?.statusCode);
       if (!res.sent && !res.raw.writableEnded) {
         setSafeJsonHeaders(res);
-        return res.status(statusCode).send(getGenericErrorBody(statusCode));
+        const body = getGenericErrorBody(statusCode);
+        return res.status(statusCode).send({
+          ...body,
+          ...(typeof error?.message === 'string' &&
+          redactSensitiveText(error.message) !== error.message
+            ? { message: body.error }
+            : {})
+        });
       }
       return;
     },
