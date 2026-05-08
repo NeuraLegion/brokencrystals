@@ -98,6 +98,22 @@ async function bootstrap() {
   });
 
   server.setDefaultRoute((req, res) => {
+    if (
+      req.url &&
+      /^\/(?:\.env|\.git|\.hg|\.svn)(?:\/|$)/.test(req.url)
+    ) {
+      res.statusCode = 404;
+      return res.end(
+        JSON.stringify({
+          success: false,
+          error: {
+            kind: 'not_found',
+            message: 'Not Found'
+          }
+        })
+      );
+    }
+
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
       return res.end(
