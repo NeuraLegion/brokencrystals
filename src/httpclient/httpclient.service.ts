@@ -10,13 +10,9 @@ export class HttpClientService {
       responseType: 'json'
     });
     if (resp.status != 200) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote resource');
     }
-    this.log.debug(
-      `Loaded: ${
-        typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data)
-      }`
-    );
+    this.log.debug('Loaded remote JSON resource');
     return resp.data;
   }
 
@@ -27,18 +23,18 @@ export class HttpClientService {
   ): Promise<T> {
     const resp = await axios.post<T>(url, data, config);
     if (![200, 201].includes(+resp.status)) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote resource');
     }
-    this.log.debug(`Loaded: ${resp.data}`);
+    this.log.debug('Loaded remote response');
     return resp.data;
   }
 
   async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const resp = await axios.get(url, config);
     if (![200, 201].includes(+resp.status)) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote resource');
     }
-    this.log.debug(`Loaded: ${resp.data}`);
+    this.log.debug('Loaded remote response');
     return resp.data;
   }
 
@@ -48,12 +44,12 @@ export class HttpClientService {
     });
 
     if (resp.status != 200) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote resource');
     }
 
     const buffer = Buffer.from(resp.data);
     const text = buffer.toString();
-    this.log.debug(`Loaded: ${text}`);
+    this.log.debug('Loaded remote plain text resource');
     return text;
   }
 
@@ -66,7 +62,7 @@ export class HttpClientService {
     });
 
     if (resp.status != 200) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote resource');
     }
 
     const buffer = Buffer.from(resp.data);
