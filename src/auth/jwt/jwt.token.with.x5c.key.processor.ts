@@ -1,5 +1,6 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import * as jose from 'jose';
+import { X509Certificate } from 'crypto';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
@@ -14,14 +15,31 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
       const [header] = this.parse(token);
       const x5c = header?.x5c;
 
-      if (!Array.isArray(x5c) || typeof x5c[0] !== 'string' || !x5c[0].trim()) {
-        throw new Error('Invalid x5c header');
+      if (
+        !Array.isArray(x5c) ||
+        x5c.length === 0 ||
+        typeof x5c[0] !== 'string' ||
+        !/^[A-Za-z0-9+/=\r\n]+$/.test(x5c[0])
+      ) {
+        throw new UnauthorizedException('Unauthorized');
       }
 
-      const keyLike = await jose.importPKCS8(x5c[0], 'RS256');
-      return await jose.jwtVerify(token, keyLike);
-    } catch {
-      throw new Error('Unauthorized');
+      const normalizedCertificate = x5c[0].replace(/\s+/g, '');
+      const certificate = new X509Certificate(
+        `-----BEGIN CERTIFICATE-----\n${normalizedCertificate}\n-----END CERTIFICATE-----`
+      );
+      const publicKey = certificate.publicKey.export({ type: 'spki', format: 'pem' });
+      const keyLike = await jose.importSPKI(publicKey.toString(), 'RS256');
+
+      return await jose.jwtVerify(token, keyLike, {
+        algorithms: ['RS256']
+      });
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      throw new UnauthorizedException('Unauthorized');
     }
   }
 

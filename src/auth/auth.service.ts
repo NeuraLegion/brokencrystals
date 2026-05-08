@@ -1,5 +1,5 @@
 import { EntityManager } from '@mikro-orm/core';
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import { KeyCloakService } from '../keycloak/keycloak.service';
@@ -137,12 +137,11 @@ export class AuthService {
   ): Promise<unknown> {
     try {
       return await this.processors.get(processor).validateToken(token);
-    } catch (error) {
+    } catch {
       this.logger.warn(
-        `JWT validation failed for processor ${JwtProcessorType[processor] ?? processor}`,
-        error instanceof Error ? error.stack : undefined
+        `JWT validation failed for processor ${JwtProcessorType[processor] ?? processor}`
       );
-      throw new InternalServerErrorException('Token validation failed');
+      throw new UnauthorizedException('Unauthorized');
     }
   }
 

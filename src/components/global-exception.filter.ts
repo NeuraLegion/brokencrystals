@@ -18,10 +18,13 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       this.applicationRef ||
       (this.httpAdapterHost && this.httpAdapterHost.httpAdapter);
 
-    this.logger.error(
-      'Unhandled exception',
-      exception instanceof Error ? exception.stack : undefined
-    );
+    if (exception instanceof HttpException) {
+      this.logger.warn(
+        `Handled exception with status ${exception.getStatus()}`
+      );
+    } else {
+      this.logger.error('Unhandled exception');
+    }
 
     const genericResponse = { error: 'An internal error has occurred' };
     const status = exception instanceof HttpException ? exception.getStatus() : 500;
