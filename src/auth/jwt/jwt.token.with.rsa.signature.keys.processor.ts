@@ -1,5 +1,6 @@
-import { Logger } from '@nestjs/common';
-import { decode, encode } from 'jwt-simple';
+import { createVerify } from 'crypto';
+import { BadRequestException, Logger, UnauthorizedException } from '@nestjs/common';
+import { encode } from 'jwt-simple';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithRSASignatureKeysProcessor extends JwtTokenProcessor {
@@ -15,17 +16,26 @@ export class JwtTokenWithRSASignatureKeysProcessor extends JwtTokenProcessor {
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
 
-    const [header] = this.parse(token);
-    if (header.alg !== JwtTokenWithRSASignatureKeysProcessor.EXPECTED_ALG) {
-      throw new Error('Invalid JWT algorithm');
+    const parts = token.split('.');
+    if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
+      throw new BadRequestException('Invalid JWT token');
     }
 
-    return decode(
-      token,
-      this.publicKey,
-      true,
-      JwtTokenWithRSASignatureKeysProcessor.EXPECTED_ALG
-    );
+    const [header, payload] = this.parse(token);
+    if (header.alg !== JwtTokenWithRSASignatureKeysProcessor.EXPECTED_ALG) {
+      throw new UnauthorizedException('Invalid JWT algorithm');
+    }
+
+    const verifier = createVerify('RSA-SHA256');
+    verifier.update(`${parts[0]}.${parts[1]}`);
+    verifier.end();
+
+    const signature = Buffer.from(parts[2], 'base64url');
+    if (!signature.length || !verifier.verify(this.publicKey, signature)) {
+      throw new UnauthorizedException('Invalid JWT signature');
+    }
+
+    return payload;
   }
 
   async createToken(payload: unknown): Promise<string> {
