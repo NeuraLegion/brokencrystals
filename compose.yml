@@ -54,10 +54,14 @@ services:
         max-file: '5'
         max-size: '10m'
     depends_on:
-      - db
-      - mailcatcher
-      - keycloak
-      - ollama
+      db:
+        condition: service_healthy
+      mailcatcher:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
 
   watchtower:
     image: 'containrrr/watchtower'

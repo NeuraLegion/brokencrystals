@@ -6,6 +6,8 @@ FROM node:18-alpine AS build
 
 WORKDIR /usr/src/app
 
+RUN apk add --no-cache wget
+
 # Copy and build NestJS server project
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node tsconfig.build.json ./
@@ -45,6 +47,8 @@ USER node
 FROM node:18-alpine AS production
 
 WORKDIR /usr/src/app
+
+RUN apk add --no-cache wget
 
 COPY --chown=node:node .env ./
 COPY --chown=node:node config ./config
