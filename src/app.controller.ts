@@ -265,6 +265,7 @@ export class AppController {
   }
 
   @Get('/config')
+  @UseGuards(AuthGuard)
   @ApiOperation({
     description: API_DESC_CONFIG_SERVER
   })
