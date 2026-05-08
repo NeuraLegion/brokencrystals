@@ -10,13 +10,21 @@ export class JwtTokenWithWeakKeyProcessor extends JwtTokenProcessor {
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
 
+    if (typeof token !== 'string' || token.length > 4096) {
+      this.log.warn('Weak-key JWT validation failed');
+      throw new UnauthorizedException({ error: 'Unauthorized' });
+    }
+
+    const jwtParts = token.split('.');
+    if (jwtParts.length !== 3 || jwtParts.some((part) => !part.length)) {
+      this.log.warn('Weak-key JWT validation failed');
+      throw new UnauthorizedException({ error: 'Unauthorized' });
+    }
+
     try {
       return decode(token, this.key, false);
-    } catch (error) {
+    } catch {
       this.log.warn('Weak-key JWT validation failed');
-      this.log.debug(
-        `Weak-key JWT validation error: ${error instanceof Error ? error.message : 'unknown error'}`
-      );
       throw new UnauthorizedException({ error: 'Unauthorized' });
     }
   }

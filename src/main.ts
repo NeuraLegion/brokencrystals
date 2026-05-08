@@ -101,11 +101,10 @@ async function bootstrap() {
       );
       const statusCode = safeStatusCode(error?.statusCode);
       if (!res.sent) {
-        res
-          .status(statusCode)
-          .type('application/json; charset=utf-8')
-          .send(getGenericErrorBody(statusCode));
+        res.header('Content-Type', 'application/json; charset=utf-8');
+        return res.status(statusCode).send(getGenericErrorBody(statusCode));
       }
+      return;
     },
     https:
       process.env.NODE_ENV === 'production'
