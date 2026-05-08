@@ -118,7 +118,7 @@ export class UsersService {
     this.log.debug(`Called findById ${id}`);
     const user = await this.usersRepository.findOne({ id });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Resource not found');
     }
     return user;
   }
