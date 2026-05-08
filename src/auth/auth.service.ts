@@ -137,9 +137,10 @@ export class AuthService {
   ): Promise<unknown> {
     try {
       return await this.processors.get(processor).validateToken(token);
-    } catch {
+    } catch (error) {
       this.logger.warn(
-        `JWT validation failed for processor ${JwtProcessorType[processor] ?? processor}`
+        `JWT validation failed for processor ${JwtProcessorType[processor] ?? processor}`,
+        error instanceof Error ? error.stack : undefined
       );
       throw new UnauthorizedException('Unauthorized');
     }
