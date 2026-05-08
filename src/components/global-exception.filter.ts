@@ -26,11 +26,20 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const genericResponse = { error: 'An internal error has occurred' };
     const status = exception instanceof HttpException ? exception.getStatus() : 500;
     const responseBody =
-      exception instanceof HttpException
-        ? { error: status === 401 ? 'Unauthorized' : 'Request failed' }
-        : genericResponse;
+      status === 401
+        ? { error: 'Unauthorized' }
+        : status === 403
+          ? { error: 'Forbidden' }
+          : status === 404
+            ? { error: 'Not Found' }
+            : status >= 400 && status < 500
+              ? { error: 'Request failed' }
+              : genericResponse;
 
     if (gql) {
+      if (status === 401) {
+        throw new HttpException({ error: 'Unauthorized' }, 401);
+      }
       throw new InternalServerErrorException(genericResponse);
     }
 

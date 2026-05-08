@@ -131,8 +131,19 @@ export class AuthService {
     );
   }
 
-  validateToken(token: string, processor: JwtProcessorType): Promise<unknown> {
-    return this.processors.get(processor).validateToken(token);
+  async validateToken(
+    token: string,
+    processor: JwtProcessorType
+  ): Promise<unknown> {
+    try {
+      return await this.processors.get(processor).validateToken(token);
+    } catch (error) {
+      this.logger.warn(
+        `JWT validation failed for processor ${JwtProcessorType[processor] ?? processor}`,
+        error instanceof Error ? error.stack : undefined
+      );
+      throw new InternalServerErrorException('Token validation failed');
+    }
   }
 
   createToken(payload: unknown, processor: JwtProcessorType): Promise<string> {
