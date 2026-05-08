@@ -110,14 +110,21 @@ async function bootstrap() {
     },
     https:
       process.env.NODE_ENV === 'production'
-        ? {
-            cert: readFileSync(
-              '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem'
-            ),
-            key: readFileSync(
-              '/etc/letsencrypt/live/brokencrystals.com/privkey.pem'
-            )
-          }
+        ? (() => {
+            try {
+              return {
+                cert: readFileSync(
+                  '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem'
+                ),
+                key: readFileSync(
+                  '/etc/letsencrypt/live/brokencrystals.com/privkey.pem'
+                )
+              };
+            } catch {
+              server.log.error('Failed to load HTTPS certificate configuration');
+              return undefined;
+            }
+          })()
         : null
   });
 

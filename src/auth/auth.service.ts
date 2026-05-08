@@ -46,32 +46,32 @@ export class AuthService {
     let jwkPublicJson: unknown;
 
     try {
-      privateKey = fs.readFileSync(
-        this.configService.get<string>(
-          AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
-        ),
-        'utf8'
+      const privateKeyPath = this.configService.get<string>(
+        AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
       );
-      publicKey = fs.readFileSync(
-        this.configService.get<string>(
-          AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
-        ),
-        'utf8'
+      const publicKeyPath = this.configService.get<string>(
+        AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
       );
-      jwkPrivateKey = fs.readFileSync(
-        this.configService.get<string>(
-          AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
-        ),
-        'utf8'
+      const jwkPrivateKeyPath = this.configService.get<string>(
+        AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
       );
-      jwkPublicJson = JSON.parse(
-        fs.readFileSync(
-          this.configService.get<string>(
-            AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
-          ),
-          'utf8'
-        )
+      const jwkPublicJsonPath = this.configService.get<string>(
+        AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
       );
+
+      if (
+        !privateKeyPath ||
+        !publicKeyPath ||
+        !jwkPrivateKeyPath ||
+        !jwkPublicJsonPath
+      ) {
+        throw new Error('Missing JWT key configuration');
+      }
+
+      privateKey = fs.readFileSync(privateKeyPath, 'utf8');
+      publicKey = fs.readFileSync(publicKeyPath, 'utf8');
+      jwkPrivateKey = fs.readFileSync(jwkPrivateKeyPath, 'utf8');
+      jwkPublicJson = JSON.parse(fs.readFileSync(jwkPublicJsonPath, 'utf8'));
     } catch {
       this.logger.error('Failed to initialize JWT key material');
       throw new InternalServerErrorException('Authentication configuration is invalid');
