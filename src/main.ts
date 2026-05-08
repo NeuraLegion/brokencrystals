@@ -137,6 +137,19 @@ async function bootstrap() {
     dotfiles: 'deny'
   });
 
+  server.addHook('onRequest', async (req, reply) => {
+    if (req.url && /^\/(?:\.hg|\.git|\.svn)(?:\/|$)/.test(req.url)) {
+      reply.code(404);
+      return reply.send({
+        success: false,
+        error: {
+          kind: 'not_found',
+          message: 'Not Found'
+        }
+      });
+    }
+  });
+
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist', 'vendor'),
     prefix: `/vendor`,
