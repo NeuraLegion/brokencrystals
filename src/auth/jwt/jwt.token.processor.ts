@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { JwtHeader } from './jwt.header';
 
 export abstract class JwtTokenProcessor {
@@ -15,7 +15,7 @@ export abstract class JwtTokenProcessor {
 
     const parts = token.split('.');
     if (parts.length != 3 || !parts[0]) {
-      throw new Error('Invalid JWT token');
+      throw new BadRequestException('Invalid JWT token');
     }
 
     try {
@@ -27,7 +27,7 @@ export abstract class JwtTokenProcessor {
 
       return [header, payload];
     } catch {
-      throw new Error('Invalid JWT token');
+      throw new BadRequestException('Invalid JWT token');
     }
   }
 
@@ -42,7 +42,7 @@ export abstract class JwtTokenProcessor {
         chainText.indexOf(JwtTokenProcessor.END_PUBLIC_KEY_MARK)
       )) === -1
     ) {
-      throw new Error('Invalid certificate');
+      throw new BadRequestException('Invalid certificate');
     }
 
     const key = chainText.slice(

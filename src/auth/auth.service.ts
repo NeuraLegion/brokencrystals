@@ -1,5 +1,5 @@
 import { EntityManager } from '@mikro-orm/core';
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import { KeyCloakService } from '../keycloak/keycloak.service';
@@ -16,7 +16,6 @@ import { JwtTokenWithX5CKeyProcessor } from './jwt/jwt.token.with.x5c.key.proces
 import { JwtTokenWithX5UKeyProcessor } from './jwt/jwt.token.with.x5u.key.processor';
 import { JwtTokenWithHMACKeysProcessor } from './jwt/jwt.token.with.hmac.keys.processor';
 import { JwtTokenWithRSASignatureKeysProcessor } from './jwt/jwt.token.with.rsa.signature.keys.processor';
-
 export enum JwtProcessorType {
   RSA,
   SQL_KID,
@@ -32,6 +31,7 @@ export enum JwtProcessorType {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private processors: Map<JwtProcessorType, JwtTokenProcessor>;
 
   constructor(
@@ -40,32 +40,42 @@ export class AuthService {
     private readonly httpClient: HttpClientService,
     private readonly keyCloakService: KeyCloakService
   ) {
-    const privateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
-    );
-    const publicKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
-      ),
-      'utf8'
-    );
-    const jwkPrivateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
-    );
-    const jwkPublicJson = JSON.parse(
-      fs.readFileSync(
+    let privateKey: string;
+    let publicKey: string;
+    let jwkPrivateKey: string;
+    let jwkPublicJson: unknown;
+
+    try {
+      privateKey = fs.readFileSync(
         this.configService.get<string>(
-          AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
+          AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
         ),
         'utf8'
-      )
-    );
+      );
+      publicKey = fs.readFileSync(
+        this.configService.get<string>(
+          AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
+        ),
+        'utf8'
+      );
+      jwkPrivateKey = fs.readFileSync(
+        this.configService.get<string>(
+          AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
+        ),
+        'utf8'
+      );
+      jwkPublicJson = JSON.parse(
+        fs.readFileSync(
+          this.configService.get<string>(
+            AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
+          ),
+          'utf8'
+        )
+      );
+    } catch (error) {
+      this.logger.error('Failed to initialize JWT key material', error instanceof Error ? error.stack : undefined);
+      throw new InternalServerErrorException('Authentication configuration is invalid');
+    }
     const jkuUrl = this.configService.get<string>(
       AuthModuleConfigProperties.ENV_JKU_URL
     );
