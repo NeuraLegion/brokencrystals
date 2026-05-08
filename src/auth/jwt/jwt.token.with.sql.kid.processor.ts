@@ -1,5 +1,5 @@
 import { EntityManager } from '@mikro-orm/core';
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { decode, encode } from 'jwt-simple';
 import { JwtHeader } from './jwt.header';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
@@ -23,7 +23,7 @@ export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
 
       if (!/^[0-9]+$/.test(kid)) {
         this.log.warn('Rejected token with invalid kid format');
-        throw new Error('Invalid token');
+        throw new UnauthorizedException('Unauthorized');
       }
 
       const keyRow: { key: string } = await this.em
@@ -41,7 +41,7 @@ export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
         'Failed to validate SQL kid token',
         error instanceof Error ? error.stack : undefined
       );
-      throw new Error('Invalid token');
+      throw new UnauthorizedException('Unauthorized');
     }
   }
 

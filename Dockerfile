@@ -15,6 +15,7 @@ COPY --chown=node:node .env ./
 COPY --chown=node:node config ./config
 COPY --chown=node:node keycloak ./keycloak
 COPY --chown=node:node src ./src
+COPY --chown=node:node test ./test
 
 ENV NPM_CONFIG_LOGLEVEL=error
 RUN npm ci --no-audit
