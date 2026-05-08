@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { BadRequestException, Logger, UnauthorizedException } from '@nestjs/common';
 import { TokenExpiredError } from 'jsonwebtoken';
 import { encode } from 'jwt-simple';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
@@ -16,18 +16,14 @@ export class JwtBearerTokenProcessor extends JwtTokenProcessor {
     const [header, payload] = this.parse(token);
     if (!header || !payload) {
       this.log.debug(`Invalid JWT token. parse() failure.`);
-      throw new Error(
-        'Authorization header contains an invalid JWT token: header or payload is missing.'
-      );
+      throw new BadRequestException('Invalid JWT token');
     }
 
     if (!header.kid) {
       this.log.debug(
         `Invalid JWT token. Expected a known KID but found ${header.kid}.`
       );
-      throw new Error(
-        'Authorization header contains an invalid JWT token: KID is missing.'
-      );
+      throw new BadRequestException('Invalid JWT token');
     }
 
     await this.decodeAndVerifyToken(token, header.kid);
@@ -45,18 +41,16 @@ export class JwtBearerTokenProcessor extends JwtTokenProcessor {
       const body = await this.keyCloakService.introspectToken(token);
 
       if (!body || !body.sub) {
-        throw new Error('Internal error occurred introspecting JWT token.');
+        throw new UnauthorizedException('Invalid JWT token');
       }
       this.log.debug(`Successfully introspection ${token} JWT token.`);
       return body;
     } catch (e) {
       if (e.statusCode === 401) {
-        throw new Error(
-          `JWT token is expired or user has globally signed out, disabled or been deleted.`
-        );
+        throw new UnauthorizedException('Invalid JWT token');
       }
       this.log.debug(`Failed to introspect JWT token. err: ${e.message}`);
-      throw new Error('Internal error occurred introspecting JWT token.');
+      throw new UnauthorizedException('Invalid JWT token');
     }
   }
 
@@ -69,13 +63,9 @@ export class JwtBearerTokenProcessor extends JwtTokenProcessor {
     } catch (e) {
       this.log.debug(`Invalid JWT token. jwt.verify() failed: ${e.message}.`);
       if (e instanceof TokenExpiredError) {
-        throw new Error(
-          `Authorization header contains a JWT token that expired at ${e.expiredAt.toISOString()}.`
-        );
+        throw new UnauthorizedException('Invalid JWT token');
       }
-      throw new Error(
-        'Authorization header contains an invalid JWT token: ' + e.message
-      );
+      throw new UnauthorizedException('Invalid JWT token');
     }
   }
 }

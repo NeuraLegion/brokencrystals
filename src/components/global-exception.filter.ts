@@ -18,34 +18,21 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       this.applicationRef ||
       (this.httpAdapterHost && this.httpAdapterHost.httpAdapter);
 
-    this.logger.error('Unhandled exception',
+    this.logger.error(
+      'Unhandled exception',
       exception instanceof Error ? exception.stack : undefined
     );
 
     const genericResponse = { error: 'An internal error has occurred' };
-
-    if (exception instanceof HttpException) {
-      if (gql) {
-        throw new InternalServerErrorException(genericResponse);
-      }
-
-      return applicationRef.reply(
-        host.getArgByIndex(1),
-        genericResponse,
-        exception.getStatus()
-      );
-    }
-
-    const unprocessableException = new InternalServerErrorException(genericResponse);
+    const status =
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : 500;
 
     if (gql) {
-      throw unprocessableException;
+      throw new InternalServerErrorException(genericResponse);
     }
 
-    return applicationRef.reply(
-      host.getArgByIndex(1),
-      unprocessableException.getResponse(),
-      unprocessableException.getStatus()
-    );
+    return applicationRef.reply(host.getArgByIndex(1), genericResponse, status);
   }
 }
