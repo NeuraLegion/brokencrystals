@@ -10,11 +10,15 @@ export class JwtTokenWithHMACKeysProcessor extends JwtTokenProcessor {
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
 
-    const [header, payload] = this.parse(token);
-    if (header.alg === 'none') {
-      return payload;
+    try {
+      const [header, payload] = this.parse(token);
+      if (header.alg === 'none') {
+        return payload;
+      }
+      return decode(token, this.privateKey, false, 'HS256');
+    } catch {
+      throw new Error('Invalid JWT token');
     }
-    return decode(token, this.privateKey, false, 'HS256');
   }
 
   async createToken(payload: unknown): Promise<string> {

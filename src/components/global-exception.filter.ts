@@ -2,24 +2,29 @@ import {
   ArgumentsHost,
   Catch,
   HttpException,
-  InternalServerErrorException
+  InternalServerErrorException,
+  Logger
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { GqlContextType } from '@nestjs/graphql';
 
 @Catch()
 export class GlobalExceptionFilter extends BaseExceptionFilter {
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
+
   public catch(exception: unknown, host: ArgumentsHost) {
     const gql = host.getType<GqlContextType>() === 'graphql';
+    const applicationRef =
+      this.applicationRef ||
+      (this.httpAdapterHost && this.httpAdapterHost.httpAdapter);
+
+    this.logger.error('Unhandled exception',
+      exception instanceof Error ? exception.stack : undefined
+    );
+
+    const genericResponse = { error: 'An internal error has occurred' };
 
     if (exception instanceof HttpException) {
-      const response = exception.getResponse();
-      const status = exception.getStatus();
-      const genericResponse =
-        typeof response === 'object' && response !== null
-          ? { error: 'An internal error has occurred' }
-          : 'An internal error has occurred';
-
       if (gql) {
         throw new InternalServerErrorException(genericResponse);
       }
@@ -27,22 +32,15 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       return applicationRef.reply(
         host.getArgByIndex(1),
         genericResponse,
-        status
+        exception.getStatus()
       );
     }
 
-    const unprocessableException = new InternalServerErrorException(
-      { error: 'An internal error has occurred' },
-      'An internal error has occurred, and the API was unable to service your request.'
-    );
+    const unprocessableException = new InternalServerErrorException(genericResponse);
 
     if (gql) {
       throw unprocessableException;
     }
-
-    const applicationRef =
-      this.applicationRef ||
-      (this.httpAdapterHost && this.httpAdapterHost.httpAdapter);
 
     return applicationRef.reply(
       host.getArgByIndex(1),
