@@ -52,7 +52,19 @@ const getGenericErrorBody = (statusCode: number): { error: string } => {
     return { error: 'Request failed' };
   }
 
-  return { error: 'An internal error has occurred' };
+  return { error: 'Internal Server Error' };
+};
+
+const setSafeJsonHeaders = (res: {
+  header?: (name: string, value: string) => unknown;
+  setHeader?: (name: string, value: string) => unknown;
+  removeHeader?: (name: string) => unknown;
+}) => {
+  res.removeHeader?.('X-Powered-By');
+  res.header?.('Content-Type', 'application/json; charset=utf-8');
+  res.header?.('X-Content-Type-Options', 'nosniff');
+  res.setHeader?.('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader?.('X-Content-Type-Options', 'nosniff');
 };
 
 const safeStatusCode = (statusCode: unknown): number => {
@@ -86,7 +98,7 @@ async function bootstrap() {
       const statusCode = safeStatusCode(error?.statusCode);
       if (!res.headersSent) {
         res.statusCode = statusCode;
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        setSafeJsonHeaders(res);
       }
       if (!res.writableEnded) {
         res.end(JSON.stringify(getGenericErrorBody(statusCode)));
@@ -103,7 +115,7 @@ async function bootstrap() {
       );
       const statusCode = safeStatusCode(error?.statusCode);
       if (!res.sent) {
-        res.header('Content-Type', 'application/json; charset=utf-8');
+        setSafeJsonHeaders(res);
         return res.status(statusCode).send(getGenericErrorBody(statusCode));
       }
       return;
@@ -134,28 +146,14 @@ async function bootstrap() {
       /^\/(?:\.env|\.git|\.hg|\.svn)(?:\/|$)/.test(req.url)
     ) {
       res.statusCode = 404;
-      return res.end(
-        JSON.stringify({
-          success: false,
-          error: {
-            kind: 'not_found',
-            message: 'Not Found'
-          }
-        })
-      );
+      setSafeJsonHeaders(res);
+      return res.end(JSON.stringify(getGenericErrorBody(404)));
     }
 
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
-      return res.end(
-        JSON.stringify({
-          success: false,
-          error: {
-            kind: 'user_input',
-            message: 'Not Found'
-          }
-        })
-      );
+      setSafeJsonHeaders(res);
+      return res.end(JSON.stringify(getGenericErrorBody(404)));
     }
 
     readFile(
@@ -163,8 +161,17 @@ async function bootstrap() {
       'utf8',
       (err, data) => {
         if (err) {
+          server.log.error(
+            {
+              error: sanitizeErrorForLog(err),
+              url: req.url,
+              method: req.method
+            },
+            'Failed to load SPA entrypoint'
+          );
           res.statusCode = 500;
-          res.end('Internal Server Error');
+          setSafeJsonHeaders(res);
+          res.end(JSON.stringify(getGenericErrorBody(500)));
           return;
         }
         res.statusCode = 200;

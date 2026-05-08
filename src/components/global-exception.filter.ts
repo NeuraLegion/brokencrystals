@@ -35,7 +35,7 @@ const getGenericErrorBody = (statusCode: number): { error: string } => {
     return { error: 'Request failed' };
   }
 
-  return { error: 'An internal error has occurred' };
+  return { error: 'Internal Server Error' };
 };
 
 @Catch()
@@ -75,6 +75,10 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     if (response?.sent || response?.raw?.writableEnded) {
       return;
     }
+
+    applicationRef.setHeader(response, 'Content-Type', 'application/json; charset=utf-8');
+    applicationRef.setHeader(response, 'X-Content-Type-Options', 'nosniff');
+    applicationRef.setHeader(response, 'X-Powered-By', '');
 
     return applicationRef.reply(response, responseBody, status);
   }
