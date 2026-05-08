@@ -36,11 +36,8 @@ export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
       this.log.debug('Key fetched successfully');
 
       return decode(token, keyRow.key, false, 'HS256');
-    } catch (error) {
-      this.log.warn(
-        'Failed to validate SQL kid token',
-        error instanceof Error ? error.stack : undefined
-      );
+    } catch {
+      this.log.warn('Failed to validate SQL kid token');
       throw new UnauthorizedException('Unauthorized');
     }
   }

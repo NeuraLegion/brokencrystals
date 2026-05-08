@@ -15,7 +15,7 @@ const sanitizeErrorForLog = (exception: unknown): { name?: string; message?: str
 
   return {
     name: exception.name,
-    message: exception.message
+    message: 'Error details hidden'
   };
 };
 

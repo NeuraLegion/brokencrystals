@@ -31,7 +31,7 @@ const sanitizeErrorForLog = (error: unknown): Record<string, unknown> => {
 
   return {
     name: error.name,
-    message: error.message
+    message: 'Error details hidden'
   };
 };
 
