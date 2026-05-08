@@ -143,11 +143,19 @@ export class UsersController {
   })
   async getById(@Param('id') id: number, @Req() req: FastifyRequest): Promise<UserDto> {
     try {
-      const user = await this.usersService.findById(id);
-      if (this.originEmail(req) !== user.email && !user.isAdmin) {
-        throw new ForbiddenException();
+      const requester = await this.usersService.findByEmail(this.originEmail(req));
+      const normalizedId = Number(id);
+
+      if (!Number.isInteger(normalizedId) || normalizedId < 1) {
+        throw new NotFoundException('Resource not found');
       }
-      this.logger.debug(`Find a user by id: ${id}`);
+
+      if (!requester.isAdmin && requester.id !== normalizedId) {
+        throw new NotFoundException('Resource not found');
+      }
+
+      const user = await this.usersService.findById(normalizedId);
+      this.logger.debug(`Find a user by id: ${normalizedId}`);
       return new UserDto(user);
     } catch (err) {
       throw new HttpException(err.message, err.status);
