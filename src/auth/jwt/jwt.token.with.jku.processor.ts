@@ -17,11 +17,7 @@ export class JwtTokenWithJKUProcessor extends JwtTokenProcessor {
 
     try {
       const [header, payload] = this.parse(token);
-      const url = header?.jku;
-
-      if (typeof url !== 'string' || !url.length) {
-        throw new UnauthorizedException('Invalid JWT token');
-      }
+      const url = this.validateJkuUrl(header?.jku);
 
       this.log.debug(`Calling configured jwk validation flow`);
       const jwkRes: jose.JWK = await this.httpClient.loadJSON(url);
@@ -35,6 +31,30 @@ export class JwtTokenWithJKUProcessor extends JwtTokenProcessor {
     }
 
     throw new UnauthorizedException('Invalid JWT token');
+  }
+
+  private validateJkuUrl(url: unknown): string {
+    if (typeof url !== 'string' || !url.length) {
+      throw new UnauthorizedException('Invalid JWT token');
+    }
+
+    let parsedUrl: URL;
+
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new UnauthorizedException('Invalid JWT token');
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new UnauthorizedException('Invalid JWT token');
+    }
+
+    if (parsedUrl.username || parsedUrl.password) {
+      throw new UnauthorizedException('Invalid JWT token');
+    }
+
+    return parsedUrl.toString();
   }
 
   async createToken(payload: jose.JWTPayload): Promise<string> {

@@ -8,6 +8,7 @@ import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
 import { readFileSync, readFile, readdirSync } from 'fs';
+import { STATUS_CODES } from 'http';
 import cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -34,6 +35,31 @@ const sanitizeErrorForLog = (error: unknown): Record<string, unknown> => {
   };
 };
 
+const getGenericErrorBody = (statusCode: number): { error: string } => {
+  if (statusCode === 401) {
+    return { error: 'Unauthorized' };
+  }
+
+  if (statusCode === 403) {
+    return { error: 'Forbidden' };
+  }
+
+  if (statusCode === 404) {
+    return { error: 'Not Found' };
+  }
+
+  if (statusCode >= 400 && statusCode < 500) {
+    return { error: 'Request failed' };
+  }
+
+  return { error: 'An internal error has occurred' };
+};
+
+const safeStatusCode = (statusCode: unknown): number => {
+  return typeof statusCode === 'number' && STATUS_CODES[statusCode]
+    ? statusCode
+    : 500;
+};
 
 async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
@@ -55,21 +81,10 @@ async function bootstrap() {
         },
         'Framework error intercepted'
       );
-      res.statusCode = error?.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+      const statusCode = safeStatusCode(error?.statusCode);
+      res.statusCode = statusCode;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(
-        JSON.stringify(
-          res.statusCode === 401
-            ? { error: 'Unauthorized' }
-            : res.statusCode === 403
-              ? { error: 'Forbidden' }
-              : res.statusCode === 404
-                ? { error: 'Not Found' }
-                : res.statusCode >= 400 && res.statusCode < 500
-                  ? { error: 'Request failed' }
-                  : { error: 'An internal error has occurred' }
-        )
-      );
+      res.end(JSON.stringify(getGenericErrorBody(statusCode)));
     },
     setErrorHandler: (error, req, res) => {
       server.log.error(
@@ -80,18 +95,8 @@ async function bootstrap() {
         },
         'Unhandled Fastify error'
       );
-      const statusCode = error?.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
-      res.status(statusCode).type('application/json; charset=utf-8').send(
-        statusCode === 401
-          ? { error: 'Unauthorized' }
-          : statusCode === 403
-            ? { error: 'Forbidden' }
-            : statusCode === 404
-              ? { error: 'Not Found' }
-              : statusCode >= 400 && statusCode < 500
-                ? { error: 'Request failed' }
-                : { error: 'An internal error has occurred' }
-      );
+      const statusCode = safeStatusCode(error?.statusCode);
+      res.status(statusCode).type('application/json; charset=utf-8').send(getGenericErrorBody(statusCode));
     },
     https:
       process.env.NODE_ENV === 'production'

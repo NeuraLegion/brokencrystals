@@ -19,6 +19,26 @@ const sanitizeErrorForLog = (exception: unknown): { name?: string; message?: str
   };
 };
 
+const getGenericErrorBody = (statusCode: number): { error: string } => {
+  if (statusCode === 401) {
+    return { error: 'Unauthorized' };
+  }
+
+  if (statusCode === 403) {
+    return { error: 'Forbidden' };
+  }
+
+  if (statusCode === 404) {
+    return { error: 'Not Found' };
+  }
+
+  if (statusCode >= 400 && statusCode < 500) {
+    return { error: 'Request failed' };
+  }
+
+  return { error: 'An internal error has occurred' };
+};
+
 @Catch()
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
@@ -47,24 +67,11 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       );
     }
 
-    const genericResponse = { error: 'An internal error has occurred' };
     const status = exception instanceof HttpException ? exception.getStatus() : 500;
-    const responseBody =
-      status === 401
-        ? { error: 'Unauthorized' }
-        : status === 403
-          ? { error: 'Forbidden' }
-          : status === 404
-            ? { error: 'Not Found' }
-            : status >= 400 && status < 500
-              ? { error: 'Request failed' }
-              : genericResponse;
+    const responseBody = getGenericErrorBody(status);
 
     if (gql) {
-      if (status === 401) {
-        throw new HttpException({ error: 'Unauthorized' }, 401);
-      }
-      throw new InternalServerErrorException(genericResponse);
+      throw new HttpException(responseBody, status);
     }
 
     const response = host.switchToHttp().getResponse();
