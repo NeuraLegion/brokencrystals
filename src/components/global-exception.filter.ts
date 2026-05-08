@@ -2,7 +2,6 @@ import {
   ArgumentsHost,
   Catch,
   HttpException,
-  InternalServerErrorException,
   Logger
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
@@ -51,9 +50,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
 
     if (!applicationRef) {
       this.logger.error('HTTP adapter is not available for exception handling');
-      throw new InternalServerErrorException({
-        error: 'An internal error has occurred'
-      });
+      return;
     }
 
     if (exception instanceof HttpException) {

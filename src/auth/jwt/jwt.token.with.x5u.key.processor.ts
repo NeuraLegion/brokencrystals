@@ -15,8 +15,19 @@ export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
     this.log.debug('Call validateToken');
 
     try {
+      if (
+        typeof token !== 'string' ||
+        !/^[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+$/.test(token)
+      ) {
+        throw new UnauthorizedException('Unauthorized');
+      }
+
       const [header] = this.parse(token);
-      const url = header.x5u;
+      const url = header?.x5u;
+
+      if (typeof this.x5uUrl !== 'string' || !this.x5uUrl.trim()) {
+        throw new UnauthorizedException('Unauthorized');
+      }
 
       if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
         throw new UnauthorizedException('Unauthorized');
@@ -27,7 +38,11 @@ export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
       if (
         requestedX5uUrl.protocol !== trustedX5uUrl.protocol ||
         requestedX5uUrl.host !== trustedX5uUrl.host ||
-        requestedX5uUrl.pathname !== trustedX5uUrl.pathname
+        requestedX5uUrl.pathname !== trustedX5uUrl.pathname ||
+        requestedX5uUrl.search ||
+        requestedX5uUrl.hash ||
+        requestedX5uUrl.username ||
+        requestedX5uUrl.password
       ) {
         throw new UnauthorizedException('Unauthorized');
       }

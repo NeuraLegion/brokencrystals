@@ -135,8 +135,17 @@ export class AuthService {
     token: string,
     processor: JwtProcessorType
   ): Promise<unknown> {
+    const tokenProcessor = this.processors.get(processor);
+
+    if (!tokenProcessor || typeof token !== 'string' || !token.trim()) {
+      this.logger.warn(
+        `JWT validation failed for processor ${JwtProcessorType[processor] ?? processor}`
+      );
+      throw new UnauthorizedException('Unauthorized');
+    }
+
     try {
-      return await this.processors.get(processor).validateToken(token);
+      return await tokenProcessor.validateToken(token);
     } catch {
       this.logger.warn(
         `JWT validation failed for processor ${JwtProcessorType[processor] ?? processor}`
