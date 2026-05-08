@@ -129,13 +129,21 @@ export class AppController {
   })
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
-    const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
-      recover: true
+    if (typeof xml !== 'string' || xml.length === 0 || xml.length > 10000) {
+      throw new BadRequestException('Invalid XML input');
+    }
+
+    const decodedXml = decodeURIComponent(xml);
+    if (/<!DOCTYPE/i.test(decodedXml) || /<!ENTITY/i.test(decodedXml)) {
+      throw new BadRequestException('DOCTYPE and ENTITY declarations are not allowed');
+    }
+
+    const xmlDoc = parseXml(decodedXml, {
+      noent: false,
+      dtdvalid: false,
+      recover: false
     });
     this.logger.debug(xmlDoc);
-    this.logger.debug(xmlDoc.getDtd());
 
     return xmlDoc.toString(true);
   }
