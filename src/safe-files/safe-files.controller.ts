@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiExcludeController,
@@ -35,6 +35,10 @@ export class SafeFilesController {
     @Body('name') name: string,
     @Body('url') url: string
   ): Promise<SafeFileResponse> {
+    if (typeof url !== 'string' || typeof name !== 'string') {
+      throw new BadRequestException('Invalid request body');
+    }
+
     return this.service.add(name, url);
   }
 }
