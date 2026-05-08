@@ -44,15 +44,24 @@ export class AuthGuard implements CanActivate {
   private extractToken(request: FastifyRequest): string | undefined {
     let token = request.headers[AuthGuard.AUTH_HEADER];
 
-    if (!token?.length) {
-      token = request.cookies[AuthGuard.AUTH_HEADER];
+    if (Array.isArray(token)) {
+      token = token[0];
+    }
+
+    if (typeof token !== 'string' || !token.length) {
+      const cookieToken = request.cookies?.[AuthGuard.AUTH_HEADER];
+      token = typeof cookieToken === 'string' ? cookieToken : undefined;
+    }
+
+    if (typeof token !== 'string') {
+      return undefined;
     }
 
     if (this.checkIsBearer(token)) {
       token = token.substring(AuthGuard.BEARER_PREFIX.length).trim();
     }
 
-    return token?.length ? token : undefined;
+    return token.length ? token : undefined;
   }
 
   private getRequest(context: ExecutionContext): FastifyRequest {
@@ -74,9 +83,6 @@ export class AuthGuard implements CanActivate {
   }
 
   private checkIsBearer(bearer: string): boolean {
-    return (
-      !!bearer &&
-      bearer.toLowerCase().startsWith(AuthGuard.BEARER_PREFIX.toLowerCase())
-    );
+    return new RegExp(`^${AuthGuard.BEARER_PREFIX}\\s+`, 'i').test(bearer);
   }
 }

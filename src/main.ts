@@ -103,6 +103,7 @@ async function bootstrap() {
       if (!res.writableEnded) {
         res.end(JSON.stringify(getGenericErrorBody(statusCode)));
       }
+      return;
     },
     setErrorHandler: (error, req, res) => {
       server.log.error(
@@ -114,7 +115,7 @@ async function bootstrap() {
         'Unhandled Fastify error'
       );
       const statusCode = safeStatusCode(error?.statusCode);
-      if (!res.sent) {
+      if (!res.sent && !res.raw.writableEnded) {
         setSafeJsonHeaders(res);
         return res.status(statusCode).send(getGenericErrorBody(statusCode));
       }
