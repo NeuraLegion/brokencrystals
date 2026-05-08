@@ -19,7 +19,8 @@ import {
   UseInterceptors,
   ParseIntPipe,
   DefaultValuePipe,
-  HttpStatus
+  HttpStatus,
+  BadRequestException
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import {
@@ -74,12 +75,22 @@ export class AppController {
     description: 'Rendered result'
   })
   async renderTemplate(@Body() raw): Promise<string> {
-    if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
-      const text = raw.toString().trim();
-      const res = dotT.compile(text)();
-      this.logger.debug(`Rendered template: ${res}`);
-      return res;
+    if (typeof raw !== 'string' && !Buffer.isBuffer(raw)) {
+      throw new BadRequestException('Invalid template input');
     }
+
+    const text = raw.toString().trim();
+    if (text.length === 0 || text.length > 500) {
+      throw new BadRequestException('Invalid template input');
+    }
+
+    if (!/^[\w\s.,!?'-]+$/.test(text)) {
+      throw new BadRequestException('Invalid template input');
+    }
+
+    const res = dotT.template('Rendered text: {{=it.text}}')({ text });
+    this.logger.debug(`Rendered template: ${res}`);
+    return res;
   }
 
   @Get('goto')
