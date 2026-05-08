@@ -17,24 +17,32 @@ export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
 
-    const [header] = this.parse(token);
-    const kid = `${header.kid ?? ''}`;
+    try {
+      const [header] = this.parse(token);
+      const kid = `${header.kid ?? ''}`;
 
-    if (!/^[0-9]+$/.test(kid)) {
-      this.log.warn('Rejected token with invalid kid format');
+      if (!/^[0-9]+$/.test(kid)) {
+        this.log.warn('Rejected token with invalid kid format');
+        throw new Error('Invalid token');
+      }
+
+      const keyRow: { key: string } = await this.em
+        .getConnection()
+        .execute(
+          `select key from (select ? as key, ? as id) as keys where keys.id = ?`,
+          [this.key, JwtTokenWithSqlKIDProcessor.KID, Number(kid)],
+          'get'
+        );
+      this.log.debug('Key fetched successfully');
+
+      return decode(token, keyRow.key, false, 'HS256');
+    } catch (error) {
+      this.log.warn(
+        'Failed to validate SQL kid token',
+        error instanceof Error ? error.stack : undefined
+      );
       throw new Error('Invalid token');
     }
-
-    const keyRow: { key: string } = await this.em
-      .getConnection()
-      .execute(
-        `select key from (select ? as key, ? as id) as keys where keys.id = ?`,
-        [this.key, JwtTokenWithSqlKIDProcessor.KID, Number(kid)],
-        'get'
-      );
-    this.log.debug('Key fetched successfully');
-
-    return decode(token, keyRow.key, false, 'HS256');
   }
 
   async createToken(payload: unknown): Promise<string> {

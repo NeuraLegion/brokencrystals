@@ -23,7 +23,10 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
         `Handled exception with status ${exception.getStatus()}`
       );
     } else {
-      this.logger.error('Unhandled exception');
+      this.logger.error(
+        'Unhandled exception',
+        exception instanceof Error ? exception.stack : undefined
+      );
     }
 
     const genericResponse = { error: 'An internal error has occurred' };
@@ -46,6 +49,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       throw new InternalServerErrorException(genericResponse);
     }
 
-    return applicationRef.reply(host.getArgByIndex(1), responseBody, status);
+    const response = host.switchToHttp().getResponse();
+    return applicationRef.reply(response, responseBody, status);
   }
 }
