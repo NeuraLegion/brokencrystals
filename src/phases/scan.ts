@@ -217,6 +217,10 @@ function isFailureStatus(status: string): boolean {
 
 export { isFailureStatus };
 
+function isPausedStatus(status: string): boolean {
+  return status.toLowerCase() === "paused";
+}
+
 export async function waitForScanCompletion(
   api: BrightApiContext,
   scanId: string,
@@ -272,13 +276,31 @@ export async function waitForScanCompletion(
       }
     }
 
-    const scanStatus = await getScanStatusViaRest(
+    const scanStatus = await getScanStatusWithRetry(
       api,
       scanId,
     );
     const issues = scanStatus.issuesFound;
 
     onProgress?.(scanStatus.status, issues);
+
+    // Bright can report a scan as paused even if this process did not pause it
+    // (for example, a server-side pause or a previous lifecycle call whose local
+    // state was lost). If the target is healthy, resume it proactively instead
+    // of polling a paused scan forever.
+    if (isPausedStatus(scanStatus.status)) {
+      const healthy = healthMonitor?.isHealthy() ?? true;
+      if (healthy) {
+        const ok = await setScanLifecycle(api, scanId, "resume");
+        if (ok) {
+          pausedByMonitor = false;
+          unhealthySince = undefined;
+          console.log(
+            `[Scan] Resumed ${scanId} — Bright reported paused while app is healthy`,
+          );
+        }
+      }
+    }
 
     if (isTerminalStatus(scanStatus.status)) {
       console.log(`[Scan] Completed: ${scanStatus.status} (${issues} issues)`);
@@ -326,6 +348,25 @@ export async function setScanLifecycle(
     );
     return false;
   }
+}
+
+async function getScanStatusWithRetry(
+  api: BrightApiContext,
+  scanId: string,
+): Promise<{ status: string; issuesFound: number }> {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await getScanStatusViaRest(api, scanId);
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      console.warn(
+        `[Scan] getScanStatus retry ${attempt}/${maxAttempts} for ${scanId}: ${toErrorMessage(err)}`,
+      );
+      await sleep(5_000 * attempt);
+    }
+  }
+  throw new Error("unreachable");
 }
 
 async function getScanStatusViaRest(

@@ -29317,6 +29317,9 @@ function isFailureStatus(status) {
   const s = status.toLowerCase();
   return s === "failed" || s === "disrupted" || s === "timeout";
 }
+function isPausedStatus(status) {
+  return status.toLowerCase() === "paused";
+}
 async function waitForScanCompletion(api, scanId, onProgress, healthMonitor) {
   const pollInterval = 3e4;
   let pausedByMonitor = false;
@@ -29355,12 +29358,25 @@ async function waitForScanCompletion(api, scanId, onProgress, healthMonitor) {
         unhealthySince = void 0;
       }
     }
-    const scanStatus = await getScanStatusViaRest(
+    const scanStatus = await getScanStatusWithRetry(
       api,
       scanId
     );
     const issues = scanStatus.issuesFound;
     onProgress?.(scanStatus.status, issues);
+    if (isPausedStatus(scanStatus.status)) {
+      const healthy = healthMonitor?.isHealthy() ?? true;
+      if (healthy) {
+        const ok = await setScanLifecycle(api, scanId, "resume");
+        if (ok) {
+          pausedByMonitor = false;
+          unhealthySince = void 0;
+          console.log(
+            `[Scan] Resumed ${scanId} \u2014 Bright reported paused while app is healthy`
+          );
+        }
+      }
+    }
     if (isTerminalStatus(scanStatus.status)) {
       console.log(`[Scan] Completed: ${scanStatus.status} (${issues} issues)`);
       return scanStatus.status.toLowerCase();
@@ -29396,6 +29412,21 @@ async function setScanLifecycle(api, scanId, action) {
     );
     return false;
   }
+}
+async function getScanStatusWithRetry(api, scanId) {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await getScanStatusViaRest(api, scanId);
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      console.warn(
+        `[Scan] getScanStatus retry ${attempt}/${maxAttempts} for ${scanId}: ${toErrorMessage(err)}`
+      );
+      await sleep2(5e3 * attempt);
+    }
+  }
+  throw new Error("unreachable");
 }
 async function getScanStatusViaRest(api, scanId) {
   const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
