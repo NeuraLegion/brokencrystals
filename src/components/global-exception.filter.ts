@@ -18,6 +18,13 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       this.applicationRef ||
       (this.httpAdapterHost && this.httpAdapterHost.httpAdapter);
 
+    if (!applicationRef) {
+      this.logger.error('HTTP adapter is not available for exception handling');
+      throw new InternalServerErrorException({
+        error: 'An internal error has occurred'
+      });
+    }
+
     if (exception instanceof HttpException) {
       this.logger.warn(
         `Handled exception with status ${exception.getStatus()}`

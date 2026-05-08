@@ -84,6 +84,53 @@ async function bootstrap() {
         : false,
     trustProxy: true,
     onProtoPoisoning: 'ignore',
+    frameworkErrors: (error, req, res) => {
+      server.log.warn(
+        {
+          err: error,
+          url: req.url,
+          method: req.method
+        },
+        'Framework error intercepted'
+      );
+      res.statusCode = error?.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(
+        JSON.stringify(
+          res.statusCode === 401
+            ? { error: 'Unauthorized' }
+            : res.statusCode === 403
+              ? { error: 'Forbidden' }
+              : res.statusCode === 404
+                ? { error: 'Not Found' }
+                : res.statusCode >= 400 && res.statusCode < 500
+                  ? { error: 'Request failed' }
+                  : { error: 'An internal error has occurred' }
+        )
+      );
+    },
+    setErrorHandler: (error, req, res) => {
+      server.log.error(
+        {
+          err: error,
+          url: req.url,
+          method: req.method
+        },
+        'Unhandled Fastify error'
+      );
+      const statusCode = error?.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+      res.status(statusCode).type('application/json; charset=utf-8').send(
+        statusCode === 401
+          ? { error: 'Unauthorized' }
+          : statusCode === 403
+            ? { error: 'Forbidden' }
+            : statusCode === 404
+              ? { error: 'Not Found' }
+              : statusCode >= 400 && statusCode < 500
+                ? { error: 'Request failed' }
+                : { error: 'An internal error has occurred' }
+      );
+    },
     https:
       process.env.NODE_ENV === 'production'
         ? {
