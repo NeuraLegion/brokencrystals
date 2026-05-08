@@ -46,24 +46,8 @@ export class AppService {
   }
 
   getConfig(): AppConfig {
-    const dbSchema = this.configService.get<string>(
-        OrmModuleConfigProperties.ENV_DATABASE_SCHEMA
-      ),
-      dbHost = this.configService.get<string>(
-        OrmModuleConfigProperties.ENV_DATABASE_HOST
-      ),
-      dbPort = this.configService.get<string>(
-        OrmModuleConfigProperties.ENV_DATABASE_PORT
-      ),
-      dbUser = this.configService.get<string>(
-        OrmModuleConfigProperties.ENV_DATABASE_USER
-      ),
-      dbPwd = this.configService.get<string>(
-        OrmModuleConfigProperties.ENV_DATABASE_PASSWORD
-      );
-
     return {
-      sql: `postgres://${dbUser}:${dbPwd}@${dbHost}:${dbPort}/${dbSchema} `,
+      awsBucket: this.configService.get<string>('AWS_BUCKET') ?? '',
       googlemaps: this.configService.get<string>(
         AppModuleConfigProperties.ENV_GOOGLE_MAPS
       )
