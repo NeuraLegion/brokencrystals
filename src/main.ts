@@ -72,6 +72,8 @@ async function bootstrap() {
         : false,
     trustProxy: true,
     onProtoPoisoning: 'ignore',
+    exposeHeadRoutes: false,
+    return503OnClosing: true,
     frameworkErrors: (error, req, res) => {
       server.log.warn(
         {
@@ -172,24 +174,17 @@ async function bootstrap() {
     redirect: false,
     wildcard: false,
     serveDotFiles: false,
-    dotfiles: 'deny'
+    dotfiles: 'deny',
+    index: false,
+    list: false
   });
 
   server.addHook('onRequest', async (req, reply) => {
-    if (req.url === '/config.js' || req.url === '/nginx.conf') {
-      reply.code(404);
-      return reply.send({
-        success: false,
-        error: {
-          kind: 'not_found',
-          message: 'Not Found'
-        }
-      });
-    }
-  });
-
-  server.addHook('onRequest', async (req, reply) => {
-    if (req.url && /^\/(?:\.hg|\.git|\.svn)(?:\/|$)/.test(req.url)) {
+    if (
+      req.url === '/config.js' ||
+      req.url === '/nginx.conf' ||
+      (req.url && /(?:^|\/)(?:\.env|\.git|\.hg|\.svn)(?:\/|$)/.test(req.url))
+    ) {
       reply.code(404);
       return reply.send({
         success: false,
@@ -207,7 +202,8 @@ async function bootstrap() {
     decorateReply: false,
     redirect: true,
     index: false,
-    serveDotFiles: false
+    serveDotFiles: false,
+    list: false
   });
 
   await server.register(fastifyHttpProxy, {
