@@ -152,7 +152,7 @@ async function bootstrap() {
   });
 
   server.addHook('onRequest', async (req, reply) => {
-    if (req.url === '/config.js') {
+    if (req.url === '/config.js' || req.url === '/nginx.conf') {
       reply.code(404);
       return reply.send({
         success: false,
