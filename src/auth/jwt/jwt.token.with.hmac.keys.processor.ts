@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 import { encode, decode } from 'jwt-simple';
 
@@ -10,6 +10,10 @@ export class JwtTokenWithHMACKeysProcessor extends JwtTokenProcessor {
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
 
+    if (typeof token !== 'string' || !token.trim()) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
     try {
       const [header, payload] = this.parse(token);
       if (header.alg === 'none') {
@@ -17,7 +21,7 @@ export class JwtTokenWithHMACKeysProcessor extends JwtTokenProcessor {
       }
       return decode(token, this.privateKey, false, 'HS256');
     } catch {
-      throw new Error('Invalid JWT token');
+      throw new UnauthorizedException('Unauthorized');
     }
   }
 
