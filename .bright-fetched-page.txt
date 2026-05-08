@@ -1,0 +1,873 @@
+GitHub - vulnerable-apps/brokencrystals-demo: Mirror of broken crystals, but with specific dockerfiles for easy docker compose · GitHub
+
+Skip to content
+
+Navigation Menu
+
+Toggle navigation
+
+Sign in
+
+Appearance settings
+
+PlatformAI CODE CREATIONGitHub CopilotWrite better code with AI
+
+GitHub SparkBuild and deploy intelligent apps
+
+GitHub ModelsManage and compare prompts
+
+MCP RegistryNewIntegrate external tools
+
+DEVELOPER WORKFLOWSActionsAutomate any workflow
+
+CodespacesInstant dev environments
+
+IssuesPlan and track work
+
+Code ReviewManage code changes
+
+APPLICATION SECURITYGitHub Advanced SecurityFind and fix vulnerabilities
+
+Code securitySecure your code as you build
+
+Secret protectionStop leaks before they start
+
+EXPLOREWhy GitHub
+Documentation
+Blog
+Changelog
+Marketplace
+
+View all features
+
+SolutionsBY COMPANY SIZEEnterprises
+Small and medium teams
+Startups
+Nonprofits
+
+BY USE CASEApp Modernization
+DevSecOps
+DevOps
+CI/CD
+View all use cases
+
+BY INDUSTRYHealthcare
+Financial services
+Manufacturing
+Government
+View all industries
+
+View all solutions
+
+ResourcesEXPLORE BY TOPICAI
+Software Development
+DevOps
+Security
+View all topics
+
+EXPLORE BY TYPECustomer stories
+Events & webinars
+Ebooks & reports
+Business insights
+GitHub Skills
+
+SUPPORT & SERVICESDocumentation
+Customer support
+Community forum
+Trust center
+Partners
+
+View all resources
+
+Open SourceCOMMUNITYGitHub SponsorsFund open source developers
+
+PROGRAMSSecurity Lab
+Maintainer Community
+Accelerator
+GitHub Stars
+Archive Program
+
+REPOSITORIESTopics
+Trending
+Collections
+
+EnterpriseENTERPRISE SOLUTIONSEnterprise platformAI-powered developer platform
+
+AVAILABLE ADD-ONSGitHub Advanced SecurityEnterprise-grade security features
+
+Copilot for BusinessEnterprise-grade AI features
+
+Premium SupportEnterprise-grade 24/7 support
+
+Pricing
+
+Search or jump to...
+
+Search code, repositories, users, issues, pull requests...
+
+-->
+
+Search
+
+Clear
+
+Search syntax tips 
+
+Provide feedback
+
+-->
+We read every piece of feedback, and take your input very seriously.
+
+Include my email address so I can be contacted
+
+Cancel
+
+Submit feedback
+
+Saved searches
+
+Use saved searches to filter your results more quickly
+
+-->
+
+Name
+
+Query
+
+To see all available qualifiers, see our documentation.
+
+Cancel
+
+Create saved search
+
+Sign in
+
+Sign up
+
+Appearance settings
+
+Resetting focus
+
+You signed in with another tab or window. Reload to refresh your session.
+You signed out in another tab or window. Reload to refresh your session.
+You switched accounts on another tab or window. Reload to refresh your session.
+
+Dismiss alert
+
+{{ message }}
+
+vulnerable-apps
+
+/
+
+brokencrystals-demo
+
+Public
+
+Notifications
+You must be signed in to change notification settings
+
+Fork
+6
+
+Star
+0
+
+Code
+
+Issues
+0
+
+Pull requests
+5
+
+Actions
+
+Projects
+
+Security and quality
+0
+
+Insights
+
+Additional navigation options
+
+Code
+
+Issues
+
+Pull requests
+
+Actions
+
+Projects
+
+Security and quality
+
+Insights
+
+vulnerable-apps/brokencrystals-demo
+
+ master
+
+BranchesTags
+
+Go to file
+
+CodeOpen more actions menu
+
+Folders and files
+NameNameLast commit message
+Last commit date
+
+Latest commit
+ 
+
+History
+26 Commits
+26 Commits
+
+.github/workflows
+
+.github/workflows
+
+ 
+ 
+
+.husky
+
+.husky
+
+ 
+ 
+
+assets
+
+assets
+
+ 
+ 
+
+conf
+
+conf
+
+ 
+ 
+
+src
+
+src
+
+ 
+ 
+
+test
+
+test
+
+ 
+ 
+
+.env.example
+
+.env.example
+
+ 
+ 
+
+.eslintignore
+
+.eslintignore
+
+ 
+ 
+
+.eslintrc.json
+
+.eslintrc.json
+
+ 
+ 
+
+.gitignore
+
+.gitignore
+
+ 
+ 
+
+.prettierignore
+
+.prettierignore
+
+ 
+ 
+
+.prettierrc
+
+.prettierrc
+
+ 
+ 
+
+.releaserc
+
+.releaserc
+
+ 
+ 
+
+CONTRIBUTING.md
+
+CONTRIBUTING.md
+
+ 
+ 
+
+Dockerfile.client
+
+Dockerfile.client
+
+ 
+ 
+
+Dockerfile.keycloak
+
+Dockerfile.keycloak
+
+ 
+ 
+
+Dockerfile.postgres
+
+Dockerfile.postgres
+
+ 
+ 
+
+LICENSE
+
+LICENSE
+
+ 
+ 
+
+README.md
+
+README.md
+
+ 
+ 
+
+build.md
+
+build.md
+
+ 
+ 
+
+docker-compose.yaml
+
+docker-compose.yaml
+
+ 
+ 
+
+jest.config.js
+
+jest.config.js
+
+ 
+ 
+
+package-lock.json
+
+package-lock.json
+
+ 
+ 
+
+package.json
+
+package.json
+
+ 
+ 
+
+tsconfig.json
+
+tsconfig.json
+
+ 
+ 
+
+View all files
+
+Repository files navigation
+README
+Contributing
+MIT license
+
+SecTester SDK demo project for Broken Crystals
+
+Table of contents
+
+About this project
+
+About SecTester
+
+Initial setup
+
+Fork this repo
+
+Get a Bright API key
+
+Running in a CI pipeline
+
+GitHub Actions setup
+
+Using with GitHub Actions
+
+Running on a local machine
+
+Local setup
+
+Explore the demo application
+
+Run tests locally on the demo application
+
+A full configuration example
+
+Recommended tests
+
+Documentation & Help
+
+Contributing
+
+License
+
+About this project
+
+This is a demo project for the SecTester JS SDK framework, with some installation and usage examples. We recommend forking it and playing around, that’s what it’s for!
+
+About SecTester
+
+Bright is a developer-first Dynamic Application Security Testing (DAST) platform.
+
+SecTester is a new open-source tool that integrates our enterprise-grade scan engine directly into your unit tests, integration tests, e2e tests or whichever automated tests you use.
+
+With SecTester you can:
+
+Test every function and component directly with our DAST engine
+
+Run security scans at the speed of unit tests
+
+Find vulnerabilities with no false positives, before you finalize your pull request
+
+Trying out Bright’s SecTester is free 💸, so let’s get started!
+
+⚠️ Disclaimer
+
+The SecTester project is currently in beta as an early-access tool. We are looking for your feedback to make it the best possible solution for developers, aimed to be used as part of your team’s SDLC. We apologize if not everything will work smoothly from the start, but we are constantly improving!
+
+Thank you! We appreciate your help and feedback!
+
+Initial setup
+
+Fork this repo
+
+Press the ‘fork’ button to make a copy of this repo in your own GitHub account
+
+Get a Bright API key
+
+Register for a free account at Bright’s signup page
+
+Skip the quickstart wizard and go directly to User API key creation
+
+Create a Bright API key (check out our docs on how to create a user key)
+
+Save the Bright API key
+
+For this demo, we recommend using your Github repository secrets feature to store the key, accessible via the Settings > Security > Secrets > Actions configuration. We use the ENV variable called BRIGHT_TOKEN in our examples
+
+If you don’t use that option, make sure you save the key in a secure location. You will need to access it later on in the project but will not be able to view it again.
+
+More info on how to use ENV vars in Github actions
+
+⚠️ Make sure your API key is saved in a location where you can retrieve it later! You will need it in these next steps!
+
+Running in a CI pipeline
+
+Once you create your own unit tests using SecTester, you can run it in any CI you choose. To simplify things in this demo we provide an example using the GitHub Actions CI.
+
+GitHub Actions setup
+
+After forking the main repo, you will need to go to the Actions tab and click on the I understand my workflows, go ahead an enable them button. This will enable you to run the pre-configured CI example from this demo
+
+Next, add your BRIGHT_TOKEN to the GitHub Actions environment variables via the Secret Variables, accessible via the Settings > Security > Secrets > Actions configuration. Please make sure that the ENV variable is called BRIGHT_TOKEN, as that is what we use in our example
+
+You can integrate SecTester into any CI you use. For that, you will need to add the BRIGHT_TOKEN ENV vars to your CI.
+
+Using with GitHub Actions
+
+The following is a minimal configuration for starting SecTester, which is running on the latest LTS version of Node and triggers only when a pull request is opened.
+
+As you can see, the workflow creates a test job that runs SecTester only after all dependencies are installed:
+
+.github/workflows/auto-test.yml
+
+name: CI / Automated testing
+
+on:
+pull_request:
+branches:
+- '**'
+
+jobs:
+test:
+name: Testing
+runs-on: ubuntu-latest
+steps:
+- name: Checkout
+uses: actions/checkout@v2
+
+- name: Set Node.js
+uses: actions/setup-node@v3
+with:
+node-version: 'lts/*'
+cache: npm
+
+- name: Install deps in quiet mode
+run: npm ci -q
+
+- name: Run SecTester
+run: npm run test:sec
+env:
+BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+BRIGHT_HOSTNAME: app.neuralegion.com
+BROKEN_CRYSTALS_URL: http://localhost:3000
+
+The whole list of environment variables to start the demo application is described in .env.example file. However, you can start with the minimal three VARs, as shown in the example above, ignoring others.
+
+In the example above, the CI flow is set to run all the SecTester tests, but if we would like to run a single test we can update the workflow by specifying a regex pattern that matches a test name, as follows:
+
+- name: Run SecTester
+run: npm run test:sec -- -t 'testimonials'
+env:
+BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+BRIGHT_HOSTNAME: app.neuralegion.com
+BROKEN_CRYSTALS_URL: http://localhost:3000
+
+Furthermore, to trigger SecTester on demand, you can use Manual Triggers for GitHub Actions as follows:
+
+name: CI / Automated testing
+
+on:
+workflow_dispatch:
+
+You will then see a Run workflow button on the Actions tab, enabling you to easily trigger a run.
+
+You can also use the repository_dispatch event to have control on when to start a workflow by making an HTTP request:
+
+name: CI / Automated testing
+
+on:
+repository_dispatch:
+types: [sectester]
+
+To trigger a workflow, issue the following command using a Personal Access Tokens:
+
+$ curl -H "Accept: application/vnd.github.everest-preview+json" \
+-H "Authorization: token ${GITHUB_TOKEN}" \
+https://api.github.com/repos/[org-name-or-username]/[repository]/dispatches \
+-d '{ "event_type": "sectester" }'
+
+Finally, you may find useful to trigger a workflow at a scheduled time using the schedule event.
+
+This example triggers the workflow every Sunday at 03:30 UTC:
+
+name: CI / Automated testing
+
+on:
+schedule:
+- cron: '30 3 * * sun'
+
+* is a special character in YAML, so you have to quote this string
+
+Once the CI runs and a SecTester test fails, this means a vulnerability was found and the output will look as follows:
+
+FAIL test/sec/render.e2e-spec.ts (143.608 s)
+/api
+POST /render
+✕ should not contain possibility to server-side code execution (282227 ms)
+
+● /api › POST /render › should not contain possibility to server-side code execution
+
+IssueFound: Target is vulnerable
+
+Issue in Bright UI: https://development.playground.neuralegion.com/scans/bH2vd1CfxHtKjLNLxw94oj/issues/w68hhVa1We95UNZx4FmefT
+Name: SSTI - Server Side Template Injection
+Severity: High
+Remediation:
+To protect against this type of attack, you shall sanitize input before passing to template directive and create a safe environment.
+Details:
+SSTI (Server Side Template Injection) is vulnerability that is exploited by malformed user input which allows embedding user input into different application without proper sanitization. The highest possibility of this vulnerability is to create a path for remote code execution capabilities and be exploited by malicious subjects. Identification of this vulnerability is possible with observation of the invalid syntax in the input with an error messages displayed after creating a response.
+References:
+● https://www.owasp.org/index.php/Server-Side_Includes_(SSI)_Injection
+● https://www.owasp.org/images/7/7e/Owasp_SSTI_final.pdf
+
+at SecScan.assert (../packages/runner/src/lib/SecScan.ts:59:13)
+at runMicrotasks (<anonymous>)
+at SecScan.run (../packages/runner/src/lib/SecScan.ts:37:7)
+at Object.<anonymous> (sec/render.e2e-spec.ts:21:7)
+
+Test Suites: 1 failed, 1 total
+Tests: 1 failed, 1 total
+Snapshots: 0 total
+Time: 143.677 s
+Ran all test suites matching /render.e2e-spec.ts/i.
+
+Running on a local machine
+
+Alternatively to running the tests in the CI, you can run the tests locally on your machine, this is helpful for example if you want to run the tests while you’re working on your code and not consume CI resources.
+
+Local setup
+
+To begin, clone your forked repo of this project onto your local machine.
+
+To do that, navigate to your local folder of choice and clone the project using either SSH or HTTP, for example using the following command:
+
+$ git clone git@github.com:my-github-handle/sectester-js-demo-broken-crystals.git
+
+In the same local folder, using your command line, install the dependencies:
+
+$ npm ci
+
+The whole list of required variables to start the demo application is described in .env.example file. The template for this .env file is available in the root folder.
+
+You can easily create a .env file from the template by issuing the following command:
+
+$ cp .env.example .env
+
+Once this template is done copying over (should be instantaneous), navigate to your .env file, and paste your Bright API key as the value of the BRIGHT_TOKEN variable.
+
+BRIGHT_TOKEN = <your_API_key_here>
+
+Explore the demo application
+
+Once the initial setup is complete, you have to build and run services with Docker. Start Docker, and issue the command as follows:
+
+$ docker compose up -d
+
+While having the application running, open a browser and type http://localhost:3000/swagger, and hit enter.
+
+You should see the Swagger UI page for that application that allows you to test the RESTFul CRUD API, like in the following screenshot:
+
+To explore the Swagger UI:
+
+Click on the POST /api/render endpoint
+
+Click on the "Try it out" button
+
+Click on the blue "Execute" button
+
+Then you should see a view similar to the following, where you can see the JSON returned from the API:
+
+Run tests locally on the demo application
+
+You can start tests with SecTester against these endpoints as follows (make sure you use a new terminal window, as the original is still running the API for us!)
+
+$ npm run test:sec
+
+You will find tests written with SecTester in the ./test/sec folder.
+
+This can take a few minutes while the Bright engine spins up. After a moment, you should see the result:
+
+FAIL test/sec/render.e2e-spec.ts (143.608 s)
+/api
+POST /render
+✕ should not contain possibility to server-side code execution (282227 ms)
+
+● /api › POST /render › should not contain possibility to server-side code execution
+
+IssueFound: Target is vulnerable
+
+Issue in Bright UI: https://development.playground.neuralegion.com/scans/bH2vd1CfxHtKjLNLxw94oj/issues/w68hhVa1We95UNZx4FmefT
+Name: SSTI - Server Side Template Injection
+Severity: High
+Remediation:
+To protect against this type of attack, you shall sanitize input before passing to template directive and create a safe environment.
+Details:
+SSTI (Server Side Template Injection) is vulnerability that is exploited by malformed user input which allows embedding user input into different application without proper sanitization. The highest possibility of this vulnerability is to create a path for remote code execution capabilities and be exploited by malicious subjects. Identification of this vulnerability is possible with observation of the invalid syntax in the input with an error messages displayed after creating a response.
+References:
+● https://www.owasp.org/index.php/Server-Side_Includes_(SSI)_Injection
+● https://www.owasp.org/images/7/7e/Owasp_SSTI_final.pdf
+
+at SecScan.assert (../packages/runner/src/lib/SecScan.ts:59:13)
+at runMicrotasks (<anonymous>)
+at SecScan.run (../packages/runner/src/lib/SecScan.ts:37:7)
+at Object.<anonymous> (sec/render.e2e-spec.ts:21:7)
+
+Test Suites: 1 failed, 1 total
+Tests: 1 failed, 1 total
+Snapshots: 0 total
+Time: 143.677 s
+Ran all test suites matching /render.e2e-spec.ts/i.
+
+A full configuration example
+
+Let’s look under the hood to see how this all works. In the following example, we will test the app we just set up for any instances of Server Side Template Injection. Jest is provided as the testing framework, that provides assert functions and test-double utilities that help with mocking, spying, etc.
+
+The @sectester/runner package provides a set of utilities that allows scanning the demo application for vulnerabilities. Let's expand the previous example using the built-in SecRunner class:
+
+test/sec/render.e2e-spec.ts
+
+let runner!: SecRunner;
+
+// ...
+
+beforeEach(async () => {
+runner = new SecRunner({ hostname: 'app.neuralegion.com' });
+
+await runner.init();
+});
+
+afterEach(() => runner.clear());
+
+To set up a runner, create a SecRunner instance on the top of the file, passing a configuration as follows:
+
+import { SecRunner } from '@sectester/runner';
+
+const runner = new SecRunner({ hostname: 'app.neuralegion.com' });
+
+After that, you have to initialize a SecRunner instance:
+
+await runner.init();
+
+The runner is now ready to perform your tests. To start scanning your endpoint, first, you have to create a SecScan instance. We do this with runner.createScan as shown in the example below.
+
+Now, you will write and run your first unit test!
+
+Let's verify the POST /api/render endpoint for SSTI (read more in our docs):
+
+describe('POST /render', () => {
+it('should not contain possibility to server-side code execution', async () => {
+await runner
+.createScan({
+tests: [TestType.SSTI]
+})
+.run({
+method: 'POST',
+headers: {
+'accept': 'application/json, text/plain, */*',
+'origin': process.env.BROKEN_CRYSTALS_URL!,
+'content-type': 'text/plain'
+},
+body: `Some text`,
+url: `${process.env.BROKEN_CRYSTALS_URL}/api/render`
+});
+});
+});
+
+This will raise an exception when the test fails, with remediation information and a deeper explanation of SSTI, right in your command line!
+
+Let's look at another test for the GET /api/spawn endpoint, this time for OSI (read more in our docs).
+
+describe('GET /spawn', () => {
+it('should not be able to execute shell commands on the host operating system', async () => {
+await runner
+.createScan({
+tests: [TestType.OSI]
+})
+.run({
+method: 'GET',
+url: `${process.env.BROKEN_CRYSTALS_URL}/api/spawn?command=pwd`
+});
+});
+});
+
+As you can see, writing a new test for OSI follows the same pattern as SSTI.
+
+By default, each found issue will cause the scan to stop. To control this behavior you can set a severity threshold using the threshold method. Since SSTI (Server Side Template Injection) is considered to be high severity issue, we can pass Severity.HIGH for stricter checks:
+
+scan.threshold(Severity.HIGH);
+
+To avoid long-running test, you can specify a timeout, to say how long to wait before aborting it:
+
+scan.timeout(300000);
+
+To make sure that Jest won't abort tests early, you should align a test timeout with a scan timeout as follows:
+
+jest.setTimeout(300000);
+
+To clarify an attack surface and speed up the test, we suggest making clear where to discover the parameters according to the source code.
+
+src/app.controller.ts
+
+@Controller('/api')
+@ApiTags('App controller')
+export class AppController {
+constructor(private readonly usersService: UsersService) {}
+
+@Post('render')
+@ApiProduces('text/plain')
+@ApiConsumes('text/plain')
+@ApiOperation({
+description: SWAGGER_DESC_RENDER_REQUEST
+})
+@ApiBody({ description: 'Write your text here' })
+@ApiCreatedResponse({
+description: 'Rendered result'
+})
+async renderTemplate(@Body() raw): Promise<string> {
+if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
+const text = raw.toString().trim();
+const res = dotT.compile(text)();
+this.logger.debug(`Rendered template: ${res}`);
+return res;
+}
+}
+
+// ...
+}
+
+For the example above, it should look like this:
+
+const scan = runner.createScan({
+tests: [TestType.SSTI],
+attackParamLocations: [AttackParamLocation.BODY]
+});
+
+Finally, the test should look like this:
+
+it('should not contain possibility to server-side code execution', async () => {
+await runner
+.createScan({
+tests: [TestType.SSTI],
+attackParamLocations: [AttackParamLocation.BODY]
+})
+.timeout(300000)
+.threshold(Severity.HIGH)
+.run({
+method: 'POST',
+headers: {
+'accept': 'application/json, text/plain, */*',
+'origin': process.env.BROKEN_CRYSTALS_URL!,
+'content-type': 'text/plain'
+},
+body: `Some text`,
+url: `${process.env.BROKEN_CRYSTALS_URL}/api/render`
+});
+});
+
+Here is a completed test/sec/render.e2e-spec.ts file with all the tests and configuration set up.
+
+import { SecRunner } from '@sectester/runner';
+import { AttackParamLocation, TestType } from '@sectester/scan';
+
+describe('/api', () => {
+const timeout = 300000;
+jest.setTimeout(timeout);
+l
+... [truncated at 20 000 chars]

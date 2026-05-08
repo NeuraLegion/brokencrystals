@@ -104,7 +104,6 @@ export class AuthController {
   }
 
   @Post('login')
-  @UseGuards(CsrfGuard)
   @ApiCreatedResponse({
     type: LoginResponse
   })
