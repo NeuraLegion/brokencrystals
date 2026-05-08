@@ -25,11 +25,17 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
 
     const genericResponse = { error: 'An internal error has occurred' };
     const status = exception instanceof HttpException ? exception.getStatus() : 500;
+    const responseBody =
+      status >= 500
+        ? genericResponse
+        : exception instanceof HttpException
+          ? exception.getResponse()
+          : genericResponse;
 
     if (gql) {
       throw new InternalServerErrorException(genericResponse);
     }
 
-    return applicationRef.reply(host.getArgByIndex(1), genericResponse, status);
+    return applicationRef.reply(host.getArgByIndex(1), responseBody, status);
   }
 }

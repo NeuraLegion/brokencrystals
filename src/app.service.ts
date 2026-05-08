@@ -46,12 +46,7 @@ export class AppService {
   }
 
   getConfig(): AppConfig {
-    return {
-      awsBucket: this.configService.get<string>('AWS_BUCKET') ?? '',
-      googlemaps: this.configService.get<string>(
-        AppModuleConfigProperties.ENV_GOOGLE_MAPS
-      )
-    };
+    return {} as AppConfig;
   }
 
   async getUserInfo(email: string): Promise<UserDto> {

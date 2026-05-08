@@ -271,15 +271,21 @@ export class AppController {
   }
 
   @Get('/config')
-  @UseGuards(AuthGuard)
   @ApiOperation({
-    description: API_DESC_CONFIG_SERVER
+    description: 'Configuration details are not exposed by this API endpoint.'
   })
   @ApiOkResponse({
-    type: AppConfig
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string' }
+      }
+    }
   })
-  getConfig(): AppConfig {
-    return this.appService.getConfig();
+  getConfig(): Record<string, string> {
+    return {
+      message: 'Configuration details are not publicly available.'
+    };
   }
 
   @Get('/secrets')
