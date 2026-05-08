@@ -6,8 +6,6 @@ import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
   private static readonly KID: number = 0;
-  private static readonly KID_FETCH_QUERY = (key: string, param: string) =>
-    `select key from (select '${key}' as key, ${JwtTokenWithSqlKIDProcessor.KID} as id) as keys where keys.id = '${param}'`;
 
   constructor(
     private readonly em: EntityManager,
@@ -20,16 +18,21 @@ export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
     this.log.debug('Call validateToken');
 
     const [header] = this.parse(token);
+    const kid = `${header.kid ?? ''}`;
 
-    const query = JwtTokenWithSqlKIDProcessor.KID_FETCH_QUERY(
-      this.key,
-      header.kid
-    );
-    this.log.debug(`Executing key fetching query: ${query}`);
+    if (!/^[0-9]+$/.test(kid)) {
+      this.log.warn('Rejected token with invalid kid format');
+      throw new Error('Invalid token');
+    }
+
     const keyRow: { key: string } = await this.em
       .getConnection()
-      .execute(query, [], 'get');
-    this.log.debug(`Key is ${keyRow.key}`);
+      .execute(
+        `select key from (select ? as key, ? as id) as keys where keys.id = ?`,
+        [this.key, JwtTokenWithSqlKIDProcessor.KID, Number(kid)],
+        'get'
+      );
+    this.log.debug('Key fetched successfully');
 
     return decode(token, keyRow.key, false, 'HS256');
   }
