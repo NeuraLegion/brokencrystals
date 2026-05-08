@@ -293,7 +293,7 @@ export class FileController {
       }
     } catch (err) {
       this.logger.error(err.message);
-      throw err.message;
+      throw new InternalServerErrorException('File operation failed');
     }
   }
 
