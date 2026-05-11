@@ -11968,12 +11968,16 @@ function runShellCommand(repoPath, command, timeoutMs = 6e4) {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: timeoutMs,
+      killSignal: "SIGKILL",
       maxBuffer: 5 * 1024 * 1024,
       stdio: ["pipe", "pipe", "pipe"]
     });
     const result = output.trim();
     return result.length > 1e4 ? "... [truncated beginning]\n" + result.slice(-1e4) : result || "(no output)";
   } catch (err) {
+    if (err && typeof err === "object" && "killed" in err && err.killed) {
+      return `Command timed out after ${Math.round(timeoutMs / 1e3)}s and was killed.`;
+    }
     if (err && typeof err === "object" && "stderr" in err) {
       const errObj = err;
       const stderr = String(errObj.stderr ?? "").trim();
