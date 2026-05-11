@@ -33546,6 +33546,7 @@ async function main() {
   }
   gitFinalizeChanges(repoPath, "fix: Bright security scan remediations");
   console.log("[Engine] Done.");
+  process.exit(0);
 }
 main().catch((err) => {
   console.error("[Engine] Fatal error:", err);

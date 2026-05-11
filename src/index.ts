@@ -106,6 +106,9 @@ async function main(): Promise<void> {
   // 7. Finalize - commit and push any remaining changes
   gitFinalizeChanges(repoPath, "fix: Bright security scan remediations");
   console.log("[Engine] Done.");
+
+  // Exit explicitly — background timers (health probes) keep the event loop alive
+  process.exit(0);
 }
 
 main().catch((err) => {
