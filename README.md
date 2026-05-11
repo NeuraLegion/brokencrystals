@@ -6,7 +6,6 @@ A GitHub Copilot Engine that performs automated security scanning and remediatio
 
 This engine integrates with:
 
-- **GitHub Copilot Engine SDK** (`@github/copilot-engine-sdk`) for orchestration and CI/CD integration
 - **Bright API** for security scanning capabilities
 - **OpenAI/Claude API** for LLM-driven code analysis and fix generation
 - **Multi-platform SCM**: Auto-detects GitHub and Azure DevOps from the repository URL; extensible for GitLab
@@ -212,14 +211,13 @@ Supported `REPOSITORY_URL` formats:
 - **GitHub**: `https://github.com/owner/repo`
 - **Azure DevOps**: `https://dev.azure.com/org/_git/repo` or `https://dev.azure.com/org/project/_git/repo`
 
-#### Job / Engine Infrastructure (set automatically by engine-cli — do not set manually)
+#### Standalone Mode
 
-| Variable                    | Required | Description                                                        |
-| --------------------------- | -------- | ------------------------------------------------------------------ |
-| `JOB_ID`                    | No       | Job identifier for logging (falls back to `GITHUB_JOB_ID` or auto) |
-| `GITHUB_PLATFORM_API_TOKEN` | No       | Platform API token (consumed by Copilot Engine SDK)                |
-| `GITHUB_PLATFORM_API_URL`   | No       | Platform API URL (consumed by Copilot Engine SDK)                  |
-| `GITHUB_JOB_NONCE`          | No       | Optional job nonce (consumed by Copilot Engine SDK)                |
+| Variable            | Required | Description                                                                  |
+| ------------------- | -------- | ---------------------------------------------------------------------------- |
+| `JOB_ID`            | No       | Job identifier for logging (default: auto-generated)                         |
+| `PROBLEM_STATEMENT` | No       | Problem description (default: `Run a security scan and fix vulnerabilities`) |
+| `ACTION`            | No       | Action to perform (default: `fix`)                                           |
 
 #### Run Mode
 
@@ -228,13 +226,6 @@ Supported `REPOSITORY_URL` formats:
 | `RUN_MODE` | No       | `full` (default) — start the full application and scan. `function` — skip full startup, wrap critical functions in a lightweight HTTP harness and scan those |
 
 In `full` mode, if startup or auth fails, the engine automatically falls back to function harness mode.
-
-#### Standalone Mode
-
-| Variable            | Required | Description                                                                  |
-| ------------------- | -------- | ---------------------------------------------------------------------------- |
-| `PROBLEM_STATEMENT` | No       | Problem description (default: `Run a security scan and fix vulnerabilities`) |
-| `ACTION`            | No       | Action to perform (default: `fix`)                                           |
 
 #### Provider Examples
 
@@ -391,44 +382,23 @@ See `phases/test-selection.ts` for the selection logic.
 [Done] All vulnerabilities resolved. 5 total fixes applied.
 ```
 
-## Local Testing with copilot-engine-sdk CLI
-
-The engine can be tested locally using the [`engine-cli`](https://github.com/github/copilot-engine-sdk#cli--local-testing) tool, which simulates the full platform API:
+## Local Testing
 
 ```bash
 # 1. Build the engine
 npm run build
 
-# 2. Clone the SDK and build the CLI (requires Go)
-git clone https://github.com/github/copilot-engine-sdk.git
-cd copilot-engine-sdk/cli
-go build ./cmd/engine-cli
-
-# 3. Run the engine against a target repo
-cd /path/to/bright-agent
-
+# 2. Run directly with env vars
+REPOSITORY_URL="https://github.com/owner/target-repo" \
 REPO_ACCESS_TOKEN="your-github-or-azure-pat" \
 BRIGHT_TOKEN="your-bright-api-token" \
 INFERENCE_URL="https://api.openai.com/v1" \
 OPENAI_API_KEY="your-openai-key" \
 AI_MODEL="gpt-4.1-mini" \
-./path/to/engine-cli run "node dist/index.js" \
-  --repo https://github.com/owner/target-repo \
-  --problem-statement "Run a security scan and fix vulnerabilities" \
-  --action fix \
-  --timeout 120m \
-  --engine-logs \
-  --verbose
+PROBLEM_STATEMENT="Run a security scan and fix vulnerabilities" \
+ACTION="fix" \
+node dist/index.js
 ```
-
-The CLI will:
-
-- Clone the target repository to a temp directory
-- Start a mock HTTP server that mimics the platform API
-- Spawn the engine with all required environment variables (platform API token, job ID, etc.)
-- Display progress events in formatted output
-
-Run `./engine-cli run --help` for all available options.
 
 ## File Structure
 

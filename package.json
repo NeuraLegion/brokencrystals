@@ -11,7 +11,6 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@github/copilot-engine-sdk": "github:github/copilot-engine-sdk#main",
     "glob": "^11.0.0",
     "openai": "^4.86.0",
     "tree-kill": "^1.2.2"
