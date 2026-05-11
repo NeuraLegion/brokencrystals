@@ -15,8 +15,6 @@ export interface JobDetails {
   branchName: string;
   commitLogin: string;
   commitEmail: string;
-  problemStatement: string;
-  action: string;
 }
 
 export interface Platform {
@@ -264,10 +262,6 @@ export async function createPlatform(gitToken?: string): Promise<{
     branchName: process.env.BRANCH ?? `bright-scan-${Date.now()}`,
     commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",
     commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bot@brightsec.com",
-    problemStatement:
-      process.env.PROBLEM_STATEMENT ??
-      "Run a security scan and fix vulnerabilities",
-    action: process.env.ACTION ?? "fix",
   };
 
   const platform = new DefaultPlatform(job, provider, gitToken);

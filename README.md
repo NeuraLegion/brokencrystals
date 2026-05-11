@@ -75,8 +75,6 @@ Supported `REPOSITORY_URL` formats:
 | `BRANCH`            | No       | Branch name for fixes (default: `bright-scan-<timestamp>`)                                                                                                  |
 | `GIT_AUTHOR_NAME`   | No       | Git commit author name (default: `BrightSec`)                                                                                                               |
 | `GIT_AUTHOR_EMAIL`  | No       | Git commit author email (default: `bot@brightsec.com`)                                                                                                      |
-| `PROBLEM_STATEMENT` | No       | Problem description (default: `Run a security scan and fix vulnerabilities`)                                                                                |
-| `ACTION`            | No       | Action to perform (default: `fix`)                                                                                                                          |
 
 ### Provider Examples
 
