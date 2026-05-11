@@ -13,19 +13,25 @@ export class AzureDevOpsProvider implements ScmProvider {
   readonly platformName = "Azure DevOps";
   private readonly info: RepoInfo;
   private readonly apiBase: string;
+  /** Whether the original URL included an explicit project segment. */
+  private readonly hasExplicitProject: boolean;
 
   constructor(info: RepoInfo) {
     this.info = info;
-    // e.g. https://dev.azure.com/barhofesh/Brokencrystals/_apis/git/repositories/Brokencrystals
-    const { organization, project } = info;
-    this.apiBase = `https://dev.azure.com/${organization}/${project}/_apis/git/repositories/${info.repository}`;
+    this.hasExplicitProject = info.project !== info.repository;
+    const { organization, project, repository } = info;
+    this.apiBase = `https://dev.azure.com/${organization}/${project}/_apis/git/repositories/${repository}`;
   }
 
   buildCloneUrl(token: string): string {
     const { organization, project, repository } = this.info;
+    // Preserve original URL format: /org/_git/repo vs /org/project/_git/repo
+    const path = this.hasExplicitProject
+      ? `${organization}/${project}/_git/${repository}`
+      : `${organization}/_git/${repository}`;
     return token
-      ? `https://x-access-token:${token}@dev.azure.com/${organization}/${project}/_git/${repository}`
-      : `https://dev.azure.com/${organization}/${project}/_git/${repository}`;
+      ? `https://x-pat:${token}@dev.azure.com/${path}`
+      : `https://dev.azure.com/${path}`;
   }
 
   repoSlug(): string {

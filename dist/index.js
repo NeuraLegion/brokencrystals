@@ -3202,14 +3202,18 @@ var AzureDevOpsProvider = class {
   platformName = "Azure DevOps";
   info;
   apiBase;
+  /** Whether the original URL included an explicit project segment. */
+  hasExplicitProject;
   constructor(info) {
     this.info = info;
-    const { organization, project } = info;
-    this.apiBase = `https://dev.azure.com/${organization}/${project}/_apis/git/repositories/${info.repository}`;
+    this.hasExplicitProject = info.project !== info.repository;
+    const { organization, project, repository } = info;
+    this.apiBase = `https://dev.azure.com/${organization}/${project}/_apis/git/repositories/${repository}`;
   }
   buildCloneUrl(token) {
     const { organization, project, repository } = this.info;
-    return token ? `https://x-access-token:${token}@dev.azure.com/${organization}/${project}/_git/${repository}` : `https://dev.azure.com/${organization}/${project}/_git/${repository}`;
+    const path2 = this.hasExplicitProject ? `${organization}/${project}/_git/${repository}` : `${organization}/_git/${repository}`;
+    return token ? `https://x-pat:${token}@dev.azure.com/${path2}` : `https://dev.azure.com/${path2}`;
   }
   repoSlug() {
     const { organization, project, repository } = this.info;
