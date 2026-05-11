@@ -261,7 +261,7 @@ export async function createPlatform(gitToken?: string): Promise<{
   const { provider } = detectScmProvider(repositoryUrl);
 
   const job: JobDetails = {
-    id: process.env.GITHUB_JOB_ID ?? `standalone-${Date.now()}`,
+    id: process.env.JOB_ID ?? process.env.GITHUB_JOB_ID ?? `standalone-${Date.now()}`,
     repository: provider.repoSlug(),
     branchName: process.env.BRANCH ?? `bright-scan-${Date.now()}`,
     commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",

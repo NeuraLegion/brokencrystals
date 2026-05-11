@@ -9,6 +9,7 @@ This engine integrates with:
 - **GitHub Copilot Engine SDK** (`@github/copilot-engine-sdk`) for orchestration and CI/CD integration
 - **Bright API** for security scanning capabilities
 - **OpenAI/Claude API** for LLM-driven code analysis and fix generation
+- **Multi-platform SCM**: Auto-detects GitHub and Azure DevOps from the repository URL; extensible for GitLab
 
 The workflow follows a multi-phase scan-fix-validate loop, repeating up to 5 passes until vulnerabilities are resolved or max iterations reached.
 
@@ -27,6 +28,14 @@ src/
 ├── progress.ts              # GitHub Engine progress reporter
 ├── utils.ts                 # Shared utilities (sleep, formatTechStack, toErrorMessage)
 ├── types.ts                 # TypeScript interfaces
+├── platform.ts              # Platform abstraction (clone, PR ops)
+│
+├── scm/                      # Multi-platform SCM providers
+│   ├── types.ts             # ScmProvider interface
+│   ├── github.ts            # GitHub implementation
+│   ├── azure-devops.ts      # Azure DevOps implementation
+│   ├── detect.ts            # URL parser + provider factory
+│   └── index.ts             # Barrel exports
 │
 ├── phases/                  # Workflow phases
 │   ├── analyze.ts          # 1. Tech stack & endpoint discovery
@@ -203,14 +212,14 @@ Supported `REPOSITORY_URL` formats:
 - **GitHub**: `https://github.com/owner/repo`
 - **Azure DevOps**: `https://dev.azure.com/org/_git/repo` or `https://dev.azure.com/org/project/_git/repo`
 
-#### Copilot Engine (CI/CD only — set automatically by engine-cli)
+#### Job / Engine Infrastructure (set automatically by engine-cli — do not set manually)
 
-| Variable                    | Required | Description                         |
-| --------------------------- | -------- | ----------------------------------- |
-| `GITHUB_JOB_ID`             | No       | Job ID from Copilot Engine platform |
-| `GITHUB_PLATFORM_API_TOKEN` | No       | Platform API token                  |
-| `GITHUB_PLATFORM_API_URL`   | No       | Platform API URL                    |
-| `GITHUB_JOB_NONCE`          | No       | Optional job nonce                  |
+| Variable                    | Required | Description                                                        |
+| --------------------------- | -------- | ------------------------------------------------------------------ |
+| `JOB_ID`                    | No       | Job identifier for logging (falls back to `GITHUB_JOB_ID` or auto) |
+| `GITHUB_PLATFORM_API_TOKEN` | No       | Platform API token (consumed by Copilot Engine SDK)                |
+| `GITHUB_PLATFORM_API_URL`   | No       | Platform API URL (consumed by Copilot Engine SDK)                  |
+| `GITHUB_JOB_NONCE`          | No       | Optional job nonce (consumed by Copilot Engine SDK)                |
 
 #### Run Mode
 
@@ -416,7 +425,7 @@ The CLI will:
 
 - Clone the target repository to a temp directory
 - Start a mock HTTP server that mimics the platform API
-- Spawn the engine with all required environment variables (`GITHUB_JOB_ID`, `GITHUB_PLATFORM_API_TOKEN`, etc.)
+- Spawn the engine with all required environment variables (platform API token, job ID, etc.)
 - Display progress events in formatted output
 
 Run `./engine-cli run --help` for all available options.

@@ -4,7 +4,7 @@ author: "Bright Security"
 
 inputs:
   GITHUB_JOB_ID:
-    description: "Unique identifier for the job"
+    description: "Unique identifier for the job (set by engine-cli)"
     required: true
   GITHUB_PLATFORM_API_TOKEN:
     description: "Authentication token for platform API calls"
@@ -41,6 +41,7 @@ runs:
   main: "dist/index.js"
   env:
     GITHUB_JOB_ID: ${{ inputs.GITHUB_JOB_ID }}
+    JOB_ID: ${{ inputs.GITHUB_JOB_ID }}
     GITHUB_PLATFORM_API_TOKEN: ${{ inputs.GITHUB_PLATFORM_API_TOKEN }}
     GITHUB_PLATFORM_API_URL: ${{ inputs.GITHUB_PLATFORM_API_URL }}
     GITHUB_JOB_NONCE: ${{ inputs.GITHUB_JOB_NONCE }}
