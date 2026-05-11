@@ -8,6 +8,7 @@ import { createInferenceClient, validateModelTiers } from "./inference.js";
 import { verifyBrightAuth } from "./bright-api.js";
 import { toErrorMessage } from "./utils.js";
 import { runOrchestrator } from "./orchestrator.js";
+import { detectScmProvider } from "./scm/index.js";
 import type { OrchestratorContext } from "./types.js";
 
 async function main(): Promise<void> {
@@ -42,16 +43,18 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // 2. Initialize platform (GitHub SDK or standalone)
+  // 2. Initialize platform (auto-detects GitHub / Azure DevOps from REPOSITORY_URL)
   const { platform, job } = await createPlatform(config.gitToken);
   console.log(`[Engine] Job: ${job.id}, action: ${job.action}`);
   console.log(`[Engine] Repository: ${job.repository}`);
   console.log(`[Engine] Problem: ${job.problemStatement.slice(0, 200)}`);
 
   // 3. Clone the repository
+  const repositoryUrl = process.env.REPOSITORY_URL!;
+  const { provider } = detectScmProvider(repositoryUrl);
+
   const repoPath = cloneRepository({
-    serverUrl: job.serverUrl,
-    repository: job.repository,
+    provider,
     gitToken: config.gitToken,
     branchName: job.branchName,
     commitLogin: job.commitLogin,
@@ -65,8 +68,7 @@ async function main(): Promise<void> {
   // 4. Initialize inference client (OpenAI-compatible)
   const inferenceToken =
     process.env.OPENAI_API_KEY ??
-    process.env.GITHUB_INFERENCE_TOKEN ??
-    process.env.GITHUB_TOKEN ??
+    process.env.INFERENCE_TOKEN ??
     "";
   const llm = createInferenceClient(
     config.inferenceUrl,

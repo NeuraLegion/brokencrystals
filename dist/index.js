@@ -3098,10 +3098,267 @@ var require_tree_kill = __commonJS({
 // src/platform.ts
 import { execFileSync } from "child_process";
 import { existsSync, mkdirSync } from "fs";
+
+// src/scm/github.ts
+var GitHubProvider = class {
+  platformName = "GitHub";
+  info;
+  apiBase;
+  constructor(info) {
+    this.info = info;
+    const host = new URL(info.url).host;
+    this.apiBase = host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`;
+  }
+  buildCloneUrl(token) {
+    const host = new URL(this.info.url).host;
+    const slug = this.repoSlug();
+    return token ? `https://x-access-token:${token}@${host}/${slug}.git` : `https://${host}/${slug}.git`;
+  }
+  repoSlug() {
+    return `${this.info.owner}/${this.info.repo}`;
+  }
+  async getDefaultBranch(token) {
+    const { owner, repo } = this.info;
+    try {
+      const res = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github+json"
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.default_branch;
+      }
+    } catch {
+    }
+    return "main";
+  }
+  async findPullRequest(token, branch) {
+    const { owner, repo } = this.info;
+    const url = `${this.apiBase}/repos/${owner}/${repo}/pulls?head=${owner}:${branch}&state=open&per_page=1`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github+json"
+        }
+      });
+      if (!res.ok) return null;
+      const pulls = await res.json();
+      return pulls.length > 0 ? pulls[0].number : null;
+    } catch {
+      return null;
+    }
+  }
+  async createPullRequest(token, head, base, title, body) {
+    const { owner, repo } = this.info;
+    const url = `${this.apiBase}/repos/${owner}/${repo}/pulls`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ title, body, head, base })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn(`[GitHub] Failed to create PR: ${res.status} ${text}`);
+        return null;
+      }
+      const pr = await res.json();
+      return pr.number;
+    } catch (err) {
+      console.warn(`[GitHub] Error creating PR: ${err}`);
+      return null;
+    }
+  }
+  async updatePullRequestBody(token, prId, body) {
+    const { owner, repo } = this.info;
+    const url = `${this.apiBase}/repos/${owner}/${repo}/pulls/${prId}`;
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ body })
+    });
+    if (!res.ok) {
+      console.warn(
+        `[GitHub] Failed to update PR description: ${res.status} ${res.statusText}`
+      );
+    }
+  }
+};
+
+// src/scm/azure-devops.ts
+var API_VERSION = "7.1-preview.1";
+var AzureDevOpsProvider = class {
+  platformName = "Azure DevOps";
+  info;
+  apiBase;
+  constructor(info) {
+    this.info = info;
+    const { organization, project } = info;
+    this.apiBase = `https://dev.azure.com/${organization}/${project}/_apis/git/repositories/${info.repository}`;
+  }
+  buildCloneUrl(token) {
+    const { organization, project, repository } = this.info;
+    return token ? `https://x-access-token:${token}@dev.azure.com/${organization}/${project}/_git/${repository}` : `https://dev.azure.com/${organization}/${project}/_git/${repository}`;
+  }
+  repoSlug() {
+    const { organization, project, repository } = this.info;
+    return `${organization}/${project}/${repository}`;
+  }
+  authHeaders(token) {
+    const basic = Buffer.from(`:${token}`).toString("base64");
+    return {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/json"
+    };
+  }
+  async getDefaultBranch(token) {
+    try {
+      const res = await fetch(
+        `${this.apiBase}?api-version=${API_VERSION}`,
+        { headers: this.authHeaders(token) }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        return data.defaultBranch.replace(/^refs\/heads\//, "");
+      }
+    } catch {
+    }
+    return "main";
+  }
+  async findPullRequest(token, branch) {
+    const url = `${this.apiBase}/pullrequests?searchCriteria.sourceRefName=refs/heads/${branch}&searchCriteria.status=active&$top=1&api-version=${API_VERSION}`;
+    try {
+      const res = await fetch(url, { headers: this.authHeaders(token) });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.value.length > 0 ? data.value[0].pullRequestId : null;
+    } catch {
+      return null;
+    }
+  }
+  async createPullRequest(token, head, base, title, body) {
+    const url = `${this.apiBase}/pullrequests?api-version=${API_VERSION}`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: this.authHeaders(token),
+        body: JSON.stringify({
+          sourceRefName: `refs/heads/${head}`,
+          targetRefName: `refs/heads/${base}`,
+          title,
+          description: body
+        })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn(
+          `[AzureDevOps] Failed to create PR: ${res.status} ${text}`
+        );
+        return null;
+      }
+      const pr = await res.json();
+      return pr.pullRequestId;
+    } catch (err) {
+      console.warn(`[AzureDevOps] Error creating PR: ${err}`);
+      return null;
+    }
+  }
+  async updatePullRequestBody(token, prId, body) {
+    const url = `${this.apiBase}/pullrequests/${prId}?api-version=${API_VERSION}`;
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: this.authHeaders(token),
+      body: JSON.stringify({ description: body })
+    });
+    if (!res.ok) {
+      console.warn(
+        `[AzureDevOps] Failed to update PR description: ${res.status} ${res.statusText}`
+      );
+    }
+  }
+};
+
+// src/scm/detect.ts
+function parseRepositoryUrl(raw) {
+  const cleaned = raw.replace(/\/+$/, "").replace(/\.git$/, "");
+  let url;
+  try {
+    url = new URL(cleaned);
+  } catch {
+    throw new Error(
+      `Invalid REPOSITORY_URL: "${raw}" \u2014 expected a full URL (e.g. https://github.com/owner/repo or https://dev.azure.com/org/_git/repo)`
+    );
+  }
+  if (url.host === "dev.azure.com") {
+    return parseAzureDevOpsUrl(url, raw);
+  }
+  return parseGitHubUrl(url, raw);
+}
+function parseAzureDevOpsUrl(url, raw) {
+  const segments = url.pathname.split("/").filter(Boolean);
+  const gitIdx = segments.indexOf("_git");
+  if (gitIdx < 0 || gitIdx + 1 >= segments.length) {
+    throw new Error(
+      `Invalid Azure DevOps URL: "${raw}" \u2014 expected /_git/<repo> in the path`
+    );
+  }
+  const organization = segments[0];
+  const repository = segments[gitIdx + 1];
+  const project = gitIdx > 1 ? segments[1] : repository;
+  return {
+    platform: "azure-devops",
+    url: raw,
+    organization,
+    project,
+    repository
+  };
+}
+function parseGitHubUrl(url, raw) {
+  const segments = url.pathname.split("/").filter(Boolean);
+  if (segments.length < 2) {
+    throw new Error(
+      `Invalid GitHub URL: "${raw}" \u2014 expected /owner/repo in the path`
+    );
+  }
+  return {
+    platform: "github",
+    url: raw,
+    owner: segments[0],
+    repo: segments[1]
+  };
+}
+function createScmProvider(info) {
+  switch (info.platform) {
+    case "github":
+      return new GitHubProvider(info);
+    case "azure-devops":
+      return new AzureDevOpsProvider(info);
+    default:
+      throw new Error(`Unsupported SCM platform: ${info.platform}`);
+  }
+}
+function detectScmProvider(repositoryUrl) {
+  const info = parseRepositoryUrl(repositoryUrl);
+  const provider = createScmProvider(info);
+  return { info, provider };
+}
+
+// src/platform.ts
 function cloneRepository(opts) {
-  const host = new URL(opts.serverUrl).host;
-  const cloneUrl = opts.gitToken ? `https://x-access-token:${opts.gitToken}@${host}/${opts.repository}.git` : `https://${host}/${opts.repository}.git`;
-  const dest = `/tmp/workspace/${opts.repository}`;
+  const cloneUrl = opts.provider.buildCloneUrl(opts.gitToken);
+  const slug = opts.provider.repoSlug();
+  const dest = `/tmp/workspace/${slug}`;
   if (existsSync(dest)) {
     execFileSync("rm", ["-rf", dest]);
   }
@@ -3156,73 +3413,16 @@ function gitFinalizeChanges(repoPath, message) {
     console.log("[Git] No uncommitted changes to finalize, or push failed.");
   }
 }
-async function findPullRequestNumber(apiBase, token, owner, repo, branch) {
-  const url = `${apiBase}/repos/${owner}/${repo}/pulls?head=${owner}:${branch}&state=open&per_page=1`;
-  try {
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: "application/vnd.github+json"
-      }
-    });
-    if (!res.ok) return null;
-    const pulls = await res.json();
-    return pulls.length > 0 ? pulls[0].number : null;
-  } catch {
-    return null;
-  }
-}
-async function createPullRequest(apiBase, token, owner, repo, head, base, title, body) {
-  const url = `${apiBase}/repos/${owner}/${repo}/pulls`;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ title, body, head, base })
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      console.warn(`[Platform] Failed to create PR: ${res.status} ${text}`);
-      return null;
-    }
-    const pr = await res.json();
-    return pr.number;
-  } catch (err) {
-    console.warn(`[Platform] Error creating PR: ${err}`);
-    return null;
-  }
-}
-async function updatePullRequestBody(apiBase, token, owner, repo, prNumber, body) {
-  const url = `${apiBase}/repos/${owner}/${repo}/pulls/${prNumber}`;
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: {
-      Authorization: `token ${token}`,
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ body })
-  });
-  if (!res.ok) {
-    console.warn(
-      `[Platform] Failed to update PR description: ${res.status} ${res.statusText}`
-    );
-  }
-}
 var DefaultPlatform = class {
   job;
   gitToken;
-  apiBase;
+  provider;
   prNumber;
   // undefined = not looked up yet
-  constructor(job, gitToken) {
+  constructor(job, provider, gitToken) {
     this.job = job;
     this.gitToken = gitToken;
-    this.apiBase = job.serverUrl.replace(/\/$/, "").includes("github.com") ? "https://api.github.com" : `${job.serverUrl.replace(/\/$/, "")}/api/v3`;
+    this.provider = provider;
   }
   /**
    * Push the branch and create a PR so progress updates have somewhere to go.
@@ -3230,8 +3430,6 @@ var DefaultPlatform = class {
    */
   async initPr(repoPath) {
     if (!this.gitToken) return;
-    const [owner, repo] = this.job.repository.split("/");
-    if (!owner || !repo) return;
     try {
       execFileSync(
         "git",
@@ -3255,39 +3453,20 @@ var DefaultPlatform = class {
       const msg = String(err);
       if (msg.includes("Authentication failed") || msg.includes("Invalid username or token") || msg.includes("could not read Username")) {
         throw new Error(
-          `[Platform] Git authentication failed \u2014 check your GITHUB_TOKEN or GIT_TOKEN. The scan cannot push results without valid credentials.`
+          `[Platform] Git authentication failed \u2014 check your REPO_ACCESS_TOKEN. The scan cannot push results without valid credentials.`
         );
       }
       console.warn(`[Platform] Failed to push branch: ${err}`);
       return;
     }
-    this.prNumber = await findPullRequestNumber(
-      this.apiBase,
+    this.prNumber = await this.provider.findPullRequest(
       this.gitToken,
-      owner,
-      repo,
       this.job.branchName
     );
     if (!this.prNumber) {
-      let baseBranch = "main";
-      try {
-        const repoRes = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
-          headers: {
-            Authorization: `token ${this.gitToken}`,
-            Accept: "application/vnd.github+json"
-          }
-        });
-        if (repoRes.ok) {
-          const repoData = await repoRes.json();
-          baseBranch = repoData.default_branch;
-        }
-      } catch {
-      }
-      this.prNumber = await createPullRequest(
-        this.apiBase,
+      const baseBranch = await this.provider.getDefaultBranch(this.gitToken);
+      this.prNumber = await this.provider.createPullRequest(
         this.gitToken,
-        owner,
-        repo,
         this.job.branchName,
         baseBranch,
         `\u{1F6E1}\uFE0F Bright Security Scan`,
@@ -3318,35 +3497,30 @@ var DefaultPlatform = class {
   }
   async reportPrDescription(description) {
     if (!this.gitToken || !this.prNumber) return;
-    const [owner, repo] = this.job.repository.split("/");
-    if (!owner || !repo) return;
-    await updatePullRequestBody(
-      this.apiBase,
+    await this.provider.updatePullRequestBody(
       this.gitToken,
-      owner,
-      repo,
       this.prNumber,
       description
     );
   }
 };
 async function createPlatform(gitToken) {
-  const repo = process.env.GITHUB_REPOSITORY ?? process.env.REPO;
-  if (!repo) {
-    throw new Error("Missing GITHUB_REPOSITORY or REPO environment variable");
+  const repositoryUrl = process.env.REPOSITORY_URL;
+  if (!repositoryUrl) {
+    throw new Error("Missing REPOSITORY_URL environment variable");
   }
+  const { provider } = detectScmProvider(repositoryUrl);
   const job = {
     id: process.env.GITHUB_JOB_ID ?? `standalone-${Date.now()}`,
-    repository: repo,
-    serverUrl: process.env.GITHUB_SERVER_URL ?? "https://github.com",
-    branchName: process.env.GITHUB_BRANCH ?? `bright-scan-${Date.now()}`,
+    repository: provider.repoSlug(),
+    branchName: process.env.BRANCH ?? `bright-scan-${Date.now()}`,
     commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",
     commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bot@brightsec.com",
     problemStatement: process.env.PROBLEM_STATEMENT ?? "Run a security scan and fix vulnerabilities",
     action: process.env.ACTION ?? "fix"
   };
-  const platform = new DefaultPlatform(job, gitToken);
-  console.log("[Platform] Initialized (GitHub API for PR updates)");
+  const platform = new DefaultPlatform(job, provider, gitToken);
+  console.log(`[Platform] Initialized (${provider.platformName} \u2014 ${provider.repoSlug()})`);
   return { platform, job };
 }
 
@@ -11409,8 +11583,8 @@ function loadConfig() {
   const runMode = parseRunMode(process.env.RUN_MODE);
   const models = (process.env.AI_MODEL ?? DEFAULT_MODEL).split(",").map((s) => s.trim()).filter(Boolean);
   const modelSelector = new ModelSelector(models);
-  const gitToken = process.env.GITHUB_GIT_TOKEN ?? process.env.GIT_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
-  const inferenceUrl = process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
+  const gitToken = process.env.REPO_ACCESS_TOKEN ?? "";
+  const inferenceUrl = process.env.INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceProvider = detectProvider(inferenceUrl);
   console.log(`[Config] AI model(s): ${modelSelector}`);
   console.log(`[Config] Inference provider: ${inferenceProvider}`);
@@ -33226,9 +33400,10 @@ async function main() {
   console.log(`[Engine] Job: ${job.id}, action: ${job.action}`);
   console.log(`[Engine] Repository: ${job.repository}`);
   console.log(`[Engine] Problem: ${job.problemStatement.slice(0, 200)}`);
+  const repositoryUrl = process.env.REPOSITORY_URL;
+  const { provider } = detectScmProvider(repositoryUrl);
   const repoPath = cloneRepository({
-    serverUrl: job.serverUrl,
-    repository: job.repository,
+    provider,
     gitToken: config.gitToken,
     branchName: job.branchName,
     commitLogin: job.commitLogin,
@@ -33236,7 +33411,7 @@ async function main() {
   });
   console.log(`[Engine] Cloned to: ${repoPath}`);
   await platform.initPr(repoPath);
-  const inferenceToken = process.env.OPENAI_API_KEY ?? process.env.GITHUB_INFERENCE_TOKEN ?? process.env.GITHUB_TOKEN ?? "";
+  const inferenceToken = process.env.OPENAI_API_KEY ?? process.env.INFERENCE_TOKEN ?? "";
   const llm = createInferenceClient(
     config.inferenceUrl,
     inferenceToken,

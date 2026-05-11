@@ -1,8 +1,8 @@
 /**
  * Platform abstraction: decouples the engine from any specific agent SDK.
  *
- * Uses GitHub REST API directly for PR description updates.
- * Progress is reported to stdout.
+ * SCM operations (PRs, clone URLs) are delegated to the ScmProvider
+ * (see src/scm/). Progress is reported to stdout.
  */
 
 // ---------------------------------------------------------------------------
@@ -11,8 +11,8 @@
 
 export interface JobDetails {
   id: string;
+  /** Repository slug for logs (e.g. "owner/repo" or "org/project/repo"). */
   repository: string;
-  serverUrl: string;
   branchName: string;
   commitLogin: string;
   commitEmail: string;
@@ -40,20 +40,19 @@ export interface Platform {
 
 import { execFileSync } from "child_process";
 import { existsSync, mkdirSync } from "fs";
+import type { ScmProvider } from "./scm/types.js";
+import { detectScmProvider } from "./scm/detect.js";
 
 export function cloneRepository(opts: {
-  serverUrl: string;
-  repository: string;
+  provider: ScmProvider;
   gitToken: string;
   branchName: string;
   commitLogin: string;
   commitEmail: string;
 }): string {
-  const host = new URL(opts.serverUrl).host;
-  const cloneUrl = opts.gitToken
-    ? `https://x-access-token:${opts.gitToken}@${host}/${opts.repository}.git`
-    : `https://${host}/${opts.repository}.git`;
-  const dest = `/tmp/workspace/${opts.repository}`;
+  const cloneUrl = opts.provider.buildCloneUrl(opts.gitToken);
+  const slug = opts.provider.repoSlug();
+  const dest = `/tmp/workspace/${slug}`;
 
   if (existsSync(dest)) {
     execFileSync("rm", ["-rf", dest]);
@@ -126,107 +125,19 @@ export function gitFinalizeChanges(repoPath: string, message: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// GitHub REST API helpers
-// ---------------------------------------------------------------------------
-
-async function findPullRequestNumber(
-  apiBase: string,
-  token: string,
-  owner: string,
-  repo: string,
-  branch: string,
-): Promise<number | null> {
-  const url = `${apiBase}/repos/${owner}/${repo}/pulls?head=${owner}:${branch}&state=open&per_page=1`;
-  try {
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: "application/vnd.github+json",
-      },
-    });
-    if (!res.ok) return null;
-    const pulls = (await res.json()) as Array<{ number: number }>;
-    return pulls.length > 0 ? pulls[0].number : null;
-  } catch {
-    return null;
-  }
-}
-
-async function createPullRequest(
-  apiBase: string,
-  token: string,
-  owner: string,
-  repo: string,
-  head: string,
-  base: string,
-  title: string,
-  body: string,
-): Promise<number | null> {
-  const url = `${apiBase}/repos/${owner}/${repo}/pulls`;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ title, body, head, base }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      console.warn(`[Platform] Failed to create PR: ${res.status} ${text}`);
-      return null;
-    }
-    const pr = (await res.json()) as { number: number };
-    return pr.number;
-  } catch (err) {
-    console.warn(`[Platform] Error creating PR: ${err}`);
-    return null;
-  }
-}
-
-async function updatePullRequestBody(
-  apiBase: string,
-  token: string,
-  owner: string,
-  repo: string,
-  prNumber: number,
-  body: string,
-): Promise<void> {
-  const url = `${apiBase}/repos/${owner}/${repo}/pulls/${prNumber}`;
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: {
-      Authorization: `token ${token}`,
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ body }),
-  });
-  if (!res.ok) {
-    console.warn(
-      `[Platform] Failed to update PR description: ${res.status} ${res.statusText}`,
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Default implementation — logs to stdout, updates PR via GitHub API
+// Default implementation — logs to stdout, delegates PR ops to ScmProvider
 // ---------------------------------------------------------------------------
 
 export class DefaultPlatform implements Platform {
   private readonly job: JobDetails;
   private readonly gitToken: string | undefined;
-  private readonly apiBase: string;
+  private readonly provider: ScmProvider;
   private prNumber: number | null | undefined; // undefined = not looked up yet
 
-  constructor(job: JobDetails, gitToken?: string) {
+  constructor(job: JobDetails, provider: ScmProvider, gitToken?: string) {
     this.job = job;
     this.gitToken = gitToken;
-    this.apiBase = job.serverUrl.replace(/\/$/, "").includes("github.com")
-      ? "https://api.github.com"
-      : `${job.serverUrl.replace(/\/$/, "")}/api/v3`;
+    this.provider = provider;
   }
 
   /**
@@ -235,9 +146,6 @@ export class DefaultPlatform implements Platform {
    */
   async initPr(repoPath: string): Promise<void> {
     if (!this.gitToken) return;
-
-    const [owner, repo] = this.job.repository.split("/");
-    if (!owner || !repo) return;
 
     // Push the branch to origin — create an initial commit so the PR has a diff
     try {
@@ -261,15 +169,13 @@ export class DefaultPlatform implements Platform {
       console.log(`[Platform] Pushed branch ${this.job.branchName}`);
     } catch (err) {
       const msg = String(err);
-      // Authentication failures are fatal — no point running the scan if we
-      // can't push results back.
       if (
         msg.includes("Authentication failed") ||
         msg.includes("Invalid username or token") ||
         msg.includes("could not read Username")
       ) {
         throw new Error(
-          `[Platform] Git authentication failed — check your GITHUB_TOKEN or GIT_TOKEN. The scan cannot push results without valid credentials.`,
+          `[Platform] Git authentication failed — check your REPO_ACCESS_TOKEN. The scan cannot push results without valid credentials.`,
         );
       }
       console.warn(`[Platform] Failed to push branch: ${err}`);
@@ -277,37 +183,16 @@ export class DefaultPlatform implements Platform {
     }
 
     // Check if a PR already exists for this branch
-    this.prNumber = await findPullRequestNumber(
-      this.apiBase,
+    this.prNumber = await this.provider.findPullRequest(
       this.gitToken,
-      owner,
-      repo,
       this.job.branchName,
     );
 
     if (!this.prNumber) {
-      // Detect default branch for the base
-      let baseBranch = "main";
-      try {
-        const repoRes = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
-          headers: {
-            Authorization: `token ${this.gitToken}`,
-            Accept: "application/vnd.github+json",
-          },
-        });
-        if (repoRes.ok) {
-          const repoData = (await repoRes.json()) as { default_branch: string };
-          baseBranch = repoData.default_branch;
-        }
-      } catch {
-        /* fallback to main */
-      }
+      const baseBranch = await this.provider.getDefaultBranch(this.gitToken);
 
-      this.prNumber = await createPullRequest(
-        this.apiBase,
+      this.prNumber = await this.provider.createPullRequest(
         this.gitToken,
-        owner,
-        repo,
         this.job.branchName,
         baseBranch,
         `🛡️ Bright Security Scan`,
@@ -352,14 +237,8 @@ export class DefaultPlatform implements Platform {
   async reportPrDescription(description: string): Promise<void> {
     if (!this.gitToken || !this.prNumber) return;
 
-    const [owner, repo] = this.job.repository.split("/");
-    if (!owner || !repo) return;
-
-    await updatePullRequestBody(
-      this.apiBase,
+    await this.provider.updatePullRequestBody(
       this.gitToken,
-      owner,
-      repo,
       this.prNumber,
       description,
     );
@@ -368,21 +247,23 @@ export class DefaultPlatform implements Platform {
 
 /**
  * Create the platform. Reads job details from environment variables.
+ * Auto-detects SCM platform (GitHub / Azure DevOps) from REPOSITORY_URL.
  */
 export async function createPlatform(gitToken?: string): Promise<{
   platform: Platform;
   job: JobDetails;
 }> {
-  const repo = process.env.GITHUB_REPOSITORY ?? process.env.REPO;
-  if (!repo) {
-    throw new Error("Missing GITHUB_REPOSITORY or REPO environment variable");
+  const repositoryUrl = process.env.REPOSITORY_URL;
+  if (!repositoryUrl) {
+    throw new Error("Missing REPOSITORY_URL environment variable");
   }
+
+  const { provider } = detectScmProvider(repositoryUrl);
 
   const job: JobDetails = {
     id: process.env.GITHUB_JOB_ID ?? `standalone-${Date.now()}`,
-    repository: repo,
-    serverUrl: process.env.GITHUB_SERVER_URL ?? "https://github.com",
-    branchName: process.env.GITHUB_BRANCH ?? `bright-scan-${Date.now()}`,
+    repository: provider.repoSlug(),
+    branchName: process.env.BRANCH ?? `bright-scan-${Date.now()}`,
     commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",
     commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bot@brightsec.com",
     problemStatement:
@@ -391,7 +272,7 @@ export async function createPlatform(gitToken?: string): Promise<{
     action: process.env.ACTION ?? "fix",
   };
 
-  const platform = new DefaultPlatform(job, gitToken);
-  console.log("[Platform] Initialized (GitHub API for PR updates)");
+  const platform = new DefaultPlatform(job, provider, gitToken);
+  console.log(`[Platform] Initialized (${provider.platformName} — ${provider.repoSlug()})`);
   return { platform, job };
 }

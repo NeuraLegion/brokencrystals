@@ -15,6 +15,12 @@ inputs:
   GITHUB_JOB_NONCE:
     description: "Job nonce for request validation"
     required: false
+  REPOSITORY_URL:
+    description: "Full URL of the target repository (GitHub or Azure DevOps). Auto-detects platform."
+    required: true
+  REPO_ACCESS_TOKEN:
+    description: "Personal access token for git clone, push, and PR operations"
+    required: true
   BRIGHT_TOKEN:
     description: "Bright API token for MCP server authentication"
     required: true
@@ -38,6 +44,8 @@ runs:
     GITHUB_PLATFORM_API_TOKEN: ${{ inputs.GITHUB_PLATFORM_API_TOKEN }}
     GITHUB_PLATFORM_API_URL: ${{ inputs.GITHUB_PLATFORM_API_URL }}
     GITHUB_JOB_NONCE: ${{ inputs.GITHUB_JOB_NONCE }}
+    REPOSITORY_URL: ${{ inputs.REPOSITORY_URL }}
+    REPO_ACCESS_TOKEN: ${{ inputs.REPO_ACCESS_TOKEN }}
     BRIGHT_TOKEN: ${{ inputs.BRIGHT_TOKEN }}
     BRIGHT_HOSTNAME: ${{ inputs.BRIGHT_HOSTNAME }}
     BRIGHT_PROJECT_ID: ${{ inputs.BRIGHT_PROJECT_ID }}

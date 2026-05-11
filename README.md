@@ -184,23 +184,24 @@ This allows scanning applications that are difficult to start fully (complex inf
 | ------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AI_MODEL`               | No       | Model name or comma-separated escalation chain. Single model stays fixed; multiple models auto-escalate on retry (e.g. `gpt-4.1-mini,gpt-4.1,o3` or `gpt-5.4-mini,gpt-5.3-codex`). Default: `gpt-5.4-mini` |
 | `AI_REASONING_EFFORT`    | No       | Reasoning effort for thinking models (`o*`, `gpt-5*`, `*codex*`, `gpt-oss*`): `low`, `medium`, `high`, or `none`. Default: `medium` for detected reasoning models; ignored for regular chat models and function-tool calls |
-| `GITHUB_INFERENCE_URL`   | No       | Inference API base URL. Supports OpenAI (`https://api.openai.com/v1`), GitHub Models (`https://models.github.ai/inference`), and Ollama (`http://localhost:11434`). Default: `https://api.openai.com/v1` |
+| `INFERENCE_URL`      | No       | Inference API base URL. Supports OpenAI (`https://api.openai.com/v1`), GitHub Models (`https://models.github.ai/inference`), and Ollama (`http://localhost:11434`). Default: `https://api.openai.com/v1` |
 | `OPENAI_API_KEY`         | Varies   | API key for OpenAI. Takes priority over other token vars                                                                                                                                                 |
-| `GITHUB_INFERENCE_TOKEN` | Varies   | Inference token for GitHub Models. Fallback after `OPENAI_API_KEY`                                                                                                                                       |
-| `GITHUB_TOKEN`           | Varies   | GitHub PAT. Used for git operations and as inference token fallback. At least one of `OPENAI_API_KEY`, `GITHUB_INFERENCE_TOKEN`, or `GITHUB_TOKEN` must be set                                           |
+| `INFERENCE_TOKEN`    | Varies   | Inference token (e.g. for GitHub Models). Fallback after `OPENAI_API_KEY`                                                                                                                                |
 | `INFERENCE_PROVIDER`     | No       | Force provider: `openai`, `github-models`, or `ollama`. Auto-detected from URL if omitted                                                                                                                |
 
-#### GitHub / Git
+#### Repository / Git
 
-| Variable            | Required | Description                                                              |
-| ------------------- | -------- | ------------------------------------------------------------------------ |
-| `GITHUB_TOKEN`      | **Yes**  | GitHub PAT for cloning repos and creating PRs                            |
-| `GITHUB_GIT_TOKEN`  | No       | Dedicated git clone token. Falls back to `GIT_TOKEN` then `GITHUB_TOKEN` |
-| `GITHUB_REPOSITORY` | No       | Target repository in `owner/repo` format. Falls back to `REPO` env var   |
-| `GITHUB_SERVER_URL` | No       | GitHub server URL (default: `https://github.com`)                        |
-| `GITHUB_BRANCH`     | No       | Branch name for fixes (default: `bright-scan-<timestamp>`)               |
-| `GIT_AUTHOR_NAME`   | No       | Git commit author name (default: `BrightSec`)                            |
-| `GIT_AUTHOR_EMAIL`  | No       | Git commit author email (default: `bot@brightsec.com`)                   |
+| Variable            | Required | Description                                                                           |
+| ------------------- | -------- | ------------------------------------------------------------------------------------- |
+| `REPOSITORY_URL`    | **Yes**  | Full URL of the target repository. Auto-detects platform (GitHub / Azure DevOps)      |
+| `REPO_ACCESS_TOKEN` | **Yes**  | Personal access token for git clone, push, and PR operations                          |
+| `BRANCH`            | No       | Branch name for fixes (default: `bright-scan-<timestamp>`)                            |
+| `GIT_AUTHOR_NAME`   | No       | Git commit author name (default: `BrightSec`)                                         |
+| `GIT_AUTHOR_EMAIL`  | No       | Git commit author email (default: `bot@brightsec.com`)                                |
+
+Supported `REPOSITORY_URL` formats:
+- **GitHub**: `https://github.com/owner/repo`
+- **Azure DevOps**: `https://dev.azure.com/org/_git/repo` or `https://dev.azure.com/org/project/_git/repo`
 
 #### Copilot Engine (CI/CD only — set automatically by engine-cli)
 
@@ -238,15 +239,15 @@ export AI_MODEL="gpt-4.1-mini"
 **GitHub Models:**
 
 ```bash
-export GITHUB_INFERENCE_URL="https://models.github.ai/inference"
-export GITHUB_TOKEN="ghp_..."
+export INFERENCE_URL="https://models.github.ai/inference"
+export INFERENCE_TOKEN="ghp_..."
 export AI_MODEL="openai/gpt-4.1-mini"
 ```
 
 **Ollama (local):**
 
 ```bash
-export GITHUB_INFERENCE_URL="http://localhost:11434"
+export INFERENCE_URL="http://localhost:11434"
 export AI_MODEL="llama4:latest"
 ```
 
@@ -397,9 +398,9 @@ go build ./cmd/engine-cli
 # 3. Run the engine against a target repo
 cd /path/to/bright-agent
 
-GITHUB_TOKEN="your-github-pat" \
+REPO_ACCESS_TOKEN="your-github-or-azure-pat" \
 BRIGHT_TOKEN="your-bright-api-token" \
-GITHUB_INFERENCE_URL="https://api.openai.com/v1" \
+INFERENCE_URL="https://api.openai.com/v1" \
 OPENAI_API_KEY="your-openai-key" \
 AI_MODEL="gpt-4.1-mini" \
 ./path/to/engine-cli run "node dist/index.js" \

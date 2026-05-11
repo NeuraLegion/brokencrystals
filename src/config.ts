@@ -17,16 +17,12 @@ export function loadConfig(): EngineConfig {
     .filter(Boolean);
   const modelSelector = new ModelSelector(models);
 
-  // Git token resolution (single source of truth)
-  const gitToken =
-    process.env.GITHUB_GIT_TOKEN ??
-    process.env.GIT_TOKEN ??
-    process.env.GITHUB_TOKEN ??
-    "";
+  // Git / SCM token (single source of truth)
+  const gitToken = process.env.REPO_ACCESS_TOKEN ?? "";
 
   // Inference provider detection
   const inferenceUrl =
-    process.env.GITHUB_INFERENCE_URL ?? "https://api.openai.com/v1";
+    process.env.INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceProvider = detectProvider(inferenceUrl);
 
   console.log(`[Config] AI model(s): ${modelSelector}`);
