@@ -32355,6 +32355,7 @@ This user should work for authentication. Skip user registration/seeding and go 
     );
     const allFixes = [];
     let validationFindings = [];
+    let lastFixModel = "";
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
       if (iteration > 0 && authResult.hasAuth && authResult.authObjectId) {
         console.log(`[Auth] Verifying auth before round ${iteration + 1}...`);
@@ -32590,20 +32591,28 @@ This user should work for authentication. Skip user registration/seeding and go 
         succeededScanIds
       );
       const sevSummary = buildSeveritySummary(findings);
-      await progress.phaseDetail(
-        "scan",
-        "findings",
-        findings.length > 0 ? `Round ${iteration + 1} complete \u2014 ${findings.length} vulnerabilities found (${sevSummary})` : `Round ${iteration + 1} complete \u2014 no vulnerabilities found`
-      );
+      let roundFixedCount = 0;
       if (iteration > 0) {
         const currentKeys = new Set(findings.map(findingKey));
         const keysEligibleForFixMark = useTargetedValidation ? validationPlan.targetKeys : new Set(allFindings.keys());
         for (const key of keysEligibleForFixMark) {
           if (allFindings.has(key) && !currentKeys.has(key)) {
             fixedKeys.add(key);
+            roundFixedCount++;
           }
         }
       }
+      let scanDetail;
+      if (iteration === 0) {
+        scanDetail = findings.length > 0 ? `Round ${iteration + 1} complete \u2014 ${findings.length} vulnerabilities found (${sevSummary})` : `Round ${iteration + 1} complete \u2014 no vulnerabilities found`;
+      } else {
+        const validated = (useTargetedValidation ? validationPlan.targetKeys : new Set(allFindings.keys())).size;
+        scanDetail = `Round ${iteration + 1} validation \u2014 ${roundFixedCount}/${validated} fixed`;
+        if (findings.length > 0) {
+          scanDetail += `, ${findings.length} remaining (${sevSummary})`;
+        }
+      }
+      await progress.phaseDetail("scan", "findings", scanDetail);
       for (const f of findings) {
         const key = findingKey(f);
         if (!allFindings.has(key)) {
@@ -32620,7 +32629,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         for (const [, s] of allFindings) s.status = "Fixed";
         config.modelSelector.reset();
         buildSummaryTable(progress, allFindings, fixedKeys);
-        const msg = iteration === 0 ? "No vulnerabilities found \u2014 application appears secure." : `All vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied.`;
+        const msg = iteration === 0 ? "No vulnerabilities found \u2014 application appears secure." : `All ${allFindings.size} vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied, ${fixedKeys.size}/${allFindings.size} validated.`;
         await progress.phaseStart("done", msg);
         return;
       }
@@ -32637,14 +32646,18 @@ This user should work for authentication. Skip user registration/seeding and go 
         buildSummaryTable(progress, allFindings, fixedKeys);
         await progress.phaseStart(
           "done",
-          `Reached ${MAX_ITERATIONS} rounds. ${findings.length} vulnerabilities remain. ${allFixes.length} fixes were applied.`
+          `Reached ${MAX_ITERATIONS} rounds. ${fixedKeys.size}/${allFindings.size} fixed, ${findings.length} remaining. ${allFixes.length} total fixes applied.`
         );
         return;
       }
+      const fixModel = config.modelSelector.current();
+      const escalated = iteration > 0 && fixModel !== lastFixModel;
+      const modelNote = escalated ? ` \u2B06 escalated` : "";
       await progress.phaseStart(
         "fix",
-        `Fixing ${findings.length} vulnerabilities \u2014 round ${iteration + 1}`
+        `Fixing ${findings.length} vulnerabilities \u2014 round ${iteration + 1} (${fixModel}${modelNote})`
       );
+      lastFixModel = fixModel;
       let fixedCount = 0;
       let skippedCount = 0;
       const fixCommitCount = { value: 0 };
@@ -32752,7 +32765,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       await progress.phaseDetail(
         "fix",
         "summary",
-        `Round ${iteration + 1}: fixed ${fixedCount}, skipped ${skippedCount}`
+        `Round ${iteration + 1}: ${fixedCount} fix(es) applied, ${skippedCount} skipped \u2014 model: ${fixModel}`
       );
     }
   } finally {

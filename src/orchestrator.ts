@@ -1267,6 +1267,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     const allFixes: SecurityFix[] = [];
     let validationFindings: Finding[] = [];
+    let lastFixModel = "";
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
 
@@ -1552,15 +1553,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       const sevSummary = buildSeveritySummary(findings);
 
-      await progress.phaseDetail(
-        "scan",
-        "findings",
-        findings.length > 0
-          ? `Round ${iteration + 1} complete — ${findings.length} vulnerabilities found (${sevSummary})`
-          : `Round ${iteration + 1} complete — no vulnerabilities found`,
-      );
-
       // Track all findings — mark previously-seen ones as fixed if they didn't reappear
+      let roundFixedCount = 0;
       if (iteration > 0) {
         const currentKeys = new Set(findings.map(findingKey));
         const keysEligibleForFixMark = useTargetedValidation
@@ -1569,9 +1563,25 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         for (const key of keysEligibleForFixMark) {
           if (allFindings.has(key) && !currentKeys.has(key)) {
             fixedKeys.add(key);
+            roundFixedCount++;
           }
         }
       }
+
+      // Build scan-round detail with validation stats when available
+      let scanDetail: string;
+      if (iteration === 0) {
+        scanDetail = findings.length > 0
+          ? `Round ${iteration + 1} complete — ${findings.length} vulnerabilities found (${sevSummary})`
+          : `Round ${iteration + 1} complete — no vulnerabilities found`;
+      } else {
+        const validated = (useTargetedValidation ? validationPlan.targetKeys : new Set(allFindings.keys())).size;
+        scanDetail = `Round ${iteration + 1} validation — ${roundFixedCount}/${validated} fixed`;
+        if (findings.length > 0) {
+          scanDetail += `, ${findings.length} remaining (${sevSummary})`;
+        }
+      }
+      await progress.phaseDetail("scan", "findings", scanDetail);
       for (const f of findings) {
         const key = findingKey(f);
         if (!allFindings.has(key)) {
@@ -1593,7 +1603,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         const msg =
           iteration === 0
             ? "No vulnerabilities found — application appears secure."
-            : `All vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied.`;
+            : `All ${allFindings.size} vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied, ${fixedKeys.size}/${allFindings.size} validated.`;
         await progress.phaseStart("done", msg);
         return;
       }
@@ -1615,16 +1625,20 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         buildSummaryTable(progress, allFindings, fixedKeys);
         await progress.phaseStart(
           "done",
-          `Reached ${MAX_ITERATIONS} rounds. ${findings.length} vulnerabilities remain. ${allFixes.length} fixes were applied.`,
+          `Reached ${MAX_ITERATIONS} rounds. ${fixedKeys.size}/${allFindings.size} fixed, ${findings.length} remaining. ${allFixes.length} total fixes applied.`,
         );
         return;
       }
 
       // --- Fix findings one at a time (commit each, restart once after all) ---
+      const fixModel = config.modelSelector.current();
+      const escalated = iteration > 0 && fixModel !== lastFixModel;
+      const modelNote = escalated ? ` ⬆ escalated` : "";
       await progress.phaseStart(
         "fix",
-        `Fixing ${findings.length} vulnerabilities — round ${iteration + 1}`,
+        `Fixing ${findings.length} vulnerabilities — round ${iteration + 1} (${fixModel}${modelNote})`,
       );
+      lastFixModel = fixModel;
 
       let fixedCount = 0;
       let skippedCount = 0;
@@ -1750,7 +1764,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       await progress.phaseDetail(
         "fix",
         "summary",
-        `Round ${iteration + 1}: fixed ${fixedCount}, skipped ${skippedCount}`,
+        `Round ${iteration + 1}: ${fixedCount} fix(es) applied, ${skippedCount} skipped — model: ${fixModel}`,
       );
     }
   } finally {
