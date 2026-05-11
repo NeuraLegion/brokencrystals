@@ -3570,7 +3570,6 @@ async function createPlatform(gitToken) {
   }
   const { provider } = detectScmProvider(repositoryUrl);
   const job = {
-    id: process.env.JOB_ID ?? `standalone-${Date.now()}`,
     repository: provider.repoSlug(),
     branchName: process.env.BRANCH ?? `bright-scan-${Date.now()}`,
     commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",
@@ -33456,7 +33455,7 @@ async function main() {
     process.exit(1);
   }
   const { platform, job } = await createPlatform(config.gitToken);
-  console.log(`[Engine] Job: ${job.id}, action: ${job.action}`);
+  console.log(`[Engine] Action: ${job.action}`);
   console.log(`[Engine] Repository: ${job.repository}`);
   console.log(`[Engine] Problem: ${job.problemStatement.slice(0, 200)}`);
   const repositoryUrl = process.env.REPOSITORY_URL;

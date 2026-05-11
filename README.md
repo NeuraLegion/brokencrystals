@@ -215,7 +215,6 @@ Supported `REPOSITORY_URL` formats:
 
 | Variable            | Required | Description                                                                  |
 | ------------------- | -------- | ---------------------------------------------------------------------------- |
-| `JOB_ID`            | No       | Job identifier for logging (default: auto-generated)                         |
 | `PROBLEM_STATEMENT` | No       | Problem description (default: `Run a security scan and fix vulnerabilities`) |
 | `ACTION`            | No       | Action to perform (default: `fix`)                                           |
 

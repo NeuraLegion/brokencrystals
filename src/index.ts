@@ -45,7 +45,7 @@ async function main(): Promise<void> {
 
   // 2. Initialize platform (auto-detects GitHub / Azure DevOps from REPOSITORY_URL)
   const { platform, job } = await createPlatform(config.gitToken);
-  console.log(`[Engine] Job: ${job.id}, action: ${job.action}`);
+  console.log(`[Engine] Action: ${job.action}`);
   console.log(`[Engine] Repository: ${job.repository}`);
   console.log(`[Engine] Problem: ${job.problemStatement.slice(0, 200)}`);
 
