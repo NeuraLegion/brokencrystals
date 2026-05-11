@@ -18831,7 +18831,9 @@ var CONTROLLER_GLOBS = [
   // PHP
   "**/Controller/**/*.php",
   "**/Controllers/**/*.php",
-  "routes/**/*.php"
+  "routes/**/*.php",
+  // Proto (gRPC-Web endpoints exposed over HTTP)
+  "**/*.proto"
 ];
 var GLOB_IGNORE = [
   "**/node_modules/**",
@@ -18998,6 +19000,18 @@ function extractEndpointsFromFile(content, filePath) {
     const nestNoPathRe = /@(Get|Post|Put|Patch|Delete)\s*\(\s*\)/gi;
     while ((m = nestNoPathRe.exec(content)) !== null) {
       endpoints.push({ method: m[1].toUpperCase(), path: nestPrefix || "/", filePath });
+    }
+    const grpcMethodRe = /@GrpcMethod\s*\(\s*["'`](\w+)["'`]\s*,\s*["'`](\w+)["'`]\s*\)/gi;
+    while ((m = grpcMethodRe.exec(content)) !== null) {
+      const service = m[1];
+      const method = m[2];
+      endpoints.push({
+        method: "POST",
+        path: `/grpc/${service}/${method}`,
+        filePath,
+        contentType: "application/grpc-web+proto",
+        headers: { "x-grpc-web": ["1"] }
+      });
     }
   }
   if (ext2 === ".cs") {
@@ -19178,6 +19192,28 @@ function extractEndpointsFromFile(content, filePath) {
             endpoints.push({ method, path: `${prefix}${suffix}`, filePath });
           }
         }
+      }
+    }
+  }
+  if (ext2 === ".proto") {
+    const pkgMatch = content.match(/^package\s+([\w.]+)\s*;/m);
+    const pkg = pkgMatch?.[1] ?? "";
+    const serviceRe = /service\s+(\w+)\s*\{([^}]*)}/gs;
+    let svc;
+    while ((svc = serviceRe.exec(content)) !== null) {
+      const serviceName = svc[1];
+      const serviceBody = svc[2];
+      const rpcRe = /rpc\s+(\w+)\s*\(/g;
+      let rpc;
+      while ((rpc = rpcRe.exec(serviceBody)) !== null) {
+        const prefix = pkg ? `${pkg}.${serviceName}` : serviceName;
+        endpoints.push({
+          method: "POST",
+          path: `/grpc/${prefix}/${rpc[1]}`,
+          filePath,
+          contentType: "application/grpc-web+proto",
+          headers: { "x-grpc-web": ["1"] }
+        });
       }
     }
   }
@@ -19881,7 +19917,9 @@ IMPORTANT: When you have determined all endpoint parameters, you MUST call the s
 The result array should have one entry per endpoint (matching the [index]):
 [{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
 
-For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"sid": "1", "pk": "42"}).`
+For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"sid": "1", "pk": "42"}).
+
+For gRPC-Web endpoints (content-type: application/grpc-web+proto), the body must be a raw gRPC frame as a string with binary characters using JSON escape sequences. Format: 5-byte header (\\u0000 compressed flag + 4-byte big-endian message length) followed by the protobuf-encoded message. Use the .proto message definitions to construct a realistic payload. Set contentType to "application/grpc-web+proto". Example for a message with a single string field "command" = "pwd" (field 1, wire type 2, length 3): "\\u0000\\u0000\\u0000\\u0000\\u0005\\n\\u0003pwd". The \\n is 0x0a (field tag), \\u0003 is the string length prefix. Always include realistic field values from the proto definitions so the scanner can fuzz them effectively.`
         },
         {
           role: "user",
@@ -28364,7 +28402,8 @@ async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterI
       request.headers = headers;
     }
     if (needsBody) {
-      request.body = sanitizeBody(ep.body ?? "{}");
+      const isBinary = contentType && contentType.includes("grpc-web");
+      request.body = isBinary ? ep.body ?? "" : sanitizeBody(ep.body ?? "{}");
     }
     const payload = { request, repeaterId };
     if (authObjectId) {

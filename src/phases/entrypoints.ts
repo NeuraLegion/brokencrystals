@@ -98,7 +98,9 @@ export async function registerEntrypoints(
     }
 
     if (needsBody) {
-      request.body = sanitizeBody(ep.body ?? "{}");
+      // Binary content types (gRPC-Web) pass body as-is — raw binary string
+      const isBinary = contentType && contentType.includes("grpc-web");
+      request.body = isBinary ? (ep.body ?? "") : sanitizeBody(ep.body ?? "{}");
     }
 
     const payload: Record<string, unknown> = { request, repeaterId };
