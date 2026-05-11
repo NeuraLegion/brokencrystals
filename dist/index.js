@@ -3117,6 +3117,35 @@ var GitHubProvider = class {
   repoSlug() {
     return `${this.info.owner}/${this.info.repo}`;
   }
+  async validateAccess(token) {
+    if (!token) {
+      throw new Error(
+        `Missing REPO_ACCESS_TOKEN \u2014 a GitHub Personal Access Token is required to clone and push to ${this.repoSlug()}.`
+      );
+    }
+    const { owner, repo } = this.info;
+    const res = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json"
+      }
+    });
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `REPO_ACCESS_TOKEN is invalid or lacks access to ${this.repoSlug()} (HTTP ${res.status}). Ensure the token has "repo" scope.`
+      );
+    }
+    if (res.status === 404) {
+      throw new Error(
+        `Repository ${this.repoSlug()} not found (HTTP 404). Check that REPOSITORY_URL is correct and the token has access to this repository.`
+      );
+    }
+    if (!res.ok) {
+      throw new Error(
+        `Failed to validate repository access for ${this.repoSlug()} (HTTP ${res.status}).`
+      );
+    }
+  }
   async getDefaultBranch(token) {
     const { owner, repo } = this.info;
     try {
@@ -3225,6 +3254,32 @@ var AzureDevOpsProvider = class {
       Authorization: `Basic ${basic}`,
       "Content-Type": "application/json"
     };
+  }
+  async validateAccess(token) {
+    if (!token) {
+      throw new Error(
+        `Missing REPO_ACCESS_TOKEN \u2014 an Azure DevOps Personal Access Token is required to clone and push to ${this.repoSlug()}.`
+      );
+    }
+    const res = await fetch(
+      `${this.apiBase}?api-version=${API_VERSION}`,
+      { headers: this.authHeaders(token) }
+    );
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `REPO_ACCESS_TOKEN is invalid or lacks access to ${this.repoSlug()} (HTTP ${res.status}). Ensure the PAT has "Code (Read & Write)" scope.`
+      );
+    }
+    if (res.status === 404) {
+      throw new Error(
+        `Repository ${this.repoSlug()} not found (HTTP 404). Check that REPOSITORY_URL is correct and the token has access to this repository.`
+      );
+    }
+    if (!res.ok) {
+      throw new Error(
+        `Failed to validate repository access for ${this.repoSlug()} (HTTP ${res.status}).`
+      );
+    }
   }
   async getDefaultBranch(token) {
     try {
@@ -33406,6 +33461,13 @@ async function main() {
   console.log(`[Engine] Problem: ${job.problemStatement.slice(0, 200)}`);
   const repositoryUrl = process.env.REPOSITORY_URL;
   const { provider } = detectScmProvider(repositoryUrl);
+  try {
+    await provider.validateAccess(config.gitToken);
+    console.log(`[Engine] Repository access verified (${provider.platformName})`);
+  } catch (err) {
+    console.error(`[Engine] Repository access check failed: ${toErrorMessage(err)}`);
+    process.exit(1);
+  }
   const repoPath = cloneRepository({
     provider,
     gitToken: config.gitToken,

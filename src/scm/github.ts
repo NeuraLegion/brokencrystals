@@ -30,6 +30,38 @@ export class GitHubProvider implements ScmProvider {
     return `${this.info.owner}/${this.info.repo}`;
   }
 
+  async validateAccess(token: string): Promise<void> {
+    if (!token) {
+      throw new Error(
+        `Missing REPO_ACCESS_TOKEN — a GitHub Personal Access Token is required to clone and push to ${this.repoSlug()}.`,
+      );
+    }
+    const { owner, repo } = this.info;
+    const res = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json",
+      },
+    });
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `REPO_ACCESS_TOKEN is invalid or lacks access to ${this.repoSlug()} (HTTP ${res.status}). ` +
+          `Ensure the token has "repo" scope.`,
+      );
+    }
+    if (res.status === 404) {
+      throw new Error(
+        `Repository ${this.repoSlug()} not found (HTTP 404). Check that REPOSITORY_URL is correct ` +
+          `and the token has access to this repository.`,
+      );
+    }
+    if (!res.ok) {
+      throw new Error(
+        `Failed to validate repository access for ${this.repoSlug()} (HTTP ${res.status}).`,
+      );
+    }
+  }
+
   async getDefaultBranch(token: string): Promise<string> {
     const { owner, repo } = this.info;
     try {

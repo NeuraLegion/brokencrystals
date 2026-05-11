@@ -53,6 +53,15 @@ async function main(): Promise<void> {
   const repositoryUrl = process.env.REPOSITORY_URL!;
   const { provider } = detectScmProvider(repositoryUrl);
 
+  // 3a. Preflight: validate token grants repo access (fail fast before clone)
+  try {
+    await provider.validateAccess(config.gitToken);
+    console.log(`[Engine] Repository access verified (${provider.platformName})`);
+  } catch (err) {
+    console.error(`[Engine] Repository access check failed: ${toErrorMessage(err)}`);
+    process.exit(1);
+  }
+
   const repoPath = cloneRepository({
     provider,
     gitToken: config.gitToken,

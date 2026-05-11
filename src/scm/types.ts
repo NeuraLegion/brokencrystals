@@ -43,6 +43,12 @@ export interface ScmProvider {
   /** Return the `owner/repo` (GitHub) or `org/project/repo` (Azure) slug for logs. */
   repoSlug(): string;
 
+  /**
+   * Validate that the token grants access to the repository.
+   * Throws a descriptive error if the token is missing or unauthorized.
+   */
+  validateAccess(token: string): Promise<void>;
+
   /** Detect the default branch of the repository (e.g. "main"). */
   getDefaultBranch(token: string): Promise<string>;
 

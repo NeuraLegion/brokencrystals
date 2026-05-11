@@ -47,6 +47,35 @@ export class AzureDevOpsProvider implements ScmProvider {
     };
   }
 
+  async validateAccess(token: string): Promise<void> {
+    if (!token) {
+      throw new Error(
+        `Missing REPO_ACCESS_TOKEN — an Azure DevOps Personal Access Token is required to clone and push to ${this.repoSlug()}.`,
+      );
+    }
+    const res = await fetch(
+      `${this.apiBase}?api-version=${API_VERSION}`,
+      { headers: this.authHeaders(token) },
+    );
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `REPO_ACCESS_TOKEN is invalid or lacks access to ${this.repoSlug()} (HTTP ${res.status}). ` +
+          `Ensure the PAT has "Code (Read & Write)" scope.`,
+      );
+    }
+    if (res.status === 404) {
+      throw new Error(
+        `Repository ${this.repoSlug()} not found (HTTP 404). Check that REPOSITORY_URL is correct ` +
+          `and the token has access to this repository.`,
+      );
+    }
+    if (!res.ok) {
+      throw new Error(
+        `Failed to validate repository access for ${this.repoSlug()} (HTTP ${res.status}).`,
+      );
+    }
+  }
+
   async getDefaultBranch(token: string): Promise<string> {
     try {
       const res = await fetch(
