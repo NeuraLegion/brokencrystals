@@ -256,9 +256,20 @@ export async function registerEntrypoints(
     }
 
     if (res.status === 409) {
-      console.log(
-        `[Entrypoints] EP already exists for ${method} ${fullUrl} — skipping`,
-      );
+      // The Bright API returns a `location` header with the existing entrypoint path:
+      // /api/v2/projects/{projectId}/entry-points/{entrypointId}
+      const location = res.headers.get("location") ?? "";
+      const existingId = location.split("/").pop();
+      if (existingId) {
+        registered.push({ endpoint: ep, entrypointId: existingId });
+        console.log(
+          `[Entrypoints] EP already exists for ${method} ${fullUrl} — reusing ${existingId}`,
+        );
+      } else {
+        console.log(
+          `[Entrypoints] EP already exists for ${method} ${fullUrl} — no location header`,
+        );
+      }
     } else {
       failedUploads++;
       console.error(

@@ -28477,9 +28477,18 @@ async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterI
     } catch {
     }
     if (res.status === 409) {
-      console.log(
-        `[Entrypoints] EP already exists for ${method} ${fullUrl} \u2014 skipping`
-      );
+      const location = res.headers.get("location") ?? "";
+      const existingId = location.split("/").pop();
+      if (existingId) {
+        registered.push({ endpoint: ep, entrypointId: existingId });
+        console.log(
+          `[Entrypoints] EP already exists for ${method} ${fullUrl} \u2014 reusing ${existingId}`
+        );
+      } else {
+        console.log(
+          `[Entrypoints] EP already exists for ${method} ${fullUrl} \u2014 no location header`
+        );
+      }
     } else {
       failedUploads++;
       console.error(
