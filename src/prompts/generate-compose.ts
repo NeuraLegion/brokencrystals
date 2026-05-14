@@ -65,6 +65,11 @@ Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that 
    - Use \`restart: on-failure\` (NOT \`restart: always\`) — if the app crashes during migration, "always" can spawn a second instance that hits a migration lock
    - If the framework has a separate migration command (e.g. \`rails db:migrate\`, \`knex migrate:latest\`, \`npx prisma migrate\`), run it in the entrypoint BEFORE starting the app server, using a lock or single-execution guard
 
+6. **DAST scope control**:
+   - Keep compose minimal: include the selected web/API app service plus required dependency services only.
+   - Do NOT include unrelated workers, CLI utilities, browser extensions, demo apps, optional observability/exporter services, or every service in a monorepo unless the target HTTP app cannot boot without them.
+   - If existing repo compose files build many unrelated local services, generate a smaller compose for this scan instead of copying the broad stack.
+
 ## Output
 
 Return ONLY the compose.yml content inside a single fenced code block (\`\`\`yaml ... \`\`\`). No explanation outside the code block.`,

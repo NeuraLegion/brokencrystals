@@ -14,6 +14,7 @@ If the tech stack description says "(service: <path>)", focus on running THAT sp
 - **BUILD FROM SOURCE using a Dockerfile** — the main application MUST be built via "docker build" or "docker compose build" from a Dockerfile in the repo. The goal is to test THIS repository's code as built from source.
 - **NEVER use pre-made dev containers** — reject any approach that pulls a pre-built image for the main application (e.g. scripts that do "docker pull <image>" or "docker run <prebuilt-image>"). Scripts like bin/docker/boot_dev, d/boot_dev, or similar convenience scripts typically pull pre-made dev images rather than building from source — DO NOT use them.
 - **Read compose files** before using them — skip CI/test-only compose files. If a compose file references a pre-built external image for the app service (not a local build context), do NOT use it as-is — either override with a local build or create your own Dockerfile.
+- **Prefer minimal DAST infrastructure** — if this is a monorepo or a compose stack with many services, start only the selected web/API service plus dependencies it needs. Do NOT build every worker, CLI, browser extension, or unrelated service unless the target app cannot run without it.
 - If no suitable Dockerfile exists, use **write_file** to create one — do NOT use heredocs or inline cat in commands
 - Dependency services (postgres, redis, memcached, elasticsearch, etc.) can use their standard upstream images.
 - For full-stack apps, use the **backend API port** (not the frontend dev server)
@@ -121,6 +122,7 @@ Analyze the error and determine an alternative way to start the application. Use
 Key principles:
 - Do NOT repeat the same approach that already failed — try a fundamentally different strategy
 - **BUILD FROM SOURCE using a Dockerfile** — the main application MUST be built via "docker build" or "docker compose build", not a pre-built external image. NEVER use convenience scripts (bin/docker/boot_dev, d/boot_dev, etc.) that pull pre-made dev containers.
+- **Prefer minimal DAST infrastructure** — if the failed approach builds a broad monorepo compose stack, switch to a minimal compose/startup path for the selected web/API service plus its required dependencies instead of continuing to repair unrelated service builds.
 - If no Dockerfile exists, use **write_file** to create one — do NOT use heredocs or inline cat in commands
 - Dependency services (postgres, redis, etc.) can use upstream images
 - **command** = single command that starts the app. **prerequisites** = build steps. NEVER combine with &&

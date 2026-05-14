@@ -21059,6 +21059,7 @@ If the tech stack description says "(service: <path>)", focus on running THAT sp
 - **BUILD FROM SOURCE using a Dockerfile** \u2014 the main application MUST be built via "docker build" or "docker compose build" from a Dockerfile in the repo. The goal is to test THIS repository's code as built from source.
 - **NEVER use pre-made dev containers** \u2014 reject any approach that pulls a pre-built image for the main application (e.g. scripts that do "docker pull <image>" or "docker run <prebuilt-image>"). Scripts like bin/docker/boot_dev, d/boot_dev, or similar convenience scripts typically pull pre-made dev images rather than building from source \u2014 DO NOT use them.
 - **Read compose files** before using them \u2014 skip CI/test-only compose files. If a compose file references a pre-built external image for the app service (not a local build context), do NOT use it as-is \u2014 either override with a local build or create your own Dockerfile.
+- **Prefer minimal DAST infrastructure** \u2014 if this is a monorepo or a compose stack with many services, start only the selected web/API service plus dependencies it needs. Do NOT build every worker, CLI, browser extension, or unrelated service unless the target app cannot run without it.
 - If no suitable Dockerfile exists, use **write_file** to create one \u2014 do NOT use heredocs or inline cat in commands
 - Dependency services (postgres, redis, memcached, elasticsearch, etc.) can use their standard upstream images.
 - For full-stack apps, use the **backend API port** (not the frontend dev server)
@@ -21155,6 +21156,7 @@ Analyze the error and determine an alternative way to start the application. Use
 Key principles:
 - Do NOT repeat the same approach that already failed \u2014 try a fundamentally different strategy
 - **BUILD FROM SOURCE using a Dockerfile** \u2014 the main application MUST be built via "docker build" or "docker compose build", not a pre-built external image. NEVER use convenience scripts (bin/docker/boot_dev, d/boot_dev, etc.) that pull pre-made dev containers.
+- **Prefer minimal DAST infrastructure** \u2014 if the failed approach builds a broad monorepo compose stack, switch to a minimal compose/startup path for the selected web/API service plus its required dependencies instead of continuing to repair unrelated service builds.
 - If no Dockerfile exists, use **write_file** to create one \u2014 do NOT use heredocs or inline cat in commands
 - Dependency services (postgres, redis, etc.) can use upstream images
 - **command** = single command that starts the app. **prerequisites** = build steps. NEVER combine with &&
@@ -21457,6 +21459,11 @@ Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that 
    - Use \`restart: on-failure\` (NOT \`restart: always\`) \u2014 if the app crashes during migration, "always" can spawn a second instance that hits a migration lock
    - If the framework has a separate migration command (e.g. \`rails db:migrate\`, \`knex migrate:latest\`, \`npx prisma migrate\`), run it in the entrypoint BEFORE starting the app server, using a lock or single-execution guard
 
+6. **DAST scope control**:
+   - Keep compose minimal: include the selected web/API app service plus required dependency services only.
+   - Do NOT include unrelated workers, CLI utilities, browser extensions, demo apps, optional observability/exporter services, or every service in a monorepo unless the target HTTP app cannot boot without them.
+   - If existing repo compose files build many unrelated local services, generate a smaller compose for this scan instead of copying the broad stack.
+
 ## Output
 
 Return ONLY the compose.yml content inside a single fenced code block (\`\`\`yaml ... \`\`\`). No explanation outside the code block.`
@@ -21512,6 +21519,8 @@ Review these files as a unit and look for issues in these categories:
     - compose.yml uses \`restart: on-failure\` (NOT \`restart: always\`) \u2014 "always" can spawn a second instance that hits a migration lock while the first is still migrating
     - Healthcheck \`start_period\` is at least 120s to avoid premature restarts during first-boot migrations
     - If possible, migrations should run as a one-shot init command in the entrypoint before starting the app server
+12. **Over-broad compose builds** \u2014 For monorepos, verify compose starts the selected web/API service plus required dependencies, not every unrelated worker, CLI, browser extension, or optional service. If compose would build unrelated services that can fail independently, replace it with a minimal DAST compose.
+13. **Generated artifact assumptions** \u2014 If a Dockerfile or compose service copies build output directories, verify those artifacts are created from source in the Docker build or are present in the checkout. If not, add the real build-from-source step or switch to a minimal compose that builds the target service correctly.
 
 ## Tools available
 - **read_file / search_files / list_files** \u2014 Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
@@ -21524,7 +21533,8 @@ Review these files as a unit and look for issues in these categories:
 1. Use read_file / search_files / list_files to investigate the codebase
 2. For each issue you find, log it clearly, then use **edit_file** to fix it directly
 3. If edit_file returns an error (old_string not found), read the file again and retry with the correct string
-4. After all fixes are applied, respond with a final summary
+4. If the fix requires replacing an unsuitable broad compose file, use edit_file to replace it with a minimal DAST compose rather than patching unrelated services one-by-one
+5. After all fixes are applied, respond with a final summary
 
 ## Final response format
 
@@ -22194,7 +22204,7 @@ ${logs.slice(-3e3)}
         const previousRepairs = repairHistory.filter((r) => r.kind === (isDockerBuildError ? "build" : "infra")).map((r) => r.summary).slice(-3);
         console.log(`[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`);
         if (isDockerBuildError) {
-          const buildSummary = await repairDockerBuild(
+          const buildResult = await repairDockerBuild(
             llm,
             repoPath,
             detailedError,
@@ -22204,10 +22214,44 @@ ${logs.slice(-3e3)}
             previousRepairs,
             repeatedRootCause
           );
-          if (buildSummary) {
-            repairHistory.push({ kind: "build", summary: buildSummary, targetErrorFp: currentFp });
+          if (buildResult.summary) {
+            repairHistory.push({ kind: "build", summary: buildResult.summary, targetErrorFp: currentFp });
           }
-          dockerfileRepaired = true;
+          if (buildResult.command) {
+            console.log(`[Startup] Build repair overrode command: ${buildResult.command}`);
+            config = { ...config, command: buildResult.command };
+          }
+          if (buildResult.prerequisites) {
+            console.log(`[Startup] Build repair overrode prerequisites: ${buildResult.prerequisites.join(" && ") || "(none)"}`);
+            config = { ...config, prerequisites: buildResult.prerequisites };
+          }
+          if (buildResult.port) {
+            console.log(`[Startup] Build repair overrode port: ${buildResult.port}`);
+            config = { ...config, port: buildResult.port };
+          }
+          if (buildResult.postStartCommands?.length) {
+            const existing = config.postStartCommands ?? [];
+            const deduped = buildResult.postStartCommands.filter(
+              (cmd) => !existing.includes(cmd)
+            );
+            config = { ...config, postStartCommands: [...existing, ...deduped] };
+          }
+          if (buildResult.addEnvVars) {
+            config = {
+              ...config,
+              envVars: { ...config.envVars ?? {}, ...buildResult.addEnvVars }
+            };
+          }
+          if (buildResult.healthCheckPath) {
+            config = { ...config, healthCheckPath: buildResult.healthCheckPath };
+          }
+          const buildModifiedConfig = !!(buildResult.madeFileChanges || buildResult.command || buildResult.prerequisites || buildResult.port || buildResult.postStartCommands?.length || buildResult.addEnvVars || buildResult.healthCheckPath);
+          if (buildModifiedConfig) {
+            attemptErrors[attemptErrors.length - 1] = { config, error: detailedError };
+            dockerfileRepaired = true;
+          } else {
+            console.warn("[Startup] Build repair produced no actionable changes \u2014 next attempt must choose a new startup strategy");
+          }
         } else {
           const infraResult = await repairInfrastructure(
             llm,
@@ -22417,13 +22461,13 @@ function validateComposeBuildContexts(repoPath, composeFile) {
 }
 async function repairDockerBuild(llm, repoPath, buildError, model, previousErrors, hints, previousRepairs, repeatedRootCause) {
   const dockerfileName = findDockerfile(repoPath);
-  if (!dockerfileName) return;
+  if (!dockerfileName) return {};
   const dockerfilePath = `${repoPath}/${dockerfileName}`;
   let currentDockerfile;
   try {
     currentDockerfile = readFileSync4(dockerfilePath, "utf-8");
   } catch {
-    return;
+    return {};
   }
   const errorLogPath = `${repoPath}/.bright-build-error.log`;
   writeFileSync3(errorLogPath, buildError, "utf-8");
@@ -22453,12 +22497,13 @@ ${tailLines}
   const messages = [
     {
       role: "system",
-      content: `You are a Docker expert. A Docker build just failed. Your job is to fix the Dockerfile.
+      content: `You are a Docker/Compose build strategist. A Docker build just failed. Your job is to fix the build strategy that DAST needs, not blindly rewrite one Dockerfile.
 
 You have tools to:
 - **read_file / list_files / search_files** \u2014 inspect any file in the repository
 - **run_command_on_host** \u2014 run shell commands on the host (ls, find, cat, docker inspect, docker build, etc.)
 - **run_command_in_docker** \u2014 run commands inside a Docker container or image (check installed tools, read config files, test commands)
+- **write_file / edit_file** \u2014 create or patch Dockerfiles, compose files, scripts, and config files when the correct fix is outside the current Dockerfile
 - **verify_docker_image** \u2014 check if a Docker image:tag exists on Docker Hub before using it in FROM lines
 - **save_hint** \u2014 IMPORTANT: save facts you discover (e.g. "Node 22 required, not 18", "manage.py is at /usr/src/app/manage.py") so the NEXT repair attempt knows them. Use this for every non-obvious discovery.
 - **remove_hint** \u2014 remove a hint from a previous attempt that turned out wrong
@@ -22473,14 +22518,35 @@ APPROACH:
    - \`docker run --rm <base_image> bash -c "apt-get update && apt-get install -y <package>"\` to verify a package installs correctly
    This avoids wasting a full rebuild cycle on a wrong guess.
 4. Fix the ROOT CAUSE. Don't just suppress errors \u2014 understand WHY the command failed.
-5. If the error is in a multi-stage build, check whether a later stage is missing tools/files from an earlier stage. Consider collapsing to a single stage.
-6. This Dockerfile is for **production-like security testing** (DAST scanning). The app must run in production mode (RAILS_ENV=production, NODE_ENV=production, etc.) with precompiled assets and all runtime system dependencies (ImageMagick, fonts, wkhtmltopdf, ffmpeg, etc.) installed. A single stage with all tools is better than a fragile multi-stage build.
-7. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
-8. Always verify base image tags exist with verify_docker_image before using them.
-9. **SAVE HINTS** \u2014 whenever you discover a non-obvious fact (required Node version, correct package name, file path, config setting), call save_hint so it's available to the next repair attempt even if this one fails.
-10. **PARALLELIZE BUILDS** \u2014 if the build is timing out on dependency installation (especially native extensions), ensure parallel jobs are enabled: \`bundle config set --local jobs $(nproc)\` for Ruby, \`ENV MAKEFLAGS="-j$(nproc)"\` for C/Make-based extensions. This dramatically reduces build time for projects with heavy native gems (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby).
+5. If the error comes from docker compose, inspect the resolved compose file and the Dockerfile for the failing service. The current root Dockerfile may be irrelevant.
+6. For monorepos or full compose stacks, prefer a minimal DAST compose that starts only the selected web/API service plus required dependencies. Do not spend attempts building unrelated workers, CLIs, browser extensions, cron jobs, or every service in the repository unless the target app needs them.
+7. If a compose/Dockerfile expects generated artifacts that are not in the checkout, choose a real build-from-source strategy: either add the needed source build step in the relevant Dockerfile or replace the compose strategy with one that builds the target service from source. Do not keep retrying a COPY of absent generated files.
+8. If the previous repair produced no diff or the same root cause came back, you MUST switch strategy (for example: replace broad compose with minimal compose, change prerequisites/command, or patch the service Dockerfile actually referenced by compose). Save a hint explaining the failed strategy.
+9. If the error is in a multi-stage build, check whether a later stage is missing tools/files from an earlier stage. Consider collapsing to a single stage.
+10. This build is for **production-like security testing** (DAST scanning). The app must run in production mode (RAILS_ENV=production, NODE_ENV=production, etc.) with precompiled assets and all runtime system dependencies (ImageMagick, fonts, wkhtmltopdf, ffmpeg, etc.) installed. A single stage with all tools is better than a fragile multi-stage build.
+11. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
+12. Always verify base image tags exist with verify_docker_image before using them.
+13. **SAVE HINTS** \u2014 whenever you discover a non-obvious fact (required Node version, correct package name, file path, config setting), call save_hint so it's available to the next repair attempt even if this one fails.
+14. **PARALLELIZE BUILDS** \u2014 if the build is timing out on dependency installation (especially native extensions), ensure parallel jobs are enabled: \`bundle config set --local jobs $(nproc)\` for Ruby, \`ENV MAKEFLAGS="-j$(nproc)"\` for C/Make-based extensions. This dramatically reduces build time for projects with heavy native gems (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby).
 
-Return ONLY the complete fixed Dockerfile inside a single fenced code block. No explanation outside the code block.`
+RESPONSE FORMAT:
+After applying fixes, return ONLY this JSON object. Include only fields that changed.
+\`\`\`json
+{
+  "summary": "Brief description of the root cause and build strategy change",
+  "command": "docker compose up -d",
+  "prerequisites": ["docker compose build"],
+  "port": 3000,
+  "postStartCommands": [],
+  "addEnvVars": {},
+  "healthCheckPath": "/health"
+}
+\`\`\`
+
+- If you edited files with write_file/edit_file only, include just "summary".
+- If the startup command or build prerequisites must change, include "command" and/or "prerequisites".
+- If replacing broad compose with minimal compose, write the file with write_file/edit_file and return the command/prerequisites that use it.
+- Legacy fallback: if the ONLY correct fix is replacing ${dockerfileName}, you may return the complete fixed Dockerfile in a single fenced dockerfile block.`
     },
     {
       role: "user",
@@ -22494,9 +22560,9 @@ ${currentDockerfile}
 \`\`\`
 ${repeatedRootCause ? `
 \u26A0\uFE0F  STRATEGY-SHIFT REQUIRED \u26A0\uFE0F
-The LAST Dockerfile repair did not work \u2014 the build is failing with the SAME root cause as before. Pick a fundamentally different approach (e.g. switch base image, install the tool a different way, drop a problematic step entirely).
+The LAST build repair did not work \u2014 the build is failing with the SAME root cause as before. Do not return the same Dockerfile. Change the strategy: inspect compose, patch the service Dockerfile actually used by the failing build, replace broad compose with a minimal DAST compose, or change command/prerequisites.
 ` : ""}${previousRepairs && previousRepairs.length > 0 ? `
-What previous Dockerfile repairs already tried (do NOT just slightly reword these):
+What previous build repairs already tried (do NOT just slightly reword these):
 ${previousRepairs.map((r, i) => `--- Repair ${i + 1} ---
 ${r}`).join("\n")}
 ` : ""}${previousErrors && previousErrors.length > 0 ? `
@@ -22507,11 +22573,11 @@ ${e.slice(-500)}`).join("\n")}
 Hints from previous attempts:
 ${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
 ` : ""}
-Use the tools to inspect relevant project files (and read_file on .bright-build-error.log if you need more of the build output), then return a COMPLETE fixed Dockerfile.`
+Use the tools to inspect relevant project files (and read_file on .bright-build-error.log if you need more of the build output), apply the fix at the correct layer, then return the JSON result.`
     }
   ];
   try {
-    console.log("[Startup] Asking LLM to repair Dockerfile...");
+    console.log("[Startup] Asking LLM to repair Docker build strategy...");
     const onHint = (hint) => {
       if (hints && !hints.includes(hint)) hints.push(hint);
     };
@@ -22525,22 +22591,51 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
       }
     };
     const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
+    let usedMutatingTools = false;
+    const trackingHandler = async (name, args) => {
+      const result = await infraHandler(name, args);
+      if (name === "write_file" || name === "edit_file" || name === "run_command_on_host" || name === "run_command_in_docker") {
+        usedMutatingTools = true;
+      }
+      return result;
+    };
     const response = await chatWithTools(
       llm,
       messages,
       infraTools,
-      infraHandler,
+      trackingHandler,
       model,
       20
     );
+    const parsedResult = parseBuildRepairResult(response);
+    if (parsedResult.summary || parsedResult.command || parsedResult.prerequisites || parsedResult.port || parsedResult.postStartCommands?.length || parsedResult.addEnvVars || parsedResult.healthCheckPath) {
+      if (usedMutatingTools) {
+        parsedResult.madeFileChanges = true;
+        console.log("[Startup] Build repair used mutating tools");
+      }
+      return parsedResult;
+    }
     const fixedRaw = extractCodeBlock(response);
-    if (!fixedRaw) {
-      console.warn("[Startup] LLM did not return a valid Dockerfile repair");
-      return;
+    if (!fixedRaw || fixedRaw.trim().startsWith("{")) {
+      if (usedMutatingTools) {
+        console.log("[Startup] Build repair changed files but returned no structured result");
+        return {
+          summary: response.slice(0, 400) || "Build repair changed files",
+          madeFileChanges: true
+        };
+      }
+      console.warn("[Startup] LLM did not return an actionable build repair");
+      return {
+        summary: "Build repair returned no actionable changes",
+        madeFileChanges: false
+      };
     }
     if (!fixedRaw.includes("FROM ") || !/(?:RUN|CMD|ENTRYPOINT)\s/.test(fixedRaw)) {
       console.warn("[Startup] LLM returned an invalid Dockerfile \u2014 skipping");
-      return;
+      return {
+        summary: "Build repair returned an invalid Dockerfile",
+        madeFileChanges: false
+      };
     }
     const fixedDockerfile = await fixDockerfileImages(fixedRaw);
     if (fixedDockerfile !== fixedRaw) {
@@ -22553,18 +22648,21 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
     );
     const proseBefore = response.split(/```/)[0]?.trim();
     const summary = proseBefore && proseBefore.length > 0 ? proseBefore.slice(0, 400) : `Rewrote Dockerfile (${fixedDockerfile.split("\n").length} lines${changed ? "" : ", no diff"})`;
-    return summary;
+    return {
+      summary,
+      madeFileChanges: changed || usedMutatingTools
+    };
   } catch (err) {
     console.warn(
       `[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`
     );
-    return void 0;
+    return {};
   }
 }
 function errorFingerprint(error) {
   const interesting = error.split("\n").map((l) => l.trim()).filter(
     (l) => /error|exception|fail|undefined|cannot|no such|missing|denied|refused|crashed|exit code|ENOENT|EACCES|did not complete|extension control file/i.test(l)
-  ).slice(0, 8).join("|").replace(/\b[0-9a-f]{12,}\b/gi, "<id>").replace(/:\d+:\d+/g, ":<n>:<n>").replace(/:\d+\b/g, ":<n>").replace(/\d{4}-\d{2}-\d{2}T[\d:.+Z-]+/g, "<ts>").replace(/\s+/g, " ").toLowerCase();
+  ).slice(0, 8).join("|").replace(/\b[0-9a-f]{12,}\b/gi, "<id>").replace(/(["'`])(?:\.{0,2}\/|\/)?[\w.-]+(?:\/[\w.-]+)+(["'`])/g, "$1<path>$2").replace(/(?:\.{1,2}\/|\/)[\w.-]+(?:\/[\w.-]+)+/g, "<path>").replace(/:\d+:\d+/g, ":<n>:<n>").replace(/:\d+\b/g, ":<n>").replace(/\d{4}-\d{2}-\d{2}T[\d:.+Z-]+/g, "<ts>").replace(/\s+/g, " ").toLowerCase();
   return interesting || error.slice(0, 200).toLowerCase();
 }
 async function repairInfrastructure(llm, repoPath, config, errorOutput, model, previousErrors, hints, previousRepairs, repeatedRootCause) {
@@ -22770,6 +22868,52 @@ function parseInfraRepairResult(response) {
   } catch {
     return {};
   }
+}
+function parseBuildRepairResult(response) {
+  const fencedBlocks = Array.from(
+    response.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)
+  ).map((m) => m[1]);
+  const objectMatch = response.match(/(\{[\s\S]*\})/);
+  const candidates = [
+    ...fencedBlocks,
+    ...objectMatch?.[1] ? [objectMatch[1]] : []
+  ];
+  for (const candidate of candidates) {
+    const trimmed = candidate.trim();
+    if (!trimmed.startsWith("{")) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      const result = {};
+      if (typeof parsed.summary === "string" && parsed.summary) {
+        result.summary = parsed.summary.slice(0, 400);
+      }
+      if (typeof parsed.command === "string" && parsed.command) {
+        result.command = parsed.command;
+      }
+      if (Array.isArray(parsed.prerequisites)) {
+        result.prerequisites = parsed.prerequisites.filter(
+          (cmd) => typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd) && !isStreamingCommand(cmd)
+        );
+      }
+      if (typeof parsed.port === "number" && parsed.port > 0 && parsed.port < 65536) {
+        result.port = parsed.port;
+      }
+      if (Array.isArray(parsed.postStartCommands) && parsed.postStartCommands.length > 0) {
+        result.postStartCommands = parsed.postStartCommands.filter(
+          (cmd) => typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd) && !isStreamingCommand(cmd)
+        );
+      }
+      if (parsed.addEnvVars && typeof parsed.addEnvVars === "object") {
+        result.addEnvVars = parsed.addEnvVars;
+      }
+      if (typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath) {
+        result.healthCheckPath = parsed.healthCheckPath;
+      }
+      return result;
+    } catch {
+    }
+  }
+  return {};
 }
 async function generateDockerfile(llm, repoPath, stackStr, model, discovery) {
   const dockerHandler = createDockerfileToolHandler(repoPath);
@@ -23053,7 +23197,7 @@ async function startApplication(repoPath, config, analyzeLogsFn, analyzeResponse
   if (config.docker && /docker\s+compose/.test(config.command)) {
     const composeFileMatch = config.command.match(/-f\s+(\S+)/);
     const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
-    const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : null);
+    const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : findComposeFile(repoPath));
     if (composeFile && existsSync5(`${repoPath}/${composeFile}`)) {
       if (!validateComposeBuildContexts(repoPath, composeFile)) {
         throw new Error(

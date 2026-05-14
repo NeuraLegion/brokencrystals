@@ -56,6 +56,8 @@ Review these files as a unit and look for issues in these categories:
     - compose.yml uses \`restart: on-failure\` (NOT \`restart: always\`) — "always" can spawn a second instance that hits a migration lock while the first is still migrating
     - Healthcheck \`start_period\` is at least 120s to avoid premature restarts during first-boot migrations
     - If possible, migrations should run as a one-shot init command in the entrypoint before starting the app server
+12. **Over-broad compose builds** — For monorepos, verify compose starts the selected web/API service plus required dependencies, not every unrelated worker, CLI, browser extension, or optional service. If compose would build unrelated services that can fail independently, replace it with a minimal DAST compose.
+13. **Generated artifact assumptions** — If a Dockerfile or compose service copies build output directories, verify those artifacts are created from source in the Docker build or are present in the checkout. If not, add the real build-from-source step or switch to a minimal compose that builds the target service correctly.
 
 ## Tools available
 - **read_file / search_files / list_files** — Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
@@ -68,7 +70,8 @@ Review these files as a unit and look for issues in these categories:
 1. Use read_file / search_files / list_files to investigate the codebase
 2. For each issue you find, log it clearly, then use **edit_file** to fix it directly
 3. If edit_file returns an error (old_string not found), read the file again and retry with the correct string
-4. After all fixes are applied, respond with a final summary
+4. If the fix requires replacing an unsuitable broad compose file, use edit_file to replace it with a minimal DAST compose rather than patching unrelated services one-by-one
+5. After all fixes are applied, respond with a final summary
 
 ## Final response format
 
