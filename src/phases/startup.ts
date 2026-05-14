@@ -1,4 +1,5 @@
 import type OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 import {
   spawn,
   execSync,
@@ -512,6 +513,138 @@ async function generateComposeWithLLM(
   generateComposeFile(repoPath, config);
 }
 
+function shouldSelectMonorepoTarget(repoPath: string): boolean {
+  const indicators = [
+    "pnpm-workspace.yaml",
+    "lerna.json",
+    "nx.json",
+    "turbo.json",
+    "rush.json",
+  ];
+  if (indicators.some((f) => existsSync(`${repoPath}/${f}`))) return true;
+
+  try {
+    const pkg = JSON.parse(readFileSync(`${repoPath}/package.json`, "utf-8"));
+    if (pkg?.workspaces) return true;
+  } catch {
+    // No root package.json/workspaces signal.
+  }
+
+  try {
+    const appDirs = existsSync(`${repoPath}/apps`)
+      ? readdirSync(`${repoPath}/apps`).filter((name) => {
+        try {
+          return existsSync(`${repoPath}/apps/${name}/project.json`) ||
+            existsSync(`${repoPath}/apps/${name}/package.json`) ||
+            readdirSync(`${repoPath}/apps/${name}`).some((f) => /^Dockerfile/i.test(f));
+        } catch {
+          return false;
+        }
+      })
+      : [];
+    if (appDirs.length > 1) return true;
+  } catch {
+    // Ignore unreadable apps directory.
+  }
+
+  return false;
+}
+
+async function selectMonorepoTargetWithLLM(
+  llm: OpenAI,
+  repoPath: string,
+  techStack: TechStack,
+  model?: string,
+): Promise<string | undefined> {
+  console.log("[Startup] Monorepo signals detected — asking LLM to select one DAST target service");
+  const stackStr = formatTechStack(techStack);
+  const messages: ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: `You are selecting ONE runnable HTTP application from a monorepo for DAST scanning.
+
+Tech stack: ${stackStr}
+
+Goal:
+- Pick the best single web/API service to build and scan.
+- The selected service should expose HTTP routes/endpoints and be representative of the application.
+- Do NOT select libraries, SDK packages, workers, browser extensions, CLIs, exporters, migrations, test projects, or infrastructure-only services.
+- Do NOT choose the root just because a root compose file exists. Root compose files in monorepos often build every service and are too broad for DAST.
+
+Use tools to inspect workspace metadata and code:
+- nx.json, project.json, workspace.json, package.json workspaces, pnpm-workspace.yaml
+- apps/* and services/* directories
+- package scripts, Dockerfiles, route/controller files, main/server entrypoints
+- compose files only as evidence of dependencies and ports, not as a reason to scan every service
+
+Return ONLY JSON:
+{
+  "serviceRoot": "apps/api",
+  "reason": "why this service is the best HTTP DAST target",
+  "confidence": "high|medium|low"
+}
+
+Use {"serviceRoot":"."} only if there truly is no separable web/API target.`,
+    },
+    {
+      role: "user",
+      content: "Inspect this monorepo and select the one service we should build and scan. Return the JSON object.",
+    },
+  ];
+
+  try {
+    const response = await chatWithTools(
+      llm,
+      messages,
+      codebaseTools,
+      createToolHandler(repoPath),
+      model,
+      12,
+    );
+    const parsed = JSON.parse(extractJson(response));
+    const raw = String(parsed.serviceRoot ?? "").trim();
+    const serviceRoot = raw.replace(/^\.\//, "").replace(/\/$/, "");
+    if (!serviceRoot || serviceRoot === ".") {
+      console.log("[Startup] LLM did not find a separable monorepo service — using repository root");
+      return undefined;
+    }
+    if (serviceRoot.startsWith("/") || serviceRoot.includes("..")) {
+      console.warn(`[Startup] Ignoring unsafe selected service path: ${serviceRoot}`);
+      return undefined;
+    }
+    if (!existsSync(`${repoPath}/${serviceRoot}`)) {
+      console.warn(`[Startup] Ignoring selected service path that does not exist: ${serviceRoot}`);
+      return undefined;
+    }
+    const reason = typeof parsed.reason === "string" ? ` — ${parsed.reason.slice(0, 200)}` : "";
+    console.log(`[Startup] Selected monorepo target: ${serviceRoot}${reason}`);
+    return serviceRoot;
+  } catch (err) {
+    console.warn(`[Startup] Monorepo target selection failed (${toErrorMessage(err)}) — using repository root`);
+    return undefined;
+  }
+}
+
+function addComposeFileFlag(command: string, composeFile: string): string {
+  if (!/docker\s+compose\b/.test(command) || /\bdocker\s+compose\b[^\n;|&]*\s-f\s+\S+/.test(command)) {
+    return command;
+  }
+  return command.replace(/\bdocker\s+compose\b/, `docker compose -f ${composeFile}`);
+}
+
+function withComposeFile(config: StartupConfig, composeFile: string): StartupConfig {
+  return {
+    ...config,
+    command: addComposeFileFlag(config.command, composeFile),
+    prerequisites: (config.prerequisites ?? []).map((cmd) =>
+      addComposeFileFlag(cmd, composeFile),
+    ),
+    postStartCommands: config.postStartCommands?.map((cmd) =>
+      addComposeFileFlag(cmd, composeFile),
+    ),
+  };
+}
+
 export async function startApplicationWithRetries(
   llm: OpenAI,
   repoPath: string,
@@ -523,12 +656,26 @@ export async function startApplicationWithRetries(
   // Clean up any running Docker containers to avoid port conflicts
   cleanupDocker(repoPath);
 
+  if (!previousStartup && (!techStack.serviceRoot || techStack.serviceRoot === ".") && shouldSelectMonorepoTarget(repoPath)) {
+    const selectedServiceRoot = await selectMonorepoTargetWithLLM(
+      llm,
+      repoPath,
+      techStack,
+      modelSelector?.current(),
+    );
+    if (selectedServiceRoot) {
+      techStack.serviceRoot = selectedServiceRoot;
+    }
+  }
+
+  const serviceScopedStartup = !!techStack.serviceRoot && techStack.serviceRoot !== ".";
   const stackStr = formatTechStack(techStack);
   const attemptErrors: Array<{ config: StartupConfig; error: string }> = [];
   const startupHints: string[] = [];
   const stats: AttemptStat[] = [];
   let dockerfileRepaired = false;
   let infraRepaired = false;
+  let generatedServiceScopedCompose = false;
   // Summaries of what each prior repair LLM did + a fingerprint of the error
   // they were trying to fix. Used to detect "repair didn't break the loop"
   // and to give the next repair LLM context about what's already been tried.
@@ -745,7 +892,20 @@ export async function startApplicationWithRetries(
     const usesCompose = /docker\s+compose/.test(
       [...(config.prerequisites ?? []), config.command].join(" "),
     );
-    if (usesCompose && !findComposeFile(repoPath)) {
+    if (usesCompose && serviceScopedStartup && !generatedServiceScopedCompose) {
+      console.log(
+        `[Startup] Generating scan-specific compose.yml for selected service ${techStack.serviceRoot} instead of using the root monorepo compose stack`,
+      );
+      if (discovery && discovery.services.length > 0) {
+        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints);
+      } else {
+        generateComposeFile(repoPath, config);
+      }
+      generatedServiceScopedCompose = true;
+      config = withComposeFile(config, "compose.yml");
+    } else if (usesCompose && serviceScopedStartup) {
+      config = withComposeFile(config, "compose.yml");
+    } else if (usesCompose && !findComposeFile(repoPath)) {
       if (discovery && discovery.services.length > 0) {
         await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints);
       } else {
@@ -2359,8 +2519,10 @@ async function startApplication(
     cmd = stripDockerTtyFlags(cmd);
     // Force plain progress output for Docker builds — BuildKit buffers output
     // by default, causing our stall-detection to falsely time out active builds.
-    if (/docker\s+(compose\s+)?build/.test(cmd) && !cmd.includes("--progress")) {
-      cmd = cmd.replace(/(docker\s+(?:compose\s+)?build)/, "$1 --progress=plain");
+    if (/(docker\s+compose\b.*\bbuild\b|docker\s+build\b)/.test(cmd) && !cmd.includes("--progress")) {
+      cmd = /docker\s+compose\b/.test(cmd)
+        ? cmd.replace(/\bbuild\b/, "build --progress=plain")
+        : cmd.replace(/(docker\s+build)/, "$1 --progress=plain");
     }
     console.log(`[Startup] Running prerequisite: ${cmd}`);
     await runPrerequisite(cmd, repoPath, config.envVars);

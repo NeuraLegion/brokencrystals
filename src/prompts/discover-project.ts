@@ -15,6 +15,8 @@ export function discoverProjectPrompt(
 
 Your goal: thoroughly investigate the codebase to identify ALL services, dependencies, and configuration needed to **build and run this application from source** in Docker containers.
 
+If the tech stack description says "(service: <path>)", this is a monorepo and that path is the selected DAST target. Focus discovery on that one web/API service plus the dependency services it actually needs. Do NOT include unrelated monorepo apps, workers, browser extensions, CLIs, exporters, or optional services just because they appear in the root compose file.
+
 **IMPORTANT**: We ALWAYS build from source. Never use pre-built official Docker images for the app itself. We need the source code in the container so we can modify and fix the app later.
 
 ## What to investigate
