@@ -869,10 +869,10 @@ export async function startApplicationWithRetries(
       const df = findDockerfile(repoPath, selectedServiceRoot);
       const fFlag = df && df !== "Dockerfile" ? `-f ${df} ` : "";
       config = {
+        ...config,
         command: `docker run --name ${imageName} -p ${config.port}:${config.port} -d ${imageName}`,
         port: config.port,
         prerequisites: [`docker build ${fFlag}-t ${imageName} .`.trim()],
-        envVars: config.envVars,
         docker: true,
       };
     }
@@ -2507,10 +2507,10 @@ function ensureToolsAvailable(
       const df = findDockerfile(repoPath, serviceRoot);
       const fFlag = df && df !== "Dockerfile" ? `-f ${df} ` : "";
       return {
+        ...config,
         command: `docker run --name ${imageName} -p ${config.port}:${config.port} -d ${imageName}`,
         port: config.port,
         prerequisites: [`docker build ${fFlag}-t ${imageName} .`.trim()],
-        envVars: config.envVars,
         docker: true,
       };
     }
