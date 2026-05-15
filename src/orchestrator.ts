@@ -1784,7 +1784,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // Cleanup
     await killProcess(appProcess);
-    await killProcess(repeater?.process);
+    await repeater?.stop();
 
     // Stop any scans that are still running
     await stopRunningScans(
@@ -2004,7 +2004,7 @@ async function runScanLoop(
         : "Function harness scan completed — no vulnerabilities found.",
     );
   } finally {
-    await killProcess(repeater.process);
+    await repeater.stop();
     await stopRunningScans(config, allScanIds);
     if (repeater.repeaterId) {
       await deleteRepeater(config, repeater.repeaterId);

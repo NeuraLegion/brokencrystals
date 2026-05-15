@@ -1,121 +1,64 @@
-import { spawn, type ChildProcess } from "child_process";
+import { Configuration, LogLevel } from "@sectester/core";
+import { RepeaterFactory, type Repeater } from "@sectester/repeater";
 import type { BrightApiContext } from "../types.js";
 
 export interface RepeaterHandle {
   repeaterId: string;
-  process: ChildProcess;
+  stop(): Promise<void>;
 }
 
 export async function setupRepeater(
   projectId: string,
   api: BrightApiContext,
 ): Promise<RepeaterHandle> {
-  const name = `engine-${Date.now()}`;
-
-  // Create repeater via REST API — no LLM needed
-  const res = await fetch(`https://${api.brightHostname}/api/v1/repeaters`, {
-    method: "POST",
-    headers: {
-      Authorization: `Api-Key ${api.brightToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name, projectIds: [projectId] }),
+  const configuration = new Configuration({
+    hostname: api.brightHostname,
+    projectId,
+    credentials: { token: api.brightToken },
+    logLevel: LogLevel.NOTICE,
   });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Failed to create repeater: ${res.status} ${body}`);
-  }
-
-  const data = (await res.json()) as { id: string };
-  const repeaterId = data.id;
-
-  if (!repeaterId) {
-    throw new Error("Repeater creation returned no ID");
-  }
+  const factory = configuration.container.resolve(RepeaterFactory);
+  const repeater = await factory.createRepeater({
+    namePrefix: `engine-${Date.now()}`,
+    disableRandomNameGeneration: true,
+  });
+  const repeaterId = repeater.repeaterId;
 
   console.log(`[Repeater] Created repeater: ${repeaterId}`);
-  const proc = spawn(
-    "npx",
-    [
-      "@brightsec/cli",
-      "repeater",
-      "--id",
-      repeaterId,
-      "--token",
-      api.brightToken,
-      "--hostname",
-      api.brightHostname,
-    ],
-    {
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
 
-  proc.stdout?.on("data", (d: Buffer) =>
-    console.log(`[Repeater] ${d.toString().trim()}`),
-  );
-  proc.stderr?.on("data", (d: Buffer) =>
-    console.error(`[Repeater:err] ${d.toString().trim()}`),
-  );
-
-  proc.on("error", (err) => {
-    console.error(`[Repeater] Process error: ${err.message}`);
-  });
-
-  // Wait for the repeater process to report connection or fail
   try {
-    await waitForRepeaterReady(proc, 60_000);
+    await startRepeaterWithTimeout(repeater, 60_000);
   } catch (err) {
-    proc.kill("SIGTERM");
+    await repeater.stop().catch(() => undefined);
     throw err;
   }
 
   console.log(`[Repeater] Connected: ${repeaterId}`);
-  return { repeaterId, process: proc };
+  return {
+    repeaterId,
+    stop: async () => {
+      await repeater.stop();
+    },
+  };
 }
 
-async function waitForRepeaterReady(
-  proc: ChildProcess,
+async function startRepeaterWithTimeout(
+  repeater: Repeater,
   timeoutMs: number,
 ): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      console.warn(
-        "[Repeater] Timed out waiting for connection — proceeding anyway",
-      );
-      cleanup();
-      resolve();
-    }, timeoutMs);
-
-    function cleanup() {
-      clearTimeout(timer);
-      proc.stdout?.removeListener("data", onData);
-      proc.removeListener("exit", onExit);
-    }
-
-    function onData(d: Buffer) {
-      const text = d.toString();
-      // bright-cli prints "The Repeater ... started" or "connected" when ready
-      if (/connect(ed|ion established)|started/i.test(text)) {
-        cleanup();
-        resolve();
-      }
-    }
-
-    function onExit(code: number | null) {
-      cleanup();
-      reject(new Error(`Repeater process exited with code ${code} before connecting`));
-    }
-
-    proc.stdout?.on("data", onData);
-    proc.on("exit", onExit);
-
-    // If already exited before we attached listeners
-    if (proc.exitCode !== null) {
-      cleanup();
-      reject(new Error(`Repeater process already exited with code ${proc.exitCode}`));
-    }
-  });
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      repeater.start(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Timed out waiting for repeater connection")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

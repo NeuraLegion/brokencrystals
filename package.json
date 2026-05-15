@@ -11,6 +11,8 @@
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
+    "@sectester/core": "^0.50.0",
+    "@sectester/repeater": "^0.50.0",
     "glob": "^11.0.0",
     "openai": "^4.86.0",
     "tree-kill": "^1.2.2"
