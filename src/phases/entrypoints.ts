@@ -447,8 +447,11 @@ export async function pruneDeadEntrypoints(
         if (shouldPrune) {
           const req = data.request as Record<string, unknown> | undefined;
           const url = (req?.url ?? data.url ?? entry.entrypointId) as string;
+          const method = String(
+            req?.method ?? entry.endpoint.method ?? "GET",
+          ).toUpperCase();
           console.log(
-            `[Entrypoints] ✗ Removing failed baseline entrypoint (HTTP ${numericStatus}): ${url}`,
+            `[Entrypoints] ✗ Removing failed baseline entrypoint (HTTP ${numericStatus}): ${method} ${url}`,
           );
           dead.push(entry.entrypointId);
         } else {

@@ -1,7 +1,7 @@
 import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
-import { resolve, extname } from "path";
+import { relative, resolve, extname } from "path";
 import { execFileSync } from "child_process";
 import { glob } from "glob";
 import type { TechStack, DiscoveredEndpoint } from "../types.js";
@@ -735,15 +735,58 @@ const GLOB_IGNORE = [
   "**/plugins/**/assets/**",
 ];
 
-async function findControllerFiles(repoPath: string): Promise<string[]> {
+function endpointSearchScope(
+  repoPath: string,
+  techStack: TechStack,
+): { root: string; prefix: string } {
+  const rawServiceRoot = (techStack.serviceRoot || ".")
+    .replace(/\\/g, "/")
+    .replace(/^\.\/?/, "")
+    .replace(/\/+$/, "");
+
+  if (!rawServiceRoot || rawServiceRoot === ".") {
+    return { root: repoPath, prefix: "" };
+  }
+
+  const root = resolve(repoPath, rawServiceRoot);
+  const rel = relative(repoPath, root);
+  if (rel.startsWith("..") || resolve(repoPath, rel) !== root) {
+    console.warn(
+      `[Analyze] Ignoring unsafe service root for endpoint discovery: ${techStack.serviceRoot}`,
+    );
+    return { root: repoPath, prefix: "" };
+  }
+
+  try {
+    if (statSync(root).isDirectory()) {
+      return { root, prefix: rel.replace(/\\/g, "/") };
+    }
+  } catch {
+    // Fall back to repository-wide discovery below.
+  }
+
+  console.warn(
+    `[Analyze] Service root ${techStack.serviceRoot} was not found; falling back to repository-wide endpoint discovery`,
+  );
+  return { root: repoPath, prefix: "" };
+}
+
+function toRepoRelative(prefix: string, filePath: string): string {
+  return prefix ? `${prefix}/${filePath}`.replace(/\/+/g, "/") : filePath;
+}
+
+async function findControllerFiles(
+  searchRoot: string,
+  pathPrefix = "",
+): Promise<string[]> {
   const files = new Set<string>();
   for (const pattern of CONTROLLER_GLOBS) {
     for (const f of await glob(pattern, {
-      cwd: repoPath,
+      cwd: searchRoot,
       nodir: true,
       ignore: GLOB_IGNORE,
     })) {
-      files.add(f);
+      files.add(toRepoRelative(pathPrefix, f));
     }
   }
   return [...files];
@@ -754,8 +797,9 @@ async function findControllerFiles(repoPath: string): Promise<string[]> {
 // ---------------------------------------------------------------------------
 
 async function extractFsBasedRoutes(
-  repoPath: string,
+  searchRoot: string,
   techStack: TechStack,
+  pathPrefix = "",
 ): Promise<DiscoveredEndpoint[]> {
   const endpoints: DiscoveredEndpoint[] = [];
 
@@ -764,7 +808,7 @@ async function extractFsBasedRoutes(
   if (isNextJs) {
     // Pages Router: pages/api/users/[id].ts → GET /api/users/:id
     const pagesApiFiles = await glob("pages/api/**/*.{ts,js,tsx,jsx}", {
-      cwd: repoPath,
+      cwd: searchRoot,
       nodir: true,
       ignore: GLOB_IGNORE,
     });
@@ -775,12 +819,12 @@ async function extractFsBasedRoutes(
         .replace(/\.\w+$/, "")
         .replace(/\[\.\.\.(\w+)\]/g, ":$1*")
         .replace(/\[(\w+)\]/g, ":$1");
-      endpoints.push({ method: "GET", path: route, filePath: f });
+      endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
     }
 
     // App Router: app/api/**/route.{ts,js} → methods from file
     const appApiFiles = await glob("app/api/**/route.{ts,js,tsx,jsx}", {
-      cwd: repoPath,
+      cwd: searchRoot,
       nodir: true,
       ignore: GLOB_IGNORE,
     });
@@ -792,15 +836,15 @@ async function extractFsBasedRoutes(
         .replace(/\[(\w+)\]/g, ":$1");
       // Detect exported HTTP methods from the file
       try {
-        const content = readFileSync(resolve(repoPath, f), "utf-8");
+        const content = readFileSync(resolve(searchRoot, f), "utf-8");
         const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"].filter(
           m => new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b`, "i").test(content),
         );
         for (const method of methods.length > 0 ? methods : ["GET"]) {
-          endpoints.push({ method, path: route, filePath: f });
+          endpoints.push({ method, path: route, filePath: toRepoRelative(pathPrefix, f) });
         }
       } catch {
-        endpoints.push({ method: "GET", path: route, filePath: f });
+        endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
       }
     }
   }
@@ -809,7 +853,7 @@ async function extractFsBasedRoutes(
   const isRemix = techStack.frameworks.some(f => /remix/i.test(f));
   if (isRemix) {
     const remixFiles = await glob("app/routes/**/*.{ts,tsx,js,jsx}", {
-      cwd: repoPath,
+      cwd: searchRoot,
       nodir: true,
       ignore: GLOB_IGNORE,
     });
@@ -823,7 +867,7 @@ async function extractFsBasedRoutes(
         .replace(/\./g, "/")          // dot → slash (flat routes)
         .replace(/\/_/, "/");          // _layout segments
       if (route && route !== "/") {
-        endpoints.push({ method: "GET", path: route, filePath: f });
+        endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
       }
     }
   }
@@ -841,20 +885,21 @@ async function extractFsBasedRoutes(
  * This lets us prepend prefixes to routes found in router files.
  */
 async function detectRoutePrefixes(
-  repoPath: string,
+  searchRoot: string,
+  pathPrefix = "",
 ): Promise<Map<string, string>> {
   const prefixMap = new Map<string, string>();
 
   // Scan common entry points
   const entryFiles = await glob(
     "{index,app,server,main,src/index,src/app,src/server,src/main}.{ts,js}",
-    { cwd: repoPath, nodir: true },
+    { cwd: searchRoot, nodir: true },
   );
 
   for (const f of entryFiles) {
     let content: string;
     try {
-      content = readFileSync(resolve(repoPath, f), "utf-8");
+      content = readFileSync(resolve(searchRoot, f), "utf-8");
     } catch {
       continue;
     }
@@ -870,7 +915,7 @@ async function detectRoutePrefixes(
       if (requirePath) {
         // Normalize require path to a file name
         const normalized = requirePath.replace(/^\.\//, "").replace(/\.\w+$/, "");
-        prefixMap.set(normalized, prefix);
+        prefixMap.set(toRepoRelative(pathPrefix, normalized), prefix);
       }
       if (varName) {
         // Try to find where this variable was imported from
@@ -882,7 +927,7 @@ async function detectRoutePrefixes(
         const importMatch = content.match(importRe);
         if (importMatch) {
           const importPath = (importMatch[1] ?? importMatch[2]).replace(/^\.\//, "").replace(/\.\w+$/, "");
-          prefixMap.set(importPath, prefix);
+          prefixMap.set(toRepoRelative(pathPrefix, importPath), prefix);
         }
       }
     }
@@ -1093,6 +1138,9 @@ function extractEndpointsFromFile(
     // HandleFunc / Handle pattern: http.HandleFunc("/path", handler)
     const handleRe = /(?:HandleFunc|Handle)\(\s*"([^"]+)"/gi;
     while ((m = handleRe.exec(content)) !== null) {
+      if (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\//i.test(m[1])) {
+        continue;
+      }
       endpoints.push({ method: "GET", path: m[1], filePath });
     }
     // http.NewServeMux / mux patterns: mux.HandleFunc("GET /path", handler)
@@ -1347,6 +1395,20 @@ function normalizePathParams(path: string): string {
       // Remove trailing slash (consistency)
       .replace(/\/$/, "") || "/"
   );
+}
+
+const HTTP_METHOD_PREFIX_RE =
+  /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(.+)$/i;
+
+function normalizeEndpointMethodAndPath(ep: DiscoveredEndpoint): void {
+  const path = ep.path.trim();
+  const methodInPath = path.match(HTTP_METHOD_PREFIX_RE);
+  if (methodInPath) {
+    ep.method = methodInPath[1].toUpperCase();
+    ep.path = methodInPath[2].trim() || "/";
+    return;
+  }
+  ep.path = path;
 }
 
 // ---------------------------------------------------------------------------
@@ -1772,6 +1834,8 @@ Find all HTTP endpoints registered in this file. If routes are registered via he
 async function checkForMissedRouteFiles(
   llm: OpenAI,
   repoPath: string,
+  searchRoot: string,
+  pathPrefix: string,
   alreadyScannedFiles: string[],
   existingEndpoints: DiscoveredEndpoint[],
   model?: string,
@@ -1791,14 +1855,14 @@ async function checkForMissedRouteFiles(
     if (depth > 4 || tree.length >= 200) return;
     let entries: string[];
     try {
-      entries = readdirSync(resolve(repoPath, dir));
+      entries = readdirSync(resolve(searchRoot, dir));
     } catch {
       return;
     }
     for (const entry of entries.sort()) {
       if (entry.startsWith(".") || ignoreDirs.has(entry)) continue;
       const rel = dir ? `${dir}/${entry}` : entry;
-      const fullPath = resolve(repoPath, rel);
+      const fullPath = resolve(searchRoot, rel);
       let isDir = false;
       try {
         isDir = statSync(fullPath).isDirectory();
@@ -1811,7 +1875,7 @@ async function checkForMissedRouteFiles(
       } else {
         const ext = extname(entry).toLowerCase();
         if (sourceExts.has(ext)) {
-          tree.push(rel);
+          tree.push(toRepoRelative(pathPrefix, rel));
         }
       }
     }
@@ -1837,7 +1901,7 @@ ${foundRoutes || "(none yet)"}
 
 From these files: ${alreadyScannedFiles.slice(0, 30).join(", ")}
 
-Below is the project file tree. Your job: identify any source files that likely define HTTP routes/endpoints but were NOT in our scanned list.
+Below is the ${pathPrefix ? `selected service (${pathPrefix})` : "project"} file tree. Your job: identify any source files in that tree that likely define HTTP routes/endpoints but were NOT in our scanned list.
 
 Look for files that:
 - Import/use HTTP frameworks (Flask, Express, Gin, Echo, Spring, etc.)
@@ -1855,7 +1919,7 @@ If nothing was missed, return: []`,
     },
     {
       role: "user" as const,
-      content: `Project file tree (${tree.length} source files):
+      content: `${pathPrefix ? `Selected service root: ${pathPrefix}\n\n` : ""}Project file tree (${tree.length} source files):
 ${tree.join("\n")}
 
 Which of these files might define HTTP endpoints that we haven't scanned yet? Check with grep_code and extract any missed routes.`,
@@ -1895,8 +1959,15 @@ export async function discoverEndpoints(
   techStack: TechStack,
   model?: string,
 ): Promise<DiscoveredEndpoint[]> {
+  const scope = endpointSearchScope(repoPath, techStack);
+  if (scope.prefix) {
+    console.log(
+      `[Analyze] Endpoint discovery scoped to selected service: ${scope.prefix}`,
+    );
+  }
+
   // Step 1: Find controller files (pure glob, zero LLM)
-  const controllerFiles = await findControllerFiles(repoPath);
+  const controllerFiles = await findControllerFiles(scope.root, scope.prefix);
   console.log(
     `[Analyze] Found ${controllerFiles.length} controller files via glob`,
   );
@@ -1925,7 +1996,11 @@ export async function discoverEndpoints(
   }
 
   // Step 2a: FS-based routes (Next.js pages/api, App Router, Remix flat routes)
-  const fsRoutes = await extractFsBasedRoutes(repoPath, techStack);
+  const fsRoutes = await extractFsBasedRoutes(
+    scope.root,
+    techStack,
+    scope.prefix,
+  );
   if (fsRoutes.length > 0) {
     console.log(
       `[Analyze] Extracted ${fsRoutes.length} endpoints from file-system routes`,
@@ -1934,7 +2009,7 @@ export async function discoverEndpoints(
   }
 
   // Step 2b: Detect route prefix mounting (app.use('/api', router))
-  const prefixMap = await detectRoutePrefixes(repoPath);
+  const prefixMap = await detectRoutePrefixes(scope.root, scope.prefix);
   if (prefixMap.size > 0) {
     console.log(
       `[Analyze] Detected ${prefixMap.size} route prefix mount(s): ${[...prefixMap.entries()].map(([k, v]) => `${v} → ${k}`).join(", ")}`,
@@ -1987,6 +2062,8 @@ export async function discoverEndpoints(
   const missedEndpoints = await checkForMissedRouteFiles(
     llm,
     repoPath,
+    scope.root,
+    scope.prefix,
     controllerFiles,
     allEndpoints,
     model,
@@ -2000,6 +2077,7 @@ export async function discoverEndpoints(
 
   // Normalize regex-style path params to {param} format (all sources)
   for (const ep of allEndpoints) {
+    normalizeEndpointMethodAndPath(ep);
     ep.path = normalizePathParams(ep.path);
   }
 
