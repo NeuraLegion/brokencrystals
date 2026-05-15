@@ -479,14 +479,16 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     healthMonitor = new AppHealthMonitor({
       port: startupConfig.port,
       healthCheckPath: startupConfig.healthCheckPath,
-      onDeepProbe: () =>
-        deepHealthCheck(
-          startupConfig.port,
-          startupConfig.healthCheckPath ?? "/",
-          llm,
-          config.modelSelector,
-          deepProbeCache,
-        ),
+      healthProbe: startupConfig.healthProbe,
+      onDeepProbe: () => startupConfig.healthProbe
+        ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" })
+        : deepHealthCheck(
+            startupConfig.port,
+            startupConfig.healthCheckPath ?? "/",
+            llm,
+            config.modelSelector,
+            deepProbeCache,
+          ),
     });
     healthMonitor.setRecoveryCallback(async (hint) => {
       // Quick restart only — handles transient crashes (OOM, stuck
@@ -603,14 +605,16 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         healthMonitor = new AppHealthMonitor({
           port: startupConfig.port,
           healthCheckPath: startupConfig.healthCheckPath,
-          onDeepProbe: () =>
-            deepHealthCheck(
-              startupConfig.port,
-              startupConfig.healthCheckPath ?? "/",
-              llm,
-              config.modelSelector,
-              deepProbeCache,
-            ),
+          healthProbe: startupConfig.healthProbe,
+          onDeepProbe: () => startupConfig.healthProbe
+            ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" })
+            : deepHealthCheck(
+                startupConfig.port,
+                startupConfig.healthCheckPath ?? "/",
+                llm,
+                config.modelSelector,
+                deepProbeCache,
+              ),
         });
         healthMonitor.setRecoveryCallback(async (hint) => {
           if (!startupConfig.docker) {
@@ -687,14 +691,16 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         healthMonitor = new AppHealthMonitor({
           port: startupConfig.port,
           healthCheckPath: startupConfig.healthCheckPath,
-          onDeepProbe: () =>
-            deepHealthCheck(
-              startupConfig.port,
-              startupConfig.healthCheckPath ?? "/",
-              llm,
-              config.modelSelector,
-              deepProbeCache,
-            ),
+          healthProbe: startupConfig.healthProbe,
+          onDeepProbe: () => startupConfig.healthProbe
+            ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" })
+            : deepHealthCheck(
+                startupConfig.port,
+                startupConfig.healthCheckPath ?? "/",
+                llm,
+                config.modelSelector,
+                deepProbeCache,
+              ),
         });
         healthMonitor.setRecoveryCallback(async (hint) => {
           if (!startupConfig.docker) {
@@ -1324,7 +1330,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
 
       // --- Verify app is alive before scanning ---
-      const appAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
+      const appAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
       if (!appAlive) {
         console.warn(
           `[Scan] App is unreachable on port ${startupConfig.port} — restarting before scan`,
@@ -1479,7 +1485,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       if (failedCount > 0 && succeededScanIds.length === 0) {
         // All scans failed — nothing to harvest. Try to recover or abort.
-        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
+        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning — attempting restart and retry",
@@ -1528,7 +1534,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
         // If app died but we still have some findings, restart it so the
         // next round (if any) has a healthy target — but don't abort.
-        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
+        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning — attempting restart before processing findings",

@@ -98,8 +98,28 @@ export interface StartupConfig {
   postStartCommands?: string[];
   /** Path to probe for health checks instead of "/" (e.g. "/srv/status", "/health") */
   healthCheckPath?: string;
+  /** Full HTTP probe for apps that need non-GET health validation */
+  healthProbe?: StartupHealthProbe;
   /** AI-generated summary of the health check response (e.g. "valid JSON forum data", "setup wizard page") */
   healthCheckSummary?: string;
+}
+
+export interface StartupHealthProbe {
+  /** URL path on localhost:port, e.g. "/api/health" */
+  path: string;
+  /** HTTP method. Defaults to GET. */
+  method?: string;
+  /** Extra headers for the request. */
+  headers?: Record<string, string>;
+  /** Raw request body, or a JSON-serializable object when Content-Type is application/json. */
+  body?: string | Record<string, unknown>;
+  /** Multipart form fields/files for endpoints that require file upload. */
+  formData?: {
+    fields?: Array<{ name: string; value: string }>;
+    files?: Array<{ name: string; filename: string; content: string; contentType?: string }>;
+  };
+  /** Statuses that prove the app is healthy. Defaults to any status < 500 plus AI validation. */
+  expectedStatuses?: number[];
 }
 
 // ---------------------------------------------------------------------------

@@ -38,11 +38,19 @@ Return a JSON object:
   "prerequisites": ["docker compose build"],
   "envVars": { "NODE_ENV": "production" },
   "docker": true,
-  "healthCheckPath": "/health"
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "POST",
+    "path": "/api/health/validate",
+    "headers": {"Content-Type": "application/json"},
+    "body": {"ping": true},
+    "expectedStatuses": [200, 201, 204]
+  }
 }
 
 - **envVars**: Use production-like environment variables (NODE_ENV=production, RAILS_ENV=production, etc.). The app will be security-tested by a DAST scanner — it must behave like a production deployment.
-- **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated health/status endpoint like "/health", "/srv/status", or "/api/health".`,
+- **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated GET health/status endpoint like "/health", "/srv/status", or "/api/health".
+- **healthProbe** (optional): if the app is API-only or has no healthy GET endpoint, specify the real HTTP request that proves readiness: method, path, headers, JSON/raw body or multipart formData, and expectedStatuses. Prefer this over adding fake routes or probing GET /.`,
     },
     {
       role: "user",
@@ -90,7 +98,12 @@ Return a JSON object:
   "prerequisites": [],
   "envVars": {},
   "docker": true,
-  "healthCheckPath": "/health"
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "GET",
+    "path": "/health",
+    "expectedStatuses": [200]
+  }
 }`,
     },
   ];
@@ -153,10 +166,16 @@ Return a JSON object with the new approach:
   "prerequisites": [],
   "envVars": {},
   "docker": true,
-  "healthCheckPath": "/health"
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "GET",
+    "path": "/health",
+    "expectedStatuses": [200]
+  }
 }
 
-- **healthCheckPath** (optional): if the root route returns errors during boot, use a dedicated health endpoint.`,
+- **healthCheckPath** (optional): if the root route returns errors during boot, use a dedicated GET health endpoint.
+- **healthProbe** (optional): if no simple GET endpoint exists, use a real API call with method/path/headers/body/formData/expectedStatuses that proves the service is ready.`,
     },
   ];
 }

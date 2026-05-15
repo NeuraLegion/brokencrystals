@@ -1,4 +1,5 @@
 import { checkAppHealth, type ResponseHealthResult } from "./phases/startup.js";
+import type { StartupHealthProbe } from "./types.js";
 import { toErrorMessage } from "./utils.js";
 
 /**
@@ -28,6 +29,7 @@ export type DeepProbeFn = () => Promise<ResponseHealthResult>;
 export interface AppHealthMonitorOptions {
   port: number;
   healthCheckPath?: string;
+  healthProbe?: StartupHealthProbe;
   pollIntervalMs?: number;
   /** Number of consecutive failed probes before declaring unhealthy. */
   failureThreshold?: number;
@@ -60,6 +62,7 @@ export interface AppHealthMonitorOptions {
 export class AppHealthMonitor {
   private readonly port: number;
   private readonly healthCheckPath: string;
+  private readonly healthProbe?: StartupHealthProbe;
   private readonly pollIntervalMs: number;
   private readonly failureThreshold: number;
   private readonly deepProbeEveryNth: number;
@@ -86,6 +89,7 @@ export class AppHealthMonitor {
   constructor(opts: AppHealthMonitorOptions) {
     this.port = opts.port;
     this.healthCheckPath = opts.healthCheckPath ?? "/";
+    this.healthProbe = opts.healthProbe;
     this.pollIntervalMs = opts.pollIntervalMs ?? 15_000;
     this.failureThreshold = opts.failureThreshold ?? 3;
     this.onRecover = opts.onRecover;
@@ -101,6 +105,15 @@ export class AppHealthMonitor {
     this.onDeepProbe = cb;
   }
 
+  private describeProbe(): string {
+    if (!this.healthProbe) return `http://localhost:${this.port}${this.healthCheckPath}`;
+    const path = this.healthProbe.path.startsWith("/")
+      ? this.healthProbe.path
+      : `/${this.healthProbe.path}`;
+    const method = (this.healthProbe.method ?? (this.healthProbe.formData || this.healthProbe.body ? "POST" : "GET")).toUpperCase();
+    return `${method} http://localhost:${this.port}${path}`;
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;
@@ -109,7 +122,7 @@ export class AppHealthMonitor {
     }, this.pollIntervalMs);
     if (typeof this.timer.unref === "function") this.timer.unref();
     console.log(
-      `[AppHealth] Monitor started — polling http://localhost:${this.port}${this.healthCheckPath} every ${this.pollIntervalMs / 1000}s`,
+      `[AppHealth] Monitor started — polling ${this.describeProbe()} every ${this.pollIntervalMs / 1000}s`,
     );
   }
 
@@ -219,7 +232,7 @@ export class AppHealthMonitor {
     if (this.probeInFlight) return;
     this.probeInFlight = true;
     try {
-      const ok = await checkAppHealth(this.port, this.healthCheckPath);
+      const ok = await checkAppHealth(this.port, this.healthProbe ?? this.healthCheckPath);
       if (ok) {
         if (this.consecutiveFailures > 0) {
           console.log(
@@ -240,7 +253,7 @@ export class AppHealthMonitor {
             `[AppHealth] Probe failed (${reason}) — ${this.consecutiveFailures}/${this.failureThreshold}`,
           );
           if (this.consecutiveFailures >= this.failureThreshold) {
-            this.lastUnhealthyReason = `app stopped responding to HTTP probes at http://localhost:${this.port}${this.healthCheckPath}`;
+            this.lastUnhealthyReason = `app stopped responding to HTTP probes at ${this.describeProbe()}`;
             this.markUnhealthy();
             // Fire recovery (don't await — probe is allowed to return)
             void this.runRecovery();

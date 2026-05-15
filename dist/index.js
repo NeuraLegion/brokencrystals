@@ -1,6 +1,6 @@
 import { createRequire } from 'module';const require = createRequire(import.meta.url);
 import {
-  Blob,
+  Blob as Blob2,
   File,
   __commonJS,
   __require,
@@ -3958,8 +3958,8 @@ var fetch2 = void 0;
 var Request = void 0;
 var Response = void 0;
 var Headers = void 0;
-var FormData = void 0;
-var Blob2 = void 0;
+var FormData2 = void 0;
+var Blob3 = void 0;
 var File2 = void 0;
 var ReadableStream = void 0;
 var getMultipartRequestOptions = void 0;
@@ -3979,8 +3979,8 @@ function setShims(shims, options = { auto: false }) {
   Request = shims.Request;
   Response = shims.Response;
   Headers = shims.Headers;
-  FormData = shims.FormData;
-  Blob2 = shims.Blob;
+  FormData2 = shims.FormData;
+  Blob3 = shims.Blob;
   File2 = shims.File;
   ReadableStream = shims.ReadableStream;
   getMultipartRequestOptions = shims.getMultipartRequestOptions;
@@ -3999,7 +3999,7 @@ import zlib from "zlib";
 var Readable = Stream.Readable;
 var BUFFER = /* @__PURE__ */ Symbol("buffer");
 var TYPE = /* @__PURE__ */ Symbol("type");
-var Blob3 = class _Blob {
+var Blob4 = class _Blob {
   constructor() {
     this[TYPE] = "";
     const blobParts = arguments[0];
@@ -4085,12 +4085,12 @@ var Blob3 = class _Blob {
     return blob;
   }
 };
-Object.defineProperties(Blob3.prototype, {
+Object.defineProperties(Blob4.prototype, {
   size: { enumerable: true },
   type: { enumerable: true },
   slice: { enumerable: true }
 });
-Object.defineProperty(Blob3.prototype, Symbol.toStringTag, {
+Object.defineProperty(Blob4.prototype, Symbol.toStringTag, {
   value: "Blob",
   writable: false,
   enumerable: false,
@@ -4176,7 +4176,7 @@ Body.prototype = {
     return consumeBody.call(this).then(function(buf) {
       return Object.assign(
         // Prevent copying
-        new Blob3([], {
+        new Blob4([], {
           type: ct.toLowerCase()
         }),
         {
@@ -5216,7 +5216,7 @@ var lib_default = fetch3;
 import { inspect } from "util";
 
 // node_modules/formdata-node/lib/esm/isBlob.js
-var isBlob2 = (value) => value instanceof Blob;
+var isBlob2 = (value) => value instanceof Blob2;
 
 // node_modules/formdata-node/lib/esm/deprecateConstructorEntries.js
 import { deprecate } from "util";
@@ -5232,7 +5232,7 @@ var __classPrivateFieldGet = function(receiver, state, kind2, f) {
 var _FormData_instances;
 var _FormData_entries;
 var _FormData_setEntry;
-var FormData2 = class {
+var FormData3 = class {
   constructor(entries) {
     _FormData_instances.add(this);
     _FormData_entries.set(this, /* @__PURE__ */ new Map());
@@ -5568,8 +5568,8 @@ function getRuntime() {
     Request: Request2,
     Response: Response2,
     Headers: Headers2,
-    FormData: FormData2,
-    Blob,
+    FormData: FormData3,
+    Blob: Blob2,
     File,
     ReadableStream: ReadableStream2,
     getMultipartRequestOptions: getMultipartRequestOptions2,
@@ -6148,7 +6148,7 @@ var multipartFormRequestOptions = async (opts) => {
   return getMultipartRequestOptions(form, opts);
 };
 var createForm = async (body) => {
-  const form = new FormData();
+  const form = new FormData2();
   await Promise.all(Object.entries(body || {}).map(([key, value]) => addFormValue(form, key, value)));
   return form;
 };
@@ -21083,11 +21083,19 @@ Return a JSON object:
   "prerequisites": ["docker compose build"],
   "envVars": { "NODE_ENV": "production" },
   "docker": true,
-  "healthCheckPath": "/health"
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "POST",
+    "path": "/api/health/validate",
+    "headers": {"Content-Type": "application/json"},
+    "body": {"ping": true},
+    "expectedStatuses": [200, 201, 204]
+  }
 }
 
 - **envVars**: Use production-like environment variables (NODE_ENV=production, RAILS_ENV=production, etc.). The app will be security-tested by a DAST scanner \u2014 it must behave like a production deployment.
-- **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated health/status endpoint like "/health", "/srv/status", or "/api/health".`
+- **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated GET health/status endpoint like "/health", "/srv/status", or "/api/health".
+- **healthProbe** (optional): if the app is API-only or has no healthy GET endpoint, specify the real HTTP request that proves readiness: method, path, headers, JSON/raw body or multipart formData, and expectedStatuses. Prefer this over adding fake routes or probing GET /.`
     },
     {
       role: "user",
@@ -21131,7 +21139,12 @@ Return a JSON object:
   "prerequisites": [],
   "envVars": {},
   "docker": true,
-  "healthCheckPath": "/health"
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "GET",
+    "path": "/health",
+    "expectedStatuses": [200]
+  }
 }`
     }
   ];
@@ -21187,10 +21200,16 @@ Return a JSON object with the new approach:
   "prerequisites": [],
   "envVars": {},
   "docker": true,
-  "healthCheckPath": "/health"
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "GET",
+    "path": "/health",
+    "expectedStatuses": [200]
+  }
 }
 
-- **healthCheckPath** (optional): if the root route returns errors during boot, use a dedicated health endpoint.`
+- **healthCheckPath** (optional): if the root route returns errors during boot, use a dedicated GET health endpoint.
+- **healthProbe** (optional): if no simple GET endpoint exists, use a real API call with method/path/headers/body/formData/expectedStatuses that proves the service is ready.`
     }
   ];
 }
@@ -22232,6 +22251,9 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
     if (config.healthCheckPath) {
       console.log(`[Startup]   health-check: ${config.healthCheckPath}`);
     }
+    if (config.healthProbe) {
+      console.log(`[Startup]   health-probe: ${describeHealthProbe(config.healthProbe)}`);
+    }
     try {
       const analyzeLogsFn = async (logs, ctx) => {
         const ctxBlock = ctx ? `
@@ -22386,7 +22408,11 @@ ${logs.slice(-3e3)}
           if (buildResult.healthCheckPath) {
             config = { ...config, healthCheckPath: buildResult.healthCheckPath };
           }
-          const buildModifiedConfig = !!(buildResult.madeFileChanges || buildResult.command || buildResult.prerequisites || buildResult.port || buildResult.postStartCommands?.length || buildResult.addEnvVars || buildResult.healthCheckPath);
+          if (buildResult.healthProbe) {
+            console.log(`[Startup] Build repair set health probe: ${describeHealthProbe(buildResult.healthProbe)}`);
+            config = { ...config, healthProbe: buildResult.healthProbe };
+          }
+          const buildModifiedConfig = !!(buildResult.madeFileChanges || buildResult.command || buildResult.prerequisites || buildResult.port || buildResult.postStartCommands?.length || buildResult.addEnvVars || buildResult.healthCheckPath || buildResult.healthProbe);
           if (buildModifiedConfig) {
             attemptErrors[attemptErrors.length - 1] = { config, error: detailedError };
             dockerfileRepaired = true;
@@ -22408,7 +22434,7 @@ ${logs.slice(-3e3)}
           if (infraResult.summary) {
             repairHistory.push({ kind: "infra", summary: infraResult.summary, targetErrorFp: currentFp });
           }
-          if (infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath) {
+          if (infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.healthProbe) {
             if (infraResult.command) {
               console.log(`[Startup] Repair LLM overrode command: ${infraResult.command}`);
               config = { ...config, command: infraResult.command };
@@ -22436,10 +22462,14 @@ ${logs.slice(-3e3)}
             if (infraResult.healthCheckPath) {
               config = { ...config, healthCheckPath: infraResult.healthCheckPath };
             }
+            if (infraResult.healthProbe) {
+              console.log(`[Startup] Repair LLM set health probe: ${describeHealthProbe(infraResult.healthProbe)}`);
+              config = { ...config, healthProbe: infraResult.healthProbe };
+            }
             attemptErrors[attemptErrors.length - 1] = { config, error: detailedError };
           }
           const isPrereqFailure = /Command failed:.*\nprerequisite/i.test(detailedError) || /prerequisite.*failed|Running prerequisite/i.test(detailedError) || /command not found|not found.*command/i.test(detailedError);
-          const repairModifiedConfig = !!(infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.madeFileChanges);
+          const repairModifiedConfig = !!(infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.healthProbe || infraResult.madeFileChanges);
           if (repairModifiedConfig || !isTimeoutError && !isPrereqFailure && !isCrash) {
             infraRepaired = true;
           }
@@ -22680,13 +22710,21 @@ After applying fixes, return ONLY this JSON object. Include only fields that cha
   "port": 3000,
   "postStartCommands": [],
   "addEnvVars": {},
-  "healthCheckPath": "/health"
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "POST",
+    "path": "/api/health/validate",
+    "headers": {"Content-Type": "application/json"},
+    "body": {"ping": true},
+    "expectedStatuses": [200, 201, 204]
+  }
 }
 \`\`\`
 
 - If you edited files with write_file/edit_file only, include just "summary".
 - If the startup command or build prerequisites must change, include "command" and/or "prerequisites".
 - If replacing broad compose with minimal compose, write the file with write_file/edit_file and return the command/prerequisites that use it.
+- If the app is healthy only through a non-GET API endpoint, include "healthProbe" with method/path/headers/body/formData/expectedStatuses. Prefer this over source-code hacks such as adding fake health routes.
 - Legacy fallback: if the ONLY correct fix is replacing ${dockerfileName}, you may return the complete fixed Dockerfile in a single fenced dockerfile block.`
     },
     {
@@ -22749,7 +22787,7 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
       20
     );
     const parsedResult = parseBuildRepairResult(response);
-    if (parsedResult.summary || parsedResult.command || parsedResult.prerequisites || parsedResult.port || parsedResult.postStartCommands?.length || parsedResult.addEnvVars || parsedResult.healthCheckPath) {
+    if (parsedResult.summary || parsedResult.command || parsedResult.prerequisites || parsedResult.port || parsedResult.postStartCommands?.length || parsedResult.addEnvVars || parsedResult.healthCheckPath || parsedResult.healthProbe) {
       if (usedMutatingTools) {
         parsedResult.madeFileChanges = true;
         console.log("[Startup] Build repair used mutating tools");
@@ -22889,7 +22927,22 @@ After fixing the issue, reply with a JSON object describing what changed:
   "port": 8080,
   "postStartCommands": ["docker compose exec app rails db:create db:migrate"],
   "addEnvVars": {"DATABASE_URL": "postgres://..."},
-  "healthCheckPath": "/srv/status"
+  "healthCheckPath": "/srv/status",
+  "healthProbe": {
+    "method": "POST",
+    "path": "/api/v1/specs/sample",
+    "formData": {
+      "files": [
+        {
+          "name": "file",
+          "filename": "health.yaml",
+          "contentType": "application/yaml",
+          "content": "openapi: 3.0.0\\ninfo:\\n  title: health\\n  version: '1.0'\\npaths: {}\\n"
+        }
+      ]
+    },
+    "expectedStatuses": [200, 201]
+  }
 }
 \`\`\`
 - **command**: override the startup command if the current one is fundamentally wrong (e.g. bare "bundle exec" on the host when it should be "docker run ... bundle exec"). Only set this if the command itself needs to change.
@@ -22897,6 +22950,7 @@ After fixing the issue, reply with a JSON object describing what changed:
 - **postStartCommands**: commands that must run AFTER the app containers start but BEFORE the health check (e.g. DB migrations, cache warmup, seeding). These run on the HOST. If the command must run inside a container, wrap it with 'docker compose exec <service>' or 'docker exec <container>'. NEVER use streaming/follow commands here (e.g. 'logs -f', 'tail -f', 'watch') \u2014 they hang forever and block startup.
 - **addEnvVars**: environment variables to add/override for the next startup attempt.
 - **healthCheckPath**: if the app's root route ("/") returns errors but a different endpoint is healthy (e.g. "/health", "/srv/status"), specify it here so the health check uses that path instead.
+- **healthProbe**: use this when startup validation needs a real API call, custom method, headers, JSON body, or multipart file upload. This is preferred for API-only services that intentionally return 404 on GET /. Include expectedStatuses that prove readiness. Do NOT add fake source routes just to satisfy GET / if a real probe exists.
 - Omit fields that don't apply \u2014 just include "summary" if you only edited files.`
     },
     {
@@ -22994,6 +23048,11 @@ function parseInfraRepairResult(response) {
       result.healthCheckPath = parsed.healthCheckPath;
       console.log(`[Startup] Infra repair set health check path: ${result.healthCheckPath}`);
     }
+    const healthProbe = parseHealthProbe(parsed.healthProbe);
+    if (healthProbe) {
+      result.healthProbe = healthProbe;
+      console.log(`[Startup] Infra repair set health probe: ${describeHealthProbe(healthProbe)}`);
+    }
     if (typeof parsed.command === "string" && parsed.command) {
       result.command = parsed.command;
       console.log(`[Startup] Infra repair overrode command: ${result.command}`);
@@ -23050,11 +23109,63 @@ function parseBuildRepairResult(response) {
       if (typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath) {
         result.healthCheckPath = parsed.healthCheckPath;
       }
+      const healthProbe = parseHealthProbe(parsed.healthProbe);
+      if (healthProbe) {
+        result.healthProbe = healthProbe;
+      }
       return result;
     } catch {
     }
   }
   return {};
+}
+function parseHealthProbe(value) {
+  if (!value || typeof value !== "object") return void 0;
+  const raw = value;
+  if (typeof raw.path !== "string" || !raw.path.trim()) return void 0;
+  const method = typeof raw.method === "string" && raw.method.trim() ? raw.method.trim().toUpperCase() : void 0;
+  const headers = {};
+  if (raw.headers && typeof raw.headers === "object" && !Array.isArray(raw.headers)) {
+    for (const [k, v] of Object.entries(raw.headers)) {
+      if (typeof v === "string") headers[k] = v;
+    }
+  }
+  let formData;
+  if (raw.formData && typeof raw.formData === "object" && !Array.isArray(raw.formData)) {
+    const fd = raw.formData;
+    const fields = Array.isArray(fd.fields) ? fd.fields.flatMap((field) => {
+      if (!field || typeof field !== "object") return [];
+      const f = field;
+      return typeof f.name === "string" && typeof f.value === "string" ? [{ name: f.name, value: f.value }] : [];
+    }) : void 0;
+    const files = Array.isArray(fd.files) ? fd.files.flatMap((file) => {
+      if (!file || typeof file !== "object") return [];
+      const f = file;
+      if (typeof f.name !== "string" || typeof f.filename !== "string" || typeof f.content !== "string") return [];
+      return [{
+        name: f.name,
+        filename: f.filename,
+        content: f.content,
+        ...typeof f.contentType === "string" && f.contentType ? { contentType: f.contentType } : {}
+      }];
+    }) : void 0;
+    if (fields?.length || files?.length) formData = { fields, files };
+  }
+  const expectedStatuses = Array.isArray(raw.expectedStatuses) ? raw.expectedStatuses.filter((s) => Number.isInteger(s) && s >= 100 && s < 600) : void 0;
+  const probe = {
+    path: raw.path.trim(),
+    ...method ? { method } : {},
+    ...Object.keys(headers).length ? { headers } : {},
+    ...typeof raw.body === "string" || raw.body && typeof raw.body === "object" && !Array.isArray(raw.body) ? { body: raw.body } : {},
+    ...formData ? { formData } : {},
+    ...expectedStatuses?.length ? { expectedStatuses } : {}
+  };
+  return probe;
+}
+function describeHealthProbe(probe) {
+  const method = probe.method ?? (probe.formData || probe.body ? "POST" : "GET");
+  const statuses = probe.expectedStatuses?.length ? ` expects ${probe.expectedStatuses.join("/")}` : "";
+  return `${method.toUpperCase()} ${normalizeProbePath(probe.path)}${statuses}`;
 }
 async function generateDockerfile(llm, repoPath, stackStr, model, discovery) {
   const dockerHandler = createDockerfileToolHandler(repoPath);
@@ -23124,13 +23235,15 @@ function parseStartupConfig(response) {
     const extracted = extractInlineEnvVars(command);
     command = extracted.command;
     Object.assign(envVars, extracted.envVars);
+    const healthProbe = parseHealthProbe(parsed.healthProbe);
     return {
       command,
       port: parsed.port ?? 3e3,
       prerequisites,
       envVars,
       docker: parsed.docker ?? false,
-      ...typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath ? { healthCheckPath: parsed.healthCheckPath } : {}
+      ...typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath ? { healthCheckPath: parsed.healthCheckPath } : {},
+      ...healthProbe ? { healthProbe } : {}
     };
   } catch {
     return {
@@ -23474,7 +23587,7 @@ ${containerLogs}`);
           }
         }
         try {
-          await waitForPort(config.port, 12e4, config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
+          await waitForPort(config.port, 12e4, config.healthProbe ?? config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
           console.log(
             `[Startup] Port ${config.port} is reachable despite --wait failure`
           );
@@ -23515,7 +23628,7 @@ ${containerLogs}`);
     const composeCrashPromise = pollComposeContainersAlive(repoPath, maxPortWaitMs);
     try {
       await Promise.race([
-        waitForPort(config.port, 3e5, config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
+        waitForPort(config.port, 3e5, config.healthProbe ?? config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
         composeCrashPromise
       ]);
     } catch (err) {
@@ -23572,7 +23685,7 @@ ${diagnostics}`);
     })();
     try {
       await Promise.race([
-        waitForPort(config.port, portTimeoutMs, config.healthCheckPath, config.docker ? repoPath : void 0, analyzeLogsFn, analyzeResponseFn),
+        waitForPort(config.port, portTimeoutMs, config.healthProbe ?? config.healthCheckPath, config.docker ? repoPath : void 0, analyzeLogsFn, analyzeResponseFn),
         earlyExitPromise,
         containerCrashPromise
       ]);
@@ -23828,12 +23941,58 @@ ${logs.slice(-3e3)}`
 }
 var MAX_PORT_WAIT_EXTENSIONS = 5;
 var PORT_WAIT_EXTENSION_MS = 18e4;
-async function waitForPort(port, timeoutMs, healthCheckPath = "/", repoPath, analyzeLogsFn, analyzeResponseFn) {
+function normalizeHealthProbe(healthCheck) {
+  if (!healthCheck) return { path: "/" };
+  if (typeof healthCheck === "string") return { path: healthCheck };
+  return healthCheck;
+}
+function normalizeProbePath(path2) {
+  return path2.startsWith("/") ? path2 : `/${path2}`;
+}
+function buildHealthProbeRequest(probe, probePath) {
+  const headers = { ...probeHeaders(probePath), ...probe.headers ?? {} };
+  if (probe.formData) {
+    const form = new FormData();
+    for (const field of probe.formData.fields ?? []) {
+      form.append(field.name, field.value);
+    }
+    for (const file of probe.formData.files ?? []) {
+      const blob = new Blob([file.content], {
+        type: file.contentType ?? "application/octet-stream"
+      });
+      form.append(file.name, blob, file.filename);
+    }
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === "content-type") delete headers[key];
+    }
+    return { headers, body: form };
+  }
+  if (probe.body === void 0) return { headers };
+  if (typeof probe.body === "string") {
+    return { headers, body: probe.body };
+  }
+  const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === "content-type");
+  if (!hasContentType) headers["Content-Type"] = "application/json";
+  return { headers, body: JSON.stringify(probe.body) };
+}
+async function readResponsePreview(response) {
+  try {
+    const text = await response.text();
+    const contentType = response.headers.get("content-type") ?? "";
+    const readable = contentType.includes("html") ? stripHtmlForAnalysis(text) : text;
+    return readable.length > 3e3 ? readable.slice(0, 3e3) + "..." : readable;
+  } catch {
+    return "";
+  }
+}
+async function waitForPort(port, timeoutMs, healthCheck = "/", repoPath, analyzeLogsFn, analyzeResponseFn) {
   const start = Date.now();
   const interval = 2e3;
   let lastStatus;
   let lastBody = "";
-  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
+  const probe = normalizeHealthProbe(healthCheck);
+  const probePath = normalizeProbePath(probe.path);
+  const probeMethod = (probe.method ?? (probe.formData || probe.body ? "POST" : "GET")).toUpperCase();
   let lastLogSnapshot = "";
   let lastLogCheckTime = 0;
   const logCheckInterval = 4e4;
@@ -23868,13 +24027,37 @@ ${logs}`;
       throw new StartupFailedError(errMsg2);
     }
     try {
+      const { body, headers } = buildHealthProbeRequest(probe, probePath);
       const response = await fetch(`http://localhost:${port}${probePath}`, {
-        method: "GET",
-        headers: probeHeaders(probePath),
+        method: probeMethod,
+        headers,
+        ...body !== void 0 ? { body } : {},
         signal: AbortSignal.timeout(FETCH_TIMEOUT_QUICK)
       });
       lastStatus = response.status;
       portHasEverResponded = true;
+      const expectedStatuses = probe.expectedStatuses;
+      if (expectedStatuses?.includes(response.status)) {
+        lastBody = await readResponsePreview(response);
+        console.log(`[Startup] Health probe ${describeHealthProbe(probe)} returned expected HTTP ${response.status}`);
+        return;
+      }
+      if (expectedStatuses?.length && response.status < 500) {
+        lastBody = await readResponsePreview(response);
+        let errMsg2 = `Health probe ${describeHealthProbe(probe)} returned unexpected HTTP ${response.status}`;
+        if (lastBody) errMsg2 += `
+
+HTTP response body:
+${lastBody}`;
+        if (repoPath) {
+          const logs = getContainerLogTail(repoPath, 40);
+          if (logs) errMsg2 += `
+
+Container logs:
+${logs}`;
+        }
+        throw new StartupFailedError(errMsg2);
+      }
       if (response.status < 500) {
         consecutive500s = 0;
         consecutiveGatewayErrors = 0;
@@ -24256,14 +24439,21 @@ function probeHeaders(probePath) {
     "User-Agent": BROWSER_USER_AGENT
   };
 }
-async function checkAppHealth(port, healthCheckPath = "/") {
-  const probePath = healthCheckPath.startsWith("/") ? healthCheckPath : `/${healthCheckPath}`;
+async function checkAppHealth(port, healthCheck = "/") {
+  const probe = normalizeHealthProbe(healthCheck);
+  const probePath = normalizeProbePath(probe.path);
+  const method = (probe.method ?? (probe.formData || probe.body ? "POST" : "GET")).toUpperCase();
   try {
+    const { body, headers } = buildHealthProbeRequest(probe, probePath);
     const res = await fetch(`http://localhost:${port}${probePath}`, {
-      method: "GET",
-      headers: probeHeaders(probePath),
+      method,
+      headers,
+      ...body !== void 0 ? { body } : {},
       signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT)
     });
+    if (probe.expectedStatuses?.length) {
+      return probe.expectedStatuses.includes(res.status);
+    }
     return res.status < 500;
   } catch {
     return false;
@@ -24553,10 +24743,10 @@ function captureExitedContainers(repoPath, composeFile) {
     return [];
   }
 }
-async function waitForAppHealthy(port, healthCheckPath, waitMs) {
+async function waitForAppHealthy(port, healthCheck, waitMs) {
   const start = Date.now();
   while (Date.now() - start < waitMs) {
-    if (await checkAppHealth(port, healthCheckPath)) return true;
+    if (await checkAppHealth(port, healthCheck)) return true;
     await new Promise((r) => setTimeout(r, 3e3));
   }
   return false;
@@ -24570,7 +24760,8 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
   if (!composeFile) {
     composeFile = findComposeFile(cwd) ?? findComposeFile(repoPath) ?? "docker-compose.yml";
   }
-  const probePath = config.healthCheckPath ?? "/";
+  const healthCheck = config.healthProbe ?? config.healthCheckPath ?? "/";
+  const probeDescription = typeof healthCheck === "string" ? `GET http://localhost:${config.port}${healthCheck.startsWith("/") ? healthCheck : `/${healthCheck}`}` : `${describeHealthProbe(healthCheck).replace(" ", ` http://localhost:${config.port}`)}`;
   console.log(`[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${cwd})`);
   const triedStrategies = [];
   try {
@@ -24580,7 +24771,7 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
       timeout: 6e4
     });
     triedStrategies.push("docker compose restart");
-    if (await waitForAppHealthy(config.port, probePath, waitMs)) {
+    if (await waitForAppHealthy(config.port, healthCheck, waitMs)) {
       console.log(`[AppHealth] App responsive again after restart`);
       return { ok: true };
     }
@@ -24597,7 +24788,7 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
       timeout: 12e4
     });
     triedStrategies.push(`docker compose up -d ${recreateTarget}`);
-    if (await waitForAppHealthy(config.port, probePath, waitMs)) {
+    if (await waitForAppHealthy(config.port, healthCheck, waitMs)) {
       console.log(`[AppHealth] App responsive again after force-recreate`);
       return { ok: true };
     }
@@ -24611,7 +24802,7 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
       ok: false,
       diagnostics: `Quick restart strategies did not bring the app back. Strategies tried:
 ${triedList}
-All containers report running but the HTTP probe at port ${config.port}${probePath} never succeeded. The app process inside the container is likely wedged but not crashing.`
+All containers report running but the HTTP probe at port ${probeDescription} never succeeded. The app process inside the container is likely wedged but not crashing.`
     };
   }
   const exitedSummary = exited.map((c3) => `- service "${c3.service}" (${c3.status})
@@ -31407,6 +31598,7 @@ function cleanupHarnessInfra(repoPath) {
 var AppHealthMonitor = class {
   port;
   healthCheckPath;
+  healthProbe;
   pollIntervalMs;
   failureThreshold;
   deepProbeEveryNth;
@@ -31431,6 +31623,7 @@ var AppHealthMonitor = class {
   constructor(opts) {
     this.port = opts.port;
     this.healthCheckPath = opts.healthCheckPath ?? "/";
+    this.healthProbe = opts.healthProbe;
     this.pollIntervalMs = opts.pollIntervalMs ?? 15e3;
     this.failureThreshold = opts.failureThreshold ?? 3;
     this.onRecover = opts.onRecover;
@@ -31443,6 +31636,12 @@ var AppHealthMonitor = class {
   setDeepProbe(cb) {
     this.onDeepProbe = cb;
   }
+  describeProbe() {
+    if (!this.healthProbe) return `http://localhost:${this.port}${this.healthCheckPath}`;
+    const path2 = this.healthProbe.path.startsWith("/") ? this.healthProbe.path : `/${this.healthProbe.path}`;
+    const method = (this.healthProbe.method ?? (this.healthProbe.formData || this.healthProbe.body ? "POST" : "GET")).toUpperCase();
+    return `${method} http://localhost:${this.port}${path2}`;
+  }
   start() {
     if (this.running) return;
     this.running = true;
@@ -31451,7 +31650,7 @@ var AppHealthMonitor = class {
     }, this.pollIntervalMs);
     if (typeof this.timer.unref === "function") this.timer.unref();
     console.log(
-      `[AppHealth] Monitor started \u2014 polling http://localhost:${this.port}${this.healthCheckPath} every ${this.pollIntervalMs / 1e3}s`
+      `[AppHealth] Monitor started \u2014 polling ${this.describeProbe()} every ${this.pollIntervalMs / 1e3}s`
     );
   }
   stop() {
@@ -31549,7 +31748,7 @@ var AppHealthMonitor = class {
     if (this.probeInFlight) return;
     this.probeInFlight = true;
     try {
-      const ok = await checkAppHealth(this.port, this.healthCheckPath);
+      const ok = await checkAppHealth(this.port, this.healthProbe ?? this.healthCheckPath);
       if (ok) {
         if (this.consecutiveFailures > 0) {
           console.log(
@@ -31565,7 +31764,7 @@ var AppHealthMonitor = class {
             `[AppHealth] Probe failed (${reason}) \u2014 ${this.consecutiveFailures}/${this.failureThreshold}`
           );
           if (this.consecutiveFailures >= this.failureThreshold) {
-            this.lastUnhealthyReason = `app stopped responding to HTTP probes at http://localhost:${this.port}${this.healthCheckPath}`;
+            this.lastUnhealthyReason = `app stopped responding to HTTP probes at ${this.describeProbe()}`;
             this.markUnhealthy();
             void this.runRecovery();
           }
@@ -31986,7 +32185,8 @@ async function runOrchestrator(ctx) {
     healthMonitor = new AppHealthMonitor({
       port: startupConfig.port,
       healthCheckPath: startupConfig.healthCheckPath,
-      onDeepProbe: () => deepHealthCheck(
+      healthProbe: startupConfig.healthProbe,
+      onDeepProbe: () => startupConfig.healthProbe ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" }) : deepHealthCheck(
         startupConfig.port,
         startupConfig.healthCheckPath ?? "/",
         llm,
@@ -32088,7 +32288,8 @@ async function runOrchestrator(ctx) {
         healthMonitor = new AppHealthMonitor({
           port: startupConfig.port,
           healthCheckPath: startupConfig.healthCheckPath,
-          onDeepProbe: () => deepHealthCheck(
+          healthProbe: startupConfig.healthProbe,
+          onDeepProbe: () => startupConfig.healthProbe ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" }) : deepHealthCheck(
             startupConfig.port,
             startupConfig.healthCheckPath ?? "/",
             llm,
@@ -32164,7 +32365,8 @@ async function runOrchestrator(ctx) {
         healthMonitor = new AppHealthMonitor({
           port: startupConfig.port,
           healthCheckPath: startupConfig.healthCheckPath,
-          onDeepProbe: () => deepHealthCheck(
+          healthProbe: startupConfig.healthProbe,
+          onDeepProbe: () => startupConfig.healthProbe ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" }) : deepHealthCheck(
             startupConfig.port,
             startupConfig.healthCheckPath ?? "/",
             llm,
@@ -32689,7 +32891,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           }
         }
       }
-      const appAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
+      const appAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
       if (!appAlive) {
         console.warn(
           `[Scan] App is unreachable on port ${startupConfig.port} \u2014 restarting before scan`
@@ -32812,7 +33014,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       const totalScans = scanIds.length;
       const failedCount = failedScanDetails.length;
       if (failedCount > 0 && succeededScanIds.length === 0) {
-        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
+        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart and retry"
@@ -32855,7 +33057,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           "partial_failure",
           `Round ${iteration + 1}: ${failedCount}/${totalScans} scan(s) failed \u2014 continuing with findings from ${succeededScanIds.length} successful scan(s).`
         );
-        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthCheckPath);
+        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart before processing findings"
