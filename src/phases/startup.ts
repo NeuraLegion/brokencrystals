@@ -213,31 +213,53 @@ function dockerfileBuildsFromSource(content: string): boolean {
  * Find a usable Dockerfile in the repo that builds from source.
  *
  * Priority:
- * 1. `Dockerfile.bright` — our previously generated file (always builds from source)
- * 2. `Dockerfile` / `dockerfile` — standard names, validated for source build
- * 3. `Dockerfile.*` variants — scored by name, validated for source build
+ * 1. Selected-service Dockerfiles, if a service root is known
+ * 2. `Dockerfile.bright` — our previously generated file (always builds from source)
+ * 3. Root `Dockerfile` / `dockerfile` — standard names, validated for source build
+ * 4. Root `Dockerfile.*` variants — scored by name, validated for source build
  *
  * Returns the filename (relative to repoPath) or undefined if none found.
  */
-export function findDockerfile(repoPath: string): string | undefined {
-  // 1. Our own generated Dockerfile always takes priority
+export function findDockerfile(repoPath: string, serviceRoot?: string): string | undefined {
+  const normalizedServiceRoot = normalizeServiceRoot(serviceRoot);
+  if (normalizedServiceRoot) {
+    const serviceDockerfile = findDockerfileInDirectory(repoPath, normalizedServiceRoot);
+    if (serviceDockerfile) return serviceDockerfile;
+  }
+
+  // Our own generated Dockerfile is the repo-level fallback.
   if (existsSync(`${repoPath}/${BRIGHT_DOCKERFILE}`))
     return BRIGHT_DOCKERFILE;
 
-  // 2. Standard names
+  return findDockerfileInDirectory(repoPath);
+}
+
+function normalizeServiceRoot(serviceRoot?: string): string | undefined {
+  const normalized = serviceRoot?.trim().replace(/^\.\//, "").replace(/\/$/, "");
+  if (!normalized || normalized === "." || normalized.startsWith("/") || normalized.includes("..")) {
+    return undefined;
+  }
+  return normalized;
+}
+
+function findDockerfileInDirectory(repoPath: string, relativeDir = ""): string | undefined {
+  const dir = relativeDir ? `${repoPath}/${relativeDir}` : repoPath;
+  const prefix = relativeDir ? `${relativeDir}/` : "";
+
+  // Standard names
   for (const name of ["Dockerfile", "dockerfile"]) {
-    const path = `${repoPath}/${name}`;
+    const path = `${dir}/${name}`;
     if (!existsSync(path)) continue;
     try {
-      if (dockerfileBuildsFromSource(readFileSync(path, "utf-8"))) return name;
-      console.log(`[Startup] ${name} found but only pulls a remote image — skipping`);
+      if (dockerfileBuildsFromSource(readFileSync(path, "utf-8"))) return `${prefix}${name}`;
+      console.log(`[Startup] ${prefix}${name} found but only pulls a remote image — skipping`);
     } catch { /* unreadable */ }
   }
 
-  // 3. Scan for Dockerfile.* variants
+  // Scan for Dockerfile.* variants
   let variants: string[];
   try {
-    variants = readdirSync(repoPath).filter(
+    variants = readdirSync(dir).filter(
       (f) => /^Dockerfile\./i.test(f) && f !== BRIGHT_DOCKERFILE,
     );
   } catch {
@@ -259,9 +281,9 @@ export function findDockerfile(repoPath: string): string | undefined {
 
   for (const { f } of scored) {
     try {
-      if (dockerfileBuildsFromSource(readFileSync(`${repoPath}/${f}`, "utf-8")))
-        return f;
-      console.log(`[Startup] ${f} found but only pulls a remote image — skipping`);
+      if (dockerfileBuildsFromSource(readFileSync(`${dir}/${f}`, "utf-8")))
+        return `${prefix}${f}`;
+      console.log(`[Startup] ${prefix}${f} found but only pulls a remote image — skipping`);
     } catch { /* unreadable */ }
   }
 
@@ -477,6 +499,7 @@ async function generateComposeWithLLM(
   config: StartupConfig,
   model?: string,
   hints?: string[],
+  serviceRoot?: string,
 ): Promise<void> {
   const MAX_COMPOSE_GEN_RETRIES = 3;
   const t0 = Date.now();
@@ -484,7 +507,7 @@ async function generateComposeWithLLM(
   for (let attempt = 1; attempt <= MAX_COMPOSE_GEN_RETRIES; attempt++) {
     console.log(`[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`);
     try {
-      const dfName = findDockerfile(repoPath);
+      const dfName = findDockerfile(repoPath, serviceRoot);
       const hasDockerfile = !!dfName;
       const messages = generateComposePrompt(stackStr, discovery, hasDockerfile, hints, dfName);
       const handler = createToolHandler(repoPath);
@@ -510,7 +533,7 @@ async function generateComposeWithLLM(
 
   // All retries exhausted — fall back to template
   console.warn(`[Startup] All ${MAX_COMPOSE_GEN_RETRIES} compose generation attempts failed — using template fallback`);
-  generateComposeFile(repoPath, config);
+  generateComposeFile(repoPath, config, serviceRoot);
 }
 
 function shouldSelectMonorepoTarget(repoPath: string): boolean {
@@ -632,8 +655,8 @@ function addComposeFileFlag(command: string, composeFile: string): string {
   return command.replace(/\bdocker\s+compose\b/, `docker compose -f ${composeFile}`);
 }
 
-function withComposeFile(config: StartupConfig, composeFile: string): StartupConfig {
-  return {
+function withComposeFile(config: StartupConfig, composeFile: string, stripServiceArgs = false): StartupConfig {
+  const withFile = {
     ...config,
     command: addComposeFileFlag(config.command, composeFile),
     prerequisites: (config.prerequisites ?? []).map((cmd) =>
@@ -643,6 +666,65 @@ function withComposeFile(config: StartupConfig, composeFile: string): StartupCon
       addComposeFileFlag(cmd, composeFile),
     ),
   };
+
+  if (!stripServiceArgs) return withFile;
+
+  return {
+    ...withFile,
+    command: stripComposeServiceArgs(withFile.command),
+    prerequisites: withFile.prerequisites?.map(stripComposeServiceArgs),
+  };
+}
+
+const COMPOSE_FLAGS_WITH_VALUE = new Set([
+  "--ansi",
+  "--build-arg",
+  "--env-file",
+  "--parallel",
+  "--profile",
+  "--progress",
+  "--pull",
+  "--scale",
+  "--timeout",
+]);
+
+function stripComposeServiceArgs(command: string): string {
+  return command
+    .split(/\s*&&\s*/)
+    .map(stripComposeServiceArgsFromSegment)
+    .join(" && ");
+}
+
+function stripComposeServiceArgsFromSegment(segment: string): string {
+  const tokens = segment.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return segment;
+
+  const composeIdx = tokens.findIndex((token, idx) =>
+    token === "docker" && tokens[idx + 1] === "compose",
+  );
+  if (composeIdx === -1) return segment;
+
+  const commandIdx = tokens.findIndex((token, idx) =>
+    idx > composeIdx + 1 && (token === "up" || token === "build"),
+  );
+  if (commandIdx === -1) return segment;
+
+  const normalized = tokens.slice(0, commandIdx + 1);
+  let preserveNextValue = false;
+  for (const token of tokens.slice(commandIdx + 1)) {
+    if (preserveNextValue) {
+      normalized.push(token);
+      preserveNextValue = false;
+      continue;
+    }
+
+    if (token.startsWith("-")) {
+      normalized.push(token);
+      preserveNextValue = COMPOSE_FLAGS_WITH_VALUE.has(token) && !token.includes("=");
+    }
+  }
+
+  return normalized.join(" ");
 }
 
 export async function startApplicationWithRetries(
@@ -669,6 +751,7 @@ export async function startApplicationWithRetries(
   }
 
   const serviceScopedStartup = !!techStack.serviceRoot && techStack.serviceRoot !== ".";
+  const selectedServiceRoot = serviceScopedStartup ? techStack.serviceRoot : undefined;
   const stackStr = formatTechStack(techStack);
   const attemptErrors: Array<{ config: StartupConfig; error: string }> = [];
   const startupHints: string[] = [];
@@ -773,7 +856,7 @@ export async function startApplicationWithRetries(
 
     // If the LLM chose native but required tools aren't on host, switch to Docker
     if (!config.docker) {
-      config = ensureToolsAvailable(repoPath, config);
+      config = ensureToolsAvailable(repoPath, config, selectedServiceRoot);
     }
 
     // Guardrail: Docker config must include a build-from-source step.
@@ -783,7 +866,7 @@ export async function startApplicationWithRetries(
         `[Startup] Config uses pre-built image without build step — forcing docker build from source`,
       );
       const imageName = "bright-app-local";
-      const df = findDockerfile(repoPath);
+      const df = findDockerfile(repoPath, selectedServiceRoot);
       const fFlag = df && df !== "Dockerfile" ? `-f ${df} ` : "";
       config = {
         command: `docker run --name ${imageName} -p ${config.port}:${config.port} -d ${imageName}`,
@@ -869,7 +952,7 @@ export async function startApplicationWithRetries(
     }
 
     // Ensure a usable Dockerfile exists when Docker-based startup is requested
-    const existingDockerfile = config.docker ? findDockerfile(repoPath) : undefined;
+    const existingDockerfile = config.docker ? findDockerfile(repoPath, selectedServiceRoot) : undefined;
     if (config.docker && !existingDockerfile) {
       console.log(
         "[Startup] No source-building Dockerfile found — generating one for this project",
@@ -883,7 +966,7 @@ export async function startApplicationWithRetries(
       );
     }
     // Resolved Dockerfile name for this attempt (existing or freshly generated)
-    const dockerfileName = findDockerfile(repoPath) ?? "Dockerfile";
+    const dockerfileName = findDockerfile(repoPath, selectedServiceRoot) ?? "Dockerfile";
     if (dockerfileName !== "Dockerfile") {
       console.log(`[Startup] Using Dockerfile: ${dockerfileName}`);
     }
@@ -897,20 +980,20 @@ export async function startApplicationWithRetries(
         `[Startup] Generating scan-specific compose.yml for selected service ${techStack.serviceRoot} instead of using the root monorepo compose stack`,
       );
       if (discovery && discovery.services.length > 0) {
-        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints);
+        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints, selectedServiceRoot);
       } else {
-        generateComposeFile(repoPath, config);
+        generateComposeFile(repoPath, config, selectedServiceRoot);
       }
       generatedServiceScopedCompose = true;
-      config = withComposeFile(config, "compose.yml");
+      config = withComposeFile(config, "compose.yml", true);
     } else if (usesCompose && serviceScopedStartup) {
-      config = withComposeFile(config, "compose.yml");
+      config = withComposeFile(config, "compose.yml", true);
     } else if (usesCompose && !findComposeFile(repoPath)) {
       if (discovery && discovery.services.length > 0) {
-        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints);
+        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints, selectedServiceRoot);
       } else {
         console.log("[Startup] No compose file found — generating one from Dockerfile (no discovery available)");
-        generateComposeFile(repoPath, config);
+        generateComposeFile(repoPath, config, selectedServiceRoot);
       }
     }
 
@@ -1029,7 +1112,7 @@ Respond with EXACTLY one JSON object:
 
       // Classify the error for stats
       const isDockerBuildError = config.docker &&
-        !!findDockerfile(repoPath) &&
+        !!findDockerfile(repoPath, selectedServiceRoot) &&
         /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(detailedError);
       const isTimeoutError = /did not start on port.*within/i.test(detailedError);
       const previousErrorMsgs = attemptErrors.slice(0, -1).map((a) => a.error);
@@ -1103,6 +1186,7 @@ Respond with EXACTLY one JSON object:
             startupHints,
             previousRepairs,
             repeatedRootCause,
+            selectedServiceRoot,
           );
           if (buildResult.summary) {
             repairHistory.push({ kind: "build", summary: buildResult.summary, targetErrorFp: currentFp });
@@ -1393,13 +1477,13 @@ function detectAppService(cwd: string, composeFile: string, startupCmd: string):
  * Generate a minimal compose file from the existing Dockerfile and startup config.
  * This avoids wasting an attempt when the LLM picks docker compose but no file exists.
  */
-function generateComposeFile(repoPath: string, config: StartupConfig): void {
+function generateComposeFile(repoPath: string, config: StartupConfig, serviceRoot?: string): void {
   const port = config.port || 3000;
   const envLines = Object.entries(config.envVars ?? {})
     .map(([k, v]) => `      ${k}: "${v}"`)
     .join("\n");
 
-  const df = findDockerfile(repoPath);
+  const df = findDockerfile(repoPath, serviceRoot);
   // If non-standard Dockerfile name, use the extended build syntax
   const buildSection =
     df && df !== "Dockerfile"
@@ -1481,8 +1565,9 @@ export async function repairDockerBuild(
   hints?: string[],
   previousRepairs?: string[],
   repeatedRootCause?: boolean,
+  serviceRoot?: string,
 ): Promise<BuildRepairResult> {
-  const dockerfileName = findDockerfile(repoPath);
+  const dockerfileName = findDockerfile(repoPath, serviceRoot);
   if (!dockerfileName) return {};
   const dockerfilePath = `${repoPath}/${dockerfileName}`;
   let currentDockerfile: string;
@@ -2397,6 +2482,7 @@ function looksLikeCommand(s: string): boolean {
 function ensureToolsAvailable(
   repoPath: string,
   config: StartupConfig,
+  serviceRoot?: string,
 ): StartupConfig {
   const knownTools = [
     { re: /\bdotnet\b/, name: "dotnet" },
@@ -2418,7 +2504,7 @@ function ensureToolsAvailable(
         `[Startup] "${name}" not found on host — switching to Docker build`,
       );
       const imageName = "bright-app-local";
-      const df = findDockerfile(repoPath);
+      const df = findDockerfile(repoPath, serviceRoot);
       const fFlag = df && df !== "Dockerfile" ? `-f ${df} ` : "";
       return {
         command: `docker run --name ${imageName} -p ${config.port}:${config.port} -d ${imageName}`,
