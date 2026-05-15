@@ -36543,6 +36543,7 @@ var ProgressReporter = class {
   steps = [];
   platform;
   findingsSummary = [];
+  scanTarget;
   constructor(platform) {
     this.platform = platform;
   }
@@ -36607,8 +36608,18 @@ var ProgressReporter = class {
   setFindingsSummary(findings) {
     this.findingsSummary = findings;
   }
+  async setScanTarget(app, url) {
+    this.scanTarget = { app, url };
+    await this.updatePrDescription();
+  }
   async updatePrDescription() {
     const lines = [];
+    if (this.scanTarget) {
+      lines.push(
+        `**Scan target:** \`${this.scanTarget.app}\`${this.scanTarget.url ? ` at ${this.scanTarget.url}` : ""}`
+      );
+      lines.push("");
+    }
     for (const s of this.steps) {
       const icon = s.status === "done" ? "\u2705" : s.status === "working" ? "\u{1F504}" : "\u2B1C";
       const suffix = s.attempts > 1 ? `  _(${s.attempts} attempts)_` : "";
@@ -56572,10 +56583,12 @@ async function runOrchestrator(ctx) {
     appProcess = startup.process;
     let startupConfig = startup.config;
     let baseUrl = `http://localhost:${startupConfig.port}`;
+    const selectedApp = techStack.serviceRoot && techStack.serviceRoot !== "." ? techStack.serviceRoot : "repository root";
+    await progress.setScanTarget(selectedApp, baseUrl);
     await progress.phaseDetail(
       "startup",
       "app_running",
-      `Application running at ${baseUrl}`
+      `Application running at ${baseUrl} (${selectedApp})`
     );
     const deepProbeCache = /* @__PURE__ */ new Map();
     healthMonitor = new AppHealthMonitor({

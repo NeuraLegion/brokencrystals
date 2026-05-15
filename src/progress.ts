@@ -40,6 +40,7 @@ export class ProgressReporter {
   private steps: Step[] = [];
   private platform: Platform;
   private findingsSummary: FindingSummary[] = [];
+  private scanTarget?: { app: string; url?: string };
 
   constructor(platform: Platform) {
     this.platform = platform;
@@ -131,8 +132,20 @@ export class ProgressReporter {
     this.findingsSummary = findings;
   }
 
+  async setScanTarget(app: string, url?: string): Promise<void> {
+    this.scanTarget = { app, url };
+    await this.updatePrDescription();
+  }
+
   async updatePrDescription(): Promise<void> {
     const lines: string[] = [];
+
+    if (this.scanTarget) {
+      lines.push(
+        `**Scan target:** \`${this.scanTarget.app}\`${this.scanTarget.url ? ` at ${this.scanTarget.url}` : ""}`,
+      );
+      lines.push("");
+    }
 
     for (const s of this.steps) {
       const icon =

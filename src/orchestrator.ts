@@ -465,10 +465,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     appProcess = startup.process;
     let startupConfig = startup.config;
     let baseUrl = `http://localhost:${startupConfig.port}`;
+    const selectedApp = techStack.serviceRoot && techStack.serviceRoot !== "."
+      ? techStack.serviceRoot
+      : "repository root";
+    await progress.setScanTarget(selectedApp, baseUrl);
     await progress.phaseDetail(
       "startup",
       "app_running",
-      `Application running at ${baseUrl}`,
+      `Application running at ${baseUrl} (${selectedApp})`,
     );
 
     // Start the background health monitor. Recovery is limited to quick
