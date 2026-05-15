@@ -110,7 +110,7 @@ export async function prepareScanEnvironment(
 
   const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue);
 
-  const response = await chatWithTools(llm, messages, tools, handler, model, 20);
+  const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 30 : 20);
 
   try {
     const json = extractJson(response);
@@ -125,7 +125,7 @@ export async function prepareScanEnvironment(
       const changes = result.changes ?? [];
       const actualMutations = dockerCommands.length + editFileCalls;
       if (postProbeCalls < 5) {
-        const summary = "Scan-prep reported success without performing the mandatory 5+ rapid POST verification";
+        const summary = `Scan-prep reported success after only ${postProbeCalls}/5 required rapid POST verification request(s)`;
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary, failureKind: "verification_missing" };
       }

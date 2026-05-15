@@ -642,13 +642,29 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     let scanPrepReplayCommands: { container: string; command: string }[] = [];
     const authHints: string[] = [];
     try {
-      const prepResult = await prepareScanEnvironment(
+      let prepResult = await prepareScanEnvironment(
         llm,
         repoPath,
         baseUrl,
         techStack,
         config.modelSelector.current(),
       );
+      if (prepResult.failureKind === "verification_missing") {
+        console.warn("[Engine] Scan prep skipped mandatory POST verification — retrying targeted verification pass");
+        await progress.phaseDetail("scan_prep", "verification_retry", prepResult.summary);
+        prepResult = await prepareScanEnvironment(
+          llm,
+          repoPath,
+          baseUrl,
+          techStack,
+          config.modelSelector.current(),
+          [
+            prepResult.summary,
+            "The previous scan-prep pass reported success but did not use probe_url for 5+ rapid POST requests to the real login/auth processing endpoint.",
+            "Do not stop at code inspection or edits. Restart/rebuild if needed, then perform the required POST verification and only report completed=true after those POSTs return non-429 responses.",
+          ].join(" "),
+        );
+      }
       if (prepResult.completed && prepResult.changes.length > 0) {
         await progress.phaseDetail("scan_prep", "done", prepResult.summary);
         if (prepResult.replayCommands?.length) {

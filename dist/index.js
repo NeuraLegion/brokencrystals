@@ -53893,7 +53893,7 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, 
     return baseCodeHandler(name, args);
   };
   const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue);
-  const response = await chatWithTools(llm, messages, tools, handler, model, 20);
+  const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 30 : 20);
   try {
     const json = extractJson(response);
     const result = JSON.parse(json);
@@ -53901,7 +53901,7 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, 
       const changes = result.changes ?? [];
       const actualMutations = dockerCommands.length + editFileCalls;
       if (postProbeCalls < 5) {
-        const summary = "Scan-prep reported success without performing the mandatory 5+ rapid POST verification";
+        const summary = `Scan-prep reported success after only ${postProbeCalls}/5 required rapid POST verification request(s)`;
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary, failureKind: "verification_missing" };
       }
@@ -56716,13 +56716,29 @@ async function runOrchestrator(ctx) {
     let scanPrepReplayCommands = [];
     const authHints = [];
     try {
-      const prepResult = await prepareScanEnvironment(
+      let prepResult = await prepareScanEnvironment(
         llm,
         repoPath,
         baseUrl,
         techStack,
         config.modelSelector.current()
       );
+      if (prepResult.failureKind === "verification_missing") {
+        console.warn("[Engine] Scan prep skipped mandatory POST verification \u2014 retrying targeted verification pass");
+        await progress.phaseDetail("scan_prep", "verification_retry", prepResult.summary);
+        prepResult = await prepareScanEnvironment(
+          llm,
+          repoPath,
+          baseUrl,
+          techStack,
+          config.modelSelector.current(),
+          [
+            prepResult.summary,
+            "The previous scan-prep pass reported success but did not use probe_url for 5+ rapid POST requests to the real login/auth processing endpoint.",
+            "Do not stop at code inspection or edits. Restart/rebuild if needed, then perform the required POST verification and only report completed=true after those POSTs return non-429 responses."
+          ].join(" ")
+        );
+      }
       if (prepResult.completed && prepResult.changes.length > 0) {
         await progress.phaseDetail("scan_prep", "done", prepResult.summary);
         if (prepResult.replayCommands?.length) {
