@@ -4241,9 +4241,9 @@ HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundle
  * When a dedicated healthCheckPath is configured (i.e. not "/"), this also
  * probes "/" (the root page) with browser-like headers. This catches the
  * common case where a tiny health endpoint (e.g. /srv/status → "ok") is
- * perfectly healthy while every real user-facing page returns a 500. Both
- * the health endpoint AND the root page must be healthy for the deep probe
- * to pass.
+ * perfectly healthy while every real user-facing page returns a 500. API-only
+ * apps may intentionally return 404 on "/", though; that is not a failure if
+ * the configured health endpoint is healthy.
  *
  * Used by AppHealthMonitor periodically (every Nth shallow probe) and
  * synchronously before each scan round.
@@ -4264,6 +4264,12 @@ export async function deepHealthCheck(
   if (normalizedHealth !== "/") {
     const rootResult = await deepProbeSingleUrl(port, "/", llm, modelSelector, cache);
     if (!rootResult.healthy) {
+      if (isExpectedMissingRoot(rootResult.reason)) {
+        return {
+          healthy: true,
+          reason: `${healthResult.reason}; root / returns not-found, treating as API-only app`,
+        };
+      }
       return {
         healthy: false,
         reason: `health endpoint (${healthCheckPath}) is ok, but root page (/) is broken: ${rootResult.reason}`,
@@ -4301,6 +4307,10 @@ export async function deepHealthCheck(
   }
 
   return healthResult;
+}
+
+function isExpectedMissingRoot(reason: string): boolean {
+  return /\b404\b|not[\s-]?found|resource "\/" not found/i.test(reason);
 }
 
 /**

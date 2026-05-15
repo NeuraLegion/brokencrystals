@@ -49066,6 +49066,12 @@ async function deepHealthCheck(port, healthCheckPath, llm, modelSelector, cache)
   if (normalizedHealth !== "/") {
     const rootResult = await deepProbeSingleUrl(port, "/", llm, modelSelector, cache);
     if (!rootResult.healthy) {
+      if (isExpectedMissingRoot(rootResult.reason)) {
+        return {
+          healthy: true,
+          reason: `${healthResult.reason}; root / returns not-found, treating as API-only app`
+        };
+      }
       return {
         healthy: false,
         reason: `health endpoint (${healthCheckPath}) is ok, but root page (/) is broken: ${rootResult.reason}`
@@ -49097,6 +49103,9 @@ async function deepHealthCheck(port, healthCheckPath, llm, modelSelector, cache)
     }
   }
   return healthResult;
+}
+function isExpectedMissingRoot(reason) {
+  return /\b404\b|not[\s-]?found|resource "\/" not found/i.test(reason);
 }
 async function deepProbeSingleUrl(port, path2, llm, modelSelector, cache) {
   const probePath = path2.startsWith("/") ? path2 : `/${path2}`;
