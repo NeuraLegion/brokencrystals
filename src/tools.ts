@@ -671,14 +671,14 @@ const searchWebTool: ChatCompletionTool = {
   function: {
     name: "search_web",
     description:
-      "Search the web for technical solutions. Use when you're stuck on: how to install a specific package/tool on a specific OS, the correct package name, how to fix a specific error, or version-specific configuration. Returns top results with titles and snippets.",
+      "Search the public web for technical solutions. Use for public OSS docs, framework/package behavior, OS package names, version-specific configuration, or generic error messages. Do NOT search for private/local repository paths, selected monorepo service names, or internal code identifiers; inspect the codebase for those instead. Returns top results with titles and snippets.",
     parameters: {
       type: "object",
       properties: {
         query: {
           type: "string",
           description:
-            'Technical search query (e.g. "install imagemagick 7 debian bookworm", "fix Pitchfork::BootFailure rails 7", "postgresql 16 apt repository ubuntu 24.04")',
+            'Public technical search query without local repo paths (e.g. "install imagemagick 7 debian bookworm", "fix Pitchfork::BootFailure rails 7", "postgresql 16 apt repository ubuntu 24.04")',
         },
       },
       required: ["query"],
@@ -710,6 +710,13 @@ const fetchUrlTool: ChatCompletionTool = {
 /** Web search + URL fetch tool definitions — reusable across phases */
 export const webSearchTools: ChatCompletionTool[] = [searchWebTool, fetchUrlTool];
 
+function looksLikeInternalCodeSearch(query: string): boolean {
+  return (
+    /(?:^|\s|["'`])(?:\.\/)?(?:apps|packages|services|libs|modules)\/[A-Za-z0-9._/-]+/i.test(query) ||
+    /(?:^|\s|["'`])(?:\/tmp\/|\/home\/|\/workspace\/|\/workspaces\/|\/app\/)[^\s"'`]+/i.test(query)
+  );
+}
+
 /**
  * Create a tool handler for search_web and fetch_url.
  * Pass repoPath so large fetched pages are saved to .bright-fetched-page.txt.
@@ -719,6 +726,14 @@ export function createWebSearchHandler(repoPath: string): ToolHandler {
     if (name === "search_web") {
       const query = String(args.query ?? "").trim();
       if (!query) return "Error: query parameter is required";
+      if (looksLikeInternalCodeSearch(query)) {
+        console.log(`[Tool] search_web skipped internal query: ${query}`);
+        return [
+          "Search skipped: this query appears to contain a local/private repository path or internal monorepo service name.",
+          "Use codebase tools (list_files/read_file/search_files) for internal paths.",
+          'If public web search is still needed, reformulate using a public OSS project/framework/package name or a generic error, for example "NestJS Docker pnpm monorepo production build" or "rails ENOENT magick binary".',
+        ].join("\n");
+      }
       console.log(`[Tool] search_web: ${query}`);
       return searchWeb(query);
     }

@@ -211,7 +211,7 @@ ${csrfGuidance}
 - **run_command_on_host** — ⚠️ DIAGNOSTIC ONLY. Run read-only shell commands on the host (docker ps, docker logs, docker inspect, printenv). Do NOT restart, kill, or modify anything.
 - **run_command_in_docker** — ⚠️ DIAGNOSTIC ONLY. Run read-only commands inside a Docker container (check user state, inspect environment, query database). Do NOT restart processes, kill PIDs, or modify config files.
 - **read_file / search_files / list_files** — Inspect the codebase to understand auth flow.
-- **search_web** — Search the internet for how this app handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough.
+- **search_web** — Search the internet for how the public OSS app/framework handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough. Never search local repo paths or internal monorepo service names; inspect the codebase for those.
 - **fetch_url** — Fetch full content of a web page (e.g. app documentation, Stack Overflow answer). Large pages are saved to .bright-fetched-page.txt — use read_file to see full content.
 - **create_auth** — Create a Bright auth object with simplified parameters. Best for standard session/cookie, JWT, and API key flows where CSRF is in a **JSON endpoint** or a **Rails meta tag**. Do NOT use for Django/Laravel-style CSRF hidden form fields.
 - **create_auth_raw** — Create a Bright auth object with FULL multistep control. Use this for:
@@ -428,7 +428,7 @@ Create a user with these exact credentials:
 - **run_command_in_docker** — Run commands inside a Docker container (create users, framework CLI)
 - **probe_url** — Make HTTP requests to the running app
 - **read_file / search_files / list_files** — Inspect the codebase
-- **search_web** — Search the internet for how to create users in this specific framework. Use when the codebase doesn't make user creation obvious or when initial attempts fail with unfamiliar errors.
+- **search_web** — Search the internet for how to create users in this public OSS app/framework. Use when the codebase doesn't make user creation obvious or when initial attempts fail with unfamiliar errors. Never search local repo paths or internal service names.
 - **fetch_url** — Fetch full content of a web page (docs, Stack Overflow). Large pages are saved to .bright-fetched-page.txt — use read_file to see full content.
 
 ## Strategy
@@ -518,7 +518,7 @@ ${diagnostic}
 - **run_command_in_docker** — Run commands inside a Docker container
 - **probe_url** — Make HTTP requests to the running app (cookies tracked across calls)
 - **read_file / search_files / list_files** — Inspect the application codebase
-- **search_web** — Search the internet for solutions specific to this app/framework
+- **search_web** — Search the internet for solutions specific to this public OSS app/framework or generic error. Never search local repo paths or internal service names.
 - **fetch_url** — Fetch documentation pages
 
 ## Strategy

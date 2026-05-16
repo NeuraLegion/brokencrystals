@@ -62,7 +62,7 @@ Review these files as a unit and look for issues in these categories:
 ## Tools available
 - **read_file / search_files / list_files** — Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
 - **edit_file** — Apply fixes directly to ${dockerfileName} or compose.yml. The tool returns an error if old_string doesn't match — if that happens, use read_file to get the current content and retry with the correct string.
-- **search_web** — Search the internet to verify image capabilities (e.g. "does postgres:16 include pgvector extension?")
+- **search_web** — Search the internet to verify public image/package/framework capabilities (e.g. "does postgres:16 include pgvector extension?"). Never search local repo paths or internal service names.
 - **verify_docker_image** — Check if a Docker image:tag exists on Docker Hub
 
 ## Workflow
@@ -84,7 +84,7 @@ After investigating and applying any fixes, respond with ONLY this JSON (no mark
 
 Rules:
 - Only report issues you're confident about — don't guess.
-- Use search_web to verify when unsure (e.g. whether an image includes a package).
+- Use search_web to verify public image/package/framework facts when unsure (e.g. whether an image includes a package). Do not search for local monorepo paths or internal service names.
 - "critical" issues = will definitely cause build failure or runtime crash. Fix these with edit_file.
 - "warning" issues = might cause issues. Log them but fix if you can.
 - If everything looks good: {"issues_found": 0, "fixes_applied": 0, "summary": "No issues found"}

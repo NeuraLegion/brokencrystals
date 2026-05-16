@@ -49,19 +49,21 @@ Most frameworks and applications have BUILT-IN rate limiting that is NOT visible
 - Framework internals that are always active (Rails ActionController::HttpAuthentication, Rack::Utils)
 - Application-level throttle logic embedded in controllers/models
 
-**You MUST use \`search_web\` to search for how THIS SPECIFIC application handles rate limiting.** Do not rely solely on grepping the codebase — that will miss built-in framework rate limits.
+**You MUST use \`search_web\` to search for how the public OSS application or framework handles rate limiting.** Do not rely solely on grepping the codebase — that will miss built-in framework rate limits.
 
 Example searches to make:
-- "<app name> disable rate limiting"
-- "<app name> rate limit site settings"
-- "<app name> max logins per minute configuration"
+- "<public OSS app name> disable rate limiting" (only when the app is a recognizable public OSS project)
+- "<public OSS app name> rate limit site settings"
+- "<public OSS app name> max logins per minute configuration"
 - "<framework> built-in rate limiting disable for testing"
+
+Do NOT search for private/local monorepo paths or internal service names such as "apps/monolith rate limit". If the selected app is not a recognizable public OSS product, search by framework/package/error instead and use codebase/runtime inspection for app-specific details.
 
 If your codebase search finds NOTHING related to rate limiting, that is a RED FLAG — it almost certainly means rate limiting is built into the framework at a level you can't see by grepping. Use \`search_web\` immediately to find out how to disable it.
 
 ## How to find them
 
-1. **Search the web FIRST** — use \`search_web\` to find: "<app/framework name> disable rate limiting for testing" or "<app/framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits.
+1. **Search the web FIRST** — use \`search_web\` to find public OSS/framework guidance such as "<public OSS app/framework name> disable rate limiting for testing" or "<framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits. Never include local repo paths or internal monorepo service names in web queries.
 2. **Query ALL runtime settings inside the container** — many apps store rate limits in database-backed settings. Run CLI commands inside the container to LIST ALL settings related to rate/limit/throttle/max/login. Cast a WIDE net — use a broad regex. For example:
    - Rails/Discourse: \`rails runner "puts SiteSetting.all_settings.select { |s| s[:setting].to_s =~ /rate|limit|max.*per|throttle|lock|login|attempt|spam/ }.map { |s| [s[:setting], s[:value]].join('=') }"\`
    - Django: \`python manage.py shell -c "from constance import config; ..."\`
@@ -115,7 +117,7 @@ Do NOT report success without performing the rapid-request verification.
 
 ## Tools available
 - \`search_files\` / \`read_file\` / \`list_files\` — inspect the codebase
-- \`search_web\` / \`fetch_url\` — search the internet for framework-specific docs (USE THIS — it's your most powerful tool for finding hidden rate limits)
+- \`search_web\` / \`fetch_url\` — search the internet for public OSS/framework-specific docs (USE THIS for hidden framework/product rate limits; never search local repo paths or internal service names)
 - \`run_command_on_host\` — run shell commands on the host
 - \`run_command_in_docker\` — run commands inside a Docker container
 - \`edit_file\` — edit source/config files on the host
@@ -130,7 +132,7 @@ If you tried but failed:
 {"completed": false, "changes": [], "summary": "what went wrong"}
 
 ## Rules
-- **USE \`search_web\` — if you can't find rate limits via code inspection, search the web for how this specific app/framework handles them. Do NOT give up just because grep found nothing.**
+- **USE \`search_web\` — if you can't find rate limits via code inspection, search the web for how this public OSS app/framework handles them. Do NOT give up just because grep found nothing, but never search for local repo paths/internal service names.**
 - Don't break the app. If unsure, search the web for docs before making changes.
 - Be thorough — find ALL rate-limit and throttle settings, not just the first one.
 - Prefer runtime settings (admin API, CLI, DB settings) when they exist, but if the rate limiter is in-memory (express-brute, Rack::Attack memory store, etc.), you MUST patch the source code — DB/config changes alone won't work.
@@ -143,7 +145,7 @@ If you tried but failed:
     },
     {
       role: "user",
-      content: "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how this specific framework/app handles rate limiting. Return the JSON result when done.",
+      content: "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how the public OSS app/framework handles rate limiting, but never search local repo paths or internal service names. Return the JSON result when done.",
     },
   ];
 }

@@ -24,12 +24,19 @@ If the tech stack description says "(service: <path>)", this is a monorepo and t
 Use the tools to inspect the following (in order):
 
 ### 1. Search the web for build-from-source guides
-**Use search_web** to find:
-- "\${project_name} Docker development setup from source"
-- "\${project_name} build from source Docker"
-- "\${project_name} development environment setup guide"
+**Use search_web only for PUBLIC information**:
+- If this is a recognizable open-source project (e.g. Discourse, GitLab, Grafana), search for that public project name:
+  - "\${public_project_name} Docker development setup from source"
+  - "\${public_project_name} build from source Docker"
+  - "\${public_project_name} development environment setup guide"
+- If this is not a recognizable public OSS project, search for the public framework/package/generic issue instead:
+  - "\${framework} Docker production build from source"
+  - "\${package/tool/error} \${OS/base image} install"
+  - "\${framework} monorepo Docker build"
 - Known issues, required environment variables, and build gotchas
 This is critical for complex apps where building from source is tricky (e.g. asset compilation, native extensions, migration steps).
+
+Do NOT search for private/local repo paths or selected monorepo service names such as "apps/monolith", "packages/api", "/tmp/workspace/...", or internal package names. Those are not public web topics; inspect repository files for them.
 
 ### 2. Dependency manifests
 Gemfile, package.json, requirements.txt, go.mod, pom.xml, .csproj, etc.
@@ -111,14 +118,14 @@ Rules:
 - **PRODUCTION-LIKE ENVIRONMENT**: Always set environment variables for production-like operation (e.g. RAILS_ENV=production, NODE_ENV=production, DJANGO_SETTINGS_MODULE=project.settings.production, MIX_ENV=prod). The app will be security-tested by a DAST scanner — it must behave like a production deployment (precompiled assets, optimized mode, no dev-mode warnings). Development mode causes false positives, slow responses, and debug pages that break security testing.
 - Be specific in configNotes — mention exact file paths and what to change
 - If you find NO required services (e.g. a simple Node app with SQLite), return an empty services array
-- **Use search_web to find build-from-source setup guides** — this helps identify tricky env vars, build steps, and known issues
+- **Use search_web to find public OSS/framework build-from-source setup guides** — this helps identify tricky env vars, build steps, and known issues. Never search for local monorepo paths or internal service names; use code inspection for those.
 - postStartSetup: list any steps that must run AFTER the app starts (setup wizards, admin registration, data seeds, etc.)
 - buildNotes: include ALL known gotchas from web search results (env vars, compile flags, migration quirks, etc.)
 - buildNotes: list ALL runtime system dependencies the app needs (e.g. ImageMagick/magick for image processing, wkhtmltopdf for PDF generation, ffmpeg for media, gifsicle, optipng, etc.). These must be installed in the Dockerfile — missing runtime tools cause 500 errors in production.`,
     },
     {
       role: "user",
-      content: `Analyze this project's infrastructure requirements. Use the tools to explore dependency files, config files, plugins, and documentation. **Use search_web to find build-from-source guides and known Docker setup issues.** Return the JSON discovery object.`,
+      content: `Analyze this project's infrastructure requirements. Use the tools to explore dependency files, config files, plugins, and documentation. **Use search_web only for public OSS/framework build-from-source guides, known Docker setup issues, or generic errors — never for local monorepo paths or internal service names.** Return the JSON discovery object.`,
     },
   ];
 }

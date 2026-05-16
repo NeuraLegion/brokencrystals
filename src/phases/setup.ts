@@ -165,10 +165,20 @@ const SETUP_BLOCKED_COMMANDS = [
 
 /**
  * Gather context for the setup LLM BEFORE it starts.
- * 1. Web search for "{techStack} first-run setup / unattended install"
+ * 1. Web search for public stack setup docs, without local monorepo paths
  * 2. Probe the app's root + common setup URLs, extract API routes from HTML
  * Returns a markdown block to inject into the user message.
  */
+function publicSetupSearchSubject(techStack: string): string {
+  const sanitized = techStack
+    .replace(/\s*\(service:\s*[^)]+\)/gi, "")
+    .replace(/(?:^|\s)(?:\.\/)?(?:apps|packages|services|libs|modules)\/[A-Za-z0-9._/-]+/gi, " ")
+    .replace(/(?:^|\s)(?:\/tmp\/|\/home\/|\/workspace\/|\/workspaces\/|\/app\/)[^\s]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return sanitized || "web application";
+}
+
 async function gatherSetupContext(
   baseUrl: string,
   techStack: string,
@@ -176,9 +186,10 @@ async function gatherSetupContext(
   const sections: string[] = [];
 
   // --- 1. Web search for installation docs ---
+  const searchSubject = publicSetupSearchSubject(techStack);
   const searchQueries = [
-    `${techStack} first run setup unattended install CLI`,
-    `${techStack} installation wizard API endpoint programmatic setup`,
+    `${searchSubject} first run setup unattended install CLI`,
+    `${searchSubject} installation wizard API endpoint programmatic setup`,
   ];
   for (const query of searchQueries) {
     try {

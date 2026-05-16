@@ -1887,7 +1887,7 @@ async function repairInfrastructure(
 - **run_command_on_host** — run diagnostic or repair commands on the host (docker logs, docker ps, sed, chmod, find, etc.)
 - **run_command_in_docker** — run commands inside the application container (check installed tools, read config, test commands, inspect processes)
 - **probe_url** — make an HTTP request and see the full response (status, headers, body). Use this to check what the app returns, diagnose 500 errors, test if endpoints work.
-- **search_web** — search the internet for technical solutions. Use when you're stuck on: how to install a specific package on a specific OS, the correct package name for a version, how to fix an unfamiliar error. Don't guess — search.
+- **search_web** — search the internet for public technical solutions. Use when you're stuck on: how to install a specific package on a specific OS, the correct package name for a version, how to fix an unfamiliar error, or public OSS/framework docs. Do NOT search local repo paths, selected monorepo service names, or internal code identifiers; inspect the repository for those.
 - **fetch_url** — fetch the full content of a web page (e.g. a Stack Overflow answer or docs page found via search_web). Large pages are saved to .bright-fetched-page.txt — use read_file to see the full content.
 - **verify_docker_image** — check if a Docker image exists
 - **wait** — wait for a specified number of seconds (use when services need time to start up)
@@ -1924,7 +1924,7 @@ If you can't figure out how to install a package, fix a version mismatch, or res
 - "install imagemagick 7 debian bookworm" (when apt only has v6)
 - "fix ENOENT magick binary rails" (when a specific binary is missing)
 - "postgresql 16 pgvector extension docker" (when an extension isn't available)
-Don't waste turns guessing package names — search for the answer.
+Don't waste turns guessing package names — search for the answer. But never search for internal paths or service names such as "apps/monolith Docker"; reformulate as a public framework/package/error query.
 
 RESPONSE FORMAT:
 After fixing the issue, reply with a JSON object describing what changed:

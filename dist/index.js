@@ -45195,13 +45195,13 @@ var searchWebTool = {
   type: "function",
   function: {
     name: "search_web",
-    description: "Search the web for technical solutions. Use when you're stuck on: how to install a specific package/tool on a specific OS, the correct package name, how to fix a specific error, or version-specific configuration. Returns top results with titles and snippets.",
+    description: "Search the public web for technical solutions. Use for public OSS docs, framework/package behavior, OS package names, version-specific configuration, or generic error messages. Do NOT search for private/local repository paths, selected monorepo service names, or internal code identifiers; inspect the codebase for those instead. Returns top results with titles and snippets.",
     parameters: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: 'Technical search query (e.g. "install imagemagick 7 debian bookworm", "fix Pitchfork::BootFailure rails 7", "postgresql 16 apt repository ubuntu 24.04")'
+          description: 'Public technical search query without local repo paths (e.g. "install imagemagick 7 debian bookworm", "fix Pitchfork::BootFailure rails 7", "postgresql 16 apt repository ubuntu 24.04")'
         }
       },
       required: ["query"],
@@ -45228,11 +45228,22 @@ var fetchUrlTool = {
   }
 };
 var webSearchTools = [searchWebTool, fetchUrlTool];
+function looksLikeInternalCodeSearch(query) {
+  return /(?:^|\s|["'`])(?:\.\/)?(?:apps|packages|services|libs|modules)\/[A-Za-z0-9._/-]+/i.test(query) || /(?:^|\s|["'`])(?:\/tmp\/|\/home\/|\/workspace\/|\/workspaces\/|\/app\/)[^\s"'`]+/i.test(query);
+}
 function createWebSearchHandler(repoPath) {
   return async (name, args) => {
     if (name === "search_web") {
       const query = String(args.query ?? "").trim();
       if (!query) return "Error: query parameter is required";
+      if (looksLikeInternalCodeSearch(query)) {
+        console.log(`[Tool] search_web skipped internal query: ${query}`);
+        return [
+          "Search skipped: this query appears to contain a local/private repository path or internal monorepo service name.",
+          "Use codebase tools (list_files/read_file/search_files) for internal paths.",
+          'If public web search is still needed, reformulate using a public OSS project/framework/package name or a generic error, for example "NestJS Docker pnpm monorepo production build" or "rails ENOENT magick binary".'
+        ].join("\n");
+      }
       console.log(`[Tool] search_web: ${query}`);
       return searchWeb(query);
     }
@@ -45773,12 +45784,19 @@ If the tech stack description says "(service: <path>)", this is a monorepo and t
 Use the tools to inspect the following (in order):
 
 ### 1. Search the web for build-from-source guides
-**Use search_web** to find:
-- "\${project_name} Docker development setup from source"
-- "\${project_name} build from source Docker"
-- "\${project_name} development environment setup guide"
+**Use search_web only for PUBLIC information**:
+- If this is a recognizable open-source project (e.g. Discourse, GitLab, Grafana), search for that public project name:
+  - "\${public_project_name} Docker development setup from source"
+  - "\${public_project_name} build from source Docker"
+  - "\${public_project_name} development environment setup guide"
+- If this is not a recognizable public OSS project, search for the public framework/package/generic issue instead:
+  - "\${framework} Docker production build from source"
+  - "\${package/tool/error} \${OS/base image} install"
+  - "\${framework} monorepo Docker build"
 - Known issues, required environment variables, and build gotchas
 This is critical for complex apps where building from source is tricky (e.g. asset compilation, native extensions, migration steps).
+
+Do NOT search for private/local repo paths or selected monorepo service names such as "apps/monolith", "packages/api", "/tmp/workspace/...", or internal package names. Those are not public web topics; inspect repository files for them.
 
 ### 2. Dependency manifests
 Gemfile, package.json, requirements.txt, go.mod, pom.xml, .csproj, etc.
@@ -45860,14 +45878,14 @@ Rules:
 - **PRODUCTION-LIKE ENVIRONMENT**: Always set environment variables for production-like operation (e.g. RAILS_ENV=production, NODE_ENV=production, DJANGO_SETTINGS_MODULE=project.settings.production, MIX_ENV=prod). The app will be security-tested by a DAST scanner \u2014 it must behave like a production deployment (precompiled assets, optimized mode, no dev-mode warnings). Development mode causes false positives, slow responses, and debug pages that break security testing.
 - Be specific in configNotes \u2014 mention exact file paths and what to change
 - If you find NO required services (e.g. a simple Node app with SQLite), return an empty services array
-- **Use search_web to find build-from-source setup guides** \u2014 this helps identify tricky env vars, build steps, and known issues
+- **Use search_web to find public OSS/framework build-from-source setup guides** \u2014 this helps identify tricky env vars, build steps, and known issues. Never search for local monorepo paths or internal service names; use code inspection for those.
 - postStartSetup: list any steps that must run AFTER the app starts (setup wizards, admin registration, data seeds, etc.)
 - buildNotes: include ALL known gotchas from web search results (env vars, compile flags, migration quirks, etc.)
 - buildNotes: list ALL runtime system dependencies the app needs (e.g. ImageMagick/magick for image processing, wkhtmltopdf for PDF generation, ffmpeg for media, gifsicle, optipng, etc.). These must be installed in the Dockerfile \u2014 missing runtime tools cause 500 errors in production.`
     },
     {
       role: "user",
-      content: `Analyze this project's infrastructure requirements. Use the tools to explore dependency files, config files, plugins, and documentation. **Use search_web to find build-from-source guides and known Docker setup issues.** Return the JSON discovery object.`
+      content: `Analyze this project's infrastructure requirements. Use the tools to explore dependency files, config files, plugins, and documentation. **Use search_web only for public OSS/framework build-from-source guides, known Docker setup issues, or generic errors \u2014 never for local monorepo paths or internal service names.** Return the JSON discovery object.`
     }
   ];
 }
@@ -45989,7 +46007,7 @@ Review these files as a unit and look for issues in these categories:
 ## Tools available
 - **read_file / search_files / list_files** \u2014 Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
 - **edit_file** \u2014 Apply fixes directly to ${dockerfileName} or compose.yml. The tool returns an error if old_string doesn't match \u2014 if that happens, use read_file to get the current content and retry with the correct string.
-- **search_web** \u2014 Search the internet to verify image capabilities (e.g. "does postgres:16 include pgvector extension?")
+- **search_web** \u2014 Search the internet to verify public image/package/framework capabilities (e.g. "does postgres:16 include pgvector extension?"). Never search local repo paths or internal service names.
 - **verify_docker_image** \u2014 Check if a Docker image:tag exists on Docker Hub
 
 ## Workflow
@@ -46011,7 +46029,7 @@ After investigating and applying any fixes, respond with ONLY this JSON (no mark
 
 Rules:
 - Only report issues you're confident about \u2014 don't guess.
-- Use search_web to verify when unsure (e.g. whether an image includes a package).
+- Use search_web to verify public image/package/framework facts when unsure (e.g. whether an image includes a package). Do not search for local monorepo paths or internal service names.
 - "critical" issues = will definitely cause build failure or runtime crash. Fix these with edit_file.
 - "warning" issues = might cause issues. Log them but fix if you can.
 - If everything looks good: {"issues_found": 0, "fixes_applied": 0, "summary": "No issues found"}
@@ -47387,7 +47405,7 @@ ${tailLines}
 - **run_command_on_host** \u2014 run diagnostic or repair commands on the host (docker logs, docker ps, sed, chmod, find, etc.)
 - **run_command_in_docker** \u2014 run commands inside the application container (check installed tools, read config, test commands, inspect processes)
 - **probe_url** \u2014 make an HTTP request and see the full response (status, headers, body). Use this to check what the app returns, diagnose 500 errors, test if endpoints work.
-- **search_web** \u2014 search the internet for technical solutions. Use when you're stuck on: how to install a specific package on a specific OS, the correct package name for a version, how to fix an unfamiliar error. Don't guess \u2014 search.
+- **search_web** \u2014 search the internet for public technical solutions. Use when you're stuck on: how to install a specific package on a specific OS, the correct package name for a version, how to fix an unfamiliar error, or public OSS/framework docs. Do NOT search local repo paths, selected monorepo service names, or internal code identifiers; inspect the repository for those.
 - **fetch_url** \u2014 fetch the full content of a web page (e.g. a Stack Overflow answer or docs page found via search_web). Large pages are saved to .bright-fetched-page.txt \u2014 use read_file to see the full content.
 - **verify_docker_image** \u2014 check if a Docker image exists
 - **wait** \u2014 wait for a specified number of seconds (use when services need time to start up)
@@ -47424,7 +47442,7 @@ If you can't figure out how to install a package, fix a version mismatch, or res
 - "install imagemagick 7 debian bookworm" (when apt only has v6)
 - "fix ENOENT magick binary rails" (when a specific binary is missing)
 - "postgresql 16 pgvector extension docker" (when an extension isn't available)
-Don't waste turns guessing package names \u2014 search for the answer.
+Don't waste turns guessing package names \u2014 search for the answer. But never search for internal paths or service names such as "apps/monolith Docker"; reformulate as a public framework/package/error query.
 
 RESPONSE FORMAT:
 After fixing the issue, reply with a JSON object describing what changed:
@@ -49693,7 +49711,7 @@ ${csrfGuidance}
 - **run_command_on_host** \u2014 \u26A0\uFE0F DIAGNOSTIC ONLY. Run read-only shell commands on the host (docker ps, docker logs, docker inspect, printenv). Do NOT restart, kill, or modify anything.
 - **run_command_in_docker** \u2014 \u26A0\uFE0F DIAGNOSTIC ONLY. Run read-only commands inside a Docker container (check user state, inspect environment, query database). Do NOT restart processes, kill PIDs, or modify config files.
 - **read_file / search_files / list_files** \u2014 Inspect the codebase to understand auth flow.
-- **search_web** \u2014 Search the internet for how this app handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough.
+- **search_web** \u2014 Search the internet for how the public OSS app/framework handles authentication, API endpoints, CSRF tokens, etc. Use when probe_url returns unexpected results and codebase inspection isn't enough. Never search local repo paths or internal monorepo service names; inspect the codebase for those.
 - **fetch_url** \u2014 Fetch full content of a web page (e.g. app documentation, Stack Overflow answer). Large pages are saved to .bright-fetched-page.txt \u2014 use read_file to see full content.
 - **create_auth** \u2014 Create a Bright auth object with simplified parameters. Best for standard session/cookie, JWT, and API key flows where CSRF is in a **JSON endpoint** or a **Rails meta tag**. Do NOT use for Django/Laravel-style CSRF hidden form fields.
 - **create_auth_raw** \u2014 Create a Bright auth object with FULL multistep control. Use this for:
@@ -49900,7 +49918,7 @@ Create a user with these exact credentials:
 - **run_command_in_docker** \u2014 Run commands inside a Docker container (create users, framework CLI)
 - **probe_url** \u2014 Make HTTP requests to the running app
 - **read_file / search_files / list_files** \u2014 Inspect the codebase
-- **search_web** \u2014 Search the internet for how to create users in this specific framework. Use when the codebase doesn't make user creation obvious or when initial attempts fail with unfamiliar errors.
+- **search_web** \u2014 Search the internet for how to create users in this public OSS app/framework. Use when the codebase doesn't make user creation obvious or when initial attempts fail with unfamiliar errors. Never search local repo paths or internal service names.
 - **fetch_url** \u2014 Fetch full content of a web page (docs, Stack Overflow). Large pages are saved to .bright-fetched-page.txt \u2014 use read_file to see full content.
 
 ## Strategy
@@ -49980,7 +49998,7 @@ ${diagnostic}
 - **run_command_in_docker** \u2014 Run commands inside a Docker container
 - **probe_url** \u2014 Make HTTP requests to the running app (cookies tracked across calls)
 - **read_file / search_files / list_files** \u2014 Inspect the application codebase
-- **search_web** \u2014 Search the internet for solutions specific to this app/framework
+- **search_web** \u2014 Search the internet for solutions specific to this public OSS app/framework or generic error. Never search local repo paths or internal service names.
 - **fetch_url** \u2014 Fetch documentation pages
 
 ## Strategy
@@ -52734,7 +52752,7 @@ Create an admin with these credentials:
 - **run_command_in_docker** \u2014 Run commands inside a Docker container
 - **probe_url** \u2014 Make HTTP requests to the running app (cookies are tracked across calls)
 - **read_file / search_files / list_files** \u2014 Inspect the application codebase
-- **search_web** \u2014 Search the internet for framework-specific setup documentation
+- **search_web** \u2014 Search the internet for public OSS/framework-specific setup documentation. Never search local repo paths or internal monorepo service names; inspect the codebase for those.
 - **fetch_url** \u2014 Fetch full content of a web page (docs, guides)
 - **report_setup_evidence** \u2014 REQUIRED before claiming success. You must call this with the actual command + raw output that proves setup worked.
 
@@ -52753,13 +52771,13 @@ If you need to edit a runtime config file, edit the SOURCE copy in the host repo
 - Web search results for how to install/set up this specific framework \u2014 these often contain the EXACT commands, API endpoints, and environment variables you need
 - Probe results from the app's key URLs \u2014 showing what endpoints exist, whether the app is in install mode, and what API routes are available
 
-**Follow the official installation method from the web search results.** Do NOT improvise or guess. If the search results say "use environment variable X for unattended install" or "POST to /install/api with payload Y", do exactly that. The web search results are the authoritative source for how this framework's setup works.
+**Follow the official installation method from credible public web search results.** Do NOT improvise or guess. If the search results say "use environment variable X for unattended install" or "POST to /install/api with payload Y", do exactly that. The web search results are the authoritative source for how this public framework/product's setup works.
 
 **NEVER directly hack the database to complete setup.** Do not manually CREATE TABLE or INSERT INTO user tables. Use the framework's own setup mechanism (install wizard endpoint, CLI command, unattended install env vars, etc.). Direct DB manipulation bypasses framework logic (password hashing, migrations, config state) and WILL break the app.
 
 ### 1. Understand the setup state
 - **Start with the pre-gathered context** \u2014 web search results and app probes are already provided. Read them carefully.
-- If you need more specific information, use search_web to query for it (e.g. "${techStack} install wizard API", "${techStack} unattended setup", "${techStack} first run setup endpoint")
+- If you need more specific information, use search_web to query by public OSS product/framework/package name (e.g. "Discourse install wizard API", "Django create superuser unattended", "Rails first run setup endpoint"). Do not include selected service paths like "apps/monolith".
 - Probe GET ${baseUrl}/ and examine the response carefully
 - **Search the codebase** for install/setup routes: search for "install", "setup", "wizard", "first-run" in route definitions, controllers, and startup files
 - **Check container logs**: docker logs <container> --tail 200 \u2014 look for "install", "setup", "migration", "first run" messages
@@ -52770,7 +52788,7 @@ If you need to edit a runtime config file, edit the SOURCE copy in the host repo
 ### 2. Discover the setup endpoint
 Do NOT guess URLs. Instead:
 - **Search the codebase** for install/setup controllers and routes (e.g. grep for "installer", "InstallController", "SetupController", route attributes)
-- **Search the web** for framework-specific setup documentation
+- **Search the web** for public framework/product-specific setup documentation
 - **Check the container's file system**: look for install scripts, setup pages, or CLI tools
 - Once you find the correct endpoint, probe it to confirm it responds
 
@@ -52919,11 +52937,16 @@ var SETUP_BLOCKED_COMMANDS = [
   /docker\s+volume\s+prune/i,
   /docker\s+system\s+prune/i
 ];
+function publicSetupSearchSubject(techStack) {
+  const sanitized = techStack.replace(/\s*\(service:\s*[^)]+\)/gi, "").replace(/(?:^|\s)(?:\.\/)?(?:apps|packages|services|libs|modules)\/[A-Za-z0-9._/-]+/gi, " ").replace(/(?:^|\s)(?:\/tmp\/|\/home\/|\/workspace\/|\/workspaces\/|\/app\/)[^\s]+/gi, " ").replace(/\s+/g, " ").trim();
+  return sanitized || "web application";
+}
 async function gatherSetupContext(baseUrl, techStack) {
   const sections = [];
+  const searchSubject = publicSetupSearchSubject(techStack);
   const searchQueries = [
-    `${techStack} first run setup unattended install CLI`,
-    `${techStack} installation wizard API endpoint programmatic setup`
+    `${searchSubject} first run setup unattended install CLI`,
+    `${searchSubject} installation wizard API endpoint programmatic setup`
   ];
   for (const query of searchQueries) {
     try {
@@ -53815,19 +53838,21 @@ Most frameworks and applications have BUILT-IN rate limiting that is NOT visible
 - Framework internals that are always active (Rails ActionController::HttpAuthentication, Rack::Utils)
 - Application-level throttle logic embedded in controllers/models
 
-**You MUST use \`search_web\` to search for how THIS SPECIFIC application handles rate limiting.** Do not rely solely on grepping the codebase \u2014 that will miss built-in framework rate limits.
+**You MUST use \`search_web\` to search for how the public OSS application or framework handles rate limiting.** Do not rely solely on grepping the codebase \u2014 that will miss built-in framework rate limits.
 
 Example searches to make:
-- "<app name> disable rate limiting"
-- "<app name> rate limit site settings"
-- "<app name> max logins per minute configuration"
+- "<public OSS app name> disable rate limiting" (only when the app is a recognizable public OSS project)
+- "<public OSS app name> rate limit site settings"
+- "<public OSS app name> max logins per minute configuration"
 - "<framework> built-in rate limiting disable for testing"
+
+Do NOT search for private/local monorepo paths or internal service names such as "apps/monolith rate limit". If the selected app is not a recognizable public OSS product, search by framework/package/error instead and use codebase/runtime inspection for app-specific details.
 
 If your codebase search finds NOTHING related to rate limiting, that is a RED FLAG \u2014 it almost certainly means rate limiting is built into the framework at a level you can't see by grepping. Use \`search_web\` immediately to find out how to disable it.
 
 ## How to find them
 
-1. **Search the web FIRST** \u2014 use \`search_web\` to find: "<app/framework name> disable rate limiting for testing" or "<app/framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits.
+1. **Search the web FIRST** \u2014 use \`search_web\` to find public OSS/framework guidance such as "<public OSS app/framework name> disable rate limiting for testing" or "<framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits. Never include local repo paths or internal monorepo service names in web queries.
 2. **Query ALL runtime settings inside the container** \u2014 many apps store rate limits in database-backed settings. Run CLI commands inside the container to LIST ALL settings related to rate/limit/throttle/max/login. Cast a WIDE net \u2014 use a broad regex. For example:
    - Rails/Discourse: \`rails runner "puts SiteSetting.all_settings.select { |s| s[:setting].to_s =~ /rate|limit|max.*per|throttle|lock|login|attempt|spam/ }.map { |s| [s[:setting], s[:value]].join('=') }"\`
    - Django: \`python manage.py shell -c "from constance import config; ..."\`
@@ -53881,7 +53906,7 @@ Do NOT report success without performing the rapid-request verification.
 
 ## Tools available
 - \`search_files\` / \`read_file\` / \`list_files\` \u2014 inspect the codebase
-- \`search_web\` / \`fetch_url\` \u2014 search the internet for framework-specific docs (USE THIS \u2014 it's your most powerful tool for finding hidden rate limits)
+- \`search_web\` / \`fetch_url\` \u2014 search the internet for public OSS/framework-specific docs (USE THIS for hidden framework/product rate limits; never search local repo paths or internal service names)
 - \`run_command_on_host\` \u2014 run shell commands on the host
 - \`run_command_in_docker\` \u2014 run commands inside a Docker container
 - \`edit_file\` \u2014 edit source/config files on the host
@@ -53896,7 +53921,7 @@ If you tried but failed:
 {"completed": false, "changes": [], "summary": "what went wrong"}
 
 ## Rules
-- **USE \`search_web\` \u2014 if you can't find rate limits via code inspection, search the web for how this specific app/framework handles them. Do NOT give up just because grep found nothing.**
+- **USE \`search_web\` \u2014 if you can't find rate limits via code inspection, search the web for how this public OSS app/framework handles them. Do NOT give up just because grep found nothing, but never search for local repo paths/internal service names.**
 - Don't break the app. If unsure, search the web for docs before making changes.
 - Be thorough \u2014 find ALL rate-limit and throttle settings, not just the first one.
 - Prefer runtime settings (admin API, CLI, DB settings) when they exist, but if the rate limiter is in-memory (express-brute, Rack::Attack memory store, etc.), you MUST patch the source code \u2014 DB/config changes alone won't work.
@@ -53909,7 +53934,7 @@ If you tried but failed:
     },
     {
       role: "user",
-      content: "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how this specific framework/app handles rate limiting. Return the JSON result when done."
+      content: "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how the public OSS app/framework handles rate limiting, but never search local repo paths or internal service names. Return the JSON result when done."
     }
   ];
 }

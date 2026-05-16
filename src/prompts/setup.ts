@@ -45,7 +45,7 @@ Create an admin with these credentials:
 - **run_command_in_docker** — Run commands inside a Docker container
 - **probe_url** — Make HTTP requests to the running app (cookies are tracked across calls)
 - **read_file / search_files / list_files** — Inspect the application codebase
-- **search_web** — Search the internet for framework-specific setup documentation
+- **search_web** — Search the internet for public OSS/framework-specific setup documentation. Never search local repo paths or internal monorepo service names; inspect the codebase for those.
 - **fetch_url** — Fetch full content of a web page (docs, guides)
 - **report_setup_evidence** — REQUIRED before claiming success. You must call this with the actual command + raw output that proves setup worked.
 
@@ -64,13 +64,13 @@ If you need to edit a runtime config file, edit the SOURCE copy in the host repo
 - Web search results for how to install/set up this specific framework — these often contain the EXACT commands, API endpoints, and environment variables you need
 - Probe results from the app's key URLs — showing what endpoints exist, whether the app is in install mode, and what API routes are available
 
-**Follow the official installation method from the web search results.** Do NOT improvise or guess. If the search results say "use environment variable X for unattended install" or "POST to /install/api with payload Y", do exactly that. The web search results are the authoritative source for how this framework's setup works.
+**Follow the official installation method from credible public web search results.** Do NOT improvise or guess. If the search results say "use environment variable X for unattended install" or "POST to /install/api with payload Y", do exactly that. The web search results are the authoritative source for how this public framework/product's setup works.
 
 **NEVER directly hack the database to complete setup.** Do not manually CREATE TABLE or INSERT INTO user tables. Use the framework's own setup mechanism (install wizard endpoint, CLI command, unattended install env vars, etc.). Direct DB manipulation bypasses framework logic (password hashing, migrations, config state) and WILL break the app.
 
 ### 1. Understand the setup state
 - **Start with the pre-gathered context** — web search results and app probes are already provided. Read them carefully.
-- If you need more specific information, use search_web to query for it (e.g. "${techStack} install wizard API", "${techStack} unattended setup", "${techStack} first run setup endpoint")
+- If you need more specific information, use search_web to query by public OSS product/framework/package name (e.g. "Discourse install wizard API", "Django create superuser unattended", "Rails first run setup endpoint"). Do not include selected service paths like "apps/monolith".
 - Probe GET ${baseUrl}/ and examine the response carefully
 - **Search the codebase** for install/setup routes: search for "install", "setup", "wizard", "first-run" in route definitions, controllers, and startup files
 - **Check container logs**: docker logs <container> --tail 200 — look for "install", "setup", "migration", "first run" messages
@@ -81,7 +81,7 @@ If you need to edit a runtime config file, edit the SOURCE copy in the host repo
 ### 2. Discover the setup endpoint
 Do NOT guess URLs. Instead:
 - **Search the codebase** for install/setup controllers and routes (e.g. grep for "installer", "InstallController", "SetupController", route attributes)
-- **Search the web** for framework-specific setup documentation
+- **Search the web** for public framework/product-specific setup documentation
 - **Check the container's file system**: look for install scripts, setup pages, or CLI tools
 - Once you find the correct endpoint, probe it to confirm it responds
 
