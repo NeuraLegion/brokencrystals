@@ -43178,6 +43178,9 @@ var CONTROLLER_GLOBS = [
   "**/routers/**/*.{ts,js}",
   "**/express-routers/**/*.{ts,js}",
   "api/**/*.{ts,js}",
+  // Express/Koa/Fastify apps often define routes directly in entry files
+  "{app,server}.{ts,js}",
+  "src/**/{app,server}.{ts,js}",
   // JS / TS — file-name conventions (kebab-case and camelCase)
   "**/*-controller.{ts,js}",
   "**/*-router.{ts,js}",
@@ -43387,6 +43390,13 @@ function extractEndpointsFromFile(content, filePath) {
     let m;
     while ((m = jsRouteRe.exec(content)) !== null) {
       endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const looksLikeExpressApp = /\bfrom\s+["']express["']/.test(content) || /\brequire\(\s*["']express["']\s*\)/.test(content) || /\bexpress\s*\(/.test(content);
+    if (looksLikeExpressApp) {
+      const expressInstanceRouteRe = /(?:\b\w+|this\.\w+)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*["'`](\/[^"'`]*)["'`]/gi;
+      while ((m = expressInstanceRouteRe.exec(content)) !== null) {
+        endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+      }
     }
     const fastifyRouteRe = /\.route\s*\(\s*\{[^}]*?method\s*:\s*["'`](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)["'`]\s*,[^}]*?url\s*:\s*["'`]([^"'`]+)["'`]/gi;
     while ((m = fastifyRouteRe.exec(content)) !== null) {
