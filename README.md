@@ -1,5 +1,7 @@
 # Bright Agent
 
+[![CI](https://github.com/NeuraLegion/bright-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/NeuraLegion/bright-agent/actions/workflows/ci.yml)
+
 An agentic DAST solution by [Bright Security](https://www.brightsec.com/) that autonomously analyzes, builds, scans, validates, and fixes security vulnerabilities in your applications — dynamically.
 
 **Cross-AI. Cross-Repository. Fully automated.**
