@@ -14,7 +14,7 @@ import { execInDocker, handleEditFile, editFileTool, runCommandOnHostTool, runCo
 
 export interface UnifiedToolHandlerOptions {
   /** Label for log messages (e.g. "Setup", "ScanPrep", "Auth") */
-  label: string;
+  label?: string;
   /** Enable run_command_on_host */
   enableShell?: boolean;
   /** Enable run_command_in_docker */
@@ -94,11 +94,11 @@ export function createUnifiedToolHandler(
         if (opts.shellGuard) {
           const blocked = opts.shellGuard(command);
           if (blocked) {
-            console.warn(`[${opts.label}] BLOCKED command: ${command.slice(0, 120)}`);
+            console.warn(`[${opts.label ?? "Tool"}] BLOCKED command: ${command.slice(0, 120)}`);
             return blocked;
           }
         }
-        console.log(`[${opts.label}] run_command_on_host: ${command.slice(0, 200)}`);
+        console.log(`[${opts.label ?? "Tool"}] run_command_on_host: ${command.slice(0, 200)}`);
         return runShellCommand(repoPath, command, 120_000);
       }
 
@@ -107,7 +107,7 @@ export function createUnifiedToolHandler(
         if (!opts.enableDocker) break;
         const container = String(args.container ?? "");
         const cmd = String(args.command ?? "");
-        console.log(`[${opts.label}] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+        console.log(`[${opts.label ?? "Tool"}] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
         const result = execInDocker(repoPath, container, cmd, 120_000);
         if (opts.onDocker) opts.onDocker(container, cmd, result);
         return result;
@@ -143,7 +143,7 @@ export function createUnifiedToolHandler(
         if (!opts.enableHints) break;
         const hint = String(args.hint ?? "").trim();
         if (!hint) return "Error: hint cannot be empty";
-        console.log(`[${opts.label}] save_hint: ${hint.slice(0, 200)}`);
+        console.log(`[${opts.label ?? "Tool"}] save_hint: ${hint.slice(0, 200)}`);
         if (opts.onHint) opts.onHint(hint);
         return `Hint saved: "${hint.slice(0, 100)}". It will be available to the next attempt.`;
       }
@@ -152,7 +152,7 @@ export function createUnifiedToolHandler(
         if (!opts.enableHints) break;
         const hint = String(args.hint ?? "").trim();
         if (!hint) return "Error: hint cannot be empty";
-        console.log(`[${opts.label}] remove_hint: ${hint.slice(0, 200)}`);
+        console.log(`[${opts.label ?? "Tool"}] remove_hint: ${hint.slice(0, 200)}`);
         if (opts.onRemoveHint) opts.onRemoveHint(hint);
         return `Hint removed (if it existed).`;
       }
@@ -160,7 +160,7 @@ export function createUnifiedToolHandler(
       // --- Wait ---
       case "wait": {
         const seconds = Math.min(60, Math.max(1, Number(args.seconds ?? 10)));
-        console.log(`[${opts.label}] wait: ${seconds}s`);
+        console.log(`[${opts.label ?? "Tool"}] wait: ${seconds}s`);
         await new Promise((r) => setTimeout(r, seconds * 1000));
         return `Waited ${seconds} seconds`;
       }

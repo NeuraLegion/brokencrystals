@@ -8,7 +8,9 @@
   "scripts": {
     "build": "tsc --noEmit && tsup",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@sectester/core": "^0.50.0",
@@ -21,7 +23,8 @@
     "@types/node": "^22.0.0",
     "tsup": "^8.4.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.6"
   },
   "engines": {
     "node": ">=20.0.0"

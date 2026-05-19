@@ -199,7 +199,7 @@ async function runScanViaRest(
   );
 }
 
-interface ValidationErrorInfo {
+export interface ValidationErrorInfo {
   summary: string;
   invalidEntrypoints: string[];
   fieldErrors: string[];
@@ -209,7 +209,7 @@ interface ValidationErrorInfo {
  * Parse a 400 validation error response from the Bright API.
  * Extracts field-level errors and invalid entrypoint IDs when available.
  */
-function parseValidationError(text: string): ValidationErrorInfo {
+export function parseValidationError(text: string): ValidationErrorInfo {
   const invalidEntrypoints: string[] = [];
   const fieldErrors: string[] = [];
   let summary = text.slice(0, 600);
@@ -264,21 +264,24 @@ function parseValidationError(text: string): ValidationErrorInfo {
  * Try to fix scan config by parsing the error and removing offending tests.
  * Returns the fixed test list, or null if the error isn't fixable.
  */
-function tryFixScanConfig(errorText: string, tests: string[]): string[] | null {
+export function tryFixScanConfig(errorText: string, tests: string[]): string[] | null {
   const lower = errorText.toLowerCase();
 
   // "X test is mutually exclusive with other tests"
   if (lower.includes("mutually exclusive")) {
     // Try to identify which test from the error message
     const exclusiveTests = ["lrrl"];
-    const filtered = tests.filter(
-      (t) => !exclusiveTests.some((ex) => lower.includes(ex) || t === ex),
+    const toRemove = new Set(
+      exclusiveTests.filter((ex) => lower.includes(ex) || tests.includes(ex)),
     );
-    if (filtered.length < tests.length && filtered.length > 0) {
-      console.log(
-        `[Scan] Removed mutually exclusive test(s), ${tests.length} → ${filtered.length}`,
-      );
-      return filtered;
+    if (toRemove.size > 0) {
+      const filtered = tests.filter((t) => !toRemove.has(t));
+      if (filtered.length < tests.length && filtered.length > 0) {
+        console.log(
+          `[Scan] Removed mutually exclusive test(s), ${tests.length} → ${filtered.length}`,
+        );
+        return filtered;
+      }
     }
   }
 

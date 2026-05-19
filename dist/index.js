@@ -45628,11 +45628,11 @@ function createUnifiedToolHandler(repoPath, opts) {
         if (opts.shellGuard) {
           const blocked = opts.shellGuard(command);
           if (blocked) {
-            console.warn(`[${opts.label}] BLOCKED command: ${command.slice(0, 120)}`);
+            console.warn(`[${opts.label ?? "Tool"}] BLOCKED command: ${command.slice(0, 120)}`);
             return blocked;
           }
         }
-        console.log(`[${opts.label}] run_command_on_host: ${command.slice(0, 200)}`);
+        console.log(`[${opts.label ?? "Tool"}] run_command_on_host: ${command.slice(0, 200)}`);
         return runShellCommand(repoPath, command, 12e4);
       }
       // --- Docker exec ---
@@ -45640,7 +45640,7 @@ function createUnifiedToolHandler(repoPath, opts) {
         if (!opts.enableDocker) break;
         const container = String(args.container ?? "");
         const cmd = String(args.command ?? "");
-        console.log(`[${opts.label}] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+        console.log(`[${opts.label ?? "Tool"}] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
         const result = execInDocker(repoPath, container, cmd, 12e4);
         if (opts.onDocker) opts.onDocker(container, cmd, result);
         return result;
@@ -45670,7 +45670,7 @@ function createUnifiedToolHandler(repoPath, opts) {
         if (!opts.enableHints) break;
         const hint = String(args.hint ?? "").trim();
         if (!hint) return "Error: hint cannot be empty";
-        console.log(`[${opts.label}] save_hint: ${hint.slice(0, 200)}`);
+        console.log(`[${opts.label ?? "Tool"}] save_hint: ${hint.slice(0, 200)}`);
         if (opts.onHint) opts.onHint(hint);
         return `Hint saved: "${hint.slice(0, 100)}". It will be available to the next attempt.`;
       }
@@ -45678,14 +45678,14 @@ function createUnifiedToolHandler(repoPath, opts) {
         if (!opts.enableHints) break;
         const hint = String(args.hint ?? "").trim();
         if (!hint) return "Error: hint cannot be empty";
-        console.log(`[${opts.label}] remove_hint: ${hint.slice(0, 200)}`);
+        console.log(`[${opts.label ?? "Tool"}] remove_hint: ${hint.slice(0, 200)}`);
         if (opts.onRemoveHint) opts.onRemoveHint(hint);
         return `Hint removed (if it existed).`;
       }
       // --- Wait ---
       case "wait": {
         const seconds = Math.min(60, Math.max(1, Number(args.seconds ?? 10)));
-        console.log(`[${opts.label}] wait: ${seconds}s`);
+        console.log(`[${opts.label ?? "Tool"}] wait: ${seconds}s`);
         await new Promise((r) => setTimeout(r, seconds * 1e3));
         return `Waited ${seconds} seconds`;
       }
@@ -54807,14 +54807,17 @@ function tryFixScanConfig(errorText, tests) {
   const lower = errorText.toLowerCase();
   if (lower.includes("mutually exclusive")) {
     const exclusiveTests = ["lrrl"];
-    const filtered = tests.filter(
-      (t) => !exclusiveTests.some((ex) => lower.includes(ex) || t === ex)
+    const toRemove = new Set(
+      exclusiveTests.filter((ex) => lower.includes(ex) || tests.includes(ex))
     );
-    if (filtered.length < tests.length && filtered.length > 0) {
-      console.log(
-        `[Scan] Removed mutually exclusive test(s), ${tests.length} \u2192 ${filtered.length}`
-      );
-      return filtered;
+    if (toRemove.size > 0) {
+      const filtered = tests.filter((t) => !toRemove.has(t));
+      if (filtered.length < tests.length && filtered.length > 0) {
+        console.log(
+          `[Scan] Removed mutually exclusive test(s), ${tests.length} \u2192 ${filtered.length}`
+        );
+        return filtered;
+      }
     }
   }
   if (lower.includes("multiple auth attack tests") || lower.includes("custom auth objects")) {
