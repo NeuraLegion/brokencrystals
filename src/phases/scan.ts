@@ -43,7 +43,8 @@ async function runScanViaRest(
 ): Promise<string> {
   let tests = [...testTags];
   let eps = [...entrypointIds];
-  const maxRetries = 3;
+  let locations = [...attackParamLocations];
+  const maxRetries = 4;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const body = {
@@ -54,7 +55,7 @@ async function runScanViaRest(
       entryPointIds: eps,
       repeaters: [repeaterId],
       tests,
-      attackParamLocations,
+      attackParamLocations: locations,
       smart: true,
       skipStaticParams: true,
       poolSize: 10,
@@ -126,22 +127,52 @@ async function runScanViaRest(
       );
     }
 
-    // 400 config error — try to auto-fix by removing problematic tests
+    // 400 validation error — try to auto-fix
     if (res.status === 400) {
+      const errorDetails = parseValidationError(text);
       console.warn(
-        `[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${text.slice(0, 300)}`,
+        `[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${errorDetails.summary}`,
       );
-      const fixed = tryFixScanConfig(text, tests);
-      if (fixed && attempt < maxRetries) {
-        tests = fixed;
+
+      if (attempt >= maxRetries) break;
+
+      // Strategy 1: fix test config issues (mutually exclusive, auth conflicts)
+      const fixedTests = tryFixScanConfig(text, tests);
+      if (fixedTests) {
+        tests = fixedTests;
         console.log(
           `[Scan] Retrying with ${tests.length} tests after removing incompatible ones`,
         );
         continue;
       }
-      // If we have many entrypoints and can't diagnose the issue,
-      // try with fewer entrypoints (first half)
-      if (eps.length > 5 && attempt < maxRetries) {
+
+      // Strategy 2: remove invalid entrypoint IDs mentioned in error
+      if (errorDetails.invalidEntrypoints.length > 0) {
+        const invalidSet = new Set(errorDetails.invalidEntrypoints);
+        const filtered = eps.filter((id) => !invalidSet.has(id));
+        if (filtered.length > 0 && filtered.length < eps.length) {
+          console.log(
+            `[Scan] Removed ${eps.length - filtered.length} invalid entrypoint(s), retrying with ${filtered.length}`,
+          );
+          eps = filtered;
+          continue;
+        }
+      }
+
+      // Strategy 3: if error mentions specific field issues, try without optional params
+      if (errorDetails.fieldErrors.length > 0) {
+        const hasLocationErr = errorDetails.fieldErrors.some(
+          (f) => f.includes("attackParam") || f.includes("location"),
+        );
+        if (hasLocationErr && locations.length > DEFAULT_ATTACK_LOCATIONS.length) {
+          console.log(`[Scan] Removing path from attack locations and retrying`);
+          locations = [...DEFAULT_ATTACK_LOCATIONS];
+          continue;
+        }
+      }
+
+      // Strategy 4: reduce entrypoints (binary search for bad batch)
+      if (eps.length > 5) {
         const prev = eps.length;
         eps = eps.slice(0, Math.ceil(prev / 2));
         console.log(
@@ -149,14 +180,84 @@ async function runScanViaRest(
         );
         continue;
       }
+
+      // Strategy 5: last resort — try with just 1 entrypoint to isolate config vs data issue
+      if (eps.length > 1) {
+        console.log(`[Scan] Isolating: trying single entrypoint to check if config is the issue`);
+        eps = [eps[0]];
+        continue;
+      }
     }
 
     throw new Error(
-      `runScan REST failed (${res.status}): ${text.slice(0, 500)}`,
+      `runScan REST failed (${res.status}): ${text.slice(0, 800)}`,
     );
   }
 
-  throw new Error("runScan: exhausted retries");
+  throw new Error(
+    `runScan: exhausted retries. Last config: ${eps.length} eps, tests=[${tests.join(",")}]`,
+  );
+}
+
+interface ValidationErrorInfo {
+  summary: string;
+  invalidEntrypoints: string[];
+  fieldErrors: string[];
+}
+
+/**
+ * Parse a 400 validation error response from the Bright API.
+ * Extracts field-level errors and invalid entrypoint IDs when available.
+ */
+function parseValidationError(text: string): ValidationErrorInfo {
+  const invalidEntrypoints: string[] = [];
+  const fieldErrors: string[] = [];
+  let summary = text.slice(0, 600);
+
+  try {
+    const parsed = JSON.parse(text);
+    // NestJS class-validator format: { message: [...], error: "Bad Request" }
+    // or { message: "...", errors: [{...}] }
+    const messages: string[] = [];
+
+    if (Array.isArray(parsed.message)) {
+      messages.push(...parsed.message.map(String));
+    } else if (typeof parsed.message === "string") {
+      messages.push(parsed.message);
+    }
+    if (Array.isArray(parsed.errors)) {
+      for (const err of parsed.errors) {
+        const msg = err.message ?? err.constraints
+          ? Object.values(err.constraints ?? {}).join("; ")
+          : JSON.stringify(err);
+        messages.push(String(msg));
+      }
+    }
+
+    // Extract field-level validation hints
+    for (const msg of messages) {
+      if (msg.includes("entryPointIds") || msg.includes("entry_point")) {
+        fieldErrors.push(msg);
+        // Try to pull out specific IDs
+        const idMatches = msg.match(/[a-zA-Z0-9]{20,}/g);
+        if (idMatches) invalidEntrypoints.push(...idMatches);
+      } else if (msg !== "One or more validation errors occurred.") {
+        fieldErrors.push(msg);
+      }
+    }
+
+    summary = messages.join(" | ").slice(0, 600) || summary;
+  } catch {
+    // Not JSON — use raw text
+    // Try to find entrypoint IDs in raw text
+    const idMatches = text.match(/entryPointIds[^[]*\[([^\]]+)\]/);
+    if (idMatches) {
+      const ids = idMatches[1].match(/[a-zA-Z0-9]{20,}/g);
+      if (ids) invalidEntrypoints.push(...ids);
+    }
+  }
+
+  return { summary, invalidEntrypoints, fieldErrors };
 }
 
 /**
