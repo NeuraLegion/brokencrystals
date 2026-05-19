@@ -1,20 +1,11 @@
 import type OpenAI from "openai";
-import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
-import { chatWithTools, type ToolHandler } from "../inference.js";
+import { chatWithTools } from "../inference.js";
 import {
-  codebaseTools,
-  createToolHandler,
-  webSearchTools,
-  createWebSearchHandler,
-  runCommandOnHostTool,
-  runCommandInDockerTool,
-  editFileTool,
-  probeUrlTool,
+  createUnifiedToolHandler,
+  buildToolDefs,
   execInDocker,
-  handleEditFile,
-  handleProbeUrl,
 } from "../tools.js";
-import { extractJson, runShellCommand, formatTechStack } from "../utils.js";
+import { extractJson, formatTechStack } from "../utils.js";
 import { scanPrepPrompt } from "../prompts/scan-prep.js";
 import type { TechStack } from "../types.js";
 
@@ -46,20 +37,6 @@ export async function prepareScanEnvironment(
 ): Promise<ScanPrepResult> {
   console.log("[ScanPrep] Starting scan preparation phase — relaxing rate limits and security controls...");
 
-  // Full tool set: codebase (read_file, list_files, search_files) + web search +
-  // shell commands + docker exec + file editing + HTTP probing
-  const tools: ChatCompletionTool[] = [
-    ...codebaseTools,
-    ...webSearchTools,
-    runCommandOnHostTool,
-    runCommandInDockerTool,
-    editFileTool,
-    probeUrlTool,
-  ];
-
-  const baseCodeHandler = createToolHandler(repoPath);
-  const webHandler = createWebSearchHandler(repoPath);
-
   // Track docker commands that modify settings (for deterministic re-run)
   const dockerCommands: { container: string; command: string }[] = [];
   let editFileCalls = 0;
@@ -67,31 +44,21 @@ export async function prepareScanEnvironment(
   const postProbeStatuses: number[] = [];
   let saw429 = false;
 
-  const handler: ToolHandler = async (name, args) => {
-    if (name === "run_command_on_host") {
-      const cmd = String(args.command ?? "");
-      console.log(`[ScanPrep] run_command_on_host: ${cmd.slice(0, 200)}`);
-      return runShellCommand(repoPath, cmd, 120_000);
-    }
-    if (name === "run_command_in_docker") {
-      const container = String(args.container ?? "");
-      const cmd = String(args.command ?? "");
-      console.log(`[ScanPrep] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const result = execInDocker(repoPath, container, cmd, 120_000);
-      // Capture commands that set/modify settings (not read-only queries)
+  const handlerOpts = {
+    label: "ScanPrep",
+    enableShell: true,
+    enableDocker: true,
+    enableEdit: true,
+    enableProbe: true,
+    enableWeb: true,
+    onDocker: (_container: string, cmd: string, _result: string) => {
       if (/set\(|=\s*\d|=\s*true|=\s*false|update|disable|enable/i.test(cmd)) {
-        dockerCommands.push({ container, command: cmd });
+        dockerCommands.push({ container: _container, command: cmd });
       }
-      return result;
-    }
-    if (name === "edit_file") {
-      editFileCalls += 1;
-      return handleEditFile(repoPath, args);
-    }
-    if (name === "probe_url") {
+    },
+    onEdit: () => { editFileCalls += 1; },
+    onProbe: (args: Record<string, unknown>, result: string) => {
       const method = String(args.method ?? "GET").toUpperCase();
-      console.log(`[ScanPrep] probe_url: ${method} ${String(args.url ?? "")}`);
-      const result = await handleProbeUrl(args);
       if (method === "POST") {
         postProbeCalls += 1;
         const statusMatch = result.match(/HTTP\s+(\d{3})\b/);
@@ -100,13 +67,11 @@ export async function prepareScanEnvironment(
         }
       }
       if (/HTTP\s+429\b/.test(result)) saw429 = true;
-      return result;
-    }
-    if (name === "search_web" || name === "fetch_url") {
-      return webHandler(name, args);
-    }
-    return baseCodeHandler(name, args);
-  };
+    },
+  } as const;
+
+  const tools = buildToolDefs(handlerOpts);
+  const handler = createUnifiedToolHandler(repoPath, handlerOpts);
 
   const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue);
 

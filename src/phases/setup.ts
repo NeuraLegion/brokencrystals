@@ -2,17 +2,10 @@ import type OpenAI from "openai";
 import type { ChatCompletionTool, ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 import { chatWithTools, type ToolHandler } from "../inference.js";
 import {
-  codebaseTools,
-  createToolHandler,
-  webSearchTools,
-  createWebSearchHandler,
-  runCommandOnHostTool,
-  runCommandInDockerTool,
-  editFileTool,
-  execInDocker,
-  handleEditFile,
+  createUnifiedToolHandler,
+  buildToolDefs,
 } from "../tools.js";
-import { extractJson, runShellCommand, formatTechStack, extractSetCookies, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_DEFAULT, FETCH_TIMEOUT_LONG } from "../utils.js";
+import { extractJson, formatTechStack, extractSetCookies, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_DEFAULT, FETCH_TIMEOUT_LONG } from "../utils.js";
 import { firstRunSetupPrompt } from "../prompts/setup.js";
 import type { TechStack, StartupConfig } from "../types.js";
 
@@ -335,102 +328,94 @@ export async function completeFirstRunSetup(
   }
 
   // Build tool set — shared tools + setup-specific probe_url (with cookie tracking) + evidence reporter
-  const setupTools: ChatCompletionTool[] = [
-    ...codebaseTools,
-    ...webSearchTools,
-    runCommandOnHostTool,
-    runCommandInDockerTool,
-    editFileTool,
-    {
-      type: "function",
-      function: {
-        name: "probe_url",
-        description:
-          "Make an HTTP request to the running app. Cookies are tracked across calls within this session. Use to interact with setup wizards.",
-        parameters: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "Full URL to probe" },
-            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
-            headers: { type: "string", description: 'JSON headers, e.g. \'{"Content-Type":"application/json"}\'' },
-            body: { type: "string", description: "Request body for POST/PUT" },
-          },
-          required: ["url"],
-          additionalProperties: false,
-        },
-      },
-    },
-    {
-      type: "function",
-      function: {
-        name: "report_setup_evidence",
-        description:
-          "REQUIRED before claiming setup is complete. Report concrete evidence proving setup succeeded. " +
-          "Provide the EXACT verification command/probe you ran, the RAW output you captured (paste actual response, not a summary), " +
-          "and a short explanation of why this output proves setup is done. May be called multiple times to accumulate evidence.",
-        parameters: {
-          type: "object",
-          properties: {
-            verification_command: {
-              type: "string",
-              description: "The exact command, SQL query, or HTTP probe used to verify setup (e.g. \"sqlcmd -Q 'SELECT count(*) FROM umbracoUser'\" or \"POST /umbraco/management/api/v1/security/back-office/login\")",
-            },
-            verification_output: {
-              type: "string",
-              description: "The raw, unmodified output captured from the verification command. Paste the actual response/result, not a summary.",
-            },
-            why_this_proves_setup_complete: {
-              type: "string",
-              description: "Short explanation of why this specific output proves the setup achieved its goal (schema created, admin user exists, etc.)",
-            },
-          },
-          required: ["verification_command", "verification_output", "why_this_proves_setup_complete"],
-          additionalProperties: false,
-        },
-      },
-    },
-  ];
-
-  // Build tool handler
-  const baseCodeHandler = createToolHandler(repoPath);
-  const webHandler = createWebSearchHandler(repoPath);
-
-  // Track cookies across probe_url calls for wizard multi-step flows
   const cookieJar: Record<string, string> = {};
-
-  // Track evidence reported by the LLM
   const collectedEvidence: SetupEvidence[] = [];
 
-  const handler: ToolHandler = async (name, args) => {
-    if (name === "run_command_on_host") {
-      const cmd = String(args.command ?? "");
-      // Block destructive Docker commands — setup must configure, not destroy
+  const handlerOpts = {
+    label: "Setup",
+    enableShell: true,
+    enableDocker: true,
+    enableEdit: true,
+    enableProbe: true,
+    enableWeb: true,
+    shellGuard: (cmd: string) => {
       for (const pattern of SETUP_BLOCKED_COMMANDS) {
         if (pattern.test(cmd)) {
-          console.warn(`[Setup] BLOCKED destructive command: ${cmd.slice(0, 120)}`);
           return `Error: "${cmd.slice(0, 80)}" is not allowed in the setup phase. Setup must configure the existing running app, not destroy/rebuild containers. Use edit_file to modify compose.yml, then the orchestrator will rebuild for you if needed.`;
         }
       }
-      console.log(`[Setup] run_command_on_host: ${cmd.slice(0, 200)}`);
-      return runShellCommand(repoPath, cmd, 120_000);
-    }
-    if (name === "run_command_in_docker") {
-      const container = String(args.container ?? "");
-      const cmd = String(args.command ?? "");
-      console.log(`[Setup] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      return execInDocker(repoPath, container, cmd, 120_000);
-    }
-    if (name === "edit_file") {
-      return handleEditFile(repoPath, args);
-    }
-    if (name === "probe_url") {
-      return probeUrlWithCookies(args, cookieJar);
-    }
+      return null;
+    },
+    customProbe: (args: Record<string, unknown>) => probeUrlWithCookies(args, cookieJar),
+  } as const;
+
+  const reportEvidenceTool: ChatCompletionTool = {
+    type: "function",
+    function: {
+      name: "report_setup_evidence",
+      description:
+        "REQUIRED before claiming setup is complete. Report concrete evidence proving setup succeeded. " +
+        "Provide the EXACT verification command/probe you ran, the RAW output you captured (paste actual response, not a summary), " +
+        "and a short explanation of why this output proves setup is done. May be called multiple times to accumulate evidence.",
+      parameters: {
+        type: "object",
+        properties: {
+          verification_command: {
+            type: "string",
+            description: "The exact command, SQL query, or HTTP probe used to verify setup (e.g. \"sqlcmd -Q 'SELECT count(*) FROM umbracoUser'\" or \"POST /umbraco/management/api/v1/security/back-office/login\")",
+          },
+          verification_output: {
+            type: "string",
+            description: "The raw, unmodified output captured from the verification command. Paste the actual response/result, not a summary.",
+          },
+          why_this_proves_setup_complete: {
+            type: "string",
+            description: "Short explanation of why this specific output proves the setup achieved its goal (schema created, admin user exists, etc.)",
+          },
+        },
+        required: ["verification_command", "verification_output", "why_this_proves_setup_complete"],
+        additionalProperties: false,
+      },
+    },
+  };
+
+  // Setup-specific probe_url tool with custom description
+  const setupProbeUrlTool: ChatCompletionTool = {
+    type: "function",
+    function: {
+      name: "probe_url",
+      description:
+        "Make an HTTP request to the running app. Cookies are tracked across calls within this session. Use to interact with setup wizards.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Full URL to probe" },
+          method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
+          headers: { type: "string", description: 'JSON headers, e.g. \'{"Content-Type":"application/json"}\'' },
+          body: { type: "string", description: "Request body for POST/PUT" },
+        },
+        required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  };
+
+  // Build tools: unified base + custom probe description + evidence reporter
+  const baseTools = buildToolDefs(handlerOpts);
+  // Replace the generic probe_url with setup-specific one
+  const setupTools: ChatCompletionTool[] = [
+    ...baseTools.filter((t) => t.function.name !== "probe_url"),
+    setupProbeUrlTool,
+    reportEvidenceTool,
+  ];
+
+  const baseHandler = createUnifiedToolHandler(repoPath, handlerOpts);
+
+  const handler: ToolHandler = async (name, args) => {
     if (name === "report_setup_evidence") {
       const command = String(args.verification_command ?? "").trim();
       const output = String(args.verification_output ?? "").trim();
       const reasoning = String(args.why_this_proves_setup_complete ?? "").trim();
-      // Reject obviously-empty / placeholder evidence so the LLM tries again
       if (command.length < 3 || output.length < 3 || reasoning.length < 5) {
         return "Evidence rejected: each field must contain real content. Re-run a verification command and paste actual output.";
       }
@@ -438,10 +423,7 @@ export async function completeFirstRunSetup(
       console.log(`[Setup] Evidence #${collectedEvidence.length} recorded: ${command.slice(0, 120)}`);
       return `Evidence recorded (${collectedEvidence.length} total). You may report more evidence or proceed to the final JSON answer.`;
     }
-    if (name === "search_web" || name === "fetch_url") {
-      return webHandler(name, args);
-    }
-    return baseCodeHandler(name, args);
+    return baseHandler(name, args);
   };
 
   const messages = firstRunSetupPrompt(

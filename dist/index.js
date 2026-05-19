@@ -3216,11 +3216,11 @@ function __metadata(metadataKey, metadataValue) {
 }
 function __awaiter(thisArg, _arguments, P, generator) {
   function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve5) {
-      resolve5(value);
+    return value instanceof P ? value : new P(function(resolve7) {
+      resolve7(value);
     });
   }
-  return new (P || (P = Promise))(function(resolve5, reject) {
+  return new (P || (P = Promise))(function(resolve7, reject) {
     function fulfilled(value) {
       try {
         step(generator.next(value));
@@ -3236,7 +3236,7 @@ function __awaiter(thisArg, _arguments, P, generator) {
       }
     }
     function step(result) {
-      result.done ? resolve5(result.value) : adopt(result.value).then(fulfilled, rejected);
+      result.done ? resolve7(result.value) : adopt(result.value).then(fulfilled, rejected);
     }
     step((generator = generator.apply(thisArg, _arguments || [])).next());
   });
@@ -3427,14 +3427,14 @@ function __asyncValues(o) {
   }, i);
   function verb(n) {
     i[n] = o[n] && function(v) {
-      return new Promise(function(resolve5, reject) {
-        v = o[n](v), settle(resolve5, reject, v.done, v.value);
+      return new Promise(function(resolve7, reject) {
+        v = o[n](v), settle(resolve7, reject, v.done, v.value);
       });
     };
   }
-  function settle(resolve5, reject, d, v) {
+  function settle(resolve7, reject, d, v) {
     Promise.resolve(v).then(function(v2) {
-      resolve5({ value: v2, done: d });
+      resolve7({ value: v2, done: d });
     }, reject);
   }
 }
@@ -5110,7 +5110,7 @@ var require_first = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.first = void 0;
     var first = (promises, predicate) => {
-      const newPromises = promises.map((p) => new Promise((resolve5, reject) => p.then((v) => !!predicate(v) && resolve5(v), reject)));
+      const newPromises = promises.map((p) => new Promise((resolve7, reject) => p.then((v) => !!predicate(v) && resolve7(v), reject)));
       newPromises.push(Promise.all(promises).then(() => void 0));
       return Promise.race(newPromises);
     };
@@ -6875,11 +6875,11 @@ function __rest2(s, e) {
 }
 function __awaiter2(thisArg, _arguments, P, generator) {
   function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve5) {
-      resolve5(value);
+    return value instanceof P ? value : new P(function(resolve7) {
+      resolve7(value);
     });
   }
-  return new (P || (P = Promise))(function(resolve5, reject) {
+  return new (P || (P = Promise))(function(resolve7, reject) {
     function fulfilled(value) {
       try {
         step(generator.next(value));
@@ -6895,7 +6895,7 @@ function __awaiter2(thisArg, _arguments, P, generator) {
       }
     }
     function step(result) {
-      result.done ? resolve5(result.value) : adopt(result.value).then(fulfilled, rejected);
+      result.done ? resolve7(result.value) : adopt(result.value).then(fulfilled, rejected);
     }
     step((generator = generator.apply(thisArg, _arguments || [])).next());
   });
@@ -9057,8 +9057,8 @@ var require_helpers = __commonJS({
     function req(url, opts = {}) {
       const href = typeof url === "string" ? url : url.href;
       const req2 = (href.startsWith("https:") ? https2 : http2).request(url, opts);
-      const promise = new Promise((resolve5, reject) => {
-        req2.once("response", resolve5).once("error", reject).end();
+      const promise = new Promise((resolve7, reject) => {
+        req2.once("response", resolve7).once("error", reject).end();
       });
       req2.then = promise.then.bind(promise);
       return req2;
@@ -9235,7 +9235,7 @@ var require_parse_proxy_response = __commonJS({
     var debug_1 = __importDefault2(require_src2());
     var debug2 = (0, debug_1.default)("https-proxy-agent:parse-proxy-response");
     function parseProxyResponse(socket) {
-      return new Promise((resolve5, reject) => {
+      return new Promise((resolve7, reject) => {
         let buffersLength = 0;
         const buffers = [];
         function read() {
@@ -9301,7 +9301,7 @@ var require_parse_proxy_response = __commonJS({
           }
           debug2("got proxy server response: %o %o", firstLine, headers);
           cleanup();
-          resolve5({
+          resolve7({
             connect: {
               statusCode,
               statusText,
@@ -13066,11 +13066,11 @@ var require_socksclient = __commonJS({
     "use strict";
     var __awaiter3 = exports && exports.__awaiter || function(thisArg, _arguments, P, generator) {
       function adopt(value) {
-        return value instanceof P ? value : new P(function(resolve5) {
-          resolve5(value);
+        return value instanceof P ? value : new P(function(resolve7) {
+          resolve7(value);
         });
       }
-      return new (P || (P = Promise))(function(resolve5, reject) {
+      return new (P || (P = Promise))(function(resolve7, reject) {
         function fulfilled(value) {
           try {
             step(generator.next(value));
@@ -13086,7 +13086,7 @@ var require_socksclient = __commonJS({
           }
         }
         function step(result) {
-          result.done ? resolve5(result.value) : adopt(result.value).then(fulfilled, rejected);
+          result.done ? resolve7(result.value) : adopt(result.value).then(fulfilled, rejected);
         }
         step((generator = generator.apply(thisArg, _arguments || [])).next());
       });
@@ -13120,13 +13120,13 @@ var require_socksclient = __commonJS({
        * @returns { Promise }
        */
       static createConnection(options, callback) {
-        return new Promise((resolve5, reject) => {
+        return new Promise((resolve7, reject) => {
           try {
             (0, helpers_1.validateSocksClientOptions)(options, ["connect"]);
           } catch (err) {
             if (typeof callback === "function") {
               callback(err);
-              return resolve5(err);
+              return resolve7(err);
             } else {
               return reject(err);
             }
@@ -13137,16 +13137,16 @@ var require_socksclient = __commonJS({
             client.removeAllListeners();
             if (typeof callback === "function") {
               callback(null, info);
-              resolve5(info);
+              resolve7(info);
             } else {
-              resolve5(info);
+              resolve7(info);
             }
           });
           client.once("error", (err) => {
             client.removeAllListeners();
             if (typeof callback === "function") {
               callback(err);
-              resolve5(err);
+              resolve7(err);
             } else {
               reject(err);
             }
@@ -13163,13 +13163,13 @@ var require_socksclient = __commonJS({
        * @returns { Promise }
        */
       static createConnectionChain(options, callback) {
-        return new Promise((resolve5, reject) => __awaiter3(this, void 0, void 0, function* () {
+        return new Promise((resolve7, reject) => __awaiter3(this, void 0, void 0, function* () {
           try {
             (0, helpers_1.validateSocksClientChainOptions)(options);
           } catch (err) {
             if (typeof callback === "function") {
               callback(err);
-              return resolve5(err);
+              return resolve7(err);
             } else {
               return reject(err);
             }
@@ -13195,14 +13195,14 @@ var require_socksclient = __commonJS({
             }
             if (typeof callback === "function") {
               callback(null, { socket: sock });
-              resolve5({ socket: sock });
+              resolve7({ socket: sock });
             } else {
-              resolve5({ socket: sock });
+              resolve7({ socket: sock });
             }
           } catch (err) {
             if (typeof callback === "function") {
               callback(err);
-              resolve5(err);
+              resolve7(err);
             } else {
               reject(err);
             }
@@ -13886,12 +13886,12 @@ var require_dist4 = __commonJS({
         let { host } = opts;
         const { port, lookup: lookupFn = dns.lookup } = opts;
         if (shouldLookup) {
-          host = await new Promise((resolve5, reject) => {
+          host = await new Promise((resolve7, reject) => {
             lookupFn(host, {}, (err, res) => {
               if (err) {
                 reject(err);
               } else {
-                resolve5(res);
+                resolve7(res);
               }
             });
           });
@@ -25393,9 +25393,9 @@ var require_socket2 = __commonJS({
        * @return a Promise that will be fulfilled when the server acknowledges the event
        */
       emitWithAck(ev, ...args) {
-        return new Promise((resolve5, reject) => {
+        return new Promise((resolve7, reject) => {
           const fn = (arg1, arg2) => {
-            return arg1 ? reject(arg1) : resolve5(arg2);
+            return arg1 ? reject(arg1) : resolve7(arg2);
           };
           fn.withError = true;
           args.push(fn);
@@ -28648,7 +28648,7 @@ function consumeBody() {
   let accum = [];
   let accumBytes = 0;
   let abort = false;
-  return new Body.Promise(function(resolve5, reject) {
+  return new Body.Promise(function(resolve7, reject) {
     let resTimeout;
     if (_this4.timeout) {
       resTimeout = setTimeout(function() {
@@ -28682,7 +28682,7 @@ function consumeBody() {
       }
       clearTimeout(resTimeout);
       try {
-        resolve5(Buffer.concat(accum, accumBytes));
+        resolve7(Buffer.concat(accum, accumBytes));
       } catch (err) {
         reject(new FetchError(`Could not create Buffer from response body for ${_this4.url}: ${err.message}`, "system", err));
       }
@@ -29357,7 +29357,7 @@ function fetch3(url, opts) {
     throw new Error("native promise missing, set fetch.Promise to your favorite alternative");
   }
   Body.Promise = fetch3.Promise;
-  return new fetch3.Promise(function(resolve5, reject) {
+  return new fetch3.Promise(function(resolve7, reject) {
     const request = new Request2(url, opts);
     const options = getNodeRequestOptions(request);
     const send = (options.protocol === "https:" ? https : http).request;
@@ -29490,7 +29490,7 @@ function fetch3(url, opts) {
               requestOpts.body = void 0;
               requestOpts.headers.delete("content-length");
             }
-            resolve5(fetch3(new Request2(locationURL, requestOpts)));
+            resolve7(fetch3(new Request2(locationURL, requestOpts)));
             finalize();
             return;
         }
@@ -29511,7 +29511,7 @@ function fetch3(url, opts) {
       const codings = headers.get("Content-Encoding");
       if (!request.compress || request.method === "HEAD" || codings === null || res.statusCode === 204 || res.statusCode === 304) {
         response = new Response2(body, response_options);
-        resolve5(response);
+        resolve7(response);
         return;
       }
       const zlibOptions = {
@@ -29521,7 +29521,7 @@ function fetch3(url, opts) {
       if (codings == "gzip" || codings == "x-gzip") {
         body = body.pipe(zlib.createGunzip(zlibOptions));
         response = new Response2(body, response_options);
-        resolve5(response);
+        resolve7(response);
         return;
       }
       if (codings == "deflate" || codings == "x-deflate") {
@@ -29533,12 +29533,12 @@ function fetch3(url, opts) {
             body = body.pipe(zlib.createInflateRaw());
           }
           response = new Response2(body, response_options);
-          resolve5(response);
+          resolve7(response);
         });
         raw.on("end", function() {
           if (!response) {
             response = new Response2(body, response_options);
-            resolve5(response);
+            resolve7(response);
           }
         });
         return;
@@ -29546,11 +29546,11 @@ function fetch3(url, opts) {
       if (codings == "br" && typeof zlib.createBrotliDecompress === "function") {
         body = body.pipe(zlib.createBrotliDecompress());
         response = new Response2(body, response_options);
-        resolve5(response);
+        resolve7(response);
         return;
       }
       response = new Response2(body, response_options);
-      resolve5(response);
+      resolve7(response);
     });
     writeToStream(req, request);
   });
@@ -30600,8 +30600,8 @@ function _addRequestID(value, response) {
 }
 var APIPromise = class _APIPromise extends Promise {
   constructor(responsePromise, parseResponse2 = defaultParseResponse) {
-    super((resolve5) => {
-      resolve5(null);
+    super((resolve7) => {
+      resolve7(null);
     });
     this.responsePromise = responsePromise;
     this.parseResponse = parseResponse2;
@@ -31176,7 +31176,7 @@ var startsWithSchemeRegexp = /^[a-z][a-z0-9+.-]*:/i;
 var isAbsoluteURL = (url) => {
   return startsWithSchemeRegexp.test(url);
 };
-var sleep = (ms) => new Promise((resolve5) => setTimeout(resolve5, ms));
+var sleep = (ms) => new Promise((resolve7) => setTimeout(resolve7, ms));
 var validatePositiveInteger = (name, n) => {
   if (typeof n !== "number" || !Number.isInteger(n)) {
     throw new OpenAIError(`${name} must be an integer`);
@@ -31609,12 +31609,12 @@ var EventStream = class {
     _EventStream_errored.set(this, false);
     _EventStream_aborted.set(this, false);
     _EventStream_catchingPromiseCreated.set(this, false);
-    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve5, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve5, "f");
+    __classPrivateFieldSet4(this, _EventStream_connectedPromise, new Promise((resolve7, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveConnectedPromise, resolve7, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectConnectedPromise, reject, "f");
     }), "f");
-    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve5, reject) => {
-      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve5, "f");
+    __classPrivateFieldSet4(this, _EventStream_endPromise, new Promise((resolve7, reject) => {
+      __classPrivateFieldSet4(this, _EventStream_resolveEndPromise, resolve7, "f");
       __classPrivateFieldSet4(this, _EventStream_rejectEndPromise, reject, "f");
     }), "f");
     __classPrivateFieldGet5(this, _EventStream_connectedPromise, "f").catch(() => {
@@ -31698,11 +31698,11 @@ var EventStream = class {
    *   const message = await stream.emitted('message') // rejects if the stream errors
    */
   emitted(event) {
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve7, reject) => {
       __classPrivateFieldSet4(this, _EventStream_catchingPromiseCreated, true, "f");
       if (event !== "error")
         this.once("error", reject);
-      this.once(event, resolve5);
+      this.once(event, resolve7);
     });
   }
   async done() {
@@ -31855,7 +31855,7 @@ var AssistantStream = class _AssistantStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve7, reject) => readQueue.push({ resolve: resolve7, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -33473,7 +33473,7 @@ var ChatCompletionStream = class _ChatCompletionStream extends AbstractChatCompl
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve7, reject) => readQueue.push({ resolve: resolve7, reject })).then((chunk2) => chunk2 ? { value: chunk2, done: false } : { value: void 0, done: true });
         }
         const chunk = pushQueue.shift();
         return { value: chunk, done: false };
@@ -35124,7 +35124,7 @@ var ResponseStream = class _ResponseStream extends EventStream {
           if (done) {
             return { value: void 0, done: true };
           }
-          return new Promise((resolve5, reject) => readQueue.push({ resolve: resolve5, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
+          return new Promise((resolve7, reject) => readQueue.push({ resolve: resolve7, reject })).then((event2) => event2 ? { value: event2, done: false } : { value: void 0, done: true });
         }
         const event = pushQueue.shift();
         return { value: event, done: false };
@@ -35973,6 +35973,27 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
         content: sanitizeForJson(result)
       });
     }
+    const MAX_CONTEXT_CHARS = 8e5;
+    const totalChars = conversation.reduce((sum, m) => {
+      if (typeof m.content === "string") return sum + m.content.length;
+      if (Array.isArray(m.content)) return sum + JSON.stringify(m.content).length;
+      return sum;
+    }, 0);
+    if (totalChars > MAX_CONTEXT_CHARS) {
+      const toolMsgCount = msg.tool_calls.length;
+      const toolMsgs = conversation.slice(-toolMsgCount);
+      const excess = totalChars - MAX_CONTEXT_CHARS;
+      let trimmed = 0;
+      for (const tm of toolMsgs) {
+        if (trimmed >= excess) break;
+        if (tm.role === "tool" && typeof tm.content === "string" && tm.content.length > 2e3) {
+          const before = tm.content.length;
+          tm.content = tm.content.slice(0, 2e3) + "\n... [context limit \u2014 truncated]";
+          trimmed += before - tm.content.length;
+        }
+      }
+      console.warn(`[Inference] Context overflow guard: trimmed ${trimmed} chars from tool results`);
+    }
   }
   console.warn(
     `[Inference] chatWithTools: exhausted ${maxTurns} tool-calling turns, returning last response`
@@ -36083,7 +36104,7 @@ function buildSeveritySummary(findings) {
   return Object.entries(bySev).sort(([a], [b]) => (SEVERITY_ORDER[a] ?? 4) - (SEVERITY_ORDER[b] ?? 4)).map(([sev, count]) => `${count} ${sev}`).join(", ");
 }
 function sleep2(ms) {
-  return new Promise((resolve5) => setTimeout(resolve5, ms));
+  return new Promise((resolve7) => setTimeout(resolve7, ms));
 }
 function formatTechStack(techStack) {
   const parts = [...techStack.languages, ...techStack.frameworks];
@@ -36836,7 +36857,7 @@ function expand_(str2, max, isTop) {
       }
       const pad = n.some(isPadded);
       N = [];
-      for (let i = x2; test(i, y2); i += incr) {
+      for (let i = x2; test(i, y2) && N.length < max; i += incr) {
         let c3;
         if (isAlphaSequence) {
           c3 = String.fromCharCode(i);
@@ -39753,10 +39774,10 @@ var Minipass = class extends EventEmitter {
    * Return a void Promise that resolves once the stream ends.
    */
   async promise() {
-    return new Promise((resolve5, reject) => {
+    return new Promise((resolve7, reject) => {
       this.on(DESTROYED, () => reject(new Error("stream destroyed")));
       this.on("error", (er) => reject(er));
-      this.on("end", () => resolve5());
+      this.on("end", () => resolve7());
     });
   }
   /**
@@ -39780,7 +39801,7 @@ var Minipass = class extends EventEmitter {
         return Promise.resolve({ done: false, value: res });
       if (this[EOF])
         return stop();
-      let resolve5;
+      let resolve7;
       let reject;
       const onerr = (er) => {
         this.off("data", ondata);
@@ -39794,19 +39815,19 @@ var Minipass = class extends EventEmitter {
         this.off("end", onend);
         this.off(DESTROYED, ondestroy);
         this.pause();
-        resolve5({ value, done: !!this[EOF] });
+        resolve7({ value, done: !!this[EOF] });
       };
       const onend = () => {
         this.off("error", onerr);
         this.off("data", ondata);
         this.off(DESTROYED, ondestroy);
         stop();
-        resolve5({ done: true, value: void 0 });
+        resolve7({ done: true, value: void 0 });
       };
       const ondestroy = () => onerr(new Error("stream destroyed"));
       return new Promise((res2, rej) => {
         reject = rej;
-        resolve5 = res2;
+        resolve7 = res2;
         this.once(DESTROYED, ondestroy);
         this.once("error", onerr);
         this.once("end", onend);
@@ -40782,9 +40803,9 @@ var PathBase = class {
     if (this.#asyncReaddirInFlight) {
       await this.#asyncReaddirInFlight;
     } else {
-      let resolve5 = () => {
+      let resolve7 = () => {
       };
-      this.#asyncReaddirInFlight = new Promise((res) => resolve5 = res);
+      this.#asyncReaddirInFlight = new Promise((res) => resolve7 = res);
       try {
         for (const e of await this.#fs.promises.readdir(fullpath, {
           withFileTypes: true
@@ -40797,7 +40818,7 @@ var PathBase = class {
         children.provisional = 0;
       }
       this.#asyncReaddirInFlight = void 0;
-      resolve5();
+      resolve7();
     }
     return children.slice(0, children.provisional);
   }
@@ -44683,12 +44704,12 @@ import {
   execFileSync as execFileSync4
 } from "child_process";
 import { createInterface } from "readline";
-import { existsSync as existsSync5, readFileSync as readFileSync4, readdirSync as readdirSync3, writeFileSync as writeFileSync3 } from "fs";
+import { existsSync as existsSync5, readFileSync as readFileSync5, readdirSync as readdirSync3, writeFileSync as writeFileSync4 } from "fs";
 
-// src/tools.ts
-import { readFileSync as readFileSync3, existsSync as existsSync4, statSync as statSync2, writeFileSync as writeFileSync2 } from "fs";
+// src/tools/codebase.ts
+import { readFileSync as readFileSync3, existsSync as existsSync4, statSync as statSync2 } from "fs";
 import { resolve as resolve2 } from "path";
-import { execFileSync as execFileSync3, execSync as execSync2 } from "child_process";
+import { execFileSync as execFileSync3 } from "child_process";
 var codebaseTools = [
   {
     type: "function",
@@ -44769,8 +44790,8 @@ function createToolHandler(repoPath) {
           return `Error: path is a directory, not a file: ${args.path}`;
         }
         const content = readFileSync3(filePath, "utf-8");
-        if (content.length > 1e5) {
-          return content.slice(0, 1e5) + "\n... [truncated]";
+        if (content.length > 5e4) {
+          return content.slice(0, 5e4) + "\n... [truncated at 50000 chars]";
         }
         return content;
       }
@@ -44812,6 +44833,11 @@ function createToolHandler(repoPath) {
             "--exclude-dir=vendor",
             "--exclude-dir=.data",
             "--exclude-dir=data",
+            "--exclude=*.min.js",
+            "--exclude=*.min.css",
+            "--exclude=*.bundle.js",
+            "--exclude=*.chunk.js",
+            "--exclude=*.map",
             ...useRegex ? ["-E"] : ["-F"],
             "--",
             query,
@@ -44823,12 +44849,29 @@ function createToolHandler(repoPath) {
             maxBuffer: 1024 * 1024,
             timeout: 1e4
           });
-          const lines = output.trim().split("\n");
-          if (lines.length > 100) {
-            return lines.slice(0, 100).join("\n") + `
-... and ${lines.length - 100} more matches`;
+          const MAX_LINES = 100;
+          const MAX_LINE_LENGTH = 500;
+          const MAX_TOTAL_CHARS = 3e4;
+          const rawLines = output.trim().split("\n");
+          const totalCount = rawLines.length;
+          const truncatedLines = [];
+          let totalChars = 0;
+          for (let i = 0; i < Math.min(totalCount, MAX_LINES); i++) {
+            let line = rawLines[i];
+            if (line.length > MAX_LINE_LENGTH) {
+              line = line.slice(0, MAX_LINE_LENGTH) + "\u2026 [truncated]";
+            }
+            if (totalChars + line.length > MAX_TOTAL_CHARS) {
+              truncatedLines.push(`... [output truncated at ${MAX_TOTAL_CHARS} chars]`);
+              break;
+            }
+            truncatedLines.push(line);
+            totalChars += line.length + 1;
           }
-          return output.trim();
+          if (totalCount > MAX_LINES) {
+            truncatedLines.push(`... and ${totalCount - MAX_LINES} more matches`);
+          }
+          return truncatedLines.join("\n");
         } catch {
           return "No matches found.";
         }
@@ -44838,6 +44881,425 @@ function createToolHandler(repoPath) {
     }
   };
 }
+
+// src/tools/probe.ts
+var probeUrlTool = {
+  type: "function",
+  function: {
+    name: "probe_url",
+    description: "Make an HTTP request to a URL and return the status code, headers, and response body. Use this to check if the application is responding, diagnose 500 errors, test endpoints, etc.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Full URL to probe (e.g. http://localhost:3000/)"
+        },
+        method: {
+          type: "string",
+          description: "HTTP method (GET, POST, PUT, etc.). Defaults to GET."
+        },
+        headers: {
+          type: "string",
+          description: `Optional JSON object of headers (e.g. '{"Content-Type": "application/json"}')`
+        },
+        body: {
+          type: "string",
+          description: "Optional request body for POST/PUT requests"
+        }
+      },
+      required: ["url"],
+      additionalProperties: false
+    }
+  }
+};
+async function probeUrl(args) {
+  const url = String(args.url ?? "");
+  if (!url) return "Error: url parameter is required";
+  const method = String(args.method ?? "GET").toUpperCase();
+  let extraHeaders = {};
+  if (args.headers) {
+    try {
+      extraHeaders = JSON.parse(String(args.headers));
+    } catch {
+      return "Error: invalid JSON in headers parameter";
+    }
+  }
+  const fetchOpts = {
+    method,
+    headers: {
+      Accept: "application/json, text/html, */*",
+      ...extraHeaders
+    },
+    redirect: "manual",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
+  };
+  if (args.body && (method === "POST" || method === "PUT" || method === "PATCH")) {
+    fetchOpts.body = String(args.body);
+  }
+  try {
+    console.log(`[Tool] probe_url: ${method} ${url}`);
+    const res = await fetch(url, fetchOpts);
+    const status = res.status;
+    const headerLines = [];
+    for (const [k, v] of res.headers.entries()) {
+      const lk = k.toLowerCase();
+      if (lk === "content-type" || lk === "location" || lk === "set-cookie" || lk === "www-authenticate" || lk === "x-csrf-token") {
+        headerLines.push(`${k}: ${v}`);
+      }
+    }
+    const bodyText = await res.text().catch(() => "");
+    const bodyPreview = bodyText.length > 2e3 ? bodyText.slice(0, 2e3) + "\n... [truncated]" : bodyText;
+    const parts = [`HTTP ${status}`];
+    if (headerLines.length > 0) parts.push(headerLines.join("\n"));
+    parts.push(bodyPreview || "(empty body)");
+    const contentType = res.headers.get("content-type") ?? "";
+    const savedPath = saveProbeBody(bodyText, contentType);
+    if (savedPath) {
+      parts.push(`
+\u{1F4C4} Full response body (${bodyText.length} bytes) saved to: ${savedPath}
+Use read_file to inspect for errors, setup instructions, or configuration requirements.`);
+    }
+    console.log(`[Tool] probe_url result: ${status}`);
+    return parts.join("\n\n");
+  } catch (err) {
+    const msg = toErrorMessage(err);
+    console.log(`[Tool] probe_url error: ${msg}`);
+    return `Error: ${msg}`;
+  }
+}
+
+// src/tools/web.ts
+import { writeFileSync as writeFileSync2 } from "fs";
+import { resolve as resolve3 } from "path";
+function htmlToText(html) {
+  let text = html;
+  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  text = text.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "");
+  text = text.replace(/<\/(p|div|h[1-6]|li|tr|dt|dd|blockquote|pre|section|article)>/gi, "\n");
+  text = text.replace(/<br[^>]*\/?>/gi, "\n");
+  text = text.replace(/<hr[^>]*\/?>/gi, "\n---\n");
+  text = text.replace(/<[^>]*>/g, "");
+  text = text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&apos;/g, "'").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  text = text.replace(/[ \t]+/g, " ");
+  text = text.replace(/\n[ \t]+/g, "\n");
+  text = text.replace(/\n{3,}/g, "\n\n");
+  return text.trim();
+}
+async function searchWeb(query) {
+  try {
+    const res = await fetch(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+          Accept: "text/html"
+        },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
+      }
+    );
+    if (!res.ok) return `Search failed (HTTP ${res.status})`;
+    const html = await res.text();
+    const blocks = html.split(/class="result\s/);
+    const results = [];
+    for (const block of blocks.slice(1, 8)) {
+      const titleMatch = block.match(/class="result__a"[^>]*>([\s\S]*?)<\/a>/);
+      const title = titleMatch ? htmlToText(titleMatch[1]).trim() : "";
+      const hrefMatch = block.match(/class="result__a"[^>]*href="([^"]*)"/);
+      let url = hrefMatch ? hrefMatch[1] : "";
+      const uddgMatch = url.match(/[?&]uddg=([^&]*)/);
+      if (uddgMatch) url = decodeURIComponent(uddgMatch[1]);
+      const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+      const snippet = snippetMatch ? htmlToText(snippetMatch[1]).trim() : "";
+      if (title && (snippet || url)) {
+        results.push(`${results.length + 1}. ${title}
+   ${url}
+   ${snippet}`);
+      }
+    }
+    if (results.length === 0) return "No search results found. Try rephrasing the query.";
+    return results.join("\n\n");
+  } catch (err) {
+    return `Search error: ${toErrorMessage(err)}`;
+  }
+}
+var FETCH_INLINE_LIMIT = 1500;
+var FETCH_FILE_LIMIT = 2e4;
+async function fetchUrlContent(targetUrl, repoPath) {
+  try {
+    const res = await fetch(targetUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+        Accept: "text/html, text/plain, application/json, */*"
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
+    });
+    if (!res.ok) return `Failed to fetch (HTTP ${res.status})`;
+    const contentType = res.headers.get("content-type") || "";
+    const body = await res.text();
+    let text;
+    if (contentType.includes("text/plain") || contentType.includes("application/json")) {
+      text = body;
+    } else {
+      text = htmlToText(body);
+    }
+    if (text.length > FETCH_FILE_LIMIT) {
+      text = text.slice(0, FETCH_FILE_LIMIT) + "\n... [truncated at 20 000 chars]";
+    }
+    if (text.length <= FETCH_INLINE_LIMIT) {
+      return text;
+    }
+    if (repoPath) {
+      const filePath = resolve3(repoPath, ".bright-fetched-page.txt");
+      writeFileSync2(filePath, text, "utf-8");
+      const preview = text.slice(0, 800);
+      return `Content saved to .bright-fetched-page.txt (${text.length} chars). Use read_file to see the full page.
+
+Preview:
+${preview}
+...`;
+    }
+    return text.slice(0, 3e3) + "\n... [truncated \u2014 content too large for inline]";
+  } catch (err) {
+    return `Fetch error: ${toErrorMessage(err)}`;
+  }
+}
+var searchWebTool = {
+  type: "function",
+  function: {
+    name: "search_web",
+    description: "Search the public web for technical solutions. Use for public OSS docs, framework/package behavior, OS package names, version-specific configuration, or generic error messages. Do NOT search for private/local repository paths, selected monorepo service names, or internal code identifiers; inspect the codebase for those instead. Returns top results with titles and snippets.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: 'Public technical search query without local repo paths (e.g. "install imagemagick 7 debian bookworm", "fix Pitchfork::BootFailure rails 7", "postgresql 16 apt repository ubuntu 24.04")'
+        }
+      },
+      required: ["query"],
+      additionalProperties: false
+    }
+  }
+};
+var fetchUrlTool = {
+  type: "function",
+  function: {
+    name: "fetch_url",
+    description: "Fetch a web page and return its text content. Use after search_web to read the full content of a promising result (e.g. a Stack Overflow answer, documentation page, or GitHub issue). Returns page text with HTML stripped.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "The URL to fetch (from search_web results or known documentation)"
+        }
+      },
+      required: ["url"],
+      additionalProperties: false
+    }
+  }
+};
+var webSearchTools = [searchWebTool, fetchUrlTool];
+function looksLikeInternalCodeSearch(query) {
+  return /(?:^|\s|["'`])(?:\.\/)?(?:apps|packages|services|libs|modules)\/[A-Za-z0-9._/-]+/i.test(query) || /(?:^|\s|["'`])(?:\/tmp\/|\/home\/|\/workspace\/|\/workspaces\/|\/app\/)[^\s"'`]+/i.test(query);
+}
+function createWebSearchHandler(repoPath) {
+  return async (name, args) => {
+    if (name === "search_web") {
+      const query = String(args.query ?? "").trim();
+      if (!query) return "Error: query parameter is required";
+      if (looksLikeInternalCodeSearch(query)) {
+        console.log(`[Tool] search_web skipped internal query: ${query}`);
+        return [
+          "Search skipped: this query appears to contain a local/private repository path or internal monorepo service name.",
+          "Use codebase tools (list_files/read_file/search_files) for internal paths.",
+          'If public web search is still needed, reformulate using a public OSS project/framework/package name or a generic error, for example "NestJS Docker pnpm monorepo production build" or "rails ENOENT magick binary".'
+        ].join("\n");
+      }
+      console.log(`[Tool] search_web: ${query}`);
+      return searchWeb(query);
+    }
+    if (name === "fetch_url") {
+      const url = String(args.url ?? "").trim();
+      if (!url) return "Error: url parameter is required";
+      console.log(`[Tool] fetch_url: ${url.slice(0, 200)}`);
+      return fetchUrlContent(url, repoPath);
+    }
+    return `Unknown tool: ${name}`;
+  };
+}
+
+// src/tools/docker.ts
+var verifyDockerImageTool = {
+  type: "function",
+  function: {
+    name: "verify_docker_image",
+    description: "Check if a Docker image:tag exists on Docker Hub. Use this BEFORE writing FROM lines to ensure the image tag is valid. Returns 'exists' or 'not found'.",
+    parameters: {
+      type: "object",
+      properties: {
+        image: {
+          type: "string",
+          description: 'Full image reference (e.g. "node:22-bookworm-slim", "sbtscala/scala-sbt:eclipse-temurin-jammy-21.0.6_7_1.10.11_3.6.4")'
+        }
+      },
+      required: ["image"],
+      additionalProperties: false
+    }
+  }
+};
+var dockerfileTools = [
+  ...codebaseTools,
+  verifyDockerImageTool
+];
+function parseImageRef(imageRef) {
+  const segments = imageRef.split("/");
+  let registry2 = null;
+  let repoParts;
+  if (segments.length > 1 && (segments[0].includes(".") || segments[0].includes(":"))) {
+    registry2 = segments[0];
+    repoParts = segments.slice(1);
+  } else {
+    repoParts = segments;
+  }
+  const last = repoParts[repoParts.length - 1];
+  const colonIdx = last.lastIndexOf(":");
+  let tag = "latest";
+  if (colonIdx !== -1) {
+    tag = last.substring(colonIdx + 1);
+    repoParts[repoParts.length - 1] = last.substring(0, colonIdx);
+  }
+  return { registry: registry2, repo: repoParts.join("/"), tag };
+}
+async function verifyDockerImage(imageRef) {
+  const { registry: registry2, repo, tag } = parseImageRef(imageRef);
+  if (registry2) {
+    return verifyOciImage(`${registry2}/${repo}`, tag);
+  }
+  const hubRepo = repo.includes("/") ? repo : `library/${repo}`;
+  const url = `https://hub.docker.com/v2/repositories/${hubRepo}/tags/${tag}`;
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
+      headers: { Accept: "application/json" }
+    });
+    return res.ok;
+  } catch {
+    return true;
+  }
+}
+async function verifyOciImage(imagePart, tag) {
+  const segments = imagePart.split("/");
+  const registry2 = segments[0];
+  const repo = segments.slice(1).join("/");
+  const url = `https://${registry2}/v2/${repo}/manifests/${tag}`;
+  try {
+    const res = await fetch(url, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
+      headers: {
+        Accept: [
+          "application/vnd.docker.distribution.manifest.v2+json",
+          "application/vnd.docker.distribution.manifest.list.v2+json",
+          "application/vnd.oci.image.manifest.v1+json",
+          "application/vnd.oci.image.index.v1+json"
+        ].join(", ")
+      }
+    });
+    return res.ok;
+  } catch {
+    return true;
+  }
+}
+function createDockerfileToolHandler(repoPath) {
+  const baseHandler = createToolHandler(repoPath);
+  return async (name, args) => {
+    if (name === "verify_docker_image") {
+      const image = String(args.image ?? "");
+      if (!image) return "Error: image parameter is required";
+      const exists = await verifyDockerImage(image);
+      return exists ? `\u2713 Image "${image}" exists on Docker Hub` : `\u2717 Image "${image}" NOT FOUND on Docker Hub. Try a different tag.`;
+    }
+    return baseHandler(name, args);
+  };
+}
+async function validateDockerfileImages(dockerfile) {
+  const fromRe = /^FROM\s+(\S+)/gmi;
+  const images = /* @__PURE__ */ new Set();
+  let m;
+  while ((m = fromRe.exec(dockerfile)) !== null) {
+    const img = m[1];
+    if (img.startsWith("$") || img === "scratch") continue;
+    if (!img.includes("/") && !img.includes(":") && img === img.toLowerCase()) {
+      const officialPrefixes = ["node", "python", "golang", "ruby", "rust", "openjdk", "eclipse-temurin", "amazoncorretto", "maven", "gradle", "php", "nginx", "alpine", "ubuntu", "debian"];
+      if (!officialPrefixes.some((p) => img.startsWith(p))) continue;
+    }
+    images.add(img);
+  }
+  const missing = [];
+  for (const img of images) {
+    const exists = await verifyDockerImage(img);
+    if (!exists) {
+      missing.push(img);
+      console.warn(`[Startup] Docker image not found: ${img}`);
+    }
+  }
+  return missing;
+}
+async function findAlternativeImage(badRef) {
+  const { registry: registry2, repo, tag: badTag } = parseImageRef(badRef);
+  const imagePart = registry2 ? `${registry2}/${repo}` : repo;
+  const candidates = [];
+  if (badTag.endsWith("-slim")) {
+    candidates.push(`${imagePart}:${badTag.replace(/-slim$/, "")}`);
+  } else {
+    candidates.push(`${imagePart}:${badTag}-slim`);
+  }
+  const parts = badTag.split("-");
+  if (parts.length >= 3) {
+    candidates.push(`${imagePart}:${parts[0]}-${parts[parts.length - 1]}`);
+    candidates.push(`${imagePart}:${parts[0]}`);
+  }
+  if (parts.length >= 2) {
+    candidates.push(`${imagePart}:${parts[0]}`);
+  }
+  const versionMatch = badTag.match(/^(\d+\.\d+)/);
+  if (versionMatch) {
+    candidates.push(`${imagePart}:${versionMatch[1]}`);
+  }
+  const seen = /* @__PURE__ */ new Set([badRef]);
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (await verifyDockerImage(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+async function fixDockerfileImages(dockerfile) {
+  const missing = await validateDockerfileImages(dockerfile);
+  if (missing.length === 0) return dockerfile;
+  let patched = dockerfile;
+  for (const bad of missing) {
+    const alt = await findAlternativeImage(bad);
+    if (alt) {
+      console.log(`[Startup] Auto-fixing Docker image: ${bad} \u2192 ${alt}`);
+      patched = patched.split(bad).join(alt);
+    } else {
+      console.warn(`[Startup] No alternative found for Docker image: ${bad}`);
+    }
+  }
+  return patched;
+}
+
+// src/tools/infra.ts
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
+import { resolve as resolve4 } from "path";
+import { execSync as execSync2 } from "child_process";
 var writeFileTool = {
   type: "function",
   function: {
@@ -44926,6 +45388,100 @@ var runCommandInDockerTool = {
     }
   }
 };
+var waitTool = {
+  type: "function",
+  function: {
+    name: "wait",
+    description: "Wait for a specified number of seconds. Use this when services need time to start up before checking again. Max 60 seconds.",
+    parameters: {
+      type: "object",
+      properties: {
+        seconds: {
+          type: "number",
+          description: "Number of seconds to wait (1-60)"
+        }
+      },
+      required: ["seconds"],
+      additionalProperties: false
+    }
+  }
+};
+var saveHintTool = {
+  type: "function",
+  function: {
+    name: "save_hint",
+    description: "Save an important discovery or hint for the NEXT repair attempt. Use this when you learn something critical about how this application works (e.g. 'App reads DB settings from config/database.yml, not from DATABASE_URL', 'The app needs Redis on port 6379'). These hints survive across repair iterations so the next attempt doesn't have to rediscover the same facts.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "A concise factual statement about the application's configuration, dependencies, or behavior. Should be actionable for the next repair attempt."
+        }
+      },
+      required: ["hint"],
+      additionalProperties: false
+    }
+  }
+};
+var removeHintTool = {
+  type: "function",
+  function: {
+    name: "remove_hint",
+    description: "Remove a previously saved hint that turned out to be WRONG or MISLEADING. Use this when you discover that a hint from a previous attempt led to a failure or was based on incorrect assumptions. Pass the exact hint text (or a substring) to remove it.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "The exact text (or substring) of the hint to remove."
+        }
+      },
+      required: ["hint"],
+      additionalProperties: false
+    }
+  }
+};
+var searchWebTool2 = {
+  type: "function",
+  function: {
+    name: "search_web",
+    description: "Search the public web for technical solutions.",
+    parameters: {
+      type: "object",
+      properties: { query: { type: "string", description: "Search query" } },
+      required: ["query"],
+      additionalProperties: false
+    }
+  }
+};
+var fetchUrlTool2 = {
+  type: "function",
+  function: {
+    name: "fetch_url",
+    description: "Fetch a web page and return its text content.",
+    parameters: {
+      type: "object",
+      properties: { url: { type: "string", description: "URL to fetch" } },
+      required: ["url"],
+      additionalProperties: false
+    }
+  }
+};
+var infraTools = [
+  ...codebaseTools,
+  verifyDockerImageTool,
+  writeFileTool,
+  editFileTool,
+  runCommandOnHostTool,
+  runCommandInDockerTool,
+  waitTool,
+  probeUrlTool,
+  searchWebTool2,
+  fetchUrlTool2,
+  saveHintTool,
+  removeHintTool
+];
 function execInDocker(repoPath, container, command, timeout = 12e4) {
   const isRunning = (() => {
     try {
@@ -44945,7 +45501,7 @@ __BRIGHT_EOF__`;
   return runShellCommand(repoPath, dockerCmd, timeout);
 }
 function handleEditFile(repoPath, args) {
-  const filePath = resolve2(repoPath, String(args.path ?? ""));
+  const filePath = resolve4(repoPath, String(args.path ?? ""));
   if (!filePath.startsWith(repoPath)) {
     return "Error: path traversal attempt blocked";
   }
@@ -44953,7 +45509,7 @@ function handleEditFile(repoPath, args) {
   const newStr = String(args.new_string ?? "");
   if (!oldStr) return "Error: old_string is required";
   try {
-    const existing = readFileSync3(filePath, "utf-8");
+    const existing = readFileSync4(filePath, "utf-8");
     const count = existing.split(oldStr).length - 1;
     if (count === 0) {
       return `Error: old_string not found in ${args.path}. Make sure the string matches exactly (including whitespace and indentation).`;
@@ -44962,7 +45518,7 @@ function handleEditFile(repoPath, args) {
       return `Error: old_string found ${count} times in ${args.path}. Include more surrounding context to make it unique.`;
     }
     const updated = existing.replace(oldStr, newStr);
-    writeFileSync2(filePath, updated);
+    writeFileSync3(filePath, updated);
     return `Edited ${args.path}: replaced ${oldStr.length} chars with ${newStr.length} chars`;
   } catch (err) {
     return `Error editing file: ${toErrorMessage(err)}`;
@@ -44973,13 +45529,13 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
   return async (name, args) => {
     switch (name) {
       case "write_file": {
-        const filePath = resolve2(repoPath, String(args.path ?? ""));
+        const filePath = resolve4(repoPath, String(args.path ?? ""));
         if (!filePath.startsWith(repoPath)) {
           return "Error: path traversal attempt blocked";
         }
         const content = String(args.content ?? "");
         try {
-          writeFileSync2(filePath, content);
+          writeFileSync3(filePath, content);
           return `Written ${content.length} bytes to ${args.path}`;
         } catch (err) {
           return `Error writing file: ${toErrorMessage(err)}`;
@@ -45035,53 +45591,119 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
     }
   };
 }
-var verifyDockerImageTool = {
-  type: "function",
-  function: {
-    name: "verify_docker_image",
-    description: "Check if a Docker image:tag exists on Docker Hub. Use this BEFORE writing FROM lines to ensure the image tag is valid. Returns 'exists' or 'not found'.",
-    parameters: {
-      type: "object",
-      properties: {
-        image: {
-          type: "string",
-          description: 'Full image reference (e.g. "node:22-bookworm-slim", "sbtscala/scala-sbt:eclipse-temurin-jammy-21.0.6_7_1.10.11_3.6.4")'
-        }
-      },
-      required: ["image"],
-      additionalProperties: false
-    }
+
+// src/tools/unified.ts
+function buildToolDefs(opts) {
+  const tools = [...codebaseTools];
+  if (opts.enableDockerVerify) tools.push(verifyDockerImageTool);
+  if (opts.enableEdit) tools.push(editFileTool);
+  if (opts.enableShell) tools.push(runCommandOnHostTool);
+  if (opts.enableDocker) tools.push(runCommandInDockerTool);
+  if (opts.enableProbe) tools.push(probeUrlTool);
+  if (opts.enableWeb) tools.push(...webSearchTools);
+  if (opts.enableHints) {
+    tools.push(saveHintTool2, removeHintTool2);
   }
-};
-var waitTool = {
-  type: "function",
-  function: {
-    name: "wait",
-    description: "Wait for a specified number of seconds. Use this when services need time to start up before checking again. Max 60 seconds.",
-    parameters: {
-      type: "object",
-      properties: {
-        seconds: {
-          type: "number",
-          description: "Number of seconds to wait (1-60)"
+  return tools;
+}
+function createUnifiedToolHandler(repoPath, opts) {
+  const codeHandler = createToolHandler(repoPath);
+  const webHandler = opts.enableWeb ? createWebSearchHandler(repoPath) : void 0;
+  const dockerfileHandler = opts.enableDockerVerify ? createDockerfileToolHandler(repoPath) : void 0;
+  return async (name, args) => {
+    switch (name) {
+      // --- Codebase tools (always on) ---
+      case "read_file":
+      case "list_files":
+      case "search_files":
+        return codeHandler(name, args);
+      // --- Docker image verification ---
+      case "verify_docker_image":
+        if (!opts.enableDockerVerify || !dockerfileHandler) break;
+        return dockerfileHandler(name, args);
+      // --- Shell command ---
+      case "run_command_on_host": {
+        if (!opts.enableShell) break;
+        const command = String(args.command ?? "");
+        if (opts.shellGuard) {
+          const blocked = opts.shellGuard(command);
+          if (blocked) {
+            console.warn(`[${opts.label}] BLOCKED command: ${command.slice(0, 120)}`);
+            return blocked;
+          }
         }
-      },
-      required: ["seconds"],
-      additionalProperties: false
+        console.log(`[${opts.label}] run_command_on_host: ${command.slice(0, 200)}`);
+        return runShellCommand(repoPath, command, 12e4);
+      }
+      // --- Docker exec ---
+      case "run_command_in_docker": {
+        if (!opts.enableDocker) break;
+        const container = String(args.container ?? "");
+        const cmd = String(args.command ?? "");
+        console.log(`[${opts.label}] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+        const result = execInDocker(repoPath, container, cmd, 12e4);
+        if (opts.onDocker) opts.onDocker(container, cmd, result);
+        return result;
+      }
+      // --- Edit file ---
+      case "edit_file": {
+        if (!opts.enableEdit) break;
+        const result = handleEditFile(repoPath, args);
+        if (opts.onEdit) opts.onEdit(args, result);
+        return result;
+      }
+      // --- Probe URL ---
+      case "probe_url": {
+        if (!opts.enableProbe) break;
+        const result = opts.customProbe ? await opts.customProbe(args) : await probeUrl(args);
+        if (opts.onProbe) opts.onProbe(args, result);
+        return result;
+      }
+      // --- Web search ---
+      case "search_web":
+      case "fetch_url": {
+        if (!opts.enableWeb || !webHandler) break;
+        return webHandler(name, args);
+      }
+      // --- Hints ---
+      case "save_hint": {
+        if (!opts.enableHints) break;
+        const hint = String(args.hint ?? "").trim();
+        if (!hint) return "Error: hint cannot be empty";
+        console.log(`[${opts.label}] save_hint: ${hint.slice(0, 200)}`);
+        if (opts.onHint) opts.onHint(hint);
+        return `Hint saved: "${hint.slice(0, 100)}". It will be available to the next attempt.`;
+      }
+      case "remove_hint": {
+        if (!opts.enableHints) break;
+        const hint = String(args.hint ?? "").trim();
+        if (!hint) return "Error: hint cannot be empty";
+        console.log(`[${opts.label}] remove_hint: ${hint.slice(0, 200)}`);
+        if (opts.onRemoveHint) opts.onRemoveHint(hint);
+        return `Hint removed (if it existed).`;
+      }
+      // --- Wait ---
+      case "wait": {
+        const seconds = Math.min(60, Math.max(1, Number(args.seconds ?? 10)));
+        console.log(`[${opts.label}] wait: ${seconds}s`);
+        await new Promise((r) => setTimeout(r, seconds * 1e3));
+        return `Waited ${seconds} seconds`;
+      }
     }
-  }
-};
-var saveHintTool = {
+    return `Error: unknown tool ${name}`;
+  };
+}
+var saveHintTool2 = {
   type: "function",
   function: {
     name: "save_hint",
-    description: "Save an important discovery or hint for the NEXT repair attempt. Use this when you learn something critical about how this application works (e.g. 'App reads DB settings from config/database.yml, not from DATABASE_URL', 'The app needs Redis on port 6379'). These hints survive across repair iterations so the next attempt doesn't have to rediscover the same facts.",
+    description: "Save an important discovery or hint for the NEXT attempt. Use this when you learn something critical about how this application works.",
     parameters: {
       type: "object",
       properties: {
         hint: {
           type: "string",
-          description: "A concise factual statement about the application's configuration, dependencies, or behavior. Should be actionable for the next repair attempt."
+          description: "A concise factual statement about the application's configuration, dependencies, or behavior."
         }
       },
       required: ["hint"],
@@ -45089,11 +45711,11 @@ var saveHintTool = {
     }
   }
 };
-var removeHintTool = {
+var removeHintTool2 = {
   type: "function",
   function: {
     name: "remove_hint",
-    description: "Remove a previously saved hint that turned out to be WRONG or MISLEADING. Use this when you discover that a hint from a previous attempt led to a failure or was based on incorrect assumptions. Pass the exact hint text (or a substring) to remove it.",
+    description: "Remove a previously saved hint that turned out to be WRONG or MISLEADING.",
     parameters: {
       type: "object",
       properties: {
@@ -45107,408 +45729,6 @@ var removeHintTool = {
     }
   }
 };
-function htmlToText(html) {
-  let text = html;
-  text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
-  text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
-  text = text.replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "");
-  text = text.replace(/<\/(p|div|h[1-6]|li|tr|dt|dd|blockquote|pre|section|article)>/gi, "\n");
-  text = text.replace(/<br[^>]*\/?>/gi, "\n");
-  text = text.replace(/<hr[^>]*\/?>/gi, "\n---\n");
-  text = text.replace(/<[^>]*>/g, "");
-  text = text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&apos;/g, "'").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
-  text = text.replace(/[ \t]+/g, " ");
-  text = text.replace(/\n[ \t]+/g, "\n");
-  text = text.replace(/\n{3,}/g, "\n\n");
-  return text.trim();
-}
-async function searchWeb(query) {
-  try {
-    const res = await fetch(
-      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
-          Accept: "text/html"
-        },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
-      }
-    );
-    if (!res.ok) return `Search failed (HTTP ${res.status})`;
-    const html = await res.text();
-    const blocks = html.split(/class="result\s/);
-    const results = [];
-    for (const block of blocks.slice(1, 8)) {
-      const titleMatch = block.match(/class="result__a"[^>]*>([\s\S]*?)<\/a>/);
-      const title = titleMatch ? htmlToText(titleMatch[1]).trim() : "";
-      const hrefMatch = block.match(/class="result__a"[^>]*href="([^"]*)"/);
-      let url = hrefMatch ? hrefMatch[1] : "";
-      const uddgMatch = url.match(/[?&]uddg=([^&]*)/);
-      if (uddgMatch) url = decodeURIComponent(uddgMatch[1]);
-      const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
-      const snippet = snippetMatch ? htmlToText(snippetMatch[1]).trim() : "";
-      if (title && (snippet || url)) {
-        results.push(`${results.length + 1}. ${title}
-   ${url}
-   ${snippet}`);
-      }
-    }
-    if (results.length === 0) return "No search results found. Try rephrasing the query.";
-    return results.join("\n\n");
-  } catch (err) {
-    return `Search error: ${toErrorMessage(err)}`;
-  }
-}
-var FETCH_INLINE_LIMIT = 1500;
-var FETCH_FILE_LIMIT = 2e4;
-async function fetchUrlContent(targetUrl, repoPath) {
-  try {
-    const res = await fetch(targetUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
-        Accept: "text/html, text/plain, application/json, */*"
-      },
-      redirect: "follow",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
-    });
-    if (!res.ok) return `Failed to fetch (HTTP ${res.status})`;
-    const contentType = res.headers.get("content-type") || "";
-    const body = await res.text();
-    let text;
-    if (contentType.includes("text/plain") || contentType.includes("application/json")) {
-      text = body;
-    } else {
-      text = htmlToText(body);
-    }
-    if (text.length > FETCH_FILE_LIMIT) {
-      text = text.slice(0, FETCH_FILE_LIMIT) + "\n... [truncated at 20 000 chars]";
-    }
-    if (text.length <= FETCH_INLINE_LIMIT) {
-      return text;
-    }
-    if (repoPath) {
-      const filePath = resolve2(repoPath, ".bright-fetched-page.txt");
-      writeFileSync2(filePath, text, "utf-8");
-      const preview = text.slice(0, 800);
-      return `Content saved to .bright-fetched-page.txt (${text.length} chars). Use read_file to see the full page.
-
-Preview:
-${preview}
-...`;
-    }
-    return text.slice(0, 3e3) + "\n... [truncated \u2014 content too large for inline]";
-  } catch (err) {
-    return `Fetch error: ${toErrorMessage(err)}`;
-  }
-}
-var searchWebTool = {
-  type: "function",
-  function: {
-    name: "search_web",
-    description: "Search the public web for technical solutions. Use for public OSS docs, framework/package behavior, OS package names, version-specific configuration, or generic error messages. Do NOT search for private/local repository paths, selected monorepo service names, or internal code identifiers; inspect the codebase for those instead. Returns top results with titles and snippets.",
-    parameters: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: 'Public technical search query without local repo paths (e.g. "install imagemagick 7 debian bookworm", "fix Pitchfork::BootFailure rails 7", "postgresql 16 apt repository ubuntu 24.04")'
-        }
-      },
-      required: ["query"],
-      additionalProperties: false
-    }
-  }
-};
-var fetchUrlTool = {
-  type: "function",
-  function: {
-    name: "fetch_url",
-    description: "Fetch a web page and return its text content. Use after search_web to read the full content of a promising result (e.g. a Stack Overflow answer, documentation page, or GitHub issue). Returns page text with HTML stripped.",
-    parameters: {
-      type: "object",
-      properties: {
-        url: {
-          type: "string",
-          description: "The URL to fetch (from search_web results or known documentation)"
-        }
-      },
-      required: ["url"],
-      additionalProperties: false
-    }
-  }
-};
-var webSearchTools = [searchWebTool, fetchUrlTool];
-function looksLikeInternalCodeSearch(query) {
-  return /(?:^|\s|["'`])(?:\.\/)?(?:apps|packages|services|libs|modules)\/[A-Za-z0-9._/-]+/i.test(query) || /(?:^|\s|["'`])(?:\/tmp\/|\/home\/|\/workspace\/|\/workspaces\/|\/app\/)[^\s"'`]+/i.test(query);
-}
-function createWebSearchHandler(repoPath) {
-  return async (name, args) => {
-    if (name === "search_web") {
-      const query = String(args.query ?? "").trim();
-      if (!query) return "Error: query parameter is required";
-      if (looksLikeInternalCodeSearch(query)) {
-        console.log(`[Tool] search_web skipped internal query: ${query}`);
-        return [
-          "Search skipped: this query appears to contain a local/private repository path or internal monorepo service name.",
-          "Use codebase tools (list_files/read_file/search_files) for internal paths.",
-          'If public web search is still needed, reformulate using a public OSS project/framework/package name or a generic error, for example "NestJS Docker pnpm monorepo production build" or "rails ENOENT magick binary".'
-        ].join("\n");
-      }
-      console.log(`[Tool] search_web: ${query}`);
-      return searchWeb(query);
-    }
-    if (name === "fetch_url") {
-      const url = String(args.url ?? "").trim();
-      if (!url) return "Error: url parameter is required";
-      console.log(`[Tool] fetch_url: ${url.slice(0, 200)}`);
-      return fetchUrlContent(url, repoPath);
-    }
-    return `Unknown tool: ${name}`;
-  };
-}
-var probeUrlTool = {
-  type: "function",
-  function: {
-    name: "probe_url",
-    description: "Make an HTTP request to a URL and return the status code, headers, and response body. Use this to check if the application is responding, diagnose 500 errors, test endpoints, etc.",
-    parameters: {
-      type: "object",
-      properties: {
-        url: {
-          type: "string",
-          description: "Full URL to probe (e.g. http://localhost:3000/)"
-        },
-        method: {
-          type: "string",
-          description: "HTTP method (GET, POST, PUT, etc.). Defaults to GET."
-        },
-        headers: {
-          type: "string",
-          description: `Optional JSON object of headers (e.g. '{"Content-Type": "application/json"}')`
-        },
-        body: {
-          type: "string",
-          description: "Optional request body for POST/PUT requests"
-        }
-      },
-      required: ["url"],
-      additionalProperties: false
-    }
-  }
-};
-var infraTools = [
-  ...codebaseTools,
-  verifyDockerImageTool,
-  writeFileTool,
-  editFileTool,
-  runCommandOnHostTool,
-  runCommandInDockerTool,
-  waitTool,
-  probeUrlTool,
-  searchWebTool,
-  fetchUrlTool,
-  saveHintTool,
-  removeHintTool
-];
-var dockerfileTools = [
-  ...codebaseTools,
-  verifyDockerImageTool
-];
-function parseImageRef(imageRef) {
-  const segments = imageRef.split("/");
-  let registry2 = null;
-  let repoParts;
-  if (segments.length > 1 && (segments[0].includes(".") || segments[0].includes(":"))) {
-    registry2 = segments[0];
-    repoParts = segments.slice(1);
-  } else {
-    repoParts = segments;
-  }
-  const last = repoParts[repoParts.length - 1];
-  const colonIdx = last.lastIndexOf(":");
-  let tag = "latest";
-  if (colonIdx !== -1) {
-    tag = last.substring(colonIdx + 1);
-    repoParts[repoParts.length - 1] = last.substring(0, colonIdx);
-  }
-  return { registry: registry2, repo: repoParts.join("/"), tag };
-}
-async function verifyDockerImage(imageRef) {
-  const { registry: registry2, repo, tag } = parseImageRef(imageRef);
-  if (registry2) {
-    return verifyOciImage(`${registry2}/${repo}`, tag);
-  }
-  const hubRepo = repo.includes("/") ? repo : `library/${repo}`;
-  const url = `https://hub.docker.com/v2/repositories/${hubRepo}/tags/${tag}`;
-  try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
-      headers: { Accept: "application/json" }
-    });
-    return res.ok;
-  } catch {
-    return true;
-  }
-}
-async function verifyOciImage(imagePart, tag) {
-  const segments = imagePart.split("/");
-  const registry2 = segments[0];
-  const repo = segments.slice(1).join("/");
-  const url = `https://${registry2}/v2/${repo}/manifests/${tag}`;
-  try {
-    const res = await fetch(url, {
-      method: "HEAD",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
-      headers: {
-        Accept: [
-          "application/vnd.docker.distribution.manifest.v2+json",
-          "application/vnd.docker.distribution.manifest.list.v2+json",
-          "application/vnd.oci.image.manifest.v1+json",
-          "application/vnd.oci.image.index.v1+json"
-        ].join(", ")
-      }
-    });
-    return res.ok;
-  } catch {
-    return true;
-  }
-}
-async function probeUrl(args) {
-  const url = String(args.url ?? "");
-  if (!url) return "Error: url parameter is required";
-  const method = String(args.method ?? "GET").toUpperCase();
-  let extraHeaders = {};
-  if (args.headers) {
-    try {
-      extraHeaders = JSON.parse(String(args.headers));
-    } catch {
-      return "Error: invalid JSON in headers parameter";
-    }
-  }
-  const fetchOpts = {
-    method,
-    headers: {
-      Accept: "application/json, text/html, */*",
-      ...extraHeaders
-    },
-    redirect: "manual",
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG)
-  };
-  if (args.body && (method === "POST" || method === "PUT" || method === "PATCH")) {
-    fetchOpts.body = String(args.body);
-  }
-  try {
-    console.log(`[Tool] probe_url: ${method} ${url}`);
-    const res = await fetch(url, fetchOpts);
-    const status = res.status;
-    const headerLines = [];
-    for (const [k, v] of res.headers.entries()) {
-      const lk = k.toLowerCase();
-      if (lk === "content-type" || lk === "location" || lk === "set-cookie" || lk === "www-authenticate" || lk === "x-csrf-token") {
-        headerLines.push(`${k}: ${v}`);
-      }
-    }
-    const bodyText = await res.text().catch(() => "");
-    const bodyPreview = bodyText.length > 2e3 ? bodyText.slice(0, 2e3) + "\n... [truncated]" : bodyText;
-    const parts = [`HTTP ${status}`];
-    if (headerLines.length > 0) parts.push(headerLines.join("\n"));
-    parts.push(bodyPreview || "(empty body)");
-    const contentType = res.headers.get("content-type") ?? "";
-    const savedPath = saveProbeBody(bodyText, contentType);
-    if (savedPath) {
-      parts.push(`
-\u{1F4C4} Full response body (${bodyText.length} bytes) saved to: ${savedPath}
-Use read_file to inspect for errors, setup instructions, or configuration requirements.`);
-    }
-    console.log(`[Tool] probe_url result: ${status}`);
-    return parts.join("\n\n");
-  } catch (err) {
-    const msg = toErrorMessage(err);
-    console.log(`[Tool] probe_url error: ${msg}`);
-    return `Error: ${msg}`;
-  }
-}
-function createDockerfileToolHandler(repoPath) {
-  const baseHandler = createToolHandler(repoPath);
-  return async (name, args) => {
-    if (name === "verify_docker_image") {
-      const image = String(args.image ?? "");
-      if (!image) return "Error: image parameter is required";
-      const exists = await verifyDockerImage(image);
-      return exists ? `\u2713 Image "${image}" exists on Docker Hub` : `\u2717 Image "${image}" NOT FOUND on Docker Hub. Try a different tag.`;
-    }
-    return baseHandler(name, args);
-  };
-}
-async function validateDockerfileImages(dockerfile) {
-  const fromRe = /^FROM\s+(\S+)/gmi;
-  const images = /* @__PURE__ */ new Set();
-  let m;
-  while ((m = fromRe.exec(dockerfile)) !== null) {
-    const img = m[1];
-    if (img.startsWith("$") || img === "scratch") continue;
-    if (!img.includes("/") && !img.includes(":") && img === img.toLowerCase()) {
-      const officialPrefixes = ["node", "python", "golang", "ruby", "rust", "openjdk", "eclipse-temurin", "amazoncorretto", "maven", "gradle", "php", "nginx", "alpine", "ubuntu", "debian"];
-      if (!officialPrefixes.some((p) => img.startsWith(p))) continue;
-    }
-    images.add(img);
-  }
-  const missing = [];
-  for (const img of images) {
-    const exists = await verifyDockerImage(img);
-    if (!exists) {
-      missing.push(img);
-      console.warn(`[Startup] Docker image not found: ${img}`);
-    }
-  }
-  return missing;
-}
-async function findAlternativeImage(badRef) {
-  const { registry: registry2, repo, tag: badTag } = parseImageRef(badRef);
-  const imagePart = registry2 ? `${registry2}/${repo}` : repo;
-  const candidates = [];
-  if (badTag.endsWith("-slim")) {
-    candidates.push(`${imagePart}:${badTag.replace(/-slim$/, "")}`);
-  } else {
-    candidates.push(`${imagePart}:${badTag}-slim`);
-  }
-  const parts = badTag.split("-");
-  if (parts.length >= 3) {
-    candidates.push(`${imagePart}:${parts[0]}-${parts[parts.length - 1]}`);
-    candidates.push(`${imagePart}:${parts[0]}`);
-  }
-  if (parts.length >= 2) {
-    candidates.push(`${imagePart}:${parts[0]}`);
-  }
-  const versionMatch = badTag.match(/^(\d+\.\d+)/);
-  if (versionMatch) {
-    candidates.push(`${imagePart}:${versionMatch[1]}`);
-  }
-  const seen = /* @__PURE__ */ new Set([badRef]);
-  for (const candidate of candidates) {
-    if (seen.has(candidate)) continue;
-    seen.add(candidate);
-    if (await verifyDockerImage(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-async function fixDockerfileImages(dockerfile) {
-  const missing = await validateDockerfileImages(dockerfile);
-  if (missing.length === 0) return dockerfile;
-  let patched = dockerfile;
-  for (const bad of missing) {
-    const alt = await findAlternativeImage(bad);
-    if (alt) {
-      console.log(`[Startup] Auto-fixing Docker image: ${bad} \u2192 ${alt}`);
-      patched = patched.split(bad).join(alt);
-    } else {
-      console.warn(`[Startup] No alternative found for Docker image: ${bad}`);
-    }
-  }
-  return patched;
-}
 
 // src/prompts/identify-startup.ts
 function identifyStartupPrompt(techStack) {
@@ -46186,7 +46406,7 @@ function findDockerfileInDirectory(repoPath, relativeDir = "") {
     const path2 = `${dir}/${name}`;
     if (!existsSync5(path2)) continue;
     try {
-      if (dockerfileBuildsFromSource(readFileSync4(path2, "utf-8"))) return `${prefix}${name}`;
+      if (dockerfileBuildsFromSource(readFileSync5(path2, "utf-8"))) return `${prefix}${name}`;
       console.log(`[Startup] ${prefix}${name} found but only pulls a remote image \u2014 skipping`);
     } catch {
     }
@@ -46210,7 +46430,7 @@ function findDockerfileInDirectory(repoPath, relativeDir = "") {
   }).sort((a, b) => b.score - a.score);
   for (const { f } of scored) {
     try {
-      if (dockerfileBuildsFromSource(readFileSync4(`${dir}/${f}`, "utf-8")))
+      if (dockerfileBuildsFromSource(readFileSync5(`${dir}/${f}`, "utf-8")))
         return `${prefix}${f}`;
       console.log(`[Startup] ${prefix}${f} found but only pulls a remote image \u2014 skipping`);
     } catch {
@@ -46290,7 +46510,7 @@ async function preflightValidation(llm, repoPath, dockerfileName, discoveryNotes
   const dfPath = `${repoPath}/${dockerfileName}`;
   let dockerfile;
   try {
-    dockerfile = readFileSync4(dfPath, "utf-8");
+    dockerfile = readFileSync5(dfPath, "utf-8");
   } catch {
     console.warn("[Startup] Pre-flight: could not read Dockerfile \u2014 skipping");
     return 0;
@@ -46298,7 +46518,7 @@ async function preflightValidation(llm, repoPath, dockerfileName, discoveryNotes
   let composeContent;
   for (const name of ["compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"]) {
     try {
-      composeContent = readFileSync4(`${repoPath}/${name}`, "utf-8");
+      composeContent = readFileSync5(`${repoPath}/${name}`, "utf-8");
       break;
     } catch {
     }
@@ -46368,7 +46588,7 @@ async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config
       if (!content || content.length < 20) {
         throw new Error("LLM returned empty or too-short compose content");
       }
-      writeFileSync3(`${repoPath}/compose.yml`, content);
+      writeFileSync4(`${repoPath}/compose.yml`, content);
       const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
       const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
       console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
@@ -46393,7 +46613,7 @@ function shouldSelectMonorepoTarget(repoPath) {
   ];
   if (indicators.some((f) => existsSync5(`${repoPath}/${f}`))) return true;
   try {
-    const pkg = JSON.parse(readFileSync4(`${repoPath}/package.json`, "utf-8"));
+    const pkg = JSON.parse(readFileSync5(`${repoPath}/package.json`, "utf-8"));
     if (pkg?.workspaces) return true;
   } catch {
   }
@@ -47097,7 +47317,7 @@ function detectAppService(cwd, composeFile, startupCmd) {
   const upMatch = startupCmd.match(/docker\s+compose[^|]*up\s+(?:-d\s+)?([a-zA-Z][\w-]*)/);
   if (upMatch) return upMatch[1];
   try {
-    const content = readFileSync4(`${cwd}/${composeFile}`, "utf-8");
+    const content = readFileSync5(`${cwd}/${composeFile}`, "utf-8");
     const infraImages = /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit/i;
     const serviceBlocks = content.match(/^\s{2}(\w[\w-]*):\s*$/gm);
     if (!serviceBlocks) return void 0;
@@ -47131,14 +47351,14 @@ ${buildSection}
 ${envLines ? `    environment:
 ${envLines}
 ` : ""}`;
-  writeFileSync3(`${repoPath}/compose.yml`, content);
+  writeFileSync4(`${repoPath}/compose.yml`, content);
   console.log(`[Startup] Generated compose.yml (port ${port}, dockerfile: ${df ?? "Dockerfile"})`);
 }
 function validateComposeBuildContexts(repoPath, composeFile) {
   const filePath = `${repoPath}/${composeFile}`;
   let content;
   try {
-    content = readFileSync4(filePath, "utf8");
+    content = readFileSync5(filePath, "utf8");
   } catch {
     return true;
   }
@@ -47172,12 +47392,12 @@ async function repairDockerBuild(llm, repoPath, buildError, model, previousError
   const dockerfilePath = `${repoPath}/${dockerfileName}`;
   let currentDockerfile;
   try {
-    currentDockerfile = readFileSync4(dockerfilePath, "utf-8");
+    currentDockerfile = readFileSync5(dockerfilePath, "utf-8");
   } catch {
     return {};
   }
   const errorLogPath = `${repoPath}/.bright-build-error.log`;
-  writeFileSync3(errorLogPath, buildError, "utf-8");
+  writeFileSync4(errorLogPath, buildError, "utf-8");
   const errorLines = buildError.split("\n");
   console.log(`[Startup] Repair input: error ${errorLines.length} lines (written to .bright-build-error.log), Dockerfile lines=${currentDockerfile.split("\n").length}`);
   let errorSection;
@@ -47356,7 +47576,7 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
     if (fixedDockerfile !== fixedRaw) {
       console.log("[Startup] Auto-fixed invalid Docker image tags in repaired Dockerfile");
     }
-    writeFileSync3(dockerfilePath, fixedDockerfile, "utf-8");
+    writeFileSync4(dockerfilePath, fixedDockerfile, "utf-8");
     const changed = fixedDockerfile !== currentDockerfile;
     console.log(
       `[Startup] LLM repaired Dockerfile (${fixedDockerfile.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes detected"})`
@@ -47382,7 +47602,7 @@ function errorFingerprint(error) {
 }
 async function repairInfrastructure(llm, repoPath, config, errorOutput, model, previousErrors, hints, previousRepairs, repeatedRootCause) {
   const errorLogPath = `${repoPath}/.bright-build-error.log`;
-  writeFileSync3(errorLogPath, errorOutput, "utf-8");
+  writeFileSync4(errorLogPath, errorOutput, "utf-8");
   const errorLines = errorOutput.split("\n");
   let errorSection;
   if (errorLines.length <= 100) {
@@ -47723,7 +47943,7 @@ async function generateDockerfile(llm, repoPath, stackStr, model, discovery) {
   if (content !== contentRaw) {
     console.log("[Startup] Auto-fixed invalid Docker image tags in generated Dockerfile");
   }
-  writeFileSync3(`${repoPath}/${BRIGHT_DOCKERFILE}`, content);
+  writeFileSync4(`${repoPath}/${BRIGHT_DOCKERFILE}`, content);
   console.log(
     `[Startup] Generated ${BRIGHT_DOCKERFILE} (${content.split("\n").length} lines)`
   );
@@ -47852,7 +48072,7 @@ function ensureDockerIgnore(repoPath) {
   const problematicDirs = ["data/", ".data/", "tmp/", "log/"];
   let existing = "";
   try {
-    existing = readFileSync4(ignorePath, "utf-8");
+    existing = readFileSync5(ignorePath, "utf-8");
   } catch {
   }
   const linesToAdd = problematicDirs.filter(
@@ -47865,7 +48085,7 @@ ${linesToAdd.join("\n")}
 ` : `# Added by bright-agent to avoid permission errors
 ${linesToAdd.join("\n")}
 `;
-  writeFileSync3(ignorePath, newContent);
+  writeFileSync4(ignorePath, newContent);
   console.log(
     `[Startup] Updated .dockerignore to exclude: ${linesToAdd.join(", ")}`
   );
@@ -47961,13 +48181,13 @@ function patchScriptTtyFlags(repoPath, config) {
     }
     for (const filePath of files) {
       try {
-        const content = readFileSync4(filePath, "utf-8");
+        const content = readFileSync5(filePath, "utf-8");
         if (!/docker\s+(?:exec|run)/.test(content)) continue;
         const patched = content.replace(/^(\s*)-it(\s*\\?\s*)$/gm, "$1-i$2").replace(/\b(docker\s+(?:exec|run)\s+(?:[^\n]*?\s)?)-it\b/g, "$1-i").replace(/^(\s*)-t(\s*\\?\s*)$/gm, (_m, pre, post) => {
           return post.includes("\\") ? `${pre}${post}` : "";
         }).replace(/\s--tty\b/g, "");
         if (patched !== content) {
-          writeFileSync3(filePath, patched);
+          writeFileSync4(filePath, patched);
           console.log(`[Startup] Patched TTY flags in ${filePath.replace(repoPath + "/", "")}`);
         }
       } catch {
@@ -48073,13 +48293,13 @@ ${containerLogs}`);
     });
   });
   if (config.docker && command.includes("--wait")) {
-    const composeExitPromise = new Promise((resolve5, reject) => {
+    const composeExitPromise = new Promise((resolve7, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("docker compose --wait timed out after 300s"));
       }, 3e5);
       child.on("exit", (code) => {
         clearTimeout(timer);
-        if (code === 0) resolve5();
+        if (code === 0) resolve7();
         else {
           const head = outputLines.slice(0, 30).join("\n");
           const tail = outputLines.slice(-30).join("\n");
@@ -48306,8 +48526,8 @@ function runPrerequisite(cmd, cwd, envVars) {
   const STALL_THRESHOLD_MS = 18e4;
   const isBuildStillActive = () => {
     try {
-      const { readFileSync: readFileSync7 } = __require("fs");
-      const loadStr = readFileSync7("/proc/loadavg", "utf8").trim().split(" ")[0];
+      const { readFileSync: readFileSync8 } = __require("fs");
+      const loadStr = readFileSync8("/proc/loadavg", "utf8").trim().split(" ")[0];
       const load1m = parseFloat(loadStr);
       if (load1m >= 1) return true;
       const { execSync: execSync5 } = __require("child_process");
@@ -48320,7 +48540,7 @@ function runPrerequisite(cmd, cwd, envVars) {
       return false;
     }
   };
-  return new Promise((resolve5, reject) => {
+  return new Promise((resolve7, reject) => {
     const child = spawn("sh", ["-c", cmd], {
       cwd,
       env: { ...process.env, ...envVars },
@@ -48403,7 +48623,7 @@ ${tail}`;
       if (code === 0) {
         const elapsed = Math.round((Date.now() - startTime) / 1e3);
         console.log(`[Startup] Prerequisite completed in ${elapsed}s`);
-        resolve5();
+        resolve7();
       } else {
         const tail = outputLines.slice(-30).join("\n");
         reject(
@@ -49442,7 +49662,7 @@ ${containerLog.trim()}`);
   if (logs.length === 0) return "No container logs available.";
   const fullLogs = logs.join("\n\n");
   try {
-    writeFileSync3(`${repoPath}/.bright-container-logs.txt`, fullLogs, "utf-8");
+    writeFileSync4(`${repoPath}/.bright-container-logs.txt`, fullLogs, "utf-8");
   } catch {
   }
   const lines = fullLogs.split("\n");
@@ -49516,7 +49736,7 @@ ${health.slice(0, 500)}`);
   try {
     const logFile = `${repoPath}/.bright-container-logs.txt`;
     if (existsSync5(logFile)) {
-      const logContent = readFileSync4(logFile, "utf-8");
+      const logContent = readFileSync5(logFile, "utf-8");
       const errorPatterns = /error|failed|fatal|panic|exception|denied|refused|password.*match|login failed|permission|timeout|not found|cannot connect/i;
       const errorLines = logContent.split("\n").filter((line) => errorPatterns.test(line)).slice(0, 20).map((line) => line.trim().slice(0, 300));
       if (errorLines.length > 0) {
@@ -53069,85 +53289,77 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
   if (preContext) {
     console.log(`[Setup] Pre-gathered ${preContext.length} chars of setup context`);
   }
-  const setupTools = [
-    ...codebaseTools,
-    ...webSearchTools,
-    runCommandOnHostTool,
-    runCommandInDockerTool,
-    editFileTool,
-    {
-      type: "function",
-      function: {
-        name: "probe_url",
-        description: "Make an HTTP request to the running app. Cookies are tracked across calls within this session. Use to interact with setup wizards.",
-        parameters: {
-          type: "object",
-          properties: {
-            url: { type: "string", description: "Full URL to probe" },
-            method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
-            headers: { type: "string", description: `JSON headers, e.g. '{"Content-Type":"application/json"}'` },
-            body: { type: "string", description: "Request body for POST/PUT" }
-          },
-          required: ["url"],
-          additionalProperties: false
-        }
-      }
-    },
-    {
-      type: "function",
-      function: {
-        name: "report_setup_evidence",
-        description: "REQUIRED before claiming setup is complete. Report concrete evidence proving setup succeeded. Provide the EXACT verification command/probe you ran, the RAW output you captured (paste actual response, not a summary), and a short explanation of why this output proves setup is done. May be called multiple times to accumulate evidence.",
-        parameters: {
-          type: "object",
-          properties: {
-            verification_command: {
-              type: "string",
-              description: `The exact command, SQL query, or HTTP probe used to verify setup (e.g. "sqlcmd -Q 'SELECT count(*) FROM umbracoUser'" or "POST /umbraco/management/api/v1/security/back-office/login")`
-            },
-            verification_output: {
-              type: "string",
-              description: "The raw, unmodified output captured from the verification command. Paste the actual response/result, not a summary."
-            },
-            why_this_proves_setup_complete: {
-              type: "string",
-              description: "Short explanation of why this specific output proves the setup achieved its goal (schema created, admin user exists, etc.)"
-            }
-          },
-          required: ["verification_command", "verification_output", "why_this_proves_setup_complete"],
-          additionalProperties: false
-        }
-      }
-    }
-  ];
-  const baseCodeHandler = createToolHandler(repoPath);
-  const webHandler = createWebSearchHandler(repoPath);
   const cookieJar = {};
   const collectedEvidence = [];
-  const handler = async (name, args) => {
-    if (name === "run_command_on_host") {
-      const cmd = String(args.command ?? "");
+  const handlerOpts = {
+    label: "Setup",
+    enableShell: true,
+    enableDocker: true,
+    enableEdit: true,
+    enableProbe: true,
+    enableWeb: true,
+    shellGuard: (cmd) => {
       for (const pattern of SETUP_BLOCKED_COMMANDS) {
         if (pattern.test(cmd)) {
-          console.warn(`[Setup] BLOCKED destructive command: ${cmd.slice(0, 120)}`);
           return `Error: "${cmd.slice(0, 80)}" is not allowed in the setup phase. Setup must configure the existing running app, not destroy/rebuild containers. Use edit_file to modify compose.yml, then the orchestrator will rebuild for you if needed.`;
         }
       }
-      console.log(`[Setup] run_command_on_host: ${cmd.slice(0, 200)}`);
-      return runShellCommand(repoPath, cmd, 12e4);
+      return null;
+    },
+    customProbe: (args) => probeUrlWithCookies(args, cookieJar)
+  };
+  const reportEvidenceTool = {
+    type: "function",
+    function: {
+      name: "report_setup_evidence",
+      description: "REQUIRED before claiming setup is complete. Report concrete evidence proving setup succeeded. Provide the EXACT verification command/probe you ran, the RAW output you captured (paste actual response, not a summary), and a short explanation of why this output proves setup is done. May be called multiple times to accumulate evidence.",
+      parameters: {
+        type: "object",
+        properties: {
+          verification_command: {
+            type: "string",
+            description: `The exact command, SQL query, or HTTP probe used to verify setup (e.g. "sqlcmd -Q 'SELECT count(*) FROM umbracoUser'" or "POST /umbraco/management/api/v1/security/back-office/login")`
+          },
+          verification_output: {
+            type: "string",
+            description: "The raw, unmodified output captured from the verification command. Paste the actual response/result, not a summary."
+          },
+          why_this_proves_setup_complete: {
+            type: "string",
+            description: "Short explanation of why this specific output proves the setup achieved its goal (schema created, admin user exists, etc.)"
+          }
+        },
+        required: ["verification_command", "verification_output", "why_this_proves_setup_complete"],
+        additionalProperties: false
+      }
     }
-    if (name === "run_command_in_docker") {
-      const container = String(args.container ?? "");
-      const cmd = String(args.command ?? "");
-      console.log(`[Setup] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      return execInDocker(repoPath, container, cmd, 12e4);
+  };
+  const setupProbeUrlTool = {
+    type: "function",
+    function: {
+      name: "probe_url",
+      description: "Make an HTTP request to the running app. Cookies are tracked across calls within this session. Use to interact with setup wizards.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Full URL to probe" },
+          method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
+          headers: { type: "string", description: `JSON headers, e.g. '{"Content-Type":"application/json"}'` },
+          body: { type: "string", description: "Request body for POST/PUT" }
+        },
+        required: ["url"],
+        additionalProperties: false
+      }
     }
-    if (name === "edit_file") {
-      return handleEditFile(repoPath, args);
-    }
-    if (name === "probe_url") {
-      return probeUrlWithCookies(args, cookieJar);
-    }
+  };
+  const baseTools = buildToolDefs(handlerOpts);
+  const setupTools = [
+    ...baseTools.filter((t) => t.function.name !== "probe_url"),
+    setupProbeUrlTool,
+    reportEvidenceTool
+  ];
+  const baseHandler = createUnifiedToolHandler(repoPath, handlerOpts);
+  const handler = async (name, args) => {
     if (name === "report_setup_evidence") {
       const command = String(args.verification_command ?? "").trim();
       const output = String(args.verification_output ?? "").trim();
@@ -53159,10 +53371,7 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
       console.log(`[Setup] Evidence #${collectedEvidence.length} recorded: ${command.slice(0, 120)}`);
       return `Evidence recorded (${collectedEvidence.length} total). You may report more evidence or proceed to the final JSON answer.`;
     }
-    if (name === "search_web" || name === "fetch_url") {
-      return webHandler(name, args);
-    }
-    return baseCodeHandler(name, args);
+    return baseHandler(name, args);
   };
   const messages = firstRunSetupPrompt(
     baseUrl,
@@ -53581,7 +53790,7 @@ async function pMap(items, fn, concurrency) {
   await Promise.all(workers);
 }
 function sleep3(ms) {
-  return new Promise((resolve5) => setTimeout(resolve5, ms));
+  return new Promise((resolve7) => setTimeout(resolve7, ms));
 }
 function resolvePath(path2) {
   let resolved = path2.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/#\w+/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
@@ -53952,45 +54161,28 @@ If you tried but failed:
 // src/phases/scan-prep.ts
 async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, activeIssue) {
   console.log("[ScanPrep] Starting scan preparation phase \u2014 relaxing rate limits and security controls...");
-  const tools = [
-    ...codebaseTools,
-    ...webSearchTools,
-    runCommandOnHostTool,
-    runCommandInDockerTool,
-    editFileTool,
-    probeUrlTool
-  ];
-  const baseCodeHandler = createToolHandler(repoPath);
-  const webHandler = createWebSearchHandler(repoPath);
   const dockerCommands = [];
   let editFileCalls = 0;
   let postProbeCalls = 0;
   const postProbeStatuses = [];
   let saw429 = false;
-  const handler = async (name, args) => {
-    if (name === "run_command_on_host") {
-      const cmd = String(args.command ?? "");
-      console.log(`[ScanPrep] run_command_on_host: ${cmd.slice(0, 200)}`);
-      return runShellCommand(repoPath, cmd, 12e4);
-    }
-    if (name === "run_command_in_docker") {
-      const container = String(args.container ?? "");
-      const cmd = String(args.command ?? "");
-      console.log(`[ScanPrep] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-      const result = execInDocker(repoPath, container, cmd, 12e4);
+  const handlerOpts = {
+    label: "ScanPrep",
+    enableShell: true,
+    enableDocker: true,
+    enableEdit: true,
+    enableProbe: true,
+    enableWeb: true,
+    onDocker: (_container, cmd, _result) => {
       if (/set\(|=\s*\d|=\s*true|=\s*false|update|disable|enable/i.test(cmd)) {
-        dockerCommands.push({ container, command: cmd });
+        dockerCommands.push({ container: _container, command: cmd });
       }
-      return result;
-    }
-    if (name === "edit_file") {
+    },
+    onEdit: () => {
       editFileCalls += 1;
-      return handleEditFile(repoPath, args);
-    }
-    if (name === "probe_url") {
+    },
+    onProbe: (args, result) => {
       const method = String(args.method ?? "GET").toUpperCase();
-      console.log(`[ScanPrep] probe_url: ${method} ${String(args.url ?? "")}`);
-      const result = await probeUrl(args);
       if (method === "POST") {
         postProbeCalls += 1;
         const statusMatch = result.match(/HTTP\s+(\d{3})\b/);
@@ -53999,13 +54191,10 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, 
         }
       }
       if (/HTTP\s+429\b/.test(result)) saw429 = true;
-      return result;
     }
-    if (name === "search_web" || name === "fetch_url") {
-      return webHandler(name, args);
-    }
-    return baseCodeHandler(name, args);
   };
+  const tools = buildToolDefs(handlerOpts);
+  const handler = createUnifiedToolHandler(repoPath, handlerOpts);
   const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue);
   const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 30 : 20);
   try {
@@ -54804,8 +54993,8 @@ function extractIssueTestTag(issue) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync3 } from "fs";
-import { resolve as resolve3, dirname, basename } from "path";
+import { readFileSync as readFileSync6, writeFileSync as writeFileSync5, mkdirSync as mkdirSync3 } from "fs";
+import { resolve as resolve5, dirname, basename } from "path";
 
 // src/prompts/generate-fix.ts
 function taintAnalysisPrompt(techStack, finding) {
@@ -54915,7 +55104,7 @@ ${contextSummary}`;
         }
         if (!editedFiles.has(filePath)) {
           try {
-            editedFiles.set(filePath, readFileSync5(resolve3(repoPath, filePath), "utf-8"));
+            editedFiles.set(filePath, readFileSync6(resolve5(repoPath, filePath), "utf-8"));
           } catch {
             editedFiles.set(filePath, "");
           }
@@ -54984,7 +55173,7 @@ Use edit_file to apply the fix directly. Then summarize what you changed.`
       const patchedFiles = [];
       for (const [filePath] of editedFiles) {
         try {
-          const content = readFileSync5(resolve3(repoPath, filePath), "utf-8");
+          const content = readFileSync6(resolve5(repoPath, filePath), "utf-8");
           patchedFiles.push({ path: filePath, content });
         } catch {
         }
@@ -55013,9 +55202,9 @@ function applyFixes(repoPath, fixes) {
         );
         continue;
       }
-      const fullPath = resolve3(repoPath, file.path);
+      const fullPath = resolve5(repoPath, file.path);
       mkdirSync3(dirname(fullPath), { recursive: true });
-      writeFileSync4(fullPath, file.content, "utf-8");
+      writeFileSync5(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
   }
@@ -55023,8 +55212,8 @@ function applyFixes(repoPath, fixes) {
 
 // src/phases/harness.ts
 import { execSync as execSync4, spawn as spawn2 } from "child_process";
-import { writeFileSync as writeFileSync5, existsSync as existsSync6, readFileSync as readFileSync6 } from "fs";
-import { resolve as resolve4 } from "path";
+import { writeFileSync as writeFileSync6, existsSync as existsSync6, readFileSync as readFileSync7 } from "fs";
+import { resolve as resolve6 } from "path";
 import { createInterface as createInterface2 } from "readline";
 
 // src/prompts/harness.ts
@@ -55539,7 +55728,7 @@ async function startMinimalInfra(repoPath, infra) {
     console.log("[Harness] No essential infrastructure services");
     return;
   }
-  if (infra.composeFile && existsSync6(resolve4(repoPath, infra.composeFile))) {
+  if (infra.composeFile && existsSync6(resolve6(repoPath, infra.composeFile))) {
     const serviceNames = essentialServices.map((s) => s.name).join(" ");
     const cmd = `docker compose -f ${infra.composeFile} up -d ${serviceNames}`;
     console.log(`[Harness] Starting infra: ${cmd}`);
@@ -55615,7 +55804,7 @@ async function identifyTargets(llm, repoPath, stackStr, handleTool, model) {
         console.warn(`[Harness] Skipping invalid target: ${JSON.stringify(t).slice(0, 200)}`);
         return false;
       }
-      if (!existsSync6(resolve4(repoPath, String(t.file)))) {
+      if (!existsSync6(resolve6(repoPath, String(t.file)))) {
         console.warn(`[Harness] Skipping target with missing file: ${t.file}`);
         return false;
       }
@@ -55675,7 +55864,7 @@ async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTo
     const ext2 = extMap[language] ?? "." + language;
     harnessFileName = `harness${ext2}`;
   }
-  const harnessPath = resolve4(repoPath, harnessFileName);
+  const harnessPath = resolve6(repoPath, harnessFileName);
   if (!startCommand) {
     const cmdMap = {
       ".rb": `ruby ${harnessFileName}`,
@@ -55687,7 +55876,7 @@ async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTo
     const ext2 = harnessFileName.slice(harnessFileName.lastIndexOf("."));
     startCommand = cmdMap[ext2] ?? `node ${harnessFileName}`;
   }
-  writeFileSync5(harnessPath, harnessCode, "utf-8");
+  writeFileSync6(harnessPath, harnessCode, "utf-8");
   console.log(`[Harness] Wrote harness to ${harnessFileName} (${harnessCode.length} bytes)`);
   const endpoints = targets.map((t) => {
     const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
@@ -55719,8 +55908,8 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
   console.log(`[Harness] All targets are tier \u2264${maxTier} \u2014 skipping full app build, using stock runtime image`);
   ensureDockerIgnore(repoPath);
   const harnessFileName = config.harnessFile.split("/").pop();
-  let harnessCode = readFileSync6(config.harnessFile, "utf-8");
-  const harnessDockerfilePath = resolve4(repoPath, "Dockerfile.harness");
+  let harnessCode = readFileSync7(config.harnessFile, "utf-8");
+  const harnessDockerfilePath = resolve6(repoPath, "Dockerfile.harness");
   console.log("[Harness] Generating Dockerfile.harness via LLM...");
   const genMessages = standaloneHarnessDockerfilePrompt(
     techStack,
@@ -55762,7 +55951,7 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
       throw new Error("LLM failed to generate Dockerfile.harness after retry");
     }
   }
-  writeFileSync5(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
+  writeFileSync6(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
   console.log(`[Harness] Generated Dockerfile.harness (${harnessDockerfileContent.split("\n").length} lines)`);
   const MAX_HARNESS_ATTEMPTS = 5;
   for (let attempt = 0; attempt < MAX_HARNESS_ATTEMPTS; attempt++) {
@@ -55852,7 +56041,7 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
           handleTool,
           modelSelector
         );
-        harnessCode = readFileSync6(config.harnessFile, "utf-8");
+        harnessCode = readFileSync7(config.harnessFile, "utf-8");
         continue;
       }
       if (healthyPaths.size > 0) {
@@ -55881,7 +56070,7 @@ async function startHarness(repoPath, llm, techStack, config, infraInfo, handleT
             handleTool,
             modelSelector
           );
-          harnessCode = readFileSync6(config.harnessFile, "utf-8");
+          harnessCode = readFileSync7(config.harnessFile, "utf-8");
         } else {
           await repairHarnessDockerfile(
             llm,
@@ -55936,10 +56125,10 @@ function extractExecError(err) {
   return errMsg;
 }
 async function repairHarnessDockerfile(llm, repoPath, error, harnessCode, harnessFileName, handleTool, modelSelector) {
-  const dockerfilePath = resolve4(repoPath, "Dockerfile.harness");
+  const dockerfilePath = resolve6(repoPath, "Dockerfile.harness");
   let currentDockerfile;
   try {
-    currentDockerfile = readFileSync6(dockerfilePath, "utf-8");
+    currentDockerfile = readFileSync7(dockerfilePath, "utf-8");
   } catch {
     return;
   }
@@ -55967,7 +56156,7 @@ async function repairHarnessDockerfile(llm, repoPath, error, harnessCode, harnes
       return;
     }
     const changed = fixed !== currentDockerfile;
-    writeFileSync5(dockerfilePath, fixed, "utf-8");
+    writeFileSync6(dockerfilePath, fixed, "utf-8");
     console.log(
       `[Harness] LLM repaired Dockerfile.harness (${fixed.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
     );
@@ -56012,7 +56201,7 @@ async function probeEndpoints(port, endpoints) {
   return { errors, healthyPaths };
 }
 async function repairHarnessCode(llm, repoPath, config, probeErrors, targets, handleTool, modelSelector) {
-  const harnessCode = readFileSync6(config.harnessFile, "utf-8");
+  const harnessCode = readFileSync7(config.harnessFile, "utf-8");
   const harnessFileName = config.harnessFile.split("/").pop();
   modelSelector.escalate();
   const messages = harnessCodeRepairPrompt(harnessCode, harnessFileName, probeErrors, targets);
@@ -56033,7 +56222,7 @@ async function repairHarnessCode(llm, repoPath, config, probeErrors, targets, ha
     }
     const fixedCode = codeMatch[2];
     const changed = fixedCode !== harnessCode;
-    writeFileSync5(config.harnessFile, fixedCode, "utf-8");
+    writeFileSync6(config.harnessFile, fixedCode, "utf-8");
     console.log(
       `[Harness] LLM repaired harness code (${fixedCode.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
     );
@@ -56216,11 +56405,11 @@ var AppHealthMonitor = class {
   async waitHealthy() {
     if (this.healthy) return;
     if (!this.gate) {
-      let resolve5;
+      let resolve7;
       const promise = new Promise((r) => {
-        resolve5 = r;
+        resolve7 = r;
       });
-      this.gate = { promise, resolve: resolve5 };
+      this.gate = { promise, resolve: resolve7 };
     }
     await this.gate.promise;
   }
@@ -56323,11 +56512,11 @@ var AppHealthMonitor = class {
   markUnhealthy() {
     this.healthy = false;
     if (!this.gate) {
-      let resolve5;
+      let resolve7;
       const promise = new Promise((r) => {
-        resolve5 = r;
+        resolve7 = r;
       });
-      this.gate = { promise, resolve: resolve5 };
+      this.gate = { promise, resolve: resolve7 };
     }
     console.warn(
       `[AppHealth] App marked UNHEALTHY \u2014 pausing dependent operations`
@@ -58041,12 +58230,12 @@ function mergeQueryParams(a, b) {
   return merged.length > 0 ? merged : void 0;
 }
 function killProcess(proc2) {
-  return new Promise((resolve5) => {
+  return new Promise((resolve7) => {
     if (!proc2 || !proc2.pid) {
-      resolve5();
+      resolve7();
       return;
     }
-    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve5());
+    (0, import_tree_kill.default)(proc2.pid, "SIGTERM", () => resolve7());
   });
 }
 function isAuthRateLimitHint(hint) {
