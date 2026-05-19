@@ -327,6 +327,30 @@ export async function chatWithTools(
         content: sanitizeForJson(result),
       });
     }
+
+    // Guard: estimate context size and truncate large tool results if needed
+    const MAX_CONTEXT_CHARS = 800_000; // ~200K tokens conservative estimate
+    const totalChars = conversation.reduce((sum, m) => {
+      if (typeof m.content === "string") return sum + m.content.length;
+      if (Array.isArray(m.content)) return sum + JSON.stringify(m.content).length;
+      return sum;
+    }, 0);
+    if (totalChars > MAX_CONTEXT_CHARS) {
+      // Shrink the tool results we just added (most recent ones)
+      const toolMsgCount = msg.tool_calls.length;
+      const toolMsgs = conversation.slice(-toolMsgCount);
+      const excess = totalChars - MAX_CONTEXT_CHARS;
+      let trimmed = 0;
+      for (const tm of toolMsgs) {
+        if (trimmed >= excess) break;
+        if (tm.role === "tool" && typeof tm.content === "string" && tm.content.length > 2000) {
+          const before = tm.content.length;
+          tm.content = tm.content.slice(0, 2000) + "\n... [context limit — truncated]";
+          trimmed += before - tm.content.length;
+        }
+      }
+      console.warn(`[Inference] Context overflow guard: trimmed ${trimmed} chars from tool results`);
+    }
   }
 
   // Exhausted turns — return the last assistant content if available

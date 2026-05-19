@@ -97,8 +97,8 @@ export function createToolHandler(repoPath: string): ToolHandler {
           return `Error: path is a directory, not a file: ${args.path}`;
         }
         const content = readFileSync(filePath, "utf-8");
-        if (content.length > 100_000) {
-          return content.slice(0, 100_000) + "\n... [truncated]";
+        if (content.length > 50_000) {
+          return content.slice(0, 50_000) + "\n... [truncated at 50000 chars]";
         }
         return content;
       }
@@ -144,6 +144,11 @@ export function createToolHandler(repoPath: string): ToolHandler {
             "--exclude-dir=vendor",
             "--exclude-dir=.data",
             "--exclude-dir=data",
+            "--exclude=*.min.js",
+            "--exclude=*.min.css",
+            "--exclude=*.bundle.js",
+            "--exclude=*.chunk.js",
+            "--exclude=*.map",
             ...(useRegex ? ["-E"] : ["-F"]),
             "--",
             query,
@@ -155,14 +160,29 @@ export function createToolHandler(repoPath: string): ToolHandler {
             maxBuffer: 1024 * 1024,
             timeout: 10_000,
           });
-          const lines = output.trim().split("\n");
-          if (lines.length > 100) {
-            return (
-              lines.slice(0, 100).join("\n") +
-              `\n... and ${lines.length - 100} more matches`
-            );
+          const MAX_LINES = 100;
+          const MAX_LINE_LENGTH = 500;
+          const MAX_TOTAL_CHARS = 30_000;
+          const rawLines = output.trim().split("\n");
+          const totalCount = rawLines.length;
+          const truncatedLines: string[] = [];
+          let totalChars = 0;
+          for (let i = 0; i < Math.min(totalCount, MAX_LINES); i++) {
+            let line = rawLines[i];
+            if (line.length > MAX_LINE_LENGTH) {
+              line = line.slice(0, MAX_LINE_LENGTH) + "… [truncated]";
+            }
+            if (totalChars + line.length > MAX_TOTAL_CHARS) {
+              truncatedLines.push(`... [output truncated at ${MAX_TOTAL_CHARS} chars]`);
+              break;
+            }
+            truncatedLines.push(line);
+            totalChars += line.length + 1;
           }
-          return output.trim();
+          if (totalCount > MAX_LINES) {
+            truncatedLines.push(`... and ${totalCount - MAX_LINES} more matches`);
+          }
+          return truncatedLines.join("\n");
         } catch {
           return "No matches found.";
         }
