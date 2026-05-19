@@ -1169,10 +1169,30 @@ Respond with EXACTLY one JSON object:
           modelSelector?.escalate();
         }
 
+        // Count consecutive same-fingerprint failures — bail after 3
+        const sameKindHistory = repairHistory.filter(
+          (r) => r.kind === (isDockerBuildError ? "build" : "infra"),
+        );
+        const consecutiveSameFp = sameKindHistory.length > 0
+          ? sameKindHistory.slice().reverse().findIndex((r) => r.targetErrorFp !== currentFp)
+          : 0;
+        const actualConsecutive = consecutiveSameFp === -1 ? sameKindHistory.length : consecutiveSameFp;
+        if (actualConsecutive >= 3) {
+          console.warn(
+            `[Startup] Same error fingerprint persisted through ${actualConsecutive} consecutive repairs — fundamental approach is wrong. Skipping further repair of this kind.`,
+          );
+          // Force a full strategy reset: clear the "repaired" flag so the
+          // outer loop picks a different startup mode on the next iteration
+          infraRepaired = false;
+          dockerfileRepaired = false;
+          break;
+        }
+
         const previousRepairs = repairHistory
           .filter((r) => r.kind === (isDockerBuildError ? "build" : "infra"))
           .map((r) => r.summary)
-          .slice(-3); // last 3 repairs of this kind
+          .filter((s) => s.length > 0) // skip empty/failed repairs
+          .slice(-5); // last 5 repairs of this kind (was 3 — too short)
 
         console.log(`[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`);
 
@@ -1190,6 +1210,9 @@ Respond with EXACTLY one JSON object:
           );
           if (buildResult.summary) {
             repairHistory.push({ kind: "build", summary: buildResult.summary, targetErrorFp: currentFp });
+          } else {
+            console.warn("[Startup] Build repair LLM produced no summary — recording as failed repair attempt");
+            repairHistory.push({ kind: "build", summary: "(repair LLM exhausted turns without a fix)", targetErrorFp: currentFp });
           }
           if (buildResult.command) {
             console.log(`[Startup] Build repair overrode command: ${buildResult.command}`);
@@ -1253,6 +1276,10 @@ Respond with EXACTLY one JSON object:
           );
           if (infraResult.summary) {
             repairHistory.push({ kind: "infra", summary: infraResult.summary, targetErrorFp: currentFp });
+          } else {
+            // LLM exhausted turns without producing actionable output — record as failed attempt
+            console.warn("[Startup] Infra repair LLM produced no summary — recording as failed repair attempt");
+            repairHistory.push({ kind: "infra", summary: "(repair LLM exhausted turns without a fix)", targetErrorFp: currentFp });
           }
           // Apply any config modifications from the repair LLM
           if (infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.healthProbe) {
@@ -2013,7 +2040,7 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
       infraTools,
       trackingHandler,
       model,
-      30,
+      20,
     );
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
 
@@ -4778,7 +4805,46 @@ function gatherDiagnosticSnapshot(repoPath: string): string {
     }
   } catch { /* ignore */ }
 
-  // 4. Key error lines from container logs (grep for common failure patterns)
+  // 4. Full recent logs from unhealthy/restarting app containers
+  // This is the #1 thing the repair LLM needs — without it, it wastes turns running docker logs
+  try {
+    const unhealthyContainers = execFileSync(
+      "docker",
+      ["ps", "-a", "--filter", "health=unhealthy", "--filter", "health=starting", "--format", "{{.Names}}"],
+      { encoding: "utf-8", timeout: 10_000 },
+    ).trim().split("\n").filter(Boolean);
+    // Also get containers that exited (crashed)
+    const exitedContainers = execFileSync(
+      "docker",
+      ["ps", "-a", "--filter", "status=exited", "--format", "{{.Names}}"],
+      { encoding: "utf-8", timeout: 10_000 },
+    ).trim().split("\n").filter(Boolean);
+    const allFailing = [...new Set([...unhealthyContainers, ...exitedContainers])].slice(0, 3);
+    for (const name of allFailing) {
+      try {
+        const logs = execFileSync(
+          "docker",
+          ["logs", "--tail", "80", name],
+          { encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] },
+        );
+        // Also capture stderr
+        let stderrLogs = "";
+        try {
+          stderrLogs = execFileSync(
+            "docker",
+            ["logs", "--tail", "80", name],
+            { encoding: "utf-8", timeout: 10_000 },
+          );
+        } catch { /* ignore */ }
+        const combined = (logs + "\n" + stderrLogs).trim().slice(-4000);
+        if (combined.length > 10) {
+          sections.push(`## Container Logs: ${name} (last 80 lines)\n\`\`\`\n${combined}\n\`\`\``);
+        }
+      } catch { /* ignore */ }
+    }
+  } catch { /* ignore */ }
+
+  // 5. Key error lines from container logs file (supplementary)
   try {
     const logFile = `${repoPath}/.bright-container-logs.txt`;
     if (existsSync(logFile)) {

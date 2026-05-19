@@ -47119,7 +47119,20 @@ ${logs.slice(-3e3)}
           );
           modelSelector?.escalate();
         }
-        const previousRepairs = repairHistory.filter((r) => r.kind === (isDockerBuildError ? "build" : "infra")).map((r) => r.summary).slice(-3);
+        const sameKindHistory = repairHistory.filter(
+          (r) => r.kind === (isDockerBuildError ? "build" : "infra")
+        );
+        const consecutiveSameFp = sameKindHistory.length > 0 ? sameKindHistory.slice().reverse().findIndex((r) => r.targetErrorFp !== currentFp) : 0;
+        const actualConsecutive = consecutiveSameFp === -1 ? sameKindHistory.length : consecutiveSameFp;
+        if (actualConsecutive >= 3) {
+          console.warn(
+            `[Startup] Same error fingerprint persisted through ${actualConsecutive} consecutive repairs \u2014 fundamental approach is wrong. Skipping further repair of this kind.`
+          );
+          infraRepaired = false;
+          dockerfileRepaired = false;
+          break;
+        }
+        const previousRepairs = repairHistory.filter((r) => r.kind === (isDockerBuildError ? "build" : "infra")).map((r) => r.summary).filter((s) => s.length > 0).slice(-5);
         console.log(`[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`);
         if (isDockerBuildError) {
           const buildResult = await repairDockerBuild(
@@ -47135,6 +47148,9 @@ ${logs.slice(-3e3)}
           );
           if (buildResult.summary) {
             repairHistory.push({ kind: "build", summary: buildResult.summary, targetErrorFp: currentFp });
+          } else {
+            console.warn("[Startup] Build repair LLM produced no summary \u2014 recording as failed repair attempt");
+            repairHistory.push({ kind: "build", summary: "(repair LLM exhausted turns without a fix)", targetErrorFp: currentFp });
           }
           if (buildResult.command) {
             console.log(`[Startup] Build repair overrode command: ${buildResult.command}`);
@@ -47189,6 +47205,9 @@ ${logs.slice(-3e3)}
           );
           if (infraResult.summary) {
             repairHistory.push({ kind: "infra", summary: infraResult.summary, targetErrorFp: currentFp });
+          } else {
+            console.warn("[Startup] Infra repair LLM produced no summary \u2014 recording as failed repair attempt");
+            repairHistory.push({ kind: "infra", summary: "(repair LLM exhausted turns without a fix)", targetErrorFp: currentFp });
           }
           if (infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.healthProbe) {
             if (infraResult.command) {
@@ -47766,7 +47785,7 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
       infraTools,
       trackingHandler,
       model,
-      30
+      20
     );
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
     const result = parseInfraRepairResult(response);
@@ -49727,6 +49746,46 @@ ${lastLogs}`);
         } catch {
           sections.push(`## Health Check: ${name}
 ${health.slice(0, 500)}`);
+        }
+      } catch {
+      }
+    }
+  } catch {
+  }
+  try {
+    const unhealthyContainers = execFileSync4(
+      "docker",
+      ["ps", "-a", "--filter", "health=unhealthy", "--filter", "health=starting", "--format", "{{.Names}}"],
+      { encoding: "utf-8", timeout: 1e4 }
+    ).trim().split("\n").filter(Boolean);
+    const exitedContainers = execFileSync4(
+      "docker",
+      ["ps", "-a", "--filter", "status=exited", "--format", "{{.Names}}"],
+      { encoding: "utf-8", timeout: 1e4 }
+    ).trim().split("\n").filter(Boolean);
+    const allFailing = [.../* @__PURE__ */ new Set([...unhealthyContainers, ...exitedContainers])].slice(0, 3);
+    for (const name of allFailing) {
+      try {
+        const logs = execFileSync4(
+          "docker",
+          ["logs", "--tail", "80", name],
+          { encoding: "utf-8", timeout: 1e4, stdio: ["pipe", "pipe", "pipe"] }
+        );
+        let stderrLogs = "";
+        try {
+          stderrLogs = execFileSync4(
+            "docker",
+            ["logs", "--tail", "80", name],
+            { encoding: "utf-8", timeout: 1e4 }
+          );
+        } catch {
+        }
+        const combined = (logs + "\n" + stderrLogs).trim().slice(-4e3);
+        if (combined.length > 10) {
+          sections.push(`## Container Logs: ${name} (last 80 lines)
+\`\`\`
+${combined}
+\`\`\``);
         }
       } catch {
       }
