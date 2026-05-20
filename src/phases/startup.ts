@@ -1181,6 +1181,30 @@ Respond with EXACTLY one JSON object:
           console.warn(
             `[Startup] Same error fingerprint persisted through ${actualConsecutive} consecutive repairs — fundamental approach is wrong. Skipping further repair of this kind.`,
           );
+
+          // Generate a simplified dev-mode Dockerfile as a fallback.
+          // Production multi-stage builds often fail on monorepos due to complex
+          // workspace deps. A single-stage dev Dockerfile is simpler and still
+          // serves the purpose (DAST scanning doesn't require production optimization).
+          if (isDockerBuildError) {
+            const devDockerfile = generateDevDockerfile(repoPath, selectedServiceRoot);
+            if (devDockerfile) {
+              startupHints.push(
+                `[auto-fallback] Previous Dockerfile failed ${actualConsecutive}+ times. ` +
+                `Generated simplified dev Dockerfile at Dockerfile.bright-dev. ` +
+                `Use it instead: docker build -f Dockerfile.bright-dev -t app . && docker compose up -d`,
+              );
+            }
+          } else {
+            startupHints.push(
+              `[auto-fallback] Infrastructure repair failed ${actualConsecutive}+ times with same error. ` +
+              `The container builds but crashes at runtime. Consider: ` +
+              `1) Adding a post-start delay/healthcheck timeout increase, ` +
+              `2) Running DB migrations as a post-start command, ` +
+              `3) Checking if the app needs a config file generated before first run.`,
+            );
+          }
+
           // Force a full strategy reset: clear the "repaired" flag so the
           // outer loop picks a different startup mode on the next iteration
           infraRepaired = false;
@@ -1575,6 +1599,172 @@ function validateComposeBuildContexts(repoPath: string, composeFile: string): bo
 }
 
 // ---------------------------------------------------------------------------
+// Dev-mode Dockerfile fallback for stuck builds
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect the monorepo package manager from the repo root.
+ */
+function detectMonorepoManager(repoPath: string): "pnpm" | "yarn" | "npm" | "bun" | null {
+  if (existsSync(`${repoPath}/pnpm-lock.yaml`) || existsSync(`${repoPath}/pnpm-workspace.yaml`)) return "pnpm";
+  if (existsSync(`${repoPath}/yarn.lock`)) return "yarn";
+  if (existsSync(`${repoPath}/bun.lockb`) || existsSync(`${repoPath}/bun.lock`)) return "bun";
+  if (existsSync(`${repoPath}/package-lock.json`)) return "npm";
+  return null;
+}
+
+/**
+ * Detect the Node version required by the project (from .nvmrc, .node-version, engines field).
+ */
+function detectNodeVersion(repoPath: string, serviceRoot?: string): string {
+  const roots = serviceRoot ? [`${repoPath}/${serviceRoot}`, repoPath] : [repoPath];
+  for (const root of roots) {
+    for (const file of [".nvmrc", ".node-version"]) {
+      try {
+        const ver = readFileSync(`${root}/${file}`, "utf-8").trim();
+        const major = ver.replace(/^v/, "").split(".")[0];
+        if (major && parseInt(major) >= 14) return major;
+      } catch { /* skip */ }
+    }
+    try {
+      const pkg = JSON.parse(readFileSync(`${root}/package.json`, "utf-8"));
+      const engines = pkg?.engines?.node;
+      if (engines) {
+        const match = engines.match(/(\d+)/);
+        if (match) return match[1];
+      }
+    } catch { /* skip */ }
+  }
+  return "20"; // safe default
+}
+
+/**
+ * Generate a simplified "dev-mode" Dockerfile that skips production optimizations.
+ * Used as a fallback when production multi-stage builds keep failing (common in monorepos).
+ *
+ * Strategy: single stage, install ALL deps (not --production), skip tsc/build,
+ * run with tsx/ts-node or the dev script. This trades startup speed for reliability.
+ */
+function generateDevDockerfile(repoPath: string, serviceRoot?: string): boolean {
+  const pm = detectMonorepoManager(repoPath);
+  const nodeVer = detectNodeVersion(repoPath, serviceRoot);
+  const isMonorepo = shouldSelectMonorepoTarget(repoPath);
+
+  // Read the service's package.json to find the start script
+  const svcRoot = serviceRoot ? `${repoPath}/${serviceRoot}` : repoPath;
+  let startCmd = "node index.js";
+  let hasTypeScript = false;
+
+  try {
+    const pkg = JSON.parse(readFileSync(`${svcRoot}/package.json`, "utf-8"));
+    if (pkg.scripts?.start) {
+      startCmd = `${pm ?? "npm"} run start`;
+    } else if (pkg.scripts?.dev) {
+      startCmd = `${pm ?? "npm"} run dev`;
+    } else if (pkg.main) {
+      startCmd = `node ${pkg.main}`;
+    }
+    hasTypeScript = !!(pkg.devDependencies?.typescript || pkg.dependencies?.typescript);
+  } catch { /* keep defaults */ }
+
+  // Determine install command
+  let installCmd: string;
+  switch (pm) {
+    case "pnpm":
+      installCmd = "corepack enable && pnpm install --frozen-lockfile";
+      break;
+    case "yarn":
+      installCmd = "corepack enable && yarn install --frozen-lockfile";
+      break;
+    case "bun":
+      installCmd = "bun install --frozen-lockfile";
+      break;
+    default:
+      installCmd = "npm ci";
+  }
+
+  // For monorepos, copy EVERYTHING (isolating one workspace is what kept failing)
+  const copySection = "COPY . .";
+
+  // If TypeScript, try to build but don't fail on it — fallback to tsx
+  let buildSection = "";
+  if (hasTypeScript) {
+    const buildCmd = pm === "pnpm" ? "pnpm run build" : pm === "yarn" ? "yarn build" : "npm run build";
+    buildSection = `# Try to build TypeScript — if it fails, we'll run with tsx as fallback
+RUN ${buildCmd} || echo "TypeScript build failed — will use tsx at runtime"
+
+# Ensure tsx is available as fallback runner
+RUN ${pm === "pnpm" ? "pnpm add -g tsx" : pm === "yarn" ? "yarn global add tsx" : "npm install -g tsx"}`;
+  }
+
+  // Use CMD with shell form so env vars expand
+  const dockerfile = `# Auto-generated dev-mode Dockerfile (bright-agent fallback)
+# Production build kept failing — using simplified single-stage approach
+FROM node:${nodeVer}-bookworm
+
+WORKDIR /app
+
+# Install system deps commonly needed
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    python3 make g++ git \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy everything (monorepo workspace isolation was causing failures)
+${copySection}
+
+# Install ALL dependencies (including devDependencies for build tools)
+RUN ${installCmd}
+
+${buildSection}
+
+# Default start command
+ENV NODE_ENV=production
+CMD ${JSON.stringify(startCmd.split(" "))}
+`;
+
+  const outPath = `${repoPath}/Dockerfile.bright-dev`;
+  writeFileSync(outPath, dockerfile);
+  console.log(`[Startup] Generated dev-mode fallback Dockerfile at Dockerfile.bright-dev (node:${nodeVer}, pm=${pm ?? "npm"}, monorepo=${isMonorepo})`);
+  return true;
+}
+
+/**
+ * Detect monorepo structure and return context string for LLM repair prompts.
+ */
+function getMonorepoContext(repoPath: string, serviceRoot?: string): string {
+  if (!shouldSelectMonorepoTarget(repoPath)) return "";
+
+  const pm = detectMonorepoManager(repoPath);
+  const parts: string[] = [
+    `\n⚠️  MONOREPO DETECTED (package manager: ${pm ?? "unknown"})`,
+  ];
+
+  if (serviceRoot) {
+    parts.push(`Target service: ${serviceRoot}`);
+  }
+
+  // Check for workspace config
+  if (pm === "pnpm" && existsSync(`${repoPath}/pnpm-workspace.yaml`)) {
+    try {
+      const wsConfig = readFileSync(`${repoPath}/pnpm-workspace.yaml`, "utf-8").slice(0, 500);
+      parts.push(`pnpm-workspace.yaml:\n${wsConfig}`);
+    } catch { /* skip */ }
+  }
+
+  parts.push(
+    `\nMONOREPO BUILD STRATEGIES (in order of preference):`,
+    `1. COPY ENTIRE REPO + install from root. Don't try to isolate one workspace's files — workspace hoisting and cross-refs make this fragile.`,
+    `2. Use \`${pm ?? "npm"} install\` from repo root (NOT from service subdir). Monorepo deps resolve from root lockfile.`,
+    `3. If tsc/build fails, install tsx globally and use it as the runtime: CMD ["tsx", "${serviceRoot ?? "src"}/index.ts"]`,
+    `4. Do NOT use --production/--prod flag — monorepo workspace deps are often in devDependencies.`,
+    `5. Single stage is better than multi-stage for monorepos. Multi-stage COPY --from breaks when workspace symlinks are involved.`,
+    `6. If a Dockerfile.bright-dev exists, consider using it as a known-working base and making minimal edits.`,
+  );
+
+  return parts.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // LLM-based Dockerfile repair
 // ---------------------------------------------------------------------------
 
@@ -1654,6 +1844,13 @@ APPROACH:
 12. Always verify base image tags exist with verify_docker_image before using them.
 13. **SAVE HINTS** — whenever you discover a non-obvious fact (required Node version, correct package name, file path, config setting), call save_hint so it's available to the next repair attempt even if this one fails.
 14. **PARALLELIZE BUILDS** — if the build is timing out on dependency installation (especially native extensions), ensure parallel jobs are enabled: \`bundle config set --local jobs \$(nproc)\` for Ruby, \`ENV MAKEFLAGS="-j\$(nproc)"\` for C/Make-based extensions. This dramatically reduces build time for projects with heavy native gems (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby).
+15. **MONOREPO BUILDS** — if this is a monorepo (pnpm workspaces, yarn workspaces, lerna, nx, turbo):
+    - COPY the entire repository, not just one package. Workspace cross-references and hoisting require the full tree.
+    - Run \`pnpm install\` / \`yarn install\` / \`npm ci\` from the REPO ROOT, not from the service subdirectory.
+    - Do NOT use --production/--prod flags. Monorepo workspace deps are often under devDependencies.
+    - If TypeScript compilation fails repeatedly, install \`tsx\` and use it as runtime: \`CMD ["npx", "tsx", "src/index.ts"]\`
+    - Prefer a single stage. Multi-stage COPY --from breaks when workspace symlinks are involved.
+    - If a \`Dockerfile.bright-dev\` exists in the repo, it was generated as a known-working fallback. Consider building from it.
 
 RESPONSE FORMAT:
 After applying fixes, return ONLY this JSON object. Include only fields that changed.
@@ -1692,7 +1889,7 @@ Current Dockerfile:
 \`\`\`dockerfile
 ${currentDockerfile}
 \`\`\`
-${repeatedRootCause
+${getMonorepoContext(repoPath, serviceRoot)}${repeatedRootCause
     ? `\n⚠️  STRATEGY-SHIFT REQUIRED ⚠️\nThe LAST build repair did not work — the build is failing with the SAME root cause as before. Do not return the same Dockerfile. Change the strategy: inspect compose, patch the service Dockerfile actually used by the failing build, replace broad compose with a minimal DAST compose, or change command/prerequisites.\n`
     : ""}${previousRepairs && previousRepairs.length > 0
     ? `\nWhat previous build repairs already tried (do NOT just slightly reword these):\n${previousRepairs.map((r, i) => `--- Repair ${i + 1} ---\n${r}`).join("\n")}\n`

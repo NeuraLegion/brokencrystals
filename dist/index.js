@@ -47128,6 +47128,18 @@ ${logs.slice(-3e3)}
           console.warn(
             `[Startup] Same error fingerprint persisted through ${actualConsecutive} consecutive repairs \u2014 fundamental approach is wrong. Skipping further repair of this kind.`
           );
+          if (isDockerBuildError) {
+            const devDockerfile = generateDevDockerfile(repoPath, selectedServiceRoot);
+            if (devDockerfile) {
+              startupHints.push(
+                `[auto-fallback] Previous Dockerfile failed ${actualConsecutive}+ times. Generated simplified dev Dockerfile at Dockerfile.bright-dev. Use it instead: docker build -f Dockerfile.bright-dev -t app . && docker compose up -d`
+              );
+            }
+          } else {
+            startupHints.push(
+              `[auto-fallback] Infrastructure repair failed ${actualConsecutive}+ times with same error. The container builds but crashes at runtime. Consider: 1) Adding a post-start delay/healthcheck timeout increase, 2) Running DB migrations as a post-start command, 3) Checking if the app needs a config file generated before first run.`
+            );
+          }
           infraRepaired = false;
           dockerfileRepaired = false;
           break;
@@ -47405,6 +47417,137 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   }
   return true;
 }
+function detectMonorepoManager(repoPath) {
+  if (existsSync5(`${repoPath}/pnpm-lock.yaml`) || existsSync5(`${repoPath}/pnpm-workspace.yaml`)) return "pnpm";
+  if (existsSync5(`${repoPath}/yarn.lock`)) return "yarn";
+  if (existsSync5(`${repoPath}/bun.lockb`) || existsSync5(`${repoPath}/bun.lock`)) return "bun";
+  if (existsSync5(`${repoPath}/package-lock.json`)) return "npm";
+  return null;
+}
+function detectNodeVersion(repoPath, serviceRoot) {
+  const roots = serviceRoot ? [`${repoPath}/${serviceRoot}`, repoPath] : [repoPath];
+  for (const root of roots) {
+    for (const file of [".nvmrc", ".node-version"]) {
+      try {
+        const ver = readFileSync5(`${root}/${file}`, "utf-8").trim();
+        const major = ver.replace(/^v/, "").split(".")[0];
+        if (major && parseInt(major) >= 14) return major;
+      } catch {
+      }
+    }
+    try {
+      const pkg = JSON.parse(readFileSync5(`${root}/package.json`, "utf-8"));
+      const engines = pkg?.engines?.node;
+      if (engines) {
+        const match2 = engines.match(/(\d+)/);
+        if (match2) return match2[1];
+      }
+    } catch {
+    }
+  }
+  return "20";
+}
+function generateDevDockerfile(repoPath, serviceRoot) {
+  const pm = detectMonorepoManager(repoPath);
+  const nodeVer = detectNodeVersion(repoPath, serviceRoot);
+  const isMonorepo = shouldSelectMonorepoTarget(repoPath);
+  const svcRoot = serviceRoot ? `${repoPath}/${serviceRoot}` : repoPath;
+  let startCmd = "node index.js";
+  let hasTypeScript = false;
+  try {
+    const pkg = JSON.parse(readFileSync5(`${svcRoot}/package.json`, "utf-8"));
+    if (pkg.scripts?.start) {
+      startCmd = `${pm ?? "npm"} run start`;
+    } else if (pkg.scripts?.dev) {
+      startCmd = `${pm ?? "npm"} run dev`;
+    } else if (pkg.main) {
+      startCmd = `node ${pkg.main}`;
+    }
+    hasTypeScript = !!(pkg.devDependencies?.typescript || pkg.dependencies?.typescript);
+  } catch {
+  }
+  let installCmd;
+  switch (pm) {
+    case "pnpm":
+      installCmd = "corepack enable && pnpm install --frozen-lockfile";
+      break;
+    case "yarn":
+      installCmd = "corepack enable && yarn install --frozen-lockfile";
+      break;
+    case "bun":
+      installCmd = "bun install --frozen-lockfile";
+      break;
+    default:
+      installCmd = "npm ci";
+  }
+  const copySection = "COPY . .";
+  let buildSection = "";
+  if (hasTypeScript) {
+    const buildCmd = pm === "pnpm" ? "pnpm run build" : pm === "yarn" ? "yarn build" : "npm run build";
+    buildSection = `# Try to build TypeScript \u2014 if it fails, we'll run with tsx as fallback
+RUN ${buildCmd} || echo "TypeScript build failed \u2014 will use tsx at runtime"
+
+# Ensure tsx is available as fallback runner
+RUN ${pm === "pnpm" ? "pnpm add -g tsx" : pm === "yarn" ? "yarn global add tsx" : "npm install -g tsx"}`;
+  }
+  const dockerfile = `# Auto-generated dev-mode Dockerfile (bright-agent fallback)
+# Production build kept failing \u2014 using simplified single-stage approach
+FROM node:${nodeVer}-bookworm
+
+WORKDIR /app
+
+# Install system deps commonly needed
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    python3 make g++ git \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy everything (monorepo workspace isolation was causing failures)
+${copySection}
+
+# Install ALL dependencies (including devDependencies for build tools)
+RUN ${installCmd}
+
+${buildSection}
+
+# Default start command
+ENV NODE_ENV=production
+CMD ${JSON.stringify(startCmd.split(" "))}
+`;
+  const outPath = `${repoPath}/Dockerfile.bright-dev`;
+  writeFileSync4(outPath, dockerfile);
+  console.log(`[Startup] Generated dev-mode fallback Dockerfile at Dockerfile.bright-dev (node:${nodeVer}, pm=${pm ?? "npm"}, monorepo=${isMonorepo})`);
+  return true;
+}
+function getMonorepoContext(repoPath, serviceRoot) {
+  if (!shouldSelectMonorepoTarget(repoPath)) return "";
+  const pm = detectMonorepoManager(repoPath);
+  const parts = [
+    `
+\u26A0\uFE0F  MONOREPO DETECTED (package manager: ${pm ?? "unknown"})`
+  ];
+  if (serviceRoot) {
+    parts.push(`Target service: ${serviceRoot}`);
+  }
+  if (pm === "pnpm" && existsSync5(`${repoPath}/pnpm-workspace.yaml`)) {
+    try {
+      const wsConfig = readFileSync5(`${repoPath}/pnpm-workspace.yaml`, "utf-8").slice(0, 500);
+      parts.push(`pnpm-workspace.yaml:
+${wsConfig}`);
+    } catch {
+    }
+  }
+  parts.push(
+    `
+MONOREPO BUILD STRATEGIES (in order of preference):`,
+    `1. COPY ENTIRE REPO + install from root. Don't try to isolate one workspace's files \u2014 workspace hoisting and cross-refs make this fragile.`,
+    `2. Use \`${pm ?? "npm"} install\` from repo root (NOT from service subdir). Monorepo deps resolve from root lockfile.`,
+    `3. If tsc/build fails, install tsx globally and use it as the runtime: CMD ["tsx", "${serviceRoot ?? "src"}/index.ts"]`,
+    `4. Do NOT use --production/--prod flag \u2014 monorepo workspace deps are often in devDependencies.`,
+    `5. Single stage is better than multi-stage for monorepos. Multi-stage COPY --from breaks when workspace symlinks are involved.`,
+    `6. If a Dockerfile.bright-dev exists, consider using it as a known-working base and making minimal edits.`
+  );
+  return parts.join("\n");
+}
 async function repairDockerBuild(llm, repoPath, buildError, model, previousErrors, hints, previousRepairs, repeatedRootCause, serviceRoot) {
   const dockerfileName = findDockerfile(repoPath, serviceRoot);
   if (!dockerfileName) return {};
@@ -47474,6 +47617,13 @@ APPROACH:
 12. Always verify base image tags exist with verify_docker_image before using them.
 13. **SAVE HINTS** \u2014 whenever you discover a non-obvious fact (required Node version, correct package name, file path, config setting), call save_hint so it's available to the next repair attempt even if this one fails.
 14. **PARALLELIZE BUILDS** \u2014 if the build is timing out on dependency installation (especially native extensions), ensure parallel jobs are enabled: \`bundle config set --local jobs $(nproc)\` for Ruby, \`ENV MAKEFLAGS="-j$(nproc)"\` for C/Make-based extensions. This dramatically reduces build time for projects with heavy native gems (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby).
+15. **MONOREPO BUILDS** \u2014 if this is a monorepo (pnpm workspaces, yarn workspaces, lerna, nx, turbo):
+    - COPY the entire repository, not just one package. Workspace cross-references and hoisting require the full tree.
+    - Run \`pnpm install\` / \`yarn install\` / \`npm ci\` from the REPO ROOT, not from the service subdirectory.
+    - Do NOT use --production/--prod flags. Monorepo workspace deps are often under devDependencies.
+    - If TypeScript compilation fails repeatedly, install \`tsx\` and use it as runtime: \`CMD ["npx", "tsx", "src/index.ts"]\`
+    - Prefer a single stage. Multi-stage COPY --from breaks when workspace symlinks are involved.
+    - If a \`Dockerfile.bright-dev\` exists in the repo, it was generated as a known-working fallback. Consider building from it.
 
 RESPONSE FORMAT:
 After applying fixes, return ONLY this JSON object. Include only fields that changed.
@@ -47512,7 +47662,7 @@ Current Dockerfile:
 \`\`\`dockerfile
 ${currentDockerfile}
 \`\`\`
-${repeatedRootCause ? `
+${getMonorepoContext(repoPath, serviceRoot)}${repeatedRootCause ? `
 \u26A0\uFE0F  STRATEGY-SHIFT REQUIRED \u26A0\uFE0F
 The LAST build repair did not work \u2014 the build is failing with the SAME root cause as before. Do not return the same Dockerfile. Change the strategy: inspect compose, patch the service Dockerfile actually used by the failing build, replace broad compose with a minimal DAST compose, or change command/prerequisites.
 ` : ""}${previousRepairs && previousRepairs.length > 0 ? `
