@@ -4,6 +4,9 @@
 
 FROM node:18-alpine AS build
 
+# Install build tools needed for native modules (libxmljs requires python3 + gcc)
+RUN apk add --no-cache python3 make g++ libxml2-dev
+
 WORKDIR /usr/src/app
 
 # Copy and build NestJS server project
