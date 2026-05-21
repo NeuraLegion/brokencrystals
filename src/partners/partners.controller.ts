@@ -164,6 +164,6 @@ export class PartnersController {
 
   private sanitizeInput(input: string): string {
     // Basic sanitization to escape single quotes
-    return input.replace(/'/g, "\'");
+    return input.replace(/'/g, '&apos;');
   }
 }

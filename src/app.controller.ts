@@ -34,7 +34,6 @@ import {
   ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
-import * as dotT from 'dot';
 import { FastifyReply } from 'fastify';
 import { parseXml } from 'libxmljs';
 import { AppConfig } from './app.config.api';
@@ -76,8 +75,8 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      // Use a safe template rendering approach
-      const res = dotT.template(text, { evaluate: false, interpolate: false, encode: false, use: false, define: false, varname: 'it' })({});
+      // Strip dot.js template delimiters to prevent SSTI and return sanitized text
+      const res = text.split('{{').join('').split('}}').join('').split('[[').join('').split(']]').join('');
       this.logger.debug(`Rendered template: ${res}`);
       return res;
     }
@@ -205,31 +204,34 @@ export class AppController {
     @Res() res: FastifyReply
   ): Promise<void> {
     const numbers = Array.isArray(payload?.numbers) ? payload.numbers : [];
-    const processNumbersExpression =
+    const rawExpression =
       typeof payload?.processing_expression === 'string' &&
       payload.processing_expression.trim().length > 0
-        ? payload.processing_expression
-        : 'numbers.reduce((acc, num) => acc + num, 0)';
+        ? payload.processing_expression.trim()
+        : 'sum';
 
     // expose both names used by exploiter payloads
     const response = res;
 
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
+    // Predefined safe operations — no code execution
+    const safeOperations: Record<string, (nums: number[]) => number> = {
+      sum: (nums) => nums.reduce((acc, n) => acc + n, 0),
+      product: (nums) => nums.reduce((acc, n) => acc * n, 1),
+      min: (nums) => (nums.length ? Math.min(...nums) : 0),
+      max: (nums) => (nums.length ? Math.max(...nums) : 0),
+      average: (nums) =>
+        nums.length ? nums.reduce((acc, n) => acc + n, 0) / nums.length : 0,
+      count: (nums) => nums.length,
+    };
+
+    const op = Object.prototype.hasOwnProperty.call(safeOperations, rawExpression)
+      ? rawExpression
+      : 'sum';
+
     try {
-      // Use Function constructor to safely evaluate the expression
-      const func = new Function('numbers', `return ${processNumbersExpression}`);
-      const result = func(numbers);
-
-      // SSJI payload may already end the response
-      if (response.sent || response.raw.writableEnded) {
-        return;
-      }
-
-      if (typeof result === 'string') {
-        response.status(200).type('text/plain').send(result);
-        return;
-      }
+      const result = safeOperations[op](numbers);
 
       response
         .status(200)

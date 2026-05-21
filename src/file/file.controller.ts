@@ -60,19 +60,19 @@ export class FileController {
   }
 
   private validatePath(path: string) {
-    const urlPattern = new RegExp('^(https?:\/\/)?'+ // protocol
-      '((([a-z\d]([a-z\d-]*[a-z\d])*)\.?)+[a-z]{2,}|'+ // domain name
-      '((\d{1,3}\.){3}\d{1,3}))'+ // OR ip (v4) address
-      '(\:\d+)?(\/[-a-z\d%_.~+]*)*'+ // port and path
-      '(\?[;&a-z\d%_.~+=-]*)?'+ // query string
-      '(\#[-a-z\d_]*)?$','i'); // fragment locator
-    if (!urlPattern.test(path)) {
+    let url: URL;
+    try {
+      url = new URL(path);
+    } catch {
+      throw new BadRequestException('Invalid URL format');
+    }
+
+    if (!['http:', 'https:'].includes(url.protocol)) {
       throw new BadRequestException('Invalid URL format');
     }
 
     // Additional validation to prevent SSRF
     const allowedHosts = ['example.com', 'another-example.com']; // Add allowed hosts here
-    const url = new URL(path);
     if (!allowedHosts.includes(url.hostname)) {
       throw new BadRequestException('Host is not allowed');
     }
