@@ -20,7 +20,8 @@ COPY --chown=node:node keycloak ./keycloak
 COPY --chown=node:node src ./src
 
 ENV NPM_CONFIG_LOGLEVEL=error
-RUN npm ci --no-audit
+ENV HUSKY=0
+RUN npm install --no-audit
 RUN npm run build:fast
 RUN npm prune --production
 
