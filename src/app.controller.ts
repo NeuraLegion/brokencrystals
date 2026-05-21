@@ -264,6 +264,7 @@ export class AppController {
   }
 
   @Get('/secrets')
+  @UseGuards(AuthGuard)
   @ApiOperation({
     description: SWAGGER_DESC_SECRETS
   })
