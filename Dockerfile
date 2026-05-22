@@ -2,7 +2,7 @@
 # BUILD FOR LOCAL DEVELOPMENT
 ###################
 
-FROM node:18-alpine AS build
+FROM node:20-alpine AS build
 
 WORKDIR /usr/src/app
 
@@ -17,7 +17,7 @@ COPY --chown=node:node keycloak ./keycloak
 COPY --chown=node:node src ./src
 
 ENV NPM_CONFIG_LOGLEVEL=error
-RUN npm ci --no-audit
+RUN npm ci --legacy-peer-deps --no-audit
 RUN npm run build:fast
 RUN npm prune --production
 
@@ -32,7 +32,7 @@ COPY --chown=node:node client/vite.config.ts ./client/vite.config.ts
 COPY --chown=node:node client/index.html ./client/index.html
 
 ENV CYPRESS_INSTALL_BINARY=0
-RUN npm ci --prefix=client --no-audit
+RUN npm ci --legacy-peer-deps --no-audit --prefix=client
 RUN npm run build --prefix=client
 
 USER node
@@ -41,7 +41,7 @@ USER node
 # PRODUCTION
 ###################
 
-FROM node:18-alpine AS production
+FROM node:20-alpine AS production
 
 WORKDIR /usr/src/app
 
