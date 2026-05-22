@@ -1,7 +1,11 @@
-import { EntityManager, EntityRepository } from '@mikro-orm/core';
+import { EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Product } from '../model/product.entity';
+import {
+  RECOMMENDATIONS_ALLOWED_DIRECTIONS,
+  RECOMMENDATIONS_SORT_FIELD_MAP
+} from './recommendations.constants';
 
 @Injectable()
 export class RecommendationsService {
@@ -9,8 +13,7 @@ export class RecommendationsService {
 
   constructor(
     @InjectRepository(Product)
-    private readonly productsRepository: EntityRepository<Product>,
-    private readonly em: EntityManager
+    private readonly productsRepository: EntityRepository<Product>
   ) {}
 
   async findRelated(
@@ -30,16 +33,26 @@ export class RecommendationsService {
       return [];
     }
 
-    const query = `
-      select *
-      from product
-      where category = '${product.category}'
-        and name <> '${product.name}'
-      order by ${sort} ${direction}
-      limit ${limit};
-    `;
-    const rows = await this.em.getConnection().execute<Product[]>(query);
+    const sortField = RECOMMENDATIONS_SORT_FIELD_MAP[sort];
+    if (!sortField) {
+      throw new BadRequestException('Invalid sort field');
+    }
+    const normalizedDirection = direction.toLowerCase();
+    if (!RECOMMENDATIONS_ALLOWED_DIRECTIONS.has(normalizedDirection)) {
+      throw new BadRequestException('Invalid sort direction');
+    }
 
-    return rows.map((row: Product) => this.em.map(Product, row));
+    return this.productsRepository.find(
+      {
+        category: product.category,
+        name: { $ne: product.name }
+      },
+      {
+        limit,
+        orderBy: {
+          [sortField]: normalizedDirection
+        }
+      }
+    );
   }
 }

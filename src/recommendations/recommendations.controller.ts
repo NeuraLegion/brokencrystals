@@ -14,6 +14,10 @@ import {
 import { ProductDto } from '../products/api/ProductDto';
 import { Product } from '../model/product.entity';
 import { API_DESC_GET_RELATED_RECOMMENDATIONS } from './recommendations.controller.api.desc';
+import {
+  RECOMMENDATIONS_ALLOWED_DIRECTIONS,
+  RECOMMENDATIONS_ALLOWED_SORT_FIELDS
+} from './recommendations.constants';
 import { RecommendationsService } from './recommendations.service';
 
 @Controller('/api/recommendations')
@@ -73,12 +77,21 @@ export class RecommendationsController {
     if (limit <= 0) {
       throw new BadRequestException('Limit must be positive');
     }
+    const normalizedSort = sort.toLowerCase();
+    if (!RECOMMENDATIONS_ALLOWED_SORT_FIELDS.has(normalizedSort)) {
+      throw new BadRequestException('Invalid sort field');
+    }
+
+    const normalizedDirection = direction.toLowerCase();
+    if (!RECOMMENDATIONS_ALLOWED_DIRECTIONS.has(normalizedDirection)) {
+      throw new BadRequestException('Invalid sort direction');
+    }
 
     const products = await this.recommendationsService.findRelated(
       productName,
       limit,
-      sort,
-      direction
+      normalizedSort,
+      normalizedDirection
     );
 
     return products.map((product: Product) => new ProductDto(product));
