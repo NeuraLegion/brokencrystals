@@ -23,7 +23,9 @@ export class RecommendationsService {
       `Finding recommendations for "${productName}" sorted by "${sort}" in "${direction}" order`
     );
 
-    const product = await this.productsRepository.findOne({ name: productName });
+    const product = await this.productsRepository.findOne({
+      name: productName
+    });
     if (!product) {
       return [];
     }

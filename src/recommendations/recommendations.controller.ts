@@ -1,4 +1,10 @@
-import { Controller, Get, Logger, Query, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Logger,
+  Query
+} from '@nestjs/common';
 import {
   ApiOkResponse,
   ApiOperation,
