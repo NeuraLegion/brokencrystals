@@ -835,6 +835,14 @@ Full configuration & usage examples can be found in our [demo project](https://g
 
   </details>
 
+- **SQL Injection (Recommendations Sorting)** - `/api/recommendations/related?product=Amethyst&sort=views_count&direction=desc` looks up related products by category, but it interpolates the `sort` and `direction` parameters directly into the `ORDER BY` clause.
+
+  <details>
+    <summary>Demo of Recommendations SQL Injection</summary>
+  - Call `/api/recommendations/related?product=Amethyst&sort=views_count;select%20pg_sleep(3)--&direction=desc` to tamper with the generated recommendation query.
+
+  </details>
+
 - **Broken Object Property Level Authorization (BOPLA)** - `/api/users/me` GET/PUT expose and update the authenticated user object wholesale, allowing overwriting sensitive fields (including password) without proper field-level authorization.
 
   <details>
