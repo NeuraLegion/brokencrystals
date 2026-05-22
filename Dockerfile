@@ -17,6 +17,8 @@ COPY --chown=node:node keycloak ./keycloak
 COPY --chown=node:node src ./src
 
 ENV NPM_CONFIG_LOGLEVEL=error
+ENV NODE_ENV=development
+ENV NPM_CONFIG_PRODUCTION=false
 RUN npm ci --no-audit
 RUN npm run build:fast
 RUN npm prune --production
