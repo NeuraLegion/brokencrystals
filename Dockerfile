@@ -17,7 +17,9 @@ COPY --chown=node:node keycloak ./keycloak
 COPY --chown=node:node src ./src
 
 ENV NPM_CONFIG_LOGLEVEL=error
-RUN npm ci --no-audit
+ENV NPM_CONFIG_PRODUCTION=false
+ENV NODE_ENV=development
+RUN npm install --include=dev --omit=optional --no-audit && ls -l node_modules/.bin/nest
 RUN npm run build:fast
 RUN npm prune --production
 
@@ -32,7 +34,7 @@ COPY --chown=node:node client/vite.config.ts ./client/vite.config.ts
 COPY --chown=node:node client/index.html ./client/index.html
 
 ENV CYPRESS_INSTALL_BINARY=0
-RUN npm ci --prefix=client --no-audit
+RUN npm install --prefix=client --no-audit
 RUN npm run build --prefix=client
 
 USER node
