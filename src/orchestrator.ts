@@ -894,6 +894,24 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           console.log(`[Engine] Auto-injected env vars from hint: ${injected.join(", ")}`);
         }
 
+        // Gate: If the app is healthy, don't tear it down — the problem is auth
+        // detection/configuration, not infrastructure. Killing a healthy compose
+        // stack just because auth can't find a login endpoint causes cascading
+        // failures (e.g., standalone restart loses Redis/DB companions).
+        const healthProbe = startupConfig.healthProbe ?? startupConfig.healthCheckPath ?? "/";
+        const appStillHealthy = await checkAppHealth(startupConfig.port, healthProbe);
+        if (appStillHealthy) {
+          console.warn(`[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} → OK). Skipping infrastructure teardown — problem is auth config, not infra.`);
+          await progress.phaseDetail(
+            "auth",
+            "infra_repair_skipped",
+            "App is healthy — auth issue is not infrastructure-related",
+          );
+          // Don't break immediately — give auth one more chance with the hint as context
+          addHint(authHints, `[auth-infra-skipped] INFRA_REPAIR was requested but app health check passes. The problem is NOT infrastructure — it is likely an incorrect auth detection (e.g. OAuth API misidentified as session-based, or no auth endpoints found). Re-detect auth type and try OAuth/API-key approaches.`);
+          break;
+        }
+
         const repairHints = [
           `[auth-infra-repair] ${authResult.infraRepairHint}`,
           `[auth-infra-repair] The auth phase identified this infrastructure problem. Fix it in compose.yml/Dockerfile/environment and rebuild.`,

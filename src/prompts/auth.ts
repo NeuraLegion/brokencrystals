@@ -55,7 +55,10 @@ You have codebase tools (read_file, list_files, search_files) AND a **probe_url*
    - Login/session controllers, auth routes, token generation
    - User models, password hashing, CSRF token generation
    - Session configuration, cookie settings, JWT secret config
+   - **OAuth2/OIDC controllers**: OAuthClient models, token endpoints, client_credentials grant, @nestjs/passport OAuth strategies, passport-oauth2, oauth2-server, authlib, django-oauth-toolkit
    If the codebase has ANY of these → auth IS required. Proceed to find the login endpoint details.
+   
+   **OAuth2 detection**: If you find OAuth controllers, /oauth/token routes, OAuthClient/PlatformOAuthClient models, client_credentials or password grant handlers, or environment vars like OAUTH_*, JWT_SECRET with no session login → set authType to "oauth". Probe common OAuth paths: /oauth/token, /v2/oauth/token, /auth/oauth2/token, /.well-known/openid-configuration.
 
 2. **Probe the live app to confirm and gather details** — use probe_url:
    - GET ${baseUrl}/ — check the response. NOTE: Many apps (forums, wikis, CMS, blogs) serve PUBLIC pages without auth. A 200 response on the homepage does NOT mean auth is unnecessary.
@@ -90,6 +93,7 @@ CRITICAL RULES:
 - If probe responses return HTML when you requested JSON (Accept: application/json), the app may be serving a catch-all page (setup wizard, SPA shell). This does NOT mean the endpoint is unprotected.
 - If EVERY endpoint returns 200 with similar HTML content, the app is likely in a special state (setup wizard, SPA with client-side routing). Auth IS almost certainly still required.
 - Default to requiresAuth: true. Only set requiresAuth: false if you are CERTAIN the app has no auth at all (no login endpoint, no session management, no user model, no auth middleware anywhere in the codebase).
+- If no session login/form-based auth is found BUT the codebase has OAuth controllers, token endpoints, JWT_SECRET, or API key guards → set authType to "oauth" or "api_key" (NOT "none"). An API without session login almost always uses token-based auth.
 
 Base URL: ${baseUrl}`,
     },

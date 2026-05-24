@@ -50073,7 +50073,10 @@ You have codebase tools (read_file, list_files, search_files) AND a **probe_url*
    - Login/session controllers, auth routes, token generation
    - User models, password hashing, CSRF token generation
    - Session configuration, cookie settings, JWT secret config
+   - **OAuth2/OIDC controllers**: OAuthClient models, token endpoints, client_credentials grant, @nestjs/passport OAuth strategies, passport-oauth2, oauth2-server, authlib, django-oauth-toolkit
    If the codebase has ANY of these \u2192 auth IS required. Proceed to find the login endpoint details.
+   
+   **OAuth2 detection**: If you find OAuth controllers, /oauth/token routes, OAuthClient/PlatformOAuthClient models, client_credentials or password grant handlers, or environment vars like OAUTH_*, JWT_SECRET with no session login \u2192 set authType to "oauth". Probe common OAuth paths: /oauth/token, /v2/oauth/token, /auth/oauth2/token, /.well-known/openid-configuration.
 
 2. **Probe the live app to confirm and gather details** \u2014 use probe_url:
    - GET ${baseUrl}/ \u2014 check the response. NOTE: Many apps (forums, wikis, CMS, blogs) serve PUBLIC pages without auth. A 200 response on the homepage does NOT mean auth is unnecessary.
@@ -50108,6 +50111,7 @@ CRITICAL RULES:
 - If probe responses return HTML when you requested JSON (Accept: application/json), the app may be serving a catch-all page (setup wizard, SPA shell). This does NOT mean the endpoint is unprotected.
 - If EVERY endpoint returns 200 with similar HTML content, the app is likely in a special state (setup wizard, SPA with client-side routing). Auth IS almost certainly still required.
 - Default to requiresAuth: true. Only set requiresAuth: false if you are CERTAIN the app has no auth at all (no login endpoint, no session management, no user model, no auth middleware anywhere in the codebase).
+- If no session login/form-based auth is found BUT the codebase has OAuth controllers, token endpoints, JWT_SECRET, or API key guards \u2192 set authType to "oauth" or "api_key" (NOT "none"). An API without session login almost always uses token-based auth.
 
 Base URL: ${baseUrl}`
     },
@@ -58036,6 +58040,18 @@ This user should work for authentication. Skip user registration/seeding and go 
         const injected = injectEnvVarsFromHint(repoPath, authResult.infraRepairHint);
         if (injected.length > 0) {
           console.log(`[Engine] Auto-injected env vars from hint: ${injected.join(", ")}`);
+        }
+        const healthProbe = startupConfig.healthProbe ?? startupConfig.healthCheckPath ?? "/";
+        const appStillHealthy = await checkAppHealth(startupConfig.port, healthProbe);
+        if (appStillHealthy) {
+          console.warn(`[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} \u2192 OK). Skipping infrastructure teardown \u2014 problem is auth config, not infra.`);
+          await progress.phaseDetail(
+            "auth",
+            "infra_repair_skipped",
+            "App is healthy \u2014 auth issue is not infrastructure-related"
+          );
+          addHint(authHints, `[auth-infra-skipped] INFRA_REPAIR was requested but app health check passes. The problem is NOT infrastructure \u2014 it is likely an incorrect auth detection (e.g. OAuth API misidentified as session-based, or no auth endpoints found). Re-detect auth type and try OAuth/API-key approaches.`);
+          break;
         }
         const repairHints = [
           `[auth-infra-repair] ${authResult.infraRepairHint}`,
