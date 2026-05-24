@@ -14,8 +14,27 @@ import { extractJson, parseJsonLenient } from "../utils.js";
 
 export async function detectTechStack(
   repoPath: string,
+  serviceRoot?: string,
 ): Promise<TechStack> {
-  return detectTechStackFromFiles(repoPath);
+  const base = await detectTechStackFromFiles(repoPath);
+  // For monorepos, also scan the selected service subdirectory
+  // (root package.json often only has workspace tooling, not the actual frameworks)
+  if (serviceRoot) {
+    const svcPath = resolve(repoPath, serviceRoot);
+    if (existsSync(svcPath)) {
+      const svc = await detectTechStackFromFiles(svcPath);
+      const langs = new Set(base.languages);
+      const fws = new Set(base.frameworks);
+      const dbs = new Set(base.databases);
+      for (const l of svc.languages) langs.add(l);
+      for (const f of svc.frameworks) fws.add(f);
+      for (const d of svc.databases) dbs.add(d);
+      base.languages = [...langs];
+      base.frameworks = [...fws];
+      base.databases = [...dbs];
+    }
+  }
+  return base;
 }
 
 async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
@@ -1987,10 +2006,6 @@ export async function discoverEndpoints(
   console.log(
     `[Analyze] Found ${controllerFiles.length} controller files via glob`,
   );
-
-  if (controllerFiles.length === 0) {
-    return [];
-  }
 
   // Step 2: Extract endpoints from each file using regex (zero LLM)
   const allEndpoints: DiscoveredEndpoint[] = [];

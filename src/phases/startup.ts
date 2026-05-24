@@ -747,6 +747,24 @@ export async function startApplicationWithRetries(
     );
     if (selectedServiceRoot) {
       techStack.serviceRoot = selectedServiceRoot;
+      // Re-scan the service subdirectory for frameworks the root may not list
+      // (e.g. Next.js in apps/web/package.json not in root package.json)
+      try {
+        const svcPkg = JSON.parse(readFileSync(`${repoPath}/${selectedServiceRoot}/package.json`, "utf-8"));
+        const allDeps = { ...svcPkg?.dependencies, ...svcPkg?.devDependencies };
+        const frameworkMap: Array<[string, string]> = [
+          ["next", "Next.js"], ["nuxt", "Nuxt"], ["express", "Express"],
+          ["fastify", "Fastify"], ["@nestjs/core", "NestJS"], ["koa", "Koa"],
+          ["@remix-run/node", "Remix"], ["@remix-run/react", "Remix"],
+          ["rails", "Rails"], ["django", "Django"], ["flask", "Flask"],
+        ];
+        for (const [pkg, name] of frameworkMap) {
+          if (allDeps?.[pkg] && !techStack.frameworks.includes(name)) {
+            techStack.frameworks.push(name);
+            console.log(`[Startup] Added framework from service root: ${name}`);
+          }
+        }
+      } catch { /* no package.json in service root — skip */ }
     }
   }
 
