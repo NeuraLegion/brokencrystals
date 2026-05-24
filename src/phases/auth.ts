@@ -220,10 +220,12 @@ export async function detectAndConfigureAuth(
   // For OAuth2/OIDC APIs, skip user registration/seeding — we need an OAuth
   // client (client_id/secret), not a username/password. The LLM will create
   // one during the auth configuration phase using command tools.
+  // EXCEPTION: "password" grant needs BOTH user credentials AND client credentials.
   if (detection.authType === "oauth") {
-    console.log("[Auth] OAuth2/OIDC detected — seeding OAuth client");
+    const grantType = detection.oauthGrantType ?? "client_credentials";
+    console.log(`[Auth] OAuth2/OIDC detected (grant: ${grantType}) — seeding OAuth client`);
     if (detection.oauthTokenEndpoint) {
-      addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Grant type: ${detection.oauthGrantType ?? "client_credentials"}.`);
+      addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Grant type: ${grantType}.`);
     }
     if (detection.oauthClientId) {
       addAuthHint(authHints, `[auth-oauth-client] Found OAuth2 client: id=${detection.oauthClientId}, secret=${detection.oauthClientSecret ?? "unknown"}.`);
@@ -241,6 +243,16 @@ export async function detectAndConfigureAuth(
         addAuthHint(authHints, `[auth-oauth-client] Seeded OAuth2 client: id=${oauthClient.clientId}, secret=${oauthClient.clientSecret}, tokenEndpoint=${oauthClient.tokenEndpoint}.`);
       } else {
         console.warn("[Auth:OAuth] Could not seed OAuth client — LLM will try to create one during auth config");
+      }
+    }
+
+    // For "password" grant, we also need a real user (resource owner)
+    if (grantType === "password") {
+      console.log("[Auth:OAuth] Password grant — seeding test user for resource owner credentials");
+      // Re-use the normal user seed flow (seedUser) but pass to oauth flow
+      // The detection already has loginBody/loginEndpoint if available
+      if (detection.loginBody) {
+        addAuthHint(authHints, `[auth-oauth-user] Resource owner credentials from detection: ${detection.loginBody}`);
       }
     }
 
@@ -605,7 +617,7 @@ interface AuthDetection {
   oauthClientId: string | null;
   oauthClientSecret: string | null;
   oauthScope: string | null;
-  oauthGrantType: "client_credentials" | "authorization_code" | null;
+  oauthGrantType: "client_credentials" | "authorization_code" | "password" | null;
   notes: string;
 }
 
@@ -1789,7 +1801,10 @@ Example — OAuth2 PKCE flow:
       type: "function",
       function: {
         name: "create_auth_oidc",
-        description: `Create a Bright OIDC/OAuth2 auth object using the client_credentials grant type. Use this for API services that authenticate via OAuth2 tokens (Bearer tokens obtained from a token endpoint using client ID + secret). The Bright platform handles the full token exchange and refresh automatically.`,
+        description: `Create a Bright OIDC/OAuth2 auth object. Supports two grant types:
+- "client_credentials": Machine-to-machine, no user needed — just client ID + secret.
+- "password": Resource Owner Password Credentials — needs client ID + secret AND username + password. Use when the API authenticates real users via a token endpoint (not session cookies).
+The Bright platform handles the full token exchange and automatic refresh.`,
         parameters: {
           type: "object",
           properties: {
@@ -1826,8 +1841,16 @@ Example — OAuth2 PKCE flow:
             },
             grantType: {
               type: "string",
-              enum: ["client_credentials"],
-              description: "OAuth2 grant type. Default: client_credentials",
+              enum: ["client_credentials", "password"],
+              description: "OAuth2 grant type. Default: client_credentials. Use 'password' when the API requires user credentials (username+password) exchanged via the token endpoint.",
+            },
+            username: {
+              type: "string",
+              description: "(Required for grantType='password') The resource owner's username",
+            },
+            password: {
+              type: "string",
+              description: "(Required for grantType='password') The resource owner's password",
             },
           },
           required: ["tokenEndpoint", "clientId", "clientSecret", "testUrl"],
@@ -2012,9 +2035,31 @@ Example — OAuth2 PKCE flow:
       const audience = args.audience ? String(args.audience) : undefined;
       const resource = args.resource ? String(args.resource).split(/[\s,]+/).filter(Boolean) : [];
       const grantType = String(args.grantType ?? "client_credentials");
+      const username = args.username ? String(args.username) : undefined;
+      const password = args.password ? String(args.password) : undefined;
 
+      const oidcConfig: Record<string, unknown> = {
+        clientId,
+        clientSecret,
+        ...(scope.length > 0 ? { scope } : {}),
+        ...(resource.length > 0 ? { resource } : {}),
+        ...(audience ? { audience } : {}),
+        grantType,
+        tokenEndpoint,
+      };
+
+      // For password grant, include resource owner credentials
+      if (grantType === "password") {
+        if (!username || !password) {
+          return JSON.stringify({ error: "grantType 'password' requires both username and password parameters" });
+        }
+        oidcConfig.username = username;
+        oidcConfig.password = password;
+      }
+
+      const grantLabel = grantType === "password" ? "OIDC password" : "OIDC client_credentials";
       const body: Record<string, unknown> = {
-        name: "Engine Auth — OIDC client_credentials",
+        name: `Engine Auth — ${grantLabel}`,
         projectId,
         type: "oidc",
         test: {
@@ -2036,22 +2081,14 @@ Example — OAuth2 PKCE flow:
           { type: "status", statuses: [200, 201, 204] },
         ],
         config: {
-          oidc: {
-            clientId,
-            clientSecret,
-            ...(scope.length > 0 ? { scope } : {}),
-            ...(resource.length > 0 ? { resource } : {}),
-            ...(audience ? { audience } : {}),
-            grantType,
-            tokenEndpoint,
-          },
+          oidc: oidcConfig,
         },
       };
 
-      console.log(`[Auth] Creating OIDC auth — tokenEndpoint: ${tokenEndpoint}, clientId: ${clientId}, test: ${testUrl}`);
+      console.log(`[Auth] Creating ${grantLabel} auth — tokenEndpoint: ${tokenEndpoint}, clientId: ${clientId}, test: ${testUrl}`);
       const result = await postAuthObject(api, body);
       if (result.error) {
-        attemptLog.push(`- create_auth_oidc(tokenEndpoint=${tokenEndpoint}, clientId=${clientId}, testUrl=${testUrl}) → ERROR: ${result.error}`);
+        attemptLog.push(`- create_auth_oidc(grantType=${grantType}, tokenEndpoint=${tokenEndpoint}, clientId=${clientId}, testUrl=${testUrl}) → ERROR: ${result.error}`);
         addAuthHint(authHints, `[auth-create-error] create_auth_oidc failed: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }

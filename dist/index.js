@@ -50147,7 +50147,7 @@ Return a JSON object:
   "oauthClientId": "found-client-id" or null,
   "oauthClientSecret": "found-client-secret" or null,
   "oauthScope": "read write" or null,
-  "oauthGrantType": "client_credentials" or null,
+  "oauthGrantType": "client_credentials" or "password" or null,
   "notes": "brief description"
 }
 
@@ -50161,14 +50161,15 @@ Key rules:
 - csrfFieldName: the exact form field name (e.g. "csrf", "csrfmiddlewaretoken", "_token", "authenticity_token")
 - csrfFormUrl: the URL to GET that serves the login form HTML containing the CSRF token (may be "/" if the app redirects there)
 - csrfDelivery: "form_body" if the token must be in the POST body (HTML hidden input), "header" if it goes in an X-CSRF-Token header (JSON API), "json_body" if it comes from a JSON endpoint but must be included in the POST body as a field (e.g. NextAuth csrfToken)
-- For authType "oauth": fill in oauthTokenEndpoint, oauthClientId/Secret (if found in env/seed files), oauthScope, oauthGrantType. The loginEndpoint/loginBody fields are less relevant for OAuth \u2014 use the oauth-specific fields instead.
+- For authType "oauth": fill in oauthTokenEndpoint, oauthClientId/Secret (if found in env/seed files), oauthScope, oauthGrantType. Use "client_credentials" when the API is machine-to-machine (no user login). Use "password" when the API exchanges user credentials (username+password) via a token endpoint for a Bearer token (ROPC flow \u2014 common in Django REST, Laravel Passport, Spring Boot OAuth). The loginEndpoint/loginBody fields are less relevant for "client_credentials" but still useful for "password" grant (loginBody should contain the username/password).
 - csrfExtractPattern: regex to extract the CSRF token from the HTML response body (capture group 1 = token value)`
     }
   ];
 }
 function configureAuthPrompt(baseUrl, testUrl, detection, userConfirmed, preProbeContext, authHints = []) {
   const authStyle = detection.authType === "session" ? "session" : detection.authType === "jwt" ? "jwt" : detection.authType === "api_key" ? "api_key" : detection.authType === "oauth" ? "oidc" : "session";
-  const credentialNote = authStyle === "oidc" ? `
+  const credentialNote = authStyle === "oidc" ? detection.oauthGrantType === "password" ? `
+This is an OAuth2 API using password (ROPC) grant. You need client credentials AND user credentials. Use create_auth_oidc with grantType="password", username, and password. Check auth hints for seeded user and OAuth client credentials.` : `
 This is an OAuth2/OIDC API service. You need to create an OAuth2 client (client_id/secret) and use create_auth_oidc. If a seeded client exists, use those credentials. Otherwise, use command tools to create one via the app's CLI or database.` : userConfirmed ? `
 A test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.` : `
 No confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work \u2014 if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
@@ -50216,11 +50217,33 @@ This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You ca
   }
   let oauthGuidance = "";
   if (detection.authType === "oauth") {
+    const grantType = detection.oauthGrantType ?? "client_credentials";
     const tokenEndpoint = detection.oauthTokenEndpoint ? `${baseUrl}${detection.oauthTokenEndpoint}` : `${baseUrl}/oauth/token`;
     const clientId = detection.oauthClientId ?? "UNKNOWN \u2014 must create or find one";
     const clientSecret = detection.oauthClientSecret ?? "UNKNOWN \u2014 must create or find one";
     const scope = detection.oauthScope ?? "";
-    oauthGuidance = `
+    if (grantType === "password") {
+      oauthGuidance = `
+
+## \u26A0\uFE0F MANDATORY: This is an OAuth2 API using Resource Owner Password Credentials (ROPC)
+This API issues Bearer tokens via a token endpoint using client credentials + username/password.
+
+**Use \`create_auth_oidc\` tool** with:
+- tokenEndpoint: "${tokenEndpoint}" (verify by probing \u2014 should accept POST with grant_type=password)
+- clientId: "${clientId}"
+- clientSecret: "${clientSecret}"
+- grantType: "password"
+- username: The test user's username/email (from seeded user or auth hints)
+- password: The test user's password
+${scope ? `- scope: "${scope}"` : ""}
+- testUrl: Find a protected endpoint that returns 401 without Bearer token (use probe_url to discover)
+
+**If no OAuth2 client exists**, create one via DB/CLI (same as client_credentials).
+**User credentials**: Use the seeded test user credentials from auth hints. If none exist, use run_command_in_docker to create a user.
+**Do NOT use create_auth or create_auth_raw** \u2014 use create_auth_oidc with grantType="password".
+**Do NOT respond with INFRA_REPAIR** just because there's no session login.`;
+    } else {
+      oauthGuidance = `
 
 ## \u26A0\uFE0F MANDATORY: This is an OAuth2/OIDC API service
 This API uses OAuth2 Bearer tokens, NOT session/cookie auth. Do NOT try session login flows.
@@ -50243,6 +50266,7 @@ ${scope ? `- scope: "${scope}"` : ""}
 
 **Do NOT use create_auth or create_auth_raw** for OAuth2 client_credentials \u2014 use create_auth_oidc.
 **Do NOT respond with INFRA_REPAIR** just because there's no session login \u2014 this is an API service, OAuth is the correct auth mechanism.`;
+    }
   }
   const hintsBlock = authHints.length > 0 ? `
 ## Saved auth hints
@@ -50752,9 +50776,10 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
     `[auth-detection] ${detection.authType} auth uses ${detection.loginMethod ?? "POST"} ${detection.loginEndpoint ?? "unknown"} with ${detection.loginContentType} body ${detection.loginBody ?? "unknown"}. Token location=${detection.tokenLocation}, field/header=${detection.tokenFieldPath ?? detection.headerName ?? "unknown"}, request header=${detection.headerName ?? "Authorization"}, prefix=${JSON.stringify(detection.headerPrefix ?? "")}.`
   );
   if (detection.authType === "oauth") {
-    console.log("[Auth] OAuth2/OIDC detected \u2014 seeding OAuth client");
+    const grantType = detection.oauthGrantType ?? "client_credentials";
+    console.log(`[Auth] OAuth2/OIDC detected (grant: ${grantType}) \u2014 seeding OAuth client`);
     if (detection.oauthTokenEndpoint) {
-      addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Grant type: ${detection.oauthGrantType ?? "client_credentials"}.`);
+      addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Grant type: ${grantType}.`);
     }
     if (detection.oauthClientId) {
       addAuthHint(authHints, `[auth-oauth-client] Found OAuth2 client: id=${detection.oauthClientId}, secret=${detection.oauthClientSecret ?? "unknown"}.`);
@@ -50770,6 +50795,12 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
         addAuthHint(authHints, `[auth-oauth-client] Seeded OAuth2 client: id=${oauthClient.clientId}, secret=${oauthClient.clientSecret}, tokenEndpoint=${oauthClient.tokenEndpoint}.`);
       } else {
         console.warn("[Auth:OAuth] Could not seed OAuth client \u2014 LLM will try to create one during auth config");
+      }
+    }
+    if (grantType === "password") {
+      console.log("[Auth:OAuth] Password grant \u2014 seeding test user for resource owner credentials");
+      if (detection.loginBody) {
+        addAuthHint(authHints, `[auth-oauth-user] Resource owner credentials from detection: ${detection.loginBody}`);
       }
     }
     const probeContext2 = await preProbeForAuth(baseUrl, detection);
@@ -51974,7 +52005,10 @@ Example \u2014 OAuth2 PKCE flow:
       type: "function",
       function: {
         name: "create_auth_oidc",
-        description: `Create a Bright OIDC/OAuth2 auth object using the client_credentials grant type. Use this for API services that authenticate via OAuth2 tokens (Bearer tokens obtained from a token endpoint using client ID + secret). The Bright platform handles the full token exchange and refresh automatically.`,
+        description: `Create a Bright OIDC/OAuth2 auth object. Supports two grant types:
+- "client_credentials": Machine-to-machine, no user needed \u2014 just client ID + secret.
+- "password": Resource Owner Password Credentials \u2014 needs client ID + secret AND username + password. Use when the API authenticates real users via a token endpoint (not session cookies).
+The Bright platform handles the full token exchange and automatic refresh.`,
         parameters: {
           type: "object",
           properties: {
@@ -52008,8 +52042,16 @@ Example \u2014 OAuth2 PKCE flow:
             },
             grantType: {
               type: "string",
-              enum: ["client_credentials"],
-              description: "OAuth2 grant type. Default: client_credentials"
+              enum: ["client_credentials", "password"],
+              description: "OAuth2 grant type. Default: client_credentials. Use 'password' when the API requires user credentials (username+password) exchanged via the token endpoint."
+            },
+            username: {
+              type: "string",
+              description: "(Required for grantType='password') The resource owner's username"
+            },
+            password: {
+              type: "string",
+              description: "(Required for grantType='password') The resource owner's password"
             }
           },
           required: ["tokenEndpoint", "clientId", "clientSecret", "testUrl"],
@@ -52160,8 +52202,27 @@ Example \u2014 OAuth2 PKCE flow:
       const audience = args.audience ? String(args.audience) : void 0;
       const resource = args.resource ? String(args.resource).split(/[\s,]+/).filter(Boolean) : [];
       const grantType = String(args.grantType ?? "client_credentials");
+      const username = args.username ? String(args.username) : void 0;
+      const password = args.password ? String(args.password) : void 0;
+      const oidcConfig = {
+        clientId,
+        clientSecret,
+        ...scope.length > 0 ? { scope } : {},
+        ...resource.length > 0 ? { resource } : {},
+        ...audience ? { audience } : {},
+        grantType,
+        tokenEndpoint
+      };
+      if (grantType === "password") {
+        if (!username || !password) {
+          return JSON.stringify({ error: "grantType 'password' requires both username and password parameters" });
+        }
+        oidcConfig.username = username;
+        oidcConfig.password = password;
+      }
+      const grantLabel = grantType === "password" ? "OIDC password" : "OIDC client_credentials";
       const body = {
-        name: "Engine Auth \u2014 OIDC client_credentials",
+        name: `Engine Auth \u2014 ${grantLabel}`,
         projectId,
         type: "oidc",
         test: {
@@ -52183,21 +52244,13 @@ Example \u2014 OAuth2 PKCE flow:
           { type: "status", statuses: [200, 201, 204] }
         ],
         config: {
-          oidc: {
-            clientId,
-            clientSecret,
-            ...scope.length > 0 ? { scope } : {},
-            ...resource.length > 0 ? { resource } : {},
-            ...audience ? { audience } : {},
-            grantType,
-            tokenEndpoint
-          }
+          oidc: oidcConfig
         }
       };
-      console.log(`[Auth] Creating OIDC auth \u2014 tokenEndpoint: ${tokenEndpoint}, clientId: ${clientId}, test: ${testUrl2}`);
+      console.log(`[Auth] Creating ${grantLabel} auth \u2014 tokenEndpoint: ${tokenEndpoint}, clientId: ${clientId}, test: ${testUrl2}`);
       const result = await postAuthObject(api, body);
       if (result.error) {
-        attemptLog.push(`- create_auth_oidc(tokenEndpoint=${tokenEndpoint}, clientId=${clientId}, testUrl=${testUrl2}) \u2192 ERROR: ${result.error}`);
+        attemptLog.push(`- create_auth_oidc(grantType=${grantType}, tokenEndpoint=${tokenEndpoint}, clientId=${clientId}, testUrl=${testUrl2}) \u2192 ERROR: ${result.error}`);
         addAuthHint(authHints, `[auth-create-error] create_auth_oidc failed: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }

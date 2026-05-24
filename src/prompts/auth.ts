@@ -129,7 +129,7 @@ Return a JSON object:
   "oauthClientId": "found-client-id" or null,
   "oauthClientSecret": "found-client-secret" or null,
   "oauthScope": "read write" or null,
-  "oauthGrantType": "client_credentials" or null,
+  "oauthGrantType": "client_credentials" or "password" or null,
   "notes": "brief description"
 }
 
@@ -143,7 +143,7 @@ Key rules:
 - csrfFieldName: the exact form field name (e.g. "csrf", "csrfmiddlewaretoken", "_token", "authenticity_token")
 - csrfFormUrl: the URL to GET that serves the login form HTML containing the CSRF token (may be "/" if the app redirects there)
 - csrfDelivery: "form_body" if the token must be in the POST body (HTML hidden input), "header" if it goes in an X-CSRF-Token header (JSON API), "json_body" if it comes from a JSON endpoint but must be included in the POST body as a field (e.g. NextAuth csrfToken)
-- For authType "oauth": fill in oauthTokenEndpoint, oauthClientId/Secret (if found in env/seed files), oauthScope, oauthGrantType. The loginEndpoint/loginBody fields are less relevant for OAuth — use the oauth-specific fields instead.
+- For authType "oauth": fill in oauthTokenEndpoint, oauthClientId/Secret (if found in env/seed files), oauthScope, oauthGrantType. Use "client_credentials" when the API is machine-to-machine (no user login). Use "password" when the API exchanges user credentials (username+password) via a token endpoint for a Bearer token (ROPC flow — common in Django REST, Laravel Passport, Spring Boot OAuth). The loginEndpoint/loginBody fields are less relevant for "client_credentials" but still useful for "password" grant (loginBody should contain the username/password).
 - csrfExtractPattern: regex to extract the CSRF token from the HTML response body (capture group 1 = token value)`,
     },
   ];
@@ -168,7 +168,9 @@ export function configureAuthPrompt(
     : "session";
 
   const credentialNote = authStyle === "oidc"
-    ? `\nThis is an OAuth2/OIDC API service. You need to create an OAuth2 client (client_id/secret) and use create_auth_oidc. If a seeded client exists, use those credentials. Otherwise, use command tools to create one via the app's CLI or database.`
+    ? (detection.oauthGrantType === "password"
+      ? `\nThis is an OAuth2 API using password (ROPC) grant. You need client credentials AND user credentials. Use create_auth_oidc with grantType="password", username, and password. Check auth hints for seeded user and OAuth client credentials.`
+      : `\nThis is an OAuth2/OIDC API service. You need to create an OAuth2 client (client_id/secret) and use create_auth_oidc. If a seeded client exists, use those credentials. Otherwise, use command tools to create one via the app's CLI or database.`)
     : userConfirmed
       ? `\nA test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.`
       : `\nNo confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work — if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
@@ -220,13 +222,36 @@ This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You ca
   // OAuth2/OIDC guidance block
   let oauthGuidance = "";
   if (detection.authType === "oauth") {
+    const grantType = detection.oauthGrantType ?? "client_credentials";
     const tokenEndpoint = detection.oauthTokenEndpoint
       ? `${baseUrl}${detection.oauthTokenEndpoint}`
       : `${baseUrl}/oauth/token`;
     const clientId = detection.oauthClientId ?? "UNKNOWN — must create or find one";
     const clientSecret = detection.oauthClientSecret ?? "UNKNOWN — must create or find one";
     const scope = detection.oauthScope ?? "";
-    oauthGuidance = `
+
+    if (grantType === "password") {
+      oauthGuidance = `
+
+## ⚠️ MANDATORY: This is an OAuth2 API using Resource Owner Password Credentials (ROPC)
+This API issues Bearer tokens via a token endpoint using client credentials + username/password.
+
+**Use \`create_auth_oidc\` tool** with:
+- tokenEndpoint: "${tokenEndpoint}" (verify by probing — should accept POST with grant_type=password)
+- clientId: "${clientId}"
+- clientSecret: "${clientSecret}"
+- grantType: "password"
+- username: The test user's username/email (from seeded user or auth hints)
+- password: The test user's password
+${scope ? `- scope: "${scope}"` : ""}
+- testUrl: Find a protected endpoint that returns 401 without Bearer token (use probe_url to discover)
+
+**If no OAuth2 client exists**, create one via DB/CLI (same as client_credentials).
+**User credentials**: Use the seeded test user credentials from auth hints. If none exist, use run_command_in_docker to create a user.
+**Do NOT use create_auth or create_auth_raw** — use create_auth_oidc with grantType="password".
+**Do NOT respond with INFRA_REPAIR** just because there's no session login.`;
+    } else {
+      oauthGuidance = `
 
 ## ⚠️ MANDATORY: This is an OAuth2/OIDC API service
 This API uses OAuth2 Bearer tokens, NOT session/cookie auth. Do NOT try session login flows.
@@ -249,6 +274,7 @@ ${scope ? `- scope: "${scope}"` : ""}
 
 **Do NOT use create_auth or create_auth_raw** for OAuth2 client_credentials — use create_auth_oidc.
 **Do NOT respond with INFRA_REPAIR** just because there's no session login — this is an API service, OAuth is the correct auth mechanism.`;
+    }
   }
 
   const hintsBlock = authHints.length > 0
