@@ -1353,6 +1353,21 @@ Respond with EXACTLY one JSON object:
             }
             if (infraResult.healthCheckPath) {
               config = { ...config, healthCheckPath: infraResult.healthCheckPath };
+              // If the repair changed the healthcheck path but didn't explicitly
+              // set a new healthProbe, the existing probe may target a stale endpoint
+              // (e.g. /api/auth/session on a service that only serves /health).
+              // Reset it to a simple GET on the new path so the port check matches.
+              if (!infraResult.healthProbe && config.healthProbe) {
+                console.log(`[Startup] Resetting stale health probe to match new healthCheckPath: ${infraResult.healthCheckPath}`);
+                config = {
+                  ...config,
+                  healthProbe: {
+                    method: "GET",
+                    path: infraResult.healthCheckPath,
+                    expectedStatuses: [200],
+                  },
+                };
+              }
             }
             if (infraResult.healthProbe) {
               console.log(`[Startup] Repair LLM set health probe: ${describeHealthProbe(infraResult.healthProbe)}`);
@@ -3676,25 +3691,53 @@ export async function waitForPort(
   let portHasEverResponded = false; // got ANY HTTP response (even 5xx) at least once
 
   while (Date.now() - start < effectiveTimeoutMs) {
-    // If the AI flagged a fatal error, stop waiting immediately
+    // If the AI flagged a fatal error, do one last-chance probe before giving up.
+    // The AI analysis runs asynchronously and the port may have become reachable
+    // in the seconds between when the AI was invoked and when it responded.
     if (fatalDiagnosis) {
-      let errMsg = `Application failed on port ${port}: ${fatalDiagnosis}`;
-      if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
-      if (lastBody && lastBody !== fatalDiagnosis) errMsg += `\n\nHTTP response body:\n${lastBody}`;
-      if (repoPath) {
-        const logs = getContainerLogTail(repoPath, 40);
-        if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
+      try {
+        const { body: lcBody, headers: lcHeaders } = buildHealthProbeRequest(probe, probePath);
+        const lcResp = await fetch(`http://localhost:${port}${probePath}`, {
+          method: probeMethod,
+          headers: lcHeaders,
+          ...(lcBody !== undefined ? { body: lcBody } : {}),
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (lcResp.status < 500) {
+          // Port is actually reachable — AI was wrong or stale. Clear and continue.
+          console.log(`[Startup] Last-chance probe succeeded (HTTP ${lcResp.status}) — ignoring AI fatal verdict`);
+          portHasEverResponded = true;
+          consecutiveConnFailures = 0;
+          fatalDiagnosis = "";
+          lastStatus = lcResp.status;
+          // Fall through to normal probe handling below
+        }
+      } catch {
+        // Still unreachable — honor the fatal diagnosis
       }
-      throw new StartupFailedError(errMsg);
+      if (fatalDiagnosis) {
+        let errMsg = `Application failed on port ${port}: ${fatalDiagnosis}`;
+        if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
+        if (lastBody && lastBody !== fatalDiagnosis) errMsg += `\n\nHTTP response body:\n${lastBody}`;
+        if (repoPath) {
+          const logs = getContainerLogTail(repoPath, 40);
+          if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
+        }
+        throw new StartupFailedError(errMsg);
+      }
     }
 
     try {
       const { body, headers } = buildHealthProbeRequest(probe, probePath);
+      // Use a longer timeout when the port has never responded — heavy apps
+      // (NestJS with 100+ modules, Prisma, Redis) may take 5-10s per request
+      // during synchronous module initialization even though the port is bound.
+      const probeTimeout = portHasEverResponded ? FETCH_TIMEOUT_QUICK : 10_000;
       const response = await fetch(`http://localhost:${port}${probePath}`, {
         method: probeMethod,
         headers,
         ...(body !== undefined ? { body } : {}),
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_QUICK),
+        signal: AbortSignal.timeout(probeTimeout),
       });
       lastStatus = response.status;
       portHasEverResponded = true;

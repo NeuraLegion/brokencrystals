@@ -42716,8 +42716,24 @@ var glob = Object.assign(glob_, {
 glob.glob = glob;
 
 // src/phases/analyze.ts
-async function detectTechStack(repoPath) {
-  return detectTechStackFromFiles(repoPath);
+async function detectTechStack(repoPath, serviceRoot) {
+  const base = await detectTechStackFromFiles(repoPath);
+  if (serviceRoot) {
+    const svcPath = resolve(repoPath, serviceRoot);
+    if (existsSync3(svcPath)) {
+      const svc = await detectTechStackFromFiles(svcPath);
+      const langs = new Set(base.languages);
+      const fws = new Set(base.frameworks);
+      const dbs = new Set(base.databases);
+      for (const l of svc.languages) langs.add(l);
+      for (const f of svc.frameworks) fws.add(f);
+      for (const d of svc.databases) dbs.add(d);
+      base.languages = [...langs];
+      base.frameworks = [...fws];
+      base.databases = [...dbs];
+    }
+  }
+  return base;
 }
 async function detectTechStackFromFiles(repoPath) {
   const languages = /* @__PURE__ */ new Set();
@@ -44186,9 +44202,6 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
   console.log(
     `[Analyze] Found ${controllerFiles.length} controller files via glob`
   );
-  if (controllerFiles.length === 0) {
-    return [];
-  }
   const allEndpoints = [];
   const noMatchFiles = [];
   for (const filePath of controllerFiles) {
@@ -46773,6 +46786,30 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
     );
     if (selectedServiceRoot2) {
       techStack.serviceRoot = selectedServiceRoot2;
+      try {
+        const svcPkg = JSON.parse(readFileSync5(`${repoPath}/${selectedServiceRoot2}/package.json`, "utf-8"));
+        const allDeps = { ...svcPkg?.dependencies, ...svcPkg?.devDependencies };
+        const frameworkMap = [
+          ["next", "Next.js"],
+          ["nuxt", "Nuxt"],
+          ["express", "Express"],
+          ["fastify", "Fastify"],
+          ["@nestjs/core", "NestJS"],
+          ["koa", "Koa"],
+          ["@remix-run/node", "Remix"],
+          ["@remix-run/react", "Remix"],
+          ["rails", "Rails"],
+          ["django", "Django"],
+          ["flask", "Flask"]
+        ];
+        for (const [pkg, name] of frameworkMap) {
+          if (allDeps?.[pkg] && !techStack.frameworks.includes(name)) {
+            techStack.frameworks.push(name);
+            console.log(`[Startup] Added framework from service root: ${name}`);
+          }
+        }
+      } catch {
+      }
     }
   }
   const serviceScopedStartup = !!techStack.serviceRoot && techStack.serviceRoot !== ".";
@@ -47248,6 +47285,17 @@ ${logs.slice(-3e3)}
             }
             if (infraResult.healthCheckPath) {
               config = { ...config, healthCheckPath: infraResult.healthCheckPath };
+              if (!infraResult.healthProbe && config.healthProbe) {
+                console.log(`[Startup] Resetting stale health probe to match new healthCheckPath: ${infraResult.healthCheckPath}`);
+                config = {
+                  ...config,
+                  healthProbe: {
+                    method: "GET",
+                    path: infraResult.healthCheckPath,
+                    expectedStatuses: [200]
+                  }
+                };
+              }
             }
             if (infraResult.healthProbe) {
               console.log(`[Startup] Repair LLM set health probe: ${describeHealthProbe(infraResult.healthProbe)}`);
@@ -48936,28 +48984,48 @@ async function waitForPort(port, timeoutMs, healthCheck = "/", repoPath, analyze
   let portHasEverResponded = false;
   while (Date.now() - start < effectiveTimeoutMs) {
     if (fatalDiagnosis) {
-      let errMsg2 = `Application failed on port ${port}: ${fatalDiagnosis}`;
-      if (lastStatus) errMsg2 += ` (last HTTP status: ${lastStatus})`;
-      if (lastBody && lastBody !== fatalDiagnosis) errMsg2 += `
+      try {
+        const { body: lcBody, headers: lcHeaders } = buildHealthProbeRequest(probe, probePath);
+        const lcResp = await fetch(`http://localhost:${port}${probePath}`, {
+          method: probeMethod,
+          headers: lcHeaders,
+          ...lcBody !== void 0 ? { body: lcBody } : {},
+          signal: AbortSignal.timeout(5e3)
+        });
+        if (lcResp.status < 500) {
+          console.log(`[Startup] Last-chance probe succeeded (HTTP ${lcResp.status}) \u2014 ignoring AI fatal verdict`);
+          portHasEverResponded = true;
+          consecutiveConnFailures = 0;
+          fatalDiagnosis = "";
+          lastStatus = lcResp.status;
+        }
+      } catch {
+      }
+      if (fatalDiagnosis) {
+        let errMsg2 = `Application failed on port ${port}: ${fatalDiagnosis}`;
+        if (lastStatus) errMsg2 += ` (last HTTP status: ${lastStatus})`;
+        if (lastBody && lastBody !== fatalDiagnosis) errMsg2 += `
 
 HTTP response body:
 ${lastBody}`;
-      if (repoPath) {
-        const logs = getContainerLogTail(repoPath, 40);
-        if (logs) errMsg2 += `
+        if (repoPath) {
+          const logs = getContainerLogTail(repoPath, 40);
+          if (logs) errMsg2 += `
 
 Container logs:
 ${logs}`;
+        }
+        throw new StartupFailedError(errMsg2);
       }
-      throw new StartupFailedError(errMsg2);
     }
     try {
       const { body, headers } = buildHealthProbeRequest(probe, probePath);
+      const probeTimeout = portHasEverResponded ? FETCH_TIMEOUT_QUICK : 1e4;
       const response = await fetch(`http://localhost:${port}${probePath}`, {
         method: probeMethod,
         headers,
         ...body !== void 0 ? { body } : {},
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_QUICK)
+        signal: AbortSignal.timeout(probeTimeout)
       });
       lastStatus = response.status;
       portHasEverResponded = true;
