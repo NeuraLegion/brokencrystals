@@ -19,7 +19,7 @@ interface AuthDetectionInput {
   csrfRequired?: boolean;
   csrfFieldName?: string | null;
   csrfFormUrl?: string | null;
-  csrfDelivery?: "form_body" | "header" | null;
+  csrfDelivery?: "form_body" | "header" | "json_body" | null;
   csrfExtractPattern?: string | null;
 }
 
@@ -67,8 +67,9 @@ You have codebase tools (read_file, list_files, search_files) AND a **probe_url*
    - Probe the login page (GET the URL where the login form is rendered). If GET /login returns 405, try GET / — many apps redirect unauthenticated users to a login page at the root URL.
    - Look for hidden form fields: \`<input type="hidden" name="csrf" value="...">\`, \`<input name="csrfmiddlewaretoken">\`, \`<input name="_token">\`, \`<input name="authenticity_token">\`, etc.
    - Check the codebase for CSRF middleware or validation logic in the login handler.
-   - If a CSRF or hidden token field IS required in the login POST body, report: csrfRequired=true, the field name, the URL to GET the form from, and how the token is delivered (form_body vs header).
-   - If CSRF is only in a JSON endpoint (e.g. GET /session/csrf returns {"csrf":"..."}), that's csrfDelivery="header" (Bright handles it natively).
+   - If a CSRF or hidden token field IS required in the login POST body, report: csrfRequired=true, the field name, the URL to GET the form from, and how the token is delivered (form_body vs header vs json_body).
+   - If CSRF is in a JSON endpoint (e.g. GET /session/csrf returns {"csrf":"..."}) AND is sent as an HTTP header (X-CSRF-Token), that's csrfDelivery="header".
+   - If CSRF is in a JSON endpoint BUT must be included in the POST body as a field (e.g. NextAuth: GET /api/auth/csrf → {"csrfToken":"..."} and login POST body must include csrfToken=...), that's csrfDelivery="json_body" — this requires create_auth_raw with NexTemplate to extract from JSON and inject into the body.
    - If CSRF is embedded in HTML (hidden form input) and must be sent in the POST body, that's csrfDelivery="form_body" — this requires the raw auth tool with NexTemplate extraction.
 
 5. **Find real credentials** — search docker-compose files, .env files, seed/fixture files, README for default users/passwords. NEVER invent credentials — only use values found in the actual codebase. If none found, set loginBody to null.
@@ -116,7 +117,7 @@ Return a JSON object:
   "csrfRequired": true/false,
   "csrfFieldName": "csrf" or "csrfmiddlewaretoken" or "_token" or null,
   "csrfFormUrl": "/" or "/login" or null,
-  "csrfDelivery": "form_body" | "header" | null,
+  "csrfDelivery": "form_body" | "header" | "json_body" | null,
   "csrfExtractPattern": "name=\\"csrf\\"\\s+value=\\"([^\\"]+)\\"" or null,
   "notes": "brief description"
 }
@@ -130,7 +131,7 @@ Key rules:
 - csrfRequired: set to true if the login POST requires a CSRF token or hidden form field. Probe the login page to verify.
 - csrfFieldName: the exact form field name (e.g. "csrf", "csrfmiddlewaretoken", "_token", "authenticity_token")
 - csrfFormUrl: the URL to GET that serves the login form HTML containing the CSRF token (may be "/" if the app redirects there)
-- csrfDelivery: "form_body" if the token must be in the POST body (HTML hidden input), "header" if it goes in an X-CSRF-Token header (JSON API)
+- csrfDelivery: "form_body" if the token must be in the POST body (HTML hidden input), "header" if it goes in an X-CSRF-Token header (JSON API), "json_body" if it comes from a JSON endpoint but must be included in the POST body as a field (e.g. NextAuth csrfToken)
 - csrfExtractPattern: regex to extract the CSRF token from the HTML response body (capture group 1 = token value)`,
     },
   ];
@@ -176,6 +177,24 @@ You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this. The CSRF 
 
 **Do NOT use create_auth** — it only supports CSRF as an HTTP header, but this app requires it in the POST body.
 **Do NOT skip the CSRF field** — login will appear to succeed (302) but the session won't actually be authenticated.`;
+  } else if (detection.csrfRequired && detection.csrfDelivery === "json_body") {
+    const fieldName = detection.csrfFieldName ?? "csrfToken";
+    const csrfUrl = detection.csrfFormUrl ? `${baseUrl}${detection.csrfFormUrl}` : `${baseUrl}/api/auth/csrf`;
+    const extractPattern = detection.csrfExtractPattern ?? `"${fieldName}"\\s*:\\s*"([^"]+)"`;
+    csrfGuidance = `
+
+## ⚠️ MANDATORY: This app uses JSON-body CSRF (e.g. NextAuth)
+The CSRF token is served from a JSON endpoint (${csrfUrl}) and must be included in the login POST **body** (NOT as a header).
+You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this.
+
+**Exact steps to use:**
+1. Step "get_csrf": GET ${csrfUrl} → returns JSON with "${fieldName}" field
+2. Step "login": POST ${baseUrl}${detection.loginEndpoint ?? "/api/auth/callback/credentials"} with body containing:
+   \`${fieldName}={{ auth_object.stages.get_csrf.response.body | match:/${extractPattern}/ }}&email=...&password=...&redirect=false&json=true\`
+
+**Do NOT use create_auth** — it injects CSRF as a header, but this app requires it in the POST body field.
+**Test URL**: Use an API endpoint like /api/auth/session that returns different JSON for authed vs unauthed (e.g. {} vs {user:...}).
+**Reauth triggers**: Use body pattern trigger for empty JSON: [{ type: "TRIGGER", location: "body", patterns: ["^\\\\{\\\\}$"] }]`;
   } else if (detection.csrfRequired && detection.csrfDelivery === "header") {
     csrfGuidance = `
 
@@ -267,6 +286,23 @@ steps: [
     successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
 ]
 \`\`\`
+
+### Example: NextAuth (CSRF from JSON endpoint, token in POST body)
+NextAuth exposes GET /api/auth/csrf which returns {"csrfToken":"..."}. The CSRF token must be included in the login POST body (NOT as a header). Login also needs redirect=false and json=true in the body to get a JSON response instead of a redirect.
+\`\`\`
+steps: [
+  { name: "get_csrf", request: { method: "GET", url: "http://localhost:3000/api/auth/csrf", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
+  { name: "login", request: { method: "POST", url: "http://localhost:3000/api/auth/callback/credentials", protocol: "http",
+    headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }],
+    body: "csrfToken={{ auth_object.stages.get_csrf.response.body | match:/\"csrfToken\"\\s*:\\s*\"([^\"]+)\"/ }}&email=bright%40test.com&password=BrightTest123%21&redirect=false&json=true&callbackUrl=http%3A%2F%2Flocalhost%3A3000",
+    followRedirects: false, maxRedirects: 0 },
+    successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
+]
+testUrl: GET /api/auth/session (returns {} when unauthed, {user:...} when authed)
+reauthTriggers: [{ type: "TRIGGER", location: "body", patterns: ["^\\\\{\\\\}$"] }]
+successResponseDetection: [{ type: "status", statuses: [200] }]
+\`\`\`
+Key: NextAuth CSRF goes in the POST body as csrfToken=..., NOT as a header. The testUrl /api/auth/session returns empty JSON {} when not logged in — use a body reauthTrigger for "^\\{\\}$".
 
 ## Workflow
 

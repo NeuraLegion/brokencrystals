@@ -491,7 +491,7 @@ interface AuthDetection {
   csrfRequired: boolean;
   csrfFieldName: string | null;
   csrfFormUrl: string | null;
-  csrfDelivery: "form_body" | "header" | null;
+  csrfDelivery: "form_body" | "header" | "json_body" | null;
   csrfExtractPattern: string | null;
   notes: string;
 }
@@ -1256,9 +1256,24 @@ async function verifyAuthTestUrl(
     const sameForbidden = unauth.status === auth.status &&
       (auth.status === 401 || auth.status === 403) &&
       preview(unauthBody) === preview(authBody);
-    const verified = (unauth.status === 401 || unauth.status === 403) &&
+
+    // Primary check: status-code differentiation (401/403 unauth → 200 auth)
+    const statusVerified = (unauth.status === 401 || unauth.status === 403) &&
       auth.status < 400 &&
       !sameForbidden;
+
+    // Secondary check: body-content differentiation for SPAs/APIs that return
+    // 200 for both but with different bodies (e.g. NextAuth /api/auth/session
+    // returns {} unauthed vs {user:...} authed)
+    const bodyVerified = !statusVerified &&
+      unauth.status === 200 && auth.status === 200 &&
+      unauthBody !== authBody &&
+      // Unauthed body should be "empty-like" (empty JSON, empty string, or very short)
+      (unauthBody.trim() === "{}" || unauthBody.trim() === "[]" || unauthBody.trim() === "" || unauthBody.trim().length < 10) &&
+      // Authed body should have meaningful content
+      authBody.trim().length > 10;
+
+    const verified = statusVerified || bodyVerified;
 
     return {
       verified,
@@ -1267,7 +1282,11 @@ async function verifyAuthTestUrl(
       loginStatus: login.status,
       authStatus: auth.status,
       evidence: `unauth=${unauth.status} (${preview(unauthBody)}), login=${login.status}, auth=${auth.status} (${preview(authBody)})`,
-      reason: verified ? undefined : "authenticated request did not become an accessible protected response",
+      reason: verified ? undefined : (
+        unauth.status === 200 && auth.status === 200
+          ? "authenticated and unauthenticated responses are the same (SPA or no body differentiation)"
+          : "authenticated request did not become an accessible protected response"
+      ),
     };
   } catch (err) {
     return {
@@ -3287,7 +3306,13 @@ async function verifySeededCredentials(
   let sessionCookie: string | undefined;
 
   // Step 1a: Check JSON CSRF endpoints
-  const csrfCandidates = [`${baseUrl}/csrf`, `${baseUrl}/session/csrf`, `${baseUrl}/api/csrf`];
+  const csrfCandidates = [
+    `${baseUrl}/csrf`,
+    `${baseUrl}/session/csrf`,
+    `${baseUrl}/api/csrf`,
+    `${baseUrl}/api/auth/csrf`,   // NextAuth
+    `${baseUrl}/sanctum/csrf-cookie`, // Laravel Sanctum
+  ];
   for (const csrfUrl of csrfCandidates) {
     try {
       const res = await fetch(csrfUrl, {
@@ -3298,7 +3323,8 @@ async function verifySeededCredentials(
       });
       if (res.status === 200) {
         const body = await res.text();
-        const csrfMatch = body.match(/"csrf"\s*:\s*"([^"]*)"/);
+        // Match common CSRF JSON field names: csrf, csrfToken, _csrf, token
+        const csrfMatch = body.match(/"(?:csrf|csrfToken|_csrf|csrf_token)"\s*:\s*"([^"]*)"/);
         if (csrfMatch?.[1]) csrfToken = csrfMatch[1];
         const setCookies: string[] = extractSetCookies(res.headers);
         for (const sc of setCookies) {
