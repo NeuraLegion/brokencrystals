@@ -217,6 +217,113 @@ export async function detectAndConfigureAuth(
     `[auth-detection] ${detection.authType} auth uses ${detection.loginMethod ?? "POST"} ${detection.loginEndpoint ?? "unknown"} with ${detection.loginContentType} body ${detection.loginBody ?? "unknown"}. Token location=${detection.tokenLocation}, field/header=${detection.tokenFieldPath ?? detection.headerName ?? "unknown"}, request header=${detection.headerName ?? "Authorization"}, prefix=${JSON.stringify(detection.headerPrefix ?? "")}.`,
   );
 
+  // For OAuth2/OIDC APIs, skip user registration/seeding — we need an OAuth
+  // client (client_id/secret), not a username/password. The LLM will create
+  // one during the auth configuration phase using command tools.
+  if (detection.authType === "oauth") {
+    console.log("[Auth] OAuth2/OIDC detected — seeding OAuth client");
+    if (detection.oauthTokenEndpoint) {
+      addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Grant type: ${detection.oauthGrantType ?? "client_credentials"}.`);
+    }
+    if (detection.oauthClientId) {
+      addAuthHint(authHints, `[auth-oauth-client] Found OAuth2 client: id=${detection.oauthClientId}, secret=${detection.oauthClientSecret ?? "unknown"}.`);
+    }
+
+    // Seed an OAuth2 client if we don't already have credentials
+    if (!detection.oauthClientId || !detection.oauthClientSecret) {
+      const oauthClient = await seedOAuthClient(llm, repoPath, baseUrl, detection, model);
+      if (oauthClient) {
+        detection.oauthClientId = oauthClient.clientId;
+        detection.oauthClientSecret = oauthClient.clientSecret;
+        if (oauthClient.tokenEndpoint) {
+          detection.oauthTokenEndpoint = oauthClient.tokenEndpoint;
+        }
+        addAuthHint(authHints, `[auth-oauth-client] Seeded OAuth2 client: id=${oauthClient.clientId}, secret=${oauthClient.clientSecret}, tokenEndpoint=${oauthClient.tokenEndpoint}.`);
+      } else {
+        console.warn("[Auth:OAuth] Could not seed OAuth client — LLM will try to create one during auth config");
+      }
+    }
+
+    // Auth configuration (with OIDC tool available)
+    const probeContext = await preProbeForAuth(baseUrl, detection);
+    const verifiedTestUrl = await resolveVerifiedAuthTestUrl(
+      llm,
+      repoPath,
+      baseUrl,
+      detection,
+      model,
+      probeContext,
+    );
+    if (verifiedTestUrl) {
+      addAuthHint(
+        authHints,
+        `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl.testUrl}. Evidence: ${verifiedTestUrl.evidence}`,
+      );
+    }
+
+    const MAX_AUTH_ATTEMPTS = 3;
+    let authObjectId: string | undefined;
+    const allAttemptLogs: string[] = [];
+    let fullProbeContext = probeContext;
+    fullProbeContext += verifiedTestUrl
+      ? `\n\n### Verified auth test URL\n${verifiedTestUrl.testUrl}\nEvidence: ${verifiedTestUrl.evidence}`
+      : "\n\n### Verified auth test URL\nNo verified test URL was found. Use probe_url to find a protected endpoint that returns 401 without a Bearer token.";
+
+    for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
+      let attemptContext = fullProbeContext;
+      if (allAttemptLogs.length > 0) {
+        attemptContext += "\n\n## Previous attempt failures\n"
+          + "Learn from these mistakes. Do NOT repeat the same configurations.\n\n"
+          + allAttemptLogs.join("\n\n---\n\n");
+      }
+      if (authHints.length > 0) {
+        attemptContext += "\n\n## Saved auth hints\n"
+          + formatAuthHints(authHints);
+      }
+
+      console.log(`[Auth] OAuth auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS}...`);
+      const result = await createAuthViaMcp(
+        llm,
+        repoPath,
+        detection,
+        false, // no user registration for OAuth
+        projectId,
+        baseUrl,
+        repeaterId,
+        api,
+        model,
+        attemptContext,
+        verifiedTestUrl?.testUrl,
+        authHints,
+      );
+
+      if (result.infraRepairHint) {
+        // For OAuth APIs, don't bounce back to startup unless it's genuinely infra
+        console.warn(`[Auth] OAuth LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
+        return {
+          authObjectId: undefined,
+          hasAuth: false,
+          authFailed: true,
+          authHints,
+          infraRepairHint: result.infraRepairHint,
+        };
+      }
+
+      if (result.authId) {
+        authObjectId = result.authId;
+        break;
+      }
+      allAttemptLogs.push(...result.attemptLog);
+    }
+
+    if (authObjectId) {
+      console.log(`[Auth] OAuth auth configured successfully: ${authObjectId}`);
+      return { authObjectId, hasAuth: true, authFailed: false, authHints };
+    }
+    console.error("[Auth] OAuth auth configuration failed after all attempts");
+    return { authObjectId: undefined, hasAuth: false, authFailed: true, authHints };
+  }
+
   // Phase 2: Try quick HTTP registration if the detection found a registration endpoint
   let registrationOk = await registerUser(baseUrl, detection);
   if (registrationOk) {
@@ -493,6 +600,12 @@ interface AuthDetection {
   csrfFormUrl: string | null;
   csrfDelivery: "form_body" | "header" | "json_body" | null;
   csrfExtractPattern: string | null;
+  // OAuth2/OIDC fields — for API services using client_credentials or similar
+  oauthTokenEndpoint: string | null;
+  oauthClientId: string | null;
+  oauthClientSecret: string | null;
+  oauthScope: string | null;
+  oauthGrantType: "client_credentials" | "authorization_code" | null;
   notes: string;
 }
 
@@ -575,6 +688,11 @@ async function detectAuthFromCode(
       csrfFormUrl: parsed.csrfFormUrl ?? null,
       csrfDelivery: parsed.csrfDelivery ?? null,
       csrfExtractPattern: parsed.csrfExtractPattern ?? null,
+      oauthTokenEndpoint: parsed.oauthTokenEndpoint ?? null,
+      oauthClientId: parsed.oauthClientId ?? null,
+      oauthClientSecret: parsed.oauthClientSecret ?? null,
+      oauthScope: parsed.oauthScope ?? null,
+      oauthGrantType: parsed.oauthGrantType ?? null,
       notes: parsed.notes ?? "",
     };
   } catch {
@@ -608,6 +726,11 @@ async function detectAuthFromCode(
       csrfFormUrl: null,
       csrfDelivery: null,
       csrfExtractPattern: null,
+      oauthTokenEndpoint: null,
+      oauthClientId: null,
+      oauthClientSecret: null,
+      oauthScope: null,
+      oauthGrantType: null,
       notes: "Detection parse failed — assuming auth required",
     };
   }
@@ -1662,6 +1785,56 @@ Example — OAuth2 PKCE flow:
     runCommandInDockerTool,
     saveAuthHintTool,
     removeAuthHintTool,
+    {
+      type: "function",
+      function: {
+        name: "create_auth_oidc",
+        description: `Create a Bright OIDC/OAuth2 auth object using the client_credentials grant type. Use this for API services that authenticate via OAuth2 tokens (Bearer tokens obtained from a token endpoint using client ID + secret). The Bright platform handles the full token exchange and refresh automatically.`,
+        parameters: {
+          type: "object",
+          properties: {
+            tokenEndpoint: {
+              type: "string",
+              description:
+                "Full URL of the OAuth2 token endpoint (e.g. http://localhost:5555/oauth/token)",
+            },
+            clientId: {
+              type: "string",
+              description: "OAuth2 client ID",
+            },
+            clientSecret: {
+              type: "string",
+              description: "OAuth2 client secret",
+            },
+            testUrl: {
+              type: "string",
+              description:
+                "Full URL to a protected endpoint that requires a valid Bearer token. Should return 401 without token, 200 with valid token.",
+            },
+            scope: {
+              type: "string",
+              description:
+                '(Optional) Space-separated OAuth2 scopes (e.g. "read write admin")',
+            },
+            audience: {
+              type: "string",
+              description: "(Optional) OAuth2 audience parameter",
+            },
+            resource: {
+              type: "string",
+              description: "(Optional) OAuth2 resource parameter",
+            },
+            grantType: {
+              type: "string",
+              enum: ["client_credentials"],
+              description: "OAuth2 grant type. Default: client_credentials",
+            },
+          },
+          required: ["tokenEndpoint", "clientId", "clientSecret", "testUrl"],
+          additionalProperties: false,
+        },
+      },
+    },
   ];
 
   let lastCreateArgs: Record<string, unknown> = {};
@@ -1825,6 +1998,61 @@ Example — OAuth2 PKCE flow:
       if (result.error) {
         attemptLog.push(`- create_auth_raw(steps=[${stepNames}], testUrl=${testUrl}) → ERROR: ${result.error}`);
         addAuthHint(authHints, `[auth-create-error] create_auth_raw failed for steps=[${stepNames}], testUrl=${testUrl}: ${result.error}`);
+        return JSON.stringify({ error: result.error });
+      }
+      return JSON.stringify({ authObjectId: result.id });
+    }
+    if (name === "create_auth_oidc") {
+      lastCreateArgs = { ...args, authStyle: "oidc" };
+      const tokenEndpoint = String(args.tokenEndpoint ?? "");
+      const clientId = String(args.clientId ?? "");
+      const clientSecret = String(args.clientSecret ?? "");
+      const testUrl = normalizeAuthTestUrl(String(args.testUrl ?? ""), baseUrl, detection, verifiedTestUrl);
+      const scope = args.scope ? String(args.scope).split(/[\s,]+/).filter(Boolean) : [];
+      const audience = args.audience ? String(args.audience) : undefined;
+      const resource = args.resource ? String(args.resource).split(/[\s,]+/).filter(Boolean) : [];
+      const grantType = String(args.grantType ?? "client_credentials");
+
+      const body: Record<string, unknown> = {
+        name: "Engine Auth — OIDC client_credentials",
+        projectId,
+        type: "oidc",
+        test: {
+          repeaterId,
+          request: {
+            method: "GET",
+            url: testUrl,
+            protocol: "http",
+            bodyType: "clear_text",
+            followRedirects: false,
+            maxRedirects: 0,
+            changeMethodOnRedirect: false,
+          },
+        },
+        reauthTriggers: [
+          { type: "TRIGGER", location: "status", statuses: [401] },
+        ],
+        successResponseDetection: [
+          { type: "status", statuses: [200, 201, 204] },
+        ],
+        config: {
+          oidc: {
+            clientId,
+            clientSecret,
+            ...(scope.length > 0 ? { scope } : {}),
+            ...(resource.length > 0 ? { resource } : {}),
+            ...(audience ? { audience } : {}),
+            grantType,
+            tokenEndpoint,
+          },
+        },
+      };
+
+      console.log(`[Auth] Creating OIDC auth — tokenEndpoint: ${tokenEndpoint}, clientId: ${clientId}, test: ${testUrl}`);
+      const result = await postAuthObject(api, body);
+      if (result.error) {
+        attemptLog.push(`- create_auth_oidc(tokenEndpoint=${tokenEndpoint}, clientId=${clientId}, testUrl=${testUrl}) → ERROR: ${result.error}`);
+        addAuthHint(authHints, `[auth-create-error] create_auth_oidc failed: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }
       return JSON.stringify({ authObjectId: result.id });
@@ -2329,6 +2557,130 @@ async function seedTestUser(
     return undefined;
   } catch {
     console.warn(`[Auth:Seed] Could not parse seed result: ${response.slice(0, 200)}`);
+    return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Seed OAuth2 client — for API services using client_credentials
+// ---------------------------------------------------------------------------
+
+interface SeedOAuthClientResult {
+  success: boolean;
+  clientId: string;
+  clientSecret: string;
+  tokenEndpoint: string;
+  reason?: string;
+}
+
+async function seedOAuthClient(
+  llm: OpenAI,
+  repoPath: string,
+  baseUrl: string,
+  detection: AuthDetection,
+  model?: string,
+): Promise<SeedOAuthClientResult | undefined> {
+  console.log("[Auth:OAuth] Starting OAuth client seed sub-phase...");
+
+  const capturedCommands: SeedCommand[] = [];
+
+  const seedTools: ChatCompletionTool[] = [
+    ...codebaseTools,
+    ...webSearchTools,
+    runCommandOnHostTool,
+    runCommandInDockerTool,
+    probeUrlTool,
+  ];
+
+  const baseCodeHandler = createToolHandler(repoPath);
+  const seedWebHandler = createWebSearchHandler(repoPath);
+  const handler: ToolHandler = async (name, args) => {
+    if (name === "run_command_on_host") {
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:OAuth] run_command_on_host: ${cmd.slice(0, 200)}`);
+      capturedCommands.push({ type: "host", command: cmd });
+      return runShellCommand(repoPath, cmd);
+    }
+    if (name === "run_command_in_docker") {
+      const container = String(args.container ?? "");
+      const cmd = String(args.command ?? "");
+      console.log(`[Auth:OAuth] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+      capturedCommands.push({ type: "docker", command: cmd, container });
+      return execInDocker(repoPath, container, cmd);
+    }
+    if (name === "probe_url") {
+      return probeUrl(args);
+    }
+    if (name === "search_web" || name === "fetch_url") {
+      return seedWebHandler(name, args);
+    }
+    return baseCodeHandler(name, args);
+  };
+
+  const tokenEndpointHint = detection.oauthTokenEndpoint
+    ? `Detected token endpoint: ${detection.oauthTokenEndpoint}`
+    : "Token endpoint not yet identified — find it in the codebase.";
+
+  const messages: ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: `You are creating an OAuth2 client (client_id + client_secret) in the running application so that Bright DAST can authenticate against the API using client_credentials grant.
+
+## Application context
+- Base URL: ${baseUrl}
+- ${tokenEndpointHint}
+- Framework clues: This appears to be an OAuth2/OIDC API service.
+
+## Your mission
+1. **Find the OAuth client table/model** — search for: OAuthClient, oauth_clients, PlatformOAuthClient, platform_oauth_clients, clients table, Prisma schema, TypeORM entities, etc.
+2. **Identify required fields** — typically: id/clientId, secret/clientSecret, name, permissions/scopes, redirectUri (may be optional for client_credentials).
+3. **Create the client** — use run_command_in_docker (preferred) or run_command_on_host:
+   - Direct SQL: INSERT into the clients table (generate UUID for id, use a known secret)
+   - Prisma: npx prisma db execute --stdin
+   - App CLI: management commands if available
+   - Node script: node -e "..." with the app's ORM
+4. **Find the token endpoint** — search routes/controllers for /oauth/token, /token, /auth/token, etc.
+5. **Verify** — use probe_url to POST to the token endpoint with grant_type=client_credentials&client_id=...&client_secret=... and confirm you get a 200 with an access_token.
+
+## Guidelines
+- Use a deterministic client_id like "bright-dast-client" or a UUID you generate.
+- Use a known client_secret like "bright-dast-secret-001" (this is a local test instance).
+- Grant all available scopes/permissions so the DAST scanner can access all endpoints.
+- If the app has an existing seed/fixture with OAuth clients, use those credentials instead of creating new ones.
+- Check .env, docker-compose, seed files for pre-configured client credentials.
+
+## Response format
+Return a JSON object:
+{
+  "success": true/false,
+  "clientId": "the-client-id",
+  "clientSecret": "the-client-secret",
+  "tokenEndpoint": "/oauth/token" (relative path),
+  "reason": "explanation if failed"
+}`,
+    },
+    {
+      role: "user",
+      content: "Create an OAuth2 client for DAST authentication. Search the codebase first, then create the client via database or CLI commands.",
+    },
+  ];
+
+  const response = await chatWithTools(llm, messages, seedTools, handler, model, 30);
+
+  try {
+    const json = extractJson(response);
+    const result = JSON.parse(json) as SeedOAuthClientResult;
+    if (result.success) {
+      console.log(`[Auth:OAuth] Client created: id=${result.clientId}, endpoint=${result.tokenEndpoint}`);
+      if (capturedCommands.length > 0) {
+        console.log(`[Auth:OAuth] Captured ${capturedCommands.length} seed command(s) for replay`);
+      }
+      return result;
+    }
+    console.warn(`[Auth:OAuth] Failed to create OAuth client: ${result.reason ?? "unknown"}`);
+    return undefined;
+  } catch {
+    console.warn(`[Auth:OAuth] Could not parse OAuth seed result: ${response.slice(0, 200)}`);
     return undefined;
   }
 }

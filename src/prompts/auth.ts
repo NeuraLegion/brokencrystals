@@ -21,6 +21,12 @@ interface AuthDetectionInput {
   csrfFormUrl?: string | null;
   csrfDelivery?: "form_body" | "header" | "json_body" | null;
   csrfExtractPattern?: string | null;
+  // OAuth2/OIDC fields
+  oauthTokenEndpoint?: string | null;
+  oauthClientId?: string | null;
+  oauthClientSecret?: string | null;
+  oauthScope?: string | null;
+  oauthGrantType?: string | null;
 }
 
 /**
@@ -119,6 +125,11 @@ Return a JSON object:
   "csrfFormUrl": "/" or "/login" or null,
   "csrfDelivery": "form_body" | "header" | "json_body" | null,
   "csrfExtractPattern": "name=\\"csrf\\"\\s+value=\\"([^\\"]+)\\"" or null,
+  "oauthTokenEndpoint": "/oauth/token" or "/v2/auth/oauth2/token" or null,
+  "oauthClientId": "found-client-id" or null,
+  "oauthClientSecret": "found-client-secret" or null,
+  "oauthScope": "read write" or null,
+  "oauthGrantType": "client_credentials" or null,
   "notes": "brief description"
 }
 
@@ -132,6 +143,7 @@ Key rules:
 - csrfFieldName: the exact form field name (e.g. "csrf", "csrfmiddlewaretoken", "_token", "authenticity_token")
 - csrfFormUrl: the URL to GET that serves the login form HTML containing the CSRF token (may be "/" if the app redirects there)
 - csrfDelivery: "form_body" if the token must be in the POST body (HTML hidden input), "header" if it goes in an X-CSRF-Token header (JSON API), "json_body" if it comes from a JSON endpoint but must be included in the POST body as a field (e.g. NextAuth csrfToken)
+- For authType "oauth": fill in oauthTokenEndpoint, oauthClientId/Secret (if found in env/seed files), oauthScope, oauthGrantType. The loginEndpoint/loginBody fields are less relevant for OAuth — use the oauth-specific fields instead.
 - csrfExtractPattern: regex to extract the CSRF token from the HTML response body (capture group 1 = token value)`,
     },
   ];
@@ -152,11 +164,14 @@ export function configureAuthPrompt(
   const authStyle = detection.authType === "session" ? "session"
     : detection.authType === "jwt" ? "jwt"
     : detection.authType === "api_key" ? "api_key"
+    : detection.authType === "oauth" ? "oidc"
     : "session";
 
-  const credentialNote = userConfirmed
-    ? `\nA test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.`
-    : `\nNo confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work — if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
+  const credentialNote = authStyle === "oidc"
+    ? `\nThis is an OAuth2/OIDC API service. You need to create an OAuth2 client (client_id/secret) and use create_auth_oidc. If a seeded client exists, use those credentials. Otherwise, use command tools to create one via the app's CLI or database.`
+    : userConfirmed
+      ? `\nA test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.`
+      : `\nNo confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work — if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
 
   // Build CSRF guidance block when the detection LLM reported form-body CSRF
   let csrfGuidance = "";
@@ -201,6 +216,41 @@ You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this.
 ## CSRF Note
 This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You can use \`create_auth\` with a csrfUrl parameter, or \`create_auth_raw\` with a pre-step that fetches the token.`;
   }
+
+  // OAuth2/OIDC guidance block
+  let oauthGuidance = "";
+  if (detection.authType === "oauth") {
+    const tokenEndpoint = detection.oauthTokenEndpoint
+      ? `${baseUrl}${detection.oauthTokenEndpoint}`
+      : `${baseUrl}/oauth/token`;
+    const clientId = detection.oauthClientId ?? "UNKNOWN — must create or find one";
+    const clientSecret = detection.oauthClientSecret ?? "UNKNOWN — must create or find one";
+    const scope = detection.oauthScope ?? "";
+    oauthGuidance = `
+
+## ⚠️ MANDATORY: This is an OAuth2/OIDC API service
+This API uses OAuth2 Bearer tokens, NOT session/cookie auth. Do NOT try session login flows.
+
+**Use \`create_auth_oidc\` tool** with:
+- tokenEndpoint: "${tokenEndpoint}" (verify by probing — should accept POST with grant_type=client_credentials)
+- clientId: "${clientId}"
+- clientSecret: "${clientSecret}"
+${scope ? `- scope: "${scope}"` : ""}
+- testUrl: Find a protected endpoint that returns 401 without Bearer token (use probe_url to discover)
+
+**If no OAuth2 client exists**, you MUST create one:
+1. Search the codebase for OAuth client models/tables (e.g. OAuthClient, oauth_clients, PlatformOAuthClient)
+2. Use run_command_in_docker to insert a client directly via the database or app CLI
+3. Common patterns:
+   - NestJS/Prisma: \`npx prisma db execute --stdin <<< "INSERT INTO ..."\`
+   - Direct SQL: \`psql -U ... -c "INSERT INTO oauth_clients (...)"\`
+   - App CLI: \`node dist/manage.js create-client --name bright-test\`
+4. The client needs: name, clientId (generate a UUID), clientSecret (generate one), allowed scopes/permissions
+
+**Do NOT use create_auth or create_auth_raw** for OAuth2 client_credentials — use create_auth_oidc.
+**Do NOT respond with INFRA_REPAIR** just because there's no session login — this is an API service, OAuth is the correct auth mechanism.`;
+  }
+
   const hintsBlock = authHints.length > 0
     ? `\n## Saved auth hints\nThese facts were learned during scan preparation, auth detection, verified probes, or previous auth attempts. Trust them over guesses and do not rediscover or contradict them unless you have concrete evidence.\n${authHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
     : "";
@@ -224,6 +274,7 @@ This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You ca
 - Suggested test URL: ${testUrl}
 ${credentialNote}
 ${csrfGuidance}
+${oauthGuidance}
 
 ## Available tools
 - **probe_url** — Make HTTP requests to the running app. Use for DISCOVERY: finding real endpoints, checking response formats, understanding what the app returns. Cookies are tracked automatically across calls.
@@ -237,6 +288,7 @@ ${csrfGuidance}
   - **CSRF tokens embedded in HTML form fields** (Django csrfmiddlewaretoken, Laravel _token, etc.) — you MUST use this because create_auth only injects CSRF as a header, but these frameworks expect it in the POST body
   - OAuth2 PKCE, authorization code grants, or any multi-step token exchange
   - Any flow where you need to extract values between steps using NexTemplate
+- **create_auth_oidc** — Create a Bright OIDC/OAuth2 auth object using client_credentials grant. Use this for API services that authenticate via Bearer tokens obtained from a token endpoint. Bright handles token exchange and automatic refresh. You need: tokenEndpoint, clientId, clientSecret, and a testUrl that returns 401 without a valid token.
 - **test_auth_object** — Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** — Delete a broken auth object to recreate with different settings.
 - **save_hint** — Save a concise auth fact for later attempts. Use this whenever you learn something non-obvious from code/probes/test feedback, such as exact token location, required header prefix, required login body fields, verified test URL behavior, or a failed config pattern to avoid.
@@ -303,6 +355,22 @@ reauthTriggers: [{ type: "TRIGGER", location: "body", patterns: ["^\\\\{\\\\}$"]
 successResponseDetection: [{ type: "status", statuses: [200] }]
 \`\`\`
 Key: NextAuth CSRF goes in the POST body as csrfToken=..., NOT as a header. The testUrl /api/auth/session returns empty JSON {} when not logged in — use a body reauthTrigger for "^\\{\\}$".
+
+### Example: OAuth2 / OIDC API (client_credentials)
+For API-only services that use OAuth2 with client credentials (e.g. NestJS platform APIs, microservices):
+\`\`\`
+Use create_auth_oidc tool:
+  tokenEndpoint: "http://localhost:5555/oauth/token"
+  clientId: "my-client-id"
+  clientSecret: "my-client-secret"
+  testUrl: "http://localhost:5555/v2/me" (should return 401 without token)
+  scope: "read write" (optional)
+\`\`\`
+Key: You need a valid OAuth2 client. Use run_command_in_docker or run_command_on_host to:
+1. Check if the app has CLI commands to create OAuth2 clients (e.g. \`npx prisma db seed\`, management commands)
+2. Query the database directly to find or create a client: \`docker exec <container> sh -c "node -e \\"...\\"\"\`
+3. Use the app's admin API if available to register a client
+4. Check seed files or migrations for pre-created OAuth2 clients
 
 ## Workflow
 
