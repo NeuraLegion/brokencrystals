@@ -50288,6 +50288,22 @@ ${scope ? `- scope: "${scope}"` : ""}
   let apiKeyGuidance = "";
   if (detection.authType === "api_key") {
     const headerName = detection.headerName ?? "unknown";
+    const clientId = detection.oauthClientId;
+    const clientSecret = detection.oauthClientSecret;
+    const credsBlock = clientId && clientSecret ? `
+**SEEDED CREDENTIALS AVAILABLE \u2014 use these directly:**
+- clientId: "${clientId}"
+- clientSecret: "${clientSecret}"
+Try these as header values. Common header patterns for this type of app:
+- x-cal-client-id: ${clientId} + x-cal-secret-key: ${clientSecret}
+- Authorization: Bearer ${clientId}
+- X-API-Key: ${clientSecret}
+Probe the app with these headers to find which combination works.
+` : `
+**No pre-seeded credentials found.** Use run_command_in_docker/run_command_on_host to:
+1. Search the database for existing API keys/clients: OAuthClient, ApiKey, api_keys tables
+2. Create one via direct SQL INSERT or app CLI
+`;
     apiKeyGuidance = `
 
 ## \u26A0\uFE0F MANDATORY: This is a static header / API key auth service
@@ -50295,22 +50311,14 @@ This API authenticates via fixed header(s) on every request. NO login flow, NO t
 
 **Use \`create_auth_header\` tool** with:
 - headers: JSON array of header name-value pairs, e.g. [{"name":"${headerName}","value":"YOUR-KEY-HERE"}]
-- testUrl: A protected endpoint that returns 401/403 without the header(s), 200 with them
+- testUrl: A protected endpoint that returns 401/403 without the header(s), 200 with them. Good choices: /v2/me, /api/me, /api/users/me \u2014 simple identity endpoints.
+${credsBlock}
+**Strategy:**
+1. First, probe_url a protected endpoint (e.g. GET /v2/me) to confirm it returns 401 without headers
+2. Then probe WITH the auth headers to confirm they work: probe_url with headers parameter
+3. Once you find headers that get 200, use create_auth_header with those exact headers and testUrl
 
-**Finding or creating API credentials:**
-1. Search the database for existing API keys/clients: OAuthClient, ApiKey, api_keys, platform_oauth_clients tables
-2. If a seeded client exists (check auth hints), use its clientId + clientSecret as header values
-3. If none exist, create one via DB/CLI:
-   - Direct SQL: INSERT INTO api_keys/oauth_clients (...)
-   - App CLI: node dist/manage.js create-key
-   - Prisma: npx prisma db execute
-
-**Common patterns:**
-- Single header: Authorization: Bearer <api-key> or X-API-Key: <key>
-- Dual headers: x-cal-client-id: <id> + x-cal-secret-key: <secret>
-- Custom: X-Auth-Token: <token>
-
-**Do NOT use create_auth, create_auth_oidc, or create_auth_raw** \u2014 use create_auth_header.
+**Do NOT use create_auth, create_auth_oidc, or create_auth_raw** \u2014 ONLY create_auth_header.
 **Do NOT respond with INFRA_REPAIR** just because there's no login endpoint \u2014 this is API key auth.`;
   }
   const hintsBlock = authHints.length > 0 ? `
@@ -50827,7 +50835,20 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
     if (grantType === "authorization_code") {
       console.log("[Auth] OAuth2 authorization_code detected \u2014 NOT automatable. Reclassifying as api_key (static header auth).");
       detection.authType = "api_key";
-      addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (interactive browser flow). Reclassified as api_key. Look for static header auth patterns: x-cal-client-id, x-api-key, or Bearer token from a pre-created API key in the database.`);
+      if (!detection.oauthClientId || !detection.oauthClientSecret) {
+        console.log("[Auth] Seeding OAuth client for static header use...");
+        const oauthClient = await seedOAuthClient(llm, repoPath, baseUrl, detection, model);
+        if (oauthClient) {
+          detection.oauthClientId = oauthClient.clientId;
+          detection.oauthClientSecret = oauthClient.clientSecret;
+          addAuthHint(authHints, `[auth-api-key-creds] Seeded OAuth client for header auth: clientId=${oauthClient.clientId}, clientSecret=${oauthClient.clientSecret}. Use these as header values with x-cal-client-id / x-cal-secret-key (or similar platform-specific headers).`);
+        }
+      }
+      if (detection.oauthClientId && detection.oauthClientSecret) {
+        addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (NOT automatable). Use static header auth instead. Known client credentials: clientId=${detection.oauthClientId}, clientSecret=${detection.oauthClientSecret}. Try headers like x-cal-client-id + x-cal-secret-key, or Authorization: Bearer <api-key>.`);
+      } else {
+        addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (NOT automatable). Reclassified as api_key. Look for static header auth patterns: x-cal-client-id, x-api-key, or create an API key in the database.`);
+      }
     } else {
       console.log(`[Auth] OAuth2/OIDC detected (grant: ${grantType}) \u2014 seeding OAuth client`);
       if (detection.oauthTokenEndpoint) {

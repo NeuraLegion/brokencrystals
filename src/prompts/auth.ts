@@ -300,6 +300,21 @@ ${scope ? `- scope: "${scope}"` : ""}
   let apiKeyGuidance = "";
   if (detection.authType === "api_key") {
     const headerName = detection.headerName ?? "unknown";
+    const clientId = detection.oauthClientId;
+    const clientSecret = detection.oauthClientSecret;
+    const credsBlock = clientId && clientSecret
+      ? `\n**SEEDED CREDENTIALS AVAILABLE — use these directly:**
+- clientId: "${clientId}"
+- clientSecret: "${clientSecret}"
+Try these as header values. Common header patterns for this type of app:
+- x-cal-client-id: ${clientId} + x-cal-secret-key: ${clientSecret}
+- Authorization: Bearer ${clientId}
+- X-API-Key: ${clientSecret}
+Probe the app with these headers to find which combination works.\n`
+      : `\n**No pre-seeded credentials found.** Use run_command_in_docker/run_command_on_host to:
+1. Search the database for existing API keys/clients: OAuthClient, ApiKey, api_keys tables
+2. Create one via direct SQL INSERT or app CLI\n`;
+
     apiKeyGuidance = `
 
 ## ⚠️ MANDATORY: This is a static header / API key auth service
@@ -307,22 +322,14 @@ This API authenticates via fixed header(s) on every request. NO login flow, NO t
 
 **Use \`create_auth_header\` tool** with:
 - headers: JSON array of header name-value pairs, e.g. [{"name":"${headerName}","value":"YOUR-KEY-HERE"}]
-- testUrl: A protected endpoint that returns 401/403 without the header(s), 200 with them
+- testUrl: A protected endpoint that returns 401/403 without the header(s), 200 with them. Good choices: /v2/me, /api/me, /api/users/me — simple identity endpoints.
+${credsBlock}
+**Strategy:**
+1. First, probe_url a protected endpoint (e.g. GET /v2/me) to confirm it returns 401 without headers
+2. Then probe WITH the auth headers to confirm they work: probe_url with headers parameter
+3. Once you find headers that get 200, use create_auth_header with those exact headers and testUrl
 
-**Finding or creating API credentials:**
-1. Search the database for existing API keys/clients: OAuthClient, ApiKey, api_keys, platform_oauth_clients tables
-2. If a seeded client exists (check auth hints), use its clientId + clientSecret as header values
-3. If none exist, create one via DB/CLI:
-   - Direct SQL: INSERT INTO api_keys/oauth_clients (...)
-   - App CLI: node dist/manage.js create-key
-   - Prisma: npx prisma db execute
-
-**Common patterns:**
-- Single header: Authorization: Bearer <api-key> or X-API-Key: <key>
-- Dual headers: x-cal-client-id: <id> + x-cal-secret-key: <secret>
-- Custom: X-Auth-Token: <token>
-
-**Do NOT use create_auth, create_auth_oidc, or create_auth_raw** — use create_auth_header.
+**Do NOT use create_auth, create_auth_oidc, or create_auth_raw** — ONLY create_auth_header.
 **Do NOT respond with INFRA_REPAIR** just because there's no login endpoint — this is API key auth.`;
   }
 

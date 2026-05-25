@@ -231,7 +231,23 @@ export async function detectAndConfigureAuth(
     if (grantType === "authorization_code") {
       console.log("[Auth] OAuth2 authorization_code detected — NOT automatable. Reclassifying as api_key (static header auth).");
       detection.authType = "api_key";
-      addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (interactive browser flow). Reclassified as api_key. Look for static header auth patterns: x-cal-client-id, x-api-key, or Bearer token from a pre-created API key in the database.`);
+
+      // Still seed an OAuth client — the static header auth IS the client
+      // credentials (e.g. x-cal-client-id + x-cal-secret-key).
+      if (!detection.oauthClientId || !detection.oauthClientSecret) {
+        console.log("[Auth] Seeding OAuth client for static header use...");
+        const oauthClient = await seedOAuthClient(llm, repoPath, baseUrl, detection, model);
+        if (oauthClient) {
+          detection.oauthClientId = oauthClient.clientId;
+          detection.oauthClientSecret = oauthClient.clientSecret;
+          addAuthHint(authHints, `[auth-api-key-creds] Seeded OAuth client for header auth: clientId=${oauthClient.clientId}, clientSecret=${oauthClient.clientSecret}. Use these as header values with x-cal-client-id / x-cal-secret-key (or similar platform-specific headers).`);
+        }
+      }
+      if (detection.oauthClientId && detection.oauthClientSecret) {
+        addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (NOT automatable). Use static header auth instead. Known client credentials: clientId=${detection.oauthClientId}, clientSecret=${detection.oauthClientSecret}. Try headers like x-cal-client-id + x-cal-secret-key, or Authorization: Bearer <api-key>.`);
+      } else {
+        addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (NOT automatable). Reclassified as api_key. Look for static header auth patterns: x-cal-client-id, x-api-key, or create an API key in the database.`);
+      }
       // Fall through to the api_key handler below
     } else {
       console.log(`[Auth] OAuth2/OIDC detected (grant: ${grantType}) — seeding OAuth client`);
