@@ -1964,7 +1964,7 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
       infraTools,
       trackingHandler,
       model,
-      20,
+      40,
     );
 
     const parsedResult = parseBuildRepairResult(response);
@@ -2270,7 +2270,7 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
       infraTools,
       trackingHandler,
       model,
-      20,
+      40,
     );
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
 

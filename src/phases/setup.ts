@@ -438,7 +438,7 @@ export async function completeFirstRunSetup(
     messages.push({ role: "user", content: preContext });
   }
 
-  const response = await chatWithTools(llm, messages, setupTools, handler, model, 30);
+  const response = await chatWithTools(llm, messages, setupTools, handler, model, 40);
 
   try {
     const json = extractJson(response);

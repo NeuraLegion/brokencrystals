@@ -217,7 +217,7 @@ async function identifyInfra(
   model: string,
 ): Promise<InfraInfo> {
   const messages = identifyInfraPrompt(stackStr);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 15);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
 
   try {
     const parsed = JSON.parse(extractJson(response));
@@ -444,9 +444,7 @@ async function generateHarness(
     : "No infrastructure services — all targets are stateless or use local file system only.";
 
   const messages = generateHarnessPrompt(stackStr, targets, infraDescription);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 20);
-
-  // Extract code block
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
   const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
   if (!codeMatch) {
     throw new Error("LLM did not return a code block for the harness");
@@ -790,7 +788,7 @@ async function repairHarnessDockerfile(
   try {
     console.log("[Harness] Asking LLM to repair Dockerfile.harness...");
     const response = await chatWithTools(
-      llm, messages, codebaseTools, handleTool, modelSelector.current(), 20,
+      llm, messages, codebaseTools, handleTool, modelSelector.current(), 40,
     );
     const fixed = extractCodeBlock(response);
     if (!fixed) {
@@ -894,7 +892,7 @@ async function repairHarnessCode(
   try {
     console.log("[Harness] Asking LLM to repair harness code based on probe errors...");
     const response = await chatWithTools(
-      llm, messages, codebaseTools, handleTool, modelSelector.current(), 20,
+      llm, messages, codebaseTools, handleTool, modelSelector.current(), 40,
     );
     const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
     if (!codeMatch) {

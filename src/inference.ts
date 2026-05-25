@@ -273,7 +273,7 @@ export async function chatWithTools(
   tools: ChatCompletionTool[],
   handleToolCall: ToolHandler,
   model = DEFAULT_MODEL,
-  maxTurns = 25,
+  maxTurns = 40,
 ): Promise<string> {
   const conversation = [...messages];
   const allowReasoningEffort = tools.length === 0;

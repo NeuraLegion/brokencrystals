@@ -2648,7 +2648,7 @@ async function seedTestUser(
   if (activationHint) {
     messages.push({ role: "user", content: activationHint });
   }
-  const response = await chatWithTools(llm, messages, seedTools, handler, model, 30);
+  const response = await chatWithTools(llm, messages, seedTools, handler, model, 50);
 
   try {
     const json = extractJson(response);
@@ -2774,7 +2774,7 @@ Return a JSON object:
     },
   ];
 
-  const response = await chatWithTools(llm, messages, seedTools, handler, model, 30);
+  const response = await chatWithTools(llm, messages, seedTools, handler, model, 50);
 
   try {
     const json = extractJson(response);
@@ -3515,7 +3515,7 @@ async function repairBrokenLogin(
   };
 
   const messages = repairBrokenLoginPrompt(baseUrl, diagnostic);
-  const response = await chatWithTools(llm, messages, repairTools, handler, model, 30);
+  const response = await chatWithTools(llm, messages, repairTools, handler, model, 50);
 
   try {
     const json = extractJson(response);

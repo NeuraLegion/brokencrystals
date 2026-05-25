@@ -75,7 +75,7 @@ export async function prepareScanEnvironment(
 
   const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue);
 
-  const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 30 : 20);
+  const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 50 : 40);
 
   try {
     const json = extractJson(response);

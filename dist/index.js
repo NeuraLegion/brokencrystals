@@ -35928,7 +35928,7 @@ Available models:
   );
 }
 var DEFAULT_MODEL = "gpt-5.4-mini";
-async function chatWithTools(client, messages, tools, handleToolCall, model = DEFAULT_MODEL, maxTurns = 25) {
+async function chatWithTools(client, messages, tools, handleToolCall, model = DEFAULT_MODEL, maxTurns = 40) {
   const conversation = [...messages];
   const allowReasoningEffort = tools.length === 0;
   for (let turn = 0; turn < maxTurns; turn++) {
@@ -47757,7 +47757,7 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
       infraTools,
       trackingHandler,
       model,
-      20
+      40
     );
     const parsedResult = parseBuildRepairResult(response);
     if (parsedResult.summary || parsedResult.command || parsedResult.prerequisites || parsedResult.port || parsedResult.postStartCommands?.length || parsedResult.addEnvVars || parsedResult.healthCheckPath || parsedResult.healthProbe) {
@@ -47983,7 +47983,7 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
       infraTools,
       trackingHandler,
       model,
-      20
+      40
     );
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
     const result = parseInfraRepairResult(response);
@@ -52693,7 +52693,7 @@ async function seedTestUser(llm, repoPath, baseUrl, detection, model, activation
   if (activationHint) {
     messages.push({ role: "user", content: activationHint });
   }
-  const response = await chatWithTools(llm, messages, seedTools, handler, model, 30);
+  const response = await chatWithTools(llm, messages, seedTools, handler, model, 50);
   try {
     const json = extractJson(response);
     const result = JSON.parse(json);
@@ -52790,7 +52790,7 @@ Return a JSON object:
       content: "Create an OAuth2 client for DAST authentication. Search the codebase first, then create the client via database or CLI commands."
     }
   ];
-  const response = await chatWithTools(llm, messages, seedTools, handler, model, 30);
+  const response = await chatWithTools(llm, messages, seedTools, handler, model, 50);
   try {
     const json = extractJson(response);
     const result = JSON.parse(json);
@@ -53342,7 +53342,7 @@ async function repairBrokenLogin(llm, repoPath, baseUrl, diagnostic, model) {
     return baseCodeHandler(name, args);
   };
   const messages = repairBrokenLoginPrompt(baseUrl, diagnostic);
-  const response = await chatWithTools(llm, messages, repairTools, handler, model, 30);
+  const response = await chatWithTools(llm, messages, repairTools, handler, model, 50);
   try {
     const json = extractJson(response);
     const result = JSON.parse(json);
@@ -54211,7 +54211,7 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
   if (preContext) {
     messages.push({ role: "user", content: preContext });
   }
-  const response = await chatWithTools(llm, messages, setupTools, handler, model, 30);
+  const response = await chatWithTools(llm, messages, setupTools, handler, model, 40);
   try {
     const json = extractJson(response);
     const result = JSON.parse(json);
@@ -55031,7 +55031,7 @@ async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, 
   const tools = buildToolDefs(handlerOpts);
   const handler = createUnifiedToolHandler(repoPath, handlerOpts);
   const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue);
-  const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 30 : 20);
+  const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 50 : 40);
   try {
     const json = extractJson(response);
     const result = JSON.parse(json);
@@ -56576,7 +56576,7 @@ function formatHarnessQuerySample(sample) {
 }
 async function identifyInfra(llm, repoPath, stackStr, handleTool, model) {
   const messages = identifyInfraPrompt(stackStr);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 15);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
   try {
     const parsed = JSON.parse(extractJson(response));
     const envVars = parsed.envVars ?? {};
@@ -56736,7 +56736,7 @@ async function identifyTargets(llm, repoPath, stackStr, handleTool, model) {
 async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTool, model) {
   const infraDescription = infra.services.length > 0 ? `Services running: ${infra.services.filter((s) => s.essential).map((s) => `${s.name} (${s.image})`).join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}` : "No infrastructure services \u2014 all targets are stateless or use local file system only.";
   const messages = generateHarnessPrompt(stackStr, targets, infraDescription);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 20);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
   const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
   if (!codeMatch) {
     throw new Error("LLM did not return a code block for the harness");
@@ -57054,7 +57054,7 @@ async function repairHarnessDockerfile(llm, repoPath, error, harnessCode, harnes
       codebaseTools,
       handleTool,
       modelSelector.current(),
-      20
+      40
     );
     const fixed = extractCodeBlock(response);
     if (!fixed) {
@@ -57119,7 +57119,7 @@ async function repairHarnessCode(llm, repoPath, config, probeErrors, targets, ha
       codebaseTools,
       handleTool,
       modelSelector.current(),
-      20
+      40
     );
     const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
     if (!codeMatch) {
