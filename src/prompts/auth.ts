@@ -41,10 +41,21 @@ export function detectAuthPrompt(
     ? `\n\nApplication context from previous phases:\n${contextSummary}\n`
     : "";
 
+  // Extract monorepo service path from stackStr if present
+  const serviceMatch = stackStr.match(/\(service:\s*([^)]+)\)/);
+  const monorepoBlock = serviceMatch
+    ? `\n\n## ⚠️ MONOREPO: Target service is "${serviceMatch[1]}"
+This is a monorepo. The RUNNING application on ${baseUrl} is the service at "${serviceMatch[1]}".
+- ONLY analyze auth mechanisms from "${serviceMatch[1]}" source code — NOT from sibling apps (e.g. apps/web, apps/admin, packages/ui).
+- Other apps in this repo may have completely different auth (e.g. NextAuth sessions vs OAuth2 tokens). Ignore them.
+- Search files WITHIN "${serviceMatch[1]}" first. If auth middleware/guards are in shared packages, follow the imports FROM the target service.
+- When probing ${baseUrl}, remember this is the "${serviceMatch[1]}" service — endpoints from other apps won't exist here.\n`
+    : "";
+
   return [
     {
       role: "system",
-      content: `You are a security analyst examining a ${stackStr} application. Your task is to determine how the app authenticates users and extract the exact details needed to configure a DAST scanner.${contextBlock}
+      content: `You are a security analyst examining a ${stackStr} application. Your task is to determine how the app authenticates users and extract the exact details needed to configure a DAST scanner.${contextBlock}${monorepoBlock}
 
 You have codebase tools (read_file, list_files, search_files) AND a **probe_url** tool to make HTTP requests to the RUNNING application.
 
