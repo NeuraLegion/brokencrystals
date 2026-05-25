@@ -50258,7 +50258,8 @@ ${scope ? `- scope: "${scope}"` : ""}
 **If no OAuth2 client exists**, create one via DB/CLI (same as client_credentials).
 **User credentials**: Use the seeded test user credentials from auth hints. If none exist, use run_command_in_docker to create a user.
 **Do NOT use create_auth or create_auth_raw** \u2014 use create_auth_oidc with grantType="password".
-**Do NOT respond with INFRA_REPAIR** just because there's no session login.`;
+**Do NOT respond with INFRA_REPAIR** just because there's no session login.
+**If the token endpoint rejects your grant type** (e.g. "grant_type must be authorization_code"): the OAuth token exchange is NOT automatable. Switch to \`create_auth_header\` \u2014 the API likely also accepts static headers (x-cal-client-id + x-cal-secret-key, Authorization: Bearer <api-key>, etc.). Use the seeded client credentials as header values.`;
     } else {
       oauthGuidance = `
 
@@ -50282,7 +50283,8 @@ ${scope ? `- scope: "${scope}"` : ""}
 4. The client needs: name, clientId (generate a UUID), clientSecret (generate one), allowed scopes/permissions
 
 **Do NOT use create_auth or create_auth_raw** for OAuth2 client_credentials \u2014 use create_auth_oidc.
-**Do NOT respond with INFRA_REPAIR** just because there's no session login \u2014 this is an API service, OAuth is the correct auth mechanism.`;
+**Do NOT respond with INFRA_REPAIR** just because there's no session login \u2014 this is an API service, OAuth is the correct auth mechanism.
+**If the token endpoint rejects your grant type** (e.g. "grant_type must be authorization_code"): the OAuth token exchange is NOT automatable. Switch to \`create_auth_header\` \u2014 the API likely also accepts static headers (x-cal-client-id + x-cal-secret-key, Authorization: Bearer <api-key>, etc.). Use the seeded client credentials as header values.`;
     }
   }
   let apiKeyGuidance = "";
@@ -50925,6 +50927,13 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
           authHints
         );
         if (result.infraRepairHint) {
+          const grantRejection = /grant.?type.*must be.*authorization.?code|only.*supports.*authorization.?code|does not support.*password|does not support.*client_credentials/i.test(result.infraRepairHint);
+          if (grantRejection) {
+            console.log("[Auth] OAuth token endpoint rejects our grant type \u2014 reclassifying to api_key (static header auth)");
+            detection.authType = "api_key";
+            addAuthHint(authHints, `[auth-oauth-grant-rejected] OAuth token endpoint only supports authorization_code (interactive browser flow). Falling back to static header auth (x-cal-client-id + x-cal-secret-key or similar). Use create_auth_header with seeded client credentials.`);
+            break;
+          }
           console.warn(`[Auth] OAuth LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
           return {
             authObjectId: void 0,
@@ -50944,8 +50953,10 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
         console.log(`[Auth] OAuth auth configured successfully: ${authObjectId2}`);
         return { authObjectId: authObjectId2, hasAuth: true, authFailed: false, authHints };
       }
-      console.error("[Auth] OAuth auth configuration failed after all attempts");
-      return { authObjectId: void 0, hasAuth: false, authFailed: true, authHints };
+      if (detection.authType !== "api_key") {
+        console.error("[Auth] OAuth auth configuration failed after all attempts");
+        return { authObjectId: void 0, hasAuth: false, authFailed: true, authHints };
+      }
     }
   }
   if (detection.authType === "api_key") {

@@ -337,7 +337,17 @@ export async function detectAndConfigureAuth(
       );
 
       if (result.infraRepairHint) {
-        // For OAuth APIs, don't bounce back to startup unless it's genuinely infra
+        // Check if the failure is about unsupported grant type — this means
+        // the token endpoint only supports authorization_code (browser flow).
+        // Instead of bouncing to startup, reclassify as api_key and try static headers.
+        const grantRejection = /grant.?type.*must be.*authorization.?code|only.*supports.*authorization.?code|does not support.*password|does not support.*client_credentials/i.test(result.infraRepairHint);
+        if (grantRejection) {
+          console.log("[Auth] OAuth token endpoint rejects our grant type — reclassifying to api_key (static header auth)");
+          detection.authType = "api_key";
+          addAuthHint(authHints, `[auth-oauth-grant-rejected] OAuth token endpoint only supports authorization_code (interactive browser flow). Falling back to static header auth (x-cal-client-id + x-cal-secret-key or similar). Use create_auth_header with seeded client credentials.`);
+          break; // exit oauth loop, fall through to api_key handler below
+        }
+        // For genuinely infra issues, return the hint
         console.warn(`[Auth] OAuth LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
         return {
           authObjectId: undefined,
@@ -359,8 +369,11 @@ export async function detectAndConfigureAuth(
       console.log(`[Auth] OAuth auth configured successfully: ${authObjectId}`);
       return { authObjectId, hasAuth: true, authFailed: false, authHints };
     }
-    console.error("[Auth] OAuth auth configuration failed after all attempts");
-    return { authObjectId: undefined, hasAuth: false, authFailed: true, authHints };
+    // If we reclassified to api_key (grant type rejection), fall through
+    if (detection.authType !== "api_key") {
+      console.error("[Auth] OAuth auth configuration failed after all attempts");
+      return { authObjectId: undefined, hasAuth: false, authFailed: true, authHints };
+    }
     } // end else (non-authorization_code oauth)
   }
 

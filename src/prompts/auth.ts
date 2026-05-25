@@ -268,7 +268,8 @@ ${scope ? `- scope: "${scope}"` : ""}
 **If no OAuth2 client exists**, create one via DB/CLI (same as client_credentials).
 **User credentials**: Use the seeded test user credentials from auth hints. If none exist, use run_command_in_docker to create a user.
 **Do NOT use create_auth or create_auth_raw** — use create_auth_oidc with grantType="password".
-**Do NOT respond with INFRA_REPAIR** just because there's no session login.`;
+**Do NOT respond with INFRA_REPAIR** just because there's no session login.
+**If the token endpoint rejects your grant type** (e.g. "grant_type must be authorization_code"): the OAuth token exchange is NOT automatable. Switch to \`create_auth_header\` — the API likely also accepts static headers (x-cal-client-id + x-cal-secret-key, Authorization: Bearer <api-key>, etc.). Use the seeded client credentials as header values.`;
     } else {
       oauthGuidance = `
 
@@ -292,7 +293,8 @@ ${scope ? `- scope: "${scope}"` : ""}
 4. The client needs: name, clientId (generate a UUID), clientSecret (generate one), allowed scopes/permissions
 
 **Do NOT use create_auth or create_auth_raw** for OAuth2 client_credentials — use create_auth_oidc.
-**Do NOT respond with INFRA_REPAIR** just because there's no session login — this is an API service, OAuth is the correct auth mechanism.`;
+**Do NOT respond with INFRA_REPAIR** just because there's no session login — this is an API service, OAuth is the correct auth mechanism.
+**If the token endpoint rejects your grant type** (e.g. "grant_type must be authorization_code"): the OAuth token exchange is NOT automatable. Switch to \`create_auth_header\` — the API likely also accepts static headers (x-cal-client-id + x-cal-secret-key, Authorization: Bearer <api-key>, etc.). Use the seeded client credentials as header values.`;
     }
   }
 
