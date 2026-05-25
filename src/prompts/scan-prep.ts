@@ -36,14 +36,9 @@ A DAST scanner hammers the app with thousands of requests — rapid logins, malf
 2. **Account lockout** — failed login thresholds that lock or ban the test account.
 3. **CAPTCHA / bot detection** — anything that gates form submission on human verification.
 4. **CSRF token lifetime / enforcement** — very short token expiry can break scanner workflows. If the app has a setting to DISABLE CSRF checking entirely, do so — the scanner handles CSRF independently via the auth object. Do NOT make CSRF stricter.
-5. **Two-factor authentication (2FA/MFA/TOTP)** — if the app enforces 2FA on the test user or globally, DISABLE it. The scanner cannot complete 2FA challenges. Common patterns:
-   - Admin user created during setup has 2FA enforced → user role becomes INACTIVE until 2FA is configured. Disable the 2FA requirement or mark the user as fully verified in the database.
-   - Environment variables like \`TWO_FACTOR_ENABLED\`, \`REQUIRE_2FA\`, etc. — set them to false/disabled.
-   - Database flags: \`twoFactorEnabled\`, \`twoFactorSecret\`, \`identityProvider\`, user \`role\` being set to inactive/pending because of 2FA. Update the DB directly to bypass.
-   - If the app has an admin setting to disable 2FA enforcement, use it.
-6. **Session timeouts** — aggressive session expiry forces constant re-authentication.
-7. **IP allowlists / blocklists** — if the app blocks unknown IPs or requires allowlisting.
-8. **WAF / request filtering** — embedded request validation that rejects scanner payloads.
+5. **Session timeouts** — aggressive session expiry forces constant re-authentication.
+6. **IP allowlists / blocklists** — if the app blocks unknown IPs or requires allowlisting.
+7. **WAF / request filtering** — embedded request validation that rejects scanner payloads.
 
 There may be others specific to this app — use your judgment.
 
@@ -163,12 +158,88 @@ If you tried but failed:
 - Always verify your changes with rapid requests before reporting success.
 - Do not count HTTP 404-only login POSTs as successful rate-limit verification. They usually mean the request did not reach the real login limiter path.
 - **NEVER make security STRICTER.** Your goal is to RELAX all security controls so the scanner can operate freely. If a setting controls CSRF enforcement, disable it or make it permissive — do NOT enable stricter checking. The scanner needs to send requests without CSRF tokens, so CSRF validation should be DISABLED or set to its most permissive mode.
-- Think about each change from the scanner's perspective: "Will this make it EASIER or HARDER for the scanner to send requests?" If harder → don't do it.
-- **2FA/MFA:** After disabling 2FA, verify the test user is ACTIVE. Log in and check the session/profile endpoint — the user role should NOT be "INACTIVE" or "pending_2fa". If it still is, update the user record directly in the database (e.g. set role to active, clear twoFactorEnabled flag, remove identityProvider requirement).`,
+- Think about each change from the scanner's perspective: "Will this make it EASIER or HARDER for the scanner to send requests?" If harder → don't do it.`,
     },
     {
       role: "user",
       content: "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how the public OSS app/framework handles rate limiting, but never search local repo paths or internal service names. Return the JSON result when done.",
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// 2FA/MFA bypass — focused mini-stage
+// ---------------------------------------------------------------------------
+
+/**
+ * Prompt for the 2FA/MFA bypass mini-stage.
+ * Runs after rate-limit relaxation. Focused solely on ensuring the test user
+ * is not blocked by two-factor authentication requirements.
+ */
+export function scanPrepTwoFactorPrompt(
+  baseUrl: string,
+  techStack: string,
+): ChatCompletionMessageParam[] {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer preparing a web application for automated DAST (Dynamic Application Security Testing).
+
+The app is running at ${baseUrl}. Your ONLY goal in this step is to ensure the test user is NOT blocked by two-factor authentication (2FA/MFA/TOTP) requirements.
+
+Tech stack: ${techStack}
+
+## Problem
+
+Many applications enforce 2FA on users — especially admin users. When 2FA is enforced:
+- The user may be marked as INACTIVE, PENDING, or similar until they complete 2FA setup
+- Login may succeed but the session is restricted (user can't access protected endpoints)
+- API requests return 401/403 even with a valid session because the user hasn't completed 2FA onboarding
+
+A DAST scanner CANNOT complete 2FA challenges. You must disable or bypass them.
+
+## What to do
+
+1. **Check if the app has 2FA/MFA** — search for: twoFactor, 2fa, mfa, totp, otp, authenticator, verification in the codebase and DB schema
+2. **Disable 2FA globally or per-user** — in order of preference:
+   - Environment variables: \`TWO_FACTOR_ENABLED=false\`, \`REQUIRE_2FA=false\`, \`MFA_ENFORCED=false\`, etc. Edit .env or compose.yml.
+   - Database settings: update global settings tables to disable 2FA enforcement
+   - Database user flags: set \`twoFactorEnabled=false\`, \`twoFactorSecret=null\`, clear any \`identityProvider\` requirement
+   - Source code: if 2FA is hardcoded, patch the guard/middleware/check to always pass
+3. **Ensure the test user is fully ACTIVE** — after disabling 2FA:
+   - Query the users table: the test user's role/status should be ACTIVE (not INACTIVE_ADMIN, not PENDING_2FA, not LOCKED)
+   - If the role is still inactive because of 2FA, UPDATE it directly in the DB
+   - Clear any \`smsLockState\`, \`backupCodes\`, or similar fields that indicate incomplete 2FA setup
+4. **Verify** — log in as the test user and hit a protected endpoint. It should return real data (200 with JSON), NOT a 401/403 or a redirect to 2FA setup.
+
+## Tools available
+- \`search_files\` / \`read_file\` / \`list_files\` — inspect the codebase
+- \`search_web\` / \`fetch_url\` — search the internet for public OSS docs
+- \`run_command_on_host\` — run shell commands on the host
+- \`run_command_in_docker\` — run commands inside a Docker container
+- \`edit_file\` — edit source/config files on the host
+- \`probe_url\` — make HTTP requests to the app and see the response
+
+## Output format
+
+When done, respond with ONLY this JSON (no markdown fencing):
+{"completed": true, "changes": ["brief description of each change"], "summary": "one-line summary"}
+
+If you checked and 2FA is not relevant to this app (no 2FA code/settings found):
+{"completed": true, "changes": [], "summary": "No 2FA/MFA mechanism found in this application"}
+
+If you tried but failed:
+{"completed": false, "changes": [], "summary": "what went wrong"}
+
+## Rules
+- Focus ONLY on 2FA/MFA. Do not touch rate limits, CSRF, or other security controls — another stage handles those.
+- After DB changes, restart the app container if the setting is cached at startup.
+- If you patched source code, rebuild/restart the app.
+- Verify the user is active by checking the session/profile endpoint response.`,
+    },
+    {
+      role: "user",
+      content: "Check if this application enforces 2FA/MFA on the test user. If it does, disable it and ensure the user is fully active. Return the JSON result when done.",
     },
   ];
 }

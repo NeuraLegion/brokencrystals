@@ -6,7 +6,7 @@ import {
   execInDocker,
 } from "../tools.js";
 import { extractJson, formatTechStack } from "../utils.js";
-import { scanPrepPrompt } from "../prompts/scan-prep.js";
+import { scanPrepPrompt, scanPrepTwoFactorPrompt } from "../prompts/scan-prep.js";
 import type { TechStack } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -37,7 +37,67 @@ export async function prepareScanEnvironment(
 ): Promise<ScanPrepResult> {
   console.log("[ScanPrep] Starting scan preparation phase — relaxing rate limits and security controls...");
 
-  // Track docker commands that modify settings (for deterministic re-run)
+  // ----- Stage 1: Rate limits + security controls -----
+  const rateLimitResult = await runScanPrepStage(
+    llm, repoPath, baseUrl, techStack, model, activeIssue,
+    "rate_limit",
+    scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue),
+  );
+
+  // ----- Stage 2: 2FA/MFA bypass -----
+  console.log("[ScanPrep] Stage 2 — checking 2FA/MFA requirements...");
+  const twoFaResult = await runScanPrepStage(
+    llm, repoPath, baseUrl, techStack, model, undefined,
+    "2fa",
+    scanPrepTwoFactorPrompt(baseUrl, formatTechStack(techStack)),
+  );
+
+  // Merge results: rate-limit stage is authoritative for pass/fail,
+  // but we append 2FA changes if any
+  const mergedChanges = [
+    ...(rateLimitResult.changes ?? []),
+    ...(twoFaResult.changes ?? []),
+  ];
+  const mergedCommands = [
+    ...(rateLimitResult.replayCommands ?? []),
+    ...(twoFaResult.replayCommands ?? []),
+  ];
+
+  // If rate-limit stage failed, propagate that failure
+  if (!rateLimitResult.completed) {
+    return {
+      ...rateLimitResult,
+      changes: mergedChanges,
+      replayCommands: mergedCommands.length > 0 ? mergedCommands : undefined,
+    };
+  }
+
+  // Both succeeded (or 2FA was not relevant)
+  const summary = twoFaResult.changes.length > 0
+    ? `${rateLimitResult.summary}; 2FA: ${twoFaResult.summary}`
+    : rateLimitResult.summary;
+
+  return {
+    completed: true,
+    changes: mergedChanges,
+    summary,
+    replayCommands: mergedCommands.length > 0 ? mergedCommands : undefined,
+  };
+}
+
+/**
+ * Run a single scan-prep stage with tracking and validation.
+ */
+async function runScanPrepStage(
+  llm: OpenAI,
+  repoPath: string,
+  baseUrl: string,
+  techStack: TechStack,
+  model: string | undefined,
+  activeIssue: string | undefined,
+  stageName: string,
+  messages: import("openai/resources/chat/completions.mjs").ChatCompletionMessageParam[],
+): Promise<ScanPrepResult> {
   const dockerCommands: { container: string; command: string }[] = [];
   let editFileCalls = 0;
   let postProbeCalls = 0;
@@ -73,8 +133,6 @@ export async function prepareScanEnvironment(
   const tools = buildToolDefs(handlerOpts);
   const handler = createUnifiedToolHandler(repoPath, handlerOpts);
 
-  const messages = scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue);
-
   const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 50 : 40);
 
   try {
@@ -89,6 +147,15 @@ export async function prepareScanEnvironment(
     if (result.completed) {
       const changes = result.changes ?? [];
       const actualMutations = dockerCommands.length + editFileCalls;
+
+      // For the 2FA stage, skip the strict POST-verification requirements
+      if (stageName === "2fa") {
+        console.log(`[ScanPrep:2FA] Completed — ${changes.length} change(s): ${result.summary ?? "done"}`);
+        for (const c of changes) console.log(`[ScanPrep:2FA]   • ${c}`);
+        return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
+      }
+
+      // Rate-limit stage: strict verification
       if (postProbeCalls < 5) {
         const summary = `Scan-prep reported success after only ${postProbeCalls}/5 required rapid POST verification request(s)`;
         console.warn(`[ScanPrep] Failed: ${summary}`);
@@ -121,10 +188,10 @@ export async function prepareScanEnvironment(
       return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
     }
 
-    console.warn(`[ScanPrep] Failed: ${result.reason ?? result.summary ?? "unknown"}`);
+    console.warn(`[ScanPrep:${stageName}] Failed: ${result.reason ?? result.summary ?? "unknown"}`);
     return { completed: false, changes: [], summary: result.reason ?? "Failed", failureKind: "unknown" };
   } catch (err) {
-    console.warn(`[ScanPrep] Could not parse response: ${err}`);
+    console.warn(`[ScanPrep:${stageName}] Could not parse response: ${err}`);
     return { completed: false, changes: [], summary: `Parse error: ${err}`, failureKind: "parse_error" };
   }
 }
