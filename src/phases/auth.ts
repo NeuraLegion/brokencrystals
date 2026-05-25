@@ -223,7 +223,18 @@ export async function detectAndConfigureAuth(
   // EXCEPTION: "password" grant needs BOTH user credentials AND client credentials.
   if (detection.authType === "oauth") {
     const grantType = detection.oauthGrantType ?? "client_credentials";
-    console.log(`[Auth] OAuth2/OIDC detected (grant: ${grantType}) — seeding OAuth client`);
+
+    // authorization_code is an interactive browser flow — NOT automatable
+    // without a headless browser. If detection returned this, reclassify as
+    // api_key so we try static header auth (the app likely also accepts
+    // API key headers like x-cal-client-id / x-cal-secret-key).
+    if (grantType === "authorization_code") {
+      console.log("[Auth] OAuth2 authorization_code detected — NOT automatable. Reclassifying as api_key (static header auth).");
+      detection.authType = "api_key";
+      addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (interactive browser flow). Reclassified as api_key. Look for static header auth patterns: x-cal-client-id, x-api-key, or Bearer token from a pre-created API key in the database.`);
+      // Fall through to the api_key handler below
+    } else {
+      console.log(`[Auth] OAuth2/OIDC detected (grant: ${grantType}) — seeding OAuth client`);
     if (detection.oauthTokenEndpoint) {
       addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Grant type: ${grantType}.`);
     }
@@ -333,6 +344,67 @@ export async function detectAndConfigureAuth(
       return { authObjectId, hasAuth: true, authFailed: false, authHints };
     }
     console.error("[Auth] OAuth auth configuration failed after all attempts");
+    return { authObjectId: undefined, hasAuth: false, authFailed: true, authHints };
+    } // end else (non-authorization_code oauth)
+  }
+
+  // For API key / static header auth, skip user registration/seeding — we just
+  // need header name+value pairs. The LLM will discover or create credentials
+  // (client ID, secret, API key) during the auth configuration phase.
+  if (detection.authType === "api_key") {
+    console.log("[Auth] API key / static header auth detected — skipping user seed, going to config");
+    addAuthHint(authHints, `[auth-api-key] Static header auth. Header: ${detection.headerName ?? "unknown"}, prefix: ${detection.headerPrefix ?? "none"}. Use create_auth_header tool with the correct header name(s) and value(s).`);
+
+    const probeContext = await preProbeForAuth(baseUrl, detection);
+    const verifiedTestUrl = await resolveVerifiedAuthTestUrl(
+      llm, repoPath, baseUrl, detection, model, probeContext,
+    );
+    if (verifiedTestUrl) {
+      addAuthHint(authHints, `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl.testUrl}. Evidence: ${verifiedTestUrl.evidence}`);
+    }
+
+    const MAX_AUTH_ATTEMPTS = 3;
+    let authObjectId: string | undefined;
+    const allAttemptLogs: string[] = [];
+    let fullProbeContext = probeContext;
+    fullProbeContext += verifiedTestUrl
+      ? `\n\n### Verified auth test URL\n${verifiedTestUrl.testUrl}\nEvidence: ${verifiedTestUrl.evidence}`
+      : "\n\n### Verified auth test URL\nNo verified test URL was found. Use probe_url to find a protected endpoint that returns 401/403 without the correct headers.";
+
+    for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
+      let attemptContext = fullProbeContext;
+      if (allAttemptLogs.length > 0) {
+        attemptContext += "\n\n## Previous attempt failures\n"
+          + "Learn from these mistakes. Do NOT repeat the same configurations.\n\n"
+          + allAttemptLogs.join("\n\n---\n\n");
+      }
+      if (authHints.length > 0) {
+        attemptContext += "\n\n## Saved auth hints\n" + formatAuthHints(authHints);
+      }
+
+      console.log(`[Auth] API key auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS}...`);
+      const result = await createAuthViaMcp(
+        llm, repoPath, detection, false, projectId, baseUrl, repeaterId, api, model,
+        attemptContext, verifiedTestUrl?.testUrl, authHints,
+      );
+
+      if (result.infraRepairHint) {
+        console.warn(`[Auth] API key LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
+        return { authObjectId: undefined, hasAuth: false, authFailed: true, authHints, infraRepairHint: result.infraRepairHint };
+      }
+
+      if (result.authId) {
+        authObjectId = result.authId;
+        break;
+      }
+      allAttemptLogs.push(...result.attemptLog);
+    }
+
+    if (authObjectId) {
+      console.log(`[Auth] API key auth configured successfully: ${authObjectId}`);
+      return { authObjectId, hasAuth: true, authFailed: false, authHints };
+    }
+    console.error("[Auth] API key auth configuration failed after all attempts");
     return { authObjectId: undefined, hasAuth: false, authFailed: true, authHints };
   }
 
@@ -1858,6 +1930,39 @@ The Bright platform handles the full token exchange and automatic refresh.`,
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "create_auth_header",
+        description: `Create a Bright "header" auth object — static headers attached to every scan request. No login flow, no token exchange. Use this for:
+- API key auth with custom headers (e.g. x-api-key, x-client-id + x-client-secret)
+- Bearer tokens that are pre-generated / long-lived (not obtained via OAuth token endpoint)
+- Any auth where you just need to send fixed header(s) on every request.
+Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
+        parameters: {
+          type: "object",
+          properties: {
+            headers: {
+              type: "string",
+              description:
+                'JSON array of headers to attach. Each element: {"name":"Header-Name","value":"header-value"}. Example: \'[{"name":"x-cal-client-id","value":"my-client-id"},{"name":"x-cal-secret-key","value":"my-secret"}]\'',
+            },
+            testUrl: {
+              type: "string",
+              description:
+                "Full URL to a protected endpoint. Should return 401/403 without the headers, 200 with them.",
+            },
+            testMethod: {
+              type: "string",
+              enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+              description: "HTTP method for the test request. Default: GET.",
+            },
+          },
+          required: ["headers", "testUrl"],
+          additionalProperties: false,
+        },
+      },
+    },
   ];
 
   let lastCreateArgs: Record<string, unknown> = {};
@@ -2094,6 +2199,70 @@ The Bright platform handles the full token exchange and automatic refresh.`,
       }
       return JSON.stringify({ authObjectId: result.id });
     }
+    if (name === "create_auth_header") {
+      lastCreateArgs = { ...args, authStyle: "header" };
+      let headers: Array<{ name: string; value: string }>;
+      try {
+        headers = JSON.parse(String(args.headers));
+        if (!Array.isArray(headers) || headers.length === 0) {
+          return JSON.stringify({ error: "headers must be a non-empty JSON array of {name, value} objects" });
+        }
+        for (const h of headers) {
+          if (!h.name || !h.value) {
+            return JSON.stringify({ error: `Each header must have 'name' and 'value'. Got: ${JSON.stringify(h)}` });
+          }
+        }
+      } catch (e) {
+        return JSON.stringify({ error: `Failed to parse headers JSON: ${toErrorMessage(e)}` });
+      }
+
+      const testUrl = normalizeAuthTestUrl(String(args.testUrl ?? ""), baseUrl, detection, verifiedTestUrl);
+      const testMethod = String(args.testMethod ?? "GET");
+
+      const body: Record<string, unknown> = {
+        name: "Engine Auth — static headers",
+        projectId,
+        type: "header",
+        test: {
+          repeaterId,
+          request: {
+            method: testMethod,
+            url: testUrl,
+            protocol: "http",
+            bodyType: "clear_text",
+            followRedirects: false,
+            maxRedirects: 0,
+            changeMethodOnRedirect: false,
+          },
+        },
+        reauthTriggers: [
+          { type: "TRIGGER", location: "status", statuses: [401, 403] },
+        ],
+        successResponseDetection: [
+          { type: "status", statuses: [200, 201, 204] },
+        ],
+        config: {
+          request: {
+            headers: headers.map((h) => ({
+              name: h.name,
+              value: h.value,
+              mergeStrategy: "replace",
+              type: "clear_text",
+            })),
+          },
+        },
+      };
+
+      const headerNames = headers.map((h) => h.name).join(", ");
+      console.log(`[Auth] Creating static header auth — headers: [${headerNames}], test: ${testMethod} ${testUrl}`);
+      const result = await postAuthObject(api, body);
+      if (result.error) {
+        attemptLog.push(`- create_auth_header(headers=[${headerNames}], testUrl=${testUrl}) → ERROR: ${result.error}`);
+        addAuthHint(authHints, `[auth-create-error] create_auth_header failed: ${result.error}`);
+        return JSON.stringify({ error: result.error });
+      }
+      return JSON.stringify({ authObjectId: result.id });
+    }
     if (name === "test_auth_object") {
       const result = await testAuthObject(
         api,
@@ -2103,6 +2272,8 @@ The Bright platform handles the full token exchange and automatic refresh.`,
       const summary = JSON.stringify(result);
       const configSummary = lastCreateArgs.authStyle === "raw"
         ? `raw multistep, testUrl=${lastCreateArgs.testUrl}`
+        : lastCreateArgs.authStyle === "header"
+        ? `static headers, testUrl=${lastCreateArgs.testUrl}`
         : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
       if (!result.passed) {
         attemptLog.push(`- create_auth(${configSummary}) → test FAILED: ${result.summary ?? summary.slice(0, 300)}`);

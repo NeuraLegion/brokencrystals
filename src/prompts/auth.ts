@@ -159,6 +159,8 @@ Key rules:
 - csrfFormUrl: the URL to GET that serves the login form HTML containing the CSRF token (may be "/" if the app redirects there)
 - csrfDelivery: "form_body" if the token must be in the POST body (HTML hidden input), "header" if it goes in an X-CSRF-Token header (JSON API), "json_body" if it comes from a JSON endpoint but must be included in the POST body as a field (e.g. NextAuth csrfToken)
 - For authType "oauth": fill in oauthTokenEndpoint, oauthClientId/Secret (if found in env/seed files), oauthScope, oauthGrantType. Use "client_credentials" when the API is machine-to-machine (no user login). Use "password" when the API exchanges user credentials (username+password) via a token endpoint for a Bearer token (ROPC flow — common in Django REST, Laravel Passport, Spring Boot OAuth). The loginEndpoint/loginBody fields are less relevant for "client_credentials" but still useful for "password" grant (loginBody should contain the username/password).
+- **IMPORTANT — authorization_code vs api_key**: If the OAuth token endpoint ONLY supports "authorization_code" (interactive browser redirect) and NOT "client_credentials" or "password", the OAuth flow is NOT automatable. In this case, check if the API ALSO accepts static headers (API key, client ID + secret headers like x-cal-client-id). If so, set authType to "api_key" (not "oauth") with the correct headerName. Probe: if the app accepts requests with custom auth headers (like x-api-key, x-client-id, or similar) WITHOUT a token endpoint exchange, that's api_key auth.
+- For authType "api_key": set headerName to the auth header name (e.g. "x-cal-client-id", "X-API-Key", "Authorization"). If the API uses multiple headers for auth (e.g. x-cal-client-id + x-cal-secret-key), set headerName to the primary one and describe ALL required headers in "notes". No oauthTokenEndpoint is needed.
 - csrfExtractPattern: regex to extract the CSRF token from the HTML response body (capture group 1 = token value)`,
     },
   ];
@@ -186,9 +188,11 @@ export function configureAuthPrompt(
     ? (detection.oauthGrantType === "password"
       ? `\nThis is an OAuth2 API using password (ROPC) grant. You need client credentials AND user credentials. Use create_auth_oidc with grantType="password", username, and password. Check auth hints for seeded user and OAuth client credentials.`
       : `\nThis is an OAuth2/OIDC API service. You need to create an OAuth2 client (client_id/secret) and use create_auth_oidc. If a seeded client exists, use those credentials. Otherwise, use command tools to create one via the app's CLI or database.`)
-    : userConfirmed
-      ? `\nA test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.`
-      : `\nNo confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work — if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
+    : authStyle === "api_key"
+      ? `\nThis is a static header / API key auth service. No login flow needed — just attach the correct header(s) on every request. Use create_auth_header with the header name(s) and value(s). Find or create API credentials via the database or app CLI.`
+      : userConfirmed
+        ? `\nA test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.`
+        : `\nNo confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work — if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
 
   // Build CSRF guidance block when the detection LLM reported form-body CSRF
   let csrfGuidance = "";
@@ -292,6 +296,36 @@ ${scope ? `- scope: "${scope}"` : ""}
     }
   }
 
+  // API key / static header guidance block
+  let apiKeyGuidance = "";
+  if (detection.authType === "api_key") {
+    const headerName = detection.headerName ?? "unknown";
+    apiKeyGuidance = `
+
+## ⚠️ MANDATORY: This is a static header / API key auth service
+This API authenticates via fixed header(s) on every request. NO login flow, NO token exchange.
+
+**Use \`create_auth_header\` tool** with:
+- headers: JSON array of header name-value pairs, e.g. [{"name":"${headerName}","value":"YOUR-KEY-HERE"}]
+- testUrl: A protected endpoint that returns 401/403 without the header(s), 200 with them
+
+**Finding or creating API credentials:**
+1. Search the database for existing API keys/clients: OAuthClient, ApiKey, api_keys, platform_oauth_clients tables
+2. If a seeded client exists (check auth hints), use its clientId + clientSecret as header values
+3. If none exist, create one via DB/CLI:
+   - Direct SQL: INSERT INTO api_keys/oauth_clients (...)
+   - App CLI: node dist/manage.js create-key
+   - Prisma: npx prisma db execute
+
+**Common patterns:**
+- Single header: Authorization: Bearer <api-key> or X-API-Key: <key>
+- Dual headers: x-cal-client-id: <id> + x-cal-secret-key: <secret>
+- Custom: X-Auth-Token: <token>
+
+**Do NOT use create_auth, create_auth_oidc, or create_auth_raw** — use create_auth_header.
+**Do NOT respond with INFRA_REPAIR** just because there's no login endpoint — this is API key auth.`;
+  }
+
   const hintsBlock = authHints.length > 0
     ? `\n## Saved auth hints\nThese facts were learned during scan preparation, auth detection, verified probes, or previous auth attempts. Trust them over guesses and do not rediscover or contradict them unless you have concrete evidence.\n${authHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
     : "";
@@ -316,6 +350,7 @@ ${scope ? `- scope: "${scope}"` : ""}
 ${credentialNote}
 ${csrfGuidance}
 ${oauthGuidance}
+${apiKeyGuidance}
 
 ## Available tools
 - **probe_url** — Make HTTP requests to the running app. Use for DISCOVERY: finding real endpoints, checking response formats, understanding what the app returns. Cookies are tracked automatically across calls.
@@ -330,6 +365,7 @@ ${oauthGuidance}
   - OAuth2 PKCE, authorization code grants, or any multi-step token exchange
   - Any flow where you need to extract values between steps using NexTemplate
 - **create_auth_oidc** — Create a Bright OIDC/OAuth2 auth object using client_credentials grant. Use this for API services that authenticate via Bearer tokens obtained from a token endpoint. Bright handles token exchange and automatic refresh. You need: tokenEndpoint, clientId, clientSecret, and a testUrl that returns 401 without a valid token.
+- **create_auth_header** — Create a Bright "header" auth object with static headers attached to every request. Use for API key auth, custom headers (x-api-key, x-cal-client-id + x-cal-secret-key), or any pre-generated token. No login/exchange flow. Pass headers as JSON array: [{"name":"X-Key","value":"val"}]. Supports multiple headers.
 - **test_auth_object** — Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** — Delete a broken auth object to recreate with different settings.
 - **save_hint** — Save a concise auth fact for later attempts. Use this whenever you learn something non-obvious from code/probes/test feedback, such as exact token location, required header prefix, required login body fields, verified test URL behavior, or a failed config pattern to avoid.

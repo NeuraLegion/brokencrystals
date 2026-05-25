@@ -50176,6 +50176,8 @@ Key rules:
 - csrfFormUrl: the URL to GET that serves the login form HTML containing the CSRF token (may be "/" if the app redirects there)
 - csrfDelivery: "form_body" if the token must be in the POST body (HTML hidden input), "header" if it goes in an X-CSRF-Token header (JSON API), "json_body" if it comes from a JSON endpoint but must be included in the POST body as a field (e.g. NextAuth csrfToken)
 - For authType "oauth": fill in oauthTokenEndpoint, oauthClientId/Secret (if found in env/seed files), oauthScope, oauthGrantType. Use "client_credentials" when the API is machine-to-machine (no user login). Use "password" when the API exchanges user credentials (username+password) via a token endpoint for a Bearer token (ROPC flow \u2014 common in Django REST, Laravel Passport, Spring Boot OAuth). The loginEndpoint/loginBody fields are less relevant for "client_credentials" but still useful for "password" grant (loginBody should contain the username/password).
+- **IMPORTANT \u2014 authorization_code vs api_key**: If the OAuth token endpoint ONLY supports "authorization_code" (interactive browser redirect) and NOT "client_credentials" or "password", the OAuth flow is NOT automatable. In this case, check if the API ALSO accepts static headers (API key, client ID + secret headers like x-cal-client-id). If so, set authType to "api_key" (not "oauth") with the correct headerName. Probe: if the app accepts requests with custom auth headers (like x-api-key, x-client-id, or similar) WITHOUT a token endpoint exchange, that's api_key auth.
+- For authType "api_key": set headerName to the auth header name (e.g. "x-cal-client-id", "X-API-Key", "Authorization"). If the API uses multiple headers for auth (e.g. x-cal-client-id + x-cal-secret-key), set headerName to the primary one and describe ALL required headers in "notes". No oauthTokenEndpoint is needed.
 - csrfExtractPattern: regex to extract the CSRF token from the HTML response body (capture group 1 = token value)`
     }
   ];
@@ -50184,7 +50186,8 @@ function configureAuthPrompt(baseUrl, testUrl, detection, userConfirmed, preProb
   const authStyle = detection.authType === "session" ? "session" : detection.authType === "jwt" ? "jwt" : detection.authType === "api_key" ? "api_key" : detection.authType === "oauth" ? "oidc" : "session";
   const credentialNote = authStyle === "oidc" ? detection.oauthGrantType === "password" ? `
 This is an OAuth2 API using password (ROPC) grant. You need client credentials AND user credentials. Use create_auth_oidc with grantType="password", username, and password. Check auth hints for seeded user and OAuth client credentials.` : `
-This is an OAuth2/OIDC API service. You need to create an OAuth2 client (client_id/secret) and use create_auth_oidc. If a seeded client exists, use those credentials. Otherwise, use command tools to create one via the app's CLI or database.` : userConfirmed ? `
+This is an OAuth2/OIDC API service. You need to create an OAuth2 client (client_id/secret) and use create_auth_oidc. If a seeded client exists, use those credentials. Otherwise, use command tools to create one via the app's CLI or database.` : authStyle === "api_key" ? `
+This is a static header / API key auth service. No login flow needed \u2014 just attach the correct header(s) on every request. Use create_auth_header with the header name(s) and value(s). Find or create API credentials via the database or app CLI.` : userConfirmed ? `
 A test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.` : `
 No confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work \u2014 if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
   let csrfGuidance = "";
@@ -50282,6 +50285,34 @@ ${scope ? `- scope: "${scope}"` : ""}
 **Do NOT respond with INFRA_REPAIR** just because there's no session login \u2014 this is an API service, OAuth is the correct auth mechanism.`;
     }
   }
+  let apiKeyGuidance = "";
+  if (detection.authType === "api_key") {
+    const headerName = detection.headerName ?? "unknown";
+    apiKeyGuidance = `
+
+## \u26A0\uFE0F MANDATORY: This is a static header / API key auth service
+This API authenticates via fixed header(s) on every request. NO login flow, NO token exchange.
+
+**Use \`create_auth_header\` tool** with:
+- headers: JSON array of header name-value pairs, e.g. [{"name":"${headerName}","value":"YOUR-KEY-HERE"}]
+- testUrl: A protected endpoint that returns 401/403 without the header(s), 200 with them
+
+**Finding or creating API credentials:**
+1. Search the database for existing API keys/clients: OAuthClient, ApiKey, api_keys, platform_oauth_clients tables
+2. If a seeded client exists (check auth hints), use its clientId + clientSecret as header values
+3. If none exist, create one via DB/CLI:
+   - Direct SQL: INSERT INTO api_keys/oauth_clients (...)
+   - App CLI: node dist/manage.js create-key
+   - Prisma: npx prisma db execute
+
+**Common patterns:**
+- Single header: Authorization: Bearer <api-key> or X-API-Key: <key>
+- Dual headers: x-cal-client-id: <id> + x-cal-secret-key: <secret>
+- Custom: X-Auth-Token: <token>
+
+**Do NOT use create_auth, create_auth_oidc, or create_auth_raw** \u2014 use create_auth_header.
+**Do NOT respond with INFRA_REPAIR** just because there's no login endpoint \u2014 this is API key auth.`;
+  }
   const hintsBlock = authHints.length > 0 ? `
 ## Saved auth hints
 These facts were learned during scan preparation, auth detection, verified probes, or previous auth attempts. Trust them over guesses and do not rediscover or contradict them unless you have concrete evidence.
@@ -50307,6 +50338,7 @@ ${authHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
 ${credentialNote}
 ${csrfGuidance}
 ${oauthGuidance}
+${apiKeyGuidance}
 
 ## Available tools
 - **probe_url** \u2014 Make HTTP requests to the running app. Use for DISCOVERY: finding real endpoints, checking response formats, understanding what the app returns. Cookies are tracked automatically across calls.
@@ -50321,6 +50353,7 @@ ${oauthGuidance}
   - OAuth2 PKCE, authorization code grants, or any multi-step token exchange
   - Any flow where you need to extract values between steps using NexTemplate
 - **create_auth_oidc** \u2014 Create a Bright OIDC/OAuth2 auth object using client_credentials grant. Use this for API services that authenticate via Bearer tokens obtained from a token endpoint. Bright handles token exchange and automatic refresh. You need: tokenEndpoint, clientId, clientSecret, and a testUrl that returns 401 without a valid token.
+- **create_auth_header** \u2014 Create a Bright "header" auth object with static headers attached to every request. Use for API key auth, custom headers (x-api-key, x-cal-client-id + x-cal-secret-key), or any pre-generated token. No login/exchange flow. Pass headers as JSON array: [{"name":"X-Key","value":"val"}]. Supports multiple headers.
 - **test_auth_object** \u2014 Test if the auth object works end-to-end. Returns stage-by-stage results. Use this as your source of truth.
 - **delete_auth_object** \u2014 Delete a broken auth object to recreate with different settings.
 - **save_hint** \u2014 Save a concise auth fact for later attempts. Use this whenever you learn something non-obvious from code/probes/test feedback, such as exact token location, required header prefix, required login body fields, verified test URL behavior, or a failed config pattern to avoid.
@@ -50791,32 +50824,112 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
   );
   if (detection.authType === "oauth") {
     const grantType = detection.oauthGrantType ?? "client_credentials";
-    console.log(`[Auth] OAuth2/OIDC detected (grant: ${grantType}) \u2014 seeding OAuth client`);
-    if (detection.oauthTokenEndpoint) {
-      addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Grant type: ${grantType}.`);
-    }
-    if (detection.oauthClientId) {
-      addAuthHint(authHints, `[auth-oauth-client] Found OAuth2 client: id=${detection.oauthClientId}, secret=${detection.oauthClientSecret ?? "unknown"}.`);
-    }
-    if (!detection.oauthClientId || !detection.oauthClientSecret) {
-      const oauthClient = await seedOAuthClient(llm, repoPath, baseUrl, detection, model);
-      if (oauthClient) {
-        detection.oauthClientId = oauthClient.clientId;
-        detection.oauthClientSecret = oauthClient.clientSecret;
-        if (oauthClient.tokenEndpoint) {
-          detection.oauthTokenEndpoint = oauthClient.tokenEndpoint;
+    if (grantType === "authorization_code") {
+      console.log("[Auth] OAuth2 authorization_code detected \u2014 NOT automatable. Reclassifying as api_key (static header auth).");
+      detection.authType = "api_key";
+      addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (interactive browser flow). Reclassified as api_key. Look for static header auth patterns: x-cal-client-id, x-api-key, or Bearer token from a pre-created API key in the database.`);
+    } else {
+      console.log(`[Auth] OAuth2/OIDC detected (grant: ${grantType}) \u2014 seeding OAuth client`);
+      if (detection.oauthTokenEndpoint) {
+        addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Grant type: ${grantType}.`);
+      }
+      if (detection.oauthClientId) {
+        addAuthHint(authHints, `[auth-oauth-client] Found OAuth2 client: id=${detection.oauthClientId}, secret=${detection.oauthClientSecret ?? "unknown"}.`);
+      }
+      if (!detection.oauthClientId || !detection.oauthClientSecret) {
+        const oauthClient = await seedOAuthClient(llm, repoPath, baseUrl, detection, model);
+        if (oauthClient) {
+          detection.oauthClientId = oauthClient.clientId;
+          detection.oauthClientSecret = oauthClient.clientSecret;
+          if (oauthClient.tokenEndpoint) {
+            detection.oauthTokenEndpoint = oauthClient.tokenEndpoint;
+          }
+          addAuthHint(authHints, `[auth-oauth-client] Seeded OAuth2 client: id=${oauthClient.clientId}, secret=${oauthClient.clientSecret}, tokenEndpoint=${oauthClient.tokenEndpoint}.`);
+        } else {
+          console.warn("[Auth:OAuth] Could not seed OAuth client \u2014 LLM will try to create one during auth config");
         }
-        addAuthHint(authHints, `[auth-oauth-client] Seeded OAuth2 client: id=${oauthClient.clientId}, secret=${oauthClient.clientSecret}, tokenEndpoint=${oauthClient.tokenEndpoint}.`);
-      } else {
-        console.warn("[Auth:OAuth] Could not seed OAuth client \u2014 LLM will try to create one during auth config");
       }
-    }
-    if (grantType === "password") {
-      console.log("[Auth:OAuth] Password grant \u2014 seeding test user for resource owner credentials");
-      if (detection.loginBody) {
-        addAuthHint(authHints, `[auth-oauth-user] Resource owner credentials from detection: ${detection.loginBody}`);
+      if (grantType === "password") {
+        console.log("[Auth:OAuth] Password grant \u2014 seeding test user for resource owner credentials");
+        if (detection.loginBody) {
+          addAuthHint(authHints, `[auth-oauth-user] Resource owner credentials from detection: ${detection.loginBody}`);
+        }
       }
+      const probeContext2 = await preProbeForAuth(baseUrl, detection);
+      const verifiedTestUrl2 = await resolveVerifiedAuthTestUrl(
+        llm,
+        repoPath,
+        baseUrl,
+        detection,
+        model,
+        probeContext2
+      );
+      if (verifiedTestUrl2) {
+        addAuthHint(
+          authHints,
+          `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl2.testUrl}. Evidence: ${verifiedTestUrl2.evidence}`
+        );
+      }
+      const MAX_AUTH_ATTEMPTS2 = 3;
+      let authObjectId2;
+      const allAttemptLogs2 = [];
+      let fullProbeContext2 = probeContext2;
+      fullProbeContext2 += verifiedTestUrl2 ? `
+
+### Verified auth test URL
+${verifiedTestUrl2.testUrl}
+Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo verified test URL was found. Use probe_url to find a protected endpoint that returns 401 without a Bearer token.";
+      for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS2; attempt++) {
+        let attemptContext = fullProbeContext2;
+        if (allAttemptLogs2.length > 0) {
+          attemptContext += "\n\n## Previous attempt failures\nLearn from these mistakes. Do NOT repeat the same configurations.\n\n" + allAttemptLogs2.join("\n\n---\n\n");
+        }
+        if (authHints.length > 0) {
+          attemptContext += "\n\n## Saved auth hints\n" + formatAuthHints(authHints);
+        }
+        console.log(`[Auth] OAuth auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS2}...`);
+        const result = await createAuthViaMcp(
+          llm,
+          repoPath,
+          detection,
+          false,
+          // no user registration for OAuth
+          projectId,
+          baseUrl,
+          repeaterId,
+          api,
+          model,
+          attemptContext,
+          verifiedTestUrl2?.testUrl,
+          authHints
+        );
+        if (result.infraRepairHint) {
+          console.warn(`[Auth] OAuth LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
+          return {
+            authObjectId: void 0,
+            hasAuth: false,
+            authFailed: true,
+            authHints,
+            infraRepairHint: result.infraRepairHint
+          };
+        }
+        if (result.authId) {
+          authObjectId2 = result.authId;
+          break;
+        }
+        allAttemptLogs2.push(...result.attemptLog);
+      }
+      if (authObjectId2) {
+        console.log(`[Auth] OAuth auth configured successfully: ${authObjectId2}`);
+        return { authObjectId: authObjectId2, hasAuth: true, authFailed: false, authHints };
+      }
+      console.error("[Auth] OAuth auth configuration failed after all attempts");
+      return { authObjectId: void 0, hasAuth: false, authFailed: true, authHints };
     }
+  }
+  if (detection.authType === "api_key") {
+    console.log("[Auth] API key / static header auth detected \u2014 skipping user seed, going to config");
+    addAuthHint(authHints, `[auth-api-key] Static header auth. Header: ${detection.headerName ?? "unknown"}, prefix: ${detection.headerPrefix ?? "none"}. Use create_auth_header tool with the correct header name(s) and value(s).`);
     const probeContext2 = await preProbeForAuth(baseUrl, detection);
     const verifiedTestUrl2 = await resolveVerifiedAuthTestUrl(
       llm,
@@ -50827,10 +50940,7 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
       probeContext2
     );
     if (verifiedTestUrl2) {
-      addAuthHint(
-        authHints,
-        `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl2.testUrl}. Evidence: ${verifiedTestUrl2.evidence}`
-      );
+      addAuthHint(authHints, `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl2.testUrl}. Evidence: ${verifiedTestUrl2.evidence}`);
     }
     const MAX_AUTH_ATTEMPTS2 = 3;
     let authObjectId2;
@@ -50840,7 +50950,7 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
 
 ### Verified auth test URL
 ${verifiedTestUrl2.testUrl}
-Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo verified test URL was found. Use probe_url to find a protected endpoint that returns 401 without a Bearer token.";
+Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo verified test URL was found. Use probe_url to find a protected endpoint that returns 401/403 without the correct headers.";
     for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS2; attempt++) {
       let attemptContext = fullProbeContext2;
       if (allAttemptLogs2.length > 0) {
@@ -50849,13 +50959,12 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
       if (authHints.length > 0) {
         attemptContext += "\n\n## Saved auth hints\n" + formatAuthHints(authHints);
       }
-      console.log(`[Auth] OAuth auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS2}...`);
+      console.log(`[Auth] API key auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS2}...`);
       const result = await createAuthViaMcp(
         llm,
         repoPath,
         detection,
         false,
-        // no user registration for OAuth
         projectId,
         baseUrl,
         repeaterId,
@@ -50866,14 +50975,8 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
         authHints
       );
       if (result.infraRepairHint) {
-        console.warn(`[Auth] OAuth LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
-        return {
-          authObjectId: void 0,
-          hasAuth: false,
-          authFailed: true,
-          authHints,
-          infraRepairHint: result.infraRepairHint
-        };
+        console.warn(`[Auth] API key LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
+        return { authObjectId: void 0, hasAuth: false, authFailed: true, authHints, infraRepairHint: result.infraRepairHint };
       }
       if (result.authId) {
         authObjectId2 = result.authId;
@@ -50882,10 +50985,10 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
       allAttemptLogs2.push(...result.attemptLog);
     }
     if (authObjectId2) {
-      console.log(`[Auth] OAuth auth configured successfully: ${authObjectId2}`);
+      console.log(`[Auth] API key auth configured successfully: ${authObjectId2}`);
       return { authObjectId: authObjectId2, hasAuth: true, authFailed: false, authHints };
     }
-    console.error("[Auth] OAuth auth configuration failed after all attempts");
+    console.error("[Auth] API key auth configuration failed after all attempts");
     return { authObjectId: void 0, hasAuth: false, authFailed: true, authHints };
   }
   let registrationOk = await registerUser(baseUrl, detection);
@@ -52072,6 +52175,37 @@ The Bright platform handles the full token exchange and automatic refresh.`,
           additionalProperties: false
         }
       }
+    },
+    {
+      type: "function",
+      function: {
+        name: "create_auth_header",
+        description: `Create a Bright "header" auth object \u2014 static headers attached to every scan request. No login flow, no token exchange. Use this for:
+- API key auth with custom headers (e.g. x-api-key, x-client-id + x-client-secret)
+- Bearer tokens that are pre-generated / long-lived (not obtained via OAuth token endpoint)
+- Any auth where you just need to send fixed header(s) on every request.
+Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
+        parameters: {
+          type: "object",
+          properties: {
+            headers: {
+              type: "string",
+              description: `JSON array of headers to attach. Each element: {"name":"Header-Name","value":"header-value"}. Example: '[{"name":"x-cal-client-id","value":"my-client-id"},{"name":"x-cal-secret-key","value":"my-secret"}]'`
+            },
+            testUrl: {
+              type: "string",
+              description: "Full URL to a protected endpoint. Should return 401/403 without the headers, 200 with them."
+            },
+            testMethod: {
+              type: "string",
+              enum: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+              description: "HTTP method for the test request. Default: GET."
+            }
+          },
+          required: ["headers", "testUrl"],
+          additionalProperties: false
+        }
+      }
     }
   ];
   let lastCreateArgs = {};
@@ -52270,13 +52404,74 @@ The Bright platform handles the full token exchange and automatic refresh.`,
       }
       return JSON.stringify({ authObjectId: result.id });
     }
+    if (name === "create_auth_header") {
+      lastCreateArgs = { ...args, authStyle: "header" };
+      let headers;
+      try {
+        headers = JSON.parse(String(args.headers));
+        if (!Array.isArray(headers) || headers.length === 0) {
+          return JSON.stringify({ error: "headers must be a non-empty JSON array of {name, value} objects" });
+        }
+        for (const h of headers) {
+          if (!h.name || !h.value) {
+            return JSON.stringify({ error: `Each header must have 'name' and 'value'. Got: ${JSON.stringify(h)}` });
+          }
+        }
+      } catch (e) {
+        return JSON.stringify({ error: `Failed to parse headers JSON: ${toErrorMessage(e)}` });
+      }
+      const testUrl2 = normalizeAuthTestUrl(String(args.testUrl ?? ""), baseUrl, detection, verifiedTestUrl);
+      const testMethod = String(args.testMethod ?? "GET");
+      const body = {
+        name: "Engine Auth \u2014 static headers",
+        projectId,
+        type: "header",
+        test: {
+          repeaterId,
+          request: {
+            method: testMethod,
+            url: testUrl2,
+            protocol: "http",
+            bodyType: "clear_text",
+            followRedirects: false,
+            maxRedirects: 0,
+            changeMethodOnRedirect: false
+          }
+        },
+        reauthTriggers: [
+          { type: "TRIGGER", location: "status", statuses: [401, 403] }
+        ],
+        successResponseDetection: [
+          { type: "status", statuses: [200, 201, 204] }
+        ],
+        config: {
+          request: {
+            headers: headers.map((h) => ({
+              name: h.name,
+              value: h.value,
+              mergeStrategy: "replace",
+              type: "clear_text"
+            }))
+          }
+        }
+      };
+      const headerNames = headers.map((h) => h.name).join(", ");
+      console.log(`[Auth] Creating static header auth \u2014 headers: [${headerNames}], test: ${testMethod} ${testUrl2}`);
+      const result = await postAuthObject(api, body);
+      if (result.error) {
+        attemptLog.push(`- create_auth_header(headers=[${headerNames}], testUrl=${testUrl2}) \u2192 ERROR: ${result.error}`);
+        addAuthHint(authHints, `[auth-create-error] create_auth_header failed: ${result.error}`);
+        return JSON.stringify({ error: result.error });
+      }
+      return JSON.stringify({ authObjectId: result.id });
+    }
     if (name === "test_auth_object") {
       const result = await testAuthObject(
         api,
         String(args.authObjectId)
       );
       const summary = JSON.stringify(result);
-      const configSummary = lastCreateArgs.authStyle === "raw" ? `raw multistep, testUrl=${lastCreateArgs.testUrl}` : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
+      const configSummary = lastCreateArgs.authStyle === "raw" ? `raw multistep, testUrl=${lastCreateArgs.testUrl}` : lastCreateArgs.authStyle === "header" ? `static headers, testUrl=${lastCreateArgs.testUrl}` : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
       if (!result.passed) {
         attemptLog.push(`- create_auth(${configSummary}) \u2192 test FAILED: ${result.summary ?? summary.slice(0, 300)}`);
         addAuthHint(authHints, `[auth-test-failure] ${configSummary} failed: ${compactAuthHint(result.summary ?? summary.slice(0, 300), 700)}`);
