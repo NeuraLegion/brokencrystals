@@ -33,6 +33,7 @@ import {
 } from "./phases/setup.js";
 import {
   registerEntrypoints,
+  resolvePathParams,
   verifyEntrypointAuth,
   pruneDeadEntrypoints,
   type RegisteredEntrypoint,
@@ -735,9 +736,32 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         });
         healthMonitor.start();
       } else {
-        console.warn(`[Engine] Scan prep failed: ${prepResult.summary} — continuing anyway`);
-        await progress.phaseDetail("scan_prep", "warning", prepResult.summary);
-        addHint(authHints, `[scan-prep-warning] ${prepResult.summary}`);
+        // Scan-prep failed — retry once with escalated model and targeted hint
+        console.warn(`[Engine] Scan prep failed (${prepResult.failureKind ?? "unknown"}): ${prepResult.summary} — retrying with escalated model`);
+        await progress.phaseDetail("scan_prep", "retry", prepResult.summary);
+        config.modelSelector.escalate();
+        const retryResult = await prepareScanEnvironment(
+          llm,
+          repoPath,
+          baseUrl,
+          techStack,
+          config.modelSelector.current(),
+          `Previous attempt failed: ${prepResult.summary}. You MUST find and disable ALL rate limiters and security controls. If you found throttle/rate-limit code references in the codebase, PATCH THEM — do not report failure without attempting source code patches. Rebuild the app after patching, then verify with rapid requests.`,
+        );
+        if (retryResult.completed && retryResult.changes.length > 0) {
+          await progress.phaseDetail("scan_prep", "done", retryResult.summary);
+          if (retryResult.replayCommands?.length) {
+            scanPrepReplayCommands = retryResult.replayCommands;
+          }
+          addHint(authHints, `[scan-prep] ${retryResult.summary}`);
+          for (const change of retryResult.changes) {
+            addHint(authHints, `[scan-prep] ${change}`);
+          }
+        } else {
+          console.warn(`[Engine] Scan prep retry also failed: ${retryResult.summary} — continuing anyway`);
+          await progress.phaseDetail("scan_prep", "warning", retryResult.summary);
+          addHint(authHints, `[scan-prep-warning] ${retryResult.summary}`);
+        }
       }
     } catch (prepErr) {
       console.warn(`[Engine] Scan prep error: ${toErrorMessage(prepErr)} — continuing anyway`);
@@ -1226,10 +1250,13 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
     }
 
+    // Resolve hallucinated path params by probing list endpoints for real IDs
+    const resolvedEndpoints = await resolvePathParams(safeEndpoints, baseUrl);
+
     let registered = await registerEntrypoints(
       config,
       projectId,
-      safeEndpoints,
+      resolvedEndpoints,
       baseUrl,
       repeater.repeaterId,
       authResult.authObjectId,

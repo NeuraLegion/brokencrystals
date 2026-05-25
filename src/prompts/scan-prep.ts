@@ -92,18 +92,27 @@ Do NOT edit files inside the container directly — they're lost on rebuild.
 
 ### In-memory rate limiters (express-brute, node-rate-limiter, etc.)
 
-Many apps use IN-MEMORY rate limiters (e.g. \`express-brute\` with \`MemoryStore\`, \`rate-limiter-flexible\` with memory backend, etc.). These CANNOT be disabled via database or config alone — the state lives in the Node/Ruby/Python process. To disable them:
+Many apps use IN-MEMORY or code-level rate limiters (guards, decorators, middleware). These CANNOT be disabled via database or config alone — the state lives in the application process. To disable them:
 
-1. **Patch the source code** — find the middleware file that sets up the rate limiter and either:
-   - Comment out or remove the middleware registration entirely (\`app.use(rateLimiter)\` → remove it)
-   - Set impossibly high limits (maxRetries: 999999, freeRetries: 999999, lifetime: 1)
+1. **Patch the source code** — find the file that registers the rate limiter and either:
+   - Comment out or remove the middleware/guard/decorator registration entirely
+   - Set impossibly high limits (e.g. limit: 999999, ttl: 1, maxRetries: 999999)
    - Replace the limiter with a pass-through: \`(req, res, next) => next()\`
+   - For decorator-based guards: remove the decorator from the app module or set global options to extremely permissive values
 2. **Restart or rebuild the app after patching**:
    - If the app runs source code directly from a mounted working tree, \`docker restart <container>\` is enough.
    - If the source code is copied/built into the Docker image, run a targeted rebuild/recreate of the app service, e.g. \`docker compose up -d --build app\` (or the actual app service name). Do NOT rewrite the Dockerfile unless the rate-limit patch requires it.
 3. **Verify after restart/rebuild** — the old in-memory state is gone, and the patched code won't re-create limits
 
-If you cleared a DB table or changed a config but still get 429, the rate limiter is almost certainly in-memory. Search the codebase for the middleware (\`express-brute\`, \`rate-limiter\`, \`Rack::Attack\`, etc.) and patch it at the source.
+**CRITICAL RULE:** If your codebase search finds ANY reference to rate limiting, throttling, or request guards — you are NOT done until you have:
+(a) Identified where in the code it is applied (module registration, middleware, decorator, etc.)
+(b) Patched it out or set to extremely permissive values
+(c) Rebuilt/restarted the app
+(d) Verified with rapid requests
+
+Do NOT report success or give up if you found rate-limiter code but only fixed DB settings. The code-level limiter will still fire regardless of DB changes.
+
+If you cleared a DB table or changed a config but still get throttled, the rate limiter is almost certainly code-level. Search the codebase for the middleware/guard registration and patch it at the source.
 
 **IMPORTANT:** After making source code changes, you MUST restart or rebuild/recreate the app container for them to take effect. Use \`run_command_on_host\` and wait a few seconds before re-testing.
 
@@ -112,11 +121,18 @@ If you cleared a DB table or changed a config but still get 429, the rate limite
 After making changes, you MUST verify they actually work by stress-testing:
 1. If you patched source code, **restart or rebuild/recreate the app first** and wait 5-10 seconds
 2. Re-read the config or re-query the setting to confirm the new value is set
-3. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) — NOT the login HTML page. Use the same credentials/body each time. Confirm you do NOT get HTTP 429.
-4. The verification must hit the real auth processing path. Five POSTs that only return HTTP 404/user-not-found do NOT prove rate limiting is disabled — they may bypass the limiter. Use a stable existing username/email from setup/seed data when possible, or create a test account first. Acceptable failed-login verification responses are typically 400/401/422 JSON errors, not 404 and not 429.
-5. If you still get 429 after your changes, you missed something — the rate limiter is likely IN-MEMORY. Search the codebase for rate-limiting middleware (express-brute, Rack::Attack, etc.), patch it out, restart/rebuild, and re-test.
+3. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) — NOT the login HTML page. Use the same credentials/body each time.
+4. Check BOTH the HTTP status code AND the response body. Rate limiting can manifest as:
+   - HTTP 429 (obvious)
+   - HTTP 400/403 with body containing "too many requests", "throttle", "rate limit", or similar
+   - Any JSON error response with codes like "ThrottlerException", "RateLimitExceeded", etc.
+   ANY of these means rate limiting is still active. You are NOT done.
+5. The verification must hit the real auth processing path. Five POSTs that only return HTTP 404/user-not-found do NOT prove rate limiting is disabled — they may bypass the limiter. Use a stable existing username/email from setup/seed data when possible, or create a test account first. Acceptable failed-login verification responses are typically 400/401/422 JSON errors with auth-related messages (wrong password, invalid credentials), not 404 and not rate-limit errors.
+6. If you still get rate-limited after your changes, you missed something — there is likely a code-level guard/middleware. Search the codebase for the registration point (app module, middleware config, route decorator), patch it out, restart/rebuild, and re-test.
 
 **CRITICAL:** Testing GET requests to the login PAGE proves nothing — rate limits apply to the LOGIN ACTION (POST). Always verify with POST requests to the auth endpoint.
+
+**COMPLETENESS CHECK:** Before reporting success, review everything you found in your search. If you found rate-limit/throttle code references AND DB settings, you must fix BOTH. Do not report success if any discovered rate-limiting mechanism remains unpatched.
 
 Do NOT report success without performing the rapid-request verification.
 
@@ -140,7 +156,8 @@ If you tried but failed:
 - **USE \`search_web\` — if you can't find rate limits via code inspection, search the web for how this public OSS app/framework handles them. Do NOT give up just because grep found nothing, but never search for local repo paths/internal service names.**
 - Don't break the app. If unsure, search the web for docs before making changes.
 - Be thorough — find ALL rate-limit and throttle settings, not just the first one.
-- Prefer runtime settings (admin API, CLI, DB settings) when they exist, but if the rate limiter is in-memory (express-brute, Rack::Attack memory store, etc.), you MUST patch the source code — DB/config changes alone won't work.
+- **FOUND IT = FIX IT.** If your search found code references to rate limiting, throttling, or request guards, you MUST patch them. Do NOT report failure or skip them because "they're in the code." That's exactly what you're here to fix. Find the registration point, patch it to be permissive (999999 limit or remove entirely), rebuild, verify.
+- Prefer runtime settings (admin API, CLI, DB settings) when they exist, but if the rate limiter is code-level (guards, decorators, middleware with in-memory state), you MUST patch the source code — DB/config changes alone won't work.
 - If codebase search finds nothing, that means rate limiting is BUILT INTO the framework — use \`search_web\` to find out how to disable it.
 - NEVER report "no rate limits found" without first: (a) searching the web for "<app name> rate limiting", AND (b) querying runtime/DB settings inside the container.
 - Always verify your changes with rapid requests before reporting success.

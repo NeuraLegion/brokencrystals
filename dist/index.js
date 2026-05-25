@@ -54418,6 +54418,8 @@ var CONCURRENCY = 3;
 var MAX_RETRIES = 3;
 var BASE_BACKOFF_MS = 1e3;
 var JITTER_MS = 250;
+var RESOLVE_CONCURRENCY = 5;
+var RESOLVE_TIMEOUT = 8e3;
 function isTransientHttpError(status, body) {
   if (status >= 500) return true;
   if (status === 408) return true;
@@ -54645,6 +54647,117 @@ var JUNK_URL_PATTERNS = [
 function isScannablePath(path2) {
   return !JUNK_URL_PATTERNS.some((re) => re.test(path2));
 }
+var ID_SEGMENT_PATTERN = /^(?:\d+|[0-9a-f]{8,}|[0-9a-f-]{36}|[a-z]{1,4}_[a-z0-9]{6,}|[a-z0-9]{20,}|book_\w+|bk_\w+|usr_\w+|evt_\w+|cal_\w+|wh_\w+|org_\w+|team_\w+)$/i;
+function isIdSegment(segment) {
+  return ID_SEGMENT_PATTERN.test(segment);
+}
+function findListParent(path2) {
+  const segments = path2.split("/").filter(Boolean);
+  for (let i = 0; i < segments.length; i++) {
+    if (isIdSegment(segments[i])) {
+      const listPath = "/" + segments.slice(0, i).join("/");
+      return { listPath, idIndex: i, segments };
+    }
+  }
+  return null;
+}
+function extractIdFromListResponse(body) {
+  try {
+    const parsed = JSON.parse(body);
+    let items = null;
+    if (Array.isArray(parsed)) {
+      items = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      items = parsed.data ?? parsed.items ?? parsed.results ?? parsed.content ?? parsed.entries ?? parsed.records;
+      if (!Array.isArray(items)) {
+        const id = parsed.id ?? parsed._id ?? parsed.uid ?? parsed.slug;
+        if (id) return String(id);
+        items = null;
+      }
+    }
+    if (items && items.length > 0) {
+      const first = items[0];
+      if (first && typeof first === "object") {
+        const id = first.id ?? first._id ?? first.uid ?? first.slug ?? first.bookingId ?? first.eventTypeId;
+        if (id) return String(id);
+      }
+    }
+  } catch {
+  }
+  return null;
+}
+async function resolvePathParams(endpoints, baseUrl, authHeaders) {
+  const parentMap = /* @__PURE__ */ new Map();
+  const noParent = [];
+  for (const ep of endpoints) {
+    const info = findListParent(ep.path);
+    if (!info) {
+      noParent.push(ep);
+      continue;
+    }
+    const key = info.listPath;
+    if (!parentMap.has(key)) {
+      parentMap.set(key, { idIndex: info.idIndex, endpoints: [] });
+    }
+    parentMap.get(key).endpoints.push(ep);
+  }
+  if (parentMap.size === 0) {
+    return endpoints;
+  }
+  console.log(
+    `[Entrypoints] Resolving path params: ${parentMap.size} list endpoint(s) to probe for real IDs`
+  );
+  const resolvedIds = /* @__PURE__ */ new Map();
+  const listPaths = [...parentMap.keys()];
+  await pMap(
+    listPaths,
+    async (listPath) => {
+      try {
+        const url = `${baseUrl}${listPath}`;
+        const headers = {
+          Accept: "application/json",
+          ...authHeaders ?? {}
+        };
+        const res = await fetch(url, {
+          headers,
+          signal: AbortSignal.timeout(RESOLVE_TIMEOUT)
+        });
+        if (!res.ok) {
+          if (res.status === 404) return;
+          return;
+        }
+        const body = await res.text();
+        const realId = extractIdFromListResponse(body);
+        if (realId) {
+          resolvedIds.set(listPath, realId);
+          console.log(`[Entrypoints] \u2713 Resolved ${listPath} \u2192 id="${realId}"`);
+        }
+      } catch {
+      }
+    },
+    RESOLVE_CONCURRENCY
+  );
+  console.log(
+    `[Entrypoints] Resolved ${resolvedIds.size}/${parentMap.size} list parent(s) with real IDs`
+  );
+  const result = [...noParent];
+  for (const [listPath, group] of parentMap) {
+    const realId = resolvedIds.get(listPath);
+    if (!realId) {
+      result.push(...group.endpoints);
+      continue;
+    }
+    for (const ep of group.endpoints) {
+      const segments = ep.path.split("/").filter(Boolean);
+      if (group.idIndex < segments.length && isIdSegment(segments[group.idIndex])) {
+        segments[group.idIndex] = realId;
+      }
+      const newPath = "/" + segments.join("/");
+      result.push({ ...ep, path: newPath });
+    }
+  }
+  return result;
+}
 async function verifyEntrypointAuth(api, projectId, entrypointId) {
   try {
     console.log(
@@ -54731,6 +54844,13 @@ async function pruneDeadEntrypoints(api, projectId, entries, opts = {}) {
 var DELETE_MAX_RETRIES = 3;
 var DELETE_BACKOFF_MS = 2e3;
 async function deleteEntrypoints(api, projectId, ids) {
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE);
+    await deleteEntrypointBatch(api, projectId, batch);
+  }
+}
+async function deleteEntrypointBatch(api, projectId, ids) {
   const url = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
   for (let attempt = 0; attempt <= DELETE_MAX_RETRIES; attempt++) {
     try {
@@ -54929,18 +55049,27 @@ Do NOT edit files inside the container directly \u2014 they're lost on rebuild.
 
 ### In-memory rate limiters (express-brute, node-rate-limiter, etc.)
 
-Many apps use IN-MEMORY rate limiters (e.g. \`express-brute\` with \`MemoryStore\`, \`rate-limiter-flexible\` with memory backend, etc.). These CANNOT be disabled via database or config alone \u2014 the state lives in the Node/Ruby/Python process. To disable them:
+Many apps use IN-MEMORY or code-level rate limiters (guards, decorators, middleware). These CANNOT be disabled via database or config alone \u2014 the state lives in the application process. To disable them:
 
-1. **Patch the source code** \u2014 find the middleware file that sets up the rate limiter and either:
-   - Comment out or remove the middleware registration entirely (\`app.use(rateLimiter)\` \u2192 remove it)
-   - Set impossibly high limits (maxRetries: 999999, freeRetries: 999999, lifetime: 1)
+1. **Patch the source code** \u2014 find the file that registers the rate limiter and either:
+   - Comment out or remove the middleware/guard/decorator registration entirely
+   - Set impossibly high limits (e.g. limit: 999999, ttl: 1, maxRetries: 999999)
    - Replace the limiter with a pass-through: \`(req, res, next) => next()\`
+   - For decorator-based guards: remove the decorator from the app module or set global options to extremely permissive values
 2. **Restart or rebuild the app after patching**:
    - If the app runs source code directly from a mounted working tree, \`docker restart <container>\` is enough.
    - If the source code is copied/built into the Docker image, run a targeted rebuild/recreate of the app service, e.g. \`docker compose up -d --build app\` (or the actual app service name). Do NOT rewrite the Dockerfile unless the rate-limit patch requires it.
 3. **Verify after restart/rebuild** \u2014 the old in-memory state is gone, and the patched code won't re-create limits
 
-If you cleared a DB table or changed a config but still get 429, the rate limiter is almost certainly in-memory. Search the codebase for the middleware (\`express-brute\`, \`rate-limiter\`, \`Rack::Attack\`, etc.) and patch it at the source.
+**CRITICAL RULE:** If your codebase search finds ANY reference to rate limiting, throttling, or request guards \u2014 you are NOT done until you have:
+(a) Identified where in the code it is applied (module registration, middleware, decorator, etc.)
+(b) Patched it out or set to extremely permissive values
+(c) Rebuilt/restarted the app
+(d) Verified with rapid requests
+
+Do NOT report success or give up if you found rate-limiter code but only fixed DB settings. The code-level limiter will still fire regardless of DB changes.
+
+If you cleared a DB table or changed a config but still get throttled, the rate limiter is almost certainly code-level. Search the codebase for the middleware/guard registration and patch it at the source.
 
 **IMPORTANT:** After making source code changes, you MUST restart or rebuild/recreate the app container for them to take effect. Use \`run_command_on_host\` and wait a few seconds before re-testing.
 
@@ -54949,11 +55078,18 @@ If you cleared a DB table or changed a config but still get 429, the rate limite
 After making changes, you MUST verify they actually work by stress-testing:
 1. If you patched source code, **restart or rebuild/recreate the app first** and wait 5-10 seconds
 2. Re-read the config or re-query the setting to confirm the new value is set
-3. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) \u2014 NOT the login HTML page. Use the same credentials/body each time. Confirm you do NOT get HTTP 429.
-4. The verification must hit the real auth processing path. Five POSTs that only return HTTP 404/user-not-found do NOT prove rate limiting is disabled \u2014 they may bypass the limiter. Use a stable existing username/email from setup/seed data when possible, or create a test account first. Acceptable failed-login verification responses are typically 400/401/422 JSON errors, not 404 and not 429.
-5. If you still get 429 after your changes, you missed something \u2014 the rate limiter is likely IN-MEMORY. Search the codebase for rate-limiting middleware (express-brute, Rack::Attack, etc.), patch it out, restart/rebuild, and re-test.
+3. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) \u2014 NOT the login HTML page. Use the same credentials/body each time.
+4. Check BOTH the HTTP status code AND the response body. Rate limiting can manifest as:
+   - HTTP 429 (obvious)
+   - HTTP 400/403 with body containing "too many requests", "throttle", "rate limit", or similar
+   - Any JSON error response with codes like "ThrottlerException", "RateLimitExceeded", etc.
+   ANY of these means rate limiting is still active. You are NOT done.
+5. The verification must hit the real auth processing path. Five POSTs that only return HTTP 404/user-not-found do NOT prove rate limiting is disabled \u2014 they may bypass the limiter. Use a stable existing username/email from setup/seed data when possible, or create a test account first. Acceptable failed-login verification responses are typically 400/401/422 JSON errors with auth-related messages (wrong password, invalid credentials), not 404 and not rate-limit errors.
+6. If you still get rate-limited after your changes, you missed something \u2014 there is likely a code-level guard/middleware. Search the codebase for the registration point (app module, middleware config, route decorator), patch it out, restart/rebuild, and re-test.
 
 **CRITICAL:** Testing GET requests to the login PAGE proves nothing \u2014 rate limits apply to the LOGIN ACTION (POST). Always verify with POST requests to the auth endpoint.
+
+**COMPLETENESS CHECK:** Before reporting success, review everything you found in your search. If you found rate-limit/throttle code references AND DB settings, you must fix BOTH. Do not report success if any discovered rate-limiting mechanism remains unpatched.
 
 Do NOT report success without performing the rapid-request verification.
 
@@ -54977,7 +55113,8 @@ If you tried but failed:
 - **USE \`search_web\` \u2014 if you can't find rate limits via code inspection, search the web for how this public OSS app/framework handles them. Do NOT give up just because grep found nothing, but never search for local repo paths/internal service names.**
 - Don't break the app. If unsure, search the web for docs before making changes.
 - Be thorough \u2014 find ALL rate-limit and throttle settings, not just the first one.
-- Prefer runtime settings (admin API, CLI, DB settings) when they exist, but if the rate limiter is in-memory (express-brute, Rack::Attack memory store, etc.), you MUST patch the source code \u2014 DB/config changes alone won't work.
+- **FOUND IT = FIX IT.** If your search found code references to rate limiting, throttling, or request guards, you MUST patch them. Do NOT report failure or skip them because "they're in the code." That's exactly what you're here to fix. Find the registration point, patch it to be permissive (999999 limit or remove entirely), rebuild, verify.
+- Prefer runtime settings (admin API, CLI, DB settings) when they exist, but if the rate limiter is code-level (guards, decorators, middleware with in-memory state), you MUST patch the source code \u2014 DB/config changes alone won't work.
 - If codebase search finds nothing, that means rate limiting is BUILT INTO the framework \u2014 use \`search_web\` to find out how to disable it.
 - NEVER report "no rate limits found" without first: (a) searching the web for "<app name> rate limiting", AND (b) querying runtime/DB settings inside the container.
 - Always verify your changes with rapid requests before reporting success.
@@ -58010,9 +58147,31 @@ async function runOrchestrator(ctx) {
         });
         healthMonitor.start();
       } else {
-        console.warn(`[Engine] Scan prep failed: ${prepResult.summary} \u2014 continuing anyway`);
-        await progress.phaseDetail("scan_prep", "warning", prepResult.summary);
-        addHint(authHints, `[scan-prep-warning] ${prepResult.summary}`);
+        console.warn(`[Engine] Scan prep failed (${prepResult.failureKind ?? "unknown"}): ${prepResult.summary} \u2014 retrying with escalated model`);
+        await progress.phaseDetail("scan_prep", "retry", prepResult.summary);
+        config.modelSelector.escalate();
+        const retryResult = await prepareScanEnvironment(
+          llm,
+          repoPath,
+          baseUrl,
+          techStack,
+          config.modelSelector.current(),
+          `Previous attempt failed: ${prepResult.summary}. You MUST find and disable ALL rate limiters and security controls. If you found throttle/rate-limit code references in the codebase, PATCH THEM \u2014 do not report failure without attempting source code patches. Rebuild the app after patching, then verify with rapid requests.`
+        );
+        if (retryResult.completed && retryResult.changes.length > 0) {
+          await progress.phaseDetail("scan_prep", "done", retryResult.summary);
+          if (retryResult.replayCommands?.length) {
+            scanPrepReplayCommands = retryResult.replayCommands;
+          }
+          addHint(authHints, `[scan-prep] ${retryResult.summary}`);
+          for (const change of retryResult.changes) {
+            addHint(authHints, `[scan-prep] ${change}`);
+          }
+        } else {
+          console.warn(`[Engine] Scan prep retry also failed: ${retryResult.summary} \u2014 continuing anyway`);
+          await progress.phaseDetail("scan_prep", "warning", retryResult.summary);
+          addHint(authHints, `[scan-prep-warning] ${retryResult.summary}`);
+        }
       }
     } catch (prepErr) {
       console.warn(`[Engine] Scan prep error: ${toErrorMessage(prepErr)} \u2014 continuing anyway`);
@@ -58403,10 +58562,11 @@ This user should work for authentication. Skip user registration/seeding and go 
         `[Entrypoints] Excluded ${endpoints.length - safeEndpoints.length} risky endpoint(s)`
       );
     }
+    const resolvedEndpoints = await resolvePathParams(safeEndpoints, baseUrl);
     let registered = await registerEntrypoints(
       config,
       projectId,
-      safeEndpoints,
+      resolvedEndpoints,
       baseUrl,
       repeater.repeaterId,
       authResult.authObjectId,

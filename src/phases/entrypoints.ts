@@ -6,6 +6,8 @@ const CONCURRENCY = 3;
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 1000;
 const JITTER_MS = 250;
+const RESOLVE_CONCURRENCY = 5;
+const RESOLVE_TIMEOUT = 8_000;
 
 function isTransientHttpError(status: number, body: string): boolean {
   if (status >= 500) return true;
@@ -356,6 +358,172 @@ function isScannablePath(path: string): boolean {
   return !JUNK_URL_PATTERNS.some((re) => re.test(path));
 }
 
+// ---------------------------------------------------------------------------
+// Path param resolution — probe the app to replace hallucinated IDs with real ones
+// ---------------------------------------------------------------------------
+
+/** Pattern matching segments that look like resource IDs (hallucinated by the LLM) */
+const ID_SEGMENT_PATTERN = /^(?:\d+|[0-9a-f]{8,}|[0-9a-f-]{36}|[a-z]{1,4}_[a-z0-9]{6,}|[a-z0-9]{20,}|book_\w+|bk_\w+|usr_\w+|evt_\w+|cal_\w+|wh_\w+|org_\w+|team_\w+)$/i;
+
+/**
+ * Detect whether a path segment is likely a resource ID (numeric, UUID, prefixed slug, etc.)
+ */
+function isIdSegment(segment: string): boolean {
+  return ID_SEGMENT_PATTERN.test(segment);
+}
+
+/**
+ * For a path like /v2/bookings/bk_123/recordings, find the "list parent":
+ * /v2/bookings (the first ancestor where the next segment is an ID).
+ * Returns { listPath, idIndex } or null if no ID segment found.
+ */
+function findListParent(path: string): { listPath: string; idIndex: number; segments: string[] } | null {
+  const segments = path.split("/").filter(Boolean);
+  for (let i = 0; i < segments.length; i++) {
+    if (isIdSegment(segments[i])) {
+      const listPath = "/" + segments.slice(0, i).join("/");
+      return { listPath, idIndex: i, segments };
+    }
+  }
+  return null;
+}
+
+/**
+ * Try to extract a real resource ID from a list endpoint response.
+ * Handles common patterns: JSON array, {data: [...]}, {items: [...]}, {results: [...]}
+ */
+function extractIdFromListResponse(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body);
+    let items: unknown[] | null = null;
+
+    if (Array.isArray(parsed)) {
+      items = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      // Common wrapper patterns
+      items = parsed.data ?? parsed.items ?? parsed.results ?? parsed.content ?? parsed.entries ?? parsed.records;
+      if (!Array.isArray(items)) {
+        // Maybe the response itself is a single object with an id
+        const id = parsed.id ?? parsed._id ?? parsed.uid ?? parsed.slug;
+        if (id) return String(id);
+        items = null;
+      }
+    }
+
+    if (items && items.length > 0) {
+      const first = items[0] as Record<string, unknown>;
+      if (first && typeof first === "object") {
+        const id = first.id ?? first._id ?? first.uid ?? first.slug ?? first.bookingId ?? first.eventTypeId;
+        if (id) return String(id);
+      }
+    }
+  } catch {
+    // Not JSON or unparseable
+  }
+  return null;
+}
+
+/**
+ * Probe list endpoints on the running app to resolve real resource IDs.
+ * Replaces hallucinated ID segments in endpoint paths with actual IDs from the app.
+ *
+ * Strategy: group endpoints by their "list parent" path, probe each list endpoint once,
+ * then substitute the real ID into all endpoints that share that parent.
+ */
+export async function resolvePathParams(
+  endpoints: DiscoveredEndpoint[],
+  baseUrl: string,
+  authHeaders?: Record<string, string>,
+): Promise<DiscoveredEndpoint[]> {
+  // Group endpoints by their list parent path
+  const parentMap = new Map<string, { idIndex: number; endpoints: DiscoveredEndpoint[] }>();
+  const noParent: DiscoveredEndpoint[] = [];
+
+  for (const ep of endpoints) {
+    const info = findListParent(ep.path);
+    if (!info) {
+      noParent.push(ep);
+      continue;
+    }
+    const key = info.listPath;
+    if (!parentMap.has(key)) {
+      parentMap.set(key, { idIndex: info.idIndex, endpoints: [] });
+    }
+    parentMap.get(key)!.endpoints.push(ep);
+  }
+
+  if (parentMap.size === 0) {
+    return endpoints; // No path params to resolve
+  }
+
+  console.log(
+    `[Entrypoints] Resolving path params: ${parentMap.size} list endpoint(s) to probe for real IDs`,
+  );
+
+  // Probe each list parent to get a real ID
+  const resolvedIds = new Map<string, string>();
+
+  const listPaths = [...parentMap.keys()];
+  await pMap(
+    listPaths,
+    async (listPath) => {
+      try {
+        const url = `${baseUrl}${listPath}`;
+        const headers: Record<string, string> = {
+          Accept: "application/json",
+          ...(authHeaders ?? {}),
+        };
+        const res = await fetch(url, {
+          headers,
+          signal: AbortSignal.timeout(RESOLVE_TIMEOUT),
+        });
+        if (!res.ok) {
+          // Try with query param for paginated APIs
+          if (res.status === 404) return;
+          return;
+        }
+        const body = await res.text();
+        const realId = extractIdFromListResponse(body);
+        if (realId) {
+          resolvedIds.set(listPath, realId);
+          console.log(`[Entrypoints] ✓ Resolved ${listPath} → id="${realId}"`);
+        }
+      } catch {
+        // Timeout or network error — skip this list path
+      }
+    },
+    RESOLVE_CONCURRENCY,
+  );
+
+  console.log(
+    `[Entrypoints] Resolved ${resolvedIds.size}/${parentMap.size} list parent(s) with real IDs`,
+  );
+
+  // Rebuild endpoints with real IDs substituted
+  const result: DiscoveredEndpoint[] = [...noParent];
+
+  for (const [listPath, group] of parentMap) {
+    const realId = resolvedIds.get(listPath);
+    if (!realId) {
+      // Couldn't resolve — keep original (will likely 404 and get pruned)
+      result.push(...group.endpoints);
+      continue;
+    }
+
+    for (const ep of group.endpoints) {
+      const segments = ep.path.split("/").filter(Boolean);
+      // Replace the first ID segment (at idIndex) with the real ID
+      if (group.idIndex < segments.length && isIdSegment(segments[group.idIndex])) {
+        segments[group.idIndex] = realId;
+      }
+      const newPath = "/" + segments.join("/");
+      result.push({ ...ep, path: newPath });
+    }
+  }
+
+  return result;
+}
+
 /**
  * After registering entrypoints with auth, fetch one back via the REST API
  * and log the response to verify if auth is working.
@@ -480,11 +648,24 @@ const DELETE_MAX_RETRIES = 3;
 const DELETE_BACKOFF_MS = 2_000;
 
 /**
- * Bulk-delete entrypoints in a single API call.
+ * Bulk-delete entrypoints via the API. Batches in chunks of 50 to avoid
+ * payload-size 400 errors from the Bright API.
  * `DELETE /api/v2/projects/{projectId}/entry-points` with JSON body `{ ids: [...] }`.
  * Retries with exponential back-off on 429.
  */
 async function deleteEntrypoints(
+  api: BrightApiContext,
+  projectId: string,
+  ids: string[],
+): Promise<void> {
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE);
+    await deleteEntrypointBatch(api, projectId, batch);
+  }
+}
+
+async function deleteEntrypointBatch(
   api: BrightApiContext,
   projectId: string,
   ids: string[],
