@@ -54873,9 +54873,14 @@ A DAST scanner hammers the app with thousands of requests \u2014 rapid logins, m
 2. **Account lockout** \u2014 failed login thresholds that lock or ban the test account.
 3. **CAPTCHA / bot detection** \u2014 anything that gates form submission on human verification.
 4. **CSRF token lifetime / enforcement** \u2014 very short token expiry can break scanner workflows. If the app has a setting to DISABLE CSRF checking entirely, do so \u2014 the scanner handles CSRF independently via the auth object. Do NOT make CSRF stricter.
-5. **Session timeouts** \u2014 aggressive session expiry forces constant re-authentication.
-6. **IP allowlists / blocklists** \u2014 if the app blocks unknown IPs or requires allowlisting.
-7. **WAF / request filtering** \u2014 embedded request validation that rejects scanner payloads.
+5. **Two-factor authentication (2FA/MFA/TOTP)** \u2014 if the app enforces 2FA on the test user or globally, DISABLE it. The scanner cannot complete 2FA challenges. Common patterns:
+   - Admin user created during setup has 2FA enforced \u2192 user role becomes INACTIVE until 2FA is configured. Disable the 2FA requirement or mark the user as fully verified in the database.
+   - Environment variables like \`TWO_FACTOR_ENABLED\`, \`REQUIRE_2FA\`, etc. \u2014 set them to false/disabled.
+   - Database flags: \`twoFactorEnabled\`, \`twoFactorSecret\`, \`identityProvider\`, user \`role\` being set to inactive/pending because of 2FA. Update the DB directly to bypass.
+   - If the app has an admin setting to disable 2FA enforcement, use it.
+6. **Session timeouts** \u2014 aggressive session expiry forces constant re-authentication.
+7. **IP allowlists / blocklists** \u2014 if the app blocks unknown IPs or requires allowlisting.
+8. **WAF / request filtering** \u2014 embedded request validation that rejects scanner payloads.
 
 There may be others specific to this app \u2014 use your judgment.
 
@@ -54978,7 +54983,8 @@ If you tried but failed:
 - Always verify your changes with rapid requests before reporting success.
 - Do not count HTTP 404-only login POSTs as successful rate-limit verification. They usually mean the request did not reach the real login limiter path.
 - **NEVER make security STRICTER.** Your goal is to RELAX all security controls so the scanner can operate freely. If a setting controls CSRF enforcement, disable it or make it permissive \u2014 do NOT enable stricter checking. The scanner needs to send requests without CSRF tokens, so CSRF validation should be DISABLED or set to its most permissive mode.
-- Think about each change from the scanner's perspective: "Will this make it EASIER or HARDER for the scanner to send requests?" If harder \u2192 don't do it.`
+- Think about each change from the scanner's perspective: "Will this make it EASIER or HARDER for the scanner to send requests?" If harder \u2192 don't do it.
+- **2FA/MFA:** After disabling 2FA, verify the test user is ACTIVE. Log in and check the session/profile endpoint \u2014 the user role should NOT be "INACTIVE" or "pending_2fa". If it still is, update the user record directly in the database (e.g. set role to active, clear twoFactorEnabled flag, remove identityProvider requirement).`
     },
     {
       role: "user",
