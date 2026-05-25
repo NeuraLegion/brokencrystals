@@ -50184,10 +50184,9 @@ Key rules:
 }
 function configureAuthPrompt(baseUrl, testUrl, detection, userConfirmed, preProbeContext, authHints = []) {
   const authStyle = detection.authType === "session" ? "session" : detection.authType === "jwt" ? "jwt" : detection.authType === "api_key" ? "api_key" : detection.authType === "oauth" ? "oidc" : "session";
-  const credentialNote = authStyle === "oidc" ? detection.oauthGrantType === "password" ? `
-This is an OAuth2 API using password (ROPC) grant. You need client credentials AND user credentials. Use create_auth_oidc with grantType="password", username, and password. Check auth hints for seeded user and OAuth client credentials.` : `
-This is an OAuth2/OIDC API service. You need to create an OAuth2 client (client_id/secret) and use create_auth_oidc. If a seeded client exists, use those credentials. Otherwise, use command tools to create one via the app's CLI or database.` : authStyle === "api_key" ? `
-This is a static header / API key auth service. No login flow needed \u2014 just attach the correct header(s) on every request. Use create_auth_header with the header name(s) and value(s). Find or create API credentials via the database or app CLI.` : userConfirmed ? `
+  const isApiAuth = authStyle === "oidc" || authStyle === "api_key";
+  const credentialNote = isApiAuth ? `
+This is an API service (no login form). You have three tools: create_auth_oidc (OAuth token exchange), create_auth_header (static headers), and create_auth_raw (multi-step custom). Try them in that order. Check auth hints for seeded credentials.` : userConfirmed ? `
 A test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.` : `
 No confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work \u2014 if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
   let csrfGuidance = "";
@@ -50232,96 +50231,57 @@ You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this.
 ## CSRF Note
 This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You can use \`create_auth\` with a csrfUrl parameter, or \`create_auth_raw\` with a pre-step that fetches the token.`;
   }
-  let oauthGuidance = "";
-  if (detection.authType === "oauth") {
-    const grantType = detection.oauthGrantType ?? "client_credentials";
-    const tokenEndpoint = detection.oauthTokenEndpoint ? `${baseUrl}${detection.oauthTokenEndpoint}` : `${baseUrl}/oauth/token`;
-    const clientId = detection.oauthClientId ?? "UNKNOWN \u2014 must create or find one";
-    const clientSecret = detection.oauthClientSecret ?? "UNKNOWN \u2014 must create or find one";
+  let apiAuthGuidance = "";
+  if (detection.authType === "oauth" || detection.authType === "api_key") {
+    const tokenEndpoint = detection.oauthTokenEndpoint ? `${baseUrl}${detection.oauthTokenEndpoint}` : null;
+    const clientId = detection.oauthClientId ?? null;
+    const clientSecret = detection.oauthClientSecret ?? null;
     const scope = detection.oauthScope ?? "";
-    if (grantType === "password") {
-      oauthGuidance = `
-
-## \u26A0\uFE0F MANDATORY: This is an OAuth2 API using Resource Owner Password Credentials (ROPC)
-This API issues Bearer tokens via a token endpoint using client credentials + username/password.
-
-**Use \`create_auth_oidc\` tool** with:
-- tokenEndpoint: "${tokenEndpoint}" (verify by probing \u2014 should accept POST with grant_type=password)
+    const grantType = detection.oauthGrantType ?? "client_credentials";
+    const credsBlock = clientId && clientSecret ? `**Available credentials (seeded or found):**
 - clientId: "${clientId}"
 - clientSecret: "${clientSecret}"
-- grantType: "password"
-- username: The test user's username/email (from seeded user or auth hints)
-- password: The test user's password
-${scope ? `- scope: "${scope}"` : ""}
-- testUrl: Find a protected endpoint that returns 401 without Bearer token (use probe_url to discover)
+${tokenEndpoint ? `- tokenEndpoint: "${tokenEndpoint}"` : "- tokenEndpoint: unknown (probe to find)"}
+Use these for EITHER OIDC token exchange OR as static header values.` : `**No pre-seeded credentials found.** Use run_command_in_docker/run_command_on_host to:
+1. Search the database for existing clients/keys: OAuthClient, ApiKey, api_keys, oauth_clients tables
+2. Create one via direct SQL INSERT or app CLI`;
+    apiAuthGuidance = `
 
-**If no OAuth2 client exists**, create one via DB/CLI (same as client_credentials).
-**User credentials**: Use the seeded test user credentials from auth hints. If none exist, use run_command_in_docker to create a user.
-**Do NOT use create_auth or create_auth_raw** \u2014 use create_auth_oidc with grantType="password".
-**Do NOT respond with INFRA_REPAIR** just because there's no session login.
-**If the token endpoint rejects your grant type** (e.g. "grant_type must be authorization_code"): the OAuth token exchange is NOT automatable. Switch to \`create_auth_header\` \u2014 the API likely also accepts static headers (x-cal-client-id + x-cal-secret-key, Authorization: Bearer <api-key>, etc.). Use the seeded client credentials as header values.`;
-    } else {
-      oauthGuidance = `
+## \u26A0\uFE0F This is an API service \u2014 no login form, no user session
+This API authenticates requests via tokens or static headers. You have THREE tools available \u2014 try them in order:
 
-## \u26A0\uFE0F MANDATORY: This is an OAuth2/OIDC API service
-This API uses OAuth2 Bearer tokens, NOT session/cookie auth. Do NOT try session login flows.
-
-**Use \`create_auth_oidc\` tool** with:
-- tokenEndpoint: "${tokenEndpoint}" (verify by probing \u2014 should accept POST with grant_type=client_credentials)
-- clientId: "${clientId}"
-- clientSecret: "${clientSecret}"
-${scope ? `- scope: "${scope}"` : ""}
-- testUrl: Find a protected endpoint that returns 401 without Bearer token (use probe_url to discover)
-
-**If no OAuth2 client exists**, you MUST create one:
-1. Search the codebase for OAuth client models/tables (e.g. OAuthClient, oauth_clients, PlatformOAuthClient)
-2. Use run_command_in_docker to insert a client directly via the database or app CLI
-3. Common patterns:
-   - NestJS/Prisma: \`npx prisma db execute --stdin <<< "INSERT INTO ..."\`
-   - Direct SQL: \`psql -U ... -c "INSERT INTO oauth_clients (...)"\`
-   - App CLI: \`node dist/manage.js create-client --name bright-test\`
-4. The client needs: name, clientId (generate a UUID), clientSecret (generate one), allowed scopes/permissions
-
-**Do NOT use create_auth or create_auth_raw** for OAuth2 client_credentials \u2014 use create_auth_oidc.
-**Do NOT respond with INFRA_REPAIR** just because there's no session login \u2014 this is an API service, OAuth is the correct auth mechanism.
-**If the token endpoint rejects your grant type** (e.g. "grant_type must be authorization_code"): the OAuth token exchange is NOT automatable. Switch to \`create_auth_header\` \u2014 the API likely also accepts static headers (x-cal-client-id + x-cal-secret-key, Authorization: Bearer <api-key>, etc.). Use the seeded client credentials as header values.`;
-    }
-  }
-  let apiKeyGuidance = "";
-  if (detection.authType === "api_key") {
-    const headerName = detection.headerName ?? "unknown";
-    const clientId = detection.oauthClientId;
-    const clientSecret = detection.oauthClientSecret;
-    const credsBlock = clientId && clientSecret ? `
-**SEEDED CREDENTIALS AVAILABLE \u2014 use these directly:**
-- clientId: "${clientId}"
-- clientSecret: "${clientSecret}"
-Try these as header values. Common header patterns for this type of app:
-- x-cal-client-id: ${clientId} + x-cal-secret-key: ${clientSecret}
-- Authorization: Bearer ${clientId}
-- X-API-Key: ${clientSecret}
-Probe the app with these headers to find which combination works.
-` : `
-**No pre-seeded credentials found.** Use run_command_in_docker/run_command_on_host to:
-1. Search the database for existing API keys/clients: OAuthClient, ApiKey, api_keys tables
-2. Create one via direct SQL INSERT or app CLI
-`;
-    apiKeyGuidance = `
-
-## \u26A0\uFE0F MANDATORY: This is a static header / API key auth service
-This API authenticates via fixed header(s) on every request. NO login flow, NO token exchange.
-
-**Use \`create_auth_header\` tool** with:
-- headers: JSON array of header name-value pairs, e.g. [{"name":"${headerName}","value":"YOUR-KEY-HERE"}]
-- testUrl: A protected endpoint that returns 401/403 without the header(s), 200 with them. Good choices: /v2/me, /api/me, /api/users/me \u2014 simple identity endpoints.
 ${credsBlock}
-**Strategy:**
-1. First, probe_url a protected endpoint (e.g. GET /v2/me) to confirm it returns 401 without headers
-2. Then probe WITH the auth headers to confirm they work: probe_url with headers parameter
-3. Once you find headers that get 200, use create_auth_header with those exact headers and testUrl
 
-**Do NOT use create_auth, create_auth_oidc, or create_auth_raw** \u2014 ONLY create_auth_header.
-**Do NOT respond with INFRA_REPAIR** just because there's no login endpoint \u2014 this is API key auth.`;
+### Option 1: \`create_auth_oidc\` (OAuth2 token exchange)
+Best when the token endpoint accepts client_credentials or password grant.
+${tokenEndpoint ? `- tokenEndpoint: "${tokenEndpoint}" (probe POST with grant_type=${grantType})` : "- Probe common paths: /oauth/token, /v2/auth/oauth2/token, /.well-known/openid-configuration"}
+- clientId: "${clientId ?? "FIND_OR_CREATE"}"
+- clientSecret: "${clientSecret ?? "FIND_OR_CREATE"}"
+${grantType === "password" ? '- grantType: "password" + username/password from seeded user or auth hints' : `- grantType: "${grantType}"`}
+${scope ? `- scope: "${scope}"` : ""}
+- testUrl: protected endpoint returning 401 (e.g. /v2/me, /api/me)
+
+### Option 2: \`create_auth_header\` (static headers)
+Best when the API accepts fixed headers on every request \u2014 no token exchange needed.
+- headers: JSON array, e.g. [{"name":"x-cal-client-id","value":"${clientId ?? "ID"}"},{"name":"x-cal-secret-key","value":"${clientSecret ?? "SECRET"}"}]
+- testUrl: endpoint returning 401 without headers, 200 with them
+- Common patterns: x-cal-client-id + x-cal-secret-key, Authorization: Bearer <key>, X-API-Key: <key>
+
+### Option 3: \`create_auth_raw\` (multi-step custom flow)
+Use when neither OIDC nor static headers work directly \u2014 e.g. you need to hit a custom token endpoint, extract a value, and embed it.
+
+### Strategy:
+1. **Probe first**: GET a protected endpoint (e.g. /v2/me) without auth \u2192 expect 401
+2. **Try OIDC**: If a token endpoint exists, try create_auth_oidc. If it rejects the grant type \u2192 move on.
+3. **Try static headers**: Probe WITH auth headers (using probe_url headers parameter) to see if the API accepts them directly. Try:
+   - x-cal-client-id: ${clientId ?? "ID"} + x-cal-secret-key: ${clientSecret ?? "SECRET"}
+   - Authorization: Bearer ${clientId ?? "KEY"}
+   - Search the codebase for header names the auth guard checks (e.g. "x-api-key", custom headers)
+4. **If static headers work** \u2192 create_auth_header with those headers
+5. **If neither works** \u2192 try create_auth_raw with a custom token exchange flow
+
+**NEVER respond with INFRA_REPAIR** for auth mechanism issues (wrong grant type, rejected headers, etc). That's an auth problem, not infra.
+**Do NOT respond FAILED** until you've tried ALL three options above.`;
   }
   const hintsBlock = authHints.length > 0 ? `
 ## Saved auth hints
@@ -50347,8 +50307,7 @@ ${authHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
 - Suggested test URL: ${testUrl}
 ${credentialNote}
 ${csrfGuidance}
-${oauthGuidance}
-${apiKeyGuidance}
+${apiAuthGuidance}
 
 ## Available tools
 - **probe_url** \u2014 Make HTTP requests to the running app. Use for DISCOVERY: finding real endpoints, checking response formats, understanding what the app returns. Cookies are tracked automatically across calls.
@@ -50832,136 +50791,34 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
     authHints,
     `[auth-detection] ${detection.authType} auth uses ${detection.loginMethod ?? "POST"} ${detection.loginEndpoint ?? "unknown"} with ${detection.loginContentType} body ${detection.loginBody ?? "unknown"}. Token location=${detection.tokenLocation}, field/header=${detection.tokenFieldPath ?? detection.headerName ?? "unknown"}, request header=${detection.headerName ?? "Authorization"}, prefix=${JSON.stringify(detection.headerPrefix ?? "")}.`
   );
-  if (detection.authType === "oauth") {
-    const grantType = detection.oauthGrantType ?? "client_credentials";
-    if (grantType === "authorization_code") {
-      console.log("[Auth] OAuth2 authorization_code detected \u2014 NOT automatable. Reclassifying as api_key (static header auth).");
-      detection.authType = "api_key";
-      if (!detection.oauthClientId || !detection.oauthClientSecret) {
-        console.log("[Auth] Seeding OAuth client for static header use...");
-        const oauthClient = await seedOAuthClient(llm, repoPath, baseUrl, detection, model);
-        if (oauthClient) {
-          detection.oauthClientId = oauthClient.clientId;
-          detection.oauthClientSecret = oauthClient.clientSecret;
-          addAuthHint(authHints, `[auth-api-key-creds] Seeded OAuth client for header auth: clientId=${oauthClient.clientId}, clientSecret=${oauthClient.clientSecret}. Use these as header values with x-cal-client-id / x-cal-secret-key (or similar platform-specific headers).`);
+  if (detection.authType === "oauth" || detection.authType === "api_key") {
+    const grantType = detection.oauthGrantType ?? null;
+    console.log(`[Auth] API auth detected (type=${detection.authType}, grant=${grantType ?? "n/a"}) \u2014 seeding credentials`);
+    if (detection.oauthTokenEndpoint) {
+      addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Reported grant type: ${grantType ?? "unknown"}.`);
+    }
+    if (detection.oauthClientId) {
+      addAuthHint(authHints, `[auth-oauth-client] Found OAuth2 client in codebase: id=${detection.oauthClientId}, secret=${detection.oauthClientSecret ?? "unknown"}.`);
+    }
+    if (!detection.oauthClientId || !detection.oauthClientSecret) {
+      const oauthClient = await seedOAuthClient(llm, repoPath, baseUrl, detection, model);
+      if (oauthClient) {
+        detection.oauthClientId = oauthClient.clientId;
+        detection.oauthClientSecret = oauthClient.clientSecret;
+        if (oauthClient.tokenEndpoint) {
+          detection.oauthTokenEndpoint = oauthClient.tokenEndpoint;
         }
-      }
-      if (detection.oauthClientId && detection.oauthClientSecret) {
-        addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (NOT automatable). Use static header auth instead. Known client credentials: clientId=${detection.oauthClientId}, clientSecret=${detection.oauthClientSecret}. Try headers like x-cal-client-id + x-cal-secret-key, or Authorization: Bearer <api-key>.`);
+        addAuthHint(authHints, `[auth-seeded-client] Seeded OAuth2 client: id=${oauthClient.clientId}, secret=${oauthClient.clientSecret}${oauthClient.tokenEndpoint ? `, tokenEndpoint=${oauthClient.tokenEndpoint}` : ""}. These can be used for OIDC token exchange OR as static header values (x-cal-client-id / x-cal-secret-key / etc).`);
       } else {
-        addAuthHint(authHints, `[auth-reclassified] OAuth2 only supports authorization_code grant (NOT automatable). Reclassified as api_key. Look for static header auth patterns: x-cal-client-id, x-api-key, or create an API key in the database.`);
-      }
-    } else {
-      console.log(`[Auth] OAuth2/OIDC detected (grant: ${grantType}) \u2014 seeding OAuth client`);
-      if (detection.oauthTokenEndpoint) {
-        addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Grant type: ${grantType}.`);
-      }
-      if (detection.oauthClientId) {
-        addAuthHint(authHints, `[auth-oauth-client] Found OAuth2 client: id=${detection.oauthClientId}, secret=${detection.oauthClientSecret ?? "unknown"}.`);
-      }
-      if (!detection.oauthClientId || !detection.oauthClientSecret) {
-        const oauthClient = await seedOAuthClient(llm, repoPath, baseUrl, detection, model);
-        if (oauthClient) {
-          detection.oauthClientId = oauthClient.clientId;
-          detection.oauthClientSecret = oauthClient.clientSecret;
-          if (oauthClient.tokenEndpoint) {
-            detection.oauthTokenEndpoint = oauthClient.tokenEndpoint;
-          }
-          addAuthHint(authHints, `[auth-oauth-client] Seeded OAuth2 client: id=${oauthClient.clientId}, secret=${oauthClient.clientSecret}, tokenEndpoint=${oauthClient.tokenEndpoint}.`);
-        } else {
-          console.warn("[Auth:OAuth] Could not seed OAuth client \u2014 LLM will try to create one during auth config");
-        }
-      }
-      if (grantType === "password") {
-        console.log("[Auth:OAuth] Password grant \u2014 seeding test user for resource owner credentials");
-        if (detection.loginBody) {
-          addAuthHint(authHints, `[auth-oauth-user] Resource owner credentials from detection: ${detection.loginBody}`);
-        }
-      }
-      const probeContext2 = await preProbeForAuth(baseUrl, detection);
-      const verifiedTestUrl2 = await resolveVerifiedAuthTestUrl(
-        llm,
-        repoPath,
-        baseUrl,
-        detection,
-        model,
-        probeContext2
-      );
-      if (verifiedTestUrl2) {
-        addAuthHint(
-          authHints,
-          `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl2.testUrl}. Evidence: ${verifiedTestUrl2.evidence}`
-        );
-      }
-      const MAX_AUTH_ATTEMPTS2 = 3;
-      let authObjectId2;
-      const allAttemptLogs2 = [];
-      let fullProbeContext2 = probeContext2;
-      fullProbeContext2 += verifiedTestUrl2 ? `
-
-### Verified auth test URL
-${verifiedTestUrl2.testUrl}
-Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo verified test URL was found. Use probe_url to find a protected endpoint that returns 401 without a Bearer token.";
-      for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS2; attempt++) {
-        let attemptContext = fullProbeContext2;
-        if (allAttemptLogs2.length > 0) {
-          attemptContext += "\n\n## Previous attempt failures\nLearn from these mistakes. Do NOT repeat the same configurations.\n\n" + allAttemptLogs2.join("\n\n---\n\n");
-        }
-        if (authHints.length > 0) {
-          attemptContext += "\n\n## Saved auth hints\n" + formatAuthHints(authHints);
-        }
-        console.log(`[Auth] OAuth auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS2}...`);
-        const result = await createAuthViaMcp(
-          llm,
-          repoPath,
-          detection,
-          false,
-          // no user registration for OAuth
-          projectId,
-          baseUrl,
-          repeaterId,
-          api,
-          model,
-          attemptContext,
-          verifiedTestUrl2?.testUrl,
-          authHints
-        );
-        if (result.infraRepairHint) {
-          const grantRejection = /grant.?type.*must be.*authorization.?code|only.*supports.*authorization.?code|does not support.*password|does not support.*client_credentials/i.test(result.infraRepairHint);
-          if (grantRejection) {
-            console.log("[Auth] OAuth token endpoint rejects our grant type \u2014 reclassifying to api_key (static header auth)");
-            detection.authType = "api_key";
-            addAuthHint(authHints, `[auth-oauth-grant-rejected] OAuth token endpoint only supports authorization_code (interactive browser flow). Falling back to static header auth (x-cal-client-id + x-cal-secret-key or similar). Use create_auth_header with seeded client credentials.`);
-            break;
-          }
-          console.warn(`[Auth] OAuth LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
-          return {
-            authObjectId: void 0,
-            hasAuth: false,
-            authFailed: true,
-            authHints,
-            infraRepairHint: result.infraRepairHint
-          };
-        }
-        if (result.authId) {
-          authObjectId2 = result.authId;
-          break;
-        }
-        allAttemptLogs2.push(...result.attemptLog);
-      }
-      if (authObjectId2) {
-        console.log(`[Auth] OAuth auth configured successfully: ${authObjectId2}`);
-        return { authObjectId: authObjectId2, hasAuth: true, authFailed: false, authHints };
-      }
-      if (detection.authType !== "api_key") {
-        console.error("[Auth] OAuth auth configuration failed after all attempts");
-        return { authObjectId: void 0, hasAuth: false, authFailed: true, authHints };
+        console.warn("[Auth] Could not seed OAuth client \u2014 LLM will try to create one during auth config");
       }
     }
-  }
-  if (detection.authType === "api_key") {
-    console.log("[Auth] API key / static header auth detected \u2014 skipping user seed, going to config");
-    addAuthHint(authHints, `[auth-api-key] Static header auth. Header: ${detection.headerName ?? "unknown"}, prefix: ${detection.headerPrefix ?? "none"}. Use create_auth_header tool with the correct header name(s) and value(s).`);
+    if (grantType === "password") {
+      console.log("[Auth] Password grant hint \u2014 seeding test user for resource owner credentials");
+      if (detection.loginBody) {
+        addAuthHint(authHints, `[auth-oauth-user] Resource owner credentials from detection: ${detection.loginBody}`);
+      }
+    }
     const probeContext2 = await preProbeForAuth(baseUrl, detection);
     const verifiedTestUrl2 = await resolveVerifiedAuthTestUrl(
       llm,
@@ -50982,7 +50839,7 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
 
 ### Verified auth test URL
 ${verifiedTestUrl2.testUrl}
-Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo verified test URL was found. Use probe_url to find a protected endpoint that returns 401/403 without the correct headers.";
+Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo verified test URL was found. Use probe_url to find a protected endpoint that returns 401 without auth.";
     for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS2; attempt++) {
       let attemptContext = fullProbeContext2;
       if (allAttemptLogs2.length > 0) {
@@ -50991,7 +50848,7 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
       if (authHints.length > 0) {
         attemptContext += "\n\n## Saved auth hints\n" + formatAuthHints(authHints);
       }
-      console.log(`[Auth] API key auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS2}...`);
+      console.log(`[Auth] API auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS2}...`);
       const result = await createAuthViaMcp(
         llm,
         repoPath,
@@ -51007,7 +50864,7 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
         authHints
       );
       if (result.infraRepairHint) {
-        console.warn(`[Auth] API key LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
+        console.warn(`[Auth] API auth LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
         return { authObjectId: void 0, hasAuth: false, authFailed: true, authHints, infraRepairHint: result.infraRepairHint };
       }
       if (result.authId) {
@@ -51017,10 +50874,10 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
       allAttemptLogs2.push(...result.attemptLog);
     }
     if (authObjectId2) {
-      console.log(`[Auth] API key auth configured successfully: ${authObjectId2}`);
+      console.log(`[Auth] API auth configured successfully: ${authObjectId2}`);
       return { authObjectId: authObjectId2, hasAuth: true, authFailed: false, authHints };
     }
-    console.error("[Auth] API key auth configuration failed after all attempts");
+    console.error("[Auth] API auth configuration failed after all attempts");
     return { authObjectId: void 0, hasAuth: false, authFailed: true, authHints };
   }
   let registrationOk = await registerUser(baseUrl, detection);

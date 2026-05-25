@@ -184,15 +184,12 @@ export function configureAuthPrompt(
     : detection.authType === "oauth" ? "oidc"
     : "session";
 
-  const credentialNote = authStyle === "oidc"
-    ? (detection.oauthGrantType === "password"
-      ? `\nThis is an OAuth2 API using password (ROPC) grant. You need client credentials AND user credentials. Use create_auth_oidc with grantType="password", username, and password. Check auth hints for seeded user and OAuth client credentials.`
-      : `\nThis is an OAuth2/OIDC API service. You need to create an OAuth2 client (client_id/secret) and use create_auth_oidc. If a seeded client exists, use those credentials. Otherwise, use command tools to create one via the app's CLI or database.`)
-    : authStyle === "api_key"
-      ? `\nThis is a static header / API key auth service. No login flow needed — just attach the correct header(s) on every request. Use create_auth_header with the header name(s) and value(s). Find or create API credentials via the database or app CLI.`
-      : userConfirmed
-        ? `\nA test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.`
-        : `\nNo confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work — if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
+  const isApiAuth = authStyle === "oidc" || authStyle === "api_key";
+  const credentialNote = isApiAuth
+    ? `\nThis is an API service (no login form). You have three tools: create_auth_oidc (OAuth token exchange), create_auth_header (static headers), and create_auth_raw (multi-step custom). Try them in that order. Check auth hints for seeded credentials.`
+    : userConfirmed
+      ? `\nA test user has been created and confirmed. Credentials: ${detection.loginBody ?? "unknown"}. Proceed with probing and auth object creation.`
+      : `\nNo confirmed user exists. Credentials from codebase: ${detection.loginBody ?? "unknown"}. These may not work — if auth tests fail, diagnose with command tools and try different credentials or respond INFRA_REPAIR if the issue is infrastructure.`;
 
   // Build CSRF guidance block when the detection LLM reported form-body CSRF
   let csrfGuidance = "";
@@ -238,101 +235,64 @@ You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this.
 This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You can use \`create_auth\` with a csrfUrl parameter, or \`create_auth_raw\` with a pre-step that fetches the token.`;
   }
 
-  // OAuth2/OIDC guidance block
-  let oauthGuidance = "";
-  if (detection.authType === "oauth") {
-    const grantType = detection.oauthGrantType ?? "client_credentials";
+  // Unified API auth guidance (covers both oauth and api_key detection types)
+  let apiAuthGuidance = "";
+  if (detection.authType === "oauth" || detection.authType === "api_key") {
     const tokenEndpoint = detection.oauthTokenEndpoint
       ? `${baseUrl}${detection.oauthTokenEndpoint}`
-      : `${baseUrl}/oauth/token`;
-    const clientId = detection.oauthClientId ?? "UNKNOWN — must create or find one";
-    const clientSecret = detection.oauthClientSecret ?? "UNKNOWN — must create or find one";
+      : null;
+    const clientId = detection.oauthClientId ?? null;
+    const clientSecret = detection.oauthClientSecret ?? null;
     const scope = detection.oauthScope ?? "";
+    const grantType = detection.oauthGrantType ?? "client_credentials";
 
-    if (grantType === "password") {
-      oauthGuidance = `
-
-## ⚠️ MANDATORY: This is an OAuth2 API using Resource Owner Password Credentials (ROPC)
-This API issues Bearer tokens via a token endpoint using client credentials + username/password.
-
-**Use \`create_auth_oidc\` tool** with:
-- tokenEndpoint: "${tokenEndpoint}" (verify by probing — should accept POST with grant_type=password)
-- clientId: "${clientId}"
-- clientSecret: "${clientSecret}"
-- grantType: "password"
-- username: The test user's username/email (from seeded user or auth hints)
-- password: The test user's password
-${scope ? `- scope: "${scope}"` : ""}
-- testUrl: Find a protected endpoint that returns 401 without Bearer token (use probe_url to discover)
-
-**If no OAuth2 client exists**, create one via DB/CLI (same as client_credentials).
-**User credentials**: Use the seeded test user credentials from auth hints. If none exist, use run_command_in_docker to create a user.
-**Do NOT use create_auth or create_auth_raw** — use create_auth_oidc with grantType="password".
-**Do NOT respond with INFRA_REPAIR** just because there's no session login.
-**If the token endpoint rejects your grant type** (e.g. "grant_type must be authorization_code"): the OAuth token exchange is NOT automatable. Switch to \`create_auth_header\` — the API likely also accepts static headers (x-cal-client-id + x-cal-secret-key, Authorization: Bearer <api-key>, etc.). Use the seeded client credentials as header values.`;
-    } else {
-      oauthGuidance = `
-
-## ⚠️ MANDATORY: This is an OAuth2/OIDC API service
-This API uses OAuth2 Bearer tokens, NOT session/cookie auth. Do NOT try session login flows.
-
-**Use \`create_auth_oidc\` tool** with:
-- tokenEndpoint: "${tokenEndpoint}" (verify by probing — should accept POST with grant_type=client_credentials)
-- clientId: "${clientId}"
-- clientSecret: "${clientSecret}"
-${scope ? `- scope: "${scope}"` : ""}
-- testUrl: Find a protected endpoint that returns 401 without Bearer token (use probe_url to discover)
-
-**If no OAuth2 client exists**, you MUST create one:
-1. Search the codebase for OAuth client models/tables (e.g. OAuthClient, oauth_clients, PlatformOAuthClient)
-2. Use run_command_in_docker to insert a client directly via the database or app CLI
-3. Common patterns:
-   - NestJS/Prisma: \`npx prisma db execute --stdin <<< "INSERT INTO ..."\`
-   - Direct SQL: \`psql -U ... -c "INSERT INTO oauth_clients (...)"\`
-   - App CLI: \`node dist/manage.js create-client --name bright-test\`
-4. The client needs: name, clientId (generate a UUID), clientSecret (generate one), allowed scopes/permissions
-
-**Do NOT use create_auth or create_auth_raw** for OAuth2 client_credentials — use create_auth_oidc.
-**Do NOT respond with INFRA_REPAIR** just because there's no session login — this is an API service, OAuth is the correct auth mechanism.
-**If the token endpoint rejects your grant type** (e.g. "grant_type must be authorization_code"): the OAuth token exchange is NOT automatable. Switch to \`create_auth_header\` — the API likely also accepts static headers (x-cal-client-id + x-cal-secret-key, Authorization: Bearer <api-key>, etc.). Use the seeded client credentials as header values.`;
-    }
-  }
-
-  // API key / static header guidance block
-  let apiKeyGuidance = "";
-  if (detection.authType === "api_key") {
-    const headerName = detection.headerName ?? "unknown";
-    const clientId = detection.oauthClientId;
-    const clientSecret = detection.oauthClientSecret;
     const credsBlock = clientId && clientSecret
-      ? `\n**SEEDED CREDENTIALS AVAILABLE — use these directly:**
+      ? `**Available credentials (seeded or found):**
 - clientId: "${clientId}"
 - clientSecret: "${clientSecret}"
-Try these as header values. Common header patterns for this type of app:
-- x-cal-client-id: ${clientId} + x-cal-secret-key: ${clientSecret}
-- Authorization: Bearer ${clientId}
-- X-API-Key: ${clientSecret}
-Probe the app with these headers to find which combination works.\n`
-      : `\n**No pre-seeded credentials found.** Use run_command_in_docker/run_command_on_host to:
-1. Search the database for existing API keys/clients: OAuthClient, ApiKey, api_keys tables
-2. Create one via direct SQL INSERT or app CLI\n`;
+${tokenEndpoint ? `- tokenEndpoint: "${tokenEndpoint}"` : "- tokenEndpoint: unknown (probe to find)"}
+Use these for EITHER OIDC token exchange OR as static header values.`
+      : `**No pre-seeded credentials found.** Use run_command_in_docker/run_command_on_host to:
+1. Search the database for existing clients/keys: OAuthClient, ApiKey, api_keys, oauth_clients tables
+2. Create one via direct SQL INSERT or app CLI`;
 
-    apiKeyGuidance = `
+    apiAuthGuidance = `
 
-## ⚠️ MANDATORY: This is a static header / API key auth service
-This API authenticates via fixed header(s) on every request. NO login flow, NO token exchange.
+## ⚠️ This is an API service — no login form, no user session
+This API authenticates requests via tokens or static headers. You have THREE tools available — try them in order:
 
-**Use \`create_auth_header\` tool** with:
-- headers: JSON array of header name-value pairs, e.g. [{"name":"${headerName}","value":"YOUR-KEY-HERE"}]
-- testUrl: A protected endpoint that returns 401/403 without the header(s), 200 with them. Good choices: /v2/me, /api/me, /api/users/me — simple identity endpoints.
 ${credsBlock}
-**Strategy:**
-1. First, probe_url a protected endpoint (e.g. GET /v2/me) to confirm it returns 401 without headers
-2. Then probe WITH the auth headers to confirm they work: probe_url with headers parameter
-3. Once you find headers that get 200, use create_auth_header with those exact headers and testUrl
 
-**Do NOT use create_auth, create_auth_oidc, or create_auth_raw** — ONLY create_auth_header.
-**Do NOT respond with INFRA_REPAIR** just because there's no login endpoint — this is API key auth.`;
+### Option 1: \`create_auth_oidc\` (OAuth2 token exchange)
+Best when the token endpoint accepts client_credentials or password grant.
+${tokenEndpoint ? `- tokenEndpoint: "${tokenEndpoint}" (probe POST with grant_type=${grantType})` : "- Probe common paths: /oauth/token, /v2/auth/oauth2/token, /.well-known/openid-configuration"}
+- clientId: "${clientId ?? "FIND_OR_CREATE"}"
+- clientSecret: "${clientSecret ?? "FIND_OR_CREATE"}"
+${grantType === "password" ? "- grantType: \"password\" + username/password from seeded user or auth hints" : `- grantType: "${grantType}"`}
+${scope ? `- scope: "${scope}"` : ""}
+- testUrl: protected endpoint returning 401 (e.g. /v2/me, /api/me)
+
+### Option 2: \`create_auth_header\` (static headers)
+Best when the API accepts fixed headers on every request — no token exchange needed.
+- headers: JSON array, e.g. [{"name":"x-cal-client-id","value":"${clientId ?? "ID"}"},{"name":"x-cal-secret-key","value":"${clientSecret ?? "SECRET"}"}]
+- testUrl: endpoint returning 401 without headers, 200 with them
+- Common patterns: x-cal-client-id + x-cal-secret-key, Authorization: Bearer <key>, X-API-Key: <key>
+
+### Option 3: \`create_auth_raw\` (multi-step custom flow)
+Use when neither OIDC nor static headers work directly — e.g. you need to hit a custom token endpoint, extract a value, and embed it.
+
+### Strategy:
+1. **Probe first**: GET a protected endpoint (e.g. /v2/me) without auth → expect 401
+2. **Try OIDC**: If a token endpoint exists, try create_auth_oidc. If it rejects the grant type → move on.
+3. **Try static headers**: Probe WITH auth headers (using probe_url headers parameter) to see if the API accepts them directly. Try:
+   - x-cal-client-id: ${clientId ?? "ID"} + x-cal-secret-key: ${clientSecret ?? "SECRET"}
+   - Authorization: Bearer ${clientId ?? "KEY"}
+   - Search the codebase for header names the auth guard checks (e.g. "x-api-key", custom headers)
+4. **If static headers work** → create_auth_header with those headers
+5. **If neither works** → try create_auth_raw with a custom token exchange flow
+
+**NEVER respond with INFRA_REPAIR** for auth mechanism issues (wrong grant type, rejected headers, etc). That's an auth problem, not infra.
+**Do NOT respond FAILED** until you've tried ALL three options above.`;
   }
 
   const hintsBlock = authHints.length > 0
@@ -358,8 +318,7 @@ ${credsBlock}
 - Suggested test URL: ${testUrl}
 ${credentialNote}
 ${csrfGuidance}
-${oauthGuidance}
-${apiKeyGuidance}
+${apiAuthGuidance}
 
 ## Available tools
 - **probe_url** — Make HTTP requests to the running app. Use for DISCOVERY: finding real endpoints, checking response formats, understanding what the app returns. Cookies are tracked automatically across calls.
