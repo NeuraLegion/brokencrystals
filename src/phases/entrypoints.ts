@@ -814,20 +814,166 @@ async function deleteEntrypointBatch(
  * with literal newlines inside string values, which breaks JSON parsing on the
  * receiving end ("Unexpected token \\n in JSON at position …").
  */
-function sanitizeBody(body: unknown): string {
+export function sanitizeBody(body: unknown): string {
   if (typeof body !== "string") {
     // LLM sometimes returns body as an object instead of a JSON string
     return body ? JSON.stringify(body) : "{}";
   }
+  if (!body.trim()) return "{}";
   try {
     // Parse and re-serialize → collapses formatting and properly escapes
     // any characters that need escaping inside string values.
     const parsed = JSON.parse(body);
     return JSON.stringify(parsed);
   } catch {
-    // If it's not valid JSON at all, compact whitespace as a best-effort fix
+    // Attempt repair: common LLM mistake is unescaped quotes in nested JSON strings
+    const repaired = repairJsonBody(body);
+    if (repaired) return repaired;
+    // Last resort: compact whitespace
     return body.replace(/\n\s*/g, " ").trim();
   }
+}
+
+/**
+ * Attempt to repair invalid JSON bodies from LLM hallucinations.
+ * Common issues:
+ * - Unescaped double quotes inside string values (nested JSON templates)
+ * - Trailing commas before closing braces/brackets
+ */
+function repairJsonBody(body: string): string | null {
+  let s = body.replace(/\n\s*/g, " ").trim();
+
+  // Fix 1: Remove trailing commas before } or ]
+  s = s.replace(/,\s*([}\]])/g, "$1");
+
+  // Quick check — maybe trailing commas was the only issue
+  try {
+    return JSON.stringify(JSON.parse(s));
+  } catch {
+    // continue with more aggressive repairs
+  }
+
+  // Fix 2: Detect and fix unescaped quotes in string values that contain nested JSON.
+  // Strategy: find string values that start with { or [ (nested JSON) and escape their contents.
+  try {
+    const fixed = fixNestedJsonStrings(s);
+    if (fixed !== s) {
+      const parsed = JSON.parse(fixed);
+      return JSON.stringify(parsed);
+    }
+  } catch {
+    // continue
+  }
+
+  // Fix 3: Brute-force — attempt progressive quote-escaping guided by parse errors
+  try {
+    const fixed = fixByParseError(s);
+    if (fixed) {
+      const parsed = JSON.parse(fixed);
+      return JSON.stringify(parsed);
+    }
+  } catch {
+    // couldn't repair
+  }
+
+  return null;
+}
+
+/**
+ * Find string values that contain unescaped nested JSON (start with { or [)
+ * and properly escape the inner content.
+ *
+ * Pattern: ":"{ ... }"  where the inner braces contain unescaped quotes.
+ * We use bracket depth to find where the nested JSON ends, then escape that region.
+ */
+function fixNestedJsonStrings(s: string): string {
+  // Match pattern: "key":"{ or "key":"[  where the value starts with a brace
+  // We need to find these regions and escape quotes within them
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < s.length) {
+    // Look for :"{ or :"[ pattern (string value starting with nested JSON)
+    if (s[i] === ":" && s[i + 1] === '"' && (s[i + 2] === "{" || s[i + 2] === "[")) {
+      result.push(":", '"');
+      i += 2; // skip :"
+      // Now we're inside a string value that contains nested JSON
+      // Find the matching close bracket, tracking depth
+      const openBracket = s[i];
+      const closeBracket = openBracket === "{" ? "}" : "]";
+      let depth = 0;
+      let innerStart = i;
+      let j = i;
+
+      // Walk to find where the nested JSON value ends
+      while (j < s.length) {
+        if (s[j] === openBracket) depth++;
+        else if (s[j] === closeBracket) {
+          depth--;
+          if (depth === 0) {
+            // j is at the closing bracket. Check if next char is " (closing the string)
+            if (s[j + 1] === '"') {
+              // Extract the inner content between i and j+1 (inclusive of closing bracket)
+              const inner = s.slice(innerStart, j + 1);
+              // Escape all quotes inside
+              result.push(inner.replace(/"/g, '\\"'));
+              result.push('"'); // closing quote of the string value
+              i = j + 2;
+              break;
+            }
+          }
+        }
+        j++;
+      }
+
+      if (depth !== 0 || j >= s.length) {
+        // Couldn't find matching bracket — just copy the char and move on
+        result.push(s[innerStart]);
+        i = innerStart + 1;
+      }
+    } else {
+      result.push(s[i]);
+      i++;
+    }
+  }
+
+  return result.join("");
+}
+
+/**
+ * Attempt to fix JSON by finding parse error positions and escaping quotes there.
+ * Tries up to 20 iterations of: parse → find error position → escape the quote at that position.
+ */
+function fixByParseError(s: string): string | null {
+  let current = s;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      JSON.parse(current);
+      return current; // Success!
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "";
+      // Extract position from "at position N"
+      const posMatch = msg.match(/at position (\d+)/);
+      if (!posMatch) return null;
+      const pos = parseInt(posMatch[1], 10);
+      if (pos <= 0 || pos >= current.length) return null;
+
+      // Find the offending quote near this position and escape it
+      // Look backwards from pos for an unescaped quote
+      let quotePos = -1;
+      for (let k = pos; k >= Math.max(0, pos - 5); k--) {
+        if (current[k] === '"' && current[k - 1] !== "\\") {
+          quotePos = k;
+          break;
+        }
+      }
+      if (quotePos === -1) return null;
+
+      // Escape the quote
+      current = current.slice(0, quotePos) + '\\"' + current.slice(quotePos + 1);
+    }
+  }
+  return null;
 }
 
 const VALID_HTTP_METHODS = new Set([

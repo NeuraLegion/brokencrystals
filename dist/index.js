@@ -43947,12 +43947,104 @@ function sanitizeBody(body) {
   if (typeof body !== "string") {
     return body ? JSON.stringify(body) : "{}";
   }
+  if (!body.trim()) return "{}";
   try {
     const parsed = JSON.parse(body);
     return JSON.stringify(parsed);
   } catch {
+    const repaired = repairJsonBody(body);
+    if (repaired) return repaired;
     return body.replace(/\n\s*/g, " ").trim();
   }
+}
+function repairJsonBody(body) {
+  let s = body.replace(/\n\s*/g, " ").trim();
+  s = s.replace(/,\s*([}\]])/g, "$1");
+  try {
+    return JSON.stringify(JSON.parse(s));
+  } catch {
+  }
+  try {
+    const fixed = fixNestedJsonStrings(s);
+    if (fixed !== s) {
+      const parsed = JSON.parse(fixed);
+      return JSON.stringify(parsed);
+    }
+  } catch {
+  }
+  try {
+    const fixed = fixByParseError(s);
+    if (fixed) {
+      const parsed = JSON.parse(fixed);
+      return JSON.stringify(parsed);
+    }
+  } catch {
+  }
+  return null;
+}
+function fixNestedJsonStrings(s) {
+  const result = [];
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === ":" && s[i + 1] === '"' && (s[i + 2] === "{" || s[i + 2] === "[")) {
+      result.push(":", '"');
+      i += 2;
+      const openBracket = s[i];
+      const closeBracket = openBracket === "{" ? "}" : "]";
+      let depth = 0;
+      let innerStart = i;
+      let j = i;
+      while (j < s.length) {
+        if (s[j] === openBracket) depth++;
+        else if (s[j] === closeBracket) {
+          depth--;
+          if (depth === 0) {
+            if (s[j + 1] === '"') {
+              const inner = s.slice(innerStart, j + 1);
+              result.push(inner.replace(/"/g, '\\"'));
+              result.push('"');
+              i = j + 2;
+              break;
+            }
+          }
+        }
+        j++;
+      }
+      if (depth !== 0 || j >= s.length) {
+        result.push(s[innerStart]);
+        i = innerStart + 1;
+      }
+    } else {
+      result.push(s[i]);
+      i++;
+    }
+  }
+  return result.join("");
+}
+function fixByParseError(s) {
+  let current = s;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      JSON.parse(current);
+      return current;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      const posMatch = msg.match(/at position (\d+)/);
+      if (!posMatch) return null;
+      const pos = parseInt(posMatch[1], 10);
+      if (pos <= 0 || pos >= current.length) return null;
+      let quotePos = -1;
+      for (let k = pos; k >= Math.max(0, pos - 5); k--) {
+        if (current[k] === '"' && current[k - 1] !== "\\") {
+          quotePos = k;
+          break;
+        }
+      }
+      if (quotePos === -1) return null;
+      current = current.slice(0, quotePos) + '\\"' + current.slice(quotePos + 1);
+    }
+  }
+  return null;
 }
 var VALID_HTTP_METHODS = /* @__PURE__ */ new Set([
   "GET",
