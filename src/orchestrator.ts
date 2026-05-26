@@ -52,7 +52,7 @@ import {
 import { fetchFindings } from "./phases/findings.js";
 import { generateFixes, applyFixes } from "./phases/fix.js";
 import { runFunctionHarness, cleanupHarnessInfra, type HarnessResult } from "./phases/harness.js";
-import { chatWithTools, type ModelSelector } from "./inference.js";
+import { chatWithTools, type ModelSelector, TokenTracker } from "./inference.js";
 import { codebaseTools, createToolHandler } from "./tools.js";
 import { AppHealthMonitor } from "./app-health.js";
 
@@ -1904,6 +1904,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
     }
   } finally {
+    // End the last tracked phase and print final token analytics
+    TokenTracker.global().endPhase();
+    TokenTracker.global().logFinalReport();
+
     // Always publish the summary table — ensures ROI even on failure
     buildSummaryTable(progress, allFindings, fixedKeys);
     await progress.updatePrDescription();
@@ -2134,6 +2138,8 @@ async function runScanLoop(
         : "Function harness scan completed — no vulnerabilities found.",
     );
   } finally {
+    TokenTracker.global().endPhase();
+    TokenTracker.global().logFinalReport();
     await repeater.stop();
     await stopRunningScans(config, allScanIds);
     if (repeater.repeaterId) {

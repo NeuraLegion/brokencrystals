@@ -1080,6 +1080,14 @@ Respond with EXACTLY one JSON object:
             },
           ],
         });
+        if (resp.usage) {
+          const { TokenTracker } = await import("../inference.js");
+          TokenTracker.global().record(
+            modelSelector?.current() ?? "gpt-4o-mini",
+            resp.usage.prompt_tokens ?? 0,
+            resp.usage.completion_tokens ?? 0,
+          );
+        }
         try {
           const text = resp.choices[0]?.message.content ?? "";
           const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
@@ -4395,6 +4403,14 @@ When in doubt about whether the app is running vs broken, check: does the page c
       },
     ],
   });
+  if (resp.usage) {
+    const { TokenTracker } = await import("../inference.js");
+    TokenTracker.global().record(
+      modelSelector?.current() ?? "gpt-4o-mini",
+      resp.usage.prompt_tokens ?? 0,
+      resp.usage.completion_tokens ?? 0,
+    );
+  }
   try {
     const text = resp.choices[0]?.message.content ?? "";
     const json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
@@ -4471,6 +4487,16 @@ HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundle
       },
     ],
   });
+
+  // Track deep-probe token usage
+  if (resp.usage) {
+    const { TokenTracker } = await import("../inference.js");
+    TokenTracker.global().record(
+      modelSelector?.current() ?? "gpt-4o-mini",
+      resp.usage.prompt_tokens ?? 0,
+      resp.usage.completion_tokens ?? 0,
+    );
+  }
 
   try {
     const text = resp.choices[0]?.message.content ?? "";

@@ -211,6 +211,144 @@ export class ModelSelector {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Token usage analytics
+// ---------------------------------------------------------------------------
+
+interface PhaseTokenSnapshot {
+  name: string;
+  startedAt: number;
+  endedAt?: number;
+  models: Map<string, { prompt: number; completion: number; calls: number }>;
+}
+
+/**
+ * Singleton token tracker. Accumulates prompt/completion tokens per model,
+ * grouped by phase. Reports per-phase and total usage.
+ */
+export class TokenTracker {
+  private static instance: TokenTracker | undefined;
+
+  private totals = new Map<string, { prompt: number; completion: number; calls: number }>();
+  private phases: PhaseTokenSnapshot[] = [];
+  private currentPhase: PhaseTokenSnapshot | undefined;
+
+  static global(): TokenTracker {
+    if (!TokenTracker.instance) {
+      TokenTracker.instance = new TokenTracker();
+    }
+    return TokenTracker.instance;
+  }
+
+  /** Reset all tracked data (useful for tests). */
+  static reset(): void {
+    TokenTracker.instance = undefined;
+  }
+
+  /** Start tracking a new phase. Ends the previous phase if still open. */
+  startPhase(name: string): void {
+    if (this.currentPhase) {
+      this.endPhase();
+    }
+    this.currentPhase = { name, startedAt: Date.now(), models: new Map() };
+  }
+
+  /** End the current phase, log its token report, and archive it. */
+  endPhase(): PhaseTokenSnapshot | undefined {
+    if (!this.currentPhase) return undefined;
+    this.currentPhase.endedAt = Date.now();
+    const snapshot = this.currentPhase;
+    this.phases.push(snapshot);
+    this.currentPhase = undefined;
+    this.logPhaseReport(snapshot);
+    return snapshot;
+  }
+
+  /** Record token usage from an API response. */
+  record(model: string, promptTokens: number, completionTokens: number): void {
+    // Update totals
+    const total = this.totals.get(model) ?? { prompt: 0, completion: 0, calls: 0 };
+    total.prompt += promptTokens;
+    total.completion += completionTokens;
+    total.calls += 1;
+    this.totals.set(model, total);
+
+    // Update current phase
+    if (this.currentPhase) {
+      const phase = this.currentPhase.models.get(model) ?? { prompt: 0, completion: 0, calls: 0 };
+      phase.prompt += promptTokens;
+      phase.completion += completionTokens;
+      phase.calls += 1;
+      this.currentPhase.models.set(model, phase);
+    }
+  }
+
+  /** Get the total tokens across all models. */
+  getTotals(): { prompt: number; completion: number; calls: number; byModel: Map<string, { prompt: number; completion: number; calls: number }> } {
+    let prompt = 0;
+    let completion = 0;
+    let calls = 0;
+    for (const v of this.totals.values()) {
+      prompt += v.prompt;
+      completion += v.completion;
+      calls += v.calls;
+    }
+    return { prompt, completion, calls, byModel: new Map(this.totals) };
+  }
+
+  /** Log final summary at end of orchestration. */
+  logFinalReport(): void {
+    const { prompt, completion, calls, byModel } = this.getTotals();
+    const total = prompt + completion;
+    console.log(`\n[Tokens] ═══════════════════════════════════════════════════`);
+    console.log(`[Tokens] FINAL REPORT — ${calls} API call(s), ${fmtTokens(total)} total tokens`);
+    console.log(`[Tokens]   Prompt: ${fmtTokens(prompt)} | Completion: ${fmtTokens(completion)}`);
+    console.log(`[Tokens] ───────────────────────────────────────────────────`);
+    for (const [model, usage] of byModel) {
+      console.log(`[Tokens]   ${model}: ${fmtTokens(usage.prompt + usage.completion)} (${usage.calls} calls, ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)})`);
+    }
+    if (this.phases.length > 0) {
+      console.log(`[Tokens] ───────────────────────────────────────────────────`);
+      console.log(`[Tokens] BY PHASE:`);
+      for (const p of this.phases) {
+        const phaseTotal = sumPhase(p);
+        const elapsed = p.endedAt ? ` (${Math.round((p.endedAt - p.startedAt) / 1000)}s)` : "";
+        console.log(`[Tokens]   ${p.name}${elapsed}: ${fmtTokens(phaseTotal.prompt + phaseTotal.completion)} (${phaseTotal.calls} calls)`);
+        for (const [model, usage] of p.models) {
+          console.log(`[Tokens]     ${model}: ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)}`);
+        }
+      }
+    }
+    console.log(`[Tokens] ═══════════════════════════════════════════════════\n`);
+  }
+
+  private logPhaseReport(snapshot: PhaseTokenSnapshot): void {
+    const phaseTotal = sumPhase(snapshot);
+    if (phaseTotal.calls === 0) return; // no LLM calls in this phase
+    const elapsed = snapshot.endedAt ? ` in ${Math.round((snapshot.endedAt - snapshot.startedAt) / 1000)}s` : "";
+    const { prompt, completion } = this.getTotals();
+    console.log(
+      `[Tokens] Phase "${snapshot.name}" done${elapsed}: ${fmtTokens(phaseTotal.prompt + phaseTotal.completion)} tokens (${phaseTotal.calls} calls). Running total: ${fmtTokens(prompt + completion)}`,
+    );
+  }
+}
+
+function sumPhase(p: PhaseTokenSnapshot): { prompt: number; completion: number; calls: number } {
+  let prompt = 0, completion = 0, calls = 0;
+  for (const v of p.models.values()) {
+    prompt += v.prompt;
+    completion += v.completion;
+    calls += v.calls;
+  }
+  return { prompt, completion, calls };
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
 /**
  * Validate that all configured model tiers are available from the inference
  * provider. Throws with a clear message listing invalid and available models.
@@ -290,6 +428,9 @@ export async function chatWithTools(
 
     const msg = choice.message;
     const usage = response.usage;
+    if (usage) {
+      TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
+    }
     conversation.push(msg);
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
@@ -390,6 +531,11 @@ export async function chatWithSchema<T>(
       },
     },
   }));
+
+  const usage = response.usage;
+  if (usage) {
+    TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
+  }
 
   const choice = response.choices[0];
   const content = choice?.message.content;

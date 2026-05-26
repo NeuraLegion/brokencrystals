@@ -1,4 +1,5 @@
 import type { Platform } from "./platform.js";
+import { TokenTracker } from "./inference.js";
 
 interface Step {
   /** Logical phase key — repeated phaseStart calls with the same key merge into one step. */
@@ -47,6 +48,9 @@ export class ProgressReporter {
   }
 
   async phaseStart(phase: string, description: string): Promise<void> {
+    // Track token usage per phase
+    TokenTracker.global().startPhase(phase);
+
     // Mark all previously working steps as done before starting/resuming a phase.
     for (const step of this.steps) {
       if (step.status === "working") step.status = "done";
