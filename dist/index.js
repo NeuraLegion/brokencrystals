@@ -57942,6 +57942,8 @@ async function runOrchestrator(ctx) {
   const allScanIds = [];
   const allFindings = /* @__PURE__ */ new Map();
   const fixedKeys = /* @__PURE__ */ new Set();
+  let rateLimitRecoveryAttempts = 0;
+  const MAX_RATE_LIMIT_RECOVERIES = 2;
   try {
     await progress.phaseStart(
       "startup",
@@ -58049,6 +58051,49 @@ async function runOrchestrator(ctx) {
       if (!startupConfig.docker) {
         return { ok: false, detail: "not dockerized \u2014 orchestrator will handle full restart" };
       }
+      const isRateLimitIssue = isAuthRateLimitHint(hint);
+      if (isRateLimitIssue) {
+        rateLimitRecoveryAttempts++;
+        console.log(
+          `[Recovery] Rate-limit related (attempt ${rateLimitRecoveryAttempts}/${MAX_RATE_LIMIT_RECOVERIES})${hint ? ` \u2014 ${hint.slice(0, 120)}` : ""}`
+        );
+        if (rateLimitRecoveryAttempts > MAX_RATE_LIMIT_RECOVERIES) {
+          console.warn("[Recovery] Max rate-limit recovery attempts reached \u2014 giving up (code-level fix needed)");
+          return { ok: false, detail: "rate-limit recovery exhausted \u2014 code-level throttle guard not removable by restart/replay" };
+        }
+        if (scanPrepReplayCommands.length > 0) {
+          console.log(`[Recovery] Replaying ${scanPrepReplayCommands.length} scan-prep command(s) before restart...`);
+          const { applied, failed } = replayScanPrep(repoPath, scanPrepReplayCommands);
+          if (failed > 0) {
+            console.warn(`[Recovery] Replay partial: ${applied} applied, ${failed} failed`);
+          }
+        }
+        if (rateLimitRecoveryAttempts >= 2) {
+          console.log("[Recovery] Running targeted LLM scan-prep repair for rate-limit removal...");
+          try {
+            const repairResult = await prepareScanEnvironment(
+              llm,
+              repoPath,
+              baseUrl,
+              techStack,
+              config.modelSelector.current(),
+              `URGENT: The app health monitor detected a rate-limit/throttle error during active scanning. The app is returning ThrottlerException or 429 responses. Find the rate-limiter in the source code and DISABLE it completely. Previous restart did not fix it \u2014 this is a code-level guard that must be patched. Hint: ${hint ?? "rate limit on health endpoint"}`
+            );
+            if (repairResult.completed && repairResult.replayCommands?.length) {
+              scanPrepReplayCommands = [...scanPrepReplayCommands, ...repairResult.replayCommands];
+            }
+            console.log(`[Recovery] LLM scan-prep repair: ${repairResult.completed ? "succeeded" : "failed"} \u2014 ${repairResult.summary}`);
+          } catch (repairErr) {
+            console.warn(`[Recovery] LLM scan-prep repair threw: ${toErrorMessage(repairErr)}`);
+          }
+        }
+        const qr2 = await quickRestartCompose(repoPath, startupConfig);
+        if (qr2.ok) {
+          deepProbeCache.clear();
+          return { ok: true, detail: `rate-limit recovery (attempt ${rateLimitRecoveryAttempts}): replay + restart succeeded` };
+        }
+        return { ok: false, detail: qr2.diagnostics ?? "restart after rate-limit repair failed" };
+      }
       console.log(
         `[Recovery] Quick compose restart${hint ? ` \u2014 hint: ${hint}` : ""}`
       );
@@ -58152,6 +58197,12 @@ async function runOrchestrator(ctx) {
           if (!startupConfig.docker) {
             return { ok: false, detail: "not dockerized \u2014 orchestrator will handle full restart" };
           }
+          const isRateLimitIssue = isAuthRateLimitHint(hint);
+          if (isRateLimitIssue && scanPrepReplayCommands.length > 0) {
+            rateLimitRecoveryAttempts++;
+            console.log(`[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) \u2014 replaying scan-prep commands...`);
+            replayScanPrep(repoPath, scanPrepReplayCommands);
+          }
           const qr = await quickRestartCompose(repoPath, startupConfig);
           if (qr.ok) {
             deepProbeCache.clear();
@@ -58245,6 +58296,12 @@ async function runOrchestrator(ctx) {
           if (!startupConfig.docker) {
             return { ok: false, detail: "not dockerized \u2014 orchestrator will handle full restart" };
           }
+          const isRateLimitIssue = isAuthRateLimitHint(hint);
+          if (isRateLimitIssue && scanPrepReplayCommands.length > 0) {
+            rateLimitRecoveryAttempts++;
+            console.log(`[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) \u2014 replaying scan-prep commands...`);
+            replayScanPrep(repoPath, scanPrepReplayCommands);
+          }
           const qr = await quickRestartCompose(repoPath, startupConfig);
           if (qr.ok) {
             deepProbeCache.clear();
@@ -58284,6 +58341,7 @@ async function runOrchestrator(ctx) {
       console.warn(`[Engine] Scan prep error: ${toErrorMessage(prepErr)} \u2014 continuing anyway`);
       addHint(authHints, `[scan-prep-error] ${toErrorMessage(prepErr)}`);
     } finally {
+      rateLimitRecoveryAttempts = 0;
       healthMonitor?.resume();
     }
     await progress.phaseStart("auth", "Detecting authentication requirements");
