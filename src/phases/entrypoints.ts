@@ -423,6 +423,85 @@ function extractIdFromListResponse(body: string): string | null {
   return null;
 }
 
+/** Common route prefixes that NestJS/Express apps mount under */
+const CANDIDATE_PREFIXES = ["/v2", "/api/v2", "/api/v1", "/api", "/v1"];
+
+/**
+ * Detect if discovered endpoints are missing a route prefix.
+ * Tests a sample of endpoints — if they 404 without prefix but succeed with one, returns that prefix.
+ */
+async function detectRoutePrefix(
+  endpoints: DiscoveredEndpoint[],
+  baseUrl: string,
+  authHeaders?: Record<string, string>,
+): Promise<string | null> {
+  // Find endpoints that look like they might need a prefix:
+  // paths that don't already start with /api or /v{N}
+  const candidates = endpoints.filter(
+    (ep) => ep.path !== "/" && ep.path !== "/health" && !/^\/(?:api|v\d)\//.test(ep.path),
+  );
+  if (candidates.length === 0) return null;
+
+  // Take a few sample endpoints with common resource-like paths
+  const samplePaths = candidates
+    .map((ep) => ep.path.split("?")[0]) // strip query
+    .filter((p) => p.split("/").length >= 2) // at least /resource or /resource/id
+    .slice(0, 5);
+
+  if (samplePaths.length === 0) return null;
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...(authHeaders ?? {}),
+  };
+
+  // For each candidate prefix, count how many sample paths return non-404
+  for (const prefix of CANDIDATE_PREFIXES) {
+    let hits = 0;
+    let misses = 0;
+
+    await pMap(
+      samplePaths.slice(0, 3),
+      async (path) => {
+        try {
+          // First check if it already works without prefix
+          const directRes = await fetch(`${baseUrl}${path}`, {
+            method: "HEAD",
+            headers,
+            signal: AbortSignal.timeout(5000),
+          });
+          if (directRes.ok || (directRes.status !== 404 && directRes.status !== 405)) {
+            // Already works without prefix — no prefix needed
+            misses++;
+            return;
+          }
+
+          // Try with prefix
+          const prefixedRes = await fetch(`${baseUrl}${prefix}${path}`, {
+            method: "HEAD",
+            headers,
+            signal: AbortSignal.timeout(5000),
+          });
+          if (prefixedRes.ok || (prefixedRes.status !== 404 && prefixedRes.status !== 405)) {
+            hits++;
+          } else {
+            misses++;
+          }
+        } catch {
+          misses++;
+        }
+      },
+      3,
+    );
+
+    if (hits >= 2 && hits > misses) {
+      return prefix;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Probe list endpoints on the running app to resolve real resource IDs.
  * Replaces hallucinated ID segments in endpoint paths with actual IDs from the app.
@@ -435,11 +514,29 @@ export async function resolvePathParams(
   baseUrl: string,
   authHeaders?: Record<string, string>,
 ): Promise<DiscoveredEndpoint[]> {
-  // Group endpoints by their list parent path
+  // --- Step 0: Detect missing route prefix ---
+  // If the LLM discovered endpoints from controller files without the module
+  // prefix (e.g. /bookings/:id instead of /v2/bookings/:id), detect and fix.
+  const detectedPrefix = await detectRoutePrefix(endpoints, baseUrl, authHeaders);
+  let prefixedEndpoints = endpoints;
+  if (detectedPrefix) {
+    console.log(`[Entrypoints] Detected missing route prefix: "${detectedPrefix}" — applying to ${endpoints.length} endpoints`);
+    prefixedEndpoints = endpoints.map((ep) => {
+      // Don't double-prefix paths that already have it
+      if (ep.path.startsWith(detectedPrefix)) return ep;
+      // Don't prefix paths that already start with /api/ or /v2/ (likely already correct)
+      if (/^\/(?:api|v\d)\//.test(ep.path)) return ep;
+      // Don't prefix the root or health paths
+      if (ep.path === "/" || ep.path === "/health") return ep;
+      return { ...ep, path: `${detectedPrefix}${ep.path}` };
+    });
+  }
+
+  // --- Step 1: Group endpoints by their list parent path ---
   const parentMap = new Map<string, { idIndex: number; endpoints: DiscoveredEndpoint[] }>();
   const noParent: DiscoveredEndpoint[] = [];
 
-  for (const ep of endpoints) {
+  for (const ep of prefixedEndpoints) {
     const info = findListParent(ep.path);
     if (!info) {
       noParent.push(ep);
@@ -453,14 +550,14 @@ export async function resolvePathParams(
   }
 
   if (parentMap.size === 0) {
-    return endpoints; // No path params to resolve
+    return prefixedEndpoints; // No path params to resolve
   }
 
   console.log(
     `[Entrypoints] Resolving path params: ${parentMap.size} list endpoint(s) to probe for real IDs`,
   );
 
-  // Probe each list parent to get a real ID
+  // --- Step 2: Probe each list parent to get a real ID ---
   const resolvedIds = new Map<string, string>();
 
   const listPaths = [...parentMap.keys()];
@@ -478,8 +575,6 @@ export async function resolvePathParams(
           signal: AbortSignal.timeout(RESOLVE_TIMEOUT),
         });
         if (!res.ok) {
-          // Try with query param for paginated APIs
-          if (res.status === 404) return;
           return;
         }
         const body = await res.text();

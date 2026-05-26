@@ -1316,7 +1316,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     }
 
     // Resolve hallucinated path params by probing list endpoints for real IDs
-    const resolvedEndpoints = await resolvePathParams(safeEndpoints, baseUrl);
+    const resolvedEndpoints = await resolvePathParams(safeEndpoints, baseUrl, authResult.directAuthHeaders);
 
     let registered = await registerEntrypoints(
       config,

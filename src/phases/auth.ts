@@ -125,6 +125,9 @@ export interface AuthResult {
   infraRepairHint?: string;
   /** Auth-specific facts learned during detection/configuration and reused on retries. */
   authHints?: string[];
+  /** Raw auth headers for direct app probing (path param resolution, health checks).
+   *  Populated when create_auth_header succeeds with static headers. */
+  directAuthHeaders?: Record<string, string>;
 }
 
 export interface SeedCommand {
@@ -266,6 +269,7 @@ export async function detectAndConfigureAuth(
 
     const MAX_AUTH_ATTEMPTS = 3;
     let authObjectId: string | undefined;
+    let capturedDirectHeaders: Record<string, string> | undefined;
     const allAttemptLogs: string[] = [];
     let fullProbeContext = probeContext;
     fullProbeContext += verifiedTestUrl
@@ -296,6 +300,9 @@ export async function detectAndConfigureAuth(
 
       if (result.authId) {
         authObjectId = result.authId;
+        if (result.directAuthHeaders) {
+          capturedDirectHeaders = result.directAuthHeaders;
+        }
         break;
       }
       allAttemptLogs.push(...result.attemptLog);
@@ -303,7 +310,7 @@ export async function detectAndConfigureAuth(
 
     if (authObjectId) {
       console.log(`[Auth] API auth configured successfully: ${authObjectId}`);
-      return { authObjectId, hasAuth: true, authFailed: false, authHints };
+      return { authObjectId, hasAuth: true, authFailed: false, authHints, directAuthHeaders: capturedDirectHeaders };
     }
     console.error("[Auth] API auth configuration failed after all attempts");
     return { authObjectId: undefined, hasAuth: false, authFailed: true, authHints };
@@ -451,8 +458,8 @@ export async function detectAndConfigureAuth(
 
   const MAX_AUTH_ATTEMPTS = 3;
   let authObjectId: string | undefined;
+  let capturedDirectHeaders: Record<string, string> | undefined;
   const allAttemptLogs: string[] = [];
-  // Include login sanity diagnostics in the probe context for the LLM
   let fullProbeContext = loginCheck.diagnostic
     ? probeContext + "\n\n" + loginCheck.diagnostic
     : probeContext;
@@ -494,6 +501,9 @@ export async function detectAndConfigureAuth(
 
     if (result.authId) {
       authObjectId = result.authId;
+      if (result.directAuthHeaders) {
+        capturedDirectHeaders = result.directAuthHeaders;
+      }
       break;
     }
 
@@ -529,7 +539,7 @@ export async function detectAndConfigureAuth(
 
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands, authHints };
+    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands, authHints, directAuthHeaders: capturedDirectHeaders };
   }
 
   if (infraRepairHint) {
@@ -1438,9 +1448,11 @@ async function createAuthViaMcp(
   preProbeContext?: string,
   verifiedTestUrl?: string,
   authHints?: string[],
-): Promise<{ authId: string | undefined; attemptLog: string[]; infraRepairHint?: string }> {
+): Promise<{ authId: string | undefined; attemptLog: string[]; infraRepairHint?: string; directAuthHeaders?: Record<string, string> }> {
   // Bright auth-object inspection tools (read-only, REST-backed)
   _probeCookieJar = {};
+  // Capture raw auth headers when create_auth_header succeeds — used for direct app probing
+  let capturedAuthHeaders: Record<string, string> | undefined;
   const inspectionTools: ChatCompletionTool[] = [
     {
       type: "function",
@@ -2162,6 +2174,8 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
         addAuthHint(authHints, `[auth-create-error] create_auth_header failed: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }
+      // Capture for direct app probing (path param resolution, etc.)
+      capturedAuthHeaders = Object.fromEntries(headers.map((h) => [h.name, h.value]));
       return JSON.stringify({ authObjectId: result.id });
     }
     if (name === "test_auth_object") {
@@ -2300,7 +2314,7 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
     return { authId: undefined, attemptLog };
   }
   console.log(`[Auth] Verification PASSED for ${authId} — all stages successful`);
-  return { authId, attemptLog };
+  return { authId, attemptLog, directAuthHeaders: capturedAuthHeaders };
 }
 
 // ---------------------------------------------------------------------------

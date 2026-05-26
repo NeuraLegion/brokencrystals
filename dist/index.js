@@ -39817,6 +39817,7 @@ async function detectAndConfigureAuth(llm, repoPath, techStack, projectId, baseU
     }
     const MAX_AUTH_ATTEMPTS2 = 3;
     let authObjectId2;
+    let capturedDirectHeaders2;
     const allAttemptLogs2 = [];
     let fullProbeContext2 = probeContext2;
     fullProbeContext2 += verifiedTestUrl2 ? `
@@ -39853,13 +39854,16 @@ Evidence: ${verifiedTestUrl2.evidence}` : "\n\n### Verified auth test URL\nNo ve
       }
       if (result.authId) {
         authObjectId2 = result.authId;
+        if (result.directAuthHeaders) {
+          capturedDirectHeaders2 = result.directAuthHeaders;
+        }
         break;
       }
       allAttemptLogs2.push(...result.attemptLog);
     }
     if (authObjectId2) {
       console.log(`[Auth] API auth configured successfully: ${authObjectId2}`);
-      return { authObjectId: authObjectId2, hasAuth: true, authFailed: false, authHints };
+      return { authObjectId: authObjectId2, hasAuth: true, authFailed: false, authHints, directAuthHeaders: capturedDirectHeaders2 };
     }
     console.error("[Auth] API auth configuration failed after all attempts");
     return { authObjectId: void 0, hasAuth: false, authFailed: true, authHints };
@@ -39985,6 +39989,7 @@ ${loginCheck.diagnostic}` : "")
   }
   const MAX_AUTH_ATTEMPTS = 3;
   let authObjectId;
+  let capturedDirectHeaders;
   const allAttemptLogs = [];
   let fullProbeContext = loginCheck.diagnostic ? probeContext + "\n\n" + loginCheck.diagnostic : probeContext;
   fullProbeContext += verifiedTestUrl ? `
@@ -40018,6 +40023,9 @@ Evidence: ${verifiedTestUrl.evidence}` : "\n\n### Verified auth test URL\nNo ver
     );
     if (result.authId) {
       authObjectId = result.authId;
+      if (result.directAuthHeaders) {
+        capturedDirectHeaders = result.directAuthHeaders;
+      }
       break;
     }
     if (result.infraRepairHint) {
@@ -40042,7 +40050,7 @@ ${result.attemptLog.join("\n")}`);
   } : void 0;
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands, authHints };
+    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands, authHints, directAuthHeaders: capturedDirectHeaders };
   }
   if (infraRepairHint) {
     console.error(`[Auth] Failed \u2014 infrastructure repair needed: ${infraRepairHint.slice(0, 200)}`);
@@ -40691,6 +40699,7 @@ function extractTokenFromBody(body, tokenFieldPath) {
 }
 async function createAuthViaMcp(llm, repoPath, detection, registrationOk, projectId, baseUrl, repeaterId, api, model, preProbeContext, verifiedTestUrl, authHints) {
   _probeCookieJar = {};
+  let capturedAuthHeaders;
   const inspectionTools = [
     {
       type: "function",
@@ -41336,6 +41345,7 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
         addAuthHint(authHints, `[auth-create-error] create_auth_header failed: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }
+      capturedAuthHeaders = Object.fromEntries(headers.map((h) => [h.name, h.value]));
       return JSON.stringify({ authObjectId: result.id });
     }
     if (name === "test_auth_object") {
@@ -41437,7 +41447,7 @@ ${verification.summary?.slice(0, 600)}`);
     return { authId: void 0, attemptLog };
   }
   console.log(`[Auth] Verification PASSED for ${authId} \u2014 all stages successful`);
-  return { authId, attemptLog };
+  return { authId, attemptLog, directAuthHeaders: capturedAuthHeaders };
 }
 async function registerUser(baseUrl, detection) {
   if (!detection.registerEndpoint || !detection.registerBody) return false;
@@ -43670,10 +43680,71 @@ function extractIdFromListResponse(body) {
   }
   return null;
 }
+var CANDIDATE_PREFIXES = ["/v2", "/api/v2", "/api/v1", "/api", "/v1"];
+async function detectRoutePrefix(endpoints, baseUrl, authHeaders) {
+  const candidates = endpoints.filter(
+    (ep) => ep.path !== "/" && ep.path !== "/health" && !/^\/(?:api|v\d)\//.test(ep.path)
+  );
+  if (candidates.length === 0) return null;
+  const samplePaths = candidates.map((ep) => ep.path.split("?")[0]).filter((p) => p.split("/").length >= 2).slice(0, 5);
+  if (samplePaths.length === 0) return null;
+  const headers = {
+    Accept: "application/json",
+    ...authHeaders ?? {}
+  };
+  for (const prefix of CANDIDATE_PREFIXES) {
+    let hits = 0;
+    let misses = 0;
+    await pMap(
+      samplePaths.slice(0, 3),
+      async (path2) => {
+        try {
+          const directRes = await fetch(`${baseUrl}${path2}`, {
+            method: "HEAD",
+            headers,
+            signal: AbortSignal.timeout(5e3)
+          });
+          if (directRes.ok || directRes.status !== 404 && directRes.status !== 405) {
+            misses++;
+            return;
+          }
+          const prefixedRes = await fetch(`${baseUrl}${prefix}${path2}`, {
+            method: "HEAD",
+            headers,
+            signal: AbortSignal.timeout(5e3)
+          });
+          if (prefixedRes.ok || prefixedRes.status !== 404 && prefixedRes.status !== 405) {
+            hits++;
+          } else {
+            misses++;
+          }
+        } catch {
+          misses++;
+        }
+      },
+      3
+    );
+    if (hits >= 2 && hits > misses) {
+      return prefix;
+    }
+  }
+  return null;
+}
 async function resolvePathParams(endpoints, baseUrl, authHeaders) {
+  const detectedPrefix = await detectRoutePrefix(endpoints, baseUrl, authHeaders);
+  let prefixedEndpoints = endpoints;
+  if (detectedPrefix) {
+    console.log(`[Entrypoints] Detected missing route prefix: "${detectedPrefix}" \u2014 applying to ${endpoints.length} endpoints`);
+    prefixedEndpoints = endpoints.map((ep) => {
+      if (ep.path.startsWith(detectedPrefix)) return ep;
+      if (/^\/(?:api|v\d)\//.test(ep.path)) return ep;
+      if (ep.path === "/" || ep.path === "/health") return ep;
+      return { ...ep, path: `${detectedPrefix}${ep.path}` };
+    });
+  }
   const parentMap = /* @__PURE__ */ new Map();
   const noParent = [];
-  for (const ep of endpoints) {
+  for (const ep of prefixedEndpoints) {
     const info = findListParent(ep.path);
     if (!info) {
       noParent.push(ep);
@@ -43686,7 +43757,7 @@ async function resolvePathParams(endpoints, baseUrl, authHeaders) {
     parentMap.get(key).endpoints.push(ep);
   }
   if (parentMap.size === 0) {
-    return endpoints;
+    return prefixedEndpoints;
   }
   console.log(
     `[Entrypoints] Resolving path params: ${parentMap.size} list endpoint(s) to probe for real IDs`
@@ -43707,7 +43778,6 @@ async function resolvePathParams(endpoints, baseUrl, authHeaders) {
           signal: AbortSignal.timeout(RESOLVE_TIMEOUT)
         });
         if (!res.ok) {
-          if (res.status === 404) return;
           return;
         }
         const body = await res.text();
@@ -47711,7 +47781,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         `[Entrypoints] Excluded ${endpoints.length - safeEndpoints.length} risky endpoint(s)`
       );
     }
-    const resolvedEndpoints = await resolvePathParams(safeEndpoints, baseUrl);
+    const resolvedEndpoints = await resolvePathParams(safeEndpoints, baseUrl, authResult.directAuthHeaders);
     let registered = await registerEntrypoints(
       config,
       projectId,
