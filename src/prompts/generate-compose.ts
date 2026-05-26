@@ -50,7 +50,14 @@ Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that 
      - Redis: \`redis-cli ping\`
      - MongoDB: \`mongosh --eval "db.adminCommand('ping')"\`
      - Elasticsearch: \`curl -f http://localhost:9200/_cluster/health\`
-   - Use named volumes for data persistence (e.g. \`db-data:/var/lib/postgresql/data\`)
+   - Use named volumes for data persistence. **PostgreSQL mount path is version-specific** — see PostgreSQL gotchas below.
+
+   **PostgreSQL gotchas (MUST follow):**
+   - Always set a real \`POSTGRES_PASSWORD\` (e.g. \`POSTGRES_PASSWORD: postgres\`). NEVER leave it empty and NEVER set \`POSTGRES_HOST_AUTH_METHOD: trust\` — \`postgres:18\` rejects an empty password+trust combo and will fail to initialize the data directory, leaving the container in a restart loop.
+   - For \`postgres:18\` (and any future 18+ tag), mount the volume at \`/var/lib/postgresql\` (the parent dir), NOT at \`/var/lib/postgresql/data\`. Postgres 18 stores data at \`/var/lib/postgresql/<MAJOR>/docker\` and refuses to start if it sees an existing cluster at the legacy \`/var/lib/postgresql/data\` path. Example: \`db-data:/var/lib/postgresql\`.
+   - For \`postgres:17\` and older, mount at \`/var/lib/postgresql/data\` (legacy convention). Example: \`db-data:/var/lib/postgresql/data\`.
+   - When in doubt about the postgres tag, prefer \`/var/lib/postgresql\` and explicitly set \`PGDATA: /var/lib/postgresql/data\` so the layout is unambiguous on every version.
+   - Make sure the app's \`DATABASE_URL\` matches the user/password/db chosen here (e.g. \`postgres://postgres:postgres@db:5432/<dbname>\`).
 
 3. **Config patching** (from configNotes):
    - If config files need modification for Docker networking, add the necessary environment variables or volume mounts

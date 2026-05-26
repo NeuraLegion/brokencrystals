@@ -188,8 +188,9 @@ async function runScanPrepStage(
       return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
     }
 
-    console.warn(`[ScanPrep:${stageName}] Failed: ${result.reason ?? result.summary ?? "unknown"}`);
-    return { completed: false, changes: [], summary: result.reason ?? "Failed", failureKind: "unknown" };
+    const failureMessage = result.reason ?? result.summary ?? "unknown";
+    console.warn(`[ScanPrep:${stageName}] Failed: ${failureMessage}`);
+    return { completed: false, changes: [], summary: failureMessage, failureKind: "unknown" };
   } catch (err) {
     console.warn(`[ScanPrep:${stageName}] Could not parse response: ${err}`);
     return { completed: false, changes: [], summary: `Parse error: ${err}`, failureKind: "parse_error" };

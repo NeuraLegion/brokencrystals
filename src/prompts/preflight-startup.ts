@@ -58,6 +58,12 @@ Review these files as a unit and look for issues in these categories:
     - If possible, migrations should run as a one-shot init command in the entrypoint before starting the app server
 12. **Over-broad compose builds** — For monorepos, verify compose starts the selected web/API service plus required dependencies, not every unrelated worker, CLI, browser extension, or optional service. If compose would build unrelated services that can fail independently, replace it with a minimal DAST compose.
 13. **Generated artifact assumptions** — If a Dockerfile or compose service copies build output directories, verify those artifacts are created from source in the Docker build or are present in the checkout. If not, add the real build-from-source step or switch to a minimal compose that builds the target service correctly.
+14. **PostgreSQL container config** — If compose includes a \`postgres:*\` service, verify ALL of:
+    - \`POSTGRES_PASSWORD\` is set to a non-empty value AND \`POSTGRES_HOST_AUTH_METHOD\` is NOT \`trust\` (the empty-password+trust combo crashes \`postgres:18\` initdb).
+    - For \`postgres:18\` (or \`postgres:latest\` resolving to 18+), the data volume is mounted at \`/var/lib/postgresql\` (parent dir) — NOT at \`/var/lib/postgresql/data\`. Postgres 18 stores data at \`/var/lib/postgresql/<MAJOR>/docker\` and refuses to start if it sees a legacy cluster at \`/var/lib/postgresql/data\`.
+    - For \`postgres:17\` and older, the legacy mount at \`/var/lib/postgresql/data\` is correct.
+    - The app's \`DATABASE_URL\` matches the configured user/password/db.
+    Fix any mismatch with edit_file.
 
 ## Tools available
 - **read_file / search_files / list_files** — Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)

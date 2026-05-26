@@ -411,9 +411,9 @@ export async function waitForScanCompletion(
       return scanStatus.status.toLowerCase();
     }
 
-    console.log(
-      `[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`,
-    );
+    // Per-poll progress is logged by the caller's onProgress callback
+    // (orchestrator: "[Scan] Scan i/N: status — N issue(s)"). Avoid emitting
+    // a second redundant line per poll.
     await sleep(pollInterval);
   }
 }

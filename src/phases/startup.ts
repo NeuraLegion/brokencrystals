@@ -7,7 +7,7 @@ import {
   type ChildProcess,
 } from "child_process";
 import { createInterface } from "readline";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "fs";
 import type { TechStack, StartupConfig, ProjectDiscovery, StartupHealthProbe } from "../types.js";
 import { chatWithTools, type ModelSelector, type ToolHandler } from "../inference.js";
 import {
@@ -488,6 +488,32 @@ async function preflightValidation(
 // ---------------------------------------------------------------------------
 
 /**
+ * Remove any pre-existing compose files in the repo root other than
+ * `compose.yml` before we write our generated one. Avoids Docker's
+ * "Found multiple config files with supported names" warning, which
+ * fires repeatedly when a target repo ships its own `docker-compose.yml`
+ * alongside the scan-specific compose we generate. Workspace is a
+ * disposable temp clone, so deleting these is safe.
+ */
+function clearConflictingComposeFiles(repoPath: string): void {
+  const competing = ["docker-compose.yml", "docker-compose.yaml", "compose.yaml"];
+  for (const name of competing) {
+    const path = `${repoPath}/${name}`;
+    if (!existsSync(path)) continue;
+    try {
+      unlinkSync(path);
+      console.log(
+        `[Startup] Removed pre-existing ${name} to avoid Docker compose-file collision with our generated compose.yml`,
+      );
+    } catch (err) {
+      console.warn(
+        `[Startup] Could not remove ${name}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+}
+
+/**
  * Generate a compose.yml using LLM + project discovery results.
  * Falls back to the simple template if the LLM fails.
  */
@@ -519,6 +545,7 @@ async function generateComposeWithLLM(
       }
 
       writeFileSync(`${repoPath}/compose.yml`, content);
+      clearConflictingComposeFiles(repoPath);
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
       const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
       console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
@@ -1590,6 +1617,7 @@ ${buildSection}
 ${envLines ? `    environment:\n${envLines}\n` : ""}`;
 
   writeFileSync(`${repoPath}/compose.yml`, content);
+  clearConflictingComposeFiles(repoPath);
   console.log(`[Startup] Generated compose.yml (port ${port}, dockerfile: ${df ?? "Dockerfile"})`);
 }
 

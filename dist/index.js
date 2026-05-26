@@ -33677,7 +33677,7 @@ import {
   execFileSync as execFileSync4
 } from "child_process";
 import { createInterface } from "readline";
-import { existsSync as existsSync5, readFileSync as readFileSync5, readdirSync as readdirSync3, writeFileSync as writeFileSync4 } from "fs";
+import { existsSync as existsSync5, readFileSync as readFileSync5, readdirSync as readdirSync3, unlinkSync, writeFileSync as writeFileSync4 } from "fs";
 
 // src/tools/codebase.ts
 import { readFileSync as readFileSync3, existsSync as existsSync4, statSync as statSync2 } from "fs";
@@ -35129,7 +35129,14 @@ Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that 
      - Redis: \`redis-cli ping\`
      - MongoDB: \`mongosh --eval "db.adminCommand('ping')"\`
      - Elasticsearch: \`curl -f http://localhost:9200/_cluster/health\`
-   - Use named volumes for data persistence (e.g. \`db-data:/var/lib/postgresql/data\`)
+   - Use named volumes for data persistence. **PostgreSQL mount path is version-specific** \u2014 see PostgreSQL gotchas below.
+
+   **PostgreSQL gotchas (MUST follow):**
+   - Always set a real \`POSTGRES_PASSWORD\` (e.g. \`POSTGRES_PASSWORD: postgres\`). NEVER leave it empty and NEVER set \`POSTGRES_HOST_AUTH_METHOD: trust\` \u2014 \`postgres:18\` rejects an empty password+trust combo and will fail to initialize the data directory, leaving the container in a restart loop.
+   - For \`postgres:18\` (and any future 18+ tag), mount the volume at \`/var/lib/postgresql\` (the parent dir), NOT at \`/var/lib/postgresql/data\`. Postgres 18 stores data at \`/var/lib/postgresql/<MAJOR>/docker\` and refuses to start if it sees an existing cluster at the legacy \`/var/lib/postgresql/data\` path. Example: \`db-data:/var/lib/postgresql\`.
+   - For \`postgres:17\` and older, mount at \`/var/lib/postgresql/data\` (legacy convention). Example: \`db-data:/var/lib/postgresql/data\`.
+   - When in doubt about the postgres tag, prefer \`/var/lib/postgresql\` and explicitly set \`PGDATA: /var/lib/postgresql/data\` so the layout is unambiguous on every version.
+   - Make sure the app's \`DATABASE_URL\` matches the user/password/db chosen here (e.g. \`postgres://postgres:postgres@db:5432/<dbname>\`).
 
 3. **Config patching** (from configNotes):
    - If config files need modification for Docker networking, add the necessary environment variables or volume mounts
@@ -35206,6 +35213,12 @@ Review these files as a unit and look for issues in these categories:
     - If possible, migrations should run as a one-shot init command in the entrypoint before starting the app server
 12. **Over-broad compose builds** \u2014 For monorepos, verify compose starts the selected web/API service plus required dependencies, not every unrelated worker, CLI, browser extension, or optional service. If compose would build unrelated services that can fail independently, replace it with a minimal DAST compose.
 13. **Generated artifact assumptions** \u2014 If a Dockerfile or compose service copies build output directories, verify those artifacts are created from source in the Docker build or are present in the checkout. If not, add the real build-from-source step or switch to a minimal compose that builds the target service correctly.
+14. **PostgreSQL container config** \u2014 If compose includes a \`postgres:*\` service, verify ALL of:
+    - \`POSTGRES_PASSWORD\` is set to a non-empty value AND \`POSTGRES_HOST_AUTH_METHOD\` is NOT \`trust\` (the empty-password+trust combo crashes \`postgres:18\` initdb).
+    - For \`postgres:18\` (or \`postgres:latest\` resolving to 18+), the data volume is mounted at \`/var/lib/postgresql\` (parent dir) \u2014 NOT at \`/var/lib/postgresql/data\`. Postgres 18 stores data at \`/var/lib/postgresql/<MAJOR>/docker\` and refuses to start if it sees a legacy cluster at \`/var/lib/postgresql/data\`.
+    - For \`postgres:17\` and older, the legacy mount at \`/var/lib/postgresql/data\` is correct.
+    - The app's \`DATABASE_URL\` matches the configured user/password/db.
+    Fix any mismatch with edit_file.
 
 ## Tools available
 - **read_file / search_files / list_files** \u2014 Inspect the application codebase (Gemfile, package.json, migration files, Procfile, etc.)
@@ -35546,6 +35559,23 @@ async function preflightValidation(llm, repoPath, dockerfileName, discoveryNotes
     return 0;
   }
 }
+function clearConflictingComposeFiles(repoPath) {
+  const competing = ["docker-compose.yml", "docker-compose.yaml", "compose.yaml"];
+  for (const name of competing) {
+    const path2 = `${repoPath}/${name}`;
+    if (!existsSync5(path2)) continue;
+    try {
+      unlinkSync(path2);
+      console.log(
+        `[Startup] Removed pre-existing ${name} to avoid Docker compose-file collision with our generated compose.yml`
+      );
+    } catch (err) {
+      console.warn(
+        `[Startup] Could not remove ${name}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+}
 async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, model, hints, serviceRoot) {
   const MAX_COMPOSE_GEN_RETRIES = 3;
   const t0 = Date.now();
@@ -35562,6 +35592,7 @@ async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config
         throw new Error("LLM returned empty or too-short compose content");
       }
       writeFileSync4(`${repoPath}/compose.yml`, content);
+      clearConflictingComposeFiles(repoPath);
       const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
       const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
       console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
@@ -36399,6 +36430,7 @@ ${envLines ? `    environment:
 ${envLines}
 ` : ""}`;
   writeFileSync4(`${repoPath}/compose.yml`, content);
+  clearConflictingComposeFiles(repoPath);
   console.log(`[Startup] Generated compose.yml (port ${port}, dockerfile: ${df ?? "Dockerfile"})`);
 }
 function validateComposeBuildContexts(repoPath, composeFile) {
@@ -44459,8 +44491,9 @@ async function runScanPrepStage(llm, repoPath, baseUrl, techStack, model, active
       }
       return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
     }
-    console.warn(`[ScanPrep:${stageName}] Failed: ${result.reason ?? result.summary ?? "unknown"}`);
-    return { completed: false, changes: [], summary: result.reason ?? "Failed", failureKind: "unknown" };
+    const failureMessage = result.reason ?? result.summary ?? "unknown";
+    console.warn(`[ScanPrep:${stageName}] Failed: ${failureMessage}`);
+    return { completed: false, changes: [], summary: failureMessage, failureKind: "unknown" };
   } catch (err) {
     console.warn(`[ScanPrep:${stageName}] Could not parse response: ${err}`);
     return { completed: false, changes: [], summary: `Parse error: ${err}`, failureKind: "parse_error" };
@@ -45134,9 +45167,6 @@ async function waitForScanCompletion(api, scanId, onProgress, healthMonitor) {
       console.log(`[Scan] Completed: ${scanStatus.status} (${issues} issues)`);
       return scanStatus.status.toLowerCase();
     }
-    console.log(
-      `[Scan] Status: ${scanStatus.status} (${issues} issues found so far)`
-    );
     await sleep(pollInterval);
   }
 }
