@@ -713,6 +713,20 @@ export async function pruneDeadEntrypoints(
           const method = String(
             req?.method ?? entry.endpoint.method ?? "GET",
           ).toUpperCase();
+
+          // Don't prune endpoints whose path contains ID-like segments
+          // (hallucinated placeholders or resolved IDs). These are expected
+          // to 404 during the baseline because the resource may not exist yet.
+          // Bright's scanner will fuzz the path params during the actual scan,
+          // so removing them defeats the purpose of parameterized DAST.
+          const pathFromUrl = url.replace(/^https?:\/\/[^/]+/, "").split("?")[0];
+          const segments = pathFromUrl.split("/").filter(Boolean);
+          const hasIdSegment = segments.some((s) => isIdSegment(s));
+          if (hasIdSegment && numericStatus === 404) {
+            alive.push(entry);
+            return;
+          }
+
           console.log(
             `[Entrypoints] ✗ Removing failed baseline entrypoint (HTTP ${numericStatus}): ${method} ${url}`,
           );

@@ -44152,6 +44152,13 @@ async function pruneDeadEntrypoints(api, projectId, entries, opts = {}) {
           const method = String(
             req?.method ?? entry.endpoint.method ?? "GET"
           ).toUpperCase();
+          const pathFromUrl = url.replace(/^https?:\/\/[^/]+/, "").split("?")[0];
+          const segments = pathFromUrl.split("/").filter(Boolean);
+          const hasIdSegment = segments.some((s) => isIdSegment(s));
+          if (hasIdSegment && numericStatus === 404) {
+            alive.push(entry);
+            return;
+          }
           console.log(
             `[Entrypoints] \u2717 Removing failed baseline entrypoint (HTTP ${numericStatus}): ${method} ${url}`
           );
