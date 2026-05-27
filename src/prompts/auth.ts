@@ -1,5 +1,7 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 
+import { HintStore } from "../hints.js";
+
 interface AuthDetectionInput {
   authType: string;
   loginEndpoint: string | null;
@@ -295,8 +297,10 @@ Use when neither OIDC nor static headers work directly — e.g. you need to hit 
 **Do NOT respond FAILED** until you've tried ALL three options above.`;
   }
 
-  const hintsBlock = authHints.length > 0
-    ? `\n## Saved auth hints\nThese facts were learned during scan preparation, auth detection, verified probes, or previous auth attempts. Trust them over guesses and do not rediscover or contradict them unless you have concrete evidence.\n${authHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
+  const hintsStore = authHints.length > 0 ? HintStore.fromLegacyArray(authHints) : null;
+  const hintsBody = hintsStore?.format(undefined, "## Saved hints");
+  const hintsBlock = hintsBody
+    ? `\n${hintsBody}\n\nThese facts were learned during scan preparation, auth detection, verified probes, or previous auth attempts. Trust them over guesses and do not rediscover or contradict them unless you have concrete evidence.\n`
     : "";
 
   return [

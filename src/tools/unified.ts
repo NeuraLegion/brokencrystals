@@ -6,6 +6,7 @@ import { probeUrl, probeUrlTool } from "./probe.js";
 import { webSearchTools, createWebSearchHandler } from "./web.js";
 import { verifyDockerImageTool, createDockerfileToolHandler } from "./docker.js";
 import { execInDocker, handleEditFile, editFileTool, runCommandOnHostTool, runCommandInDockerTool } from "./infra.js";
+import { ALL_STAGES, isStage, STAGE_DESCRIPTIONS, type HintStore, type Stage } from "../hints.js";
 
 // ---------------------------------------------------------------------------
 // Unified tool handler — configurable handler covering all common tools.
@@ -25,7 +26,7 @@ export interface UnifiedToolHandlerOptions {
   enableProbe?: boolean;
   /** Enable search_web + fetch_url */
   enableWeb?: boolean;
-  /** Enable save_hint + remove_hint */
+  /** Enable save_hint + remove_hint + get_hints */
   enableHints?: boolean;
   /** Enable verify_docker_image */
   enableDockerVerify?: boolean;
@@ -37,9 +38,21 @@ export interface UnifiedToolHandlerOptions {
   onDocker?: (container: string, command: string, result: string) => void;
   /** Called after edit_file completes */
   onEdit?: (args: Record<string, unknown>, result: string) => void;
-  /** Hint callbacks */
-  onHint?: (hint: string) => void;
-  onRemoveHint?: (hint: string) => void;
+  /**
+   * Optional shared HintStore. When provided, save_hint/remove_hint/get_hints
+   * read and write here directly. Phases can also pass `onHint`/`onRemoveHint`
+   * for side effects (logging into a per-phase array, progress events, etc.).
+   */
+  hints?: HintStore;
+  /**
+   * Default stage to file hints under when the LLM omits the `stage`
+   * argument. Each phase should set this to its own stage so naive
+   * `save_hint("foo")` calls land in a sensible bucket.
+   */
+  defaultStage?: Stage;
+  /** Hint callbacks. Stage is whatever the LLM provided or `defaultStage`. */
+  onHint?: (stage: Stage, hint: string) => void;
+  onRemoveHint?: (stage: Stage, hint: string) => void;
   /** Custom probe implementation (e.g. with cookie jar). If not set, uses default probeUrl. */
   customProbe?: (args: Record<string, unknown>) => Promise<string>;
 }
@@ -56,9 +69,101 @@ export function buildToolDefs(opts: UnifiedToolHandlerOptions): ChatCompletionTo
   if (opts.enableProbe) tools.push(probeUrlTool);
   if (opts.enableWeb) tools.push(...webSearchTools);
   if (opts.enableHints) {
-    tools.push(saveHintTool, removeHintTool);
+    tools.push(saveHintTool, removeHintTool, getHintsTool);
   }
   return tools;
+}
+
+/**
+ * Resolve the `stage` argument from a tool call. Falls back to `defaultStage`
+ * (set by the phase) when the LLM omits or mistypes it. Returns `null` when
+ * neither is available so the handler can return a clean error instead of
+ * silently filing into the wrong bucket.
+ */
+function resolveStage(
+  args: Record<string, unknown>,
+  defaultStage?: Stage,
+): Stage | null {
+  const raw = args.stage;
+  if (typeof raw === "string" && isStage(raw)) return raw;
+  if (defaultStage) return defaultStage;
+  return null;
+}
+
+/**
+ * Shared dispatcher for save_hint / remove_hint / get_hints. Both
+ * `createUnifiedToolHandler` and `createInfraToolHandler` route through
+ * this so there's a single source of truth for the hint tool behavior.
+ *
+ * Returns the response string the tool should hand back, or `null` when
+ * the tool name is not a hint tool (the caller should keep dispatching).
+ */
+export interface HintToolDispatchOptions {
+  hints?: HintStore;
+  defaultStage?: Stage;
+  label?: string;
+  onHint?: (stage: Stage, hint: string) => void;
+  onRemoveHint?: (stage: Stage, hint: string) => void;
+}
+
+export function handleHintTool(
+  name: string,
+  args: Record<string, unknown>,
+  opts: HintToolDispatchOptions,
+): string | null {
+  const label = opts.label ?? "Tool";
+  switch (name) {
+    case "save_hint": {
+      const hint = String(args.hint ?? "").trim();
+      if (!hint) return "Error: hint cannot be empty";
+      const stage = resolveStage(args, opts.defaultStage);
+      if (!stage) {
+        return `Error: stage is required. Available stages: ${ALL_STAGES.join(", ")}`;
+      }
+      const stored = opts.hints?.add(stage, hint) ?? false;
+      console.log(`[${label}] save_hint [${stage}]: ${hint.slice(0, 200)}`);
+      if (opts.onHint) opts.onHint(stage, hint);
+      return stored
+        ? `Hint saved under stage "${stage}". It will be available to the next attempt.`
+        : `Hint already covered by an existing entry under stage "${stage}" (no change).`;
+    }
+    case "remove_hint": {
+      const hint = String(args.hint ?? "").trim();
+      if (!hint) return "Error: hint cannot be empty";
+      const stage = resolveStage(args, opts.defaultStage);
+      if (!stage) {
+        return `Error: stage is required. Available stages: ${ALL_STAGES.join(", ")}`;
+      }
+      const removed = opts.hints?.remove(stage, hint) ?? false;
+      console.log(`[${label}] remove_hint [${stage}]: ${hint.slice(0, 200)}`);
+      if (opts.onRemoveHint) opts.onRemoveHint(stage, hint);
+      return removed
+        ? `Hint removed from stage "${stage}".`
+        : `No matching hint found in stage "${stage}".`;
+    }
+    case "get_hints": {
+      const store = opts.hints;
+      if (!store) return "No hints available (hint store not configured for this phase).";
+      const stageArg = args.stage;
+      if (stageArg == null || stageArg === "" || stageArg === "all") {
+        const stages = store.stages();
+        if (stages.length === 0) return "No hints saved yet.";
+        const lines = stages.map((s) => `- ${s}: ${store.count(s)} hint(s) — ${STAGE_DESCRIPTIONS[s]}`);
+        return [
+          `Available hint stages (${stages.length} of ${ALL_STAGES.length} populated):`,
+          ...lines,
+          "",
+          'Call get_hints with stage="<name>" to read a specific stage, or stage="all" for everything.',
+        ].join("\n");
+      }
+      if (typeof stageArg === "string" && isStage(stageArg)) {
+        const block = store.format([stageArg], `## Hints for stage "${stageArg}"`);
+        return block || `No hints saved for stage "${stageArg}" yet.`;
+      }
+      return `Error: unknown stage "${String(stageArg)}". Available stages: ${ALL_STAGES.join(", ")}`;
+    }
+  }
+  return null;
 }
 
 /**
@@ -138,23 +243,20 @@ export function createUnifiedToolHandler(
         return webHandler(name, args);
       }
 
-      // --- Hints ---
-      case "save_hint": {
+      // --- Hints (delegated to the shared dispatcher) ---
+      case "save_hint":
+      case "remove_hint":
+      case "get_hints": {
         if (!opts.enableHints) break;
-        const hint = String(args.hint ?? "").trim();
-        if (!hint) return "Error: hint cannot be empty";
-        console.log(`[${opts.label ?? "Tool"}] save_hint: ${hint.slice(0, 200)}`);
-        if (opts.onHint) opts.onHint(hint);
-        return `Hint saved: "${hint.slice(0, 100)}". It will be available to the next attempt.`;
-      }
-
-      case "remove_hint": {
-        if (!opts.enableHints) break;
-        const hint = String(args.hint ?? "").trim();
-        if (!hint) return "Error: hint cannot be empty";
-        console.log(`[${opts.label ?? "Tool"}] remove_hint: ${hint.slice(0, 200)}`);
-        if (opts.onRemoveHint) opts.onRemoveHint(hint);
-        return `Hint removed (if it existed).`;
+        const out = handleHintTool(name, args, {
+          hints: opts.hints,
+          defaultStage: opts.defaultStage,
+          label: opts.label,
+          onHint: opts.onHint,
+          onRemoveHint: opts.onRemoveHint,
+        });
+        if (out !== null) return out;
+        break;
       }
 
       // --- Wait ---
@@ -174,19 +276,31 @@ export function createUnifiedToolHandler(
 // Hint tools (reused in buildToolDefs)
 // ---------------------------------------------------------------------------
 
-const saveHintTool: ChatCompletionTool = {
+const stageEnumDescription = ALL_STAGES
+  .map((s) => `"${s}" — ${STAGE_DESCRIPTIONS[s]}`)
+  .join(" | ");
+
+export const saveHintTool: ChatCompletionTool = {
   type: "function",
   function: {
     name: "save_hint",
     description:
-      "Save an important discovery or hint for the NEXT attempt. Use this when you learn something critical about how this application works.",
+      "Save a concise factual hint discovered during this attempt so it carries into the NEXT attempt or sibling phase. " +
+      "Each hint is filed under a stage bucket. Pick the stage that BEST describes what the hint applies to. " +
+      `Available stages: ${stageEnumDescription}`,
     parameters: {
       type: "object",
       properties: {
         hint: {
           type: "string",
           description:
-            "A concise factual statement about the application's configuration, dependencies, or behavior.",
+            "A concise factual statement (≤900 chars) about the application's configuration, dependencies, or behavior.",
+        },
+        stage: {
+          type: "string",
+          enum: [...ALL_STAGES],
+          description:
+            "Which stage bucket to file this hint under. If omitted, the calling phase's default stage is used.",
         },
       },
       required: ["hint"],
@@ -195,22 +309,51 @@ const saveHintTool: ChatCompletionTool = {
   },
 };
 
-const removeHintTool: ChatCompletionTool = {
+export const removeHintTool: ChatCompletionTool = {
   type: "function",
   function: {
     name: "remove_hint",
     description:
-      "Remove a previously saved hint that turned out to be WRONG or MISLEADING.",
+      "Remove a previously saved hint that turned out to be WRONG or MISLEADING. Pass the exact hint text or a distinctive substring.",
     parameters: {
       type: "object",
       properties: {
         hint: {
           type: "string",
           description:
-            "The exact text (or substring) of the hint to remove.",
+            "Exact text or distinctive substring of the hint to remove.",
+        },
+        stage: {
+          type: "string",
+          enum: [...ALL_STAGES],
+          description:
+            "Which stage bucket to remove from. If omitted, the calling phase's default stage is used.",
         },
       },
       required: ["hint"],
+      additionalProperties: false,
+    },
+  },
+};
+
+export const getHintsTool: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "get_hints",
+    description:
+      "List which hint stages are populated, or read the hints in a specific stage. " +
+      "Call with no arguments (or stage='all') to see counts per stage; call with stage='<name>' to read that stage's hints. " +
+      `Available stages: ${ALL_STAGES.join(", ")}.`,
+    parameters: {
+      type: "object",
+      properties: {
+        stage: {
+          type: "string",
+          enum: [...ALL_STAGES, "all"],
+          description:
+            "Stage bucket to read. Omit (or use 'all') to get a summary of every stage with hint counts.",
+        },
+      },
       additionalProperties: false,
     },
   },

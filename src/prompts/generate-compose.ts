@@ -1,5 +1,6 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 import type { ProjectDiscovery } from "../types.js";
+import { HintStore } from "../hints.js";
 
 /**
  * Prompt for LLM-based Docker Compose file generation.
@@ -15,7 +16,7 @@ export function generateComposePrompt(
   const discoveryJson = JSON.stringify(discovery, null, 2);
 
   const hintsSection = hints && hints.length > 0
-    ? `\n## Hints from previous attempts\nThese were discovered through investigation — use them:\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
+    ? `\n${HintStore.fromLegacyArray(hints).format(undefined, "## Hints from previous attempts") || ""}\nThese were discovered through investigation — use them.\n`
     : "";
 
   return [

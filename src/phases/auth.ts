@@ -14,6 +14,13 @@ import {
   execInDocker,
   handleEditFile,
 } from "../tools.js";
+import {
+  saveHintTool,
+  removeHintTool,
+  getHintsTool,
+  handleHintTool,
+} from "../tools/unified.js";
+import { HintStore, parseLegacyHint, type Stage } from "../hints.js";
 import { listAuthObjects, getAuthObject } from "../bright-api.js";
 import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody, stripHtmlForAnalysis, extractSetCookies, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_MEDIUM, FETCH_TIMEOUT_DEFAULT, FETCH_TIMEOUT_LONG, FETCH_TIMEOUT_EXTENDED } from "../utils.js";
 import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt, repairBrokenLoginPrompt } from "../prompts/auth.js";
@@ -24,51 +31,16 @@ const CONTENT_TYPE_MAP: Record<string, string> = {
   xml: "application/xml",
 };
 
-const saveAuthHintTool: ChatCompletionTool = {
-  type: "function",
-  function: {
-    name: "save_hint",
-    description:
-      "Save an auth-specific fact for subsequent auth attempts. Use this for exact token/header behavior, required login body fields, verified test URL behavior, or failed Bright auth patterns to avoid.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description: "Concise factual hint that will help later auth attempts avoid rediscovery or repeated mistakes.",
-        },
-      },
-      required: ["hint"],
-      additionalProperties: false,
-    },
-  },
-};
-
-const removeAuthHintTool: ChatCompletionTool = {
-  type: "function",
-  function: {
-    name: "remove_hint",
-    description:
-      "Remove a saved auth hint that has proven wrong or misleading. Pass exact text or a distinctive substring.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description: "Exact hint text or distinctive substring to remove.",
-        },
-      },
-      required: ["hint"],
-      additionalProperties: false,
-    },
-  },
-};
+// `save_hint`, `remove_hint`, and `get_hints` are imported from
+// ./tools/unified.ts so the hint tool surface is identical across phases.
+// The auth-specific dispatch in customHandler routes these names through
+// `handleHintTool` with a shared HintStore.
 
 function compactAuthHint(hint: string, max = 500): string {
   return hint.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-function addAuthHint(hints: string[] | undefined, hint: string): void {
+function addAuthHint(hints: string[] | undefined, hint: string, opts: { silent?: boolean } = {}): void {
   if (!hints) return;
   const compacted = compactAuthHint(hint, 900);
   if (!compacted) return;
@@ -76,7 +48,9 @@ function addAuthHint(hints: string[] | undefined, hint: string): void {
     return;
   }
   hints.push(compacted);
-  console.log(`[Auth] Saved hint: ${compacted.slice(0, 200)}`);
+  if (!opts.silent) {
+    console.log(`[Auth] Saved hint: ${compacted.slice(0, 200)}`);
+  }
 }
 
 function removeAuthHint(hints: string[] | undefined, hint: string): void {
@@ -1453,6 +1427,25 @@ async function createAuthViaMcp(
   _probeCookieJar = {};
   // Capture raw auth headers when create_auth_header succeeds — used for direct app probing
   let capturedAuthHeaders: Record<string, string> | undefined;
+
+  // When Bright's auth tester times out reaching the app via the Repeater,
+  // probe the app directly to distinguish "Bright/Repeater is slow" from
+  // "the app itself is hung". A single 5s GET to baseUrl is enough — if the
+  // app accepts a TCP connection and returns any HTTP response (incl. 4xx),
+  // it's reachable. A connection refused / timeout means the app is hung
+  // and retrying the auth test is futile.
+  const appHealthProbe: AppHealthProbe = async () => {
+    try {
+      const res = await fetch(baseUrl, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(5_000),
+      });
+      return { reachable: true, detail: `HTTP ${res.status} on GET ${baseUrl}` };
+    } catch (err) {
+      return { reachable: false, detail: `${toErrorMessage(err)} on GET ${baseUrl}` };
+    }
+  };
   const inspectionTools: ChatCompletionTool[] = [
     {
       type: "function",
@@ -1780,8 +1773,9 @@ Example — OAuth2 PKCE flow:
     },
     runCommandOnHostTool,
     runCommandInDockerTool,
-    saveAuthHintTool,
-    removeAuthHintTool,
+    saveHintTool,
+    removeHintTool,
+    getHintsTool,
     {
       type: "function",
       function: {
@@ -1879,6 +1873,12 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
   ];
 
   let lastCreateArgs: Record<string, unknown> = {};
+
+  // HintStore mirror so save_hint/remove_hint/get_hints have a stage-indexed
+  // view. Seeded from the legacy authHints array (parsing any `[tag] body`
+  // shape), kept in sync with that array on each LLM-driven hint mutation.
+  const hintStore = HintStore.fromLegacyArray(authHints ?? []);
+  const authDefaultStage: Stage = "auth";
 
   const customHandler: ToolHandler = async (name, args) => {
     if (name === "create_auth") {
@@ -2182,6 +2182,7 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       const result = await testAuthObject(
         api,
         String(args.authObjectId),
+        appHealthProbe,
       );
       // Log the test result with the create_auth params that produced this auth object
       const summary = JSON.stringify(result);
@@ -2217,19 +2218,17 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       console.log(`[Auth] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
       return execInDocker(repoPath, container, cmd);
     }
-    if (name === "save_hint") {
-      const hint = String(args.hint ?? "").trim();
-      if (!hint) return "Error: hint cannot be empty";
-      console.log(`[Auth] save_hint: ${hint.slice(0, 200)}`);
-      addAuthHint(authHints, hint);
-      return `Auth hint saved: "${hint.slice(0, 100)}". It will be shown to subsequent auth attempts.`;
-    }
-    if (name === "remove_hint") {
-      const hint = String(args.hint ?? "").trim();
-      if (!hint) return "Error: hint cannot be empty";
-      console.log(`[Auth] remove_hint: ${hint.slice(0, 200)}`);
-      removeAuthHint(authHints, hint);
-      return "Auth hint removed if it matched an existing hint.";
+    if (name === "save_hint" || name === "remove_hint" || name === "get_hints") {
+      const out = handleHintTool(name, args, {
+        hints: hintStore,
+        defaultStage: authDefaultStage,
+        label: "Auth",
+        // Mirror writes/removes back into the legacy authHints array so prompt
+        // builders that still consume string[] keep working.
+        onHint: (_stage, hint) => addAuthHint(authHints, hint, { silent: true }),
+        onRemoveHint: (_stage, hint) => removeAuthHint(authHints, hint),
+      });
+      if (out !== null) return out;
     }
     return `Unknown tool: ${name}`;
   };
@@ -2245,7 +2244,8 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       name === "run_command_on_host" ||
       name === "run_command_in_docker" ||
       name === "save_hint" ||
-      name === "remove_hint"
+      name === "remove_hint" ||
+      name === "get_hints"
     ) {
       return customHandler(name, args);
     }
@@ -2302,7 +2302,7 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
   // every stage passes. The LLM may have returned an ID after a failed test,
   // or modified the object after the last test.
   console.log(`[Auth] Verifying auth object ${authId} — running deterministic test...`);
-  const verification = await testAuthObject(api, authId);
+  const verification = await testAuthObject(api, authId, appHealthProbe);
   if (!verification.passed) {
     console.error(`[Auth] Verification FAILED for ${authId}: ${verification.summary?.slice(0, 300)}`);
     // Include full diagnostics (with DIAGNOSTIC hints) in the attempt log so
@@ -2812,9 +2812,25 @@ Return a JSON object:
 // Test the auth object (sync GET with retry)
 // ---------------------------------------------------------------------------
 
+/**
+ * Optional probe used by `testAuthObject` to distinguish a true Bright/Repeater
+ * timeout (transient — worth retrying) from a hung local application
+ * (deterministic — no point retrying, fast-fail to INFRA_REPAIR). When the
+ * Bright test request aborts, we call this once to check whether the local
+ * app responds AT ALL within a short timeout.
+ */
+export interface AppHealthProbeResult {
+  /** True if the local app accepted a TCP connection and returned any HTTP response. */
+  reachable: boolean;
+  /** Human-readable detail (HTTP status, error message) for the synthesized summary. */
+  detail: string;
+}
+export type AppHealthProbe = () => Promise<AppHealthProbeResult>;
+
 export async function testAuthObject(
   api: BrightApiContext,
   authObjectId: string,
+  appHealthProbe?: AppHealthProbe,
 ): Promise<AuthTestResult> {
   const base = `https://${api.brightHostname}`;
   const url = `${base}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}/test`;
@@ -2828,7 +2844,7 @@ export async function testAuthObject(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     console.log(
-      `[Auth] Testing auth object (attempt ${attempt}/${maxRetries})`,
+      `[Auth] Testing auth object ${authObjectId} (attempt ${attempt}/${maxRetries})`,
     );
 
     try {
@@ -2956,6 +2972,26 @@ export async function testAuthObject(
         return detail;
       });
 
+      // Reclassify: Bright's auth tester reports the "authorization" stage as
+      // status=success whenever the test URL response is not in {401, 403} —
+      // including HTTP 5xx. A 5xx during an authenticated request means auth
+      // worked but the application crashed inside the handler (missing env
+      // var, missing migration, missing module, etc.) — that is NOT an auth
+      // success. Mark it as a failure with a distinct kind ("app_error") so
+      // the LLM and orchestrator both see the right signal and can request
+      // INFRA_REPAIR instead of declaring auth done.
+      const authzAppError = stages.find((s) =>
+        s.stage === "authorization"
+        && s.status === "success"
+        && (s.response?.status ?? 0) >= 500,
+      );
+      if (authzAppError) {
+        const httpStatus = authzAppError.response?.status ?? 0;
+        const bodyPeek = (authzAppError.response?.bodyPreview ?? "").slice(0, 200);
+        authzAppError.status = "failure";
+        authzAppError.message = `Authorization request returned HTTP ${httpStatus} (application crash, not an auth problem)${bodyPeek ? ` — body: ${bodyPeek}` : ""}`;
+      }
+
       // Summary lines for logging
       const lines = stages.map(
         (s) =>
@@ -2975,6 +3011,20 @@ export async function testAuthObject(
       const testUrlHint = detectBadAuthTestUrl(stages);
       if (testUrlHint) {
         diagnosticHints.push(testUrlHint);
+      }
+      if (authzAppError) {
+        const body = authzAppError.response?.bodyPreview ?? "";
+        const httpStatus = authzAppError.response?.status ?? 0;
+        // Look for common env-var / config error patterns in the response body
+        // so the LLM gets the exact symptom in the diagnostic.
+        const bodyExcerpt = body.length > 300 ? body.slice(0, 300) + "…" : body;
+        diagnosticHints.push(
+          `DIAGNOSTIC: The "${authzAppError.name ?? "authorization"}" step reached a protected endpoint with valid credentials but the application returned HTTP ${httpStatus}. ` +
+          `This is an APPLICATION crash inside the authenticated handler, NOT an auth-configuration problem. ` +
+          `Auth is likely already correct — re-running create_auth with different settings will not help.\n` +
+          `ACTION: Read the response body and identify the root cause (commonly a missing environment variable, missing database migration, or missing native dependency), then respond with INFRA_REPAIR including the exact env var name / config value to set in compose.yml or Dockerfile. ` +
+          `Response body excerpt: ${bodyExcerpt}`,
+        );
       }
       for (const s of stages) {
         if (s.status === "success" || !s.response) continue;
@@ -3037,7 +3087,7 @@ export async function testAuthObject(
         }
       }
 
-      const allPassed = rawResults.every((r) => r.status === "success");
+      const allPassed = stages.every((s) => s.status === "success");
       const fullSummary = diagnosticHints.length > 0
         ? lines.join("\n") + "\n\n" + diagnosticHints.join("\n")
         : lines.join("\n");
@@ -3045,6 +3095,58 @@ export async function testAuthObject(
     } catch (err) {
       const msg = toErrorMessage(err);
       console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);
+
+      // If the test aborted/timed out and we have a way to probe the local
+      // app, distinguish "app is hung" (no point retrying) from "Bright is
+      // slow" (retry makes sense). On a hung app we synthesize a failure
+      // result whose summary names the local probe outcome, so the auth
+      // phase reports an INFRA_REPAIR with an evidence-backed hint that
+      // trips isSpecificInfraHint and forces the orchestrator to rebuild
+      // instead of waiting through 5 × ~2-min Bright-side timeouts.
+      const isTimeout =
+        err instanceof Error &&
+        (err.name === "AbortError" ||
+          err.name === "TimeoutError" ||
+          /timeout|timed out|aborted/i.test(msg));
+      if (isTimeout && appHealthProbe) {
+        try {
+          const probe = await appHealthProbe();
+          if (!probe.reachable) {
+            const summary =
+              `[app_unresponsive] Bright auth-test request timed out and the local application is unresponsive ` +
+              `(local probe: ${probe.detail}). This is an APPLICATION crash or hang, NOT an auth-configuration problem. ` +
+              `Auth retries will keep timing out. ACTION: respond with INFRA_REPAIR — investigate the application logs ` +
+              `(run_command_in_docker on the app container) for the actual error (commonly a missing environment variable ` +
+              `like CALENDSO_ENCRYPTION_KEY/JWT_SECRET, a deadlocked request handler, or an unreachable upstream service ` +
+              `such as the database/redis), then provide the precise env var or service to set in compose.yml/Dockerfile.`;
+            console.warn(
+              `[Auth] Local app probe failed (${probe.detail}) — bailing out of test retries early; INFRA_REPAIR signal sent`,
+            );
+            return {
+              passed: false,
+              summary,
+              stages: [
+                {
+                  stage: "authorization",
+                  status: "failure",
+                  message: `app_unresponsive: ${probe.detail}`,
+                },
+              ],
+            };
+          }
+          console.log(
+            `[Auth] Local app probe succeeded (${probe.detail}) — Bright/Repeater may be slow, continuing retry loop`,
+          );
+        } catch (probeErr) {
+          // Probe itself failed unexpectedly — log but don't take it as a
+          // hung-app signal (could be misconfigured probe). Fall through
+          // to normal retry behavior.
+          console.warn(
+            `[Auth] App health probe threw: ${toErrorMessage(probeErr)} — proceeding with normal retry`,
+          );
+        }
+      }
+
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, retryDelayMs));
         continue;

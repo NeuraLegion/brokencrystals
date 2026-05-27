@@ -113,6 +113,47 @@ function mergeHints(target: string[], source: string[] | undefined): void {
   }
 }
 
+/**
+ * Heuristic: is the LLM-provided INFRA_REPAIR hint specific enough that we
+ * should trust it even when /health is OK? `/health` is a deliberately cheap
+ * endpoint and routinely returns 200 while protected routes 5xx for unrelated
+ * reasons (missing env vars, missing migrations, missing modules, etc.). When
+ * the LLM has cited a concrete error fragment from the running app or an
+ * explicit env-var name, the gate produces false negatives that abort the
+ * scan instead of repairing it.
+ *
+ * Returns true when:
+ *   - We already mutated compose.yml (envVarsInjectedCount > 0): the running
+ *     container will not see the change without a rebuild, so we MUST proceed.
+ *   - The hint mentions an UPPERCASE env-var-shaped identifier AND a typical
+ *     server-error fragment ("is not set", "is missing", "no such table",
+ *     "relation does not exist", "cannot find module", etc.) — i.e. the LLM
+ *     is reporting an error string it actually observed, not guessing.
+ */
+function isSpecificInfraHint(hint: string | undefined, envVarsInjectedCount: number): boolean {
+  if (envVarsInjectedCount > 0) return true;
+  if (!hint) return false;
+
+  const envVarMention = /\b[A-Z][A-Z0-9_]{3,}\b/.test(hint);
+  const errorPhrases: RegExp[] = [
+    /\bis not set\b/i,
+    /\bis missing\b/i,
+    /\bis required\b/i,
+    /\bnot configured\b/i,
+    /\bnot defined\b/i,
+    /\bmust be (?:set|provided|defined)\b/i,
+    /\bno such (?:file|table|column|directory)\b/i,
+    /\brelation .* does not exist\b/i,
+    /\bcannot find module\b/i,
+    /\benoent\b/i,
+    /\bmissing (?:env|environment)\b/i,
+    /\bundefined env\b/i,
+    /\bpermission denied\b/i,
+    /\b(?:HTTP\s*)?5\d\d\b/, // explicit reference to a 5xx the LLM saw
+  ];
+  return envVarMention && errorPhrases.some((re) => re.test(hint));
+}
+
 interface ValidationScanPlan {
   groups: ScanGroup[];
   targetKeys: Set<string>;
@@ -983,22 +1024,115 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           console.log(`[Engine] Auto-injected env vars from hint: ${injected.join(", ")}`);
         }
 
-        // Gate: If the app is healthy, don't tear it down — the problem is auth
-        // detection/configuration, not infrastructure. Killing a healthy compose
-        // stack just because auth can't find a login endpoint causes cascading
-        // failures (e.g., standalone restart loses Redis/DB companions).
+        // Gate: If the app is healthy AND the LLM's hint is vague, don't tear
+        // it down — the problem is probably auth detection/configuration, not
+        // infrastructure. Killing a healthy compose stack just because auth
+        // can't find a login endpoint causes cascading failures (e.g.,
+        // standalone restart loses Redis/DB companions).
+        //
+        // BUT: when the LLM provides a specific evidence-backed hint (env var
+        // name + concrete server error like "X is not set"), or we already
+        // injected env vars that will only take effect after a restart, /health
+        // is the wrong signal. /health routinely passes while protected routes
+        // 5xx for unrelated reasons (missing env vars, missing migrations).
+        // In that case, trust the LLM and proceed with the rebuild.
         const healthProbe = startupConfig.healthProbe ?? startupConfig.healthCheckPath ?? "/";
         const appStillHealthy = await checkAppHealth(startupConfig.port, healthProbe);
-        if (appStillHealthy) {
-          console.warn(`[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} → OK). Skipping infrastructure teardown — problem is auth config, not infra.`);
+        const hintIsSpecific = isSpecificInfraHint(authResult.infraRepairHint, injected.length);
+        if (appStillHealthy && !hintIsSpecific) {
+          console.warn(`[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} → OK) and the hint is not evidence-backed. Skipping infrastructure teardown — problem is auth config, not infra.`);
           await progress.phaseDetail(
             "auth",
             "infra_repair_skipped",
             "App is healthy — auth issue is not infrastructure-related",
           );
-          // Don't break immediately — give auth one more chance with the hint as context
-          addHint(authHints, `[auth-infra-skipped] INFRA_REPAIR was requested but app health check passes. The problem is NOT infrastructure — it is likely an incorrect auth detection (e.g. OAuth API misidentified as session-based, or no auth endpoints found). Re-detect auth type and try OAuth/API-key approaches.`);
+
+          // Capture the prior hint so we can short-circuit if the retry produces
+          // the exact same diagnosis (no progress, no point burning more turns).
+          const previousHint = (authResult.infraRepairHint ?? "").trim();
+
+          // The hint we hand back to the LLM has to cover every "looks like
+          // infra but isn't" case we've actually observed in production runs:
+          // wrong auth method (OAuth API misidentified as session), credential
+          // state mismatch (`incorrect-email-password` despite a seeded user),
+          // wrong/unreachable test URL, missing login body fields, exception
+          // inside the auth handler. The LLM should pivot strategy rather than
+          // re-request INFRA_REPAIR.
+          addHint(
+            authHints,
+            `[auth-infra-skipped] INFRA_REPAIR was requested but the application is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} → OK) so this is NOT an infrastructure problem. Do not request INFRA_REPAIR again for the same root cause. Pivot strategy: ` +
+            `(a) re-verify the auth method — if session/credentials is failing with "incorrect-email-password", check the password actually works against the real signup/login flow (a test user inserted directly into the DB may not have the right bcrypt hash); ` +
+            `(b) try alternative existing users in the DB (use run_command_in_docker against the database to list users and their roles); ` +
+            `(c) try a different auth method entirely — Bearer API key, OAuth client_credentials, x-* header auth — if the API supports more than one; ` +
+            `(d) re-verify the test URL — the chosen protected endpoint may not be reachable for the current user role; ` +
+            `(e) re-verify required login body fields (csrfToken, callbackUrl, json shape) by probing the form/login page first.`,
+          );
+
+          // Bug C fix: instead of breaking out of the bounce-back loop and
+          // aborting, give the LLM one more shot at auth with the augmented
+          // hint as context. The retry uses whatever model the loop has
+          // already escalated to. Bounded by MAX_INFRA_BOUNCEBACKS plus a
+          // same-hint guard below.
+          let retryAuthResult;
+          try {
+            retryAuthResult = await detectAndConfigureAuth(
+              llm,
+              repoPath,
+              techStack,
+              projectId,
+              baseUrl,
+              repeater.repeaterId,
+              config,
+              config.modelSelector.current(),
+              preAuthContext,
+              authHints,
+            );
+          } catch (retryErr) {
+            console.error(`[Engine] Auth retry after non-infra skip threw: ${toErrorMessage(retryErr)}`);
+            break;
+          }
+
+          mergeHints(authHints, retryAuthResult.authHints);
+          Object.assign(authResult, retryAuthResult);
+          authRegistration = authResult.registration;
+
+          if (retryAuthResult.authObjectId) {
+            console.log(`[Engine] Auth recovered after non-infra retry on bounce ${bounce}: ${retryAuthResult.authObjectId}`);
+            await progress.phaseDetail(
+              "auth",
+              "auth_done",
+              "Auth configured (after non-infra retry)",
+            );
+            break;
+          }
+
+          const newHint = (retryAuthResult.infraRepairHint ?? "").trim();
+          if (newHint && previousHint && newHint === previousHint) {
+            console.error(
+              `[Engine] Auth retry produced the same non-infra diagnosis as before — no progress. Aborting bounce-back to avoid burning more turns.`,
+            );
+            break;
+          }
+
+          if (retryAuthResult.infraRepairHint) {
+            console.log(
+              `[Engine] Auth retry produced a different hint after the non-infra skip — letting the bounce-back loop process it.`,
+            );
+            continue;
+          }
+
+          // No hint and not configured — auth is just stuck. Bail.
           break;
+        }
+        if (appStillHealthy && hintIsSpecific) {
+          console.log(
+            `[Engine] /health is OK but the auth INFRA_REPAIR hint is specific (env-var + concrete error pattern${injected.length > 0 ? ` and ${injected.length} env var(s) were injected` : ""}). Trusting the LLM diagnosis and rebuilding.`,
+          );
+          await progress.phaseDetail(
+            "auth",
+            "infra_repair_forced",
+            "Specific evidence-backed hint — proceeding with infra rebuild despite /health=OK",
+          );
         }
 
         const repairHints = [

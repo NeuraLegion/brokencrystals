@@ -1,4 +1,5 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
+import { HintStore } from "../hints.js";
 
 export function identifyStartupPrompt(
   techStack: string,
@@ -122,7 +123,7 @@ export function retryStartupPrompt(
     : "";
 
   const hintsSection = hints && hints.length > 0
-    ? `\n\nHints discovered by previous repair attempts (use these — they save investigation time):\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}`
+    ? `\n\n${HintStore.fromLegacyArray(hints).format(undefined, "## Hints discovered by previous repair attempts") || ""}\nUse these hints — they save investigation time and reflect facts already verified in this run.`
     : "";
 
   return [

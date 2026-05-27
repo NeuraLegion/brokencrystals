@@ -34273,6 +34273,394 @@ async function fixDockerfileImages(dockerfile) {
 import { readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
 import { resolve as resolve4 } from "path";
 import { execSync as execSync2 } from "child_process";
+
+// src/hints.ts
+var ALL_STAGES = [
+  "startup",
+  "setup",
+  "scan_prep",
+  "auth",
+  "entrypoints",
+  "test_selection",
+  "scan",
+  "fix",
+  "discovery",
+  "credentials",
+  "infra"
+];
+var STAGE_SET = new Set(ALL_STAGES);
+function isStage(value) {
+  return typeof value === "string" && STAGE_SET.has(value);
+}
+var STAGE_DESCRIPTIONS = {
+  startup: "Building/booting the application \u2014 Dockerfile, compose, ports, build commands.",
+  setup: "First-run application setup \u2014 admin user creation, schema bootstrap, post-start init.",
+  scan_prep: "Pre-scan tweaks \u2014 relaxing rate limits, disabling 2FA, raising throttle ceilings.",
+  auth: "Auth detection and configuration \u2014 login endpoints, token shape, OAuth flow specifics.",
+  entrypoints: "Endpoint registration with Bright \u2014 discovered routes, parameter shapes.",
+  test_selection: "Per-endpoint security test choices.",
+  scan: "Active DAST scan execution.",
+  fix: "Vulnerability remediation patches.",
+  discovery: "Cross-cutting facts about the app/stack \u2014 tech stack, services, ports.",
+  credentials: "Test user / API key / OAuth client credentials reusable across phases.",
+  infra: "Infrastructure repair instructions \u2014 env vars to set, packages to install, image to swap."
+};
+var HINT_MAX_LENGTH = 900;
+function compactHint(text, max = HINT_MAX_LENGTH) {
+  return text.replace(/\s+/g, " ").trim().slice(0, max);
+}
+function isDuplicate(a, b) {
+  return a === b || a.includes(b) || b.includes(a);
+}
+function parseLegacyHint(line) {
+  const m = line.match(/^\s*\[([a-z][a-z0-9_-]*)\]\s*(.*)$/i);
+  if (!m) return { stage: "discovery", text: compactHint(line) };
+  const tag = m[1].toLowerCase();
+  const body = m[2];
+  const map = [
+    [/^auth-infra/, "infra"],
+    [/^auth/, "auth"],
+    [/^scan-prep/, "scan_prep"],
+    [/^scan/, "scan"],
+    [/^setup-credentials/, "credentials"],
+    [/^setup-infra/, "infra"],
+    [/^setup/, "setup"],
+    [/^startup/, "startup"],
+    [/^entrypoints?/, "entrypoints"],
+    [/^test-selection/, "test_selection"],
+    [/^fix/, "fix"],
+    [/^infra/, "infra"],
+    [/^credentials/, "credentials"],
+    [/^discovery/, "discovery"]
+  ];
+  for (const [re, stage] of map) {
+    if (re.test(tag)) return { stage, text: compactHint(body || line) };
+  }
+  return { stage: "discovery", text: compactHint(line) };
+}
+var HintStore = class _HintStore {
+  buckets = /* @__PURE__ */ new Map();
+  /** Add a hint to a stage bucket. Returns true if stored, false if a duplicate. */
+  add(stage, text) {
+    const compact = compactHint(text);
+    if (!compact) return false;
+    const bucket = this.buckets.get(stage) ?? [];
+    if (bucket.some((existing) => isDuplicate(existing, compact))) return false;
+    bucket.push(compact);
+    this.buckets.set(stage, bucket);
+    return true;
+  }
+  /** Remove a hint from a stage by exact text or distinctive substring. */
+  remove(stage, needle) {
+    const bucket = this.buckets.get(stage);
+    if (!bucket || bucket.length === 0) return false;
+    const compact = compactHint(needle);
+    if (!compact) return false;
+    const idx = bucket.findIndex((existing) => isDuplicate(existing, compact));
+    if (idx === -1) return false;
+    bucket.splice(idx, 1);
+    if (bucket.length === 0) this.buckets.delete(stage);
+    return true;
+  }
+  /** True if there's at least one hint in the requested stage. */
+  has(stage) {
+    const b = this.buckets.get(stage);
+    return !!b && b.length > 0;
+  }
+  /** Hint count: total when no stage given, per-stage when given. */
+  count(stage) {
+    if (stage) return this.buckets.get(stage)?.length ?? 0;
+    let total = 0;
+    for (const b of this.buckets.values()) total += b.length;
+    return total;
+  }
+  /** Stages that currently hold at least one hint, in canonical order. */
+  stages() {
+    return ALL_STAGES.filter((s) => this.has(s));
+  }
+  /**
+   * Read hints. When `stages` is provided, only those buckets are returned.
+   * Otherwise every non-empty bucket is returned. Order follows ALL_STAGES.
+   */
+  get(stages) {
+    const filter2 = stages ? /* @__PURE__ */ new Set([...stages]) : null;
+    const out = [];
+    for (const stage of ALL_STAGES) {
+      if (filter2 && !filter2.has(stage)) continue;
+      const bucket = this.buckets.get(stage);
+      if (!bucket) continue;
+      for (const text of bucket) out.push({ stage, text });
+    }
+    return out;
+  }
+  /**
+   * Format hints as a prompt block. Empty if no hints match. The block is
+   * grouped by stage so the LLM sees the same structure on every prompt.
+   *
+   * Example:
+   *
+   *   ## Saved hints
+   *   ### auth
+   *   - [#1] OAuth2 token endpoint: …
+   *   ### scan_prep
+   *   - [#1] Rate limiting was relaxed in the NestJS guard …
+   */
+  format(stages, heading = "## Saved hints") {
+    const filter2 = stages ? /* @__PURE__ */ new Set([...stages]) : null;
+    const sections = [];
+    for (const stage of ALL_STAGES) {
+      if (filter2 && !filter2.has(stage)) continue;
+      const bucket = this.buckets.get(stage);
+      if (!bucket || bucket.length === 0) continue;
+      const lines = bucket.map((h, i) => `- [#${i + 1}] ${h}`);
+      sections.push(`### ${stage}
+${lines.join("\n")}`);
+    }
+    if (sections.length === 0) return "";
+    return `${heading}
+${sections.join("\n\n")}`;
+  }
+  /**
+   * Flat list of `[stage] body` strings. Lets call sites that still expect
+   * the legacy shape (e.g. third-party prompt builders) keep working.
+   */
+  toLegacyArray(stages) {
+    return this.get(stages).map(({ stage, text }) => `[${stage}] ${text}`);
+  }
+  /** Build a HintStore from the legacy `[tag] body` flat-array format. */
+  static fromLegacyArray(lines) {
+    const store = new _HintStore();
+    for (const line of lines) {
+      const { stage, text } = parseLegacyHint(line);
+      store.add(stage, text);
+    }
+    return store;
+  }
+};
+
+// src/tools/unified.ts
+function buildToolDefs(opts) {
+  const tools = [...codebaseTools];
+  if (opts.enableDockerVerify) tools.push(verifyDockerImageTool);
+  if (opts.enableEdit) tools.push(editFileTool);
+  if (opts.enableShell) tools.push(runCommandOnHostTool);
+  if (opts.enableDocker) tools.push(runCommandInDockerTool);
+  if (opts.enableProbe) tools.push(probeUrlTool);
+  if (opts.enableWeb) tools.push(...webSearchTools);
+  if (opts.enableHints) {
+    tools.push(saveHintTool, removeHintTool, getHintsTool);
+  }
+  return tools;
+}
+function resolveStage(args, defaultStage) {
+  const raw = args.stage;
+  if (typeof raw === "string" && isStage(raw)) return raw;
+  if (defaultStage) return defaultStage;
+  return null;
+}
+function handleHintTool(name, args, opts) {
+  const label = opts.label ?? "Tool";
+  switch (name) {
+    case "save_hint": {
+      const hint = String(args.hint ?? "").trim();
+      if (!hint) return "Error: hint cannot be empty";
+      const stage = resolveStage(args, opts.defaultStage);
+      if (!stage) {
+        return `Error: stage is required. Available stages: ${ALL_STAGES.join(", ")}`;
+      }
+      const stored = opts.hints?.add(stage, hint) ?? false;
+      console.log(`[${label}] save_hint [${stage}]: ${hint.slice(0, 200)}`);
+      if (opts.onHint) opts.onHint(stage, hint);
+      return stored ? `Hint saved under stage "${stage}". It will be available to the next attempt.` : `Hint already covered by an existing entry under stage "${stage}" (no change).`;
+    }
+    case "remove_hint": {
+      const hint = String(args.hint ?? "").trim();
+      if (!hint) return "Error: hint cannot be empty";
+      const stage = resolveStage(args, opts.defaultStage);
+      if (!stage) {
+        return `Error: stage is required. Available stages: ${ALL_STAGES.join(", ")}`;
+      }
+      const removed = opts.hints?.remove(stage, hint) ?? false;
+      console.log(`[${label}] remove_hint [${stage}]: ${hint.slice(0, 200)}`);
+      if (opts.onRemoveHint) opts.onRemoveHint(stage, hint);
+      return removed ? `Hint removed from stage "${stage}".` : `No matching hint found in stage "${stage}".`;
+    }
+    case "get_hints": {
+      const store = opts.hints;
+      if (!store) return "No hints available (hint store not configured for this phase).";
+      const stageArg = args.stage;
+      if (stageArg == null || stageArg === "" || stageArg === "all") {
+        const stages = store.stages();
+        if (stages.length === 0) return "No hints saved yet.";
+        const lines = stages.map((s) => `- ${s}: ${store.count(s)} hint(s) \u2014 ${STAGE_DESCRIPTIONS[s]}`);
+        return [
+          `Available hint stages (${stages.length} of ${ALL_STAGES.length} populated):`,
+          ...lines,
+          "",
+          'Call get_hints with stage="<name>" to read a specific stage, or stage="all" for everything.'
+        ].join("\n");
+      }
+      if (typeof stageArg === "string" && isStage(stageArg)) {
+        const block = store.format([stageArg], `## Hints for stage "${stageArg}"`);
+        return block || `No hints saved for stage "${stageArg}" yet.`;
+      }
+      return `Error: unknown stage "${String(stageArg)}". Available stages: ${ALL_STAGES.join(", ")}`;
+    }
+  }
+  return null;
+}
+function createUnifiedToolHandler(repoPath, opts) {
+  const codeHandler = createToolHandler(repoPath);
+  const webHandler = opts.enableWeb ? createWebSearchHandler(repoPath) : void 0;
+  const dockerfileHandler = opts.enableDockerVerify ? createDockerfileToolHandler(repoPath) : void 0;
+  return async (name, args) => {
+    switch (name) {
+      // --- Codebase tools (always on) ---
+      case "read_file":
+      case "list_files":
+      case "search_files":
+        return codeHandler(name, args);
+      // --- Docker image verification ---
+      case "verify_docker_image":
+        if (!opts.enableDockerVerify || !dockerfileHandler) break;
+        return dockerfileHandler(name, args);
+      // --- Shell command ---
+      case "run_command_on_host": {
+        if (!opts.enableShell) break;
+        const command = String(args.command ?? "");
+        if (opts.shellGuard) {
+          const blocked = opts.shellGuard(command);
+          if (blocked) {
+            console.warn(`[${opts.label ?? "Tool"}] BLOCKED command: ${command.slice(0, 120)}`);
+            return blocked;
+          }
+        }
+        console.log(`[${opts.label ?? "Tool"}] run_command_on_host: ${command.slice(0, 200)}`);
+        return runShellCommand(repoPath, command, 12e4);
+      }
+      // --- Docker exec ---
+      case "run_command_in_docker": {
+        if (!opts.enableDocker) break;
+        const container = String(args.container ?? "");
+        const cmd = String(args.command ?? "");
+        console.log(`[${opts.label ?? "Tool"}] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+        const result = execInDocker(repoPath, container, cmd, 12e4);
+        if (opts.onDocker) opts.onDocker(container, cmd, result);
+        return result;
+      }
+      // --- Edit file ---
+      case "edit_file": {
+        if (!opts.enableEdit) break;
+        const result = handleEditFile(repoPath, args);
+        if (opts.onEdit) opts.onEdit(args, result);
+        return result;
+      }
+      // --- Probe URL ---
+      case "probe_url": {
+        if (!opts.enableProbe) break;
+        const result = opts.customProbe ? await opts.customProbe(args) : await probeUrl(args);
+        if (opts.onProbe) opts.onProbe(args, result);
+        return result;
+      }
+      // --- Web search ---
+      case "search_web":
+      case "fetch_url": {
+        if (!opts.enableWeb || !webHandler) break;
+        return webHandler(name, args);
+      }
+      // --- Hints (delegated to the shared dispatcher) ---
+      case "save_hint":
+      case "remove_hint":
+      case "get_hints": {
+        if (!opts.enableHints) break;
+        const out = handleHintTool(name, args, {
+          hints: opts.hints,
+          defaultStage: opts.defaultStage,
+          label: opts.label,
+          onHint: opts.onHint,
+          onRemoveHint: opts.onRemoveHint
+        });
+        if (out !== null) return out;
+        break;
+      }
+      // --- Wait ---
+      case "wait": {
+        const seconds = Math.min(60, Math.max(1, Number(args.seconds ?? 10)));
+        console.log(`[${opts.label ?? "Tool"}] wait: ${seconds}s`);
+        await new Promise((r) => setTimeout(r, seconds * 1e3));
+        return `Waited ${seconds} seconds`;
+      }
+    }
+    return `Error: unknown tool ${name}`;
+  };
+}
+var stageEnumDescription = ALL_STAGES.map((s) => `"${s}" \u2014 ${STAGE_DESCRIPTIONS[s]}`).join(" | ");
+var saveHintTool = {
+  type: "function",
+  function: {
+    name: "save_hint",
+    description: `Save a concise factual hint discovered during this attempt so it carries into the NEXT attempt or sibling phase. Each hint is filed under a stage bucket. Pick the stage that BEST describes what the hint applies to. Available stages: ${stageEnumDescription}`,
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "A concise factual statement (\u2264900 chars) about the application's configuration, dependencies, or behavior."
+        },
+        stage: {
+          type: "string",
+          enum: [...ALL_STAGES],
+          description: "Which stage bucket to file this hint under. If omitted, the calling phase's default stage is used."
+        }
+      },
+      required: ["hint"],
+      additionalProperties: false
+    }
+  }
+};
+var removeHintTool = {
+  type: "function",
+  function: {
+    name: "remove_hint",
+    description: "Remove a previously saved hint that turned out to be WRONG or MISLEADING. Pass the exact hint text or a distinctive substring.",
+    parameters: {
+      type: "object",
+      properties: {
+        hint: {
+          type: "string",
+          description: "Exact text or distinctive substring of the hint to remove."
+        },
+        stage: {
+          type: "string",
+          enum: [...ALL_STAGES],
+          description: "Which stage bucket to remove from. If omitted, the calling phase's default stage is used."
+        }
+      },
+      required: ["hint"],
+      additionalProperties: false
+    }
+  }
+};
+var getHintsTool = {
+  type: "function",
+  function: {
+    name: "get_hints",
+    description: `List which hint stages are populated, or read the hints in a specific stage. Call with no arguments (or stage='all') to see counts per stage; call with stage='<name>' to read that stage's hints. Available stages: ${ALL_STAGES.join(", ")}.`,
+    parameters: {
+      type: "object",
+      properties: {
+        stage: {
+          type: "string",
+          enum: [...ALL_STAGES, "all"],
+          description: "Stage bucket to read. Omit (or use 'all') to get a summary of every stage with hint counts."
+        }
+      },
+      additionalProperties: false
+    }
+  }
+};
+
+// src/tools/infra.ts
 var writeFileTool = {
   type: "function",
   function: {
@@ -34379,42 +34767,6 @@ var waitTool = {
     }
   }
 };
-var saveHintTool = {
-  type: "function",
-  function: {
-    name: "save_hint",
-    description: "Save an important discovery or hint for the NEXT repair attempt. Use this when you learn something critical about how this application works (e.g. 'App reads DB settings from config/database.yml, not from DATABASE_URL', 'The app needs Redis on port 6379'). These hints survive across repair iterations so the next attempt doesn't have to rediscover the same facts.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description: "A concise factual statement about the application's configuration, dependencies, or behavior. Should be actionable for the next repair attempt."
-        }
-      },
-      required: ["hint"],
-      additionalProperties: false
-    }
-  }
-};
-var removeHintTool = {
-  type: "function",
-  function: {
-    name: "remove_hint",
-    description: "Remove a previously saved hint that turned out to be WRONG or MISLEADING. Use this when you discover that a hint from a previous attempt led to a failure or was based on incorrect assumptions. Pass the exact hint text (or a substring) to remove it.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description: "The exact text (or substring) of the hint to remove."
-        }
-      },
-      required: ["hint"],
-      additionalProperties: false
-    }
-  }
-};
 var searchWebTool2 = {
   type: "function",
   function: {
@@ -34453,7 +34805,8 @@ var infraTools = [
   searchWebTool2,
   fetchUrlTool2,
   saveHintTool,
-  removeHintTool
+  removeHintTool,
+  getHintsTool
 ];
 function execInDocker(repoPath, container, command, timeout = 12e4) {
   const isRunning = (() => {
@@ -34497,7 +34850,7 @@ function handleEditFile(repoPath, args) {
     return `Error editing file: ${toErrorMessage(err)}`;
   }
 }
-function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
+function createInfraToolHandler(repoPath, hintOpts) {
   const baseHandler = createDockerfileToolHandler(repoPath);
   return async (name, args) => {
     switch (name) {
@@ -34537,19 +34890,12 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
         await new Promise((r) => setTimeout(r, seconds * 1e3));
         return `Waited ${seconds} seconds`;
       }
-      case "save_hint": {
-        const hint = String(args.hint ?? "").trim();
-        if (!hint) return "Error: hint cannot be empty";
-        console.log(`[Tool] save_hint: ${hint.slice(0, 200)}`);
-        if (onHint) onHint(hint);
-        return `Hint saved: "${hint.slice(0, 100)}". It will be available to the next repair attempt.`;
-      }
-      case "remove_hint": {
-        const hint = String(args.hint ?? "").trim();
-        if (!hint) return "Error: hint cannot be empty";
-        console.log(`[Tool] remove_hint: ${hint.slice(0, 200)}`);
-        if (onRemoveHint) onRemoveHint(hint);
-        return `Hint removed (if it existed). Remaining hints will be shown to the next attempt.`;
+      case "save_hint":
+      case "remove_hint":
+      case "get_hints": {
+        const out = handleHintTool(name, args, hintOpts ?? {});
+        if (out !== null) return out;
+        break;
       }
       case "probe_url": {
         return probeUrl(args);
@@ -34562,146 +34908,9 @@ function createInfraToolHandler(repoPath, onHint, onRemoveHint) {
       default:
         return baseHandler(name, args);
     }
+    return baseHandler(name, args);
   };
 }
-
-// src/tools/unified.ts
-function buildToolDefs(opts) {
-  const tools = [...codebaseTools];
-  if (opts.enableDockerVerify) tools.push(verifyDockerImageTool);
-  if (opts.enableEdit) tools.push(editFileTool);
-  if (opts.enableShell) tools.push(runCommandOnHostTool);
-  if (opts.enableDocker) tools.push(runCommandInDockerTool);
-  if (opts.enableProbe) tools.push(probeUrlTool);
-  if (opts.enableWeb) tools.push(...webSearchTools);
-  if (opts.enableHints) {
-    tools.push(saveHintTool2, removeHintTool2);
-  }
-  return tools;
-}
-function createUnifiedToolHandler(repoPath, opts) {
-  const codeHandler = createToolHandler(repoPath);
-  const webHandler = opts.enableWeb ? createWebSearchHandler(repoPath) : void 0;
-  const dockerfileHandler = opts.enableDockerVerify ? createDockerfileToolHandler(repoPath) : void 0;
-  return async (name, args) => {
-    switch (name) {
-      // --- Codebase tools (always on) ---
-      case "read_file":
-      case "list_files":
-      case "search_files":
-        return codeHandler(name, args);
-      // --- Docker image verification ---
-      case "verify_docker_image":
-        if (!opts.enableDockerVerify || !dockerfileHandler) break;
-        return dockerfileHandler(name, args);
-      // --- Shell command ---
-      case "run_command_on_host": {
-        if (!opts.enableShell) break;
-        const command = String(args.command ?? "");
-        if (opts.shellGuard) {
-          const blocked = opts.shellGuard(command);
-          if (blocked) {
-            console.warn(`[${opts.label ?? "Tool"}] BLOCKED command: ${command.slice(0, 120)}`);
-            return blocked;
-          }
-        }
-        console.log(`[${opts.label ?? "Tool"}] run_command_on_host: ${command.slice(0, 200)}`);
-        return runShellCommand(repoPath, command, 12e4);
-      }
-      // --- Docker exec ---
-      case "run_command_in_docker": {
-        if (!opts.enableDocker) break;
-        const container = String(args.container ?? "");
-        const cmd = String(args.command ?? "");
-        console.log(`[${opts.label ?? "Tool"}] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
-        const result = execInDocker(repoPath, container, cmd, 12e4);
-        if (opts.onDocker) opts.onDocker(container, cmd, result);
-        return result;
-      }
-      // --- Edit file ---
-      case "edit_file": {
-        if (!opts.enableEdit) break;
-        const result = handleEditFile(repoPath, args);
-        if (opts.onEdit) opts.onEdit(args, result);
-        return result;
-      }
-      // --- Probe URL ---
-      case "probe_url": {
-        if (!opts.enableProbe) break;
-        const result = opts.customProbe ? await opts.customProbe(args) : await probeUrl(args);
-        if (opts.onProbe) opts.onProbe(args, result);
-        return result;
-      }
-      // --- Web search ---
-      case "search_web":
-      case "fetch_url": {
-        if (!opts.enableWeb || !webHandler) break;
-        return webHandler(name, args);
-      }
-      // --- Hints ---
-      case "save_hint": {
-        if (!opts.enableHints) break;
-        const hint = String(args.hint ?? "").trim();
-        if (!hint) return "Error: hint cannot be empty";
-        console.log(`[${opts.label ?? "Tool"}] save_hint: ${hint.slice(0, 200)}`);
-        if (opts.onHint) opts.onHint(hint);
-        return `Hint saved: "${hint.slice(0, 100)}". It will be available to the next attempt.`;
-      }
-      case "remove_hint": {
-        if (!opts.enableHints) break;
-        const hint = String(args.hint ?? "").trim();
-        if (!hint) return "Error: hint cannot be empty";
-        console.log(`[${opts.label ?? "Tool"}] remove_hint: ${hint.slice(0, 200)}`);
-        if (opts.onRemoveHint) opts.onRemoveHint(hint);
-        return `Hint removed (if it existed).`;
-      }
-      // --- Wait ---
-      case "wait": {
-        const seconds = Math.min(60, Math.max(1, Number(args.seconds ?? 10)));
-        console.log(`[${opts.label ?? "Tool"}] wait: ${seconds}s`);
-        await new Promise((r) => setTimeout(r, seconds * 1e3));
-        return `Waited ${seconds} seconds`;
-      }
-    }
-    return `Error: unknown tool ${name}`;
-  };
-}
-var saveHintTool2 = {
-  type: "function",
-  function: {
-    name: "save_hint",
-    description: "Save an important discovery or hint for the NEXT attempt. Use this when you learn something critical about how this application works.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description: "A concise factual statement about the application's configuration, dependencies, or behavior."
-        }
-      },
-      required: ["hint"],
-      additionalProperties: false
-    }
-  }
-};
-var removeHintTool2 = {
-  type: "function",
-  function: {
-    name: "remove_hint",
-    description: "Remove a previously saved hint that turned out to be WRONG or MISLEADING.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description: "The exact text (or substring) of the hint to remove."
-        }
-      },
-      required: ["hint"],
-      additionalProperties: false
-    }
-  }
-};
 
 // src/prompts/identify-startup.ts
 function identifyStartupPrompt(techStack) {
@@ -34814,8 +35023,8 @@ ${allPreviousAttempts.map((a, i) => `Attempt ${i + 1}: ${a.config}
 Error: ${a.error.slice(-500)}`).join("\n\n")}` : "";
   const hintsSection = hints && hints.length > 0 ? `
 
-Hints discovered by previous repair attempts (use these \u2014 they save investigation time):
-${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}` : "";
+${HintStore.fromLegacyArray(hints).format(void 0, "## Hints discovered by previous repair attempts") || ""}
+Use these hints \u2014 they save investigation time and reflect facts already verified in this run.` : "";
   return [
     {
       role: "system",
@@ -35097,9 +35306,8 @@ Rules:
 function generateComposePrompt(techStack, discovery, hasDockerfile, hints, dockerfileName) {
   const discoveryJson = JSON.stringify(discovery, null, 2);
   const hintsSection = hints && hints.length > 0 ? `
-## Hints from previous attempts
-These were discovered through investigation \u2014 use them:
-${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
+${HintStore.fromLegacyArray(hints).format(void 0, "## Hints from previous attempts") || ""}
+These were discovered through investigation \u2014 use them.
 ` : "";
   return [
     {
@@ -36742,7 +36950,10 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
         }
       }
     };
-    const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
+    const infraHandler = createInfraToolHandler(repoPath, {
+      onHint: (_stage, h) => onHint(h),
+      onRemoveHint: (_stage, h) => onRemoveHint(h)
+    });
     let usedMutatingTools = false;
     const trackingHandler = async (name, args) => {
       const result = await infraHandler(name, args);
@@ -36968,7 +37179,10 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
         }
       }
     };
-    const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
+    const infraHandler = createInfraToolHandler(repoPath, {
+      onHint: (_stage, h) => onHint(h),
+      onRemoveHint: (_stage, h) => onRemoveHint(h)
+    });
     let usedMutatingTools = false;
     const trackingHandler = async (name, args) => {
       const result2 = await infraHandler(name, args);
@@ -37186,7 +37400,10 @@ async function retryStartupConfig(llm, repoPath, stackStr, previousConfig, error
       }
     }
   };
-  const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
+  const infraHandler = createInfraToolHandler(repoPath, {
+    onHint: (_stage, h) => onHint(h),
+    onRemoveHint: (_stage, h) => onRemoveHint(h)
+  });
   const response = await chatWithTools(
     llm,
     messages,
@@ -39299,10 +39516,12 @@ Use when neither OIDC nor static headers work directly \u2014 e.g. you need to h
 **NEVER respond with INFRA_REPAIR** for auth mechanism issues (wrong grant type, rejected headers, etc). That's an auth problem, not infra.
 **Do NOT respond FAILED** until you've tried ALL three options above.`;
   }
-  const hintsBlock = authHints.length > 0 ? `
-## Saved auth hints
+  const hintsStore = authHints.length > 0 ? HintStore.fromLegacyArray(authHints) : null;
+  const hintsBody = hintsStore?.format(void 0, "## Saved hints");
+  const hintsBlock = hintsBody ? `
+${hintsBody}
+
 These facts were learned during scan preparation, auth detection, verified probes, or previous auth attempts. Trust them over guesses and do not rediscover or contradict them unless you have concrete evidence.
-${authHints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
 ` : "";
   return [
     {
@@ -39712,46 +39931,10 @@ var CONTENT_TYPE_MAP = {
   form: "application/x-www-form-urlencoded",
   xml: "application/xml"
 };
-var saveAuthHintTool = {
-  type: "function",
-  function: {
-    name: "save_hint",
-    description: "Save an auth-specific fact for subsequent auth attempts. Use this for exact token/header behavior, required login body fields, verified test URL behavior, or failed Bright auth patterns to avoid.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description: "Concise factual hint that will help later auth attempts avoid rediscovery or repeated mistakes."
-        }
-      },
-      required: ["hint"],
-      additionalProperties: false
-    }
-  }
-};
-var removeAuthHintTool = {
-  type: "function",
-  function: {
-    name: "remove_hint",
-    description: "Remove a saved auth hint that has proven wrong or misleading. Pass exact text or a distinctive substring.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description: "Exact hint text or distinctive substring to remove."
-        }
-      },
-      required: ["hint"],
-      additionalProperties: false
-    }
-  }
-};
 function compactAuthHint(hint, max = 500) {
   return hint.replace(/\s+/g, " ").trim().slice(0, max);
 }
-function addAuthHint(hints, hint) {
+function addAuthHint(hints, hint, opts = {}) {
   if (!hints) return;
   const compacted = compactAuthHint(hint, 900);
   if (!compacted) return;
@@ -39759,7 +39942,9 @@ function addAuthHint(hints, hint) {
     return;
   }
   hints.push(compacted);
-  console.log(`[Auth] Saved hint: ${compacted.slice(0, 200)}`);
+  if (!opts.silent) {
+    console.log(`[Auth] Saved hint: ${compacted.slice(0, 200)}`);
+  }
 }
 function removeAuthHint(hints, hint) {
   if (!hints) return;
@@ -40732,6 +40917,18 @@ function extractTokenFromBody(body, tokenFieldPath) {
 async function createAuthViaMcp(llm, repoPath, detection, registrationOk, projectId, baseUrl, repeaterId, api, model, preProbeContext, verifiedTestUrl, authHints) {
   _probeCookieJar = {};
   let capturedAuthHeaders;
+  const appHealthProbe = async () => {
+    try {
+      const res = await fetch(baseUrl, {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(5e3)
+      });
+      return { reachable: true, detail: `HTTP ${res.status} on GET ${baseUrl}` };
+    } catch (err) {
+      return { reachable: false, detail: `${toErrorMessage(err)} on GET ${baseUrl}` };
+    }
+  };
   const inspectionTools = [
     {
       type: "function",
@@ -41030,8 +41227,9 @@ Example \u2014 OAuth2 PKCE flow:
     },
     runCommandOnHostTool,
     runCommandInDockerTool,
-    saveAuthHintTool,
-    removeAuthHintTool,
+    saveHintTool,
+    removeHintTool,
+    getHintsTool,
     {
       type: "function",
       function: {
@@ -41123,6 +41321,8 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
     }
   ];
   let lastCreateArgs = {};
+  const hintStore = HintStore.fromLegacyArray(authHints ?? []);
+  const authDefaultStage = "auth";
   const customHandler = async (name, args) => {
     if (name === "create_auth") {
       lastCreateArgs = { ...args };
@@ -41383,7 +41583,8 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
     if (name === "test_auth_object") {
       const result = await testAuthObject(
         api,
-        String(args.authObjectId)
+        String(args.authObjectId),
+        appHealthProbe
       );
       const summary = JSON.stringify(result);
       const configSummary = lastCreateArgs.authStyle === "raw" ? `raw multistep, testUrl=${lastCreateArgs.testUrl}` : lastCreateArgs.authStyle === "header" ? `static headers, testUrl=${lastCreateArgs.testUrl}` : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
@@ -41414,25 +41615,23 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       console.log(`[Auth] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
       return execInDocker(repoPath, container, cmd);
     }
-    if (name === "save_hint") {
-      const hint = String(args.hint ?? "").trim();
-      if (!hint) return "Error: hint cannot be empty";
-      console.log(`[Auth] save_hint: ${hint.slice(0, 200)}`);
-      addAuthHint(authHints, hint);
-      return `Auth hint saved: "${hint.slice(0, 100)}". It will be shown to subsequent auth attempts.`;
-    }
-    if (name === "remove_hint") {
-      const hint = String(args.hint ?? "").trim();
-      if (!hint) return "Error: hint cannot be empty";
-      console.log(`[Auth] remove_hint: ${hint.slice(0, 200)}`);
-      removeAuthHint(authHints, hint);
-      return "Auth hint removed if it matched an existing hint.";
+    if (name === "save_hint" || name === "remove_hint" || name === "get_hints") {
+      const out = handleHintTool(name, args, {
+        hints: hintStore,
+        defaultStage: authDefaultStage,
+        label: "Auth",
+        // Mirror writes/removes back into the legacy authHints array so prompt
+        // builders that still consume string[] keep working.
+        onHint: (_stage, hint) => addAuthHint(authHints, hint, { silent: true }),
+        onRemoveHint: (_stage, hint) => removeAuthHint(authHints, hint)
+      });
+      if (out !== null) return out;
     }
     return `Unknown tool: ${name}`;
   };
   const webHandler = createWebSearchHandler(repoPath);
   const combinedHandler = async (name, args) => {
-    if (name === "create_auth" || name === "create_auth_raw" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command_on_host" || name === "run_command_in_docker" || name === "save_hint" || name === "remove_hint") {
+    if (name === "create_auth" || name === "create_auth_raw" || name === "test_auth_object" || name === "delete_auth_object" || name === "probe_url" || name === "run_command_on_host" || name === "run_command_in_docker" || name === "save_hint" || name === "remove_hint" || name === "get_hints") {
       return customHandler(name, args);
     }
     if (name === "search_web" || name === "fetch_url") {
@@ -41469,7 +41668,7 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
     return { authId: void 0, attemptLog };
   }
   console.log(`[Auth] Verifying auth object ${authId} \u2014 running deterministic test...`);
-  const verification = await testAuthObject(api, authId);
+  const verification = await testAuthObject(api, authId, appHealthProbe);
   if (!verification.passed) {
     console.error(`[Auth] Verification FAILED for ${authId}: ${verification.summary?.slice(0, 300)}`);
     attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed:
@@ -41834,7 +42033,7 @@ Return a JSON object:
     return void 0;
   }
 }
-async function testAuthObject(api, authObjectId) {
+async function testAuthObject(api, authObjectId, appHealthProbe) {
   const base = `https://${api.brightHostname}`;
   const url = `${base}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}/test`;
   const headers = {
@@ -41845,7 +42044,7 @@ async function testAuthObject(api, authObjectId) {
   const retryDelayMs = 5e3;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     console.log(
-      `[Auth] Testing auth object (attempt ${attempt}/${maxRetries})`
+      `[Auth] Testing auth object ${authObjectId} (attempt ${attempt}/${maxRetries})`
     );
     try {
       const res = await fetch(url, {
@@ -41934,6 +42133,15 @@ async function testAuthObject(api, authObjectId) {
         }
         return detail;
       });
+      const authzAppError = stages.find(
+        (s) => s.stage === "authorization" && s.status === "success" && (s.response?.status ?? 0) >= 500
+      );
+      if (authzAppError) {
+        const httpStatus = authzAppError.response?.status ?? 0;
+        const bodyPeek = (authzAppError.response?.bodyPreview ?? "").slice(0, 200);
+        authzAppError.status = "failure";
+        authzAppError.message = `Authorization request returned HTTP ${httpStatus} (application crash, not an auth problem)${bodyPeek ? ` \u2014 body: ${bodyPeek}` : ""}`;
+      }
       const lines = stages.map(
         (s) => `${s.name ? `[${s.name}] ` : ""}stage=${s.stage} status=${s.status}${s.message ? ` \u2014 ${s.message}` : ""}${s.response ? ` (HTTP ${s.response.status}, ${s.response.contentType ?? "unknown"}, body=${s.response.bodyPreview.slice(0, 120)}\u2026)` : ""}`
       );
@@ -41946,6 +42154,15 @@ async function testAuthObject(api, authObjectId) {
       const testUrlHint = detectBadAuthTestUrl(stages);
       if (testUrlHint) {
         diagnosticHints.push(testUrlHint);
+      }
+      if (authzAppError) {
+        const body = authzAppError.response?.bodyPreview ?? "";
+        const httpStatus = authzAppError.response?.status ?? 0;
+        const bodyExcerpt = body.length > 300 ? body.slice(0, 300) + "\u2026" : body;
+        diagnosticHints.push(
+          `DIAGNOSTIC: The "${authzAppError.name ?? "authorization"}" step reached a protected endpoint with valid credentials but the application returned HTTP ${httpStatus}. This is an APPLICATION crash inside the authenticated handler, NOT an auth-configuration problem. Auth is likely already correct \u2014 re-running create_auth with different settings will not help.
+ACTION: Read the response body and identify the root cause (commonly a missing environment variable, missing database migration, or missing native dependency), then respond with INFRA_REPAIR including the exact env var name / config value to set in compose.yml or Dockerfile. Response body excerpt: ${bodyExcerpt}`
+        );
       }
       for (const s of stages) {
         if (s.status === "success" || !s.response) continue;
@@ -41978,12 +42195,42 @@ FIX: Recreate the auth object with loginAccept='application/json' (for create_au
           );
         }
       }
-      const allPassed = rawResults.every((r) => r.status === "success");
+      const allPassed = stages.every((s) => s.status === "success");
       const fullSummary = diagnosticHints.length > 0 ? lines.join("\n") + "\n\n" + diagnosticHints.join("\n") : lines.join("\n");
       return { passed: allPassed, summary: fullSummary, stages };
     } catch (err) {
       const msg = toErrorMessage(err);
       console.warn(`[Auth] Test error on attempt ${attempt}: ${msg}`);
+      const isTimeout = err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError" || /timeout|timed out|aborted/i.test(msg));
+      if (isTimeout && appHealthProbe) {
+        try {
+          const probe = await appHealthProbe();
+          if (!probe.reachable) {
+            const summary = `[app_unresponsive] Bright auth-test request timed out and the local application is unresponsive (local probe: ${probe.detail}). This is an APPLICATION crash or hang, NOT an auth-configuration problem. Auth retries will keep timing out. ACTION: respond with INFRA_REPAIR \u2014 investigate the application logs (run_command_in_docker on the app container) for the actual error (commonly a missing environment variable like CALENDSO_ENCRYPTION_KEY/JWT_SECRET, a deadlocked request handler, or an unreachable upstream service such as the database/redis), then provide the precise env var or service to set in compose.yml/Dockerfile.`;
+            console.warn(
+              `[Auth] Local app probe failed (${probe.detail}) \u2014 bailing out of test retries early; INFRA_REPAIR signal sent`
+            );
+            return {
+              passed: false,
+              summary,
+              stages: [
+                {
+                  stage: "authorization",
+                  status: "failure",
+                  message: `app_unresponsive: ${probe.detail}`
+                }
+              ]
+            };
+          }
+          console.log(
+            `[Auth] Local app probe succeeded (${probe.detail}) \u2014 Bright/Repeater may be slow, continuing retry loop`
+          );
+        } catch (probeErr) {
+          console.warn(
+            `[Auth] App health probe threw: ${toErrorMessage(probeErr)} \u2014 proceeding with normal retry`
+          );
+        }
+      }
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, retryDelayMs));
         continue;
@@ -42806,8 +43053,7 @@ Use read_file to inspect for errors, setup instructions, or configuration requir
 
 // src/prompts/setup.ts
 function firstRunSetupPrompt(baseUrl, techStack, healthCheckSummary, postStartSetupHints) {
-  const hintsBlock = postStartSetupHints.length > 0 ? `## Discovery hints
-${postStartSetupHints.map((h) => `- ${h}`).join("\n")}` : "";
+  const hintsBlock = postStartSetupHints.length > 0 ? HintStore.fromLegacyArray(postStartSetupHints).format(void 0, "## Discovery hints") || "" : "";
   return [
     {
       role: "system",
@@ -46948,6 +47194,29 @@ function mergeHints(target, source) {
     addHint(target, hint);
   }
 }
+function isSpecificInfraHint(hint, envVarsInjectedCount) {
+  if (envVarsInjectedCount > 0) return true;
+  if (!hint) return false;
+  const envVarMention = /\b[A-Z][A-Z0-9_]{3,}\b/.test(hint);
+  const errorPhrases = [
+    /\bis not set\b/i,
+    /\bis missing\b/i,
+    /\bis required\b/i,
+    /\bnot configured\b/i,
+    /\bnot defined\b/i,
+    /\bmust be (?:set|provided|defined)\b/i,
+    /\bno such (?:file|table|column|directory)\b/i,
+    /\brelation .* does not exist\b/i,
+    /\bcannot find module\b/i,
+    /\benoent\b/i,
+    /\bmissing (?:env|environment)\b/i,
+    /\bundefined env\b/i,
+    /\bpermission denied\b/i,
+    /\b(?:HTTP\s*)?5\d\d\b/
+    // explicit reference to a 5xx the LLM saw
+  ];
+  return envVarMention && errorPhrases.some((re) => re.test(hint));
+}
 function buildValidationScanPlan(findings, registered, baselineGroups) {
   const registeredById = new Map(registered.map((r) => [r.entrypointId, r]));
   const testsByEntrypoint = /* @__PURE__ */ new Map();
@@ -47643,15 +47912,73 @@ This user should work for authentication. Skip user registration/seeding and go 
         }
         const healthProbe = startupConfig.healthProbe ?? startupConfig.healthCheckPath ?? "/";
         const appStillHealthy = await checkAppHealth(startupConfig.port, healthProbe);
-        if (appStillHealthy) {
-          console.warn(`[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} \u2192 OK). Skipping infrastructure teardown \u2014 problem is auth config, not infra.`);
+        const hintIsSpecific = isSpecificInfraHint(authResult.infraRepairHint, injected.length);
+        if (appStillHealthy && !hintIsSpecific) {
+          console.warn(`[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} \u2192 OK) and the hint is not evidence-backed. Skipping infrastructure teardown \u2014 problem is auth config, not infra.`);
           await progress.phaseDetail(
             "auth",
             "infra_repair_skipped",
             "App is healthy \u2014 auth issue is not infrastructure-related"
           );
-          addHint(authHints, `[auth-infra-skipped] INFRA_REPAIR was requested but app health check passes. The problem is NOT infrastructure \u2014 it is likely an incorrect auth detection (e.g. OAuth API misidentified as session-based, or no auth endpoints found). Re-detect auth type and try OAuth/API-key approaches.`);
+          const previousHint = (authResult.infraRepairHint ?? "").trim();
+          addHint(
+            authHints,
+            `[auth-infra-skipped] INFRA_REPAIR was requested but the application is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} \u2192 OK) so this is NOT an infrastructure problem. Do not request INFRA_REPAIR again for the same root cause. Pivot strategy: (a) re-verify the auth method \u2014 if session/credentials is failing with "incorrect-email-password", check the password actually works against the real signup/login flow (a test user inserted directly into the DB may not have the right bcrypt hash); (b) try alternative existing users in the DB (use run_command_in_docker against the database to list users and their roles); (c) try a different auth method entirely \u2014 Bearer API key, OAuth client_credentials, x-* header auth \u2014 if the API supports more than one; (d) re-verify the test URL \u2014 the chosen protected endpoint may not be reachable for the current user role; (e) re-verify required login body fields (csrfToken, callbackUrl, json shape) by probing the form/login page first.`
+          );
+          let retryAuthResult2;
+          try {
+            retryAuthResult2 = await detectAndConfigureAuth(
+              llm,
+              repoPath,
+              techStack,
+              projectId,
+              baseUrl,
+              repeater.repeaterId,
+              config,
+              config.modelSelector.current(),
+              preAuthContext,
+              authHints
+            );
+          } catch (retryErr) {
+            console.error(`[Engine] Auth retry after non-infra skip threw: ${toErrorMessage(retryErr)}`);
+            break;
+          }
+          mergeHints(authHints, retryAuthResult2.authHints);
+          Object.assign(authResult, retryAuthResult2);
+          authRegistration = authResult.registration;
+          if (retryAuthResult2.authObjectId) {
+            console.log(`[Engine] Auth recovered after non-infra retry on bounce ${bounce}: ${retryAuthResult2.authObjectId}`);
+            await progress.phaseDetail(
+              "auth",
+              "auth_done",
+              "Auth configured (after non-infra retry)"
+            );
+            break;
+          }
+          const newHint = (retryAuthResult2.infraRepairHint ?? "").trim();
+          if (newHint && previousHint && newHint === previousHint) {
+            console.error(
+              `[Engine] Auth retry produced the same non-infra diagnosis as before \u2014 no progress. Aborting bounce-back to avoid burning more turns.`
+            );
+            break;
+          }
+          if (retryAuthResult2.infraRepairHint) {
+            console.log(
+              `[Engine] Auth retry produced a different hint after the non-infra skip \u2014 letting the bounce-back loop process it.`
+            );
+            continue;
+          }
           break;
+        }
+        if (appStillHealthy && hintIsSpecific) {
+          console.log(
+            `[Engine] /health is OK but the auth INFRA_REPAIR hint is specific (env-var + concrete error pattern${injected.length > 0 ? ` and ${injected.length} env var(s) were injected` : ""}). Trusting the LLM diagnosis and rebuilding.`
+          );
+          await progress.phaseDetail(
+            "auth",
+            "infra_repair_forced",
+            "Specific evidence-backed hint \u2014 proceeding with infra rebuild despite /health=OK"
+          );
         }
         const repairHints = [
           `[auth-infra-repair] ${authResult.infraRepairHint}`,

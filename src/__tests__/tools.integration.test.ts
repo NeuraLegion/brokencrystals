@@ -144,8 +144,11 @@ describe("unified handler (real filesystem)", () => {
       enableHints: true,
     });
     const names = tools.map((t) => t.function.name);
-    // Codebase (3) + Shell (1) + Docker (1) + Edit (1) + Probe (1) + Web (2) + Hints (2) = 11
-    expect(names.length).toBe(11);
+    // Codebase (3) + Shell (1) + Docker (1) + Edit (1) + Probe (1) + Web (2) + Hints (3: save/remove/get) = 12
+    expect(names.length).toBe(12);
     expect(new Set(names).size).toBe(names.length); // no duplicates
+    expect(names).toContain("save_hint");
+    expect(names).toContain("remove_hint");
+    expect(names).toContain("get_hints");
   });
 });

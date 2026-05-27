@@ -1,5 +1,7 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 
+import { HintStore } from "../hints.js";
+
 /**
  * Prompt for the "first-time setup" phase.
  * Runs after the application is healthy but before auth, specifically for apps
@@ -13,7 +15,7 @@ export function firstRunSetupPrompt(
   postStartSetupHints: string[],
 ): ChatCompletionMessageParam[] {
   const hintsBlock = postStartSetupHints.length > 0
-    ? `## Discovery hints\n${postStartSetupHints.map((h) => `- ${h}`).join("\n")}`
+    ? HintStore.fromLegacyArray(postStartSetupHints).format(undefined, "## Discovery hints") || ""
     : "";
 
   return [

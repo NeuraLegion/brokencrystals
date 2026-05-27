@@ -47,6 +47,7 @@ describe("buildToolDefs", () => {
     const names = tools.map((t) => t.function.name);
     expect(names).toContain("save_hint");
     expect(names).toContain("remove_hint");
+    expect(names).toContain("get_hints");
   });
 
   it("does not include disabled tools", () => {
@@ -101,5 +102,74 @@ describe("createUnifiedToolHandler", () => {
     const handler = createUnifiedToolHandler("/tmp/test", {});
     const result = await handler("totally_fake_tool", {});
     expect(result.toLowerCase()).toContain("unknown tool");
+  });
+
+  it("save_hint files into the provided HintStore under the LLM-supplied stage", async () => {
+    const { HintStore } = await import("../hints.js");
+    const hints = new HintStore();
+    const onHint = vi.fn();
+    const handler = createUnifiedToolHandler("/tmp/test", {
+      enableHints: true,
+      hints,
+      onHint,
+    });
+
+    const result = await handler("save_hint", {
+      hint: "OAuth token endpoint is /oauth/token",
+      stage: "auth",
+    });
+    expect(result).toContain("auth");
+    expect(hints.count("auth")).toBe(1);
+    expect(onHint).toHaveBeenCalledWith("auth", "OAuth token endpoint is /oauth/token");
+  });
+
+  it("save_hint falls back to defaultStage when stage is omitted", async () => {
+    const { HintStore } = await import("../hints.js");
+    const hints = new HintStore();
+    const handler = createUnifiedToolHandler("/tmp/test", {
+      enableHints: true,
+      hints,
+      defaultStage: "scan_prep",
+    });
+
+    await handler("save_hint", { hint: "Throttler raised to 999999" });
+    expect(hints.count("scan_prep")).toBe(1);
+  });
+
+  it("save_hint returns an error when stage is missing and no defaultStage is set", async () => {
+    const { HintStore } = await import("../hints.js");
+    const handler = createUnifiedToolHandler("/tmp/test", {
+      enableHints: true,
+      hints: new HintStore(),
+    });
+    const result = await handler("save_hint", { hint: "anything" });
+    expect(result.toLowerCase()).toContain("stage is required");
+  });
+
+  it("get_hints with no arg returns a per-stage summary", async () => {
+    const { HintStore } = await import("../hints.js");
+    const hints = new HintStore();
+    hints.add("auth", "auth fact");
+    hints.add("infra", "infra fact");
+    const handler = createUnifiedToolHandler("/tmp/test", {
+      enableHints: true,
+      hints,
+    });
+    const result = await handler("get_hints", {});
+    expect(result).toContain("auth: 1 hint");
+    expect(result).toContain("infra: 1 hint");
+  });
+
+  it("get_hints with a specific stage returns the formatted block", async () => {
+    const { HintStore } = await import("../hints.js");
+    const hints = new HintStore();
+    hints.add("auth", "OAuth token endpoint is /oauth/token");
+    const handler = createUnifiedToolHandler("/tmp/test", {
+      enableHints: true,
+      hints,
+    });
+    const result = await handler("get_hints", { stage: "auth" });
+    expect(result).toContain("OAuth token endpoint");
+    expect(result).toContain("### auth");
   });
 });

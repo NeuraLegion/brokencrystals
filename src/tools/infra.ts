@@ -9,6 +9,13 @@ import { createDockerfileToolHandler } from "./docker.js";
 import { verifyDockerImageTool } from "./docker.js";
 import { createWebSearchHandler } from "./web.js";
 import { probeUrl, probeUrlTool } from "./probe.js";
+import {
+  saveHintTool,
+  removeHintTool,
+  getHintsTool,
+  handleHintTool,
+  type HintToolDispatchOptions,
+} from "./unified.js";
 
 // ---------------------------------------------------------------------------
 // Tool definitions
@@ -137,47 +144,9 @@ const waitTool: ChatCompletionTool = {
   },
 };
 
-const saveHintTool: ChatCompletionTool = {
-  type: "function",
-  function: {
-    name: "save_hint",
-    description:
-      "Save an important discovery or hint for the NEXT repair attempt. Use this when you learn something critical about how this application works (e.g. 'App reads DB settings from config/database.yml, not from DATABASE_URL', 'The app needs Redis on port 6379'). These hints survive across repair iterations so the next attempt doesn't have to rediscover the same facts.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description:
-            "A concise factual statement about the application's configuration, dependencies, or behavior. Should be actionable for the next repair attempt.",
-        },
-      },
-      required: ["hint"],
-      additionalProperties: false,
-    },
-  },
-};
-
-const removeHintTool: ChatCompletionTool = {
-  type: "function",
-  function: {
-    name: "remove_hint",
-    description:
-      "Remove a previously saved hint that turned out to be WRONG or MISLEADING. Use this when you discover that a hint from a previous attempt led to a failure or was based on incorrect assumptions. Pass the exact hint text (or a substring) to remove it.",
-    parameters: {
-      type: "object",
-      properties: {
-        hint: {
-          type: "string",
-          description:
-            "The exact text (or substring) of the hint to remove.",
-        },
-      },
-      required: ["hint"],
-      additionalProperties: false,
-    },
-  },
-};
+// `saveHintTool`, `removeHintTool`, and `getHintsTool` are defined in
+// ./unified.ts and re-used here so the hint tool surface stays consistent
+// across all phases.
 
 // ---------------------------------------------------------------------------
 // Tool arrays
@@ -211,7 +180,7 @@ const fetchUrlTool: ChatCompletionTool = {
   },
 };
 
-/** Codebase tools + write_file + run_command_on_host + run_command_in_docker + wait + save_hint — for infrastructure repair */
+/** Codebase tools + write_file + run_command_on_host + run_command_in_docker + wait + save_hint/remove_hint/get_hints — for infrastructure repair */
 export const infraTools: ChatCompletionTool[] = [
   ...codebaseTools,
   verifyDockerImageTool,
@@ -225,6 +194,7 @@ export const infraTools: ChatCompletionTool[] = [
   fetchUrlTool,
   saveHintTool,
   removeHintTool,
+  getHintsTool,
 ];
 
 // ---------------------------------------------------------------------------
@@ -295,7 +265,10 @@ export function handleEditFile(
 // Infrastructure tool handler
 // ---------------------------------------------------------------------------
 
-export function createInfraToolHandler(repoPath: string, onHint?: (hint: string) => void, onRemoveHint?: (hint: string) => void): ToolHandler {
+export function createInfraToolHandler(
+  repoPath: string,
+  hintOpts?: HintToolDispatchOptions,
+): ToolHandler {
   const baseHandler = createDockerfileToolHandler(repoPath);
   return async (name: string, args: Record<string, unknown>) => {
     switch (name) {
@@ -343,20 +316,12 @@ export function createInfraToolHandler(repoPath: string, onHint?: (hint: string)
         return `Waited ${seconds} seconds`;
       }
 
-      case "save_hint": {
-        const hint = String(args.hint ?? "").trim();
-        if (!hint) return "Error: hint cannot be empty";
-        console.log(`[Tool] save_hint: ${hint.slice(0, 200)}`);
-        if (onHint) onHint(hint);
-        return `Hint saved: "${hint.slice(0, 100)}". It will be available to the next repair attempt.`;
-      }
-
-      case "remove_hint": {
-        const hint = String(args.hint ?? "").trim();
-        if (!hint) return "Error: hint cannot be empty";
-        console.log(`[Tool] remove_hint: ${hint.slice(0, 200)}`);
-        if (onRemoveHint) onRemoveHint(hint);
-        return `Hint removed (if it existed). Remaining hints will be shown to the next attempt.`;
+      case "save_hint":
+      case "remove_hint":
+      case "get_hints": {
+        const out = handleHintTool(name, args, hintOpts ?? {});
+        if (out !== null) return out;
+        break;
       }
 
       case "probe_url": {
@@ -372,5 +337,6 @@ export function createInfraToolHandler(repoPath: string, onHint?: (hint: string)
       default:
         return baseHandler(name, args);
     }
+    return baseHandler(name, args);
   };
 }

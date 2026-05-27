@@ -1985,7 +1985,10 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
         }
       }
     };
-    const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
+    const infraHandler = createInfraToolHandler(repoPath, {
+      onHint: (_stage, h) => onHint(h),
+      onRemoveHint: (_stage, h) => onRemoveHint(h),
+    });
     let usedMutatingTools = false;
     const trackingHandler: ToolHandler = async (name, args) => {
       const result = await infraHandler(name, args);
@@ -2291,7 +2294,10 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
         }
       }
     };
-    const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
+    const infraHandler = createInfraToolHandler(repoPath, {
+      onHint: (_stage, h) => onHint(h),
+      onRemoveHint: (_stage, h) => onRemoveHint(h),
+    });
     let usedMutatingTools = false;
     const trackingHandler: ToolHandler = async (name, args) => {
       const result = await infraHandler(name, args);
@@ -2578,7 +2584,10 @@ async function retryStartupConfig(
       }
     }
   };
-  const infraHandler = createInfraToolHandler(repoPath, onHint, onRemoveHint);
+  const infraHandler = createInfraToolHandler(repoPath, {
+    onHint: (_stage, h) => onHint(h),
+    onRemoveHint: (_stage, h) => onRemoveHint(h),
+  });
   const response = await chatWithTools(
     llm,
     messages,
