@@ -35,7 +35,6 @@ import {
   ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
-import * as dotT from 'dot';
 import { FastifyReply } from 'fastify';
 import { parseXml } from 'libxmljs';
 import { AppConfig } from './app.config.api';
@@ -74,11 +73,12 @@ export class AppController {
   @ApiCreatedResponse({
     description: 'Rendered result'
   })
+  @Header('content-type', 'text/plain; charset=utf-8')
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
       this.logger.debug(`Received template text: ${text}`);
-      return text;
+      return 'Template rendering is disabled.';
     }
   }
 
