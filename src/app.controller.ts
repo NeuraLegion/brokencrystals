@@ -36,7 +36,7 @@ import {
 } from '@nestjs/swagger';
 import * as dotT from 'dot';
 import { FastifyReply } from 'fastify';
-import { parseXml } from 'libxmljs';
+import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { AppConfig } from './app.config.api';
 import {
   API_DESC_CONFIG_SERVER,
@@ -118,15 +118,15 @@ export class AppController {
   })
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
-    const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
-      recover: true
-    });
+    const xmlDoc = new DOMParser({
+      errorHandler: {
+        warning: () => undefined,
+        error: () => undefined,
+        fatalError: () => undefined
+      }
+    }).parseFromString(decodeURIComponent(xml), 'text/xml');
     this.logger.debug(xmlDoc);
-    this.logger.debug(xmlDoc.getDtd());
-
-    return xmlDoc.toString(true);
+    return new XMLSerializer().serializeToString(xmlDoc);
   }
 
   @Options()

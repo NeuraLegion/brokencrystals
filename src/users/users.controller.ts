@@ -66,7 +66,7 @@ import {
 import { AdminGuard } from './users.guard';
 import { PermissionDto } from './api/PermissionDto';
 import { BASIC_USER_INFO, FULL_USER_INFO } from './api/UserDto';
-import { parseXml } from 'libxmljs';
+import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 
 @Controller('/api/users')
 @UseInterceptors(ClassSerializerInterceptor)
@@ -605,16 +605,19 @@ export class UsersController {
 
       if (file_name.endsWith('.svg')) {
         const xml = file_buffer.toString();
-        const xmlDoc = parseXml(xml, {
-          noent: true,
-          dtdvalid: true,
-          recover: true
-        });
+        const xmlDoc = new DOMParser({
+          errorHandler: {
+            warning: () => undefined,
+            error: () => undefined,
+            fatalError: () => undefined
+          }
+        }).parseFromString(xml, 'text/xml');
+        const xmlSerialized = new XMLSerializer().serializeToString(xmlDoc);
         await this.usersService.updatePhoto(
           email,
-          Buffer.from(xmlDoc.toString(), 'utf8')
+          Buffer.from(xmlSerialized, 'utf8')
         );
-        return xmlDoc.toString(true);
+        return xmlSerialized;
       } else {
         await this.usersService.updatePhoto(email, file_buffer);
       }
