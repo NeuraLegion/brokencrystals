@@ -58,10 +58,14 @@ export class TestimonialsService {
     try {
       this.logger.debug(`Saved new testimonial`);
 
-      return (await this.em.getConnection().execute(query))[0].count as number;
+      return (
+        await this.em
+          .getConnection()
+          .execute('select count(*) as count from testimonial')
+      )[0].count as number;
     } catch (err) {
       this.logger.warn(`Failed to execute query. Error: ${err.message}`);
-      return err.message;
+      return 0;
     }
   }
 }

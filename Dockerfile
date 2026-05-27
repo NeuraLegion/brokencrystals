@@ -2,7 +2,7 @@
 # BUILD FOR LOCAL DEVELOPMENT
 ###################
 
-FROM node:18-alpine AS build
+FROM node:18 AS build
 
 WORKDIR /usr/src/app
 
@@ -17,7 +17,7 @@ COPY --chown=node:node keycloak ./keycloak
 COPY --chown=node:node src ./src
 
 ENV NPM_CONFIG_LOGLEVEL=error
-RUN npm ci --no-audit
+RUN npm ci --include=dev --no-audit
 RUN npm run build:fast
 RUN npm prune --production
 
@@ -41,7 +41,7 @@ USER node
 # PRODUCTION
 ###################
 
-FROM node:18-alpine AS production
+FROM node:18 AS production
 
 WORKDIR /usr/src/app
 

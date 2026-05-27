@@ -115,7 +115,11 @@ services:
     healthcheck:
       interval: 10s
       retries: 10
-      test: ['CMD', 'wget', '--spider', '-q', 'http://mailcatcher:1080']
+      test:
+        [
+          'CMD-SHELL',
+          "ruby -rnet/http -e \"exit Net::HTTP.get_response(URI('http://127.0.0.1:1080')).is_a?(Net::HTTPSuccess) ? 0 : 1\""
+        ]
       timeout: 45s
     restart: always
     ports:

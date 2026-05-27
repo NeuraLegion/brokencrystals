@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ClassSerializerInterceptor,
   Controller,
@@ -76,9 +77,8 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
-      this.logger.debug(`Rendered template: ${res}`);
-      return res;
+      this.logger.debug(`Received template text: ${text}`);
+      return text;
     }
   }
 
@@ -116,17 +116,20 @@ export class AppController {
   @ApiCreatedResponse({
     description: 'XML passed successfully'
   })
-  @Header('content-type', 'text/xml')
+  @Header('content-type', 'text/plain')
   async xml(@Body() xml: string): Promise<string> {
-    const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
-      recover: true
-    });
-    this.logger.debug(xmlDoc);
-    this.logger.debug(xmlDoc.getDtd());
+    try {
+      const xmlDoc = parseXml(decodeURIComponent(xml), {
+        noent: false,
+        dtdvalid: false,
+        recover: false
+      });
+      this.logger.debug(xmlDoc);
 
-    return xmlDoc.toString(true);
+      return 'XML passed successfully';
+    } catch {
+      throw new BadRequestException('Invalid XML data');
+    }
   }
 
   @Options()
