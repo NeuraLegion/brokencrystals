@@ -17,7 +17,16 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
         throw exception;
       }
 
-      return super.catch(exception, host);
+      const status = exception.getStatus();
+      const message = status >= 500
+        ? 'An internal error has occurred, and the API was unable to service your request.'
+        : exception.message;
+      const sanitizedException =
+        status >= 500
+          ? new InternalServerErrorException(message)
+          : exception;
+
+      return super.catch(sanitizedException, host);
     }
 
     const unprocessableException = new InternalServerErrorException(

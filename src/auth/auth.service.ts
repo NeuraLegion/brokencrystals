@@ -1,5 +1,5 @@
 import { EntityManager } from '@mikro-orm/core';
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import { KeyCloakService } from '../keycloak/keycloak.service';
@@ -40,32 +40,27 @@ export class AuthService {
     private readonly httpClient: HttpClientService,
     private readonly keyCloakService: KeyCloakService
   ) {
-    const privateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
-    );
-    const publicKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
-      ),
-      'utf8'
-    );
-    const jwkPrivateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
-    );
-    const jwkPublicJson = JSON.parse(
-      fs.readFileSync(
-        this.configService.get<string>(
-          AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
-        ),
-        'utf8'
-      )
-    );
+    const logger = new Logger(AuthService.name);
+    const readKey = (configKey: string): string => {
+      const keyPath = this.configService.get<string>(configKey);
+      try {
+        return fs.readFileSync(keyPath, 'utf8');
+      } catch (error) {
+        logger.error(`Failed to load JWT configuration for ${configKey}`, error instanceof Error ? error.stack : undefined);
+        throw new InternalServerErrorException('Authentication is temporarily unavailable.');
+      }
+    };
+
+    const privateKey = readKey(AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION);
+    const publicKey = readKey(AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION);
+    const jwkPrivateKey = readKey(AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION);
+    let jwkPublicJson: unknown;
+    try {
+      jwkPublicJson = JSON.parse(readKey(AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON));
+    } catch (error) {
+      logger.error('Failed to parse JWK public JSON', error instanceof Error ? error.stack : undefined);
+      throw new InternalServerErrorException('Authentication is temporarily unavailable.');
+    }
     const jkuUrl = this.configService.get<string>(
       AuthModuleConfigProperties.ENV_JKU_URL
     );

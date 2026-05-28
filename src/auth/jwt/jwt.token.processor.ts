@@ -13,10 +13,22 @@ export abstract class JwtTokenProcessor {
   protected parse(token: string): [header: JwtHeader, payload: unknown] {
     this.log.debug('Call parse');
 
-    const parts = token.split('.');
-    if (parts.length != 3 || !parts[0]) {
-      throw new Error('Failed to parse jwt token header');
+    try {
+      const parts = token.split('.');
+      if (parts.length != 3 || !parts[0]) {
+        throw new Error('Invalid token format');
+      }
+      const headerStr = Buffer.from(parts[0], 'base64').toString('ascii');
+      const header: JwtHeader = JSON.parse(headerStr);
+
+      const payloadStr = Buffer.from(parts[1], 'base64').toString('ascii');
+      const payload = JSON.parse(payloadStr);
+
+      return [header, payload];
+    } catch {
+      throw new Error('Invalid JWT token');
     }
+
     const headerStr = Buffer.from(parts[0], 'base64').toString('ascii');
     this.log.debug(`Jwt token header is ${headerStr}`);
     const header: JwtHeader = JSON.parse(headerStr);
