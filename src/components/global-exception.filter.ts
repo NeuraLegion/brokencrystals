@@ -17,8 +17,6 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
         throw exception;
       }
 
-      // Preserve auth failures as 401/403 so login + protected endpoint flows still work.
-      // Only sanitize the response body to avoid leaking internal details.
       const status = exception.getStatus();
       if (status < 500) {
         return super.catch(exception, host);

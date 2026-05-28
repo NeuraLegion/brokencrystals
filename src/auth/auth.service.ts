@@ -46,7 +46,10 @@ export class AuthService {
       try {
         return fs.readFileSync(keyPath, 'utf8');
       } catch (error) {
-        logger.error(`Failed to load JWT configuration for ${configKey}`, error instanceof Error ? error.stack : undefined);
+        logger.error(
+          `Failed to load JWT configuration for ${configKey}`,
+          error instanceof Error ? error.stack : undefined
+        );
         throw new InternalServerErrorException('An internal error has occurred');
       }
     };
@@ -58,7 +61,10 @@ export class AuthService {
     try {
       jwkPublicJson = JSON.parse(readKey(AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON));
     } catch (error) {
-      logger.error('Failed to parse JWK public JSON', error instanceof Error ? error.stack : undefined);
+      logger.error(
+        'Failed to parse JWK public JSON',
+        error instanceof Error ? error.stack : undefined
+      );
       throw new InternalServerErrorException('Authentication is temporarily unavailable.');
     }
     const jkuUrl = this.configService.get<string>(
@@ -100,12 +106,10 @@ export class AuthService {
       JwtProcessorType.X5U,
       new JwtTokenWithX5UKeyProcessor(jwkPrivateKey, this.httpClient, x5uUrl)
     );
-
     this.processors.set(
       JwtProcessorType.BEARER,
       new JwtBearerTokenProcessor(jwtSecretKey, this.keyCloakService)
     );
-
     this.processors.set(
       JwtProcessorType.HMAC,
       new JwtTokenWithHMACKeysProcessor(privateKey)
