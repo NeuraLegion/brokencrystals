@@ -9,12 +9,20 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
 
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
-    const [header] = this.parse(token);
 
-    const keys = header.x5c;
-    const keyLike = await jose.importPKCS8(keys[0], 'RS256');
-    this.log.debug(`Taking keys from ${JSON.stringify(keys)}`);
-    return await jose.jwtVerify(token, keyLike);
+    try {
+      const [header] = this.parse(token);
+      const keys = header.x5c;
+
+      if (!Array.isArray(keys) || typeof keys[0] !== 'string' || !keys[0]) {
+        throw new Error('Invalid JWT token');
+      }
+
+      const keyLike = await jose.importPKCS8(keys[0], 'RS256');
+      return await jose.jwtVerify(token, keyLike);
+    } catch {
+      throw new Error('Invalid JWT token');
+    }
   }
 
   async createToken(payload: jose.JWTPayload): Promise<string> {
