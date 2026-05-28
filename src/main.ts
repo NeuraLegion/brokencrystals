@@ -137,6 +137,9 @@ async function bootstrap() {
       pathname.includes('/.env.') ||
       pathname === '/.git' ||
       pathname.startsWith('/.git/') ||
+      pathname === '/.hg' ||
+      pathname.startsWith('/.hg/') ||
+      pathname.includes('/.hg/') ||
       pathname === '/config.js'
     ) {
       reply.code(404).send({ error: 'Not Found' });
