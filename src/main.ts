@@ -155,7 +155,7 @@ async function bootstrap() {
         format: 'html',
         render: renderDirList
       },
-      serveDotFiles: true
+      serveDotFiles: false
     });
   }
 
@@ -169,7 +169,7 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: true
+    serveDotFiles: false
   });
 
   await server.register(fastifyHttpProxy, {
