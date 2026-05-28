@@ -683,7 +683,7 @@ export class AuthController {
       }
 
       throw new InternalServerErrorException({
-        error: err.message
+        error: 'An internal error has occurred'
       });
     }
   }

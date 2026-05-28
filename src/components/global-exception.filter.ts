@@ -20,7 +20,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       const status = exception.getStatus();
       const sanitizedException = new InternalServerErrorException(
         status >= 500
-          ? 'An internal error has occurred, and the API was unable to service your request.'
+          ? 'An internal error has occurred'
           : 'Unauthorized'
       );
 

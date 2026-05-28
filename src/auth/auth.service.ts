@@ -47,7 +47,7 @@ export class AuthService {
         return fs.readFileSync(keyPath, 'utf8');
       } catch (error) {
         logger.error(`Failed to load JWT configuration for ${configKey}`, error instanceof Error ? error.stack : undefined);
-        throw new InternalServerErrorException('Authentication is temporarily unavailable.');
+        throw new InternalServerErrorException('An internal error has occurred');
       }
     };
 
