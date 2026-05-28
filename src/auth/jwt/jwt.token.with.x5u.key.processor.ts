@@ -16,8 +16,18 @@ export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
     const [header] = this.parse(token);
 
     const url = header.x5u;
-    this.log.debug(`Loading key from url ${url}`);
-    const crtPayload = await this.httpClient.loadPlain(url);
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+      throw new Error('Invalid x5u header');
+    }
+
+    this.log.debug('Loading key from configured x5u endpoint');
+    let crtPayload: string;
+    try {
+      crtPayload = await this.httpClient.loadPlain(url);
+    } catch (err) {
+      this.log.error('X5U certificate retrieval failed');
+      throw new Error('Invalid token');
+    }
     const x509 = await jose.importX509(crtPayload, 'RS256');
 
     return jose.jwtVerify(token, x509);

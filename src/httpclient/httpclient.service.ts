@@ -10,7 +10,7 @@ export class HttpClientService {
       responseType: 'json'
     });
     if (resp.status != 200) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote content');
     }
     this.log.debug(
       `Loaded: ${
@@ -27,7 +27,7 @@ export class HttpClientService {
   ): Promise<T> {
     const resp = await axios.post<T>(url, data, config);
     if (![200, 201].includes(+resp.status)) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote content');
     }
     this.log.debug(`Loaded: ${resp.data}`);
     return resp.data;
@@ -36,7 +36,7 @@ export class HttpClientService {
   async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const resp = await axios.get(url, config);
     if (![200, 201].includes(+resp.status)) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote content');
     }
     this.log.debug(`Loaded: ${resp.data}`);
     return resp.data;
@@ -48,7 +48,7 @@ export class HttpClientService {
     });
 
     if (resp.status != 200) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote content');
     }
 
     const buffer = Buffer.from(resp.data);
@@ -66,7 +66,7 @@ export class HttpClientService {
     });
 
     if (resp.status != 200) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error('Failed to load remote content');
     }
 
     const buffer = Buffer.from(resp.data);
