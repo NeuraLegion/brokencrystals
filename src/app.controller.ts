@@ -128,15 +128,27 @@ export class AppController {
   })
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
-    const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
-      recover: true
-    });
-    this.logger.debug(xmlDoc);
-    this.logger.debug(xmlDoc.getDtd());
+    const body = typeof xml === 'string' ? xml : Buffer.isBuffer(xml) ? xml.toString('utf8') : '';
+    const decodedBody = (() => {
+      try {
+        return decodeURIComponent(body);
+      } catch {
+        return body;
+      }
+    })();
 
-    return xmlDoc.toString(true);
+    if (!decodedBody.trim().startsWith('<?xml')) {
+      throw new HttpException('Invalid XML payload', HttpStatus.BAD_REQUEST);
+    }
+
+    const xmlDoc = parseXml(decodedBody, {
+      noent: false,
+      dtdvalid: false,
+      recover: false
+    });
+    this.logger.debug(xmlDoc.toString(false));
+
+    return xmlDoc.toString(false);
   }
 
   @Options()

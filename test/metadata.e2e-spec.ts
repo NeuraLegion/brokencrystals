@@ -24,7 +24,7 @@ describe('/api', () => {
         .run({
           method: 'POST',
           url: `${process.env.SEC_TESTER_TARGET}/api/metadata`,
-          body: '<?xml version="1.0" encoding="UTF-8"?>\n<username>John</username>'
+          body: '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>\n<username>&xxe;</username>'
         });
     });
   });
