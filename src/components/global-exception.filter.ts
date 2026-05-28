@@ -17,15 +17,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
         throw exception;
       }
 
-      const status = exception.getStatus();
-      if (status < 500) {
-        return super.catch(exception, host);
-      }
-
-      return super.catch(
-        new InternalServerErrorException('An internal error has occurred'),
-        host
-      );
+      return super.catch(exception, host);
     }
 
     const unprocessableException = new InternalServerErrorException(

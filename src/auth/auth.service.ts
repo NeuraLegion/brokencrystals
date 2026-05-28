@@ -1,5 +1,9 @@
 import { EntityManager } from '@mikro-orm/core';
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import { KeyCloakService } from '../keycloak/keycloak.service';
@@ -57,9 +61,12 @@ export class AuthService {
     const privateKey = readKey(AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION);
     const publicKey = readKey(AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION);
     const jwkPrivateKey = readKey(AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION);
+
     let jwkPublicJson: unknown;
     try {
-      jwkPublicJson = JSON.parse(readKey(AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON));
+      jwkPublicJson = JSON.parse(
+        readKey(AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON)
+      );
     } catch (error) {
       logger.error(
         'Failed to parse JWK public JSON',
@@ -67,6 +74,7 @@ export class AuthService {
       );
       throw new InternalServerErrorException('Authentication is temporarily unavailable.');
     }
+
     const jkuUrl = this.configService.get<string>(
       AuthModuleConfigProperties.ENV_JKU_URL
     );
