@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import axios from 'axios';
 
 export interface SafeFileResponse {
@@ -9,14 +9,35 @@ export interface SafeFileResponse {
 
 @Injectable()
 export class SafeFilesService {
+  private readonly allowedHosts = new Set(['trusted.example.com']);
+
   async add(name: string, url: string): Promise<SafeFileResponse> {
     const content = await this.fetchContent(url);
     return { name, url, content };
   }
 
   private async fetchContent(url: string): Promise<string> {
+    let parsedUrl: URL;
+
     try {
-      const response = await axios.get(url, { responseType: 'text' });
+      parsedUrl = new URL(url);
+    } catch {
+      throw new BadRequestException('Invalid URL');
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new BadRequestException('Unsupported URL scheme');
+    }
+
+    if (!this.allowedHosts.has(parsedUrl.hostname)) {
+      throw new BadRequestException('Untrusted host');
+    }
+
+    try {
+      const response = await axios.get(parsedUrl.toString(), {
+        responseType: 'text',
+        maxRedirects: 0
+      });
       return typeof response.data === 'string'
         ? response.data
         : JSON.stringify(response.data);
