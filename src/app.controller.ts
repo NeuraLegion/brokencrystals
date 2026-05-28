@@ -231,12 +231,13 @@ export class AppController {
         .type('application/json')
         .send(JSON.stringify(result));
     } catch (err: unknown) {
+      this.logger.error(
+        'process_numbers failed',
+        err instanceof Error ? err.stack : String(err)
+      );
+
       if (!response.sent && !response.raw.writableEnded) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        throw new InternalServerErrorException({
-          error: errorMessage,
-          location: __filename
-        });
+        throw new InternalServerErrorException('An internal error has occurred');
       }
     }
   }
