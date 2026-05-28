@@ -133,6 +133,8 @@ async function bootstrap() {
     if (
       pathname === '/.env' ||
       pathname.startsWith('/.env.') ||
+      pathname.endsWith('/.env') ||
+      pathname.includes('/.env.') ||
       pathname === '/.git' ||
       pathname.startsWith('/.git/') ||
       pathname === '/config.js'
