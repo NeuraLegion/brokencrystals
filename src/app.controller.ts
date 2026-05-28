@@ -198,48 +198,39 @@ export class AppController {
   })
   async processNumbers(
     @Body()
-    payload: { numbers: number[]; processing_expression: string },
+    payload: { numbers: unknown; processing_expression: unknown },
     @Res() res: FastifyReply
   ): Promise<void> {
-    const numbers = Array.isArray(payload?.numbers) ? payload.numbers : [];
-    const processNumbersExpression =
-      typeof payload?.processing_expression === 'string' &&
-      payload.processing_expression.trim().length > 0
-        ? payload.processing_expression
-        : 'numbers.reduce((acc, num) => acc + num, 0)';
-
-    // expose both names used by exploiter payloads
     const response = res;
+    const numbers = Array.isArray(payload?.numbers)
+      ? payload.numbers.filter((num): num is number => typeof num === 'number' && Number.isFinite(num))
+      : [];
+    const processingExpression =
+      typeof payload?.processing_expression === 'string'
+        ? payload.processing_expression.trim().toLowerCase()
+        : 'sum';
 
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
-    try {
-      const result = eval(processNumbersExpression);
+    const operations: Record<string, (values: number[]) => number> = {
+      sum: (values) => values.reduce((acc, num) => acc + num, 0),
+      avg: (values) => (values.length > 0 ? values.reduce((acc, num) => acc + num, 0) / values.length : 0),
+      min: (values) => (values.length > 0 ? Math.min(...values) : 0),
+      max: (values) => (values.length > 0 ? Math.max(...values) : 0)
+    };
 
-      // SSJI payload may already end the response
-      if (response.sent || response.raw.writableEnded) {
-        return;
-      }
-
-      if (typeof result === 'string') {
-        response.status(200).type('text/plain').send(result);
-        return;
-      }
-
-      response
-        .status(200)
-        .type('application/json')
-        .send(JSON.stringify(result));
-    } catch (err: unknown) {
-      this.logger.error(
-        'process_numbers failed',
-        err instanceof Error ? err.stack : String(err)
-      );
-
-      if (!response.sent && !response.raw.writableEnded) {
-        throw new InternalServerErrorException('An internal error has occurred');
-      }
+    const operation = operations[processingExpression];
+    if (!operation) {
+      throw new HttpException('Invalid processing_expression', HttpStatus.BAD_REQUEST);
     }
+
+    const result = operation(numbers);
+
+    if (response.sent || response.raw.writableEnded) {
+      return;
+    }
+
+    response.status(200).type('text/plain').send(String(result));
   }
 
   @GrpcMethod('OsService', 'RunCommand')
