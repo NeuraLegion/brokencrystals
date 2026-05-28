@@ -1,4 +1,4 @@
-import { Logger, UnauthorizedException } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import * as jose from 'jose';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
@@ -15,24 +15,19 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
       const keys = header.x5c;
 
       if (!Array.isArray(keys) || typeof keys[0] !== 'string' || !keys[0]) {
-        throw new UnauthorizedException({
-          error: 'Unauthorized'
-        });
+        throw new Error('Invalid JWT token');
       }
 
-      const keyLike = await jose.importPKCS8(keys[0], 'RS256');
-      return await jose.jwtVerify(token, keyLike);
+      // x5c contains an X.509 certificate chain, not a PKCS8 private key.
+      // Use the first certificate from the chain for verification.
+      const x509 = await jose.importX509(keys[0], 'RS256');
+      return await jose.jwtVerify(token, x509);
     } catch (error) {
       this.log.error(
         'Failed to validate X5C JWT',
         error instanceof Error ? error.stack : undefined
       );
-      if (error instanceof UnauthorizedException) {
-        throw error;
-      }
-      throw new UnauthorizedException({
-        error: 'Unauthorized'
-      });
+      throw new Error('Invalid JWT token');
     }
   }
 
