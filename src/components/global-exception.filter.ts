@@ -17,18 +17,21 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
         throw exception;
       }
 
+      // Preserve auth failures as 401/403 so login + protected endpoint flows still work.
+      // Only sanitize the response body to avoid leaking internal details.
       const status = exception.getStatus();
-      const sanitizedException = new InternalServerErrorException(
-        status >= 500
-          ? 'An internal error has occurred'
-          : 'Unauthorized'
-      );
+      if (status < 500) {
+        return super.catch(exception, host);
+      }
 
-      return super.catch(sanitizedException, host);
+      return super.catch(
+        new InternalServerErrorException('An internal error has occurred'),
+        host
+      );
     }
 
     const unprocessableException = new InternalServerErrorException(
-      'An internal error has occurred, and the API was unable to service your request.'
+      'An internal error has occurred'
     );
 
     if (gql) {

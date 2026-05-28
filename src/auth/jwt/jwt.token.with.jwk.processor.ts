@@ -34,7 +34,7 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
     } catch {
       throw new Error('Unauthorized');
     }
- 
+  }
 
   async createToken(payload: jose.JWTPayload): Promise<string> {
     this.log.debug('Call createToken');

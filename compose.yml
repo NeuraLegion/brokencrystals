@@ -21,10 +21,11 @@ services:
     build:
       context: '.'
       dockerfile: Dockerfile
-    restart: always
+    restart: on-failure
     healthcheck:
       interval: 5s
       retries: 10
+      start_period: 120s
       test:
         ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/api/config']
       timeout: 30s
@@ -63,7 +64,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
-    restart: always
+    restart: on-failure
     logging:
       options:
         max-file: '5'

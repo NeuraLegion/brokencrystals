@@ -2,24 +2,24 @@
 PostgreSQL Database directory appears to contain a database; Skipping initialization
 
 === brokencrystals-grpcwebproxy-1 ===
-time="2026-05-28T17:31:03Z" level=info msg="[core] parsed scheme: \"\"" system=system
-time="2026-05-28T17:31:03Z" level=info msg="[core] scheme \"\" not registered, fallback to default scheme" system=system
-time="2026-05-28T17:31:03Z" level=info msg="[core] ccResolverWrapper: sending update to cc: {[{nodejs:5000  <nil> 0 <nil>}] <nil> <nil>}" system=system
-time="2026-05-28T17:31:03Z" level=info msg="[core] ClientConn switching balancer to \"pick_first\"" system=system
-time="2026-05-28T17:31:03Z" level=info msg="[core] Channel switches to new LB policy \"pick_first\"" system=system
-time="2026-05-28T17:31:03Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
-time="2026-05-28T17:31:03Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
-time="2026-05-28T17:31:03Z" level=info msg="listening for http on: [::]:8081"
-time="2026-05-28T17:31:03Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
-time="2026-05-28T17:31:03Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
-time="2026-05-28T17:31:03Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
-time="2026-05-28T17:31:03Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
-time="2026-05-28T17:31:04Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
-time="2026-05-28T17:31:04Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
-time="2026-05-28T17:31:04Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
-time="2026-05-28T17:31:04Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
-time="2026-05-28T17:31:04Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
-time="2026-05-28T17:31:04Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] parsed scheme: \"\"" system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] scheme \"\" not registered, fallback to default scheme" system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] ccResolverWrapper: sending update to cc: {[{nodejs:5000  <nil> 0 <nil>}] <nil> <nil>}" system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] ClientConn switching balancer to \"pick_first\"" system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] Channel switches to new LB policy \"pick_first\"" system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-28T23:50:42Z" level=info msg="listening for http on: [::]:8081"
+time="2026-05-28T23:50:42Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-28T23:50:42Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-28T23:50:43Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-28T23:50:43Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-28T23:50:43Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-28T23:50:43Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-28T23:50:43Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-28T23:50:43Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
 
 === brokencrystals-keycloak-1 ===
 Updating the configuration and installing your custom providers, if any. Please wait.
@@ -33,5 +33,7 @@ Starting MailCatcher v0.10.0
 ==> http://0.0.0.0:1080
 
 === brokencrystals-nodejs-1 ===
-> broken-crystals@0.0.1 start:prod /var/www
+> broken-crystals@0.0.1 start:prod
 > node dist/main.js
+
+Primary 18 is running
