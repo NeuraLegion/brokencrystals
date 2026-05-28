@@ -18,12 +18,11 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       }
 
       const status = exception.getStatus();
-      const sanitizedException =
+      const sanitizedException = new InternalServerErrorException(
         status >= 500
-          ? new InternalServerErrorException(
-              'An internal error has occurred, and the API was unable to service your request.'
-            )
-          : exception;
+          ? 'An internal error has occurred, and the API was unable to service your request.'
+          : 'Unauthorized'
+      );
 
       return super.catch(sanitizedException, host);
     }

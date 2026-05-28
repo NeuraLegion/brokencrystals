@@ -26,7 +26,7 @@ export abstract class JwtTokenProcessor {
 
       return [header, payload];
     } catch {
-      throw new Error('Invalid JWT token');
+      throw new Error('Unauthorized');
     }
   }
 
