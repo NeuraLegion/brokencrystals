@@ -76,7 +76,17 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
+      const allowedTemplates: Record<string, string> = {
+        hello: 'Hello, world!',
+        status: 'Service is running'
+      };
+
+      const templateName = text.toLowerCase();
+      const res = allowedTemplates[templateName];
+      if (!res) {
+        throw new HttpException('Invalid template name', HttpStatus.BAD_REQUEST);
+      }
+
       this.logger.debug(`Rendered template: ${res}`);
       return res;
     }
