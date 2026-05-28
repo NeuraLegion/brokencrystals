@@ -157,10 +157,8 @@ export class AppController {
     try {
       return await this.appService.launchCommand(command);
     } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message || err,
-        location: __filename
-      });
+      this.logger.error('Command execution failed', err instanceof Error ? err.stack : String(err));
+      throw new InternalServerErrorException('An internal error has occurred');
     }
   }
 

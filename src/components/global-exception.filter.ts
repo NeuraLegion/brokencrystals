@@ -21,7 +21,6 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     }
 
     const unprocessableException = new InternalServerErrorException(
-      { error: (exception as Error).message },
       'An internal error has occurred, and the API was unable to service your request.'
     );
 
