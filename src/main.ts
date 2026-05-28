@@ -129,7 +129,7 @@ async function bootstrap() {
   });
 
   const denySensitiveStaticPaths = (req, reply) => {
-    const pathname = req.raw.url?.split('?')[0] || '';
+    const pathname = decodeURIComponent(req.raw.url?.split('?')[0] || '');
     if (
       pathname === '/.env' ||
       pathname.startsWith('/.env.') ||
@@ -137,6 +137,7 @@ async function bootstrap() {
       pathname.includes('/.env.') ||
       pathname === '/.git' ||
       pathname.startsWith('/.git/') ||
+      pathname.includes('/%2egit') ||
       pathname === '/.hg' ||
       pathname.startsWith('/.hg/') ||
       pathname.includes('/.hg/') ||
@@ -155,7 +156,8 @@ async function bootstrap() {
     redirect: false,
     wildcard: false,
     serveDotFiles: false,
-    setNotFoundHandler: denySensitiveStaticPaths
+    setNotFoundHandler: denySensitiveStaticPaths,
+    preHandler: denySensitiveStaticPaths
   });
 
   // Do not expose VCS artifacts or hidden dot-prefixed static paths in production.
