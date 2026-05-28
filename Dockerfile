@@ -2,9 +2,12 @@
 # BUILD FOR LOCAL DEVELOPMENT
 ###################
 
-FROM node:18-alpine AS build
+FROM node:18-bullseye-slim AS build
 
 WORKDIR /usr/src/app
+
+# Install build dependencies for native modules (libxmljs requires python3/make/g++)
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ libxml2-dev && rm -rf /var/lib/apt/lists/*
 
 # Copy and build NestJS server project
 COPY --chown=node:node package*.json ./
@@ -41,7 +44,7 @@ USER node
 # PRODUCTION
 ###################
 
-FROM node:18-alpine AS production
+FROM node:18-bullseye-slim AS production
 
 WORKDIR /usr/src/app
 
