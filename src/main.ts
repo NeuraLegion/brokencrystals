@@ -128,6 +128,21 @@ async function bootstrap() {
     );
   });
 
+  const denySensitiveStaticPaths = (req, reply) => {
+    const pathname = req.raw.url?.split('?')[0] || '';
+    if (
+      pathname === '/.env' ||
+      pathname.startsWith('/.env.') ||
+      pathname === '/.git' ||
+      pathname.startsWith('/.git/') ||
+      pathname === '/config.js'
+    ) {
+      reply.code(404).send({ error: 'Not Found' });
+      return;
+    }
+    reply.callNotFound();
+  };
+
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist'),
     prefix: `/`,
@@ -135,13 +150,7 @@ async function bootstrap() {
     redirect: false,
     wildcard: false,
     serveDotFiles: false,
-    setNotFoundHandler: (req, reply) => {
-      if (req.raw.url === '/config.js') {
-        reply.code(404).send({ error: 'Not Found' });
-        return;
-      }
-      reply.callNotFound();
-    }
+    setNotFoundHandler: denySensitiveStaticPaths
   });
 
   for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
