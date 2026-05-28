@@ -1,4 +1,4 @@
-import { InternalServerErrorException, Logger, UnauthorizedException } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 import { encode, decode } from 'jwt-simple';
 
@@ -13,16 +13,23 @@ export class JwtTokenWithHMACKeysProcessor extends JwtTokenProcessor {
     try {
       const [header] = this.parse(token);
       if (header.alg !== 'HS256') {
-        throw new UnauthorizedException('Invalid JWT token');
+        throw new UnauthorizedException({
+          error: 'Unauthorized'
+        });
       }
 
       return decode(token, this.privateKey, false, 'HS256');
     } catch (error) {
-      this.log.error('Failed to validate HMAC JWT', error instanceof Error ? error.stack : undefined);
+      this.log.error(
+        'Failed to validate HMAC JWT',
+        error instanceof Error ? error.stack : undefined
+      );
       if (error instanceof UnauthorizedException) {
         throw error;
       }
-      throw new InternalServerErrorException('Failed to validate JWT token');
+      throw new UnauthorizedException({
+        error: 'Unauthorized'
+      });
     }
   }
 

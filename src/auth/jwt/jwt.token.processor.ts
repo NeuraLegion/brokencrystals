@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtHeader } from './jwt.header';
 
 export abstract class JwtTokenProcessor {
@@ -26,7 +26,9 @@ export abstract class JwtTokenProcessor {
 
       return [header, payload];
     } catch {
-      throw new Error('Unauthorized');
+      throw new UnauthorizedException({
+        error: 'Unauthorized'
+      });
     }
   }
 
@@ -41,7 +43,9 @@ export abstract class JwtTokenProcessor {
         chainText.indexOf(JwtTokenProcessor.END_PUBLIC_KEY_MARK)
       )) === -1
     ) {
-      throw new Error('Invalid certificate');
+      throw new UnauthorizedException({
+        error: 'Invalid certificate'
+      });
     }
 
     const key = chainText.slice(
