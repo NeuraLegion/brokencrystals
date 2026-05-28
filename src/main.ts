@@ -85,7 +85,8 @@ async function bootstrap() {
     trustProxy: true,
     onProtoPoisoning: 'ignore',
     https:
-      process.env.NODE_ENV === 'production'
+      process.env.NODE_ENV === 'production' &&
+      process.env.ENABLE_HTTPS === 'true'
         ? {
             cert: readFileSync(
               '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem'
@@ -133,7 +134,14 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: true
+    serveDotFiles: false,
+    setNotFoundHandler: (req, reply) => {
+      if (req.raw.url === '/config.js') {
+        reply.code(404).send({ error: 'Not Found' });
+        return;
+      }
+      reply.callNotFound();
+    }
   });
 
   for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
@@ -194,7 +202,8 @@ async function bootstrap() {
     cookie: {
       secure: false,
       httpOnly: false
-    }
+    },
+    maxAge: 1000 * 60 * 60 * 24 * 365
   });
   server.addContentTypeParser('*', (req) => rawbody(req.raw));
 

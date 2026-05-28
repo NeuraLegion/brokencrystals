@@ -18,21 +18,27 @@ services:
       - '.data/nodejs:/var/lib/postgresql/data/'
 
   nodejs:
-    image: 'brightsec/brokencrystals'
+    build:
+      context: '.'
+      dockerfile: Dockerfile
     restart: always
     healthcheck:
       interval: 5s
       retries: 10
       test:
-        ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/api/config']
+        ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/api/config']
       timeout: 30s
     environment:
       NODE_ENV: production
+      URL: http://localhost:3000
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
       CHAT_API_TOKEN: ${CHAT_API_TOKEN}
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+    ports:
+      - '3000:3000'
+      - '5000:5000'
     deploy:
       restart_policy:
         condition: on-failure
