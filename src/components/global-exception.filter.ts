@@ -36,14 +36,6 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       throw unprocessableException;
     }
 
-    const applicationRef =
-      this.applicationRef ||
-      (this.httpAdapterHost && this.httpAdapterHost.httpAdapter);
-
-    return applicationRef.reply(
-      host.getArgByIndex(1),
-      unprocessableException.getResponse(),
-      unprocessableException.getStatus()
-    );
+    return super.catch(unprocessableException, host);
   }
 }
