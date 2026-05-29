@@ -43,18 +43,22 @@ export class HttpClientService {
   }
 
   async loadPlain(url: string): Promise<string> {
-    const resp = await axios.get<ArrayBuffer>(url, {
-      responseType: 'arraybuffer'
-    });
+    try {
+      const resp = await axios.get<ArrayBuffer>(url, {
+        responseType: 'arraybuffer'
+      });
 
-    if (resp.status != 200) {
+      if (resp.status != 200) {
+        throw new Error('Failed to load remote resource');
+      }
+
+      const buffer = Buffer.from(resp.data);
+      const text = buffer.toString();
+      this.log.debug('Loaded plain remote resource');
+      return text;
+    } catch {
       throw new Error('Failed to load remote resource');
     }
-
-    const buffer = Buffer.from(resp.data);
-    const text = buffer.toString();
-    this.log.debug(`Loaded: ${text}`);
-    return text;
   }
 
   async loadAny(url: string): Promise<{

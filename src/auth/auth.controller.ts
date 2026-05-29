@@ -683,8 +683,9 @@ export class AuthController {
         });
       }
 
+      this.logger.error('Failed to complete OIDC login', err?.stack ?? err);
       throw new InternalServerErrorException({
-        error: err.message
+        error: 'Internal Server Error'
       });
     }
   }
@@ -695,8 +696,9 @@ export class AuthController {
     try {
       user = await this.usersService.findByEmail(req.user);
     } catch (err) {
+      this.logger.error('Failed to load user during basic login', err?.stack ?? err);
       throw new InternalServerErrorException({
-        error: err.message
+        error: 'Internal Server Error'
       });
     }
 
