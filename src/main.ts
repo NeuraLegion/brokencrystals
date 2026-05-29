@@ -175,7 +175,7 @@ async function bootstrap() {
     {
       logger:
         process.env.NODE_ENV === 'production'
-          ? ['error']
+          ? false
           : ['debug', 'log', 'warn', 'error']
     }
   );
