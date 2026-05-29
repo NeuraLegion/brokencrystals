@@ -1,4 +1,4 @@
-import { Controller, Logger, Post, Query } from '@nestjs/common';
+import { Controller, Logger, Post, Query, UsePipes, ValidationPipe } from '@nestjs/common';
 import {
   ApiCreatedResponse,
   ApiOperation,
@@ -13,6 +13,14 @@ export class SubscriptionsController {
   private readonly logger = new Logger(SubscriptionsController.name);
 
   @Post()
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      validateCustomDecorators: true
+    })
+  )
   @ApiQuery({
     name: 'email',
     example: 'john.doe@example.com',
@@ -22,10 +30,10 @@ export class SubscriptionsController {
     description: SWAGGER_DESC_CREATE_SUBSCRIPTION
   })
   @ApiCreatedResponse({
-    description: 'Returns subscribed email'
+    description: 'Subscription accepted'
   })
-  async subscribe(@Query('email') email: string): Promise<string> {
-    this.logger.log(`Subscribed with email ${email}`);
-    return email;
+  async subscribe(@Query('email') email: string): Promise<{ success: boolean }> {
+    this.logger.log('Subscription request received');
+    return { success: true };
   }
 }

@@ -20,13 +20,12 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       return super.catch(exception, host);
     }
 
-    const unprocessableException = new InternalServerErrorException(
-      { error: 'Internal Server Error' },
-      'An internal error has occurred, and the API was unable to service your request.'
-    );
+    const safeException = new InternalServerErrorException({
+      error: 'Internal Server Error'
+    });
 
     if (gql) {
-      throw unprocessableException;
+      throw safeException;
     }
 
     const applicationRef =
@@ -35,8 +34,8 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
 
     return applicationRef.reply(
       host.getArgByIndex(1),
-      unprocessableException.getResponse(),
-      unprocessableException.getStatus()
+      safeException.getResponse(),
+      safeException.getStatus()
     );
   }
 }
