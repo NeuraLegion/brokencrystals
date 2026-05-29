@@ -21,7 +21,8 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     }
 
     const safeException = new InternalServerErrorException({
-      error: 'Internal Server Error'
+      error: 'Internal Server Error',
+      message: 'Internal Server Error'
     });
 
     if (gql) {
