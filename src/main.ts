@@ -135,7 +135,8 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: false
+    serveDotFiles: false,
+    dotfiles: 'deny'
   });
 
   // Do not expose VCS artifacts or repository checkouts over HTTP.
@@ -150,7 +151,8 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: false
+    serveDotFiles: false,
+    dotfiles: 'deny'
   });
 
   await server.register(fastifyHttpProxy, {
