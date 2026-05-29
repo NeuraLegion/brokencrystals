@@ -144,8 +144,6 @@ async function bootstrap() {
     }
   });
 
-  // Do not expose VCS artifacts or repository checkouts over HTTP.
-
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist', 'vendor'),
     prefix: `/vendor`,
