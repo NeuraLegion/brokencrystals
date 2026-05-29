@@ -1,4 +1,9 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Post
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiExcludeController,
@@ -30,11 +35,19 @@ export class SafeFilesController {
       }
     }
   })
-  @ApiBadRequestResponse({ description: 'Untrusted host' })
+  @ApiBadRequestResponse({ description: 'Invalid input' })
   create(
     @Body('name') name: string,
     @Body('url') url: string
   ): Promise<SafeFileResponse> {
-    return this.service.add(name, url);
+    if (typeof name !== 'string' || !name.trim()) {
+      throw new BadRequestException('Invalid input');
+    }
+
+    if (typeof url !== 'string' || !this.service.isAllowedUrl(url)) {
+      throw new BadRequestException('Invalid input');
+    }
+
+    return this.service.add(name.trim(), url);
   }
 }
