@@ -336,11 +336,7 @@ export class McpController {
       }
     } catch (error) {
       this.logger.error(`MCP Error: ${(error as Error).message}`);
-      return this.rpcError(
-        request,
-        -32603,
-        `Internal error: ${(error as Error).message}`
-      );
+      return this.rpcError(request, -32603, 'Internal error');
     }
   }
 
@@ -421,11 +417,8 @@ export class McpController {
         id: request.id
       };
     } catch (error) {
-      return this.rpcError(
-        request,
-        -32603,
-        `Internal error: ${(error as Error).message}`
-      );
+      this.logger.error(`MCP resource read error: ${(error as Error).message}`);
+      return this.rpcError(request, -32603, 'Internal error');
     }
   }
 
@@ -524,9 +517,8 @@ export class McpController {
         id: request.id
       };
     } catch (e) {
-      return this.rpcError(request, -32001, 'Unauthorized: invalid token', {
-        message: (e as Error).message
-      });
+      this.logger.warn(`MCP auth failed: ${(e as Error).message}`);
+      return this.rpcError(request, -32001, 'Unauthorized: invalid token');
     }
   }
 
@@ -658,11 +650,8 @@ export class McpController {
         id: request.id
       };
     } catch (error) {
-      return this.rpcError(
-        request,
-        -32603,
-        `Internal error: ${(error as Error).message}`
-      );
+      this.logger.error(`MCP tool call error: ${(error as Error).message}`);
+      return this.rpcError(request, -32603, 'Internal error');
     }
   }
 

@@ -68,9 +68,7 @@ export class McpResourceExecutorService extends McpProxySupport {
       });
 
       if (response.status !== 200) {
-        throw new Error(
-          `Proxy error in lfi_resource: HTTP ${response.status} ${this.responseToText(response.data)}`
-        );
+        throw new Error('Unable to read local resource');
       }
 
       const text =
@@ -88,7 +86,8 @@ export class McpResourceExecutorService extends McpProxySupport {
         ]
       };
     } catch (error) {
-      throw new Error((error as Error).message);
+      this.logger.error(`MCP local resource read failed: ${(error as Error).message}`);
+      throw new Error('Unable to read local resource');
     }
   }
 
@@ -105,9 +104,7 @@ export class McpResourceExecutorService extends McpProxySupport {
       });
 
       if (response.status < 200 || response.status >= 300) {
-        throw new Error(
-          `Proxy error in remote_file: HTTP ${response.status} ${this.responseToText(response.data)}`
-        );
+        throw new Error('Unable to read remote resource');
       }
 
       const text =
@@ -132,7 +129,8 @@ export class McpResourceExecutorService extends McpProxySupport {
         ]
       };
     } catch (error) {
-      throw new Error((error as Error).message);
+      this.logger.error(`MCP remote resource read failed: ${(error as Error).message}`);
+      throw new Error('Unable to read remote resource');
     }
   }
 }
