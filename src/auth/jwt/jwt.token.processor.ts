@@ -15,15 +15,25 @@ export abstract class JwtTokenProcessor {
 
     const parts = token.split('.');
     if (parts.length != 3 || !parts[0]) {
-      throw new Error('Failed to parse jwt token header');
+      throw new Error('Unauthorized');
     }
     const headerStr = Buffer.from(parts[0], 'base64').toString('ascii');
     this.log.debug(`Jwt token header is ${headerStr}`);
-    const header: JwtHeader = JSON.parse(headerStr);
+    let header: JwtHeader;
+    try {
+      header = JSON.parse(headerStr);
+    } catch {
+      throw new Error('Unauthorized');
+    }
 
     const payloadStr = Buffer.from(parts[1], 'base64').toString('ascii');
     this.log.debug(`Jwt token (None alg) payload is ${payloadStr}`);
-    const payload = JSON.parse(payloadStr);
+    let payload: unknown;
+    try {
+      payload = JSON.parse(payloadStr);
+    } catch {
+      throw new Error('Unauthorized');
+    }
 
     return [header, payload];
   }
