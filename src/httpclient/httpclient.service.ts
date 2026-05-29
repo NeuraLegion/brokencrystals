@@ -5,8 +5,37 @@ import axios, { AxiosRequestConfig } from 'axios';
 export class HttpClientService {
   private readonly log: Logger = new Logger(HttpClientService.name);
 
+  private validateUrl(url: string): URL {
+    let parsed: URL;
+
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error('Invalid remote URL');
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Invalid remote URL');
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+    const blockedHosts = new Set([
+      'localhost',
+      '127.0.0.1',
+      '::1',
+      '169.254.169.254'
+    ]);
+
+    if (blockedHosts.has(hostname)) {
+      throw new Error('Invalid remote URL');
+    }
+
+    return parsed;
+  }
+
   async loadJSON<T = unknown>(url: string): Promise<T> {
-    const resp = await axios.get<T>(url, {
+    const safeUrl = this.validateUrl(url).toString();
+    const resp = await axios.get<T>(safeUrl, {
       responseType: 'json'
     });
     if (resp.status != 200) {
@@ -25,16 +54,18 @@ export class HttpClientService {
     data: unknown,
     config?: AxiosRequestConfig
   ): Promise<T> {
-    const resp = await axios.post<T>(url, data, config);
+    const safeUrl = this.validateUrl(url).toString();
+    const resp = await axios.post<T>(safeUrl, data, config);
     if (![200, 201].includes(+resp.status)) {
-      throw new Error(`Failed to load url: ${url}. Status ${resp.status}`);
+      throw new Error(`Failed to load url: ${safeUrl}. Status ${resp.status}`);
     }
     this.log.debug(`Loaded: ${resp.data}`);
     return resp.data;
   }
 
   async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    const resp = await axios.get(url, config);
+    const safeUrl = this.validateUrl(url).toString();
+    const resp = await axios.get(safeUrl, config);
     if (![200, 201].includes(+resp.status)) {
       throw new Error('Failed to load remote resource');
     }
@@ -44,7 +75,8 @@ export class HttpClientService {
 
   async loadPlain(url: string): Promise<string> {
     try {
-      const resp = await axios.get<ArrayBuffer>(url, {
+      const safeUrl = this.validateUrl(url).toString();
+      const resp = await axios.get<ArrayBuffer>(safeUrl, {
         responseType: 'arraybuffer'
       });
 
@@ -65,7 +97,8 @@ export class HttpClientService {
     content: Buffer;
     contentType: string;
   }> {
-    const resp = await axios.get<ArrayBuffer>(url, {
+    const safeUrl = this.validateUrl(url).toString();
+    const resp = await axios.get<ArrayBuffer>(safeUrl, {
       responseType: 'arraybuffer'
     });
 
