@@ -77,6 +77,13 @@ async function bootstrap() {
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
 
+  const httpsCertPath = process.env.HTTPS_CERT_PATH;
+  const httpsKeyPath = process.env.HTTPS_KEY_PATH;
+  const enableHttps =
+    process.env.NODE_ENV === 'production' &&
+    !!httpsCertPath &&
+    !!httpsKeyPath;
+
   const server = fastify({
     logger:
       process.env.FASTIFY_LOGGER === 'true'
@@ -84,17 +91,12 @@ async function bootstrap() {
         : false,
     trustProxy: true,
     onProtoPoisoning: 'ignore',
-    https:
-      process.env.NODE_ENV === 'production'
-        ? {
-            cert: readFileSync(
-              '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem'
-            ),
-            key: readFileSync(
-              '/etc/letsencrypt/live/brokencrystals.com/privkey.pem'
-            )
-          }
-        : null
+    https: enableHttps
+      ? {
+          cert: readFileSync(httpsCertPath),
+          key: readFileSync(httpsKeyPath)
+        }
+      : undefined
   });
 
   server.setDefaultRoute((req, res) => {
@@ -133,7 +135,7 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: true
+    serveDotFiles: false
   });
 
   for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
@@ -147,7 +149,7 @@ async function bootstrap() {
         format: 'html',
         render: renderDirList
       },
-      serveDotFiles: true
+      serveDotFiles: false
     });
   }
 
@@ -161,7 +163,7 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: true
+    serveDotFiles: false
   });
 
   await server.register(fastifyHttpProxy, {
@@ -193,7 +195,8 @@ async function bootstrap() {
     cookieName: 'connect.sid',
     cookie: {
       secure: false,
-      httpOnly: false
+      httpOnly: false,
+      maxAge: 1000 * 60 * 60 * 24 * 365 * 10
     }
   });
   server.addContentTypeParser('*', (req) => rawbody(req.raw));
@@ -268,6 +271,10 @@ async function bootstrap() {
 
 if (cluster.isPrimary && process.env.NODE_ENV === 'production') {
   console.log(`Primary ${process.pid} is running`);
+
+  cluster.setupPrimary({
+    exec: __filename
+  });
 
   const numCPUs = os.cpus().length;
   for (let i = 0; i < numCPUs; i++) {

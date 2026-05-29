@@ -1,0 +1,822 @@
+=== brokencrystals-db-1 ===
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+=== brokencrystals-grpcwebproxy-1 ===
+time="2026-05-29T07:49:30Z" level=info msg="[core] parsed scheme: \"\"" system=system
+time="2026-05-29T07:49:30Z" level=info msg="[core] scheme \"\" not registered, fallback to default scheme" system=system
+time="2026-05-29T07:49:30Z" level=info msg="[core] ccResolverWrapper: sending update to cc: {[{nodejs:5000  <nil> 0 <nil>}] <nil> <nil>}" system=system
+time="2026-05-29T07:49:30Z" level=info msg="[core] ClientConn switching balancer to \"pick_first\"" system=system
+time="2026-05-29T07:49:30Z" level=info msg="[core] Channel switches to new LB policy \"pick_first\"" system=system
+time="2026-05-29T07:49:30Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:30Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-29T07:49:30Z" level=info msg="listening for http on: [::]:8081"
+time="2026-05-29T07:49:30Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:30Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.7:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-29T07:49:30Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:30Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:31Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:31Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:31Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-29T07:49:31Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.7:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-29T07:49:31Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:31Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:32Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:32Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-29T07:49:32Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:32Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.7:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-29T07:49:32Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:32Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:34Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:34Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-29T07:49:34Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:34Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.7:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-29T07:49:34Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:34Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:39Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:39Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-29T07:49:39Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:39Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.7:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-29T07:49:39Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:39Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:45Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:45Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-29T07:49:45Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:45Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.7:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-29T07:49:45Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:45Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:55Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:55Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-29T07:49:55Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:49:55Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.7:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-29T07:49:55Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:49:55Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:50:12Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:50:12Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-05-29T07:50:12Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-05-29T07:50:12Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.7:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-05-29T07:50:12Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-05-29T07:50:12Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+
+=== brokencrystals-keycloak-1 ===
+Updating the configuration and installing your custom providers, if any. Please wait.
+2026-05-29 07:48:57,780 INFO  [io.qua.hib.orm.dep.HibernateOrmProcessor] (build-39) A legacy persistence.xml file is present in the classpath. This file will be used to configure JPA/Hibernate ORM persistence units, and any configuration of the Hibernate ORM extension will be ignored. To ignore persistence.xml files instead, set the configuration property 'quarkus.hibernate-orm.persistence-xml.ignore' to 'true'.
+2026-05-29 07:49:00,745 INFO  [io.qua.dep.QuarkusAugmentor] (main) Quarkus augmentation completed in 5021ms
+Running the server in development mode. DO NOT use this configuration in production.
+2026-05-29 07:49:01,542 ERROR [org.keycloak.quarkus.runtime.configuration.mappers.PropertyMappers] (main) Hostname v1 options [hostname-strict-https] are still in use, please review your configuration
+2026-05-29 07:49:03,666 INFO  [org.keycloak.quarkus.runtime.storage.infinispan.CacheManagerFactory] (ForkJoinPool.commonPool-worker-1) Starting Infinispan embedded cache manager
+2026-05-29 07:49:03,765 INFO  [org.infinispan.CONTAINER] (ForkJoinPool.commonPool-worker-1) Virtual threads support enabled
+2026-05-29 07:49:03,911 INFO  [org.infinispan.CONTAINER] (ForkJoinPool.commonPool-worker-1) ISPN000556: Starting user marshaller 'org.infinispan.commons.marshall.ImmutableProtoStreamMarshaller'
+2026-05-29 07:49:04,201 INFO  [org.infinispan.transaction.lookup.JBossStandaloneJTAManagerLookup] (ForkJoinPool.commonPool-worker-1) ISPN000107: Retrieving transaction manager Transaction: unknown
+2026-05-29 07:49:04,559 INFO  [org.keycloak.connections.infinispan.DefaultInfinispanConnectionProviderFactory] (main) Node name: node_227764, Site name: null
+2026-05-29 07:49:04,565 INFO  [org.keycloak.broker.provider.AbstractIdentityProviderMapper] (main) Registering class org.keycloak.broker.provider.mappersync.ConfigSyncEventListener
+2026-05-29 07:49:05,243 INFO  [org.keycloak.exportimport.singlefile.SingleFileImportProvider] (main) Full importing from file /opt/keycloak/bin/../data/import/realm-export.json
+2026-05-29 07:49:05,431 INFO  [org.keycloak.exportimport.util.ImportUtils] (main) Realm 'brokencrystals' already exists. Import skipped
+2026-05-29 07:49:05,432 INFO  [org.keycloak.exportimport.dir.DirImportProvider] (main) Importing from directory /opt/keycloak/bin/../data/import
+2026-05-29 07:49:05,435 INFO  [org.keycloak.services] (main) KC-SERVICES0030: Full model import requested. Strategy: IGNORE_EXISTING
+2026-05-29 07:49:05,436 INFO  [org.keycloak.services] (main) KC-SERVICES0032: Import finished successfully
+2026-05-29 07:49:05,450 WARN  [io.agroal.pool] (main) Datasource '<default>': JDBC resources leaked: 3 ResultSet(s) and 0 Statement(s)
+2026-05-29 07:49:05,627 INFO  [io.quarkus] (main) Keycloak 26.1.2 on JVM (powered by Quarkus 3.15.3) started in 4.721s. Listening on: http://0.0.0.0:8080. Management interface listening on http://0.0.0.0:9000.
+2026-05-29 07:49:05,627 INFO  [io.quarkus] (main) Profile dev activated. 
+2026-05-29 07:49:05,627 INFO  [io.quarkus] (main) Installed features: [agroal, cdi, hibernate-orm, jdbc-postgresql, keycloak, narayana-jta, opentelemetry, reactive-routes, rest, rest-jackson, smallrye-context-propagation, smallrye-health, vertx]
+
+=== brokencrystals-keycloak-db-1 ===
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+=== brokencrystals-mailcatcher-1 ===
+Starting MailCatcher v0.10.0
+==> smtp://0.0.0.0:1025
+==> http://0.0.0.0:1080
+
+=== brokencrystals-nodejs-1 ===
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+Primary 18 is running
+Worker 126 started
+Worker 73 started
+Worker 130 started
+Worker 126 died with code 1 and signal null
+Starting a new worker
+Worker 73 died with code 1 and signal null
+Starting a new worker
+Worker 130 died with code 1 and signal null
+Starting a new worker
+Worker 35 started
+Worker 35 died with code 1 and signal null
+Starting a new worker
+Worker 120 started
+Worker 120 died with code 1 and signal null
+Starting a new worker
+Worker 95 started
+Worker 95 died with code 1 and signal null
+Starting a new worker
+Worker 101 started
+Worker 101 died with code 1 and signal null
+Starting a new worker
+Worker 28 started
+Worker 41 started
+Worker 25 started
+Worker 28 died with code 1 and signal null
+Starting a new worker
+Worker 71 started
+Worker 41 died with code 1 and signal null
+Starting a new worker
+Worker 25 died with code 1 and signal null
+Starting a new worker
+Worker 71 died with code 1 and signal null
+Starting a new worker
+Worker 93 started
+Worker 93 died with code 1 and signal null
+Starting a new worker
+Worker 60 started
+Worker 60 died with code 1 and signal null
+Starting a new worker
+Worker 86 started
+Worker 26 started
+Worker 86 died with code 1 and signal null
+Starting a new worker
+Worker 26 died with code 1 and signal null
+Starting a new worker
+Worker 27 started
+Worker 29 started
+Worker 53 started
+Worker 27 died with code 1 and signal null
+Starting a new worker
+Worker 29 died with code 1 and signal null
+Starting a new worker
+Worker 53 died with code 1 and signal null
+Starting a new worker
+Worker 74 started
+Worker 74 died with code 1 and signal null
+Starting a new worker
+Worker 36 started
+Worker 36 died with code 1 and signal null
+Starting a new worker
+Worker 165 started
+Worker 171 started
+Worker 165 died with code 1 and signal null
+Starting a new worker
+Worker 171 died with code 1 and signal null
+Starting a new worker
+Worker 186 started
+Worker 186 died with code 1 and signal null
+Starting a new worker
+Worker 216 started
+Worker 216 died with code 1 and signal null
+Starting a new worker
+Worker 193 started
+Worker 193 died with code 1 and signal null
+Starting a new worker
+Worker 200 started
+Worker 200 died with code 1 and signal null
+Starting a new worker
+Worker 172 started
+Worker 242 started
+Worker 172 died with code 1 and signal null
+Starting a new worker
+Worker 242 died with code 1 and signal null
+Starting a new worker
+Worker 206 started
+Worker 206 died with code 1 and signal null
+Starting a new worker
+Worker 215 started
+Worker 215 died with code 1 and signal null
+Starting a new worker
+Worker 233 started
+Worker 270 started
+Worker 291 started
+Worker 270 died with code 1 and signal null
+Starting a new worker
+Worker 233 died with code 1 and signal null
+Starting a new worker
+Worker 291 died with code 1 and signal null
+Starting a new worker
+Worker 249 started
+Worker 249 died with code 1 and signal null
+Starting a new worker
+Worker 276 started
+Worker 276 died with code 1 and signal null
+Starting a new worker
+Worker 214 started
+Worker 214 died with code 1 and signal null
+Starting a new worker
+Worker 277 started
+Worker 257 started
+Worker 277 died with code 1 and signal null
+Starting a new worker
+Worker 257 died with code 1 and signal null
+Starting a new worker
+Worker 256 started
+Worker 256 died with code 1 and signal null
+Starting a new worker
+Worker 298 started
+Worker 298 died with code 1 and signal null
+Starting a new worker
+Worker 312 started
+Worker 318 started
+Worker 312 died with code 1 and signal null
+Starting a new worker
+Worker 318 died with code 1 and signal null
+Starting a new worker
+Worker 333 started
+Worker 333 died with code 1 and signal null
+Starting a new worker
+Worker 340 started
+Worker 367 started
+Worker 340 died with code 1 and signal null
+Starting a new worker
+Worker 367 died with code 1 and signal null
+Starting a new worker
+Worker 400 started
+Worker 400 died with code 1 and signal null
+Starting a new worker
+Worker 326 started
+Worker 417 started
+Worker 346 started
+Worker 417 died with code 1 and signal null
+Starting a new worker
+Worker 326 died with code 1 and signal null
+Starting a new worker
+Worker 346 died with code 1 and signal null
+Starting a new worker
+Worker 354 started
+Worker 354 died with code 1 and signal null
+Starting a new worker
+Worker 355 started
+Worker 375 started
+Worker 355 died with code 1 and signal null
+Starting a new worker
+Worker 375 died with code 1 and signal null
+Starting a new worker
+Worker 383 started
+Worker 382 started
+Worker 382 died with code 1 and signal null
+Starting a new worker
+Worker 383 died with code 1 and signal null
+Starting a new worker
+Worker 384 started
+Worker 384 died with code 1 and signal null
+Starting a new worker
+Worker 438 started
+Worker 438 died with code 1 and signal null
+Starting a new worker
+Worker 425 started
+Worker 408 started
+Worker 425 died with code 1 and signal null
+Starting a new worker
+Worker 408 died with code 1 and signal null
+Starting a new worker
+Worker 424 started
+Worker 424 died with code 1 and signal null
+Starting a new worker
+Worker 445 started
+Worker 445 died with code 1 and signal null
+Starting a new worker
+Worker 465 started
+Worker 465 died with code 1 and signal null
+Starting a new worker
+Worker 480 started
+Worker 480 died with code 1 and signal null
+Starting a new worker
+Worker 507 started
+Worker 507 died with code 1 and signal null
+Starting a new worker
+Worker 493 started
+Worker 493 died with code 1 and signal null
+Starting a new worker
+Worker 472 started
+Worker 472 died with code 1 and signal null
+Starting a new worker
+Worker 479 started
+Worker 529 started
+Worker 479 died with code 1 and signal null
+Starting a new worker
+Worker 521 started
+Worker 501 started
+Worker 529 died with code 1 and signal null
+Starting a new worker
+Worker 458 started
+Worker 521 died with code 1 and signal null
+Starting a new worker
+Worker 542 started
+Worker 501 died with code 1 and signal null
+Starting a new worker
+Worker 458 died with code 1 and signal null
+Starting a new worker
+Worker 542 died with code 1 and signal null
+Starting a new worker
+Worker 500 started
+Worker 562 started
+Worker 500 died with code 1 and signal null
+Starting a new worker
+Worker 562 died with code 1 and signal null
+Starting a new worker
+Worker 528 started
+Worker 528 died with code 1 and signal null
+Starting a new worker
+Worker 571 started
+Worker 571 died with code 1 and signal null
+Starting a new worker
+Worker 570 started
+Worker 570 died with code 1 and signal null
+Starting a new worker
+Worker 543 started
+Worker 584 started
+Worker 543 died with code 1 and signal null
+Starting a new worker
+Worker 584 died with code 1 and signal null
+Starting a new worker
+Worker 549 started
+Worker 549 died with code 1 and signal null
+Starting a new worker
+Worker 591 started
+Worker 591 died with code 1 and signal null
+Starting a new worker
+Worker 633 started
+Worker 633 died with code 1 and signal null
+Starting a new worker
+Worker 605 started
+Worker 605 died with code 1 and signal null
+Starting a new worker
+Worker 640 started
+Worker 640 died with code 1 and signal null
+Starting a new worker
+Worker 612 started
+Worker 612 died with code 1 and signal null
+Starting a new worker
+Worker 619 started
+Worker 619 died with code 1 and signal null
+Starting a new worker
+Worker 598 started
+Worker 667 started
+Worker 598 died with code 1 and signal null
+Starting a new worker
+Worker 667 died with code 1 and signal null
+Starting a new worker
+Worker 659 started
+Worker 659 died with code 1 and signal null
+Starting a new worker
+Worker 666 started
+Worker 666 died with code 1 and signal null
+Starting a new worker
+Worker 646 started
+Worker 646 died with code 1 and signal null
+Starting a new worker
+Worker 683 started
+Worker 683 died with code 1 and signal null
+Starting a new worker
+Worker 703 started
+Worker 703 died with code 1 and signal null
+Starting a new worker
+Worker 710 started
+Worker 710 died with code 1 and signal null
+Starting a new worker
+Worker 647 started
+Worker 647 died with code 1 and signal null
+Starting a new worker
+Worker 696 started
+Worker 696 died with code 1 and signal null
+Starting a new worker
+Worker 682 started
+Worker 682 died with code 1 and signal null
+Starting a new worker
+Worker 731 started
+Worker 731 died with code 1 and signal null
+Starting a new worker
+Worker 738 started
+Worker 738 died with code 1 and signal null
+Starting a new worker
+Worker 723 started
+Worker 723 died with code 1 and signal null
+Starting a new worker
+Worker 717 started
+Worker 717 died with code 1 and signal null
+Starting a new worker
+Worker 745 started
+Worker 745 died with code 1 and signal null
+Starting a new worker
+Worker 752 started
+Worker 773 started
+Worker 752 died with code 1 and signal null
+Starting a new worker
+Worker 773 died with code 1 and signal null
+Starting a new worker
+Worker 765 started
+Worker 765 died with code 1 and signal null
+Starting a new worker
+Worker 759 started
+Worker 780 started
+Worker 759 died with code 1 and signal null
+Starting a new worker
+Worker 780 died with code 1 and signal null
+Starting a new worker
+Worker 781 started
+Worker 820 started
+Worker 781 died with code 1 and signal null
+Starting a new worker
+Worker 820 died with code 1 and signal null
+Starting a new worker
+Worker 794 started
+Worker 827 started
+Worker 794 died with code 1 and signal null
+Starting a new worker
+Worker 801 started
+Worker 827 died with code 1 and signal null
+Starting a new worker
+Worker 801 died with code 1 and signal null
+Starting a new worker
+Worker 835 started
+Worker 835 died with code 1 and signal null
+Starting a new worker
+Worker 814 started
+Worker 814 died with code 1 and signal null
+Starting a new worker
+Worker 849 started
+Worker 849 died with code 1 and signal null
+Starting a new worker
+Worker 855 started
+Worker 842 started
+Worker 855 died with code 1 and signal null
+Starting a new worker
+Worker 842 died with code 1 and signal null
+Starting a new worker
+Worker 863 started
+Worker 863 died with code 1 and signal null
+Starting a new worker
+Worker 870 started
+Worker 870 died with code 1 and signal null
+Starting a new worker
+Worker 884 started
+Worker 884 died with code 1 and signal null
+Starting a new worker
+Worker 877 started
+Worker 877 died with code 1 and signal null
+Starting a new worker
+Worker 897 started
+Worker 897 died with code 1 and signal null
+Starting a new worker
+Worker 891 started
+Worker 904 started
+Worker 904 died with code 1 and signal null
+Starting a new worker
+Worker 891 died with code 1 and signal null
+Starting a new worker
+Worker 919 started
+Worker 919 died with code 1 and signal null
+Starting a new worker
+Worker 912 started
+Worker 933 started
+Worker 933 died with code 1 and signal null
+Starting a new worker
+Worker 912 died with code 1 and signal null
+Starting a new worker
+Worker 925 started
+Worker 925 died with code 1 and signal null
+Starting a new worker
+Worker 955 started
+Worker 947 started
+Worker 955 died with code 1 and signal null
+Starting a new worker
+Worker 947 died with code 1 and signal null
+Starting a new worker
+Worker 934 started
+Worker 975 started
+Worker 954 started
+Worker 934 died with code 1 and signal null
+Starting a new worker
+Worker 954 died with code 1 and signal null
+Starting a new worker
+Worker 975 died with code 1 and signal null
+Starting a new worker
+Worker 968 started
+Worker 968 died with code 1 and signal null
+Starting a new worker
+Worker 1023 started
+Worker 1023 died with code 1 and signal null
+Starting a new worker
+Worker 989 started
+Worker 989 died with code 1 and signal null
+Starting a new worker
+Worker 996 started
+Worker 996 died with code 1 and signal null
+Starting a new worker
+Worker 1016 started
+Worker 982 started
+Worker 1016 died with code 1 and signal null
+Starting a new worker
+Worker 982 died with code 1 and signal null
+Starting a new worker
+Worker 1009 started
+Worker 1009 died with code 1 and signal null
+Starting a new worker
+Worker 1030 started
+Worker 1030 died with code 1 and signal null
+Starting a new worker
+Worker 1045 started
+Worker 1045 died with code 1 and signal null
+Starting a new worker
+Worker 1044 started
+Worker 1044 died with code 1 and signal null
+Starting a new worker
+Worker 1100 started
+Worker 1100 died with code 1 and signal null
+Starting a new worker
+Worker 1037 started
+Worker 1037 died with code 1 and signal null
+Starting a new worker
+Worker 1067 started
+Worker 1067 died with code 1 and signal null
+Starting a new worker
+Worker 1086 started
+Worker 1086 died with code 1 and signal null
+Starting a new worker
+Worker 1058 started
+Worker 1121 started
+Worker 1065 started
+Worker 1058 died with code 1 and signal null
+Starting a new worker
+Worker 1065 died with code 1 and signal null
+Starting a new worker
+Worker 1121 died with code 1 and signal null
+Starting a new worker
+Worker 1079 started
+Worker 1079 died with code 1 and signal null
+Starting a new worker
+Worker 1093 started
+Worker 1093 died with code 1 and signal null
+Starting a new worker
+Worker 1128 started
+Worker 1128 died with code 1 and signal null
+Starting a new worker
+Worker 1135 started
+Worker 1101 started
+Worker 1135 died with code 1 and signal null
+Starting a new worker
+Worker 1101 died with code 1 and signal null
+Starting a new worker
+Worker 1102 started
+Worker 1102 died with code 1 and signal null
+Starting a new worker
+Worker 1149 started
+Worker 1149 died with code 1 and signal null
+Starting a new worker
+Worker 1142 started
+Worker 1142 died with code 1 and signal null
+Starting a new worker
+Worker 1176 started
+Worker 1176 died with code 1 and signal null
+Starting a new worker
+Worker 1150 started
+Worker 1150 died with code 1 and signal null
+Starting a new worker
+Worker 1163 started
+Worker 1163 died with code 1 and signal null
+Starting a new worker
+Worker 1183 started
+Worker 1183 died with code 1 and signal null
+Starting a new worker
+Worker 1218 started
+Worker 1218 died with code 1 and signal null
+Starting a new worker
+Worker 1190 started
+Worker 1190 died with code 1 and signal null
+Starting a new worker
+Worker 1211 started
+Worker 1197 started
+Worker 1211 died with code 1 and signal null
+Starting a new worker
+Worker 1197 died with code 1 and signal null
+Starting a new worker
+Worker 1253 started
+Worker 1253 died with code 1 and signal null
+Starting a new worker
+Worker 1232 started
+Worker 1203 started
+Worker 1232 died with code 1 and signal null
+Starting a new worker
+Worker 1203 died with code 1 and signal null
+Starting a new worker
+Worker 1226 started
+Worker 1225 started
+Worker 1226 died with code 1 and signal null
+Starting a new worker
+Worker 1225 died with code 1 and signal null
+Starting a new worker
+Worker 1246 started
+Worker 1246 died with code 1 and signal null
+Starting a new worker
+Worker 1267 started
+Worker 1267 died with code 1 and signal null
+Starting a new worker
+Worker 1288 started
+Worker 1280 started
+Worker 1288 died with code 1 and signal null
+Starting a new worker
+Worker 1280 died with code 1 and signal null
+Starting a new worker
+Worker 1260 started
+Worker 1268 started
+Worker 1260 died with code 1 and signal null
+Starting a new worker
+Worker 1268 died with code 1 and signal null
+Starting a new worker
+Worker 1295 started
+Worker 1295 died with code 1 and signal null
+Starting a new worker
+Worker 1309 started
+Worker 1309 died with code 1 and signal null
+Starting a new worker
+Worker 1316 started
+Worker 1316 died with code 1 and signal null
+Starting a new worker
+Worker 1302 started
+Worker 1302 died with code 1 and signal null
+Starting a new worker
+Worker 1328 started
+Worker 1328 died with code 1 and signal null
+Starting a new worker
+Worker 1335 started
+Worker 1349 started
+Worker 1349 died with code 1 and signal null
+Starting a new worker
+Worker 1335 died with code 1 and signal null
+Starting a new worker
+Worker 1342 started
+Worker 1355 started
+Worker 1342 died with code 1 and signal null
+Starting a new worker
+Worker 1363 started
+Worker 1355 died with code 1 and signal null
+Starting a new worker
+Worker 1363 died with code 1 and signal null
+Starting a new worker
+Worker 1371 started
+Worker 1371 died with code 1 and signal null
+Starting a new worker
+Worker 1390 started
+Worker 1398 started
+Worker 1390 died with code 1 and signal null
+Starting a new worker
+Worker 1398 died with code 1 and signal null
+Starting a new worker
+Worker 1370 started
+Worker 1370 died with code 1 and signal null
+Starting a new worker
+Worker 1384 started
+Worker 1384 died with code 1 and signal null
+Starting a new worker
+Worker 1418 started
+Worker 1418 died with code 1 and signal null
+Starting a new worker
+Worker 1427 started
+Worker 1427 died with code 1 and signal null
+Starting a new worker
+Worker 1412 started
+Worker 1412 died with code 1 and signal null
+Starting a new worker
+Worker 1405 started
+Worker 1426 started
+Worker 1405 died with code 1 and signal null
+Starting a new worker
+Worker 1426 died with code 1 and signal null
+Starting a new worker
+Worker 1440 started
+Worker 1440 died with code 1 and signal null
+Starting a new worker
+Worker 1447 started
+Worker 1447 died with code 1 and signal null
+Starting a new worker
+Worker 1461 started
+Worker 1454 started
+Worker 1454 died with code 1 and signal null
+Starting a new worker
+Worker 1461 died with code 1 and signal null
+Starting a new worker
+Worker 1468 started
+Worker 1476 started
+Worker 1497 started
+Worker 1468 died with code 1 and signal null
+Starting a new worker
+Worker 1476 died with code 1 and signal null
+Starting a new worker
+Worker 1497 died with code 1 and signal null
+Starting a new worker
+Worker 1494 started
+Worker 1494 died with code 1 and signal null
+Starting a new worker
+Worker 1522 started
+Worker 1475 started
+Worker 1522 died with code 1 and signal null
+Starting a new worker
+Worker 1475 died with code 1 and signal null
+Starting a new worker
+Worker 1515 started
+Worker 1515 died with code 1 and signal null
+Starting a new worker
+Worker 1523 started
+Worker 1523 died with code 1 and signal null
+Starting a new worker
+Worker 1550 started
+Worker 1550 died with code 1 and signal null
+Starting a new worker
+Worker 1495 started
+Worker 1495 died with code 1 and signal null
+Starting a new worker
+Worker 1536 started
+Worker 1536 died with code 1 and signal null
+Starting a new worker
+Worker 1543 started
+Worker 1543 died with code 1 and signal null
+Starting a new worker
+Worker 1571 started
+Worker 1571 died with code 1 and signal null
+Starting a new worker
+Worker 1564 started
+Worker 1564 died with code 1 and signal null
+Starting a new worker
+Worker 1557 started
+Worker 1557 died with code 1 and signal null
+Starting a new worker
+Worker 1585 started
+Worker 1585 died with code 1 and signal null
+Starting a new worker
+Worker 1592 started
+Worker 1592 died with code 1 and signal null
+Starting a new worker
+Worker 1572 started
+Worker 1572 died with code 1 and signal null
+Starting a new worker
+Worker 1599 started
+Worker 1599 died with code 1 and signal null
+Starting a new worker
+Worker 1600 started
+Worker 1600 died with code 1 and signal null
+Starting a new worker
+Worker 1614 started
+Worker 1614 died with code 1 and signal null
+Starting a new worker
+Worker 1613 started
+Worker 1613 died with code 1 and signal null
+Starting a new worker
+Worker 1647 started
+Worker 1647 died with code 1 and signal null
+Starting a new worker
+Worker 1634 started
+Worker 1634 died with code 1 and signal null
+Starting a new worker
+Worker 1641 started
+Worker 1641 died with code 1 and signal null
+Starting a new worker
+Worker 1655 started
+Worker 1655 died with code 1 and signal null
+Starting a new worker
+Worker 1615 started
+Worker 1615 died with code 1 and signal null
+Starting a new worker
+Worker 1669 started
+Worker 1669 died with code 1 and signal null
+Starting a new worker
+Worker 1662 started
+Worker 1681 started
+Worker 1662 died with code 1 and signal null
+Starting a new worker
+Worker 1681 died with code 1 and signal null
+Starting a new worker
+Worker 1688 started
+Worker 1701 started
+Worker 1688 died with code 1 and signal null
+Starting a new worker
+Worker 1701 died with code 1 and signal null
+Starting a new worker
+Worker 1723 started
+Worker 1723 died with code 1 and signal null
+Starting a new worker
+Worker 1709 started
+Worker 1709 died with code 1 and signal null
+Starting a new worker
+Worker 1695 started
+Worker 1695 died with code 1 and signal null
+Starting a new worker
+Worker 1716 started
+Worker 1716 died with code 1 and signal null
+Starting a new worker
+Worker 1730 started
+Worker 1730 died with code 1 and signal null
+Starting a new worker
+Worker 1737 started
+Worker 1737 died with code 1 and signal null
+Starting a new worker
+Worker 1751 started
+Worker 1751 died with code 1 and signal null
+Starting a new worker
+Worker 1758 started
+Worker 1758 died with code 1 and signal null
+Starting a new worker
+
+=== brokencrystals-ollama-1 ===
+[GIN] 2026/05/29 - 07:48:59 | 200 |      39.024µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/05/29 - 07:48:59 | 200 |     481.985µs |       127.0.0.1 | GET      "/api/tags"
+[GIN] 2026/05/29 - 07:49:29 | 200 |      28.464µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/05/29 - 07:49:29 | 200 |     186.683µs |       127.0.0.1 | GET      "/api/tags"
+[GIN] 2026/05/29 - 07:49:59 | 200 |      31.979µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/05/29 - 07:49:59 | 200 |     1.69719ms |       127.0.0.1 | GET      "/api/tags"

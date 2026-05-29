@@ -5,7 +5,7 @@ services:
     healthcheck:
       interval: 10s
       retries: 10
-      test: ['CMD-SHELL', 'pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}']
+      test: ['CMD-SHELL', 'pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_USER}']
       timeout: 45s
     environment:
       POSTGRES_DB: ${DATABASE_SCHEMA}
@@ -18,7 +18,9 @@ services:
       - '.data/nodejs:/var/lib/postgresql/data/'
 
   nodejs:
-    image: 'brightsec/brokencrystals'
+    build:
+      context: '.'
+      dockerfile: Dockerfile
     restart: always
     healthcheck:
       interval: 5s
@@ -28,43 +30,29 @@ services:
       timeout: 30s
     environment:
       NODE_ENV: production
+      URL: http://localhost:3000
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
       CHAT_API_TOKEN: ${CHAT_API_TOKEN}
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
-    deploy:
-      restart_policy:
-        condition: on-failure
-      resources:
-        limits:
-          cpus: 3.5
+    ports:
+      - '3000:3000'
+      - '5000:5000'
     logging:
       options:
         max-file: '5'
         max-size: '10m'
     depends_on:
-      - db
-      - mailcatcher
-      - keycloak
-      - ollama
+      db:
+        condition: service_healthy
+      mailcatcher:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
 
-  watchtower:
-    image: 'containrrr/watchtower'
-    healthcheck:
-      test: ['CMD', '/watchtower', '--health-check']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-    restart: always
-    logging:
-      options:
-        max-file: '5'
-        max-size: '10m'
-    volumes:
-      - '/var/run/docker.sock:/var/run/docker.sock'
-    command: --interval 300 --debug
 
   grpcwebproxy:
     image: webis/grpcwebproxy:0.14.0
