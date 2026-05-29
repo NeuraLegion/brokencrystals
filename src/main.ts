@@ -138,24 +138,7 @@ async function bootstrap() {
     serveDotFiles: false
   });
 
-  for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
-    if (dir.startsWith('.')) {
-      continue;
-    }
-
-    await server.register(fastifyStatic, {
-      root: join(__dirname, '..', 'client', 'vcs', dir),
-      prefix: `/.${dir}`,
-      decorateReply: false,
-      redirect: true,
-      index: false,
-      list: {
-        format: 'html',
-        render: renderDirList
-      },
-      serveDotFiles: false
-    });
-  }
+  // Do not expose VCS artifacts or repository checkouts over HTTP.
 
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist', 'vendor'),
