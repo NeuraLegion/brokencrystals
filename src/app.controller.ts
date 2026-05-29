@@ -235,9 +235,9 @@ export class AppController {
     } catch (err: unknown) {
       if (!response.sent && !response.raw.writableEnded) {
         const errorMessage = err instanceof Error ? err.message : String(err);
+        this.logger.error(`process_numbers failed: ${errorMessage}`);
         throw new InternalServerErrorException({
-          error: errorMessage,
-          location: __filename
+          error: 'Internal Server Error'
         });
       }
     }
