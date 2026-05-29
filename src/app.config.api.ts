@@ -1,9 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class AppConfig {
-  @ApiProperty()
+  @ApiProperty({ description: 'Non-sensitive configuration value' })
   sql: string;
-
-  @ApiProperty()
-  googlemaps: string;
 }

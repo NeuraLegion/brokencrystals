@@ -252,6 +252,7 @@ export class AppController {
   }
 
   @Get('/config')
+  @UseGuards(AuthGuard)
   @ApiOperation({
     description: API_DESC_CONFIG_SERVER
   })
@@ -259,8 +260,7 @@ export class AppController {
     type: AppConfig
   })
   getConfig(): AppConfig {
-    const config = this.appService.getConfig();
-    return config;
+    return this.appService.getConfig();
   }
 
   @Get('/secrets')
