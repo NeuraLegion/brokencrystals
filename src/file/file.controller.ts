@@ -51,7 +51,7 @@ export class FileController {
 
   private async loadCPFile(cpBaseUrl: string, path: string) {
     if (!path.startsWith(cpBaseUrl)) {
-      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
+      throw new BadRequestException('Invalid parameter path');
     }
 
     const file: Stream = await this.fileService.getFile(path);
@@ -293,7 +293,7 @@ export class FileController {
       }
     } catch (err) {
       this.logger.error(err.message);
-      throw err.message;
+      throw new BadRequestException('Unable to save file');
     }
   }
 
@@ -323,7 +323,9 @@ export class FileController {
       return stream;
     } catch (err) {
       this.logger.error(err.message);
-      res.status(HttpStatus.NOT_FOUND);
+      res.status(HttpStatus.NOT_FOUND).send({
+        error: 'File not found'
+      });
     }
   }
 

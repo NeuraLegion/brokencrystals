@@ -11,7 +11,7 @@ export class FileService {
   private cloudProviders = new CloudProvidersMetaData();
 
   async getFile(file: string): Promise<Readable> {
-    this.logger.log(`Reading file: ${file}`);
+    this.logger.log('Reading file');
 
     if (file.startsWith('/')) {
       await fs.promises.access(file, R_OK);
@@ -23,7 +23,7 @@ export class FileService {
       if (content) {
         return Readable.from(content);
       } else {
-        throw new Error(`no such file or directory, access '${file}'`);
+        throw new Error('Unable to access remote file');
       }
     } else {
       file = path.resolve(process.cwd(), file);
