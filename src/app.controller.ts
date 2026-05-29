@@ -157,9 +157,10 @@ export class AppController {
     try {
       return await this.appService.launchCommand(command);
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.logger.error(`spawn failed: ${errorMessage}`);
       throw new InternalServerErrorException({
-        error: err.message || err,
-        location: __filename
+        error: 'Internal Server Error'
       });
     }
   }
