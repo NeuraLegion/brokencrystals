@@ -68,7 +68,7 @@ services:
     healthcheck:
       interval: 5s
       retries: 10
-      test: ['CMD', 'wget', '--spider', '-q', 'http://nodejs:3000/api/config']
+      test: ['CMD', 'node', '-e', "require('http').get('http://localhost:3000/api/config', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       timeout: 30s
     environment:
       URL: http://localhost:3000
@@ -115,7 +115,7 @@ services:
     healthcheck:
       interval: 10s
       retries: 10
-      test: ['CMD', 'wget', '--spider', '-q', 'http://mailcatcher:1080']
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:1080']
       timeout: 45s
     restart: always
     ports:
