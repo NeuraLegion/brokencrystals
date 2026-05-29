@@ -1044,6 +1044,15 @@ export async function startApplicationWithRetries(
 
     // Pre-flight validation: review Dockerfile + compose BEFORE the first build
     // Only on attempt 1 (retries already have repair context from the error)
+
+    // Guardrail: If the compose file's app service uses `image:` without
+    // `build:`, it will pull a pre-built image instead of building from source.
+    // This defeats the entire DAST pipeline (we can't fix code that isn't in
+    // the running container). Patch the service to use `build: .` instead.
+    if (usesCompose && attempt === 1) {
+      ensureComposeBuildsFromSource(repoPath, dockerfileName, selectedServiceRoot);
+    }
+
     if (attempt === 1 && config.docker && existsSync(`${repoPath}/${dockerfileName}`)) {
       await preflightValidation(
         llm,
@@ -1665,6 +1674,84 @@ function validateComposeBuildContexts(repoPath: string, composeFile: string): bo
   }
 
   return true;
+}
+
+/**
+ * Ensure the compose file's main app service uses `build:` (from source)
+ * rather than pulling a pre-built `image:`. If the app service only has
+ * `image: some/external:tag` without a `build:` directive, we patch it
+ * to `build: .` (or the serviceRoot context) so Docker builds from the
+ * local Dockerfile. Companion services (postgres, redis, keycloak, etc.)
+ * that correctly use upstream images are left alone.
+ */
+function ensureComposeBuildsFromSource(
+  repoPath: string,
+  dockerfileName: string,
+  serviceRoot?: string,
+): void {
+  const composeFile = findComposeFile(repoPath);
+  if (!composeFile) return;
+
+  const filePath = `${repoPath}/${composeFile}`;
+  let content: string;
+  try {
+    content = readFileSync(filePath, "utf8");
+  } catch { return; }
+
+  // Known infrastructure images that are fine to pull (not the app)
+  const infraImages = /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit|mailcatcher|keycloak|watchtower|nginx|traefik|haproxy|ollama|adminer|pgadmin|phpmyadmin/i;
+
+  // Parse services: find any with `image:` but no `build:`
+  // Simple YAML parsing — we look for top-level service blocks under `services:`
+  const servicesMatch = content.match(/^services:\s*$/m);
+  if (!servicesMatch) return;
+
+  const servicesStart = (servicesMatch.index ?? 0) + servicesMatch[0].length;
+  const servicesBlock = content.slice(servicesStart);
+
+  // Match service definitions (2-space indent)
+  const serviceRe = /^  (\w[\w-]*):\s*$/gm;
+  let match;
+  const services: Array<{ name: string; start: number }> = [];
+  while ((match = serviceRe.exec(servicesBlock)) !== null) {
+    services.push({ name: match[1], start: match.index });
+  }
+
+  for (let i = 0; i < services.length; i++) {
+    const svc = services[i];
+    const nextStart = i + 1 < services.length ? services[i + 1].start : servicesBlock.length;
+    const section = servicesBlock.slice(svc.start, nextStart);
+
+    const hasImage = /^\s+image:\s*(\S+)/m.exec(section);
+    const hasBuild = /^\s+build:/m.test(section);
+
+    if (hasImage && !hasBuild) {
+      const imageName = hasImage[1].replace(/["']/g, "");
+      // Skip known infra images
+      if (infraImages.test(imageName)) continue;
+
+      // This is likely the app service pulling a pre-built image
+      const buildContext = serviceRoot ? `./${serviceRoot}` : ".";
+      const dfClause = dockerfileName !== "Dockerfile"
+        ? `\n      dockerfile: ${dockerfileName}`
+        : "";
+      const buildDirective = `    build:\n      context: ${buildContext}${dfClause}`;
+
+      // Replace the image: line with build: (keep image: as a comment for reference)
+      const imageLineRe = new RegExp(`^(\\s+)image:\\s*${imageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+      const fullContent = readFileSync(filePath, "utf8");
+      const patched = fullContent.replace(imageLineRe, `$1# image: ${imageName}  # replaced — must build from source\n${buildDirective}`);
+
+      if (patched !== fullContent) {
+        writeFileSync(filePath, patched);
+        console.log(
+          `[Startup] Patched compose: service "${svc.name}" was pulling image "${imageName}" — replaced with build from source (context: ${buildContext})`,
+        );
+      }
+      // Only patch the first non-infra service (the app)
+      return;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

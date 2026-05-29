@@ -36216,6 +36216,9 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         generateComposeFile(repoPath, config, selectedServiceRoot);
       }
     }
+    if (usesCompose && attempt === 1) {
+      ensureComposeBuildsFromSource(repoPath, dockerfileName, selectedServiceRoot);
+    }
     if (attempt === 1 && config.docker && existsSync5(`${repoPath}/${dockerfileName}`)) {
       await preflightValidation(
         llm,
@@ -36672,6 +36675,55 @@ function validateComposeBuildContexts(repoPath, composeFile) {
     }
   }
   return true;
+}
+function ensureComposeBuildsFromSource(repoPath, dockerfileName, serviceRoot) {
+  const composeFile = findComposeFile(repoPath);
+  if (!composeFile) return;
+  const filePath = `${repoPath}/${composeFile}`;
+  let content;
+  try {
+    content = readFileSync5(filePath, "utf8");
+  } catch {
+    return;
+  }
+  const infraImages = /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit|mailcatcher|keycloak|watchtower|nginx|traefik|haproxy|ollama|adminer|pgadmin|phpmyadmin/i;
+  const servicesMatch = content.match(/^services:\s*$/m);
+  if (!servicesMatch) return;
+  const servicesStart = (servicesMatch.index ?? 0) + servicesMatch[0].length;
+  const servicesBlock = content.slice(servicesStart);
+  const serviceRe = /^  (\w[\w-]*):\s*$/gm;
+  let match2;
+  const services = [];
+  while ((match2 = serviceRe.exec(servicesBlock)) !== null) {
+    services.push({ name: match2[1], start: match2.index });
+  }
+  for (let i = 0; i < services.length; i++) {
+    const svc = services[i];
+    const nextStart = i + 1 < services.length ? services[i + 1].start : servicesBlock.length;
+    const section = servicesBlock.slice(svc.start, nextStart);
+    const hasImage = /^\s+image:\s*(\S+)/m.exec(section);
+    const hasBuild = /^\s+build:/m.test(section);
+    if (hasImage && !hasBuild) {
+      const imageName = hasImage[1].replace(/["']/g, "");
+      if (infraImages.test(imageName)) continue;
+      const buildContext = serviceRoot ? `./${serviceRoot}` : ".";
+      const dfClause = dockerfileName !== "Dockerfile" ? `
+      dockerfile: ${dockerfileName}` : "";
+      const buildDirective = `    build:
+      context: ${buildContext}${dfClause}`;
+      const imageLineRe = new RegExp(`^(\\s+)image:\\s*${imageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+      const fullContent = readFileSync5(filePath, "utf8");
+      const patched = fullContent.replace(imageLineRe, `$1# image: ${imageName}  # replaced \u2014 must build from source
+${buildDirective}`);
+      if (patched !== fullContent) {
+        writeFileSync4(filePath, patched);
+        console.log(
+          `[Startup] Patched compose: service "${svc.name}" was pulling image "${imageName}" \u2014 replaced with build from source (context: ${buildContext})`
+        );
+      }
+      return;
+    }
+  }
 }
 function detectMonorepoManager(repoPath) {
   if (existsSync5(`${repoPath}/pnpm-lock.yaml`) || existsSync5(`${repoPath}/pnpm-workspace.yaml`)) return "pnpm";
