@@ -1,16 +1,20 @@
 services:
   db:
     image: 'postgres:17-alpine'
-    restart: always
+    restart: on-failure
     healthcheck:
       interval: 10s
       retries: 10
-      test: ['CMD-SHELL', 'pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}']
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -d ${POSTGRES_DB:-bc} -U ${POSTGRES_USER:-bc}'
+        ]
       timeout: 45s
     environment:
-      POSTGRES_DB: ${DATABASE_SCHEMA}
-      POSTGRES_USER: ${DATABASE_USER}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_SCHEMA:-bc}
+      POSTGRES_USER: ${DATABASE_USER:-bc}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-bc}
     ports:
       - '5432:5432'
     volumes:
@@ -23,20 +27,40 @@ services:
       dockerfile: Dockerfile
     restart: on-failure
     healthcheck:
-      interval: 5s
-      retries: 10
-      start_period: 120s
+      interval: 15s
+      retries: 20
+      start_period: 240s
       test:
         ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/api/config']
       timeout: 30s
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       URL: http://localhost:3000
-      GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
-      CHAT_API_URL: ${CHAT_API_URL}
-      CHAT_API_MODEL: ${CHAT_API_MODEL}
-      CHAT_API_TOKEN: ${CHAT_API_TOKEN}
-      CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+      DATABASE_HOST: ${DATABASE_HOST:-db}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA:-bc}
+      DATABASE_USER: ${DATABASE_USER:-bc}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-bc}
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_DEBUG: ${DATABASE_DEBUG:-true}
+      JWT_PRIVATE_KEY_LOCATION: ${JWT_PRIVATE_KEY_LOCATION:-config/keys/jwtRS256.key}
+      JWT_PUBLIC_KEY_LOCATION: ${JWT_PUBLIC_KEY_LOCATION:-config/keys/jwtRS256.key.pub.pem}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-1234}
+      JWK_PRIVATE_KEY_LOCATION: ${JWK_PRIVATE_KEY_LOCATION:-config/keys/jwk.key.pem}
+      JWK_PUBLIC_KEY_LOCATION: ${JWK_PUBLIC_KEY_LOCATION:-config/keys/jwk.pub.key.pem}
+      JWK_PUBLIC_JSON: ${JWK_PUBLIC_JSON:-config/keys/jwk.pub.json}
+      JKU_URL: ${JKU_URL:-https://raw.githubusercontent.com/NeuraLegion/brokencrystals/stable/config/keys/jku.json}
+      X5U_URL: ${X5U_URL:-https://raw.githubusercontent.com/NeuraLegion/brokencrystals/stable/config/keys/x509.crt}
+      KEYCLOAK_SERVER_URI: ${KEYCLOAK_SERVER_URI:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-brokencrystals}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID:-admin-cli}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:-3abff4a7-6649-4bae-a105-9bd1fb52a2cd}
+      KEYCLOAK_PUBLIC_CLIENT_ID: ${KEYCLOAK_PUBLIC_CLIENT_ID:-brokencrystals-client}
+      KEYCLOAK_PUBLIC_CLIENT_SECRET: ${KEYCLOAK_PUBLIC_CLIENT_SECRET:-4bfb5df6-4647-46dd-bad1-c8b8ffd7caf4}
+      GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL:-http://grpcwebproxy:8081}
+      CHAT_API_URL: ${CHAT_API_URL:-http://ollama:11434/v1/chat/completions}
+      CHAT_API_MODEL: ${CHAT_API_MODEL:-smollm:135m}
+      CHAT_API_TOKEN: ${CHAT_API_TOKEN:-}
+      CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS:-200}
     ports:
       - '3000:3000'
       - '5000:5000'
@@ -58,12 +82,6 @@ services:
 
   watchtower:
     image: 'containrrr/watchtower'
-    healthcheck:
-      test: ['CMD', '/watchtower', '--health-check']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
     restart: on-failure
     logging:
       options:
@@ -128,7 +146,7 @@ services:
       timeout: 10s
       interval: 30s
       retries: 3
-      start_period: 5s
+      start_period: 120s
     depends_on:
       - keycloak-db
 
@@ -139,7 +157,7 @@ services:
       retries: 10
       test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:1080']
       timeout: 45s
-    restart: always
+    restart: on-failure
     ports:
       - '1080:1080'
       - '1025:1025'

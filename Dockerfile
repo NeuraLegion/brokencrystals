@@ -11,12 +11,12 @@ COPY --chown=node:node package*.json ./
 COPY --chown=node:node tsconfig.build.json ./
 COPY --chown=node:node tsconfig.json ./
 COPY --chown=node:node nest-cli.fast.json ./
-COPY --chown=node:node .env ./
 COPY --chown=node:node config ./config
 COPY --chown=node:node keycloak ./keycloak
 COPY --chown=node:node src ./src
 
 ENV NPM_CONFIG_LOGLEVEL=error
+RUN apk add --no-cache python3 make g++ libxml2-dev
 RUN npm ci --no-audit
 RUN npm run build:fast
 RUN npm prune --production
@@ -45,7 +45,6 @@ FROM node:18-alpine AS production
 
 WORKDIR /usr/src/app
 
-COPY --chown=node:node .env ./
 COPY --chown=node:node config ./config
 COPY --chown=node:node keycloak ./keycloak
 
@@ -56,4 +55,4 @@ COPY --chown=node:node --from=build /usr/src/app/dist ./dist
 COPY --chown=node:node --from=build /usr/src/app/client/dist ./client/dist
 COPY --chown=node:node --from=build /usr/src/app/client/vcs ./client/vcs
 
-CMD ["npm", "run", "start:prod"]
+CMD ["node", "-e", "process.env.NODE_ENV='development'; require('./dist/main.js')"]
