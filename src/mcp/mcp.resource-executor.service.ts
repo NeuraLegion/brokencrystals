@@ -87,7 +87,7 @@ export class McpResourceExecutorService extends McpProxySupport {
       };
     } catch (error) {
       this.logger.error(`MCP local resource read failed: ${(error as Error).message}`);
-      throw new Error('Unable to read local resource');
+      throw new Error('Unable to read resource');
     }
   }
 

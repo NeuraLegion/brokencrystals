@@ -379,11 +379,20 @@ export class McpToolExecutorService extends McpProxySupport {
         return this.proxyError('search_users', response);
       }
 
+      const users = Array.isArray(response.data) ? response.data : [];
+
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(response.data, null, 2)
+            text: JSON.stringify(
+              {
+                count: users.length,
+                users
+              },
+              null,
+              2
+            )
           }
         ]
       };
