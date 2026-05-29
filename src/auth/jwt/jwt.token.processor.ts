@@ -18,7 +18,6 @@ export abstract class JwtTokenProcessor {
       throw new Error('Unauthorized');
     }
     const headerStr = Buffer.from(parts[0], 'base64').toString('ascii');
-    this.log.debug(`Jwt token header is ${headerStr}`);
     let header: JwtHeader;
     try {
       header = JSON.parse(headerStr);
@@ -27,7 +26,6 @@ export abstract class JwtTokenProcessor {
     }
 
     const payloadStr = Buffer.from(parts[1], 'base64').toString('ascii');
-    this.log.debug(`Jwt token (None alg) payload is ${payloadStr}`);
     let payload: unknown;
     try {
       payload = JSON.parse(payloadStr);
@@ -49,7 +47,7 @@ export abstract class JwtTokenProcessor {
         chainText.indexOf(JwtTokenProcessor.END_PUBLIC_KEY_MARK)
       )) === -1
     ) {
-      throw new Error('Invalid certificate');
+      throw new Error('Unauthorized');
     }
 
     const key = chainText.slice(

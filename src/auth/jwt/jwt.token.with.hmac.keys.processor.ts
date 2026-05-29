@@ -12,9 +12,14 @@ export class JwtTokenWithHMACKeysProcessor extends JwtTokenProcessor {
 
     const [header] = this.parse(token);
     if (header.alg !== 'HS256') {
-      throw new Error('Invalid JWT algorithm');
+      throw new Error('Unauthorized');
     }
-    return decode(token, this.privateKey, false, 'HS256');
+
+    try {
+      return decode(token, this.privateKey, false, 'HS256');
+    } catch {
+      throw new Error('Unauthorized');
+    }
   }
 
   async createToken(payload: unknown): Promise<string> {
