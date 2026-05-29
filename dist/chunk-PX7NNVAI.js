@@ -10954,17 +10954,19 @@ var TokenTracker = class _TokenTracker {
     return snapshot;
   }
   /** Record token usage from an API response. */
-  record(model, promptTokens, completionTokens) {
-    const total = this.totals.get(model) ?? { prompt: 0, completion: 0, calls: 0 };
+  record(model, promptTokens, completionTokens, cachedTokens = 0) {
+    const total = this.totals.get(model) ?? { prompt: 0, completion: 0, calls: 0, cached: 0 };
     total.prompt += promptTokens;
     total.completion += completionTokens;
     total.calls += 1;
+    total.cached += cachedTokens;
     this.totals.set(model, total);
     if (this.currentPhase) {
-      const phase = this.currentPhase.models.get(model) ?? { prompt: 0, completion: 0, calls: 0 };
+      const phase = this.currentPhase.models.get(model) ?? { prompt: 0, completion: 0, calls: 0, cached: 0 };
       phase.prompt += promptTokens;
       phase.completion += completionTokens;
       phase.calls += 1;
+      phase.cached += cachedTokens;
       this.currentPhase.models.set(model, phase);
     }
   }
@@ -10973,24 +10975,31 @@ var TokenTracker = class _TokenTracker {
     let prompt = 0;
     let completion = 0;
     let calls = 0;
+    let cached = 0;
     for (const v of this.totals.values()) {
       prompt += v.prompt;
       completion += v.completion;
       calls += v.calls;
+      cached += v.cached;
     }
-    return { prompt, completion, calls, byModel: new Map(this.totals) };
+    return { prompt, completion, calls, cached, byModel: new Map(this.totals) };
   }
   /** Log final summary at end of orchestration. */
   logFinalReport() {
-    const { prompt, completion, calls, byModel } = this.getTotals();
+    const { prompt, completion, calls, cached, byModel } = this.getTotals();
     const total = prompt + completion;
+    const cacheRate = prompt > 0 ? (cached / prompt * 100).toFixed(1) : "0.0";
     console.log(`
 [Tokens] \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550`);
     console.log(`[Tokens] FINAL REPORT \u2014 ${calls} API call(s), ${fmtTokens(total)} total tokens`);
     console.log(`[Tokens]   Prompt: ${fmtTokens(prompt)} | Completion: ${fmtTokens(completion)}`);
+    if (cached > 0) {
+      console.log(`[Tokens]   Cached: ${fmtTokens(cached)} of ${fmtTokens(prompt)} prompt tokens (${cacheRate}% cache hit rate)`);
+    }
     console.log(`[Tokens] \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
     for (const [model, usage] of byModel) {
-      console.log(`[Tokens]   ${model}: ${fmtTokens(usage.prompt + usage.completion)} (${usage.calls} calls, ${fmtTokens(usage.prompt)}\u2192${fmtTokens(usage.completion)})`);
+      const modelCache = usage.cached > 0 ? ` [cached: ${fmtTokens(usage.cached)}]` : "";
+      console.log(`[Tokens]   ${model}: ${fmtTokens(usage.prompt + usage.completion)} (${usage.calls} calls, ${fmtTokens(usage.prompt)}\u2192${fmtTokens(usage.completion)})${modelCache}`);
     }
     if (this.phases.length > 0) {
       console.log(`[Tokens] \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
@@ -11000,7 +11009,8 @@ var TokenTracker = class _TokenTracker {
         const elapsed = p.endedAt ? ` (${Math.round((p.endedAt - p.startedAt) / 1e3)}s)` : "";
         console.log(`[Tokens]   ${p.name}${elapsed}: ${fmtTokens(phaseTotal.prompt + phaseTotal.completion)} (${phaseTotal.calls} calls)`);
         for (const [model, usage] of p.models) {
-          console.log(`[Tokens]     ${model}: ${fmtTokens(usage.prompt)}\u2192${fmtTokens(usage.completion)}`);
+          const mCache = usage.cached > 0 ? ` [cached: ${fmtTokens(usage.cached)}]` : "";
+          console.log(`[Tokens]     ${model}: ${fmtTokens(usage.prompt)}\u2192${fmtTokens(usage.completion)}${mCache}`);
         }
       }
     }
@@ -11018,13 +11028,14 @@ var TokenTracker = class _TokenTracker {
   }
 };
 function sumPhase(p) {
-  let prompt = 0, completion = 0, calls = 0;
+  let prompt = 0, completion = 0, calls = 0, cached = 0;
   for (const v of p.models.values()) {
     prompt += v.prompt;
     completion += v.completion;
     calls += v.calls;
+    cached += v.cached;
   }
-  return { prompt, completion, calls };
+  return { prompt, completion, calls, cached };
 }
 function fmtTokens(n) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
@@ -11080,7 +11091,7 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
     const msg = choice.message;
     const usage = response.usage;
     if (usage) {
-      TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
+      TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0, usage.prompt_tokens_details?.cached_tokens ?? 0);
     }
     conversation.push(msg);
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
@@ -11163,7 +11174,7 @@ async function chatWithSchema(client, messages, schemaName, schema, model = DEFA
   }));
   const usage = response.usage;
   if (usage) {
-    TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
+    TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0, usage.prompt_tokens_details?.cached_tokens ?? 0);
   }
   const choice = response.choices[0];
   const content = choice?.message.content;
@@ -11194,4 +11205,4 @@ humanize-ms/index.js:
    * MIT Licensed
    *)
 */
-//# sourceMappingURL=chunk-DCRX5SMI.js.map
+//# sourceMappingURL=chunk-PX7NNVAI.js.map

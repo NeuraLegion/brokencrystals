@@ -219,7 +219,7 @@ interface PhaseTokenSnapshot {
   name: string;
   startedAt: number;
   endedAt?: number;
-  models: Map<string, { prompt: number; completion: number; calls: number }>;
+  models: Map<string, { prompt: number; completion: number; calls: number; cached: number }>;
 }
 
 /**
@@ -229,7 +229,7 @@ interface PhaseTokenSnapshot {
 export class TokenTracker {
   private static instance: TokenTracker | undefined;
 
-  private totals = new Map<string, { prompt: number; completion: number; calls: number }>();
+  private totals = new Map<string, { prompt: number; completion: number; calls: number; cached: number }>();
   private phases: PhaseTokenSnapshot[] = [];
   private currentPhase: PhaseTokenSnapshot | undefined;
 
@@ -265,47 +265,56 @@ export class TokenTracker {
   }
 
   /** Record token usage from an API response. */
-  record(model: string, promptTokens: number, completionTokens: number): void {
+  record(model: string, promptTokens: number, completionTokens: number, cachedTokens = 0): void {
     // Update totals
-    const total = this.totals.get(model) ?? { prompt: 0, completion: 0, calls: 0 };
+    const total = this.totals.get(model) ?? { prompt: 0, completion: 0, calls: 0, cached: 0 };
     total.prompt += promptTokens;
     total.completion += completionTokens;
     total.calls += 1;
+    total.cached += cachedTokens;
     this.totals.set(model, total);
 
     // Update current phase
     if (this.currentPhase) {
-      const phase = this.currentPhase.models.get(model) ?? { prompt: 0, completion: 0, calls: 0 };
+      const phase = this.currentPhase.models.get(model) ?? { prompt: 0, completion: 0, calls: 0, cached: 0 };
       phase.prompt += promptTokens;
       phase.completion += completionTokens;
       phase.calls += 1;
+      phase.cached += cachedTokens;
       this.currentPhase.models.set(model, phase);
     }
   }
 
   /** Get the total tokens across all models. */
-  getTotals(): { prompt: number; completion: number; calls: number; byModel: Map<string, { prompt: number; completion: number; calls: number }> } {
+  getTotals(): { prompt: number; completion: number; calls: number; cached: number; byModel: Map<string, { prompt: number; completion: number; calls: number; cached: number }> } {
     let prompt = 0;
     let completion = 0;
     let calls = 0;
+    let cached = 0;
     for (const v of this.totals.values()) {
       prompt += v.prompt;
       completion += v.completion;
       calls += v.calls;
+      cached += v.cached;
     }
-    return { prompt, completion, calls, byModel: new Map(this.totals) };
+    return { prompt, completion, calls, cached, byModel: new Map(this.totals) };
   }
 
   /** Log final summary at end of orchestration. */
   logFinalReport(): void {
-    const { prompt, completion, calls, byModel } = this.getTotals();
+    const { prompt, completion, calls, cached, byModel } = this.getTotals();
     const total = prompt + completion;
+    const cacheRate = prompt > 0 ? ((cached / prompt) * 100).toFixed(1) : "0.0";
     console.log(`\n[Tokens] ═══════════════════════════════════════════════════`);
     console.log(`[Tokens] FINAL REPORT — ${calls} API call(s), ${fmtTokens(total)} total tokens`);
     console.log(`[Tokens]   Prompt: ${fmtTokens(prompt)} | Completion: ${fmtTokens(completion)}`);
+    if (cached > 0) {
+      console.log(`[Tokens]   Cached: ${fmtTokens(cached)} of ${fmtTokens(prompt)} prompt tokens (${cacheRate}% cache hit rate)`);
+    }
     console.log(`[Tokens] ───────────────────────────────────────────────────`);
     for (const [model, usage] of byModel) {
-      console.log(`[Tokens]   ${model}: ${fmtTokens(usage.prompt + usage.completion)} (${usage.calls} calls, ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)})`);
+      const modelCache = usage.cached > 0 ? ` [cached: ${fmtTokens(usage.cached)}]` : "";
+      console.log(`[Tokens]   ${model}: ${fmtTokens(usage.prompt + usage.completion)} (${usage.calls} calls, ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)})${modelCache}`);
     }
     if (this.phases.length > 0) {
       console.log(`[Tokens] ───────────────────────────────────────────────────`);
@@ -315,7 +324,8 @@ export class TokenTracker {
         const elapsed = p.endedAt ? ` (${Math.round((p.endedAt - p.startedAt) / 1000)}s)` : "";
         console.log(`[Tokens]   ${p.name}${elapsed}: ${fmtTokens(phaseTotal.prompt + phaseTotal.completion)} (${phaseTotal.calls} calls)`);
         for (const [model, usage] of p.models) {
-          console.log(`[Tokens]     ${model}: ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)}`);
+          const mCache = usage.cached > 0 ? ` [cached: ${fmtTokens(usage.cached)}]` : "";
+          console.log(`[Tokens]     ${model}: ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)}${mCache}`);
         }
       }
     }
@@ -333,14 +343,15 @@ export class TokenTracker {
   }
 }
 
-function sumPhase(p: PhaseTokenSnapshot): { prompt: number; completion: number; calls: number } {
-  let prompt = 0, completion = 0, calls = 0;
+function sumPhase(p: PhaseTokenSnapshot): { prompt: number; completion: number; calls: number; cached: number } {
+  let prompt = 0, completion = 0, calls = 0, cached = 0;
   for (const v of p.models.values()) {
     prompt += v.prompt;
     completion += v.completion;
     calls += v.calls;
+    cached += v.cached;
   }
-  return { prompt, completion, calls };
+  return { prompt, completion, calls, cached };
 }
 
 function fmtTokens(n: number): string {
@@ -429,7 +440,7 @@ export async function chatWithTools(
     const msg = choice.message;
     const usage = response.usage;
     if (usage) {
-      TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
+      TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0, (usage as any).prompt_tokens_details?.cached_tokens ?? 0);
     }
     conversation.push(msg);
 
@@ -534,7 +545,7 @@ export async function chatWithSchema<T>(
 
   const usage = response.usage;
   if (usage) {
-    TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
+    TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0, (usage as any).prompt_tokens_details?.cached_tokens ?? 0);
   }
 
   const choice = response.choices[0];

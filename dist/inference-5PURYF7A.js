@@ -8,7 +8,7 @@ import {
   createInferenceClient,
   detectProvider,
   validateModelTiers
-} from "./chunk-DCRX5SMI.js";
+} from "./chunk-PX7NNVAI.js";
 import "./chunk-ASTFNEFS.js";
 export {
   DEFAULT_MODEL,
@@ -20,4 +20,4 @@ export {
   detectProvider,
   validateModelTiers
 };
-//# sourceMappingURL=inference-PFTUU6NN.js.map
+//# sourceMappingURL=inference-5PURYF7A.js.map

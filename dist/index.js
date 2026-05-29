@@ -9,7 +9,7 @@ import {
   detectProvider,
   require_ms,
   validateModelTiers
-} from "./chunk-DCRX5SMI.js";
+} from "./chunk-PX7NNVAI.js";
 import {
   __commonJS,
   __esm,
@@ -36280,7 +36280,7 @@ ${logs.slice(-3e3)}
           ]
         });
         if (resp.usage) {
-          const { TokenTracker: TokenTracker2 } = await import("./inference-PFTUU6NN.js");
+          const { TokenTracker: TokenTracker2 } = await import("./inference-5PURYF7A.js");
           TokenTracker2.global().record(
             modelSelector?.current() ?? "gpt-4o-mini",
             resp.usage.prompt_tokens ?? 0,
@@ -38714,7 +38714,7 @@ ${body}
     ]
   });
   if (resp.usage) {
-    const { TokenTracker: TokenTracker2 } = await import("./inference-PFTUU6NN.js");
+    const { TokenTracker: TokenTracker2 } = await import("./inference-5PURYF7A.js");
     TokenTracker2.global().record(
       modelSelector?.current() ?? "gpt-4o-mini",
       resp.usage.prompt_tokens ?? 0,
@@ -38789,7 +38789,7 @@ ${body}
     ]
   });
   if (resp.usage) {
-    const { TokenTracker: TokenTracker2 } = await import("./inference-PFTUU6NN.js");
+    const { TokenTracker: TokenTracker2 } = await import("./inference-5PURYF7A.js");
     TokenTracker2.global().record(
       modelSelector?.current() ?? "gpt-4o-mini",
       resp.usage.prompt_tokens ?? 0,
