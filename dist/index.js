@@ -48662,9 +48662,31 @@ This user should work for authentication. Skip user registration/seeding and go 
       if (fixCommitCount.value > 0) {
         let healthy = false;
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
-          appProcess = restart.process;
-          healthy = true;
+          if (startupConfig.docker) {
+            console.log("[Fix] Rebuilding app image to pick up source fixes...");
+            const composeFileMatch = startupConfig.command.match(/-f\s+(\S+)/);
+            const composeFile = composeFileMatch?.[1] ?? "compose.yml";
+            try {
+              execFileSync5(
+                "docker",
+                ["compose", "-f", composeFile, "up", "-d", "--build"],
+                { cwd: repoPath, stdio: "pipe", timeout: 3e5 }
+              );
+              const probe = startupConfig.healthProbe ?? startupConfig.healthCheckPath ?? "/";
+              if (await checkAppHealth(startupConfig.port, probe)) {
+                console.log("[Fix] App healthy after incremental rebuild");
+                healthy = true;
+              }
+            } catch (buildErr) {
+              console.warn(`[Fix] Incremental rebuild failed: ${toErrorMessage(buildErr)}`);
+            }
+          }
+          if (!healthy) {
+            console.log("[Fix] Incremental rebuild failed \u2014 falling back to full startApplicationWithRetries");
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
+            appProcess = restart.process;
+            healthy = true;
+          }
         } catch (startupErr) {
           console.error(
             `[Fix] App broken after applying ${fixCommitCount.value} fix(es): ${startupErr}`

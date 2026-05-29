@@ -1968,9 +1968,48 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         let healthy = false;
 
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
-          appProcess = restart.process;
-          healthy = true;
+          // Post-fix restart strategy: source files changed on the host, so
+          // the Docker image must be rebuilt to pick up the patches. But we
+          // don't need startApplicationWithRetries' full nuclear path (kill
+          // everything, re-identify config, full rebuild from scratch) — the
+          // app was already running with a known-good compose/Dockerfile.
+          //
+          // Escalation order:
+          // 1. Incremental rebuild (docker compose up -d --build) — rebuilds
+          //    the app image with cached layers, picks up source changes.
+          //    Fast because base image + node_modules layer are cached.
+          // 2. Full startApplicationWithRetries (nuclear — kills everything,
+          //    re-identifies startup config, full rebuild from scratch). Only
+          //    as last resort since it can hit unrelated issues.
+
+          // Strategy 1: incremental rebuild
+          if (startupConfig.docker) {
+            console.log("[Fix] Rebuilding app image to pick up source fixes...");
+            const composeFileMatch = startupConfig.command.match(/-f\s+(\S+)/);
+            const composeFile = composeFileMatch?.[1] ?? "compose.yml";
+            try {
+              execFileSync(
+                "docker",
+                ["compose", "-f", composeFile, "up", "-d", "--build"],
+                { cwd: repoPath, stdio: "pipe", timeout: 300_000 },
+              );
+              const probe = startupConfig.healthProbe ?? startupConfig.healthCheckPath ?? "/";
+              if (await checkAppHealth(startupConfig.port, probe)) {
+                console.log("[Fix] App healthy after incremental rebuild");
+                healthy = true;
+              }
+            } catch (buildErr) {
+              console.warn(`[Fix] Incremental rebuild failed: ${toErrorMessage(buildErr)}`);
+            }
+          }
+
+          // Strategy 2: full restart (last resort)
+          if (!healthy) {
+            console.log("[Fix] Incremental rebuild failed — falling back to full startApplicationWithRetries");
+            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
+            appProcess = restart.process;
+            healthy = true;
+          }
         } catch (startupErr) {
           console.error(
             `[Fix] App broken after applying ${fixCommitCount.value} fix(es): ${startupErr}`,
