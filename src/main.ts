@@ -139,6 +139,10 @@ async function bootstrap() {
   });
 
   for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
+    if (dir.startsWith('.')) {
+      continue;
+    }
+
     await server.register(fastifyStatic, {
       root: join(__dirname, '..', 'client', 'vcs', dir),
       prefix: `/.${dir}`,
