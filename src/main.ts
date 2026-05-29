@@ -137,7 +137,8 @@ async function bootstrap() {
     wildcard: false,
     serveDotFiles: false,
     dotfiles: 'deny',
-    index: false
+    index: false,
+    list: false
   });
 
   // Do not expose VCS artifacts or repository checkouts over HTTP.
