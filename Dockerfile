@@ -2,9 +2,11 @@
 # BUILD FOR LOCAL DEVELOPMENT
 ###################
 
-FROM node:18-alpine AS build
+FROM node:18 AS build
 
 WORKDIR /usr/src/app
+
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Copy and build NestJS server project
 COPY --chown=node:node package*.json ./
@@ -17,6 +19,8 @@ COPY --chown=node:node keycloak ./keycloak
 COPY --chown=node:node src ./src
 
 ENV NPM_CONFIG_LOGLEVEL=error
+ENV NODE_ENV=development
+ENV NPM_CONFIG_OMIT=
 RUN npm ci --no-audit
 RUN npm run build:fast
 RUN npm prune --production
@@ -41,7 +45,7 @@ USER node
 # PRODUCTION
 ###################
 
-FROM node:18-alpine AS production
+FROM node:18 AS production
 
 WORKDIR /usr/src/app
 
