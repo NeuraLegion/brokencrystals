@@ -480,6 +480,34 @@ export async function chatWithTools(
       });
     }
 
+    // ---- Cache-aware continuous trim ----
+    // At fixed checkpoints, trim stale tool results from older turns to reduce
+    // the non-cached tail of the prompt. Preserves the initial messages
+    // (system + user prompt = the prefix that OpenAI caches) and recent turns
+    // (last TRIM_KEEP turns) so the LLM still has working context.
+    const TRIM_INTERVAL = 10;
+    const TRIM_KEEP = 5; // keep last N turns of tool results untrimmed
+    const TRIM_MIN_SIZE = 500; // don't bother trimming tiny results
+    const TRIM_PREVIEW = 150; // chars to keep as preview
+    if (turn > 0 && turn % TRIM_INTERVAL === 0) {
+      const prefixLen = messages.length; // initial messages = cache prefix
+      // "Recent" = messages from the last TRIM_KEEP turns. Each turn adds
+      // 1 assistant + N tool messages. Approximate: last TRIM_KEEP * 3 messages.
+      const recentBoundary = conversation.length - (TRIM_KEEP * 3);
+      let trimmedChars = 0;
+      for (let i = prefixLen; i < recentBoundary; i++) {
+        const m = conversation[i];
+        if (m.role === "tool" && typeof m.content === "string" && m.content.length > TRIM_MIN_SIZE) {
+          const before = m.content.length;
+          m.content = m.content.slice(0, TRIM_PREVIEW) + `\n... [trimmed — was ${before} chars. Call the tool again if you need this data.]`;
+          trimmedChars += before - m.content.length;
+        }
+      }
+      if (trimmedChars > 0) {
+        console.log(`[Inference] Checkpoint trim (turn ${turn + 1}): freed ${trimmedChars} chars from stale tool results`);
+      }
+    }
+
     // Guard: estimate context size and truncate large tool results if needed
     const MAX_CONTEXT_CHARS = 800_000; // ~200K tokens conservative estimate
     const totalChars = conversation.reduce((sum, m) => {

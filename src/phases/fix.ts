@@ -12,6 +12,27 @@ import {
 import { formatTechStack, toErrorMessage } from "../utils.js";
 import { taintAnalysisPrompt } from "../prompts/generate-fix.js";
 
+// Concurrency-limited Promise.all with results
+async function pMap<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (idx < items.length) {
+        const i = idx++;
+        results[i] = await fn(items[i]);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
 // ---------------------------------------------------------------------------
 // Infrastructure file guard — prevent fix phase from modifying files that
 // affect how the app boots rather than its application logic.
@@ -80,10 +101,33 @@ export async function generateFixes(
   // Fix tools: read/search/list for investigation + edit_file for applying fixes
   const fixTools = [...codebaseTools, editFileTool];
 
+  // --- Group findings by primary file to avoid parallel conflicts ---
+  // Findings that affect the same file go in the same sequential group.
+  // Different groups can run in parallel safely.
+  const fileGroups = new Map<string, Finding[]>();
   for (const finding of findings) {
+    // Use the URL path or finding.filePath to determine the likely target file.
+    // Taint analysis will find the real file, but for grouping purposes we use
+    // the URL path as a proxy (findings hitting the same route usually touch
+    // the same handler file).
+    const groupKey = finding.url ?? finding.name;
+    const group = fileGroups.get(groupKey) ?? [];
+    group.push(finding);
+    fileGroups.set(groupKey, group);
+  }
+
+  // Convert to array of groups
+  const groups = [...fileGroups.values()];
+  const CONCURRENCY = 5;
+
+  console.log(
+    `[Fix] Processing ${findings.length} findings in ${groups.length} group(s), concurrency ${CONCURRENCY}`,
+  );
+
+  /** Generate a fix for a single finding (extracted for reuse in parallel) */
+  const generateSingleFix = async (finding: Finding): Promise<SecurityFix | null> => {
     console.log(`[Fix] Analyzing: ${finding.name} at ${finding.url}`);
 
-    // Check for previous failed attempt
     const previousAttempt = previousFixes.find(
       (f) =>
         f.vulnerability.name === finding.name &&
@@ -105,16 +149,14 @@ export async function generateFixes(
     );
 
     // Step 2: Generate and apply fix using edit_file tool calls
-    const editedFiles = new Map<string, string>(); // path → content before edit
+    const editedFiles = new Map<string, string>();
 
-    // Track edits via a wrapping handler
     const fixToolHandler = async (name: string, args: Record<string, unknown>): Promise<string> => {
       if (name === "edit_file") {
         const filePath = String(args.path ?? "");
         if (isInfrastructureFile(filePath)) {
           return `Error: cannot modify infrastructure file ${filePath} — only application source code can be changed.`;
         }
-        // Snapshot original content before first edit
         if (!editedFiles.has(filePath)) {
           try {
             editedFiles.set(filePath, readFileSync(resolve(repoPath, filePath), "utf-8"));
@@ -180,33 +222,50 @@ Use edit_file to apply the fix directly. Then summarize what you changed.`,
 
       if (editedFiles.size === 0) {
         console.warn(`[Fix] No edits applied for ${finding.name}`);
-        continue;
+        return null;
       }
 
-      // Collect the patched file contents
       const patchedFiles = [];
       for (const [filePath] of editedFiles) {
         try {
           const content = readFileSync(resolve(repoPath, filePath), "utf-8");
           patchedFiles.push({ path: filePath, content });
-        } catch {
-          // File was edited but now unreadable — skip
-        }
+        } catch { /* skip */ }
       }
 
-      fixes.push({
+      console.log(`[Fix] Generated fix (${patchedFiles.length} file(s)): ${summary.slice(0, 200)}`);
+      return {
         vulnerability: finding,
         files: patchedFiles,
         summary: summary.slice(0, 500),
         verified: false,
-      });
-
-      console.log(`[Fix] Generated fix (${patchedFiles.length} file(s)): ${summary.slice(0, 200)}`);
+      };
     } catch (err) {
       console.error(
         `[Fix] Failed to generate fix for ${finding.name}: ${toErrorMessage(err)}`,
       );
+      return null;
     }
+  };
+
+  // --- Run groups in parallel (CONCURRENCY-limited) ---
+  // Within each group, findings are sequential (same file risk).
+  // Across groups, they run in parallel.
+  const groupResults = await pMap(
+    groups,
+    async (group) => {
+      const results: SecurityFix[] = [];
+      for (const finding of group) {
+        const fix = await generateSingleFix(finding);
+        if (fix) results.push(fix);
+      }
+      return results;
+    },
+    CONCURRENCY,
+  );
+
+  for (const groupFixes of groupResults) {
+    fixes.push(...groupFixes);
   }
 
   return fixes;

@@ -9,7 +9,7 @@ import {
   detectProvider,
   require_ms,
   validateModelTiers
-} from "./chunk-PX7NNVAI.js";
+} from "./chunk-QFTU6NVI.js";
 import {
   __commonJS,
   __esm,
@@ -36283,7 +36283,7 @@ ${logs.slice(-3e3)}
           ]
         });
         if (resp.usage) {
-          const { TokenTracker: TokenTracker2 } = await import("./inference-5PURYF7A.js");
+          const { TokenTracker: TokenTracker2 } = await import("./inference-GON4YYAX.js");
           TokenTracker2.global().record(
             modelSelector?.current() ?? "gpt-4o-mini",
             resp.usage.prompt_tokens ?? 0,
@@ -38767,7 +38767,7 @@ ${body}
     ]
   });
   if (resp.usage) {
-    const { TokenTracker: TokenTracker2 } = await import("./inference-5PURYF7A.js");
+    const { TokenTracker: TokenTracker2 } = await import("./inference-GON4YYAX.js");
     TokenTracker2.global().record(
       modelSelector?.current() ?? "gpt-4o-mini",
       resp.usage.prompt_tokens ?? 0,
@@ -38842,7 +38842,7 @@ ${body}
     ]
   });
   if (resp.usage) {
-    const { TokenTracker: TokenTracker2 } = await import("./inference-5PURYF7A.js");
+    const { TokenTracker: TokenTracker2 } = await import("./inference-GON4YYAX.js");
     TokenTracker2.global().record(
       modelSelector?.current() ?? "gpt-4o-mini",
       resp.usage.prompt_tokens ?? 0,
@@ -45658,6 +45658,21 @@ Use the read_file and search_files tools to trace the data flow from the HTTP en
 }
 
 // src/phases/fix.ts
+async function pMap2(items, fn, concurrency) {
+  const results = new Array(items.length);
+  let idx = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (idx < items.length) {
+        const i = idx++;
+        results[i] = await fn(items[i]);
+      }
+    }
+  );
+  await Promise.all(workers);
+  return results;
+}
 var INFRA_FILE_PATTERNS = [
   // Docker / compose files
   /^Dockerfile/i,
@@ -45708,7 +45723,19 @@ async function generateFixes(llm, repoPath, techStack, findings, previousFixes, 
   const handleTool = createToolHandler(repoPath);
   const fixes = [];
   const fixTools = [...codebaseTools, editFileTool];
+  const fileGroups = /* @__PURE__ */ new Map();
   for (const finding of findings) {
+    const groupKey = finding.url ?? finding.name;
+    const group = fileGroups.get(groupKey) ?? [];
+    group.push(finding);
+    fileGroups.set(groupKey, group);
+  }
+  const groups = [...fileGroups.values()];
+  const CONCURRENCY2 = 5;
+  console.log(
+    `[Fix] Processing ${findings.length} findings in ${groups.length} group(s), concurrency ${CONCURRENCY2}`
+  );
+  const generateSingleFix = async (finding) => {
     console.log(`[Fix] Analyzing: ${finding.name} at ${finding.url}`);
     const previousAttempt = previousFixes.find(
       (f) => f.vulnerability.name === finding.name && f.vulnerability.url === finding.url && !f.verified
@@ -45800,7 +45827,7 @@ Use edit_file to apply the fix directly. Then summarize what you changed.`
       );
       if (editedFiles.size === 0) {
         console.warn(`[Fix] No edits applied for ${finding.name}`);
-        continue;
+        return null;
       }
       const patchedFiles = [];
       for (const [filePath] of editedFiles) {
@@ -45810,18 +45837,34 @@ Use edit_file to apply the fix directly. Then summarize what you changed.`
         } catch {
         }
       }
-      fixes.push({
+      console.log(`[Fix] Generated fix (${patchedFiles.length} file(s)): ${summary.slice(0, 200)}`);
+      return {
         vulnerability: finding,
         files: patchedFiles,
         summary: summary.slice(0, 500),
         verified: false
-      });
-      console.log(`[Fix] Generated fix (${patchedFiles.length} file(s)): ${summary.slice(0, 200)}`);
+      };
     } catch (err) {
       console.error(
         `[Fix] Failed to generate fix for ${finding.name}: ${toErrorMessage(err)}`
       );
+      return null;
     }
+  };
+  const groupResults = await pMap2(
+    groups,
+    async (group) => {
+      const results = [];
+      for (const finding of group) {
+        const fix = await generateSingleFix(finding);
+        if (fix) results.push(fix);
+      }
+      return results;
+    },
+    CONCURRENCY2
+  );
+  for (const groupFixes of groupResults) {
+    fixes.push(...groupFixes);
   }
   return fixes;
 }

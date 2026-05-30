@@ -11126,6 +11126,27 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
         content: sanitizeForJson(result)
       });
     }
+    const TRIM_INTERVAL = 10;
+    const TRIM_KEEP = 5;
+    const TRIM_MIN_SIZE = 500;
+    const TRIM_PREVIEW = 150;
+    if (turn > 0 && turn % TRIM_INTERVAL === 0) {
+      const prefixLen = messages.length;
+      const recentBoundary = conversation.length - TRIM_KEEP * 3;
+      let trimmedChars = 0;
+      for (let i = prefixLen; i < recentBoundary; i++) {
+        const m = conversation[i];
+        if (m.role === "tool" && typeof m.content === "string" && m.content.length > TRIM_MIN_SIZE) {
+          const before = m.content.length;
+          m.content = m.content.slice(0, TRIM_PREVIEW) + `
+... [trimmed \u2014 was ${before} chars. Call the tool again if you need this data.]`;
+          trimmedChars += before - m.content.length;
+        }
+      }
+      if (trimmedChars > 0) {
+        console.log(`[Inference] Checkpoint trim (turn ${turn + 1}): freed ${trimmedChars} chars from stale tool results`);
+      }
+    }
     const MAX_CONTEXT_CHARS = 8e5;
     const totalChars = conversation.reduce((sum, m) => {
       if (typeof m.content === "string") return sum + m.content.length;
@@ -11205,4 +11226,4 @@ humanize-ms/index.js:
    * MIT Licensed
    *)
 */
-//# sourceMappingURL=chunk-PX7NNVAI.js.map
+//# sourceMappingURL=chunk-QFTU6NVI.js.map
