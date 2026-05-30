@@ -180,17 +180,21 @@ export class AppHealthMonitor {
    * Resolves immediately if healthy. Otherwise blocks until the gate opens
    * (recovery succeeds, monitor is stopped, or gate is manually opened).
    */
-  async waitHealthy(): Promise<void> {
+  async waitHealthy(timeoutMs = 120_000): Promise<void> {
     if (this.healthy) return;
     if (!this.gate) {
-      // Should never happen — gate is created when we go unhealthy. Defend anyway.
       let resolve!: () => void;
       const promise = new Promise<void>((r) => {
         resolve = r;
       });
       this.gate = { promise, resolve };
     }
-    await this.gate.promise;
+    // Don't block forever if recovery failed — throw after timeout so
+    // callers can bail rather than hanging the process indefinitely.
+    const timeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("waitHealthy timed out — app recovery did not succeed")), timeoutMs);
+    });
+    await Promise.race([this.gate.promise, timeout]);
   }
 
   /**

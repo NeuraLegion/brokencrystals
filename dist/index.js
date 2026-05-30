@@ -43816,7 +43816,9 @@ async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterI
         Authorization: `Api-Key ${api.brightToken}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(12e4)
+      // 2 min — Bright may do a baseline check via Repeater
     });
   }
   async function processOne(item) {
@@ -47077,7 +47079,7 @@ var AppHealthMonitor = class {
    * Resolves immediately if healthy. Otherwise blocks until the gate opens
    * (recovery succeeds, monitor is stopped, or gate is manually opened).
    */
-  async waitHealthy() {
+  async waitHealthy(timeoutMs = 12e4) {
     if (this.healthy) return;
     if (!this.gate) {
       let resolve7;
@@ -47086,7 +47088,10 @@ var AppHealthMonitor = class {
       });
       this.gate = { promise, resolve: resolve7 };
     }
-    await this.gate.promise;
+    const timeout = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("waitHealthy timed out \u2014 app recovery did not succeed")), timeoutMs);
+    });
+    await Promise.race([this.gate.promise, timeout]);
   }
   /**
    * Tells the monitor that an external observation suggests the app may be

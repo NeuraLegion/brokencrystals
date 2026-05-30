@@ -132,6 +132,7 @@ export async function registerEntrypoints(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(120_000), // 2 min — Bright may do a baseline check via Repeater
     });
   }
 
