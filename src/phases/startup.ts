@@ -1738,7 +1738,8 @@ function ensureComposeBuildsFromSource(
       const buildDirective = `    build:\n      context: ${buildContext}${dfClause}`;
 
       // Replace the image: line with build: (keep image: as a comment for reference)
-      const imageLineRe = new RegExp(`^(\\s+)image:\\s*${imageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+      const escapedImage = imageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const imageLineRe = new RegExp(`^(\\s+)image:\\s*['"]?${escapedImage}['"]?\\s*$`, "m");
       const fullContent = readFileSync(filePath, "utf8");
       const patched = fullContent.replace(imageLineRe, `$1# image: ${imageName}  # replaced — must build from source\n${buildDirective}`);
 

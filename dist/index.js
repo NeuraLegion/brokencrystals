@@ -36711,7 +36711,8 @@ function ensureComposeBuildsFromSource(repoPath, dockerfileName, serviceRoot) {
       dockerfile: ${dockerfileName}` : "";
       const buildDirective = `    build:
       context: ${buildContext}${dfClause}`;
-      const imageLineRe = new RegExp(`^(\\s+)image:\\s*${imageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+      const escapedImage = imageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const imageLineRe = new RegExp(`^(\\s+)image:\\s*['"]?${escapedImage}['"]?\\s*$`, "m");
       const fullContent = readFileSync5(filePath, "utf8");
       const patched = fullContent.replace(imageLineRe, `$1# image: ${imageName}  # replaced \u2014 must build from source
 ${buildDirective}`);
