@@ -71,7 +71,10 @@ export class TestimonialsService {
       )[0].count as number;
     } catch (err) {
       this.logger.warn(`Failed to execute query. Error: ${err.message}`);
-      throw new Error('Failed to count testimonials');
+      if (err.message === 'Unsafe query is not allowed') {
+        throw err;
+      }
+      throw new Error('Failed to count testimonials due to database error');
     }
   }
 }

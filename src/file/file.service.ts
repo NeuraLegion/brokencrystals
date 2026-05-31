@@ -18,10 +18,11 @@ export class FileService {
     const resolved = file.startsWith('/')
       ? path.resolve(file)
       : path.resolve(process.cwd(), file);
-    if (
-      resolved !== this.allowedLocalBase &&
-      !resolved.startsWith(`${this.allowedLocalBase}${path.sep}`)
-    ) {
+    const relative = path.relative(
+      this.allowedLocalBase,
+      path.normalize(resolved)
+    );
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
       throw new Error('access to requested file path is denied');
     }
     return resolved;

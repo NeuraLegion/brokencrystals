@@ -2,7 +2,6 @@ import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from './users/users.service';
-import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 import { AppConfig } from './app.config.api';
 import { UserDto } from './users/api/UserDto';
 
@@ -45,10 +44,6 @@ export class AppService {
   }
 
   getConfig(): AppConfig {
-    this.configService.get<string>(
-      OrmModuleConfigProperties.ENV_DATABASE_SCHEMA
-    );
-
     return {
       awsBucket: 'restricted',
       sql: 'redacted',

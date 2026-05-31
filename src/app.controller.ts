@@ -92,6 +92,9 @@ export class AppController {
   })
   @Redirect()
   async redirect(@Query('url') url: string) {
+    if (!url?.trim()) {
+      throw new BadRequestException('Invalid redirect target');
+    }
     try {
       const parsed = new URL(url);
       if (
@@ -172,10 +175,11 @@ export class AppController {
   })
   async getCommandResult(@Query('command') command: string): Promise<string> {
     this.logger.debug(`launch ${command} command`);
-    if (!['whoami'].includes(command)) {
+    const normalizedCommand = command?.trim();
+    if (normalizedCommand !== 'whoami') {
       throw new BadRequestException('Unsupported command');
     }
-    return await this.appService.launchCommand(command);
+    return await this.appService.launchCommand(normalizedCommand);
   }
 
   @Post('process_numbers')
