@@ -1948,6 +1948,44 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         applyFixes(repoPath, fixes);
         allFixes.push(...fixes);
 
+        // Auth-safety guard: if this fix touched auth-related files, verify
+        // auth still works BEFORE committing. Fixes to auth guards, JWT
+        // processors, login controllers etc. frequently break the working
+        // auth flow. Catching it here (pre-commit) is cheap — we just revert
+        // the working tree. Catching it post-commit requires bisect + rebuild.
+        const AUTH_FILE_PATTERN = /auth|jwt|login|session|guard|token|credential|password|oauth|keycloak/i;
+        const touchedAuthFile = fixes.some((f) =>
+          f.files.some((fp) => AUTH_FILE_PATTERN.test(fp.path)),
+        );
+        if (touchedAuthFile && authResult.hasAuth && authResult.authObjectId && startupConfig.docker) {
+          console.log(`[Fix] Fix touches auth-related file(s) — smoke-testing auth before commit...`);
+          try {
+            // Quick restart to pick up source changes (app runs from mounted source or needs rebuild)
+            const qr = await quickRestartCompose(repoPath, startupConfig, 60_000);
+            if (qr.ok) {
+              const { testAuthObject } = await import("./phases/auth.js");
+              const authCheck = await testAuthObject(config, authResult.authObjectId);
+              if (!authCheck.passed) {
+                console.warn(
+                  `[Fix] Auth broke after applying fix for "${finding.name}" — reverting and skipping this fix`,
+                );
+                // Revert uncommitted changes
+                try {
+                  execFileSync("git", ["checkout", "--", "."], { cwd: repoPath, stdio: "pipe" });
+                } catch { /* best effort */ }
+                // Restart again with clean state
+                await quickRestartCompose(repoPath, startupConfig, 60_000);
+                skippedCount++;
+                continue;
+              }
+              console.log(`[Fix] Auth smoke-test passed — safe to commit`);
+            }
+            // If quick restart failed, skip the auth check (full rebuild will verify later)
+          } catch (authCheckErr) {
+            console.warn(`[Fix] Auth smoke-test error: ${toErrorMessage(authCheckErr)} — proceeding with commit`);
+          }
+        }
+
         // Commit this single fix (no restart yet)
         try {
           gitCommitAndPush(
