@@ -57,7 +57,13 @@ export class TestimonialsService {
   async count(query: string): Promise<number> {
     try {
       this.logger.debug(`Counting testimonials with safe query`);
-      void query;
+      const normalizedQuery = query?.trim().toLowerCase();
+      if (
+        normalizedQuery &&
+        normalizedQuery !== 'select count(*) as count from testimonial'
+      ) {
+        throw new Error('Unsafe query is not allowed');
+      }
       return (
         await this.em
           .getConnection()

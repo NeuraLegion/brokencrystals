@@ -95,9 +95,12 @@ export class AppController {
     try {
       const parsed = new URL(url);
       if (
-        !['localhost', '127.0.0.1', 'brokencrystals.com'].includes(
-          parsed.hostname
-        )
+        ![
+          'http://localhost:3000',
+          'http://127.0.0.1:3000',
+          'https://brokencrystals.com',
+          'https://www.brokencrystals.com'
+        ].includes(parsed.origin)
       ) {
         throw new BadRequestException('Invalid redirect target');
       }
@@ -130,12 +133,16 @@ export class AppController {
   })
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
-    parseXml(xml, {
+    // Parse only for validation and reject malformed or unsafe XML inputs.
+    const xmlDoc = parseXml(xml, {
       noent: false,
       dtdvalid: false,
       recover: false,
       nonet: true
     });
+    if (!xmlDoc) {
+      throw new BadRequestException('Invalid XML payload');
+    }
 
     return '<metadata>accepted</metadata>';
   }

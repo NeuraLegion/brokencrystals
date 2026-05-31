@@ -45,10 +45,9 @@ export class AppService {
   }
 
   getConfig(): AppConfig {
-    const dbSchema = this.configService.get<string>(
+    this.configService.get<string>(
       OrmModuleConfigProperties.ENV_DATABASE_SCHEMA
     );
-    void dbSchema;
 
     return {
       awsBucket: 'restricted',
