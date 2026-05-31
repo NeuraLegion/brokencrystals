@@ -2,12 +2,14 @@ import { createRequire } from 'module';const require = createRequire(import.meta
 import {
   Blob,
   File,
-  __commonJS,
-  __require,
-  __toESM,
   isFile,
   isFunction
-} from "./chunk-ASTFNEFS.js";
+} from "./chunk-DDCCETRH.js";
+import {
+  __commonJS,
+  __require,
+  __toESM
+} from "./chunk-T3WERZCU.js";
 
 // node_modules/webidl-conversions/lib/index.js
 var require_lib = __commonJS({
@@ -4943,7 +4945,7 @@ var MultipartBody = class {
 import { ReadableStream as ReadableStream2 } from "stream/web";
 var fileFromPathWarned = false;
 async function fileFromPath2(path, ...args) {
-  const { fileFromPath: _fileFromPath } = await import("./fileFromPath-VTYMGRDR.js");
+  const { fileFromPath: _fileFromPath } = await import("./fileFromPath-I2SSIW2M.js");
   if (!fileFromPathWarned) {
     console.warn(`fileFromPath is deprecated; use fs.createReadStream(${JSON.stringify(path)}) instead`);
     fileFromPathWarned = true;
@@ -11226,4 +11228,4 @@ humanize-ms/index.js:
    * MIT Licensed
    *)
 */
-//# sourceMappingURL=chunk-QFTU6NVI.js.map
+//# sourceMappingURL=chunk-KJPDIBSE.js.map

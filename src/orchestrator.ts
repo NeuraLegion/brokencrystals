@@ -15,6 +15,7 @@ import {
   checkAppHealth,
   deepHealthCheck,
   quickRestartCompose,
+  findComposeFile,
   type StartupResult,
   type DeepProbeCache,
 } from "./phases/startup.js";
@@ -465,7 +466,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       return;
     }
 
-    let startup: StartupResult;
+    let startup!: StartupResult;
     try {
       startup = await startApplicationWithRetries(
         llm,
@@ -478,35 +479,81 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       const msg = toErrorMessage(startupErr);
       console.warn(`[Engine] Full app startup failed: ${msg}`);
 
-      // In dynamic mode, no harness fallback — fail hard
-      if (config.runMode === "dynamic") {
-        // Show a concise message in the PR — the full error goes to run.log only
-        const brief = msg.length > 200
-          ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "…"
-          : msg;
-        await progress.phaseStart("done", `Application startup failed: ${brief}`);
-        return;
+      // --- Partial boot: strip non-essential services and retry ---
+      // Before failing hard (dynamic mode) or falling back to function harness
+      // (full mode), try booting the app with just the essential deps (DB, Redis).
+      // Many apps fail because of Keycloak, SMTP, Ollama, watchtower, etc. —
+      // services Bright doesn't scan through anyway. Stripping them often lets
+      // the app boot with most routes working (some 500 on missing-dep calls,
+      // which is fine for DAST scanning the rest).
+      const composeFile = findComposeFile(repoPath);
+      if (composeFile) {
+        try {
+          const { stripNonEssentialServices } = await import("./phases/partial-boot.js");
+          const { strippedFile, removed } = stripNonEssentialServices(repoPath, composeFile);
+          if (removed.length > 0) {
+            console.log(`[Engine] Attempting partial boot without: ${removed.join(", ")}`);
+            await progress.phaseDetail(
+              "startup",
+              "partial_boot",
+              `Trying partial boot — stripped ${removed.length} non-essential service(s): ${removed.join(", ")}`,
+            );
+            // Rename the stripped file to compose.yml so startApplicationWithRetries
+            // finds it naturally without needing a previous config override.
+            const { renameSync } = await import("fs");
+            const { resolve } = await import("path");
+            const origPath = resolve(repoPath, composeFile);
+            const backupPath = origPath + ".full-backup";
+            renameSync(origPath, backupPath);
+            renameSync(resolve(repoPath, strippedFile), origPath);
+
+            const partialStartup = await startApplicationWithRetries(
+              llm,
+              repoPath,
+              techStack,
+              undefined,
+              config.modelSelector,
+              [`[partial-boot] Non-essential services stripped: ${removed.join(", ")}. The app may 500 on routes that need these services — that's acceptable for DAST scanning.`],
+            );
+            console.log("[Engine] Partial boot succeeded — proceeding with available routes");
+            startup = partialStartup;
+          }
+        } catch (partialErr) {
+          console.warn(`[Engine] Partial boot also failed: ${toErrorMessage(partialErr)}`);
+        }
       }
 
-      // Full mode: fall back to function harness
-      console.log("[Engine] Falling back to function harness mode...");
-      await progress.phaseDetail(
-        "startup",
-        "fallback",
-        "Full app startup failed — falling back to function harness mode",
-      );
-      try {
-        harnessResult = await runFunctionHarness(llm, repoPath, techStack, config.modelSelector);
-        appProcess = harnessResult.process;
+      // If partial boot didn't work (or didn't apply), use original fallback
+      if (!startup) {
+        // In dynamic mode, no harness fallback — fail hard
+        if (config.runMode === "dynamic") {
+          const brief = msg.length > 200
+            ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "…"
+            : msg;
+          await progress.phaseStart("done", `Application startup failed: ${brief}`);
+          return;
+        }
+
+        // Full mode: fall back to function harness
+        console.log("[Engine] Falling back to function harness mode...");
         await progress.phaseDetail(
           "startup",
-          "harness_ready",
-          `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`,
+          "fallback",
+          "Full app startup failed — falling back to function harness mode",
         );
-        return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
-      } catch (harnessErr) {
-        console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
-        throw startupErr; // Throw original error
+        try {
+          harnessResult = await runFunctionHarness(llm, repoPath, techStack, config.modelSelector);
+          appProcess = harnessResult.process;
+          await progress.phaseDetail(
+            "startup",
+            "harness_ready",
+            `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`,
+          );
+          return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+        } catch (harnessErr) {
+          console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
+          throw startupErr;
+        }
       }
     }
     appProcess = startup.process;

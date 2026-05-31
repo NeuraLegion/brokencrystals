@@ -41,7 +41,7 @@ import {
   verifyBrightAuth,
   verifyDockerImageTool,
   webSearchTools
-} from "./chunk-PFDCUUHO.js";
+} from "./chunk-7B7K27CL.js";
 import {
   DEFAULT_MODEL,
   ModelSelector,
@@ -52,7 +52,8 @@ import {
   detectProvider,
   require_ms,
   validateModelTiers
-} from "./chunk-QFTU6NVI.js";
+} from "./chunk-KJPDIBSE.js";
+import "./chunk-DDCCETRH.js";
 import {
   __commonJS,
   __esm,
@@ -60,7 +61,7 @@ import {
   __require,
   __toCommonJS,
   __toESM
-} from "./chunk-ASTFNEFS.js";
+} from "./chunk-T3WERZCU.js";
 
 // node_modules/tree-kill/index.js
 var require_tree_kill = __commonJS({
@@ -28589,7 +28590,7 @@ ${logs.slice(-3e3)}
           ]
         });
         if (resp.usage) {
-          const { TokenTracker: TokenTracker2 } = await import("./inference-GON4YYAX.js");
+          const { TokenTracker: TokenTracker2 } = await import("./inference-K2RJK2I3.js");
           TokenTracker2.global().record(
             modelSelector?.current() ?? "gpt-4o-mini",
             resp.usage.prompt_tokens ?? 0,
@@ -31073,7 +31074,7 @@ ${body}
     ]
   });
   if (resp.usage) {
-    const { TokenTracker: TokenTracker2 } = await import("./inference-GON4YYAX.js");
+    const { TokenTracker: TokenTracker2 } = await import("./inference-K2RJK2I3.js");
     TokenTracker2.global().record(
       modelSelector?.current() ?? "gpt-4o-mini",
       resp.usage.prompt_tokens ?? 0,
@@ -31148,7 +31149,7 @@ ${body}
     ]
   });
   if (resp.usage) {
-    const { TokenTracker: TokenTracker2 } = await import("./inference-GON4YYAX.js");
+    const { TokenTracker: TokenTracker2 } = await import("./inference-K2RJK2I3.js");
     TokenTracker2.global().record(
       modelSelector?.current() ?? "gpt-4o-mini",
       resp.usage.prompt_tokens ?? 0,
@@ -36120,29 +36121,64 @@ async function runOrchestrator(ctx) {
     } catch (startupErr) {
       const msg = toErrorMessage(startupErr);
       console.warn(`[Engine] Full app startup failed: ${msg}`);
-      if (config.runMode === "dynamic") {
-        const brief = msg.length > 200 ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "\u2026" : msg;
-        await progress.phaseStart("done", `Application startup failed: ${brief}`);
-        return;
+      const composeFile = findComposeFile(repoPath);
+      if (composeFile) {
+        try {
+          const { stripNonEssentialServices } = await import("./partial-boot-ZT6TQE5J.js");
+          const { strippedFile, removed } = stripNonEssentialServices(repoPath, composeFile);
+          if (removed.length > 0) {
+            console.log(`[Engine] Attempting partial boot without: ${removed.join(", ")}`);
+            await progress.phaseDetail(
+              "startup",
+              "partial_boot",
+              `Trying partial boot \u2014 stripped ${removed.length} non-essential service(s): ${removed.join(", ")}`
+            );
+            const { renameSync } = await import("fs");
+            const { resolve: resolve4 } = await import("path");
+            const origPath = resolve4(repoPath, composeFile);
+            const backupPath = origPath + ".full-backup";
+            renameSync(origPath, backupPath);
+            renameSync(resolve4(repoPath, strippedFile), origPath);
+            const partialStartup = await startApplicationWithRetries(
+              llm,
+              repoPath,
+              techStack,
+              void 0,
+              config.modelSelector,
+              [`[partial-boot] Non-essential services stripped: ${removed.join(", ")}. The app may 500 on routes that need these services \u2014 that's acceptable for DAST scanning.`]
+            );
+            console.log("[Engine] Partial boot succeeded \u2014 proceeding with available routes");
+            startup = partialStartup;
+          }
+        } catch (partialErr) {
+          console.warn(`[Engine] Partial boot also failed: ${toErrorMessage(partialErr)}`);
+        }
       }
-      console.log("[Engine] Falling back to function harness mode...");
-      await progress.phaseDetail(
-        "startup",
-        "fallback",
-        "Full app startup failed \u2014 falling back to function harness mode"
-      );
-      try {
-        harnessResult = await runFunctionHarness(llm, repoPath, techStack, config.modelSelector);
-        appProcess = harnessResult.process;
+      if (!startup) {
+        if (config.runMode === "dynamic") {
+          const brief = msg.length > 200 ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "\u2026" : msg;
+          await progress.phaseStart("done", `Application startup failed: ${brief}`);
+          return;
+        }
+        console.log("[Engine] Falling back to function harness mode...");
         await progress.phaseDetail(
           "startup",
-          "harness_ready",
-          `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`
+          "fallback",
+          "Full app startup failed \u2014 falling back to function harness mode"
         );
-        return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
-      } catch (harnessErr) {
-        console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
-        throw startupErr;
+        try {
+          harnessResult = await runFunctionHarness(llm, repoPath, techStack, config.modelSelector);
+          appProcess = harnessResult.process;
+          await progress.phaseDetail(
+            "startup",
+            "harness_ready",
+            `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`
+          );
+          return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+        } catch (harnessErr) {
+          console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
+          throw startupErr;
+        }
       }
     }
     appProcess = startup.process;
@@ -37325,7 +37361,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           try {
             const qr = await quickRestartCompose(repoPath, startupConfig, 6e4);
             if (qr.ok) {
-              const { testAuthObject: testAuthObject2 } = await import("./auth-QZIZSTS7.js");
+              const { testAuthObject: testAuthObject2 } = await import("./auth-SBJ2ATHA.js");
               const authCheck = await testAuthObject2(config, authResult.authObjectId);
               if (!authCheck.passed) {
                 console.warn(

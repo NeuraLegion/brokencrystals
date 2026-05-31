@@ -1554,7 +1554,7 @@ function extractImageName(config: StartupConfig): string | undefined {
 /**
  * Find a compose file in the repo root. Returns the filename or undefined.
  */
-function findComposeFile(repoPath: string): string | undefined {
+export function findComposeFile(repoPath: string): string | undefined {
   const candidates = [
     "docker-compose.yml",
     "docker-compose.yaml",

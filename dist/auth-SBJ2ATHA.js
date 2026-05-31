@@ -5,9 +5,10 @@ import {
   registerUser,
   replaySeedCommands,
   testAuthObject
-} from "./chunk-PFDCUUHO.js";
-import "./chunk-QFTU6NVI.js";
-import "./chunk-ASTFNEFS.js";
+} from "./chunk-7B7K27CL.js";
+import "./chunk-KJPDIBSE.js";
+import "./chunk-DDCCETRH.js";
+import "./chunk-T3WERZCU.js";
 export {
   detectAndConfigureAuth,
   reRegisterUser,
@@ -15,4 +16,4 @@ export {
   replaySeedCommands,
   testAuthObject
 };
-//# sourceMappingURL=auth-QZIZSTS7.js.map
+//# sourceMappingURL=auth-SBJ2ATHA.js.map

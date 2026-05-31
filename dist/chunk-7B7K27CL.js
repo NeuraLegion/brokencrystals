@@ -1,7 +1,7 @@
 import { createRequire } from 'module';const require = createRequire(import.meta.url);
 import {
   chatWithTools
-} from "./chunk-QFTU6NVI.js";
+} from "./chunk-KJPDIBSE.js";
 
 // src/tools/codebase.ts
 import { readFileSync as readFileSync2, existsSync as existsSync2, statSync } from "fs";
@@ -11552,4 +11552,4 @@ export {
   replaySeedCommands,
   testAuthObject
 };
-//# sourceMappingURL=chunk-PFDCUUHO.js.map
+//# sourceMappingURL=chunk-7B7K27CL.js.map

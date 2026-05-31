@@ -8,8 +8,9 @@ import {
   createInferenceClient,
   detectProvider,
   validateModelTiers
-} from "./chunk-QFTU6NVI.js";
-import "./chunk-ASTFNEFS.js";
+} from "./chunk-KJPDIBSE.js";
+import "./chunk-DDCCETRH.js";
+import "./chunk-T3WERZCU.js";
 export {
   DEFAULT_MODEL,
   ModelSelector,
@@ -20,4 +21,4 @@ export {
   detectProvider,
   validateModelTiers
 };
-//# sourceMappingURL=inference-GON4YYAX.js.map
+//# sourceMappingURL=inference-K2RJK2I3.js.map
