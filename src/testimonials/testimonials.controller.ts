@@ -92,7 +92,7 @@ export class TestimonialsController {
     example: 'select count(*) as count from testimonial',
     required: true
   })
-  @Header('content-type', 'text/html')
+  @Header('content-type', 'application/json')
   @ApiOperation({
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
   })

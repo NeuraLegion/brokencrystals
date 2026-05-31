@@ -9,15 +9,28 @@ import { R_OK } from 'constants';
 export class FileService {
   private readonly logger = new Logger(FileService.name);
   private cloudProviders = new CloudProvidersMetaData();
+  private readonly allowedLocalBase = path.resolve(
+    process.cwd(),
+    'config/products'
+  );
+
+  private resolveAllowedLocalPath(file: string): string {
+    const resolved = file.startsWith('/')
+      ? path.resolve(file)
+      : path.resolve(process.cwd(), file);
+    if (
+      resolved !== this.allowedLocalBase &&
+      !resolved.startsWith(`${this.allowedLocalBase}${path.sep}`)
+    ) {
+      throw new Error('access to requested file path is denied');
+    }
+    return resolved;
+  }
 
   async getFile(file: string): Promise<Readable> {
     this.logger.log(`Reading file: ${file}`);
 
-    if (file.startsWith('/')) {
-      await fs.promises.access(file, R_OK);
-
-      return fs.createReadStream(file);
-    } else if (file.startsWith('http')) {
+    if (file.startsWith('http')) {
       const content = await this.cloudProviders.get(file);
 
       if (content) {
@@ -26,7 +39,7 @@ export class FileService {
         throw new Error(`no such file or directory, access '${file}'`);
       }
     } else {
-      file = path.resolve(process.cwd(), file);
+      file = this.resolveAllowedLocalPath(file);
 
       await fs.promises.access(file, R_OK);
 
@@ -35,12 +48,10 @@ export class FileService {
   }
 
   async deleteFile(file: string): Promise<boolean> {
-    if (file.startsWith('/')) {
-      throw new Error('cannot delete file from this location');
-    } else if (file.startsWith('http')) {
+    if (file.startsWith('http')) {
       throw new Error('cannot delete file from this location');
     } else {
-      file = path.resolve(process.cwd(), file);
+      file = this.resolveAllowedLocalPath(file);
       await fs.promises.unlink(file);
       return true;
     }

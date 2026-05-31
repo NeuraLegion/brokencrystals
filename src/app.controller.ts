@@ -92,7 +92,19 @@ export class AppController {
   })
   @Redirect()
   async redirect(@Query('url') url: string) {
-    return { url };
+    try {
+      const parsed = new URL(url);
+      if (
+        !['localhost', '127.0.0.1', 'brokencrystals.com'].includes(
+          parsed.hostname
+        )
+      ) {
+        throw new BadRequestException('Invalid redirect target');
+      }
+      return { url: parsed.toString() };
+    } catch {
+      throw new BadRequestException('Invalid redirect target');
+    }
   }
 
   @Post('metadata')
@@ -118,15 +130,14 @@ export class AppController {
   })
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
-    const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
-      recover: true
+    parseXml(xml, {
+      noent: false,
+      dtdvalid: false,
+      recover: false,
+      nonet: true
     });
-    this.logger.debug(xmlDoc);
-    this.logger.debug(xmlDoc.getDtd());
 
-    return xmlDoc.toString(true);
+    return '<metadata>accepted</metadata>';
   }
 
   @Options()
@@ -154,14 +165,10 @@ export class AppController {
   })
   async getCommandResult(@Query('command') command: string): Promise<string> {
     this.logger.debug(`launch ${command} command`);
-    try {
-      return await this.appService.launchCommand(command);
-    } catch (err) {
-      throw new InternalServerErrorException({
-        error: err.message || err,
-        location: __filename
-      });
+    if (!['whoami'].includes(command)) {
+      throw new BadRequestException('Unsupported command');
     }
+    return await this.appService.launchCommand(command);
   }
 
   @Post('process_numbers')
