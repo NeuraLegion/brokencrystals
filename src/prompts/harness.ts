@@ -162,6 +162,9 @@ ${infraInfo}
 ## IMPORTANT: Read the actual source files
 Before writing the harness, READ the target source files to understand their real imports, class structure, and how to call them. Don't guess — verify. The harness will run inside Docker with the project source at /app.
 
+## TypeScript projects
+If the target file paths end in .js and reference a dist/ directory, these are PRE-COMPILED files. Use plain \`require()\` — do NOT use ts-node, tsx, or any TypeScript transpiler. The harness.js file must be plain JavaScript that Node.js can execute directly.
+
 ## Output
 Return the complete harness file inside a single fenced code block with the language tag.
 After the code block, return a JSON object:

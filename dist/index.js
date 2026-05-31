@@ -34574,6 +34574,9 @@ ${infraInfo}
 ## IMPORTANT: Read the actual source files
 Before writing the harness, READ the target source files to understand their real imports, class structure, and how to call them. Don't guess \u2014 verify. The harness will run inside Docker with the project source at /app.
 
+## TypeScript projects
+If the target file paths end in .js and reference a dist/ directory, these are PRE-COMPILED files. Use plain \`require()\` \u2014 do NOT use ts-node, tsx, or any TypeScript transpiler. The harness.js file must be plain JavaScript that Node.js can execute directly.
+
 ## Output
 Return the complete harness file inside a single fenced code block with the language tag.
 After the code block, return a JSON object:
@@ -35046,6 +35049,16 @@ async function identifyTargets(llm, repoPath, stackStr, handleTool, model) {
 }
 async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTool, model) {
   const infraDescription = infra.services.length > 0 ? `Services running: ${infra.services.filter((s) => s.essential).map((s) => `${s.name} (${s.image})`).join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}` : "No infrastructure services \u2014 all targets are stateless or use local file system only.";
+  const hasDistDir = existsSync4(`${repoPath}/dist`);
+  const isTypeScript = targets.some((t) => t.file.endsWith(".ts"));
+  if (isTypeScript && hasDistDir) {
+    for (const t of targets) {
+      if (t.file.endsWith(".ts")) {
+        t.file = t.file.replace(/^src\//, "dist/").replace(/\.ts$/, ".js");
+      }
+    }
+    console.log("[Harness] TypeScript project with dist/ \u2014 remapped target paths from src/*.ts to dist/*.js");
+  }
   const messages = generateHarnessPrompt(stackStr, targets, infraDescription);
   const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
   const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);

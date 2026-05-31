@@ -443,6 +443,22 @@ async function generateHarness(
     ? `Services running: ${infra.services.filter((s) => s.essential).map((s) => `${s.name} (${s.image})`).join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}`
     : "No infrastructure services — all targets are stateless or use local file system only.";
 
+  // TypeScript projects: if a compiled dist/ directory exists, remap target
+  // file paths from src/*.ts to dist/*.js so the harness can require() them
+  // directly without ts-node. Node.js can't execute .ts files natively.
+  const hasDistDir = existsSync(`${repoPath}/dist`);
+  const isTypeScript = targets.some((t) => t.file.endsWith(".ts"));
+  if (isTypeScript && hasDistDir) {
+    for (const t of targets) {
+      if (t.file.endsWith(".ts")) {
+        t.file = t.file
+          .replace(/^src\//, "dist/")
+          .replace(/\.ts$/, ".js");
+      }
+    }
+    console.log("[Harness] TypeScript project with dist/ — remapped target paths from src/*.ts to dist/*.js");
+  }
+
   const messages = generateHarnessPrompt(stackStr, targets, infraDescription);
   const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
   const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
