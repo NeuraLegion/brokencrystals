@@ -443,12 +443,32 @@ async function generateHarness(
     ? `Services running: ${infra.services.filter((s) => s.essential).map((s) => `${s.name} (${s.image})`).join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}`
     : "No infrastructure services — all targets are stateless or use local file system only.";
 
-  // TypeScript projects: if a compiled dist/ directory exists, remap target
-  // file paths from src/*.ts to dist/*.js so the harness can require() them
-  // directly without ts-node. Node.js can't execute .ts files natively.
+  // TypeScript projects: remap target file paths from src/*.ts to dist/*.js
+  // so the harness can require() them directly without ts-node. Node.js can't
+  // execute .ts files natively. The compiled output may exist:
+  //   - On the host (local dev, pre-built)
+  //   - Only inside the Docker image (built by Dockerfile's npm run build)
+  // We check for dist/ on host OR tsconfig.json with outDir OR a Dockerfile
+  // that runs a build step — any of these indicates compiled JS will exist
+  // at /app/dist/ inside the container at runtime.
   const hasDistDir = existsSync(`${repoPath}/dist`);
   const isTypeScript = targets.some((t) => t.file.endsWith(".ts"));
-  if (isTypeScript && hasDistDir) {
+  let hasCompiledOutput = hasDistDir;
+  if (!hasCompiledOutput && isTypeScript) {
+    // Check tsconfig for outDir
+    try {
+      const tsconfig = readFileSync(`${repoPath}/tsconfig.json`, "utf-8");
+      hasCompiledOutput = /"outDir"\s*:\s*"\.?\/?(dist|build|out)"/.test(tsconfig);
+    } catch { /* no tsconfig */ }
+    // Check Dockerfile for a build step that produces dist/
+    if (!hasCompiledOutput) {
+      try {
+        const dockerfile = readFileSync(`${repoPath}/Dockerfile`, "utf-8");
+        hasCompiledOutput = /npm run build|yarn build|tsc\b|nest build/.test(dockerfile);
+      } catch { /* no Dockerfile */ }
+    }
+  }
+  if (isTypeScript && hasCompiledOutput) {
     for (const t of targets) {
       if (t.file.endsWith(".ts")) {
         t.file = t.file
@@ -456,7 +476,7 @@ async function generateHarness(
           .replace(/\.ts$/, ".js");
       }
     }
-    console.log("[Harness] TypeScript project with dist/ — remapped target paths from src/*.ts to dist/*.js");
+    console.log("[Harness] TypeScript project with compiled output — remapped target paths from src/*.ts to dist/*.js");
   }
 
   const messages = generateHarnessPrompt(stackStr, targets, infraDescription);

@@ -35051,13 +35051,28 @@ async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTo
   const infraDescription = infra.services.length > 0 ? `Services running: ${infra.services.filter((s) => s.essential).map((s) => `${s.name} (${s.image})`).join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}` : "No infrastructure services \u2014 all targets are stateless or use local file system only.";
   const hasDistDir = existsSync4(`${repoPath}/dist`);
   const isTypeScript = targets.some((t) => t.file.endsWith(".ts"));
-  if (isTypeScript && hasDistDir) {
+  let hasCompiledOutput = hasDistDir;
+  if (!hasCompiledOutput && isTypeScript) {
+    try {
+      const tsconfig = readFileSync4(`${repoPath}/tsconfig.json`, "utf-8");
+      hasCompiledOutput = /"outDir"\s*:\s*"\.?\/?(dist|build|out)"/.test(tsconfig);
+    } catch {
+    }
+    if (!hasCompiledOutput) {
+      try {
+        const dockerfile = readFileSync4(`${repoPath}/Dockerfile`, "utf-8");
+        hasCompiledOutput = /npm run build|yarn build|tsc\b|nest build/.test(dockerfile);
+      } catch {
+      }
+    }
+  }
+  if (isTypeScript && hasCompiledOutput) {
     for (const t of targets) {
       if (t.file.endsWith(".ts")) {
         t.file = t.file.replace(/^src\//, "dist/").replace(/\.ts$/, ".js");
       }
     }
-    console.log("[Harness] TypeScript project with dist/ \u2014 remapped target paths from src/*.ts to dist/*.js");
+    console.log("[Harness] TypeScript project with compiled output \u2014 remapped target paths from src/*.ts to dist/*.js");
   }
   const messages = generateHarnessPrompt(stackStr, targets, infraDescription);
   const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
