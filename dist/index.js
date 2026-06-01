@@ -26853,46 +26853,57 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
     byFile.get(key).push(ep);
   }
   let processedCount = 0;
-  for (const [filePath, fileEndpoints] of byFile) {
-    const fullPath = resolve(repoPath, filePath);
-    let content;
-    try {
-      content = readFileSync(fullPath, "utf-8");
-    } catch {
-      enriched.push(...fileEndpoints);
-      processedCount += fileEndpoints.length;
-      continue;
-    }
-    for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += PARAM_EXTRACTION_BATCH_SIZE) {
-      const batch = fileEndpoints.slice(batchStart, batchStart + PARAM_EXTRACTION_BATCH_SIZE);
-      processedCount += batch.length;
-      console.log(
-        `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`
-      );
-      const anchors = new Set(
-        batch.flatMap((ep) => {
-          const parts = ep.path.replace(/^\//, "").split("/");
-          return [parts[0], parts[1]].filter(Boolean);
-        })
-      );
-      let combinedSnippet = "";
-      for (const anchor of anchors) {
-        const snip = extractSnippet(content, anchor);
-        if (snip && !combinedSnippet.includes(snip)) {
-          combinedSnippet += (combinedSnippet ? "\n...\n" : "") + snip;
+  const PARAM_CONCURRENCY = 5;
+  const fileEntries = [...byFile.entries()];
+  console.log(
+    `[Analyze] Param extraction: ${fileEntries.length} file(s), concurrency ${PARAM_CONCURRENCY}`
+  );
+  let fileIdx = 0;
+  const workers = Array.from(
+    { length: Math.min(PARAM_CONCURRENCY, fileEntries.length) },
+    async () => {
+      while (fileIdx < fileEntries.length) {
+        const idx = fileIdx++;
+        const [filePath, fileEndpoints] = fileEntries[idx];
+        const fullPath = resolve(repoPath, filePath);
+        let content;
+        try {
+          content = readFileSync(fullPath, "utf-8");
+        } catch {
+          enriched.push(...fileEndpoints);
+          processedCount += fileEndpoints.length;
+          continue;
         }
-      }
-      if (!combinedSnippet) {
-        combinedSnippet = content.split("\n").slice(0, 120).map((l, i) => `${i + 1}: ${l}`).join("\n");
-      }
-      const totalLines = content.split("\n").length;
-      const endpointList = batch.map(
-        (ep, i) => `[${i}] ${ep.method} ${ep.path}${["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()) ? " (needs body)" : ""}${/[:{}]/.test(ep.path) ? " (has path params)" : ""}`
-      ).join("\n");
-      const messages = [
-        {
-          role: "system",
-          content: `You are an API analyst. Given code snippets and a list of endpoints, determine the parameters for EACH endpoint with realistic sample values.
+        for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += PARAM_EXTRACTION_BATCH_SIZE) {
+          const batch = fileEndpoints.slice(batchStart, batchStart + PARAM_EXTRACTION_BATCH_SIZE);
+          processedCount += batch.length;
+          console.log(
+            `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`
+          );
+          const anchors = new Set(
+            batch.flatMap((ep) => {
+              const parts = ep.path.replace(/^\//, "").split("/");
+              return [parts[0], parts[1]].filter(Boolean);
+            })
+          );
+          let combinedSnippet = "";
+          for (const anchor of anchors) {
+            const snip = extractSnippet(content, anchor);
+            if (snip && !combinedSnippet.includes(snip)) {
+              combinedSnippet += (combinedSnippet ? "\n...\n" : "") + snip;
+            }
+          }
+          if (!combinedSnippet) {
+            combinedSnippet = content.split("\n").slice(0, 120).map((l, i) => `${i + 1}: ${l}`).join("\n");
+          }
+          const totalLines = content.split("\n").length;
+          const endpointList = batch.map(
+            (ep, i) => `[${i}] ${ep.method} ${ep.path}${["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()) ? " (needs body)" : ""}${/[:{}]/.test(ep.path) ? " (has path params)" : ""}`
+          ).join("\n");
+          const messages = [
+            {
+              role: "system",
+              content: `You are an API analyst. Given code snippets and a list of endpoints, determine the parameters for EACH endpoint with realistic sample values.
 
 You have tools to inspect more code:
 - read_lines: read specific line ranges from any file
@@ -26907,10 +26918,10 @@ The result array should have one entry per endpoint (matching the [index]):
 For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"sid": "1", "pk": "42"}).
 
 For gRPC-Web endpoints (content-type: application/grpc-web+proto), the body must be a raw gRPC frame as a string with binary characters using JSON escape sequences. Format: 5-byte header (\\u0000 compressed flag + 4-byte big-endian message length) followed by the protobuf-encoded message. Use the .proto message definitions to construct a realistic payload. Set contentType to "application/grpc-web+proto". Example for a message with a single string field "command" = "pwd" (field 1, wire type 2, length 3): "\\u0000\\u0000\\u0000\\u0000\\u0005\\n\\u0003pwd". The \\n is 0x0a (field tag), \\u0003 is the string length prefix. Always include realistic field values from the proto definitions so the scanner can fuzz them effectively.`
-        },
-        {
-          role: "user",
-          content: `Endpoints from ${filePath} (${totalLines} lines):
+            },
+            {
+              role: "user",
+              content: `Endpoints from ${filePath} (${totalLines} lines):
 ${endpointList}
 
 Relevant code:
@@ -26919,114 +26930,117 @@ ${combinedSnippet.slice(0, 6e3)}
 \`\`\`
 
 Look up any referenced DTOs/models. Call save_result with the JSON array of params for each endpoint index.`
-        }
-      ];
-      try {
-        let savedResult;
-        const wrappedHandler = async (name, args) => {
-          if (name === "save_result") {
-            const r = args.result;
-            if (Array.isArray(r)) savedResult = r;
-            return "Result saved.";
-          }
-          return handleTool(name, args);
-        };
-        let response = await chatWithTools(
-          llm,
-          messages,
-          bodyExtractionTools,
-          wrappedHandler,
-          model,
-          PARAM_EXTRACTION_MAX_TURNS
-        );
-        let entries;
-        if (savedResult && savedResult.length > 0) {
-          entries = savedResult;
-        } else {
-          entries = parseParamExtractionResponse(response);
-        }
-        if (!entries) {
-          console.warn(
-            `[Analyze] Param extraction for ${filePath} did not call save_result; retrying focused extraction${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
-          );
-          let retrySavedResult;
-          const retryHandler = async (name, args) => {
-            if (name === "save_result") {
-              const r = args.result;
-              if (Array.isArray(r)) retrySavedResult = r;
-              return "Result saved.";
             }
-            return handleTool(name, args);
-          };
-          const retryMessages = [
-            ...messages,
-            {
-              role: "assistant",
-              content: response.trim() || "I did not save a result."
-            },
-            {
-              role: "user",
-              content: `You must now call save_result with one result object for each endpoint index below. Do not inspect more files and do not answer in text.
+          ];
+          try {
+            let savedResult;
+            const wrappedHandler = async (name, args) => {
+              if (name === "save_result") {
+                const r = args.result;
+                if (Array.isArray(r)) savedResult = r;
+                return "Result saved.";
+              }
+              return handleTool(name, args);
+            };
+            let response = await chatWithTools(
+              llm,
+              messages,
+              bodyExtractionTools,
+              wrappedHandler,
+              model,
+              PARAM_EXTRACTION_MAX_TURNS
+            );
+            let entries;
+            if (savedResult && savedResult.length > 0) {
+              entries = savedResult;
+            } else {
+              entries = parseParamExtractionResponse(response);
+            }
+            if (!entries) {
+              console.warn(
+                `[Analyze] Param extraction for ${filePath} did not call save_result; retrying focused extraction${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
+              );
+              let retrySavedResult;
+              const retryHandler = async (name, args) => {
+                if (name === "save_result") {
+                  const r = args.result;
+                  if (Array.isArray(r)) retrySavedResult = r;
+                  return "Result saved.";
+                }
+                return handleTool(name, args);
+              };
+              const retryMessages = [
+                ...messages,
+                {
+                  role: "assistant",
+                  content: response.trim() || "I did not save a result."
+                },
+                {
+                  role: "user",
+                  content: `You must now call save_result with one result object for each endpoint index below. Do not inspect more files and do not answer in text.
 
 ${endpointList}
 
 Use empty strings/objects for fields you cannot infer confidently, but preserve every endpoint index.`
+                }
+              ];
+              response = await chatWithTools(
+                llm,
+                retryMessages,
+                [saveResultTool],
+                retryHandler,
+                model,
+                PARAM_EXTRACTION_RETRY_TURNS
+              );
+              entries = retrySavedResult && retrySavedResult.length > 0 ? retrySavedResult : parseParamExtractionResponse(response);
             }
-          ];
-          response = await chatWithTools(
-            llm,
-            retryMessages,
-            [saveResultTool],
-            retryHandler,
-            model,
-            PARAM_EXTRACTION_RETRY_TURNS
-          );
-          entries = retrySavedResult && retrySavedResult.length > 0 ? retrySavedResult : parseParamExtractionResponse(response);
-        }
-        if (!entries) {
-          throw new Error(
-            `LLM did not provide parseable param extraction JSON${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
-          );
-        }
-        for (const entry of entries) {
-          const idx = typeof entry.index === "number" ? entry.index : 0;
-          const ep = batch[idx] ?? batch[0];
-          if (!ep) continue;
-          let resolvedPath = ep.path;
-          if (entry.pathParams && typeof entry.pathParams === "object") {
-            for (const [param, value] of Object.entries(entry.pathParams)) {
-              resolvedPath = resolvedPath.replace(`:${param}`, String(value)).replace(`{${param}}`, String(value));
+            if (!entries) {
+              throw new Error(
+                `LLM did not provide parseable param extraction JSON${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
+              );
             }
+            for (const entry of entries) {
+              const idx2 = typeof entry.index === "number" ? entry.index : 0;
+              const ep = batch[idx2] ?? batch[0];
+              if (!ep) continue;
+              let resolvedPath = ep.path;
+              if (entry.pathParams && typeof entry.pathParams === "object") {
+                for (const [param, value] of Object.entries(entry.pathParams)) {
+                  resolvedPath = resolvedPath.replace(`:${param}`, String(value)).replace(`{${param}}`, String(value));
+                }
+              }
+              enriched.push({
+                ...ep,
+                path: resolvedPath,
+                queryParams: Array.isArray(entry.queryParams) && entry.queryParams.length > 0 ? entry.queryParams : ep.queryParams,
+                body: entry.body ? typeof entry.body === "string" ? entry.body : JSON.stringify(entry.body) : void 0,
+                contentType: entry.contentType ? String(entry.contentType) : void 0
+              });
+            }
+            const coveredIndices = new Set(
+              entries.filter((e) => typeof e.index === "number").map((e) => e.index)
+            );
+            for (let i = 0; i < batch.length; i++) {
+              if (!coveredIndices.has(i) && entries.length !== 1) {
+                enriched.push(batch[i]);
+              }
+            }
+            if (entries.length === 1 && typeof entries[0].index !== "number" && batch.length > 1) {
+              for (let i = 1; i < batch.length; i++) {
+                enriched.push(batch[i]);
+              }
+            }
+          } catch (err) {
+            console.warn(
+              `[Analyze] Failed batch param extraction for ${filePath}: ${err}`
+            );
+            enriched.push(...batch);
           }
-          enriched.push({
-            ...ep,
-            path: resolvedPath,
-            queryParams: Array.isArray(entry.queryParams) && entry.queryParams.length > 0 ? entry.queryParams : ep.queryParams,
-            body: entry.body ? typeof entry.body === "string" ? entry.body : JSON.stringify(entry.body) : void 0,
-            contentType: entry.contentType ? String(entry.contentType) : void 0
-          });
         }
-        const coveredIndices = new Set(
-          entries.filter((e) => typeof e.index === "number").map((e) => e.index)
-        );
-        for (let i = 0; i < batch.length; i++) {
-          if (!coveredIndices.has(i) && entries.length !== 1) {
-            enriched.push(batch[i]);
-          }
-        }
-        if (entries.length === 1 && typeof entries[0].index !== "number" && batch.length > 1) {
-          for (let i = 1; i < batch.length; i++) {
-            enriched.push(batch[i]);
-          }
-        }
-      } catch (err) {
-        console.warn(
-          `[Analyze] Failed batch param extraction for ${filePath}: ${err}`
-        );
-        enriched.push(...batch);
       }
     }
-  }
+  );
+  await Promise.all(workers);
   return enriched;
 }
 

@@ -2197,7 +2197,23 @@ export async function discoverEndpoints(
 
   let processedCount = 0;
 
-  for (const [filePath, fileEndpoints] of byFile) {
+  const PARAM_CONCURRENCY = 5;
+  const fileEntries = [...byFile.entries()];
+  console.log(
+    `[Analyze] Param extraction: ${fileEntries.length} file(s), concurrency ${PARAM_CONCURRENCY}`,
+  );
+
+  // Process files in parallel (concurrency-limited). Each file's batches
+  // are still sequential (to avoid turn-budget contention within a file),
+  // but different files run in parallel since they're independent.
+  let fileIdx = 0;
+  const workers = Array.from(
+    { length: Math.min(PARAM_CONCURRENCY, fileEntries.length) },
+    async () => {
+      while (fileIdx < fileEntries.length) {
+        const idx = fileIdx++;
+        const [filePath, fileEndpoints] = fileEntries[idx];
+
     const fullPath = resolve(repoPath, filePath);
     let content: string;
     try {
@@ -2408,7 +2424,10 @@ Use empty strings/objects for fields you cannot infer confidently, but preserve 
         enriched.push(...batch);
       }
     }
-  }
+      }
+    },
+  );
+  await Promise.all(workers);
 
   return enriched;
 }
