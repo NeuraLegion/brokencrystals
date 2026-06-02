@@ -99,9 +99,9 @@ export class TestimonialsController {
   @ApiOkResponse({
     type: String
   })
-  async getCount(@Query('query') query: string): Promise<number> {
+  async getCount(@Query('query') query: string): Promise<string> {
     this.logger.debug('Get count of testimonials.');
-    return await this.testimonialsService.count(query);
+    return (await this.testimonialsService.count(query)).toString();
   }
 
   @GrpcMethod('TestimonialsService', 'TestimonialsCount')
