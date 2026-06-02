@@ -71,9 +71,7 @@ export class TestimonialsService {
     const searchTerm = `%${normalizedQuery}%`;
 
     try {
-      this.logger.debug(
-        `Count testimonials for search term "${normalizedQuery}"`
-      );
+      this.logger.debug('Count testimonials for provided search term.');
       const [row] = await this.em.getConnection().execute<{ count: number }[]>(
         `
           SELECT COUNT(*)::int AS count
