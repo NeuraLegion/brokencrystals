@@ -67,7 +67,7 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
         );
         res.header(
           HeadersConfiguratorInterceptor.CONTENT_SECURITY_POLICY,
-          `default-src  * 'unsafe-inline' 'unsafe-eval'`
+          `default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ws: wss: http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'`
         );
       })
     );
