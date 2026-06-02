@@ -19,8 +19,6 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
     'x-content-type-options';
   public static readonly CONTENT_SECURITY_POLICY: string =
     'content-security-policy';
-  //query param backdoor to bypass security headers setting
-  public static readonly NO_SEC_HEADERS_QUERY_PARAM: string = 'no-sec-headers';
   //counter cookie name
   public static readonly COUNTER_COOKIE_NAME = 'bc-calls-counter';
   private readonly logger = new Logger(HeadersConfiguratorInterceptor.name);
@@ -54,22 +52,23 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
       tap(() => {
         const res = this.getResponse(context);
         res.setCookie('bc-calls-counter', Date.now().toString(), {
-          secure: false
+          secure: req.protocol === 'https',
+          httpOnly: true,
+          sameSite: 'lax'
         });
-        if (
-          !req.query[HeadersConfiguratorInterceptor.NO_SEC_HEADERS_QUERY_PARAM]
-        ) {
-          res.header(HeadersConfiguratorInterceptor.XSS_PROTECTION_HEADER, '0');
-          res.header(
-            HeadersConfiguratorInterceptor.STRICT_TRANSPORT_SECURITY_HEADER,
-            'max-age=0'
-          );
-          res.header(HeadersConfiguratorInterceptor.CONTENT_TYPE_OPTIONS, '1');
-          res.header(
-            HeadersConfiguratorInterceptor.CONTENT_SECURITY_POLICY,
-            `default-src  * 'unsafe-inline' 'unsafe-eval'`
-          );
-        }
+        res.header(HeadersConfiguratorInterceptor.XSS_PROTECTION_HEADER, '0');
+        res.header(
+          HeadersConfiguratorInterceptor.STRICT_TRANSPORT_SECURITY_HEADER,
+          'max-age=31536000; includeSubDomains'
+        );
+        res.header(
+          HeadersConfiguratorInterceptor.CONTENT_TYPE_OPTIONS,
+          'nosniff'
+        );
+        res.header(
+          HeadersConfiguratorInterceptor.CONTENT_SECURITY_POLICY,
+          `default-src  * 'unsafe-inline' 'unsafe-eval'`
+        );
       })
     );
   }

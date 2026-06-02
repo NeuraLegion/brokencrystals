@@ -1,6 +1,11 @@
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger
+} from '@nestjs/common';
 import { EntityManager, EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { Injectable, Logger } from '@nestjs/common';
 import { Testimonial } from '../model/testimonial.entity';
 
 @Injectable()
@@ -55,13 +60,34 @@ export class TestimonialsService {
   }
 
   async count(query: string): Promise<number> {
-    try {
-      this.logger.debug(`Saved new testimonial`);
+    const normalizedQuery = query?.trim();
 
-      return (await this.em.getConnection().execute(query))[0].count as number;
+    if (!normalizedQuery) {
+      throw new BadRequestException(
+        'Query parameter is required and must be a non-empty string.'
+      );
+    }
+
+    const searchTerm = `%${normalizedQuery}%`;
+
+    try {
+      this.logger.debug(
+        `Count testimonials for search term "${normalizedQuery}"`
+      );
+      const [row] = await this.em.getConnection().execute<{ count: number }[]>(
+        `
+          SELECT COUNT(*)::int AS count
+          FROM testimonial
+          WHERE message ILIKE ?
+             OR name ILIKE ?
+             OR title ILIKE ?
+        `,
+        [searchTerm, searchTerm, searchTerm]
+      );
+      return row?.count ?? 0;
     } catch (err) {
-      this.logger.warn(`Failed to execute query. Error: ${err.message}`);
-      return err.message;
+      this.logger.error(`Failed to count testimonials. Error: ${err.message}`);
+      throw new InternalServerErrorException('Failed to count testimonials.');
     }
   }
 }
