@@ -75,14 +75,14 @@ jobs:
         uses: ./.github/workflows/composite/configure-bright-credentials
         with:
           BRIGHT_HOSTNAME: development.playground.brightsec.com
-          BRIGHT_PROJECT_ID: 32JvHyHrvnegA5igJPhpEr
+          BRIGHT_PROJECT_ID: ${{ vars.BRIGHT_PROJECT_ID }}
           BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
       - name: Run security tests
         env:
           CI_AGENT_STEP_NAME: Run security tests
           CI_AGENT_STEP_INDEX: "8"
           BRIGHT_HOSTNAME: development.playground.brightsec.com
-          BRIGHT_PROJECT_ID: 32JvHyHrvnegA5igJPhpEr
+          BRIGHT_PROJECT_ID: ${{ vars.BRIGHT_PROJECT_ID }}
           BRIGHT_AUTH_ID: e47vfkG3pkDmh6FCAk9ZGS
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRIGHT_TOKEN: ${{ env.BRIGHT_TOKEN }}
