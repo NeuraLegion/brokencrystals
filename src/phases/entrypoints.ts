@@ -348,6 +348,7 @@ const JUNK_URL_PATTERNS = [
   /<%/, // ERB tags
   /\(\d+\)/, // Rails route constraint like (42)
   /\[.*\]/, // regex character class in path — route constraint like [0-9]+ or [^/]+
+  /\(\?/, // regex group — (?P<name>...), (?:...), (?1|groups) etc.
   /\s/, // whitespace in path
   /placeholder/, // unresolved interpolation that resolvePath couldn't handle
 ];
