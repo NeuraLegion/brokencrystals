@@ -26915,7 +26915,7 @@ IMPORTANT: When you have determined all endpoint parameters, you MUST call the s
 The result array should have one entry per endpoint (matching the [index]):
 [{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
 
-For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"sid": "1", "pk": "42"}).
+For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"id": "1", "slug": "default"}). Prefer the LOWEST plausible value (1, "default", "me") since higher IDs likely don't exist in a freshly-seeded database.
 
 For gRPC-Web endpoints (content-type: application/grpc-web+proto), the body must be a raw gRPC frame as a string with binary characters using JSON escape sequences. Format: 5-byte header (\\u0000 compressed flag + 4-byte big-endian message length) followed by the protobuf-encoded message. Use the .proto message definitions to construct a realistic payload. Set contentType to "application/grpc-web+proto". Example for a message with a single string field "command" = "pwd" (field 1, wire type 2, length 3): "\\u0000\\u0000\\u0000\\u0000\\u0005\\n\\u0003pwd". The \\n is 0x0a (field tag), \\u0003 is the string length prefix. Always include realistic field values from the proto definitions so the scanner can fuzz them effectively.`
             },
