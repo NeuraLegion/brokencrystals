@@ -32521,6 +32521,8 @@ var JUNK_URL_PATTERNS = [
   // ERB tags
   /\(\d+\)/,
   // Rails route constraint like (42)
+  /\[.*\]/,
+  // regex character class in path — route constraint like [0-9]+ or [^/]+
   /\s/,
   // whitespace in path
   /placeholder/

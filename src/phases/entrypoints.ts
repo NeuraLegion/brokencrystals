@@ -347,6 +347,7 @@ const JUNK_URL_PATTERNS = [
   /#/, // URL fragment — never sent to server; indicates client-side route or broken interpolation
   /<%/, // ERB tags
   /\(\d+\)/, // Rails route constraint like (42)
+  /\[.*\]/, // regex character class in path — route constraint like [0-9]+ or [^/]+
   /\s/, // whitespace in path
   /placeholder/, // unresolved interpolation that resolvePath couldn't handle
 ];
