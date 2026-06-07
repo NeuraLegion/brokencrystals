@@ -49,6 +49,7 @@ import {
   runSecurityScan,
   waitForScanCompletion,
   isFailureStatus,
+  setScanLifecycle,
 } from "./phases/scan.js";
 import { fetchFindings } from "./phases/findings.js";
 import { generateFixes, applyFixes } from "./phases/fix.js";
@@ -411,6 +412,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   let rateLimitRecoveryAttempts = 0;
   const MAX_RATE_LIMIT_RECOVERIES = 2;
 
+  // Adaptive scan throttling: track health flaps during active scanning.
+  // If the app repeatedly dies under load, pause half the scans.
+  let healthFlapCount = 0;
+  const activeScanIds: string[] = []; // populated when scans are launched
+  const pausedForThrottle: string[] = []; // scans paused to reduce load
+
   try {
     // ----- Phase 1: Tech stack + Start application (fail fast) -----
     await progress.phaseStart(
@@ -644,13 +651,29 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
 
       // --- Standard recovery: quick restart for transient crashes ---
+      // Track repeated health flaps — if the app keeps dying under scan load,
+      // we need to reduce concurrency rather than keep restarting.
+      healthFlapCount++;
+      const shouldThrottle = healthFlapCount >= 2 && activeScanIds.length > 2;
+      if (shouldThrottle) {
+        // Pause half the running scans to reduce load on the app
+        const toPause = activeScanIds.slice(0, Math.ceil(activeScanIds.length / 2));
+        console.log(
+          `[Recovery] Health flap #${healthFlapCount} — throttling: pausing ${toPause.length}/${activeScanIds.length} scans to reduce app load`,
+        );
+        for (const sid of toPause) {
+          await setScanLifecycle(config, sid, "pause").catch(() => {});
+        }
+        pausedForThrottle.push(...toPause);
+      }
+
       console.log(
         `[Recovery] Quick compose restart${hint ? ` — hint: ${hint}` : ""}`,
       );
       const qr = await quickRestartCompose(repoPath, startupConfig);
       if (qr.ok) {
         deepProbeCache.clear();
-        return { ok: true, detail: "quick compose restart succeeded" };
+        return { ok: true, detail: `quick compose restart succeeded${shouldThrottle ? ` (throttled to ${activeScanIds.length - pausedForThrottle.length} concurrent scans)` : ""}` };
       }
       console.warn(
         `[Recovery] Quick restart failed — staying unhealthy for orchestrator to handle`,
@@ -1732,6 +1755,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           );
           scanIds.push(scanId);
           allScanIds.push(scanId);
+          activeScanIds.push(scanId);
           await progress.phaseDetail(
             "scan",
             "scan_launched",
@@ -1793,6 +1817,18 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       const totalScans = scanIds.length;
       const failedCount = failedScanDetails.length;
+
+      // Clear active scan tracking and resume any throttled scans
+      activeScanIds.length = 0;
+      if (pausedForThrottle.length > 0) {
+        console.log(`[Scan] Resuming ${pausedForThrottle.length} throttled scan(s) now that the first batch completed`);
+        for (const sid of pausedForThrottle) {
+          await setScanLifecycle(config, sid, "resume").catch(() => {});
+          activeScanIds.push(sid);
+        }
+        pausedForThrottle.length = 0;
+        healthFlapCount = 0; // reset — give the app a fresh chance with lower load
+      }
 
       if (failedCount > 0 && succeededScanIds.length === 0) {
         // All scans failed — nothing to harvest. Try to recover or abort.

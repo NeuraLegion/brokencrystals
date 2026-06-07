@@ -36125,6 +36125,9 @@ async function runOrchestrator(ctx) {
   const fixedKeys = /* @__PURE__ */ new Set();
   let rateLimitRecoveryAttempts = 0;
   const MAX_RATE_LIMIT_RECOVERIES = 2;
+  let healthFlapCount = 0;
+  const activeScanIds = [];
+  const pausedForThrottle = [];
   try {
     await progress.phaseStart(
       "startup",
@@ -36310,13 +36313,26 @@ async function runOrchestrator(ctx) {
         }
         return { ok: false, detail: qr2.diagnostics ?? "restart after rate-limit repair failed" };
       }
+      healthFlapCount++;
+      const shouldThrottle = healthFlapCount >= 2 && activeScanIds.length > 2;
+      if (shouldThrottle) {
+        const toPause = activeScanIds.slice(0, Math.ceil(activeScanIds.length / 2));
+        console.log(
+          `[Recovery] Health flap #${healthFlapCount} \u2014 throttling: pausing ${toPause.length}/${activeScanIds.length} scans to reduce app load`
+        );
+        for (const sid of toPause) {
+          await setScanLifecycle(config, sid, "pause").catch(() => {
+          });
+        }
+        pausedForThrottle.push(...toPause);
+      }
       console.log(
         `[Recovery] Quick compose restart${hint ? ` \u2014 hint: ${hint}` : ""}`
       );
       const qr = await quickRestartCompose(repoPath, startupConfig);
       if (qr.ok) {
         deepProbeCache.clear();
-        return { ok: true, detail: "quick compose restart succeeded" };
+        return { ok: true, detail: `quick compose restart succeeded${shouldThrottle ? ` (throttled to ${activeScanIds.length - pausedForThrottle.length} concurrent scans)` : ""}` };
       }
       console.warn(
         `[Recovery] Quick restart failed \u2014 staying unhealthy for orchestrator to handle`
@@ -37191,6 +37207,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           );
           scanIds.push(scanId);
           allScanIds.push(scanId);
+          activeScanIds.push(scanId);
           await progress.phaseDetail(
             "scan",
             "scan_launched",
@@ -37247,6 +37264,17 @@ This user should work for authentication. Skip user registration/seeding and go 
       }
       const totalScans = scanIds.length;
       const failedCount = failedScanDetails.length;
+      activeScanIds.length = 0;
+      if (pausedForThrottle.length > 0) {
+        console.log(`[Scan] Resuming ${pausedForThrottle.length} throttled scan(s) now that the first batch completed`);
+        for (const sid of pausedForThrottle) {
+          await setScanLifecycle(config, sid, "resume").catch(() => {
+          });
+          activeScanIds.push(sid);
+        }
+        pausedForThrottle.length = 0;
+        healthFlapCount = 0;
+      }
       if (failedCount > 0 && succeededScanIds.length === 0) {
         const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
         if (!stillAlive) {
