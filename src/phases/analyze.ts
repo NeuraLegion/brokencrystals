@@ -1603,7 +1603,7 @@ const bodyExtractionTools = [
 
 const saveResultTool = bodyExtractionTools[3];
 const PARAM_EXTRACTION_BATCH_SIZE = 5;
-const PARAM_EXTRACTION_MAX_TURNS = 8;
+const PARAM_EXTRACTION_MAX_TURNS = 12;
 const PARAM_EXTRACTION_RETRY_TURNS = 3;
 
 function parseParamExtractionResponse(response: string): Record<string, unknown>[] | undefined {

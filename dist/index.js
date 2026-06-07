@@ -26352,7 +26352,7 @@ var bodyExtractionTools = [
 ];
 var saveResultTool = bodyExtractionTools[3];
 var PARAM_EXTRACTION_BATCH_SIZE = 5;
-var PARAM_EXTRACTION_MAX_TURNS = 8;
+var PARAM_EXTRACTION_MAX_TURNS = 12;
 var PARAM_EXTRACTION_RETRY_TURNS = 3;
 function parseParamExtractionResponse(response) {
   const trimmed = response.trim();
