@@ -617,7 +617,67 @@ export async function resolvePathParams(
     }
   }
 
+  // --- Step 3: Detect trailing-slash normalization ---
+  // Some frameworks (Django, Sentry, Rails) redirect /path → /path/ with 301.
+  // If the app does this, append trailing slashes to all paths that don't have
+  // one (and don't look like file paths). This avoids Bright scanning the 301
+  // redirect response instead of the actual page.
+  const needsTrailingSlash = await detectTrailingSlashNormalization(result, baseUrl, authHeaders);
+  if (needsTrailingSlash) {
+    console.log("[Entrypoints] Detected trailing-slash normalization — appending / to paths");
+    for (let i = 0; i < result.length; i++) {
+      const p = result[i].path.split("?")[0];
+      if (!p.endsWith("/") && !hasFileExtension(p)) {
+        result[i] = { ...result[i], path: result[i].path + "/" };
+      }
+    }
+  }
+
   return result;
+}
+
+function hasFileExtension(path: string): boolean {
+  const last = path.split("/").pop() ?? "";
+  return /\.\w{1,5}$/.test(last);
+}
+
+async function detectTrailingSlashNormalization(
+  endpoints: DiscoveredEndpoint[],
+  baseUrl: string,
+  authHeaders?: Record<string, string>,
+): Promise<boolean> {
+  // Sample a few GET endpoints that don't already have trailing slashes
+  const candidates = endpoints
+    .filter((ep) =>
+      ep.method.toUpperCase() === "GET" &&
+      !ep.path.split("?")[0].endsWith("/") &&
+      !hasFileExtension(ep.path.split("?")[0]),
+    )
+    .slice(0, 5);
+
+  if (candidates.length === 0) return false;
+
+  let redirectCount = 0;
+  for (const ep of candidates) {
+    try {
+      const res = await fetch(`${baseUrl}${ep.path.split("?")[0]}`, {
+        method: "HEAD",
+        redirect: "manual",
+        headers: { ...(authHeaders ?? {}) },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (res.status === 301 || res.status === 308) {
+        const location = res.headers.get("location") ?? "";
+        // Check that the redirect target is just the same path + trailing slash
+        if (location.endsWith(ep.path.split("?")[0] + "/") || location === ep.path.split("?")[0] + "/") {
+          redirectCount++;
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  // If majority of sampled endpoints redirect with trailing slash, apply globally
+  return redirectCount >= 2 && redirectCount >= candidates.length * 0.5;
 }
 
 /**

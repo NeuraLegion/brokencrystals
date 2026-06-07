@@ -32698,7 +32698,46 @@ async function resolvePathParams(endpoints, baseUrl, authHeaders) {
       result.push({ ...ep, path: newPath });
     }
   }
+  const needsTrailingSlash = await detectTrailingSlashNormalization(result, baseUrl, authHeaders);
+  if (needsTrailingSlash) {
+    console.log("[Entrypoints] Detected trailing-slash normalization \u2014 appending / to paths");
+    for (let i = 0; i < result.length; i++) {
+      const p = result[i].path.split("?")[0];
+      if (!p.endsWith("/") && !hasFileExtension(p)) {
+        result[i] = { ...result[i], path: result[i].path + "/" };
+      }
+    }
+  }
   return result;
+}
+function hasFileExtension(path) {
+  const last = path.split("/").pop() ?? "";
+  return /\.\w{1,5}$/.test(last);
+}
+async function detectTrailingSlashNormalization(endpoints, baseUrl, authHeaders) {
+  const candidates = endpoints.filter(
+    (ep) => ep.method.toUpperCase() === "GET" && !ep.path.split("?")[0].endsWith("/") && !hasFileExtension(ep.path.split("?")[0])
+  ).slice(0, 5);
+  if (candidates.length === 0) return false;
+  let redirectCount = 0;
+  for (const ep of candidates) {
+    try {
+      const res = await fetch(`${baseUrl}${ep.path.split("?")[0]}`, {
+        method: "HEAD",
+        redirect: "manual",
+        headers: { ...authHeaders ?? {} },
+        signal: AbortSignal.timeout(5e3)
+      });
+      if (res.status === 301 || res.status === 308) {
+        const location2 = res.headers.get("location") ?? "";
+        if (location2.endsWith(ep.path.split("?")[0] + "/") || location2 === ep.path.split("?")[0] + "/") {
+          redirectCount++;
+        }
+      }
+    } catch {
+    }
+  }
+  return redirectCount >= 2 && redirectCount >= candidates.length * 0.5;
 }
 async function verifyEntrypointAuth(api, projectId, entrypointId) {
   try {
