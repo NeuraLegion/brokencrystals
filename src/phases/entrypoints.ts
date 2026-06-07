@@ -349,6 +349,7 @@ const JUNK_URL_PATTERNS = [
   /\(\d+\)/, // Rails route constraint like (42)
   /\[.*\]/, // regex character class in path — route constraint like [0-9]+ or [^/]+
   /\(\?/, // regex group — (?P<name>...), (?:...), (?1|groups) etc.
+  /\)/, // unmatched paren in path — regex capture group artifact
   /\s/, // whitespace in path
   /placeholder/, // unresolved interpolation that resolvePath couldn't handle
 ];
