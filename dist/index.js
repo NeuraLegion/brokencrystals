@@ -33788,10 +33788,10 @@ function consolidateGroups(groups, maxGroups) {
 // src/phases/scan.ts
 var DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
 var PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
-async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, api, scanName, hasPathParams = false) {
+async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, api, scanName, hasPathParams = false, smart = true) {
   const locations = hasPathParams ? PATH_ATTACK_LOCATIONS : DEFAULT_ATTACK_LOCATIONS;
   console.log(
-    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests [${testTags.join(", ")}], attack locations: ${locations.join(", ")}`
+    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests [${testTags.join(", ")}], attack locations: ${locations.join(", ")}, smart: ${smart}`
   );
   return runScanViaRest(
     api,
@@ -33800,10 +33800,11 @@ async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, a
     repeaterId,
     testTags,
     locations,
-    scanName
+    scanName,
+    smart
   );
 }
-async function runScanViaRest(api, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName) {
+async function runScanViaRest(api, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName, smart = true) {
   let tests = [...testTags];
   let eps = [...entrypointIds];
   let locations = [...attackParamLocations];
@@ -33818,7 +33819,7 @@ async function runScanViaRest(api, projectId, entrypointIds, repeaterId, testTag
       repeaters: [repeaterId],
       tests,
       attackParamLocations: locations,
-      smart: true,
+      smart,
       skipStaticParams: true,
       poolSize: 10,
       requestsRateLimit: 0,
@@ -35815,7 +35816,9 @@ async function runValidationScans(api, projectId, repeaterId, registered, allFin
         [test],
         api,
         `Validation \u2014 ${test}`,
-        hasPathParams
+        hasPathParams,
+        false
+        // smart=false — validation prioritizes coverage over speed
       );
       scanIds.push(scanId);
       console.log(`[Validation] Launched scan for test "${test}" over ${ids.length} endpoint(s): ${scanId}`);

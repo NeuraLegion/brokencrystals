@@ -375,6 +375,7 @@ export async function runValidationScans(
         api,
         `Validation — ${test}`,
         hasPathParams,
+        false, // smart=false — validation prioritizes coverage over speed
       );
       scanIds.push(scanId);
       console.log(`[Validation] Launched scan for test "${test}" over ${ids.length} endpoint(s): ${scanId}`);

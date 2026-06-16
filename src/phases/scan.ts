@@ -13,12 +13,13 @@ export async function runSecurityScan(
   api: BrightApiContext,
   scanName?: string,
   hasPathParams = false,
+  smart = true,
 ): Promise<string> {
   const locations = hasPathParams
     ? PATH_ATTACK_LOCATIONS
     : DEFAULT_ATTACK_LOCATIONS;
   console.log(
-    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests [${testTags.join(", ")}], attack locations: ${locations.join(", ")}`,
+    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests [${testTags.join(", ")}], attack locations: ${locations.join(", ")}, smart: ${smart}`,
   );
 
   return runScanViaRest(
@@ -29,6 +30,7 @@ export async function runSecurityScan(
     testTags,
     locations,
     scanName,
+    smart,
   );
 }
 
@@ -40,6 +42,7 @@ async function runScanViaRest(
   testTags: string[],
   attackParamLocations: string[],
   scanName?: string,
+  smart = true,
 ): Promise<string> {
   let tests = [...testTags];
   let eps = [...entrypointIds];
@@ -56,7 +59,7 @@ async function runScanViaRest(
       repeaters: [repeaterId],
       tests,
       attackParamLocations: locations,
-      smart: true,
+      smart,
       skipStaticParams: true,
       poolSize: 10,
       requestsRateLimit: 0,
