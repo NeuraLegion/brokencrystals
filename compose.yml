@@ -18,8 +18,12 @@ services:
       - '.data/nodejs:/var/lib/postgresql/data/'
 
   nodejs:
-    image: 'brightsec/brokencrystals'
+    # image: brightsec/brokencrystals  # replaced — must build from source
+    build:
+      context: .
     restart: always
+    ports:
+      - '3000:3000'
     healthcheck:
       interval: 5s
       retries: 10
@@ -27,7 +31,7 @@ services:
         ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/api/config']
       timeout: 30s
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}

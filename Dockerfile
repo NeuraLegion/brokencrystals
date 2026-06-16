@@ -4,6 +4,8 @@
 
 FROM node:18-alpine AS build
 
+RUN apk add --no-cache python3 make g++ libc6-compat
+
 WORKDIR /usr/src/app
 
 # Copy and build NestJS server project
@@ -55,5 +57,7 @@ COPY --chown=node:node --from=build /usr/src/app/dist ./dist
 
 COPY --chown=node:node --from=build /usr/src/app/client/dist ./client/dist
 COPY --chown=node:node --from=build /usr/src/app/client/vcs ./client/vcs
+
+USER node
 
 CMD ["npm", "run", "start:prod"]

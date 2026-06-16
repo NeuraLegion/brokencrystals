@@ -269,7 +269,7 @@ async function bootstrap() {
 if (cluster.isPrimary && process.env.NODE_ENV === 'production') {
   console.log(`Primary ${process.pid} is running`);
 
-  const numCPUs = os.cpus().length;
+  const numCPUs = Math.max(1, Number(process.env.CLUSTER_WORKERS || 1));
   for (let i = 0; i < numCPUs; i++) {
     cluster.fork();
   }
