@@ -26201,12 +26201,22 @@ function extractParamsFromCode(content, endpoint) {
     return queryParams.length > 0 ? { queryParams } : null;
   }
   if (ext === ".ts" || ext === ".js") {
+    const seen = /* @__PURE__ */ new Set();
     const queryParams = [];
-    const queryRe = /req\.query\.(\w+)|req\.query\["(\w+)"\]/g;
+    const add = (name) => {
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        queryParams.push({ name, value: "test" });
+      }
+    };
+    const expressRe = /req\.query\.(\w+)|req\.query\["(\w+)"\]/g;
     let m;
-    while ((m = queryRe.exec(content)) !== null) {
-      const name = m[1] ?? m[2];
-      queryParams.push({ name, value: "test" });
+    while ((m = expressRe.exec(content)) !== null) {
+      add(m[1] ?? m[2]);
+    }
+    const nestQueryRe = /@Query\(\s*['"`](\w+)['"`]\s*\)/g;
+    while ((m = nestQueryRe.exec(content)) !== null) {
+      add(m[1]);
     }
     return queryParams.length > 0 ? { queryParams } : null;
   }

@@ -1347,7 +1347,7 @@ function extractEndpointsFromFile(
  * Programmatically extract query params and route params from source code.
  * Returns partial DiscoveredEndpoint fields — avoids LLM call for simple cases.
  */
-function extractParamsFromCode(
+export function extractParamsFromCode(
   content: string,
   endpoint: DiscoveredEndpoint,
 ): {
@@ -1374,16 +1374,31 @@ function extractParamsFromCode(
     return queryParams.length > 0 ? { queryParams } : null;
   }
 
-  // ---- Express query params ----
+  // ---- TypeScript / JavaScript query params (Express + NestJS) ----
   if (ext === ".ts" || ext === ".js") {
+    const seen = new Set<string>();
     const queryParams: Array<{ name: string; value: string }> = [];
-    // req.query.paramName or req.query["paramName"]
-    const queryRe = /req\.query\.(\w+)|req\.query\["(\w+)"\]/g;
+    const add = (name: string) => {
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        queryParams.push({ name, value: "test" });
+      }
+    };
+
+    // Express: req.query.paramName or req.query["paramName"]
+    const expressRe = /req\.query\.(\w+)|req\.query\["(\w+)"\]/g;
     let m;
-    while ((m = queryRe.exec(content)) !== null) {
-      const name = m[1] ?? m[2];
-      queryParams.push({ name, value: "test" });
+    while ((m = expressRe.exec(content)) !== null) {
+      add(m[1] ?? m[2]);
     }
+
+    // NestJS: @Query('paramName') or @Query("paramName")
+    // The decorator argument is the actual query-string key (?paramName=).
+    const nestQueryRe = /@Query\(\s*['"`](\w+)['"`]\s*\)/g;
+    while ((m = nestQueryRe.exec(content)) !== null) {
+      add(m[1]);
+    }
+
     return queryParams.length > 0 ? { queryParams } : null;
   }
 
