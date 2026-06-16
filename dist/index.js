@@ -25100,6 +25100,7 @@ var ProgressReporter = class {
   steps = [];
   platform;
   findingsSummary = [];
+  validationSummary = [];
   scanTarget;
   constructor(platform) {
     this.platform = platform;
@@ -25166,6 +25167,13 @@ var ProgressReporter = class {
   setFindingsSummary(findings) {
     this.findingsSummary = findings;
   }
+  /**
+   * Set the CodeQL → DAST validation summary table (validation run mode).
+   * Call before the final "done" phase so it renders at the bottom of the PR.
+   */
+  setValidationSummary(rows) {
+    this.validationSummary = rows;
+  }
   async setScanTarget(app, url) {
     this.scanTarget = { app, url };
     await this.updatePrDescription();
@@ -25206,6 +25214,34 @@ var ProgressReporter = class {
         const icon = f.status === "Fixed" ? "\u2705" : "\u{1F534}";
         lines.push(
           `| ${f.severity} | ${f.name} | \`${f.method} ${f.url}\` | ${icon} ${f.status} |`
+        );
+      }
+    }
+    if (this.validationSummary.length > 0) {
+      const validated = this.validationSummary.filter((r) => r.verdict === "validated").length;
+      const notValidated = this.validationSummary.filter((r) => r.verdict === "not-validated").length;
+      const na = this.validationSummary.filter((r) => r.verdict === "n/a").length;
+      lines.push("");
+      lines.push("### CodeQL \u2192 DAST Validation");
+      lines.push("");
+      lines.push(
+        `**${validated}** validated \xB7 **${notValidated}** not validated \xB7 **${na}** N/A \u2014 of **${this.validationSummary.length}** CodeQL finding(s)`
+      );
+      lines.push("");
+      lines.push("| Severity | CodeQL Finding | Rule | Location | DAST Verdict |");
+      lines.push("|----------|----------------|------|----------|--------------|");
+      const verdictRank = { validated: 0, "not-validated": 1, "n/a": 2 };
+      const sevRank = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+      const sorted = [...this.validationSummary].sort((a, b) => {
+        const va = verdictRank[a.verdict] ?? 3;
+        const vb = verdictRank[b.verdict] ?? 3;
+        if (va !== vb) return va - vb;
+        return (sevRank[a.severity] ?? 4) - (sevRank[b.severity] ?? 4);
+      });
+      for (const r of sorted) {
+        const icon = r.verdict === "validated" ? "\u2705 Validated" : r.verdict === "not-validated" ? "\u26A0\uFE0F Not validated" : "\u2796 N/A";
+        lines.push(
+          `| ${r.severity} | ${r.name} | \`${r.rule}\` | \`${r.location}\` | ${icon} |`
         );
       }
     }
@@ -35777,6 +35813,15 @@ function parseSarif(sarifPath) {
   const sarif = JSON.parse(raw);
   const findings = [];
   for (const run of sarif.runs ?? []) {
+    const ruleIndex = /* @__PURE__ */ new Map();
+    const rules = run.tool?.driver?.rules ?? [];
+    for (const r of rules) {
+      if (!r?.id) continue;
+      const name = r.name ?? r.shortDescription?.text;
+      const cvss = r.properties?.["security-severity"];
+      const level = r.defaultConfiguration?.level;
+      ruleIndex.set(r.id, { name, severity: normalizeSarifSeverity(cvss, level) });
+    }
     for (const result of run.results ?? []) {
       const ruleId = result.ruleId ?? result.rule?.id ?? "";
       const message = result.message?.text ?? "";
@@ -35784,10 +35829,38 @@ function parseSarif(sarifPath) {
       const file = loc?.artifactLocation?.uri ?? "";
       const startLine = loc?.region?.startLine ?? 0;
       const brightTest = CODEQL_TO_BRIGHT[ruleId] ?? null;
-      findings.push({ ruleId, message, file, startLine, brightTest });
+      const ruleMeta = ruleIndex.get(ruleId);
+      const resultCvss = result.properties?.["security-severity"];
+      const severity = normalizeSarifSeverity(resultCvss, result.level) ?? ruleMeta?.severity ?? "Medium";
+      const name = ruleMeta?.name ?? humanizeRuleId(ruleId);
+      findings.push({ ruleId, name, message, file, startLine, severity, brightTest });
     }
   }
   return findings;
+}
+function normalizeSarifSeverity(cvss, level) {
+  const score = typeof cvss === "string" ? parseFloat(cvss) : typeof cvss === "number" ? cvss : NaN;
+  if (!Number.isNaN(score)) {
+    if (score >= 9) return "Critical";
+    if (score >= 7) return "High";
+    if (score >= 4) return "Medium";
+    if (score > 0) return "Low";
+  }
+  switch (level) {
+    case "error":
+      return "High";
+    case "warning":
+      return "Medium";
+    case "note":
+    case "none":
+      return "Low";
+    default:
+      return void 0;
+  }
+}
+function humanizeRuleId(ruleId) {
+  const tail = ruleId.split("/").pop() ?? ruleId;
+  return tail.split(/[-_]/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 function summarizeResults(results) {
   return {
@@ -35991,6 +36064,15 @@ function formatValidationReport(results) {
   }
   lines.push("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
   return lines.join("\n");
+}
+function toValidationSummaryRows(results) {
+  return results.map((r) => ({
+    severity: r.finding.severity,
+    name: r.finding.name,
+    rule: r.finding.ruleId,
+    location: `${r.finding.file}:${r.finding.startLine}`,
+    verdict: r.verdict
+  }));
 }
 
 // src/app-health.ts
@@ -38045,6 +38127,7 @@ async function runValidationFlow(ctx, progress, projectId, repeaterId, registere
   );
   const report = formatValidationReport(results);
   console.log(report);
+  progress.setValidationSummary(toValidationSummaryRows(results));
   const { validated, notValidated, notApplicable } = summarizeResults(results);
   await progress.phaseStart(
     "done",

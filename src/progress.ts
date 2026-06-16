@@ -36,11 +36,23 @@ export interface FindingSummary {
   status: "Fixed" | "Open";
 }
 
+export interface ValidationSummaryRow {
+  severity: string;
+  /** Human-readable finding name. */
+  name: string;
+  /** CodeQL rule id. */
+  rule: string;
+  /** Source location (file:line). */
+  location: string;
+  verdict: "validated" | "not-validated" | "n/a";
+}
+
 export class ProgressReporter {
   private turn = 0;
   private steps: Step[] = [];
   private platform: Platform;
   private findingsSummary: FindingSummary[] = [];
+  private validationSummary: ValidationSummaryRow[] = [];
   private scanTarget?: { app: string; url?: string };
 
   constructor(platform: Platform) {
@@ -136,6 +148,14 @@ export class ProgressReporter {
     this.findingsSummary = findings;
   }
 
+  /**
+   * Set the CodeQL → DAST validation summary table (validation run mode).
+   * Call before the final "done" phase so it renders at the bottom of the PR.
+   */
+  setValidationSummary(rows: ValidationSummaryRow[]): void {
+    this.validationSummary = rows;
+  }
+
   async setScanTarget(app: string, url?: string): Promise<void> {
     this.scanTarget = { app, url };
     await this.updatePrDescription();
@@ -185,6 +205,40 @@ export class ProgressReporter {
         const icon = f.status === "Fixed" ? "✅" : "🔴";
         lines.push(
           `| ${f.severity} | ${f.name} | \`${f.method} ${f.url}\` | ${icon} ${f.status} |`,
+        );
+      }
+    }
+
+    // Append CodeQL → DAST validation table if available
+    if (this.validationSummary.length > 0) {
+      const validated = this.validationSummary.filter((r) => r.verdict === "validated").length;
+      const notValidated = this.validationSummary.filter((r) => r.verdict === "not-validated").length;
+      const na = this.validationSummary.filter((r) => r.verdict === "n/a").length;
+
+      lines.push("");
+      lines.push("### CodeQL → DAST Validation");
+      lines.push("");
+      lines.push(
+        `**${validated}** validated · **${notValidated}** not validated · **${na}** N/A — of **${this.validationSummary.length}** CodeQL finding(s)`,
+      );
+      lines.push("");
+      lines.push("| Severity | CodeQL Finding | Rule | Location | DAST Verdict |");
+      lines.push("|----------|----------------|------|----------|--------------|");
+
+      const verdictRank: Record<string, number> = { validated: 0, "not-validated": 1, "n/a": 2 };
+      const sevRank: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+      const sorted = [...this.validationSummary].sort((a, b) => {
+        const va = verdictRank[a.verdict] ?? 3;
+        const vb = verdictRank[b.verdict] ?? 3;
+        if (va !== vb) return va - vb;
+        return (sevRank[a.severity] ?? 4) - (sevRank[b.severity] ?? 4);
+      });
+
+      for (const r of sorted) {
+        const icon =
+          r.verdict === "validated" ? "✅ Validated" : r.verdict === "not-validated" ? "⚠️ Not validated" : "➖ N/A";
+        lines.push(
+          `| ${r.severity} | ${r.name} | \`${r.rule}\` | \`${r.location}\` | ${icon} |`,
         );
       }
     }

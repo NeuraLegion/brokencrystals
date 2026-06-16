@@ -60,6 +60,7 @@ import {
   runValidationScans,
   formatValidationReport,
   summarizeResults,
+  toValidationSummaryRows,
 } from "./phases/validation.js";
 import { chatWithTools, type ModelSelector, TokenTracker } from "./inference.js";
 import { codebaseTools, createToolHandler } from "./tools.js";
@@ -2329,6 +2330,9 @@ async function runValidationFlow(
 
   const report = formatValidationReport(results);
   console.log(report);
+
+  // Publish the CodeQL → DAST validation table to the PR.
+  progress.setValidationSummary(toValidationSummaryRows(results));
 
   const { validated, notValidated, notApplicable } = summarizeResults(results);
   await progress.phaseStart(

@@ -16,9 +16,13 @@ import { extractJson, parseJsonLenient } from "../utils.js";
 
 export interface SarifFinding {
   ruleId: string;
+  /** Human-readable rule/finding name (from SARIF rule metadata when available). */
+  name: string;
   message: string;
   file: string;
   startLine: number;
+  /** Normalized severity: Critical | High | Medium | Low. */
+  severity: string;
   /** Mapped Bright test name, or null if no DAST equivalent */
   brightTest: string | null;
 }
@@ -132,6 +136,17 @@ export function parseSarif(sarifPath: string): SarifFinding[] {
   const findings: SarifFinding[] = [];
 
   for (const run of sarif.runs ?? []) {
+    // Index the run's rule metadata (name + default severity) by rule id.
+    const ruleIndex = new Map<string, { name?: string; severity?: string }>();
+    const rules = run.tool?.driver?.rules ?? [];
+    for (const r of rules) {
+      if (!r?.id) continue;
+      const name = r.name ?? r.shortDescription?.text;
+      const cvss = r.properties?.["security-severity"];
+      const level = r.defaultConfiguration?.level;
+      ruleIndex.set(r.id, { name, severity: normalizeSarifSeverity(cvss, level) });
+    }
+
     for (const result of run.results ?? []) {
       const ruleId = result.ruleId ?? result.rule?.id ?? "";
       const message = result.message?.text ?? "";
@@ -143,11 +158,61 @@ export function parseSarif(sarifPath: string): SarifFinding[] {
 
       const brightTest = CODEQL_TO_BRIGHT[ruleId] ?? null;
 
-      findings.push({ ruleId, message, file, startLine, brightTest });
+      // Severity: prefer the result's own, else the rule default.
+      const ruleMeta = ruleIndex.get(ruleId);
+      const resultCvss = result.properties?.["security-severity"];
+      const severity =
+        normalizeSarifSeverity(resultCvss, result.level) ??
+        ruleMeta?.severity ??
+        "Medium";
+
+      // Name: rule metadata name, else a humanized rule id.
+      const name = ruleMeta?.name ?? humanizeRuleId(ruleId);
+
+      findings.push({ ruleId, name, message, file, startLine, severity, brightTest });
     }
   }
 
   return findings;
+}
+
+/**
+ * Normalize a SARIF severity to Critical | High | Medium | Low.
+ * Prefers a numeric CVSS "security-severity" score, falling back to the SARIF
+ * level (error/warning/note). Returns undefined if neither is present.
+ */
+function normalizeSarifSeverity(
+  cvss: unknown,
+  level: unknown,
+): string | undefined {
+  const score = typeof cvss === "string" ? parseFloat(cvss) : typeof cvss === "number" ? cvss : NaN;
+  if (!Number.isNaN(score)) {
+    if (score >= 9.0) return "Critical";
+    if (score >= 7.0) return "High";
+    if (score >= 4.0) return "Medium";
+    if (score > 0) return "Low";
+  }
+  switch (level) {
+    case "error":
+      return "High";
+    case "warning":
+      return "Medium";
+    case "note":
+    case "none":
+      return "Low";
+    default:
+      return undefined;
+  }
+}
+
+/** Turn a CodeQL rule id like "js/sql-injection" into "Sql Injection". */
+function humanizeRuleId(ruleId: string): string {
+  const tail = ruleId.split("/").pop() ?? ruleId;
+  return tail
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 /**
@@ -479,4 +544,23 @@ export function formatValidationReport(results: ValidationResult[]): string {
   }
   lines.push("═══════════════════════════════════════════════════");
   return lines.join("\n");
+}
+
+/** Convert validation results into PR-table rows for ProgressReporter. */
+export function toValidationSummaryRows(
+  results: ValidationResult[],
+): Array<{
+  severity: string;
+  name: string;
+  rule: string;
+  location: string;
+  verdict: ValidationVerdict;
+}> {
+  return results.map((r) => ({
+    severity: r.finding.severity,
+    name: r.finding.name,
+    rule: r.finding.ruleId,
+    location: `${r.finding.file}:${r.finding.startLine}`,
+    verdict: r.verdict,
+  }));
 }

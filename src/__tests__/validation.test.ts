@@ -6,6 +6,7 @@ import {
   parseSarif,
   buildVerdicts,
   summarizeResults,
+  toValidationSummaryRows,
   type SarifFinding,
   type MappedFinding,
 } from "../phases/validation.js";
@@ -83,21 +84,108 @@ describe("parseSarif", () => {
       rmSync(path);
     }
   });
+
+  it("extracts severity from security-severity (CVSS) and rule name", () => {
+    const path = writeSarif({
+      runs: [
+        {
+          tool: {
+            driver: {
+              rules: [
+                {
+                  id: "js/sql-injection",
+                  name: "Database query built from user-controlled sources",
+                  properties: { "security-severity": "9.8" },
+                },
+              ],
+            },
+          },
+          results: [
+            {
+              ruleId: "js/sql-injection",
+              message: { text: "SQLi" },
+              locations: [{ physicalLocation: { artifactLocation: { uri: "a.js" }, region: { startLine: 5 } } }],
+            },
+          ],
+        },
+      ],
+    });
+    try {
+      const f = parseSarif(path)[0];
+      expect(f.severity).toBe("Critical");
+      expect(f.name).toBe("Database query built from user-controlled sources");
+    } finally {
+      rmSync(path);
+    }
+  });
+
+  it("humanizes the rule id when no rule metadata name is present", () => {
+    const path = writeSarif({
+      runs: [
+        {
+          results: [
+            {
+              ruleId: "js/reflected-xss",
+              message: { text: "x" },
+              level: "warning",
+              locations: [{ physicalLocation: { artifactLocation: { uri: "a.js" }, region: { startLine: 1 } } }],
+            },
+          ],
+        },
+      ],
+    });
+    try {
+      const f = parseSarif(path)[0];
+      expect(f.name).toBe("Reflected Xss");
+      expect(f.severity).toBe("Medium"); // from level: warning
+    } finally {
+      rmSync(path);
+    }
+  });
 });
+
+describe("toValidationSummaryRows", () => {
+  it("maps results to PR table rows", () => {
+    const finding: SarifFinding = {
+      ruleId: "js/sql-injection",
+      name: "SQL Injection",
+      message: "",
+      file: "src/x.js",
+      startLine: 7,
+      severity: "High",
+      brightTest: "sqli",
+    };
+    const rows = toValidationSummaryRows([
+      { finding, verdict: "validated", detail: "" },
+    ]);
+    expect(rows[0]).toEqual({
+      severity: "High",
+      name: "SQL Injection",
+      rule: "js/sql-injection",
+      location: "src/x.js:7",
+      verdict: "validated",
+    });
+  });
+});
+
 
 describe("buildVerdicts", () => {
   const sqliFinding: SarifFinding = {
     ruleId: "js/sql-injection",
+    name: "SQL Injection",
     message: "SQLi",
     file: "src/routes/user.js",
     startLine: 10,
+    severity: "High",
     brightTest: "sqli",
   };
   const naFinding: SarifFinding = {
     ruleId: "js/unused-local-variable",
+    name: "Unused Local Variable",
     message: "unused",
     file: "a.js",
     startLine: 1,
+    severity: "Low",
     brightTest: null,
   };
 
