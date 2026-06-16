@@ -188,55 +188,36 @@ describe("buildVerdicts", () => {
     severity: "Low",
     brightTest: null,
   };
+  const brightSqli: Finding = {
+    id: "1",
+    name: "SQL Injection",
+    severity: "High",
+    url: "http://localhost/api/users/1",
+    method: "GET",
+    details: "",
+    remedy: "",
+    entrypointId: "ep-1",
+    testTag: "sqli",
+    issueId: "1",
+  };
 
   it("returns N/A for findings with no DAST equivalent", () => {
-    const results = buildVerdicts([naFinding], [], []);
+    const results = buildVerdicts([naFinding], [], new Map());
     expect(results[0].verdict).toBe("n/a");
   });
 
-  it("returns validated when Bright confirms the test on a mapped endpoint", () => {
+  it("returns validated when the AI match links a DAST finding", () => {
     const mapped: MappedFinding[] = [{ finding: sqliFinding, entrypointIds: ["ep-1"] }];
-    const brightFindings: Finding[] = [
-      {
-        id: "1",
-        name: "SQL Injection",
-        severity: "High",
-        url: "http://localhost/api/users/1",
-        method: "GET",
-        details: "",
-        remedy: "",
-        entrypointId: "ep-1",
-        testTag: "sqli",
-        issueId: "1",
-      },
-    ];
-    const results = buildVerdicts([sqliFinding], mapped, brightFindings);
+    const aiMatch = new Map([[sqliFinding, brightSqli]]);
+    const results = buildVerdicts([sqliFinding], mapped, aiMatch);
     expect(results[0].verdict).toBe("validated");
+    expect(results[0].detail).toContain("SQL Injection");
   });
 
-  it("returns not-validated when Bright finds nothing matching", () => {
+  it("returns not-validated when the AI match is null (scanned, not confirmed)", () => {
     const mapped: MappedFinding[] = [{ finding: sqliFinding, entrypointIds: ["ep-1"] }];
-    const results = buildVerdicts([sqliFinding], mapped, []);
-    expect(results[0].verdict).toBe("not-validated");
-  });
-
-  it("does not match a Bright finding on a different endpoint", () => {
-    const mapped: MappedFinding[] = [{ finding: sqliFinding, entrypointIds: ["ep-1"] }];
-    const brightFindings: Finding[] = [
-      {
-        id: "1",
-        name: "SQL Injection",
-        severity: "High",
-        url: "http://localhost/other",
-        method: "GET",
-        details: "",
-        remedy: "",
-        entrypointId: "ep-99",
-        testTag: "sqli",
-        issueId: "1",
-      },
-    ];
-    const results = buildVerdicts([sqliFinding], mapped, brightFindings);
+    const aiMatch = new Map<SarifFinding, Finding | null>([[sqliFinding, null]]);
+    const results = buildVerdicts([sqliFinding], mapped, aiMatch);
     expect(results[0].verdict).toBe("not-validated");
   });
 
@@ -244,7 +225,7 @@ describe("buildVerdicts", () => {
     const mapped: MappedFinding[] = [
       { finding: sqliFinding, entrypointIds: [], unreachable: true },
     ];
-    const results = buildVerdicts([sqliFinding], mapped, []);
+    const results = buildVerdicts([sqliFinding], mapped, new Map());
     expect(results[0].verdict).toBe("not-validated");
     expect(results[0].detail).toMatch(/not reachable|dead/i);
   });
@@ -253,33 +234,9 @@ describe("buildVerdicts", () => {
     const mapped: MappedFinding[] = [
       { finding: sqliFinding, entrypointIds: [], unreachable: false },
     ];
-    const results = buildVerdicts([sqliFinding], mapped, []);
+    const results = buildVerdicts([sqliFinding], mapped, new Map());
     expect(results[0].verdict).toBe("not-validated");
     expect(results[0].detail).toMatch(/could not trace/i);
-  });
-
-  it("does not validate from an unrelated endpoint when mapping is empty", () => {
-    // A finding with no mapped endpoint must NOT be validated by a same-class
-    // finding on a different endpoint (no broad-scan false positives).
-    const mapped: MappedFinding[] = [
-      { finding: sqliFinding, entrypointIds: [], unreachable: false },
-    ];
-    const brightFindings: Finding[] = [
-      {
-        id: "1",
-        name: "SQL Injection",
-        severity: "High",
-        url: "http://localhost/unrelated",
-        method: "GET",
-        details: "",
-        remedy: "",
-        entrypointId: "ep-other",
-        testTag: "sqli",
-        issueId: "1",
-      },
-    ];
-    const results = buildVerdicts([sqliFinding], mapped, brightFindings);
-    expect(results[0].verdict).toBe("not-validated");
   });
 });
 

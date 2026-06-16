@@ -8,6 +8,7 @@ import { chatWithTools, type ToolHandler } from "../inference.js";
 import { codebaseTools, createToolHandler } from "../tools.js";
 import { runSecurityScan, waitForScanCompletion, isFailureStatus } from "./scan.js";
 import { fetchFindings } from "./findings.js";
+import type { BrightTest } from "../bright-api.js";
 import { extractJson, parseJsonLenient } from "../utils.js";
 
 // ---------------------------------------------------------------------------
@@ -216,6 +217,72 @@ function humanizeRuleId(ruleId: string): string {
 }
 
 /**
+ * Decide, per CodeQL rule, which Bright DAST test (if any) can dynamically
+ * confirm it — using the LIVE Bright test catalog and an AI decision rather
+ * than a hardcoded rule→tag table. Mutates each finding's `brightTest`
+ * (a valid catalog tag, or null for N/A). On any failure the existing
+ * static-map tentative value is left untouched.
+ */
+export async function resolveBrightTests(
+  llm: OpenAI,
+  findings: SarifFinding[],
+  catalog: BrightTest[],
+  model: string,
+): Promise<void> {
+  const uniqueRules = [...new Set(findings.map((f) => f.ruleId).filter(Boolean))];
+  if (uniqueRules.length === 0 || catalog.length === 0) return;
+
+  const usable = catalog.filter((t) => t.enabled !== false && !t.deprecated);
+  const catalogList = usable
+    .map((t) => `- ${t.tag}: ${t.name}${t.description ? ` — ${t.description}` : ""}`)
+    .join("\n");
+  const validTags = new Set(usable.map((t) => t.tag));
+
+  const prompt = `You are mapping static-analysis (CodeQL) findings to dynamic security tests (DAST) so a scanner can validate them at runtime.
+
+A DAST scanner can only confirm vulnerabilities that are observable over HTTP against the running app. For EACH CodeQL rule below, choose the SINGLE best-matching DAST test tag from the catalog that could dynamically confirm that vulnerability class. Use null ONLY when no dynamic test genuinely applies — e.g. ReDoS / regex-complexity, pure code-quality, or purely client-side DOM lint with no server round-trip. Prefer a real test over null whenever the class is remotely testable (e.g. XXE, code injection, SSTI, open redirect, LDAP/XPath injection all have DAST tests).
+
+AVAILABLE DAST TESTS (tag: name — description):
+${catalogList}
+
+CODEQL RULES:
+${uniqueRules.map((r) => `- ${r}`).join("\n")}
+
+Return ONLY a JSON object mapping each rule id to a catalog tag or null, e.g.:
+{ "js/sql-injection": "sqli", "js/xxe": "xxe", "js/polynomial-redos": null }`;
+
+  const messages: ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: "You are a precise application security analyst. Respond with JSON only.",
+    },
+    { role: "user", content: prompt },
+  ];
+
+  let raw: string;
+  try {
+    raw = await chatWithTools(llm, messages, [], async () => "", model, 1);
+  } catch {
+    return; // keep static-map tentative
+  }
+
+  let map: Record<string, string | null>;
+  try {
+    map = parseJsonLenient(extractJson(raw)) as Record<string, string | null>;
+  } catch {
+    return;
+  }
+  if (!map || typeof map !== "object") return;
+
+  for (const f of findings) {
+    if (Object.prototype.hasOwnProperty.call(map, f.ruleId)) {
+      const tag = map[f.ruleId];
+      f.brightTest = tag && validTags.has(tag) ? tag : null;
+    }
+  }
+}
+
+/**
  * Get findings grouped by verdict category for summary output.
  */
 export function summarizeResults(results: ValidationResult[]): {
@@ -411,6 +478,9 @@ export async function runValidationScans(
   allFindings: SarifFinding[],
   mapped: MappedFinding[],
   hasPathParams: boolean,
+  llm: OpenAI,
+  model: string,
+  catalog: BrightTest[],
 ): Promise<ValidationResult[]> {
   // Group mapped findings by Bright test, unioning their target endpoints.
   // Findings with no mapped endpoint (unreachable/inconclusive) are NOT scanned
@@ -460,14 +530,107 @@ export async function runValidationScans(
   // Collect Bright findings.
   const brightFindings = await fetchFindings(api, scanIds);
 
-  return buildVerdicts(allFindings, mapped, brightFindings);
+  // Match Bright findings back to the SARIF findings that were scanned. The
+  // issue testTag is unreliable/empty, so we use an AI decision over the
+  // finding names/URLs rather than tag equality.
+  const scanned = mapped
+    .filter((m) => m.finding.brightTest !== null && m.entrypointIds.length > 0)
+    .map((m) => m.finding);
+  const aiMatch = await matchVerdictsWithAI(llm, scanned, brightFindings, catalog, model);
+
+  return buildVerdicts(allFindings, mapped, aiMatch);
 }
 
-/** Match Bright DAST findings back to SARIF findings to produce verdicts. */
+/**
+ * Use an AI decision to match Bright DAST findings back to the SARIF findings
+ * that were scanned. Bright issues do not carry a reliable test tag, so we give
+ * the model the finding names/URLs and let it decide which DAST finding (if any)
+ * confirms each SARIF finding by vulnerability class + endpoint/sink.
+ *
+ * Falls back to a deterministic class match (Bright finding name → catalog tag
+ * == SARIF brightTest) when the AI call fails, so a transient LLM error never
+ * silently zeroes out the validated column.
+ */
+export async function matchVerdictsWithAI(
+  llm: OpenAI,
+  scanned: SarifFinding[],
+  brightFindings: Finding[],
+  catalog: BrightTest[],
+  model: string,
+): Promise<Map<SarifFinding, Finding | null>> {
+  const result = new Map<SarifFinding, Finding | null>();
+  for (const f of scanned) result.set(f, null);
+  if (scanned.length === 0 || brightFindings.length === 0) return result;
+
+  // catalog name → tag, for the deterministic fallback.
+  const nameToTag = new Map<string, string>();
+  for (const t of catalog) nameToTag.set(t.name.toLowerCase(), t.tag);
+  const classMatch = (bf: Finding, f: SarifFinding): boolean =>
+    !!f.brightTest && nameToTag.get(bf.name.toLowerCase()) === f.brightTest;
+
+  const prompt = `You are validating static-analysis (CodeQL) findings against dynamic (DAST) scan results.
+
+Each SARIF finding below was scanned by a DAST tool. Decide which DAST finding (if any) CONFIRMS each SARIF finding — i.e. it is the same vulnerability class AND plausibly the same endpoint/sink. A SARIF finding is confirmed when DAST independently reproduced that vulnerability at the corresponding endpoint.
+
+SARIF FINDINGS (scanned):
+${scanned
+  .map((f, i) => `[${i}] rule=${f.ruleId} class=${f.brightTest} name="${f.name}" at ${f.file}:${f.startLine}`)
+  .join("\n")}
+
+DAST FINDINGS produced by the scanner:
+${brightFindings
+  .map((b, i) => `[${i}] name="${b.name}" ${b.method} ${b.url} severity=${b.severity}`)
+  .join("\n")}
+
+Return ONLY a JSON array, one entry per SARIF finding index, giving the index of the DAST finding that confirms it or null if none does:
+[{ "sarifIndex": 0, "brightIndex": 2 }, { "sarifIndex": 1, "brightIndex": null }, ...]`;
+
+  const messages: ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: "You are a precise application security analyst. Respond with JSON only.",
+    },
+    { role: "user", content: prompt },
+  ];
+
+  let parsed: Array<{ sarifIndex: number; brightIndex: number | null }> | null = null;
+  try {
+    const raw = await chatWithTools(llm, messages, [], async () => "", model, 1);
+    parsed = parseJsonLenient(extractJson(raw)) as Array<{
+      sarifIndex: number;
+      brightIndex: number | null;
+    }>;
+  } catch {
+    parsed = null;
+  }
+
+  if (Array.isArray(parsed)) {
+    for (const entry of parsed) {
+      const f = scanned[entry?.sarifIndex];
+      if (!f) continue;
+      const bf =
+        typeof entry.brightIndex === "number" ? brightFindings[entry.brightIndex] : undefined;
+      result.set(f, bf ?? null);
+    }
+    return result;
+  }
+
+  // Deterministic fallback: class-level match (DAST finding name → tag == class).
+  for (const f of scanned) {
+    result.set(f, brightFindings.find((bf) => classMatch(bf, f)) ?? null);
+  }
+  return result;
+}
+
+/**
+ * Assemble per-finding verdicts. N/A when no DAST test applies; not-validated
+ * when the sink is unreachable or wasn't scanned; otherwise driven by the AI
+ * match (validated when a DAST finding confirmed it).
+ */
 export function buildVerdicts(
   allFindings: SarifFinding[],
   mapped: MappedFinding[],
-  brightFindings: Finding[],
+  aiMatch: Map<SarifFinding, Finding | null>,
 ): ValidationResult[] {
   const mappedSet = new Map<SarifFinding, MappedFinding>();
   for (const m of mapped) mappedSet.set(m.finding, m);
@@ -502,19 +665,13 @@ export function buildVerdicts(
       };
     }
 
-    // Did Bright produce a finding with the same test tag on a mapped endpoint?
-    const match = brightFindings.find(
-      (bf) =>
-        bf.testTag === finding.brightTest &&
-        bf.entrypointId !== undefined &&
-        targetIds.includes(bf.entrypointId),
-    );
-
+    // AI matched a DAST finding to this SARIF finding → validated.
+    const match = aiMatch.get(finding);
     if (match) {
       return {
         finding,
         verdict: "validated" as const,
-        detail: `Bright confirmed ${finding.brightTest} at ${match.method} ${match.url} (severity: ${match.severity}).`,
+        detail: `Bright confirmed "${match.name}" at ${match.method} ${match.url} (severity: ${match.severity}).`,
       };
     }
 

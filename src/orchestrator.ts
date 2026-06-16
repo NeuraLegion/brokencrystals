@@ -58,10 +58,12 @@ import {
   parseSarif,
   mapFindingsToEndpoints,
   runValidationScans,
+  resolveBrightTests,
   formatValidationReport,
   summarizeResults,
   toValidationSummaryRows,
 } from "./phases/validation.js";
+import { listTests } from "./bright-api.js";
 import { chatWithTools, type ModelSelector, TokenTracker } from "./inference.js";
 import { codebaseTools, createToolHandler } from "./tools.js";
 import { AppHealthMonitor } from "./app-health.js";
@@ -2366,9 +2368,20 @@ async function runValidationFlow(
     return;
   }
 
-  // Parse SARIF + map CodeQL rules to Bright tests.
+  // Parse SARIF, then let the AI map each CodeQL rule to a Bright test using
+  // the LIVE test catalog (not a hardcoded table) so we don't wrongly flag
+  // dynamically-testable classes (XXE, code injection, redirects, …) as N/A.
   const sarifFindings = parseSarif(config.sarifPath);
   console.log(`[Validation] Parsed ${sarifFindings.length} finding(s) from SARIF`);
+
+  let catalog: Awaited<ReturnType<typeof listTests>> = [];
+  try {
+    catalog = await listTests(config);
+    await resolveBrightTests(llm, sarifFindings, catalog, config.modelSelector.current());
+  } catch (err) {
+    console.warn(`[Validation] Test-catalog mapping failed, using static map: ${toErrorMessage(err)}`);
+  }
+
   const mappableCount = sarifFindings.filter((f) => f.brightTest !== null).length;
   console.log(
     `[Validation] ${mappableCount} mappable to DAST tests, ${sarifFindings.length - mappableCount} N/A (no DAST equivalent)`,
@@ -2411,6 +2424,9 @@ async function runValidationFlow(
     sarifFindings,
     mapped,
     hasPathParams,
+    llm,
+    config.modelSelector.current(),
+    catalog,
   );
 
   const report = formatValidationReport(results);
