@@ -54,9 +54,9 @@ export class ProgressReporter {
   private findingsSummary: FindingSummary[] = [];
   private validationSummary: ValidationSummaryRow[] = [];
   private scanTarget?: { app: string; url?: string };
-  /** Called the first time each distinct phase starts (not on resume). */
+  /** Called the first time each distinct phase starts (not on resume/loop re-entry). */
   private onPhaseChange?: (phase: string) => void;
-  private lastPhaseStarted?: string;
+  private seenPhases = new Set<string>();
 
   constructor(platform: Platform, onPhaseChange?: (phase: string) => void) {
     this.platform = platform;
@@ -67,13 +67,15 @@ export class ProgressReporter {
     // Track token usage per phase
     TokenTracker.global().startPhase(phase);
 
-    // Enforce the model-tier invariant: every NEW phase starts at the base
-    // (cheapest) model and escalates only on its own failure. Within-phase
-    // retries/bounces use phaseDetail (not phaseStart), so their escalation is
-    // preserved; only a genuine phase change resets the tier.
-    if (phase !== this.lastPhaseStarted) {
+    // Enforce the model-tier invariant: each phase starts at the base (cheapest)
+    // model and escalates only on its own failure. We fire the reset hook the
+    // FIRST time a phase runs — not on loop re-entry (e.g. scan→fix→scan
+    // rounds), because the scan/fix loop escalates across rounds on persistent
+    // findings and must keep that escalation. Within-phase retries use
+    // phaseDetail (not phaseStart), so their escalation is always preserved.
+    if (!this.seenPhases.has(phase)) {
+      this.seenPhases.add(phase);
       this.onPhaseChange?.(phase);
-      this.lastPhaseStarted = phase;
     }
 
     // Mark all previously working steps as done before starting/resuming a phase.

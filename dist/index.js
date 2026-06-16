@@ -25103,18 +25103,18 @@ var ProgressReporter = class {
   findingsSummary = [];
   validationSummary = [];
   scanTarget;
-  /** Called the first time each distinct phase starts (not on resume). */
+  /** Called the first time each distinct phase starts (not on resume/loop re-entry). */
   onPhaseChange;
-  lastPhaseStarted;
+  seenPhases = /* @__PURE__ */ new Set();
   constructor(platform, onPhaseChange) {
     this.platform = platform;
     this.onPhaseChange = onPhaseChange;
   }
   async phaseStart(phase, description) {
     TokenTracker.global().startPhase(phase);
-    if (phase !== this.lastPhaseStarted) {
+    if (!this.seenPhases.has(phase)) {
+      this.seenPhases.add(phase);
       this.onPhaseChange?.(phase);
-      this.lastPhaseStarted = phase;
     }
     for (const step of this.steps) {
       if (step.status === "working") step.status = "done";
@@ -38247,9 +38247,16 @@ This user should work for authentication. Skip user registration/seeding and go 
       }
       validationFindings = findings;
       if (iteration > 0) {
-        const previousCount = allFindings.size - fixedKeys.size;
-        if (findings.length >= previousCount) {
-          config.modelSelector.escalate();
+        const persisted = findings.filter((f) => {
+          const k = findingKey(f);
+          return allFindings.has(k) && !fixedKeys.has(k);
+        });
+        if (persisted.length > 0) {
+          if (config.modelSelector.escalate()) {
+            console.log(
+              `[Fix] ${persisted.length} finding(s) persisted after a prior fix attempt \u2014 escalating to ${config.modelSelector.current()}`
+            );
+          }
         } else {
           config.modelSelector.reset();
         }

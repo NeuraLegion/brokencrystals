@@ -34,16 +34,18 @@ describe("ProgressReporter phase-change hook (model-tier reset)", () => {
     expect(seen).toEqual(["scan_prep", "auth"]);
   });
 
-  it("fires again when phases alternate (scan -> fix -> scan)", async () => {
+  it("fires only on FIRST entry of a loop phase, not on re-entry (scan -> fix -> scan)", async () => {
+    // The scan/fix loop escalates across rounds on persistent findings, so the
+    // reset must NOT fire on round 2+ — only the first time each phase runs.
     const seen: string[] = [];
     const p = new ProgressReporter(stubPlatform(), (phase) => seen.push(phase));
 
     await p.phaseStart("scan", "round 1");
     await p.phaseStart("fix", "round 1");
-    await p.phaseStart("scan", "round 2");
-    await p.phaseStart("fix", "round 2");
+    await p.phaseStart("scan", "round 2"); // re-entry — must NOT reset
+    await p.phaseStart("fix", "round 2"); // re-entry — must NOT reset
 
-    expect(seen).toEqual(["scan", "fix", "scan", "fix"]);
+    expect(seen).toEqual(["scan", "fix"]);
   });
 
   it("works without a callback (no throw)", async () => {

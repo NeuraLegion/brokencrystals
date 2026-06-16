@@ -2052,11 +2052,22 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       validationFindings = findings;
 
-      // Escalate model if fixes didn't reduce the vulnerability count
+      // Escalate the model only when a fix actually FAILED — i.e. a finding we
+      // already attempted in a prior round is still present. Fresh findings or
+      // real progress keep us at the base (cheapest) model. This is the fix
+      // loop's "start at base, escalate on failure" — it survives the
+      // per-phase reset because "fix"/"scan" are loop phases (reset once).
       if (iteration > 0) {
-        const previousCount = allFindings.size - fixedKeys.size;
-        if (findings.length >= previousCount) {
-          config.modelSelector.escalate();
+        const persisted = findings.filter((f) => {
+          const k = findingKey(f);
+          return allFindings.has(k) && !fixedKeys.has(k);
+        });
+        if (persisted.length > 0) {
+          if (config.modelSelector.escalate()) {
+            console.log(
+              `[Fix] ${persisted.length} finding(s) persisted after a prior fix attempt — escalating to ${config.modelSelector.current()}`,
+            );
+          }
         } else {
           config.modelSelector.reset();
         }
