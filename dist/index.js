@@ -26203,10 +26203,12 @@ function extractParamsFromCode(content, endpoint) {
   if (ext === ".ts" || ext === ".js") {
     const seen = /* @__PURE__ */ new Set();
     const queryParams = [];
+    const examples = extractApiQueryExamples(content);
+    const seedFor = (name) => examples.get(name) ?? "test";
     const add = (name) => {
       if (name && !seen.has(name)) {
         seen.add(name);
-        queryParams.push({ name, value: "test" });
+        queryParams.push({ name, value: seedFor(name) });
       }
     };
     const expressRe = /req\.query\.(\w+)|req\.query\["(\w+)"\]/g;
@@ -26221,6 +26223,20 @@ function extractParamsFromCode(content, endpoint) {
     return queryParams.length > 0 ? { queryParams } : null;
   }
   return null;
+}
+function extractApiQueryExamples(content) {
+  const map = /* @__PURE__ */ new Map();
+  const blockRe = /@ApiQuery\(\s*\{([\s\S]*?)\}\s*\)/g;
+  let block;
+  while ((block = blockRe.exec(content)) !== null) {
+    const body = block[1];
+    const nameM = body.match(/name\s*:\s*['"`]([^'"`]+)['"`]/);
+    const exampleM = body.match(/example\s*:\s*['"`]([^'"`]+)['"`]/);
+    if (nameM && exampleM) {
+      map.set(nameM[1], exampleM[1]);
+    }
+  }
+  return map;
 }
 var _unnamedCounter = 0;
 function normalizePathParams(path) {
@@ -35726,13 +35742,12 @@ var CODEQL_TO_BRIGHT = {
   "java/xxe": "xxe",
   "py/xxe": "xxe",
   "cs/xml/insecure-dtd-handling": "xxe",
-  // Open redirect
-  "js/server-side-unvalidated-url-redirection": "open_redirect",
-  "py/url-redirection": "open_redirect",
-  "java/unvalidated-url-redirection": "open_redirect",
-  "rb/url-redirection": "open_redirect",
-  // NoSQL injection
-  "js/nosql-injection": "nosql",
+  // Open redirect (Bright tag: unvalidated_redirect)
+  "js/server-side-unvalidated-url-redirection": "unvalidated_redirect",
+  "py/url-redirection": "unvalidated_redirect",
+  "java/unvalidated-url-redirection": "unvalidated_redirect",
+  "rb/url-redirection": "unvalidated_redirect",
+  // NoSQL injection — no dedicated DAST test in Bright; treated as N/A.
   // LDAP injection
   "java/ldap-injection": "ldapi",
   "cs/ldap-injection": "ldapi",

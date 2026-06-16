@@ -86,14 +86,13 @@ const CODEQL_TO_BRIGHT: Record<string, string> = {
   "py/xxe": "xxe",
   "cs/xml/insecure-dtd-handling": "xxe",
 
-  // Open redirect
-  "js/server-side-unvalidated-url-redirection": "open_redirect",
-  "py/url-redirection": "open_redirect",
-  "java/unvalidated-url-redirection": "open_redirect",
-  "rb/url-redirection": "open_redirect",
+  // Open redirect (Bright tag: unvalidated_redirect)
+  "js/server-side-unvalidated-url-redirection": "unvalidated_redirect",
+  "py/url-redirection": "unvalidated_redirect",
+  "java/unvalidated-url-redirection": "unvalidated_redirect",
+  "rb/url-redirection": "unvalidated_redirect",
 
-  // NoSQL injection
-  "js/nosql-injection": "nosql",
+  // NoSQL injection — no dedicated DAST test in Bright; treated as N/A.
 
   // LDAP injection
   "java/ldap-injection": "ldapi",

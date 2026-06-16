@@ -48,4 +48,27 @@ describe("extractParamsFromCode — NestJS @Query", () => {
     const code = `@Post() create(@Body() dto: CreateDto) {}`;
     expect(extractParamsFromCode(code, ep("p.ts"))).toBeNull();
   });
+
+  it("seeds query params from @ApiQuery example values (multi-line)", () => {
+    const code = `
+      @Get()
+      @ApiQuery({
+        name: 'path',
+        example: 'config/products/crystals/amethyst.jpg',
+        required: true
+      })
+      @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
+      async loadFile(@Query('path') path: string, @Query('type') type: string) {}
+    `;
+    const r = extractParamsFromCode(code, ep("src/file/file.controller.ts"));
+    const byName = Object.fromEntries((r?.queryParams ?? []).map((q) => [q.name, q.value]));
+    expect(byName.path).toBe("config/products/crystals/amethyst.jpg");
+    expect(byName.type).toBe("image/jpg");
+  });
+
+  it("falls back to 'test' when a param has no @ApiQuery example", () => {
+    const code = `foo(@Query('path') path: string) {}`;
+    const r = extractParamsFromCode(code, ep("c.ts"));
+    expect(r?.queryParams?.[0]).toEqual({ name: "path", value: "test" });
+  });
 });

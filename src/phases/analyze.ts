@@ -1378,10 +1378,18 @@ export function extractParamsFromCode(
   if (ext === ".ts" || ext === ".js") {
     const seen = new Set<string>();
     const queryParams: Array<{ name: string; value: string }> = [];
+
+    // Build a name→example map from NestJS Swagger @ApiQuery decorators.
+    // Apps often declare realistic examples (e.g. a real file path), which make
+    // a far healthier scan baseline than a generic "test" — a bad seed value
+    // can produce a 4xx/5xx baseline that degrades DAST attack effectiveness.
+    const examples = extractApiQueryExamples(content);
+    const seedFor = (name: string): string => examples.get(name) ?? "test";
+
     const add = (name: string) => {
       if (name && !seen.has(name)) {
         seen.add(name);
-        queryParams.push({ name, value: "test" });
+        queryParams.push({ name, value: seedFor(name) });
       }
     };
 
@@ -1403,6 +1411,28 @@ export function extractParamsFromCode(
   }
 
   return null;
+}
+
+/**
+ * Extract realistic example values from NestJS Swagger `@ApiQuery` decorators,
+ * mapping query-param name → example value. Handles single- and multi-line
+ * decorator blocks. Used to seed scan baselines with values the endpoint
+ * actually accepts (so the baseline returns 2xx rather than erroring).
+ */
+function extractApiQueryExamples(content: string): Map<string, string> {
+  const map = new Map<string, string>();
+  // Match each @ApiQuery({ ... }) block (object body up to the closing brace).
+  const blockRe = /@ApiQuery\(\s*\{([\s\S]*?)\}\s*\)/g;
+  let block;
+  while ((block = blockRe.exec(content)) !== null) {
+    const body = block[1];
+    const nameM = body.match(/name\s*:\s*['"`]([^'"`]+)['"`]/);
+    const exampleM = body.match(/example\s*:\s*['"`]([^'"`]+)['"`]/);
+    if (nameM && exampleM) {
+      map.set(nameM[1], exampleM[1]);
+    }
+  }
+  return map;
 }
 
 // ---------------------------------------------------------------------------
