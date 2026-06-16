@@ -35985,8 +35985,8 @@ async function runValidationScans(api, projectId, repeaterId, registered, allFin
         api,
         `Validation \u2014 ${test}`,
         hasPathParams,
-        false
-        // smart=false — validation prioritizes coverage over speed
+        true
+        // smart scan — the zero-findings issue was param extraction, not smart
       );
       scanIds.push(scanId);
       console.log(`[Validation] Launched scan for test "${test}" over ${ids.length} endpoint(s): ${scanId}`);
