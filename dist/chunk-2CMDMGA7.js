@@ -11528,6 +11528,7 @@ export {
   stripHtmlForAnalysis,
   injectEnvVarsFromHint,
   listTests,
+  getAuthObject,
   verifyBrightAuth,
   glob,
   codebaseTools,
@@ -11552,4 +11553,4 @@ export {
   replaySeedCommands,
   testAuthObject
 };
-//# sourceMappingURL=chunk-7B7K27CL.js.map
+//# sourceMappingURL=chunk-2CMDMGA7.js.map

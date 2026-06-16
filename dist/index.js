@@ -25,6 +25,7 @@ import {
   findingKey,
   fixDockerfileImages,
   formatTechStack,
+  getAuthObject,
   glob,
   handleEditFile,
   infraTools,
@@ -41,7 +42,7 @@ import {
   verifyBrightAuth,
   verifyDockerImageTool,
   webSearchTools
-} from "./chunk-7B7K27CL.js";
+} from "./chunk-2CMDMGA7.js";
 import {
   DEFAULT_MODEL,
   ModelSelector,
@@ -291,11 +292,11 @@ function __metadata(metadataKey, metadataValue) {
 }
 function __awaiter(thisArg, _arguments, P, generator) {
   function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve4) {
-      resolve4(value);
+    return value instanceof P ? value : new P(function(resolve5) {
+      resolve5(value);
     });
   }
-  return new (P || (P = Promise))(function(resolve4, reject) {
+  return new (P || (P = Promise))(function(resolve5, reject) {
     function fulfilled(value) {
       try {
         step(generator.next(value));
@@ -311,7 +312,7 @@ function __awaiter(thisArg, _arguments, P, generator) {
       }
     }
     function step(result) {
-      result.done ? resolve4(result.value) : adopt(result.value).then(fulfilled, rejected);
+      result.done ? resolve5(result.value) : adopt(result.value).then(fulfilled, rejected);
     }
     step((generator = generator.apply(thisArg, _arguments || [])).next());
   });
@@ -502,14 +503,14 @@ function __asyncValues(o) {
   }, i);
   function verb(n) {
     i[n] = o[n] && function(v) {
-      return new Promise(function(resolve4, reject) {
-        v = o[n](v), settle(resolve4, reject, v.done, v.value);
+      return new Promise(function(resolve5, reject) {
+        v = o[n](v), settle(resolve5, reject, v.done, v.value);
       });
     };
   }
-  function settle(resolve4, reject, d, v) {
+  function settle(resolve5, reject, d, v) {
     Promise.resolve(v).then(function(v2) {
-      resolve4({ value: v2, done: d });
+      resolve5({ value: v2, done: d });
     }, reject);
   }
 }
@@ -2185,7 +2186,7 @@ var require_first = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.first = void 0;
     var first = (promises, predicate) => {
-      const newPromises = promises.map((p) => new Promise((resolve4, reject) => p.then((v) => !!predicate(v) && resolve4(v), reject)));
+      const newPromises = promises.map((p) => new Promise((resolve5, reject) => p.then((v) => !!predicate(v) && resolve5(v), reject)));
       newPromises.push(Promise.all(promises).then(() => void 0));
       return Promise.race(newPromises);
     };
@@ -3950,11 +3951,11 @@ function __rest2(s, e) {
 }
 function __awaiter2(thisArg, _arguments, P, generator) {
   function adopt(value) {
-    return value instanceof P ? value : new P(function(resolve4) {
-      resolve4(value);
+    return value instanceof P ? value : new P(function(resolve5) {
+      resolve5(value);
     });
   }
-  return new (P || (P = Promise))(function(resolve4, reject) {
+  return new (P || (P = Promise))(function(resolve5, reject) {
     function fulfilled(value) {
       try {
         step(generator.next(value));
@@ -3970,7 +3971,7 @@ function __awaiter2(thisArg, _arguments, P, generator) {
       }
     }
     function step(result) {
-      result.done ? resolve4(result.value) : adopt(result.value).then(fulfilled, rejected);
+      result.done ? resolve5(result.value) : adopt(result.value).then(fulfilled, rejected);
     }
     step((generator = generator.apply(thisArg, _arguments || [])).next());
   });
@@ -6132,8 +6133,8 @@ var require_helpers = __commonJS({
     function req(url, opts = {}) {
       const href = typeof url === "string" ? url : url.href;
       const req2 = (href.startsWith("https:") ? https : http).request(url, opts);
-      const promise = new Promise((resolve4, reject) => {
-        req2.once("response", resolve4).once("error", reject).end();
+      const promise = new Promise((resolve5, reject) => {
+        req2.once("response", resolve5).once("error", reject).end();
       });
       req2.then = promise.then.bind(promise);
       return req2;
@@ -6310,7 +6311,7 @@ var require_parse_proxy_response = __commonJS({
     var debug_1 = __importDefault2(require_src2());
     var debug = (0, debug_1.default)("https-proxy-agent:parse-proxy-response");
     function parseProxyResponse(socket) {
-      return new Promise((resolve4, reject) => {
+      return new Promise((resolve5, reject) => {
         let buffersLength = 0;
         const buffers = [];
         function read() {
@@ -6376,7 +6377,7 @@ var require_parse_proxy_response = __commonJS({
           }
           debug("got proxy server response: %o %o", firstLine, headers);
           cleanup();
-          resolve4({
+          resolve5({
             connect: {
               statusCode,
               statusText,
@@ -10141,11 +10142,11 @@ var require_socksclient = __commonJS({
     "use strict";
     var __awaiter3 = exports && exports.__awaiter || function(thisArg, _arguments, P, generator) {
       function adopt(value) {
-        return value instanceof P ? value : new P(function(resolve4) {
-          resolve4(value);
+        return value instanceof P ? value : new P(function(resolve5) {
+          resolve5(value);
         });
       }
-      return new (P || (P = Promise))(function(resolve4, reject) {
+      return new (P || (P = Promise))(function(resolve5, reject) {
         function fulfilled(value) {
           try {
             step(generator.next(value));
@@ -10161,7 +10162,7 @@ var require_socksclient = __commonJS({
           }
         }
         function step(result) {
-          result.done ? resolve4(result.value) : adopt(result.value).then(fulfilled, rejected);
+          result.done ? resolve5(result.value) : adopt(result.value).then(fulfilled, rejected);
         }
         step((generator = generator.apply(thisArg, _arguments || [])).next());
       });
@@ -10195,13 +10196,13 @@ var require_socksclient = __commonJS({
        * @returns { Promise }
        */
       static createConnection(options, callback) {
-        return new Promise((resolve4, reject) => {
+        return new Promise((resolve5, reject) => {
           try {
             (0, helpers_1.validateSocksClientOptions)(options, ["connect"]);
           } catch (err) {
             if (typeof callback === "function") {
               callback(err);
-              return resolve4(err);
+              return resolve5(err);
             } else {
               return reject(err);
             }
@@ -10212,16 +10213,16 @@ var require_socksclient = __commonJS({
             client.removeAllListeners();
             if (typeof callback === "function") {
               callback(null, info);
-              resolve4(info);
+              resolve5(info);
             } else {
-              resolve4(info);
+              resolve5(info);
             }
           });
           client.once("error", (err) => {
             client.removeAllListeners();
             if (typeof callback === "function") {
               callback(err);
-              resolve4(err);
+              resolve5(err);
             } else {
               reject(err);
             }
@@ -10238,13 +10239,13 @@ var require_socksclient = __commonJS({
        * @returns { Promise }
        */
       static createConnectionChain(options, callback) {
-        return new Promise((resolve4, reject) => __awaiter3(this, void 0, void 0, function* () {
+        return new Promise((resolve5, reject) => __awaiter3(this, void 0, void 0, function* () {
           try {
             (0, helpers_1.validateSocksClientChainOptions)(options);
           } catch (err) {
             if (typeof callback === "function") {
               callback(err);
-              return resolve4(err);
+              return resolve5(err);
             } else {
               return reject(err);
             }
@@ -10270,14 +10271,14 @@ var require_socksclient = __commonJS({
             }
             if (typeof callback === "function") {
               callback(null, { socket: sock });
-              resolve4({ socket: sock });
+              resolve5({ socket: sock });
             } else {
-              resolve4({ socket: sock });
+              resolve5({ socket: sock });
             }
           } catch (err) {
             if (typeof callback === "function") {
               callback(err);
-              resolve4(err);
+              resolve5(err);
             } else {
               reject(err);
             }
@@ -10961,12 +10962,12 @@ var require_dist4 = __commonJS({
         let { host } = opts;
         const { port, lookup: lookupFn = dns.lookup } = opts;
         if (shouldLookup) {
-          host = await new Promise((resolve4, reject) => {
+          host = await new Promise((resolve5, reject) => {
             lookupFn(host, {}, (err, res) => {
               if (err) {
                 reject(err);
               } else {
-                resolve4(res);
+                resolve5(res);
               }
             });
           });
@@ -22468,9 +22469,9 @@ var require_socket2 = __commonJS({
        * @return a Promise that will be fulfilled when the server acknowledges the event
        */
       emitWithAck(ev, ...args) {
-        return new Promise((resolve4, reject) => {
+        return new Promise((resolve5, reject) => {
           const fn = (arg1, arg2) => {
-            return arg1 ? reject(arg1) : resolve4(arg2);
+            return arg1 ? reject(arg1) : resolve5(arg2);
           };
           fn.withError = true;
           args.push(fn);
@@ -30171,13 +30172,13 @@ ${containerLogs}`);
     });
   });
   if (config.docker && command.includes("--wait")) {
-    const composeExitPromise = new Promise((resolve4, reject) => {
+    const composeExitPromise = new Promise((resolve5, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("docker compose --wait timed out after 300s"));
       }, 3e5);
       child.on("exit", (code) => {
         clearTimeout(timer);
-        if (code === 0) resolve4();
+        if (code === 0) resolve5();
         else {
           const head = outputLines.slice(0, 30).join("\n");
           const tail = outputLines.slice(-30).join("\n");
@@ -30404,8 +30405,8 @@ function runPrerequisite(cmd, cwd, envVars) {
   const STALL_THRESHOLD_MS = 18e4;
   const isBuildStillActive = () => {
     try {
-      const { readFileSync: readFileSync6 } = __require("fs");
-      const loadStr = readFileSync6("/proc/loadavg", "utf8").trim().split(" ")[0];
+      const { readFileSync: readFileSync7 } = __require("fs");
+      const loadStr = readFileSync7("/proc/loadavg", "utf8").trim().split(" ")[0];
       const load1m = parseFloat(loadStr);
       if (load1m >= 1) return true;
       const { execSync: execSync3 } = __require("child_process");
@@ -30418,7 +30419,7 @@ function runPrerequisite(cmd, cwd, envVars) {
       return false;
     }
   };
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve5, reject) => {
     const child = spawn("sh", ["-c", cmd], {
       cwd,
       env: { ...process.env, ...envVars },
@@ -30501,7 +30502,7 @@ ${tail}`;
       if (code === 0) {
         const elapsed = Math.round((Date.now() - startTime) / 1e3);
         console.log(`[Startup] Prerequisite completed in ${elapsed}s`);
-        resolve4();
+        resolve5();
       } else {
         const tail = outputLines.slice(-30).join("\n");
         reject(
@@ -32639,7 +32640,7 @@ async function pMap(items, fn, concurrency) {
   await Promise.all(workers);
 }
 function sleep2(ms) {
-  return new Promise((resolve4) => setTimeout(resolve4, ms));
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function resolvePath(path) {
   let resolved = path.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/#\w+/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
@@ -36187,11 +36188,11 @@ var AppHealthMonitor = class {
   async waitHealthy(timeoutMs = 12e4) {
     if (this.healthy) return;
     if (!this.gate) {
-      let resolve4;
+      let resolve5;
       const promise = new Promise((r) => {
-        resolve4 = r;
+        resolve5 = r;
       });
-      this.gate = { promise, resolve: resolve4 };
+      this.gate = { promise, resolve: resolve5 };
     }
     const timeout = new Promise((_, reject) => {
       setTimeout(() => reject(new Error("waitHealthy timed out \u2014 app recovery did not succeed")), timeoutMs);
@@ -36297,11 +36298,11 @@ var AppHealthMonitor = class {
   markUnhealthy() {
     this.healthy = false;
     if (!this.gate) {
-      let resolve4;
+      let resolve5;
       const promise = new Promise((r) => {
-        resolve4 = r;
+        resolve5 = r;
       });
-      this.gate = { promise, resolve: resolve4 };
+      this.gate = { promise, resolve: resolve5 };
     }
     console.warn(
       `[AppHealth] App marked UNHEALTHY \u2014 pausing dependent operations`
@@ -36352,6 +36353,250 @@ var AppHealthMonitor = class {
     return this.recoveryInFlight;
   }
 };
+
+// src/brightstar.ts
+import { readFileSync as readFileSync6, existsSync as existsSync5, writeFileSync as writeFileSync4 } from "fs";
+import { resolve as resolve4 } from "path";
+var BRIGHT_STAR_FILENAME = "BRIGHT_STAR.md";
+var BRIGHT_STAR_VERSION = 1;
+var DATA_BEGIN = "<!-- BRIGHT_STAR_DATA";
+var DATA_END = "BRIGHT_STAR_DATA -->";
+function brightStarPath(repoPath) {
+  return resolve4(repoPath, BRIGHT_STAR_FILENAME);
+}
+function readBrightStar(repoPath) {
+  const path = brightStarPath(repoPath);
+  if (!existsSync5(path)) return null;
+  let content;
+  try {
+    content = readFileSync6(path, "utf-8");
+  } catch {
+    return null;
+  }
+  return parseBrightStar(content);
+}
+function parseBrightStar(content) {
+  const begin = content.indexOf(DATA_BEGIN);
+  const end = content.indexOf(DATA_END);
+  if (begin === -1 || end === -1 || end <= begin) return null;
+  const between = content.slice(begin, end);
+  const fenceMatch = between.match(/```json\s*([\s\S]*?)```/);
+  if (!fenceMatch) return null;
+  try {
+    const parsed = JSON.parse(fenceMatch[1].trim());
+    if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.version !== BRIGHT_STAR_VERSION) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function renderBrightStar(star) {
+  const lines = [];
+  lines.push("# \u{1F31F} Bright Star \u2014 Run Memory");
+  lines.push("");
+  lines.push(
+    "This file is auto-generated by Bright Agent. It records what the agent learned while building, authenticating, and scanning this application so future runs can skip rediscovery. Safe to commit. Delete it to force a full fresh discovery."
+  );
+  lines.push("");
+  lines.push(`_Generated: ${star.generatedAt}_`);
+  if (star.repo) lines.push(`_Repository: ${star.repo}_`);
+  lines.push("");
+  if (star.techStack) {
+    const t = star.techStack;
+    lines.push("## Tech Stack");
+    lines.push("");
+    if (t.languages?.length) lines.push(`- **Languages:** ${t.languages.join(", ")}`);
+    if (t.frameworks?.length) lines.push(`- **Frameworks:** ${t.frameworks.join(", ")}`);
+    if (t.databases?.length) lines.push(`- **Databases:** ${t.databases.join(", ")}`);
+    lines.push("");
+  }
+  if (star.startup) {
+    const s = star.startup;
+    lines.push("## Startup");
+    lines.push("");
+    if (s.command) lines.push(`- **Command:** \`${s.command}\``);
+    if (s.port) lines.push(`- **Port:** ${s.port}`);
+    if (typeof s.docker === "boolean") lines.push(`- **Docker:** ${s.docker ? "yes" : "no"}`);
+    if (s.healthCheckPath) lines.push(`- **Health check path:** \`${s.healthCheckPath}\``);
+    if (s.healthCheckSummary) lines.push(`- **Health response:** ${s.healthCheckSummary}`);
+    if (s.prerequisites?.length) {
+      lines.push("- **Prerequisites:**");
+      for (const p of s.prerequisites) lines.push(`  - \`${p}\``);
+    }
+    if (s.postStartCommands?.length) {
+      lines.push("- **Post-start commands:**");
+      for (const c of s.postStartCommands) lines.push(`  - \`${c}\``);
+    }
+    if (s.envVars && Object.keys(s.envVars).length) {
+      lines.push("- **Environment variables:**");
+      for (const [k, v] of Object.entries(s.envVars)) lines.push(`  - \`${k}=${v}\``);
+    }
+    lines.push("");
+  }
+  if (star.setup) {
+    lines.push("## First-Run Setup");
+    lines.push("");
+    lines.push(`- **Completed:** ${star.setup.completed ? "yes" : "no"}`);
+    if (star.setup.credentials && Object.keys(star.setup.credentials).length) {
+      lines.push("- **Seeded credentials:**");
+      for (const [k, v] of Object.entries(star.setup.credentials)) lines.push(`  - ${k}: \`${v}\``);
+    }
+    for (const n of star.setup.notes ?? []) lines.push(`- ${n}`);
+    lines.push("");
+  }
+  if (star.auth) {
+    const a = star.auth;
+    lines.push("## Authentication");
+    lines.push("");
+    lines.push(`- **Has auth:** ${a.hasAuth ? "yes" : "no"}`);
+    if (a.mechanism) lines.push(`- **Mechanism:** ${a.mechanism}`);
+    if (a.authObjectId) lines.push(`- **Auth object ID:** \`${a.authObjectId}\``);
+    if (a.registration) {
+      lines.push(
+        `- **Login:** \`${a.registration.method} ${a.registration.endpoint}\` (${a.registration.contentType})`
+      );
+    }
+    if (a.seedCommands?.length) {
+      lines.push("- **Seed commands:**");
+      for (const c of a.seedCommands) {
+        lines.push(`  - [${c.type}${c.container ? `:${c.container}` : ""}] \`${c.command}\``);
+      }
+    }
+    for (const h of a.hints ?? []) lines.push(`- _hint:_ ${h}`);
+    lines.push("");
+  }
+  if (star.limits) {
+    lines.push("## Rate Limits / Scan Prep");
+    lines.push("");
+    for (const c of star.limits.scanPrepReplayCommands ?? []) {
+      lines.push(`- [${c.container}] \`${c.command}\``);
+    }
+    for (const n of star.limits.notes ?? []) lines.push(`- ${n}`);
+    lines.push("");
+  }
+  if (star.endpointNotes?.length) {
+    lines.push("## Endpoint Extraction Hints");
+    lines.push("");
+    for (const n of star.endpointNotes) lines.push(`- ${n}`);
+    lines.push("");
+  }
+  if (star.hints && Object.keys(star.hints).length) {
+    lines.push("## Hints");
+    lines.push("");
+    for (const [stage, items] of Object.entries(star.hints)) {
+      if (!items?.length) continue;
+      lines.push(`**${stage}**`);
+      for (const it of items) lines.push(`- ${it}`);
+      lines.push("");
+    }
+  }
+  lines.push("---");
+  lines.push("");
+  lines.push(`${DATA_BEGIN} \u2014 do not edit by hand; regenerated each run -->`);
+  lines.push("```json");
+  lines.push(JSON.stringify(star, null, 2));
+  lines.push("```");
+  lines.push(`<!-- ${DATA_END}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function writeBrightStar(repoPath, star) {
+  const path = brightStarPath(repoPath);
+  writeFileSync4(path, renderBrightStar(star), "utf-8");
+  return path;
+}
+async function assembleBrightStar(input) {
+  const star = {
+    version: BRIGHT_STAR_VERSION,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    repo: input.repo
+  };
+  if (input.techStack) {
+    star.techStack = {
+      languages: input.techStack.languages,
+      frameworks: input.techStack.frameworks,
+      databases: input.techStack.databases
+    };
+  }
+  if (input.startup) {
+    const s = input.startup;
+    star.startup = {
+      command: s.command,
+      port: s.port,
+      prerequisites: s.prerequisites,
+      envVars: s.envVars,
+      docker: s.docker,
+      postStartCommands: s.postStartCommands,
+      healthCheckPath: s.healthCheckPath,
+      healthProbe: s.healthProbe,
+      healthCheckSummary: s.healthCheckSummary
+    };
+  }
+  if (input.setup) star.setup = input.setup;
+  if (input.auth) {
+    const a = input.auth;
+    const auth = {
+      hasAuth: a.hasAuth,
+      mechanism: input.authMechanism,
+      authObjectId: a.authObjectId,
+      registration: a.registration,
+      seedCommands: a.seedCommands,
+      directAuthHeaders: a.directAuthHeaders,
+      hints: a.authHints
+    };
+    if (a.authObjectId && input.api) {
+      try {
+        auth.authObjectJson = await getAuthObject(input.api, a.authObjectId);
+      } catch {
+      }
+    }
+    star.auth = auth;
+  }
+  if (input.scanPrepReplayCommands?.length) {
+    star.limits = { scanPrepReplayCommands: input.scanPrepReplayCommands };
+  }
+  if (input.endpointNotes?.length) star.endpointNotes = input.endpointNotes;
+  if (input.hints?.length) {
+    const byStage = {};
+    for (const { stage, text } of input.hints) {
+      (byStage[stage] ??= []).push(text);
+    }
+    star.hints = byStage;
+  }
+  return star;
+}
+function brightStarToStartupConfig(star) {
+  const s = star?.startup;
+  if (!s || !s.command || !s.port) return null;
+  return {
+    command: s.command,
+    port: s.port,
+    prerequisites: s.prerequisites ?? [],
+    envVars: s.envVars ?? {},
+    docker: s.docker ?? false,
+    postStartCommands: s.postStartCommands,
+    healthCheckPath: s.healthCheckPath,
+    healthProbe: s.healthProbe,
+    healthCheckSummary: s.healthCheckSummary
+  };
+}
+function brightStarAuthHints(star) {
+  const a = star?.auth;
+  if (!a || !a.hasAuth) return [];
+  const hints = [];
+  const reg = a.registration;
+  if (reg) {
+    hints.push(
+      `[auth] Prior run used login: ${reg.method} ${reg.endpoint} (${reg.contentType}) with body ${reg.body}. Reuse this flow if it still works.`
+    );
+  }
+  if (a.mechanism) hints.push(`[auth] Prior run detected auth mechanism: ${a.mechanism}.`);
+  for (const h of a.hints ?? []) hints.push(h.startsWith("[") ? h : `[auth] ${h}`);
+  return hints;
+}
 
 // src/orchestrator.ts
 var MAX_ITERATIONS = 5;
@@ -36596,6 +36841,8 @@ async function runOrchestrator(ctx) {
   let repeater;
   let harnessResult;
   let healthMonitor;
+  const runMemory = {};
+  let loadedBrightStar = null;
   let authRegistration;
   const allScanIds = [];
   const allFindings = /* @__PURE__ */ new Map();
@@ -36618,6 +36865,15 @@ async function runOrchestrator(ctx) {
       "tech_stack",
       `Tech stack: ${formatTechStack(techStack)}`
     );
+    loadedBrightStar = readBrightStar(repoPath);
+    if (loadedBrightStar) {
+      console.log("[BrightStar] Found BRIGHT_STAR.md \u2014 pre-prepping pipeline from prior run memory");
+      await progress.phaseDetail(
+        "startup",
+        "brightstar",
+        "Loaded prior run memory (BRIGHT_STAR.md) \u2014 reusing known-good startup/auth config"
+      );
+    }
     if (config.runMode === "function") {
       console.log("[Engine] Running in function harness mode");
       await progress.phaseStart(
@@ -36654,7 +36910,7 @@ async function runOrchestrator(ctx) {
         llm,
         repoPath,
         techStack,
-        void 0,
+        brightStarToStartupConfig(loadedBrightStar) ?? void 0,
         config.modelSelector
       );
     } catch (startupErr) {
@@ -36673,11 +36929,11 @@ async function runOrchestrator(ctx) {
               `Trying partial boot \u2014 stripped ${removed.length} non-essential service(s): ${removed.join(", ")}`
             );
             const { renameSync } = await import("fs");
-            const { resolve: resolve4 } = await import("path");
-            const origPath = resolve4(repoPath, composeFile);
+            const { resolve: resolve5 } = await import("path");
+            const origPath = resolve5(repoPath, composeFile);
             const backupPath = origPath + ".full-backup";
             renameSync(origPath, backupPath);
-            renameSync(resolve4(repoPath, strippedFile), origPath);
+            renameSync(resolve5(repoPath, strippedFile), origPath);
             const partialStartup = await startApplicationWithRetries(
               llm,
               repoPath,
@@ -36930,6 +37186,15 @@ async function runOrchestrator(ctx) {
     await healthMonitor?.pause();
     let scanPrepReplayCommands = [];
     const authHints = [];
+    if (loadedBrightStar?.limits?.scanPrepReplayCommands?.length) {
+      scanPrepReplayCommands = [...loadedBrightStar.limits.scanPrepReplayCommands];
+      console.log(
+        `[BrightStar] Seeded ${scanPrepReplayCommands.length} scan-prep replay command(s) from prior run`
+      );
+    }
+    for (const h of brightStarAuthHints(loadedBrightStar)) {
+      addHint(authHints, h);
+    }
     try {
       let prepResult = await prepareScanEnvironment(
         llm,
@@ -37549,6 +37814,12 @@ This user should work for authentication. Skip user registration/seeding and go 
     }
     const liveEndpoints = registered.map((r) => r.endpoint);
     const entrypointIds = registered.map((r) => r.entrypointId);
+    runMemory.techStack = techStack;
+    runMemory.startup = startupConfig;
+    runMemory.auth = authResult;
+    runMemory.setupCompleted = setupCompleted;
+    runMemory.setupCredentials = setupCredentials;
+    runMemory.scanPrepReplayCommands = scanPrepReplayCommands;
     if (config.runMode === "validation") {
       await runValidationFlow(
         ctx,
@@ -37935,7 +38206,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           try {
             const qr = await quickRestartCompose(repoPath, startupConfig, 6e4);
             if (qr.ok) {
-              const { testAuthObject: testAuthObject2 } = await import("./auth-SBJ2ATHA.js");
+              const { testAuthObject: testAuthObject2 } = await import("./auth-2CEKWBYL.js");
               const authCheck = await testAuthObject2(config, authResult.authObjectId);
               if (!authCheck.passed) {
                 console.warn(
@@ -38060,6 +38331,28 @@ This user should work for authentication. Skip user registration/seeding and go 
     TokenTracker.global().logFinalReport();
     buildSummaryTable(progress, allFindings, fixedKeys);
     await progress.updatePrDescription();
+    if (runMemory.startup) {
+      try {
+        const star = await assembleBrightStar({
+          techStack: runMemory.techStack,
+          startup: runMemory.startup,
+          auth: runMemory.auth,
+          setup: runMemory.setupCompleted !== void 0 ? { completed: runMemory.setupCompleted, credentials: runMemory.setupCredentials } : void 0,
+          scanPrepReplayCommands: runMemory.scanPrepReplayCommands,
+          endpointNotes: runMemory.endpointNotes,
+          api: config
+        });
+        if (!brightStarEquivalent(loadedBrightStar, star)) {
+          writeBrightStar(repoPath, star);
+          gitFinalizeChanges(repoPath, "chore: update BRIGHT_STAR.md run memory");
+          console.log("[BrightStar] Wrote BRIGHT_STAR.md run memory");
+        } else {
+          console.log("[BrightStar] Run memory unchanged \u2014 keeping existing BRIGHT_STAR.md");
+        }
+      } catch (err) {
+        console.warn(`[BrightStar] Failed to persist run memory: ${toErrorMessage(err)}`);
+      }
+    }
     if (healthMonitor) healthMonitor.stop();
     await killProcess(appProcess);
     await repeater?.stop();
@@ -38319,6 +38612,11 @@ function buildSummaryTable(progress, allFindings, fixedKeys) {
   });
   progress.setFindingsSummary(summaries);
 }
+function brightStarEquivalent(a, b) {
+  if (!a || !b) return false;
+  const norm = (s) => JSON.stringify({ ...s, generatedAt: "" });
+  return norm(a) === norm(b);
+}
 function mergeSwaggerAndStaticEndpoints(swagger, staticEps) {
   const staticByKey = /* @__PURE__ */ new Map();
   for (const ep of staticEps) {
@@ -38373,12 +38671,12 @@ function mergeQueryParams(a, b) {
   return merged.length > 0 ? merged : void 0;
 }
 function killProcess(proc) {
-  return new Promise((resolve4) => {
+  return new Promise((resolve5) => {
     if (!proc || !proc.pid) {
-      resolve4();
+      resolve5();
       return;
     }
-    (0, import_tree_kill.default)(proc.pid, "SIGTERM", () => resolve4());
+    (0, import_tree_kill.default)(proc.pid, "SIGTERM", () => resolve5());
   });
 }
 function isAuthRateLimitHint(hint) {

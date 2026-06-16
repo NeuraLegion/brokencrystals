@@ -1,0 +1,410 @@
+import { readFileSync, existsSync, writeFileSync } from "fs";
+import { resolve } from "path";
+import type { BrightApiContext, StartupConfig } from "./types.js";
+import type { AuthResult } from "./phases/auth.js";
+import { getAuthObject } from "./bright-api.js";
+
+// ---------------------------------------------------------------------------
+// BRIGHT_STAR.md — persistent run memory
+//
+// Captures everything expensive that an agent run discovers (how to start the
+// app, auth configuration incl. the pulled Bright auth-object JSON, first-run
+// setup, rate-limit/scan-prep fixes, and endpoint-extraction hints) so a later
+// run can pre-prep the pipeline instead of rediscovering from scratch.
+//
+// The file is human-readable markdown (useful in the PR diff) with a single
+// machine-parseable JSON block delimited by HTML comment markers. The JSON is
+// the source of truth for re-prep; the prose is rendered from it for humans.
+// ---------------------------------------------------------------------------
+
+export const BRIGHT_STAR_FILENAME = "BRIGHT_STAR.md";
+export const BRIGHT_STAR_VERSION = 1;
+
+const DATA_BEGIN = "<!-- BRIGHT_STAR_DATA";
+const DATA_END = "BRIGHT_STAR_DATA -->";
+
+export interface BrightStarStartup {
+  command?: string;
+  port?: number;
+  prerequisites?: string[];
+  envVars?: Record<string, string>;
+  docker?: boolean;
+  postStartCommands?: string[];
+  healthCheckPath?: string;
+  healthProbe?: unknown;
+  healthCheckSummary?: string;
+}
+
+export interface BrightStarSetup {
+  completed: boolean;
+  credentials?: Record<string, string>;
+  notes?: string[];
+}
+
+export interface BrightStarAuth {
+  hasAuth: boolean;
+  mechanism?: string;
+  authObjectId?: string;
+  /** Raw auth-object JSON pulled from Bright (GET /api/v3/auth-objects/:id). */
+  authObjectJson?: unknown;
+  registration?: {
+    baseUrl: string;
+    endpoint: string;
+    method: string;
+    body: string;
+    contentType: string;
+  };
+  seedCommands?: Array<{ type: "host" | "docker"; command: string; container?: string }>;
+  directAuthHeaders?: Record<string, string>;
+  hints?: string[];
+}
+
+export interface BrightStarLimits {
+  /** Deterministic scan-prep commands that removed rate limits / throttles. */
+  scanPrepReplayCommands?: Array<{ container: string; command: string }>;
+  notes?: string[];
+}
+
+export interface BrightStar {
+  version: number;
+  generatedAt: string;
+  repo?: string;
+  techStack?: {
+    languages?: string[];
+    frameworks?: string[];
+    databases?: string[];
+  };
+  startup?: BrightStarStartup;
+  setup?: BrightStarSetup;
+  auth?: BrightStarAuth;
+  limits?: BrightStarLimits;
+  /** Endpoint-extraction hints (route prefixes, param notes, junk patterns). */
+  endpointNotes?: string[];
+  /** Full HintStore export, keyed by stage. */
+  hints?: Record<string, string[]>;
+}
+
+// ---------------------------------------------------------------------------
+// Read
+// ---------------------------------------------------------------------------
+
+/** Path to the BRIGHT_STAR.md file in a repo. */
+export function brightStarPath(repoPath: string): string {
+  return resolve(repoPath, BRIGHT_STAR_FILENAME);
+}
+
+/**
+ * Read and parse BRIGHT_STAR.md from a repo, if present and valid.
+ * Returns null when missing, malformed, or from an unsupported version.
+ */
+export function readBrightStar(repoPath: string): BrightStar | null {
+  const path = brightStarPath(repoPath);
+  if (!existsSync(path)) return null;
+  let content: string;
+  try {
+    content = readFileSync(path, "utf-8");
+  } catch {
+    return null;
+  }
+  return parseBrightStar(content);
+}
+
+/** Parse the machine-readable JSON block out of a BRIGHT_STAR.md string. */
+export function parseBrightStar(content: string): BrightStar | null {
+  const begin = content.indexOf(DATA_BEGIN);
+  const end = content.indexOf(DATA_END);
+  if (begin === -1 || end === -1 || end <= begin) return null;
+
+  // The JSON lives in a fenced block between the markers. Extract the first
+  // ```json ... ``` fence after DATA_BEGIN.
+  const between = content.slice(begin, end);
+  const fenceMatch = between.match(/```json\s*([\s\S]*?)```/);
+  if (!fenceMatch) return null;
+  try {
+    const parsed = JSON.parse(fenceMatch[1].trim()) as BrightStar;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.version !== BRIGHT_STAR_VERSION) {
+      // Unknown/old schema — ignore rather than risk a bad pre-prep.
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Write
+// ---------------------------------------------------------------------------
+
+/** Serialize a BrightStar object to the full BRIGHT_STAR.md document. */
+export function renderBrightStar(star: BrightStar): string {
+  const lines: string[] = [];
+  lines.push("# 🌟 Bright Star — Run Memory");
+  lines.push("");
+  lines.push(
+    "This file is auto-generated by Bright Agent. It records what the agent learned " +
+      "while building, authenticating, and scanning this application so future runs can " +
+      "skip rediscovery. Safe to commit. Delete it to force a full fresh discovery.",
+  );
+  lines.push("");
+  lines.push(`_Generated: ${star.generatedAt}_`);
+  if (star.repo) lines.push(`_Repository: ${star.repo}_`);
+  lines.push("");
+
+  if (star.techStack) {
+    const t = star.techStack;
+    lines.push("## Tech Stack");
+    lines.push("");
+    if (t.languages?.length) lines.push(`- **Languages:** ${t.languages.join(", ")}`);
+    if (t.frameworks?.length) lines.push(`- **Frameworks:** ${t.frameworks.join(", ")}`);
+    if (t.databases?.length) lines.push(`- **Databases:** ${t.databases.join(", ")}`);
+    lines.push("");
+  }
+
+  if (star.startup) {
+    const s = star.startup;
+    lines.push("## Startup");
+    lines.push("");
+    if (s.command) lines.push(`- **Command:** \`${s.command}\``);
+    if (s.port) lines.push(`- **Port:** ${s.port}`);
+    if (typeof s.docker === "boolean") lines.push(`- **Docker:** ${s.docker ? "yes" : "no"}`);
+    if (s.healthCheckPath) lines.push(`- **Health check path:** \`${s.healthCheckPath}\``);
+    if (s.healthCheckSummary) lines.push(`- **Health response:** ${s.healthCheckSummary}`);
+    if (s.prerequisites?.length) {
+      lines.push("- **Prerequisites:**");
+      for (const p of s.prerequisites) lines.push(`  - \`${p}\``);
+    }
+    if (s.postStartCommands?.length) {
+      lines.push("- **Post-start commands:**");
+      for (const c of s.postStartCommands) lines.push(`  - \`${c}\``);
+    }
+    if (s.envVars && Object.keys(s.envVars).length) {
+      lines.push("- **Environment variables:**");
+      for (const [k, v] of Object.entries(s.envVars)) lines.push(`  - \`${k}=${v}\``);
+    }
+    lines.push("");
+  }
+
+  if (star.setup) {
+    lines.push("## First-Run Setup");
+    lines.push("");
+    lines.push(`- **Completed:** ${star.setup.completed ? "yes" : "no"}`);
+    if (star.setup.credentials && Object.keys(star.setup.credentials).length) {
+      lines.push("- **Seeded credentials:**");
+      for (const [k, v] of Object.entries(star.setup.credentials)) lines.push(`  - ${k}: \`${v}\``);
+    }
+    for (const n of star.setup.notes ?? []) lines.push(`- ${n}`);
+    lines.push("");
+  }
+
+  if (star.auth) {
+    const a = star.auth;
+    lines.push("## Authentication");
+    lines.push("");
+    lines.push(`- **Has auth:** ${a.hasAuth ? "yes" : "no"}`);
+    if (a.mechanism) lines.push(`- **Mechanism:** ${a.mechanism}`);
+    if (a.authObjectId) lines.push(`- **Auth object ID:** \`${a.authObjectId}\``);
+    if (a.registration) {
+      lines.push(
+        `- **Login:** \`${a.registration.method} ${a.registration.endpoint}\` (${a.registration.contentType})`,
+      );
+    }
+    if (a.seedCommands?.length) {
+      lines.push("- **Seed commands:**");
+      for (const c of a.seedCommands) {
+        lines.push(`  - [${c.type}${c.container ? `:${c.container}` : ""}] \`${c.command}\``);
+      }
+    }
+    for (const h of a.hints ?? []) lines.push(`- _hint:_ ${h}`);
+    lines.push("");
+  }
+
+  if (star.limits) {
+    lines.push("## Rate Limits / Scan Prep");
+    lines.push("");
+    for (const c of star.limits.scanPrepReplayCommands ?? []) {
+      lines.push(`- [${c.container}] \`${c.command}\``);
+    }
+    for (const n of star.limits.notes ?? []) lines.push(`- ${n}`);
+    lines.push("");
+  }
+
+  if (star.endpointNotes?.length) {
+    lines.push("## Endpoint Extraction Hints");
+    lines.push("");
+    for (const n of star.endpointNotes) lines.push(`- ${n}`);
+    lines.push("");
+  }
+
+  if (star.hints && Object.keys(star.hints).length) {
+    lines.push("## Hints");
+    lines.push("");
+    for (const [stage, items] of Object.entries(star.hints)) {
+      if (!items?.length) continue;
+      lines.push(`**${stage}**`);
+      for (const it of items) lines.push(`- ${it}`);
+      lines.push("");
+    }
+  }
+
+  // Machine-readable block (source of truth for re-prep).
+  lines.push("---");
+  lines.push("");
+  lines.push(`${DATA_BEGIN} — do not edit by hand; regenerated each run -->`);
+  lines.push("```json");
+  lines.push(JSON.stringify(star, null, 2));
+  lines.push("```");
+  lines.push(`<!-- ${DATA_END}`);
+  lines.push("");
+
+  return lines.join("\n");
+}
+
+/** Write BRIGHT_STAR.md into a repo. Returns the file path. */
+export function writeBrightStar(repoPath: string, star: BrightStar): string {
+  const path = brightStarPath(repoPath);
+  writeFileSync(path, renderBrightStar(star), "utf-8");
+  return path;
+}
+
+// ---------------------------------------------------------------------------
+// Assemble from run state
+// ---------------------------------------------------------------------------
+
+export interface AssembleBrightStarInput {
+  repo?: string;
+  techStack?: { languages?: string[]; frameworks?: string[]; databases?: string[] };
+  startup?: StartupConfig;
+  setup?: { completed: boolean; credentials?: Record<string, string>; notes?: string[] };
+  auth?: AuthResult;
+  authMechanism?: string;
+  scanPrepReplayCommands?: Array<{ container: string; command: string }>;
+  endpointNotes?: string[];
+  /** Flat hint list, e.g. from HintStore.get(). */
+  hints?: Array<{ stage: string; text: string }>;
+  /** When provided with an auth object id, the AO JSON is pulled from Bright. */
+  api?: BrightApiContext;
+}
+
+/**
+ * Build a BrightStar snapshot from the current run's state. If auth was
+ * configured and an API context is provided, pulls the auth-object JSON from
+ * Bright so a later run can inspect/recreate it.
+ */
+export async function assembleBrightStar(
+  input: AssembleBrightStarInput,
+): Promise<BrightStar> {
+  const star: BrightStar = {
+    version: BRIGHT_STAR_VERSION,
+    generatedAt: new Date().toISOString(),
+    repo: input.repo,
+  };
+
+  if (input.techStack) {
+    star.techStack = {
+      languages: input.techStack.languages,
+      frameworks: input.techStack.frameworks,
+      databases: input.techStack.databases,
+    };
+  }
+
+  if (input.startup) {
+    const s = input.startup;
+    star.startup = {
+      command: s.command,
+      port: s.port,
+      prerequisites: s.prerequisites,
+      envVars: s.envVars,
+      docker: s.docker,
+      postStartCommands: s.postStartCommands,
+      healthCheckPath: s.healthCheckPath,
+      healthProbe: s.healthProbe,
+      healthCheckSummary: s.healthCheckSummary,
+    };
+  }
+
+  if (input.setup) star.setup = input.setup;
+
+  if (input.auth) {
+    const a = input.auth;
+    const auth: BrightStarAuth = {
+      hasAuth: a.hasAuth,
+      mechanism: input.authMechanism,
+      authObjectId: a.authObjectId,
+      registration: a.registration,
+      seedCommands: a.seedCommands,
+      directAuthHeaders: a.directAuthHeaders,
+      hints: a.authHints,
+    };
+    // Pull the auth-object JSON so a future run can inspect/recreate it.
+    if (a.authObjectId && input.api) {
+      try {
+        auth.authObjectJson = await getAuthObject(input.api, a.authObjectId);
+      } catch {
+        // Non-fatal — the AO JSON is a nice-to-have, not required for re-prep.
+      }
+    }
+    star.auth = auth;
+  }
+
+  if (input.scanPrepReplayCommands?.length) {
+    star.limits = { scanPrepReplayCommands: input.scanPrepReplayCommands };
+  }
+
+  if (input.endpointNotes?.length) star.endpointNotes = input.endpointNotes;
+
+  if (input.hints?.length) {
+    const byStage: Record<string, string[]> = {};
+    for (const { stage, text } of input.hints) {
+      (byStage[stage] ??= []).push(text);
+    }
+    star.hints = byStage;
+  }
+
+  return star;
+}
+
+// ---------------------------------------------------------------------------
+// Pre-prep helpers (read path)
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert a stored BrightStar startup section into a StartupConfig usable as a
+ * `previousStartup` prior. Returns null when there isn't enough to be useful.
+ */
+export function brightStarToStartupConfig(star: BrightStar | null): StartupConfig | null {
+  const s = star?.startup;
+  if (!s || !s.command || !s.port) return null;
+  return {
+    command: s.command,
+    port: s.port,
+    prerequisites: s.prerequisites ?? [],
+    envVars: s.envVars ?? {},
+    docker: s.docker ?? false,
+    postStartCommands: s.postStartCommands,
+    healthCheckPath: s.healthCheckPath,
+    healthProbe: s.healthProbe as StartupConfig["healthProbe"],
+    healthCheckSummary: s.healthCheckSummary,
+  };
+}
+
+/**
+ * Build auth prior hints from a stored BrightStar so the auth phase can reuse
+ * the known-good login flow instead of rediscovering it. Returns [] when no
+ * auth was configured previously.
+ */
+export function brightStarAuthHints(star: BrightStar | null): string[] {
+  const a = star?.auth;
+  if (!a || !a.hasAuth) return [];
+  const hints: string[] = [];
+  const reg = a.registration;
+  if (reg) {
+    hints.push(
+      `[auth] Prior run used login: ${reg.method} ${reg.endpoint} (${reg.contentType}) with body ${reg.body}. Reuse this flow if it still works.`,
+    );
+  }
+  if (a.mechanism) hints.push(`[auth] Prior run detected auth mechanism: ${a.mechanism}.`);
+  for (const h of a.hints ?? []) hints.push(h.startsWith("[") ? h : `[auth] ${h}`);
+  return hints;
+}

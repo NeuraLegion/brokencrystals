@@ -1,4 +1,4 @@
-import { gitCommitAndPush } from "./platform.js";
+import { gitCommitAndPush, gitFinalizeChanges } from "./platform.js";
 import { execFileSync, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
 import type { OrchestratorContext, SecurityFix, Finding, DiscoveredEndpoint, TechStack, StartupConfig, BrightApiContext } from "./types.js";
@@ -65,6 +65,14 @@ import {
 import { chatWithTools, type ModelSelector, TokenTracker } from "./inference.js";
 import { codebaseTools, createToolHandler } from "./tools.js";
 import { AppHealthMonitor } from "./app-health.js";
+import {
+  assembleBrightStar,
+  writeBrightStar,
+  readBrightStar,
+  brightStarToStartupConfig,
+  brightStarAuthHints,
+  type BrightStar,
+} from "./brightstar.js";
 
 const MAX_ITERATIONS = 5;
 const MAX_FIX_REPAIR_ATTEMPTS = 2;
@@ -408,6 +416,20 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   let repeater: RepeaterHandle | undefined;
   let harnessResult: HarnessResult | undefined;
   let healthMonitor: AppHealthMonitor | undefined;
+  // Run memory: the FINAL known-good config captured at the point the app is
+  // proven startable + authenticated. Persisted to BRIGHT_STAR.md at the end so
+  // a future run can pre-prep. Holds only what works — not intermediate tries.
+  const runMemory: {
+    techStack?: TechStack;
+    startup?: StartupConfig;
+    auth?: AuthResult;
+    setupCompleted?: boolean;
+    setupCredentials?: Record<string, string>;
+    scanPrepReplayCommands?: Array<{ container: string; command: string }>;
+    endpointNotes?: string[];
+  } = {};
+  // Set when a BRIGHT_STAR.md was loaded at start (used to pre-prep + skip churn).
+  let loadedBrightStar: BrightStar | null = null;
   // Registration captured after auth completes — used by recovery callback to
   // re-register the seeded test user after a restart wipes runtime state.
   let authRegistration: AuthResult["registration"] | undefined;
@@ -440,6 +462,19 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       "tech_stack",
       `Tech stack: ${formatTechStack(techStack)}`,
     );
+
+    // ----- Pre-prep from prior run memory (BRIGHT_STAR.md), if present -----
+    // Holds the known-good startup/auth/scan-prep config from a previous run.
+    // We feed it back to each phase as a strong prior to skip rediscovery.
+    loadedBrightStar = readBrightStar(repoPath);
+    if (loadedBrightStar) {
+      console.log("[BrightStar] Found BRIGHT_STAR.md — pre-prepping pipeline from prior run memory");
+      await progress.phaseDetail(
+        "startup",
+        "brightstar",
+        "Loaded prior run memory (BRIGHT_STAR.md) — reusing known-good startup/auth config",
+      );
+    }
 
     // ----- Function harness mode: skip full app startup -----
     if (config.runMode === "function") {
@@ -487,7 +522,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         llm,
         repoPath,
         techStack,
-        undefined,
+        brightStarToStartupConfig(loadedBrightStar) ?? undefined,
         config.modelSelector,
       );
     } catch (startupErr) {
@@ -822,6 +857,18 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     await healthMonitor?.pause();
     let scanPrepReplayCommands: { container: string; command: string }[] = [];
     const authHints: string[] = [];
+
+    // Pre-prep from prior run memory: replay known scan-prep commands and feed
+    // the known-good auth flow to the auth phase as priors.
+    if (loadedBrightStar?.limits?.scanPrepReplayCommands?.length) {
+      scanPrepReplayCommands = [...loadedBrightStar.limits.scanPrepReplayCommands];
+      console.log(
+        `[BrightStar] Seeded ${scanPrepReplayCommands.length} scan-prep replay command(s) from prior run`,
+      );
+    }
+    for (const h of brightStarAuthHints(loadedBrightStar)) {
+      addHint(authHints, h);
+    }
     try {
       let prepResult = await prepareScanEnvironment(
         llm,
@@ -1593,6 +1640,16 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     const liveEndpoints = registered.map((r) => r.endpoint);
     const entrypointIds = registered.map((r) => r.entrypointId);
 
+    // Capture the FINAL known-good config — we've started the app, configured
+    // auth, and registered live entrypoints, so everything here is proven to
+    // work. Persisted to BRIGHT_STAR.md in the finally block.
+    runMemory.techStack = techStack;
+    runMemory.startup = startupConfig;
+    runMemory.auth = authResult;
+    runMemory.setupCompleted = setupCompleted;
+    runMemory.setupCredentials = setupCredentials;
+    runMemory.scanPrepReplayCommands = scanPrepReplayCommands;
+
     // ----- Validation mode: short-circuit the scan→fix→validate loop -----
     // Map CodeQL/SARIF findings to endpoints, run only the relevant DAST tests,
     // and emit a validated / not-validated / N-A verdict per finding. No fixes.
@@ -2228,6 +2285,34 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     buildSummaryTable(progress, allFindings, fixedKeys);
     await progress.updatePrDescription();
 
+    // Persist run memory (BRIGHT_STAR.md) — only when we reached a proven-good
+    // state (app started + entrypoints registered). Holds only what works.
+    if (runMemory.startup) {
+      try {
+        const star = await assembleBrightStar({
+          techStack: runMemory.techStack,
+          startup: runMemory.startup,
+          auth: runMemory.auth,
+          setup: runMemory.setupCompleted !== undefined
+            ? { completed: runMemory.setupCompleted, credentials: runMemory.setupCredentials }
+            : undefined,
+          scanPrepReplayCommands: runMemory.scanPrepReplayCommands,
+          endpointNotes: runMemory.endpointNotes,
+          api: config,
+        });
+        // Skip rewrite if the meaningful content is unchanged (ignore timestamp).
+        if (!brightStarEquivalent(loadedBrightStar, star)) {
+          writeBrightStar(repoPath, star);
+          gitFinalizeChanges(repoPath, "chore: update BRIGHT_STAR.md run memory");
+          console.log("[BrightStar] Wrote BRIGHT_STAR.md run memory");
+        } else {
+          console.log("[BrightStar] Run memory unchanged — keeping existing BRIGHT_STAR.md");
+        }
+      } catch (err) {
+        console.warn(`[BrightStar] Failed to persist run memory: ${toErrorMessage(err)}`);
+      }
+    }
+
     // Stop the health monitor before tearing things down so it doesn't
     // try to recover an app we're about to kill.
     if (healthMonitor) healthMonitor.stop();
@@ -2568,6 +2653,17 @@ function buildSummaryTable(
     return 0;
   });
   progress.setFindingsSummary(summaries);
+}
+
+/**
+ * True if two BrightStar snapshots are equivalent ignoring the generatedAt
+ * timestamp — used to avoid rewriting/committing BRIGHT_STAR.md when nothing
+ * meaningful changed between runs.
+ */
+function brightStarEquivalent(a: BrightStar | null, b: BrightStar | null): boolean {
+  if (!a || !b) return false;
+  const norm = (s: BrightStar) => JSON.stringify({ ...s, generatedAt: "" });
+  return norm(a) === norm(b);
 }
 
 // ---------------------------------------------------------------------------
