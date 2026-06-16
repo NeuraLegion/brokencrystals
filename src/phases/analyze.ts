@@ -2212,12 +2212,21 @@ export async function discoverEndpoints(
       continue;
     }
 
-    // Use LLM for: POST/PUT/PATCH (need body), or any endpoint with path params (need realistic values)
+    // Use the LLM to get realistic values for:
+    //  - POST/PUT/PATCH (need a request body)
+    //  - path params (:id / {id} — need realistic values)
+    //  - query params that still hold placeholder values (no @ApiQuery example /
+    //    programmatic source gave us a real one). A placeholder like "test" often
+    //    produces a 4xx/5xx baseline that degrades DAST attacks, so these need
+    //    real values too — this is the whole point of param extraction.
     const needsBody = ["POST", "PUT", "PATCH"].includes(
       ep.method.toUpperCase(),
     );
     const hasPathParams = /[:{}]/.test(ep.path);
-    if (needsBody || hasPathParams) {
+    const hasPlaceholderQuery = (ep.queryParams ?? []).some(
+      (q) => q.value === "test" || q.value === "" || q.value == null,
+    );
+    if (needsBody || hasPathParams || hasPlaceholderQuery) {
       needsLlm.push(ep);
     } else {
       enriched.push(ep);

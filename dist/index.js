@@ -26865,7 +26865,10 @@ async function discoverEndpoints(llm, repoPath, techStack, model) {
       ep.method.toUpperCase()
     );
     const hasPathParams = /[:{}]/.test(ep.path);
-    if (needsBody || hasPathParams) {
+    const hasPlaceholderQuery = (ep.queryParams ?? []).some(
+      (q) => q.value === "test" || q.value === "" || q.value == null
+    );
+    if (needsBody || hasPathParams || hasPlaceholderQuery) {
       needsLlm.push(ep);
     } else {
       enriched.push(ep);
