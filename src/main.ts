@@ -85,7 +85,8 @@ async function bootstrap() {
     trustProxy: true,
     onProtoPoisoning: 'ignore',
     https:
-      process.env.NODE_ENV === 'production'
+      process.env.NODE_ENV === 'production' &&
+      process.env.HTTPS_ENABLED === 'true'
         ? {
             cert: readFileSync(
               '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem'
@@ -266,22 +267,5 @@ async function bootstrap() {
   await app.listen(3000, '0.0.0.0');
 }
 
-if (cluster.isPrimary && process.env.NODE_ENV === 'production') {
-  console.log(`Primary ${process.pid} is running`);
-
-  const numCPUs = os.cpus().length;
-  for (let i = 0; i < numCPUs; i++) {
-    cluster.fork();
-  }
-
-  cluster.on('exit', (worker, code, signal) => {
-    console.log(
-      `Worker ${worker.process.pid} died with code ${code} and signal ${signal}`
-    );
-    console.log('Starting a new worker');
-    cluster.fork();
-  });
-} else {
-  bootstrap();
-  console.log(`Worker ${process.pid} started`);
-}
+bootstrap();
+console.log(`Worker ${process.pid} started`);

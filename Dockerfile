@@ -6,6 +6,9 @@ FROM node:18-alpine AS build
 
 WORKDIR /usr/src/app
 
+# Build tools required by native dependencies (argon2, libxmljs)
+RUN apk add --no-cache python3 make g++ pkgconfig libc6-compat
+
 # Copy and build NestJS server project
 COPY --chown=node:node package*.json ./
 COPY --chown=node:node tsconfig.build.json ./

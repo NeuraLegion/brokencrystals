@@ -18,21 +18,48 @@ services:
       - '.data/nodejs:/var/lib/postgresql/data/'
 
   nodejs:
-    image: 'brightsec/brokencrystals'
-    restart: always
+    # image: brightsec/brokencrystals  # replaced — must build from source
+    build:
+      context: .
+    restart: on-failure
+    ports:
+      - '3000:3000'
+      - '5000:5000'
     healthcheck:
       interval: 5s
       retries: 10
       test:
         ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/api/config']
       timeout: 30s
+      start_period: 120s
     environment:
       NODE_ENV: production
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA}
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
       CHAT_API_TOKEN: ${CHAT_API_TOKEN}
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+      KEYCLOAK_SERVER_URI: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      KEYCLOAK_PUBLIC_CLIENT_ID: ${KEYCLOAK_PUBLIC_CLIENT_ID}
+      KEYCLOAK_PUBLIC_CLIENT_SECRET: ${KEYCLOAK_PUBLIC_CLIENT_SECRET}
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_ADMIN_CLIENT_ID}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+      JWT_PRIVATE_KEY_LOCATION: ${JWT_PRIVATE_KEY_LOCATION}
+      JWT_PUBLIC_KEY_LOCATION: ${JWT_PUBLIC_KEY_LOCATION}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_CONFIGS_URI: ${JWT_CONFIGS_URI}
+      JWK_PRIVATE_KEY_LOCATION: ${JWK_PRIVATE_KEY_LOCATION}
+      JWK_PUBLIC_KEY_LOCATION: ${JWK_PUBLIC_KEY_LOCATION}
+      JWK_PUBLIC_JSON: ${JWK_PUBLIC_JSON}
+      JKU_URL: ${JKU_URL}
+      X5U_URL: ${X5U_URL}
+      HTTPS_ENABLED: 'false'
     deploy:
       restart_policy:
         condition: on-failure
@@ -112,6 +139,7 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: Pa55w0rd
       KC_HEALTH_ENABLED: true
+      KC_HTTP_ENABLED: true
     healthcheck:
       test:
         [
