@@ -38002,6 +38002,10 @@ async function runValidationFlow(ctx, progress, projectId, repeaterId, registere
     `Mapped ${mapped.length} finding(s) to endpoints`
   );
   const hasPathParams = registered.some((r) => /[{:]/.test(r.endpoint.path));
+  await progress.phaseStart(
+    "scan",
+    "Running targeted DAST scans for mapped findings"
+  );
   const results = await runValidationScans(
     config,
     projectId,

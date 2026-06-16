@@ -2310,7 +2310,13 @@ async function runValidationFlow(
   // Detect path-param endpoints for correct attack-location selection.
   const hasPathParams = registered.some((r) => /[{:]/.test(r.endpoint.path));
 
-  // Run targeted scans + build verdicts.
+  // Run targeted scans + build verdicts. Scanning is a separate phase so its
+  // (LLM-free) duration is attributed to "scan" rather than inflating the
+  // "validation" phase's mapping/tracing time.
+  await progress.phaseStart(
+    "scan",
+    "Running targeted DAST scans for mapped findings",
+  );
   const results = await runValidationScans(
     config,
     projectId,
