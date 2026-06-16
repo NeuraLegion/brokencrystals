@@ -30573,6 +30573,7 @@ async function waitForPort(port, timeoutMs, healthCheck = "/", repoPath, analyze
   const MAX_GATEWAY_ERRORS_BEFORE_FAIL = 60;
   let consecutiveConnFailures = 0;
   let localhostBindingChecked = false;
+  let lastRestartCount = -1;
   let responseAnalysisDone = false;
   let progressCount = 0;
   let extensionsGranted = 0;
@@ -30762,6 +30763,30 @@ Container logs:
 ${logs}`;
           }
           throw new StartupFailedError(errMsg2);
+        }
+      }
+      if (repoPath && consecutiveConnFailures >= 10 && consecutiveConnFailures % 10 === 0) {
+        const crash = detectCrashLoop(repoPath, lastRestartCount);
+        if (crash) {
+          lastRestartCount = crash.restartCount;
+          if (crash.crashing) {
+            let errMsg2 = `Application is crash-looping on startup (container restarted ${crash.restartCount} time(s), state: ${crash.state}). This is an APPLICATION CODE/RUNTIME crash, not an infrastructure problem \u2014 the process exits during boot and Docker keeps restarting it, so port ${port} is never reachable.
+
+Do NOT change the healthcheck, port mapping, or compose wait conditions \u2014 those will not fix a process that exits on boot. Read the crash error below and fix the root cause (often in the application's entrypoint/bootstrap code or a dependency version mismatch).`;
+            if (crash.error) {
+              errMsg2 += `
+
+Crash error:
+${crash.error}`;
+            } else {
+              const logs = getContainerLogTail(repoPath, 40);
+              if (logs) errMsg2 += `
+
+Container logs:
+${logs}`;
+            }
+            throw new StartupFailedError(errMsg2);
+          }
         }
       }
     }
@@ -30969,6 +30994,47 @@ function detectLocalhostBinding(repoPath, port) {
   } catch {
     return null;
   }
+}
+function detectCrashLoop(repoPath, prevRestartCount) {
+  const containerId = findComposeAppContainer(repoPath);
+  if (!containerId) return null;
+  try {
+    const raw = execSync(
+      `docker inspect ${containerId} --format '{{.State.Status}}|{{.State.ExitCode}}|{{.RestartCount}}' 2>/dev/null || true`,
+      { encoding: "utf-8", timeout: 5e3 }
+    ).trim();
+    if (!raw) return null;
+    const [state, exitCodeStr, restartStr] = raw.split("|");
+    const exitCode = parseInt(exitCodeStr ?? "0", 10) || 0;
+    const restartCount = parseInt(restartStr ?? "0", 10) || 0;
+    const restarting = state === "restarting";
+    const restartClimbing = prevRestartCount >= 0 && restartCount > prevRestartCount;
+    const repeatedExits = restartCount >= 2 && exitCode !== 0;
+    const crashing = restarting || restartClimbing || repeatedExits;
+    let error = "";
+    if (crashing) {
+      error = extractCrashError(getContainerLogTail(repoPath, 60));
+    }
+    return { crashing, restartCount, state: state ?? "unknown", error };
+  } catch {
+    return null;
+  }
+}
+function extractCrashError(logs) {
+  if (!logs) return "";
+  const lines = logs.split("\n");
+  const errorRe = /(Error:|Exception|UnhandledPromiseRejection|FATAL|panic:|Traceback|\b[A-Z][A-Za-z]*Error\b|code:\s*['"]?[A-Z_]+|errno|ECONNREFUSED|ENOENT|MODULE_NOT_FOUND)/;
+  let startIdx = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (errorRe.test(lines[i])) {
+      startIdx = i;
+      break;
+    }
+  }
+  if (startIdx === -1) return "";
+  const ctxStart = Math.max(0, startIdx - 1);
+  const block = lines.slice(ctxStart, Math.min(lines.length, startIdx + 20));
+  return block.join("\n").slice(0, 4e3);
 }
 function findComposeAppContainer(repoPath) {
   try {
