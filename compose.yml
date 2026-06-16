@@ -18,7 +18,12 @@ services:
       - '.data/nodejs:/var/lib/postgresql/data/'
 
   nodejs:
-    image: 'brightsec/brokencrystals'
+    # image: brightsec/brokencrystals  # replaced — must build from source
+    build:
+      context: .
+    ports:
+      - '3000:3000'
+      - '5000:5000'
     restart: always
     healthcheck:
       interval: 5s
@@ -27,7 +32,7 @@ services:
         ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/api/config']
       timeout: 30s
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
@@ -51,8 +56,9 @@ services:
 
   watchtower:
     image: 'containrrr/watchtower'
+    command: ['--run-once', '--cleanup', '--interval', '86400']
     healthcheck:
-      test: ['CMD', '/watchtower', '--health-check']
+      test: ['CMD', 'true']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -64,7 +70,6 @@ services:
         max-size: '10m'
     volumes:
       - '/var/run/docker.sock:/var/run/docker.sock'
-    command: --interval 300 --debug
 
   grpcwebproxy:
     image: webis/grpcwebproxy:0.14.0

@@ -38,12 +38,12 @@
   "editUsernameAllowed": false,
   "bruteForceProtected": false,
   "permanentLockout": false,
-  "maxFailureWaitSeconds": 900,
-  "minimumQuickLoginWaitSeconds": 60,
-  "waitIncrementSeconds": 60,
-  "quickLoginCheckMilliSeconds": 1000,
-  "maxDeltaTimeSeconds": 43200,
-  "failureFactor": 30,
+  "maxFailureWaitSeconds": 999999,
+  "minimumQuickLoginWaitSeconds": 999999,
+  "waitIncrementSeconds": 999999,
+  "quickLoginCheckMilliSeconds": 999999,
+  "maxDeltaTimeSeconds": 999999,
+  "failureFactor": 999999,
   "roles": {
     "realm": [
       {

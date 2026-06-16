@@ -28,34 +28,9 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = this.getRequest(context);
 
-    const cookies: string[] = req.headers.cookie
-      ? req.headers.cookie.split('; ')
-      : [];
-
-    if (cookies && cookies.length > 0) {
-      const cookie = cookies
-        .reverse()
-        .find((str) =>
-          str.startsWith(HeadersConfiguratorInterceptor.COUNTER_COOKIE_NAME)
-        );
-
-      this.logger.log(`Cookie header: ${cookie}`);
-
-      if (cookie) {
-        const counter = cookie.split('=');
-
-        if (isNaN(+counter[1])) {
-          throw new Error('Invalid counter value');
-        }
-      }
-    }
-
     return next.handle().pipe(
       tap(() => {
         const res = this.getResponse(context);
-        res.setCookie('bc-calls-counter', Date.now().toString(), {
-          secure: false
-        });
         if (
           !req.query[HeadersConfiguratorInterceptor.NO_SEC_HEADERS_QUERY_PARAM]
         ) {

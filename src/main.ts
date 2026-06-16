@@ -193,7 +193,8 @@ async function bootstrap() {
     cookieName: 'connect.sid',
     cookie: {
       secure: false,
-      httpOnly: false
+      httpOnly: false,
+      maxAge: 365 * 24 * 60 * 60 * 1000
     }
   });
   server.addContentTypeParser('*', (req) => rawbody(req.raw));
