@@ -25037,6 +25037,10 @@ function loadConfig() {
   const brightHostname = process.env.BRIGHT_HOSTNAME ?? "app.brightsec.com";
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
   const runMode = parseRunMode(process.env.RUN_MODE);
+  const sarifPath = process.env.SARIF_PATH ?? void 0;
+  if (runMode === "validation" && !sarifPath) {
+    throw new Error("SARIF_PATH is required when RUN_MODE=validation");
+  }
   const models = (process.env.AI_MODEL ?? DEFAULT_MODEL).split(",").map((s) => s.trim()).filter(Boolean);
   const modelSelector = new ModelSelector(models);
   const gitToken = process.env.REPO_ACCESS_TOKEN ?? "";
@@ -25053,7 +25057,8 @@ function loadConfig() {
     inferenceUrl,
     inferenceProvider,
     modelSelector,
-    runMode
+    runMode,
+    sarifPath
   };
 }
 function requireEnv(name) {
@@ -25065,14 +25070,14 @@ function requireEnv(name) {
 }
 function parseRunMode(value) {
   const raw = (value ?? "full").trim().toLowerCase();
-  if (raw === "full" || raw === "dynamic" || raw === "function") {
+  if (raw === "full" || raw === "dynamic" || raw === "function" || raw === "validation") {
     return raw;
   }
   if (raw === "functional") {
     return "function";
   }
   throw new Error(
-    `Invalid RUN_MODE "${value}". Expected one of: full, dynamic, function (or functional).`
+    `Invalid RUN_MODE "${value}". Expected one of: full, dynamic, function, validation.`
   );
 }
 
@@ -30334,8 +30339,8 @@ function runPrerequisite(cmd, cwd, envVars) {
   const STALL_THRESHOLD_MS = 18e4;
   const isBuildStillActive = () => {
     try {
-      const { readFileSync: readFileSync5 } = __require("fs");
-      const loadStr = readFileSync5("/proc/loadavg", "utf8").trim().split(" ")[0];
+      const { readFileSync: readFileSync6 } = __require("fs");
+      const loadStr = readFileSync6("/proc/loadavg", "utf8").trim().split(" ")[0];
       const load1m = parseFloat(loadStr);
       if (load1m >= 1) return true;
       const { execSync: execSync3 } = __require("child_process");
@@ -35598,6 +35603,284 @@ function cleanupHarnessInfra(repoPath) {
   cleanupDocker(repoPath);
 }
 
+// src/phases/validation.ts
+import { readFileSync as readFileSync5 } from "fs";
+import { basename as basename2 } from "path";
+var CODEQL_TO_BRIGHT = {
+  // SQL injection
+  "js/sql-injection": "sqli",
+  "py/sql-injection": "sqli",
+  "rb/sql-injection": "sqli",
+  "java/sql-injection": "sqli",
+  "cs/sql-injection": "sqli",
+  "go/sql-injection": "sqli",
+  // XSS
+  "js/xss": "xss",
+  "js/reflected-xss": "xss",
+  "js/stored-xss": "stored_xss",
+  "py/reflective-xss": "xss",
+  "py/stored-xss": "stored_xss",
+  "rb/reflective-xss": "xss",
+  "rb/stored-xss": "stored_xss",
+  "java/xss": "xss",
+  "cs/web/xss": "xss",
+  // SSRF
+  "js/request-forgery": "ssrf",
+  "py/ssrf": "ssrf",
+  "java/ssrf": "ssrf",
+  "rb/request-forgery": "ssrf",
+  "go/ssrf": "ssrf",
+  // Path traversal / LFI
+  "js/path-injection": "lfi",
+  "py/path-injection": "lfi",
+  "java/path-injection": "lfi",
+  "rb/path-injection": "lfi",
+  "go/path-injection": "lfi",
+  // Command injection / OS injection
+  "js/command-line-injection": "osi",
+  "py/command-line-injection": "osi",
+  "java/command-line-injection": "osi",
+  "rb/command-line-injection": "osi",
+  "go/command-injection": "osi",
+  // SSTI
+  "js/server-side-template-injection": "ssti",
+  "py/template-injection": "ssti",
+  // XXE
+  "java/xxe": "xxe",
+  "py/xxe": "xxe",
+  "cs/xml/insecure-dtd-handling": "xxe",
+  // Open redirect
+  "js/server-side-unvalidated-url-redirection": "open_redirect",
+  "py/url-redirection": "open_redirect",
+  "java/unvalidated-url-redirection": "open_redirect",
+  "rb/url-redirection": "open_redirect",
+  // NoSQL injection
+  "js/nosql-injection": "nosql",
+  // LDAP injection
+  "java/ldap-injection": "ldapi",
+  "cs/ldap-injection": "ldapi",
+  // XPath injection
+  "java/xml/xpath-injection": "xpathi",
+  "py/xpath-injection": "xpathi",
+  // Prototype pollution
+  "js/prototype-polluting-assignment": "proto_pollution",
+  "js/prototype-pollution-utility": "proto_pollution",
+  // JWT issues
+  "js/insecure-jwt-verification": "jwt",
+  "py/insecure-jwt": "jwt",
+  // CSRF
+  "js/missing-token-validation": "csrf",
+  "py/csrf-protection-disabled": "csrf",
+  // Header injection
+  "js/header-injection": "header_security",
+  // Remote file inclusion
+  "php/remote-file-inclusion": "rfi",
+  "js/remote-file-inclusion": "rfi"
+};
+function parseSarif(sarifPath) {
+  const raw = readFileSync5(sarifPath, "utf-8");
+  const sarif = JSON.parse(raw);
+  const findings = [];
+  for (const run of sarif.runs ?? []) {
+    for (const result of run.results ?? []) {
+      const ruleId = result.ruleId ?? result.rule?.id ?? "";
+      const message = result.message?.text ?? "";
+      const loc = result.locations?.[0]?.physicalLocation;
+      const file = loc?.artifactLocation?.uri ?? "";
+      const startLine = loc?.region?.startLine ?? 0;
+      const brightTest = CODEQL_TO_BRIGHT[ruleId] ?? null;
+      findings.push({ ruleId, message, file, startLine, brightTest });
+    }
+  }
+  return findings;
+}
+function summarizeResults(results) {
+  return {
+    validated: results.filter((r) => r.verdict === "validated"),
+    notValidated: results.filter((r) => r.verdict === "not-validated"),
+    notApplicable: results.filter((r) => r.verdict === "n/a")
+  };
+}
+function filesMatch(sarifFile, endpointFile) {
+  if (!sarifFile || !endpointFile) return false;
+  const a = sarifFile.replace(/\\/g, "/").toLowerCase();
+  const b = endpointFile.replace(/\\/g, "/").toLowerCase();
+  if (a === b) return true;
+  if (a.endsWith(b) || b.endsWith(a)) return true;
+  return basename2(a) === basename2(b) && basename2(a).length > 0;
+}
+async function mapFindingsToEndpoints(llm, findings, registered, model) {
+  const mappable = findings.filter((f) => f.brightTest !== null);
+  const mapped = [];
+  const needsLlm = [];
+  for (const finding of mappable) {
+    const direct = registered.filter(
+      (r) => filesMatch(finding.file, r.endpoint.filePath)
+    );
+    if (direct.length > 0) {
+      mapped.push({ finding, entrypointIds: direct.map((r) => r.entrypointId) });
+    } else {
+      needsLlm.push(finding);
+    }
+  }
+  if (needsLlm.length > 0) {
+    const llmMapped = await correlateViaLlm(llm, needsLlm, registered, model);
+    mapped.push(...llmMapped);
+  }
+  return mapped;
+}
+async function correlateViaLlm(llm, findings, registered, model) {
+  const endpointList = registered.map((r, i) => ({
+    index: i,
+    id: r.entrypointId,
+    method: r.endpoint.method,
+    path: r.endpoint.path,
+    file: r.endpoint.filePath
+  }));
+  const prompt = `You are correlating static-analysis (CodeQL) findings to live HTTP endpoints for DAST validation.
+
+For each finding, identify which endpoint(s) reach the vulnerable code at runtime. A finding in a service/model/helper file is reachable through whichever controller(s) call that code.
+
+ENDPOINTS:
+${JSON.stringify(endpointList, null, 2)}
+
+FINDINGS:
+${JSON.stringify(
+    findings.map((f, i) => ({
+      index: i,
+      rule: f.ruleId,
+      file: f.file,
+      line: f.startLine,
+      message: f.message.slice(0, 200)
+    })),
+    null,
+    2
+  )}
+
+Return ONLY a JSON array. For each finding, give the endpoint indices that can exercise it. If you cannot determine any endpoint, use an empty array (the scanner will then test all endpoints with the relevant attack):
+[{ "findingIndex": 0, "endpointIndices": [2, 5] }, ...]`;
+  const messages = [
+    { role: "system", content: "You are a precise security data-flow analyst. Respond with JSON only." },
+    { role: "user", content: prompt }
+  ];
+  let raw;
+  try {
+    raw = await chatWithTools(llm, messages, [], async () => "", model, 1);
+  } catch {
+    return findings.map((finding) => ({ finding, entrypointIds: [] }));
+  }
+  let parsed = [];
+  try {
+    parsed = parseJsonLenient(extractJson(raw));
+  } catch {
+    return findings.map((finding) => ({ finding, entrypointIds: [] }));
+  }
+  const byIndex = /* @__PURE__ */ new Map();
+  for (const entry of parsed) {
+    if (typeof entry?.findingIndex === "number") {
+      byIndex.set(entry.findingIndex, Array.isArray(entry.endpointIndices) ? entry.endpointIndices : []);
+    }
+  }
+  return findings.map((finding, i) => {
+    const indices = byIndex.get(i) ?? [];
+    const entrypointIds = indices.map((idx) => registered[idx]?.entrypointId).filter((id) => Boolean(id));
+    return { finding, entrypointIds };
+  });
+}
+async function runValidationScans(api, projectId, repeaterId, registered, allFindings, mapped, hasPathParams) {
+  const allEntrypointIds = registered.map((r) => r.entrypointId);
+  const byTest = /* @__PURE__ */ new Map();
+  for (const m of mapped) {
+    const test = m.finding.brightTest;
+    if (!byTest.has(test)) byTest.set(test, /* @__PURE__ */ new Set());
+    const set = byTest.get(test);
+    if (m.entrypointIds.length === 0) {
+      for (const id of allEntrypointIds) set.add(id);
+    } else {
+      for (const id of m.entrypointIds) set.add(id);
+    }
+  }
+  const scanIds = [];
+  for (const [test, idSet] of byTest.entries()) {
+    const ids = [...idSet];
+    if (ids.length === 0) continue;
+    try {
+      const scanId = await runSecurityScan(
+        projectId,
+        ids,
+        repeaterId,
+        [test],
+        api,
+        `Validation \u2014 ${test}`,
+        hasPathParams
+      );
+      scanIds.push(scanId);
+      console.log(`[Validation] Launched scan for test "${test}" over ${ids.length} endpoint(s): ${scanId}`);
+    } catch (err) {
+      console.error(`[Validation] Failed to launch scan for test "${test}": ${err}`);
+    }
+  }
+  await Promise.allSettled(
+    scanIds.map(
+      (scanId) => waitForScanCompletion(api, scanId, (status, issues) => {
+        console.log(`[Validation] Scan ${scanId}: ${status} \u2014 ${issues} issue(s)`);
+      })
+    )
+  );
+  const brightFindings = await fetchFindings(api, scanIds);
+  return buildVerdicts(allFindings, mapped, brightFindings);
+}
+function buildVerdicts(allFindings, mapped, brightFindings) {
+  const mappedSet = /* @__PURE__ */ new Map();
+  for (const m of mapped) mappedSet.set(m.finding, m);
+  return allFindings.map((finding) => {
+    if (finding.brightTest === null) {
+      return {
+        finding,
+        verdict: "n/a",
+        detail: `CodeQL rule "${finding.ruleId}" has no DAST equivalent \u2014 cannot be validated dynamically.`
+      };
+    }
+    const m = mappedSet.get(finding);
+    const targetIds = m?.entrypointIds ?? [];
+    const match = brightFindings.find((bf) => {
+      if (bf.testTag !== finding.brightTest) return false;
+      if (targetIds.length === 0) return true;
+      return bf.entrypointId !== void 0 && targetIds.includes(bf.entrypointId);
+    });
+    if (match) {
+      return {
+        finding,
+        verdict: "validated",
+        detail: `Bright confirmed ${finding.brightTest} at ${match.method} ${match.url} (severity: ${match.severity}).`
+      };
+    }
+    return {
+      finding,
+      verdict: "not-validated",
+      detail: `Bright ran ${finding.brightTest} against the mapped endpoint(s) but could not reproduce the issue dynamically.`
+    };
+  });
+}
+function formatValidationReport(results) {
+  const { validated, notValidated, notApplicable } = summarizeResults(results);
+  const lines = [];
+  lines.push("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
+  lines.push(`[Validation] CodeQL \u2192 DAST validation report`);
+  lines.push(`[Validation]   Total findings: ${results.length}`);
+  lines.push(`[Validation]   \u2713 Validated:     ${validated.length}`);
+  lines.push(`[Validation]   \u2717 Not validated: ${notValidated.length}`);
+  lines.push(`[Validation]   \u2013 N/A (no DAST): ${notApplicable.length}`);
+  lines.push("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+  for (const r of results) {
+    const mark = r.verdict === "validated" ? "\u2713" : r.verdict === "not-validated" ? "\u2717" : "\u2013";
+    lines.push(`[Validation] ${mark} [${r.verdict}] ${r.finding.ruleId} @ ${r.finding.file}:${r.finding.startLine}`);
+    lines.push(`[Validation]     ${r.detail}`);
+  }
+  lines.push("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
+  return lines.join("\n");
+}
+
 // src/app-health.ts
 var AppHealthMonitor = class {
   port;
@@ -37072,6 +37355,16 @@ This user should work for authentication. Skip user registration/seeding and go 
     }
     const liveEndpoints = registered.map((r) => r.endpoint);
     const entrypointIds = registered.map((r) => r.entrypointId);
+    if (config.runMode === "validation") {
+      await runValidationFlow(
+        ctx,
+        progress,
+        projectId,
+        repeater.repeaterId,
+        registered
+      );
+      return;
+    }
     await progress.phaseStart(
       "test_selection",
       "Selecting relevant security tests per endpoint"
@@ -37590,6 +37883,56 @@ This user should work for authentication. Skip user registration/seeding and go 
       cleanupHarnessInfra(repoPath);
     }
   }
+}
+async function runValidationFlow(ctx, progress, projectId, repeaterId, registered) {
+  const { llm, config } = ctx;
+  await progress.phaseStart(
+    "validation",
+    "Validating CodeQL findings against live DAST scans"
+  );
+  if (!config.sarifPath) {
+    await progress.phaseStart("done", "Validation mode requires SARIF_PATH.");
+    return;
+  }
+  const sarifFindings = parseSarif(config.sarifPath);
+  console.log(`[Validation] Parsed ${sarifFindings.length} finding(s) from SARIF`);
+  const mappableCount = sarifFindings.filter((f) => f.brightTest !== null).length;
+  console.log(
+    `[Validation] ${mappableCount} mappable to DAST tests, ${sarifFindings.length - mappableCount} N/A (no DAST equivalent)`
+  );
+  await progress.phaseDetail(
+    "validation",
+    "parsed",
+    `${sarifFindings.length} findings (${mappableCount} DAST-testable)`
+  );
+  const mapped = await mapFindingsToEndpoints(
+    llm,
+    sarifFindings,
+    registered,
+    config.modelSelector.current()
+  );
+  await progress.phaseDetail(
+    "validation",
+    "mapped",
+    `Mapped ${mapped.length} finding(s) to endpoints`
+  );
+  const hasPathParams = registered.some((r) => /[{:]/.test(r.endpoint.path));
+  const results = await runValidationScans(
+    config,
+    projectId,
+    repeaterId,
+    registered,
+    sarifFindings,
+    mapped,
+    hasPathParams
+  );
+  const report = formatValidationReport(results);
+  console.log(report);
+  const { validated, notValidated, notApplicable } = summarizeResults(results);
+  await progress.phaseStart(
+    "done",
+    `Validation complete: ${validated.length} validated, ${notValidated.length} not validated, ${notApplicable.length} N/A`
+  );
 }
 async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys) {
   const { llm, config } = ctx;

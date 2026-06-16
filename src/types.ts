@@ -23,6 +23,7 @@ export interface EngineConfig extends BrightApiContext {
   inferenceProvider: InferenceProvider;
   modelSelector: ModelSelector;
   runMode: RunMode;
+  sarifPath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +156,7 @@ export interface SecurityFix {
 // Orchestrator context
 // ---------------------------------------------------------------------------
 
-export type RunMode = "full" | "dynamic" | "function";
+export type RunMode = "full" | "dynamic" | "function" | "validation";
 
 export interface OrchestratorContext {
   repoPath: string;

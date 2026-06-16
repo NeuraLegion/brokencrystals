@@ -6,8 +6,12 @@ export function loadConfig(): EngineConfig {
   const brightHostname = process.env.BRIGHT_HOSTNAME ?? "app.brightsec.com";
   const brightProjectId = process.env.BRIGHT_PROJECT_ID;
 
-  // RUN_MODE: "full" (default), "dynamic" (no harness fallback), or "function"
+  // RUN_MODE: "full" (default), "dynamic" (no harness fallback), "function", or "validation"
   const runMode = parseRunMode(process.env.RUN_MODE);
+  const sarifPath = process.env.SARIF_PATH ?? undefined;
+  if (runMode === "validation" && !sarifPath) {
+    throw new Error("SARIF_PATH is required when RUN_MODE=validation");
+  }
 
   // AI_MODEL: single model or comma-separated escalation chain
   // e.g. "gpt-4.1-mini" or "gpt-4.1-mini,gpt-4.1,o3"
@@ -38,6 +42,7 @@ export function loadConfig(): EngineConfig {
     inferenceProvider,
     modelSelector,
     runMode,
+    sarifPath,
   };
 }
 
@@ -51,13 +56,13 @@ function requireEnv(name: string): string {
 
 function parseRunMode(value: string | undefined): RunMode {
   const raw = (value ?? "full").trim().toLowerCase();
-  if (raw === "full" || raw === "dynamic" || raw === "function") {
+  if (raw === "full" || raw === "dynamic" || raw === "function" || raw === "validation") {
     return raw;
   }
   if (raw === "functional") {
     return "function";
   }
   throw new Error(
-    `Invalid RUN_MODE "${value}". Expected one of: full, dynamic, function (or functional).`,
+    `Invalid RUN_MODE "${value}". Expected one of: full, dynamic, function, validation.`,
   );
 }

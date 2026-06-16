@@ -54,6 +54,13 @@ import {
 import { fetchFindings } from "./phases/findings.js";
 import { generateFixes, applyFixes } from "./phases/fix.js";
 import { runFunctionHarness, cleanupHarnessInfra, type HarnessResult } from "./phases/harness.js";
+import {
+  parseSarif,
+  mapFindingsToEndpoints,
+  runValidationScans,
+  formatValidationReport,
+  summarizeResults,
+} from "./phases/validation.js";
 import { chatWithTools, type ModelSelector, TokenTracker } from "./inference.js";
 import { codebaseTools, createToolHandler } from "./tools.js";
 import { AppHealthMonitor } from "./app-health.js";
@@ -1585,6 +1592,20 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     const liveEndpoints = registered.map((r) => r.endpoint);
     const entrypointIds = registered.map((r) => r.entrypointId);
 
+    // ----- Validation mode: short-circuit the scan→fix→validate loop -----
+    // Map CodeQL/SARIF findings to endpoints, run only the relevant DAST tests,
+    // and emit a validated / not-validated / N-A verdict per finding. No fixes.
+    if (config.runMode === "validation") {
+      await runValidationFlow(
+        ctx,
+        progress,
+        projectId,
+        repeater.repeaterId,
+        registered,
+      );
+      return;
+    }
+
     // ----- Phase 7: Select relevant tests per endpoint -----
     await progress.phaseStart(
       "test_selection",
@@ -2236,6 +2257,79 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Validation mode: map SARIF/CodeQL findings to endpoints, run targeted DAST
+// scans, and emit a verdict per finding. No fix loop.
+// ---------------------------------------------------------------------------
+async function runValidationFlow(
+  ctx: OrchestratorContext,
+  progress: ProgressReporter,
+  projectId: string,
+  repeaterId: string,
+  registered: RegisteredEntrypoint[],
+): Promise<void> {
+  const { llm, config } = ctx;
+
+  await progress.phaseStart(
+    "validation",
+    "Validating CodeQL findings against live DAST scans",
+  );
+
+  if (!config.sarifPath) {
+    await progress.phaseStart("done", "Validation mode requires SARIF_PATH.");
+    return;
+  }
+
+  // Parse SARIF + map CodeQL rules to Bright tests.
+  const sarifFindings = parseSarif(config.sarifPath);
+  console.log(`[Validation] Parsed ${sarifFindings.length} finding(s) from SARIF`);
+  const mappableCount = sarifFindings.filter((f) => f.brightTest !== null).length;
+  console.log(
+    `[Validation] ${mappableCount} mappable to DAST tests, ${sarifFindings.length - mappableCount} N/A (no DAST equivalent)`,
+  );
+  await progress.phaseDetail(
+    "validation",
+    "parsed",
+    `${sarifFindings.length} findings (${mappableCount} DAST-testable)`,
+  );
+
+  // Correlate mappable findings to registered endpoints.
+  const mapped = await mapFindingsToEndpoints(
+    llm,
+    sarifFindings,
+    registered,
+    config.modelSelector.current(),
+  );
+  await progress.phaseDetail(
+    "validation",
+    "mapped",
+    `Mapped ${mapped.length} finding(s) to endpoints`,
+  );
+
+  // Detect path-param endpoints for correct attack-location selection.
+  const hasPathParams = registered.some((r) => /[{:]/.test(r.endpoint.path));
+
+  // Run targeted scans + build verdicts.
+  const results = await runValidationScans(
+    config,
+    projectId,
+    repeaterId,
+    registered,
+    sarifFindings,
+    mapped,
+    hasPathParams,
+  );
+
+  const report = formatValidationReport(results);
+  console.log(report);
+
+  const { validated, notValidated, notApplicable } = summarizeResults(results);
+  await progress.phaseStart(
+    "done",
+    `Validation complete: ${validated.length} validated, ${notValidated.length} not validated, ${notApplicable.length} N/A`,
+  );
+}
+
 // Simplified scan loop for function-harness mode (no auth, no fix/rebuild)
 // ---------------------------------------------------------------------------
 async function runScanLoop(

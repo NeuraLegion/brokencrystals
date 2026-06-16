@@ -73,7 +73,8 @@ Supported `REPOSITORY_URL` formats:
 | ------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BRIGHT_PROJECT_ID` | No       | Bright project ID. Auto-detected if omitted                                                                                                                 |
 | `BRIGHT_HOSTNAME`   | No       | Bright API hostname (default: `app.brightsec.com`)                                                                                                          |
-| `RUN_MODE`          | No       | `full` (default) — start the full application and scan. `function` — skip full startup, wrap critical functions in a lightweight HTTP harness and scan those |
+| `RUN_MODE`          | No       | `full` (default) — start the full application and scan. `function` — skip full startup, wrap critical functions in a lightweight HTTP harness and scan those. `validation` — validate CodeQL/SARIF findings against live DAST (no fix loop) |
+| `SARIF_PATH`        | Varies   | Path to a CodeQL SARIF file. **Required** when `RUN_MODE=validation`                                                                                         |
 | `BRANCH`            | No       | Branch name for fixes (default: `bright-scan-<timestamp>`)                                                                                                  |
 | `GIT_AUTHOR_NAME`   | No       | Git commit author name (default: `BrightSec`)                                                                                                               |
 | `GIT_AUTHOR_EMAIL`  | No       | Git commit author email (default: `bot@brightsec.com`)                                                                                                      |
