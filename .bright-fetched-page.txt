@@ -1,0 +1,637 @@
+GitHub - malyshev/nestjs-docker-good-defaults: This repository demonstrates how to build production-ready Docker images for NestJS applications using opinionated, best-practice defaults. It includes multi-stage builds, minimal Alpine-based images, deterministic dependency installs with npm ci, non-root runtime, and a flexible healthcheck script. · GitHub
+
+Skip to content
+
+Navigation Menu
+
+Toggle navigation
+
+Sign in
+
+Appearance settings
+
+PlatformAI CODE CREATIONGitHub CopilotWrite better code with AI
+
+GitHub Copilot appDirect agents from issue to merge
+
+MCP RegistryNewIntegrate external tools
+
+DEVELOPER WORKFLOWSActionsAutomate any workflow
+
+CodespacesInstant dev environments
+
+IssuesPlan and track work
+
+Code ReviewManage code changes
+
+APPLICATION SECURITYGitHub Advanced SecurityFind and fix vulnerabilities
+
+Code securitySecure your code as you build
+
+Secret protectionStop leaks before they start
+
+EXPLOREWhy GitHub
+Documentation
+Blog
+Changelog
+Marketplace
+
+View all features
+
+SolutionsBY COMPANY SIZEEnterprises
+Small and medium teams
+Startups
+Nonprofits
+
+BY USE CASEApp Modernization
+DevSecOps
+DevOps
+CI/CD
+View all use cases
+
+BY INDUSTRYHealthcare
+Financial services
+Manufacturing
+Government
+View all industries
+
+View all solutions
+
+ResourcesEXPLORE BY TOPICAI
+Software Development
+DevOps
+Security
+View all topics
+
+EXPLORE BY TYPECustomer stories
+Events & webinars
+Ebooks & reports
+Business insights
+GitHub Skills
+
+SUPPORT & SERVICESDocumentation
+Customer support
+Community forum
+Trust center
+Partners
+
+View all resources
+
+Open SourceCOMMUNITYGitHub SponsorsFund open source developers
+
+PROGRAMSSecurity Lab
+Maintainer Community
+Accelerator
+GitHub Stars
+Archive Program
+
+REPOSITORIESTopics
+Trending
+Collections
+
+EnterpriseENTERPRISE SOLUTIONSEnterprise platformAI-powered developer platform
+
+AVAILABLE ADD-ONSGitHub Advanced SecurityEnterprise-grade security features
+
+Copilot for BusinessEnterprise-grade AI features
+
+Premium SupportEnterprise-grade 24/7 support
+
+Pricing
+
+Search or jump to...
+
+Search code, repositories, users, issues, pull requests...
+
+-->
+
+Search
+
+Clear
+
+Search syntax tips 
+
+Provide feedback
+
+-->
+We read every piece of feedback, and take your input very seriously.
+
+Include my email address so I can be contacted
+
+Cancel
+
+Submit feedback
+
+Saved searches
+
+Use saved searches to filter your results more quickly
+
+-->
+
+Name
+
+Query
+
+To see all available qualifiers, see our documentation.
+
+Cancel
+
+Create saved search
+
+Sign in
+
+Sign up
+
+Appearance settings
+
+Resetting focus
+
+You signed in with another tab or window. Reload to refresh your session.
+You signed out in another tab or window. Reload to refresh your session.
+You switched accounts on another tab or window. Reload to refresh your session.
+
+Dismiss alert
+
+{{ message }}
+
+malyshev
+
+/
+
+nestjs-docker-good-defaults
+
+Public
+
+Notifications
+You must be signed in to change notification settings
+
+Fork
+3
+
+Star
+1
+
+Code
+
+Issues
+0
+
+Pull requests
+0
+
+Actions
+
+Projects
+
+Security and quality
+0
+
+Insights
+
+Additional navigation options
+
+Code
+
+Issues
+
+Pull requests
+
+Actions
+
+Projects
+
+Security and quality
+
+Insights
+
+malyshev/nestjs-docker-good-defaults
+
+ master
+
+BranchesTags
+
+Go to file
+
+CodeOpen more actions menu
+
+Folders and files
+NameNameLast commit message
+Last commit date
+
+Latest commit
+ 
+
+History
+22 Commits
+22 Commits
+
+.github/workflows
+
+.github/workflows
+
+ 
+ 
+
+.husky
+
+.husky
+
+ 
+ 
+
+assets
+
+assets
+
+ 
+ 
+
+docker
+
+docker
+
+ 
+ 
+
+docs
+
+docs
+
+ 
+ 
+
+src
+
+src
+
+ 
+ 
+
+test
+
+test
+
+ 
+ 
+
+.dockerignore
+
+.dockerignore
+
+ 
+ 
+
+.editorconfig
+
+.editorconfig
+
+ 
+ 
+
+.env-example
+
+.env-example
+
+ 
+ 
+
+.gitignore
+
+.gitignore
+
+ 
+ 
+
+.prettierignore
+
+.prettierignore
+
+ 
+ 
+
+.prettierrc
+
+.prettierrc
+
+ 
+ 
+
+Dockerfile
+
+Dockerfile
+
+ 
+ 
+
+README.md
+
+README.md
+
+ 
+ 
+
+ROADMAP.md
+
+ROADMAP.md
+
+ 
+ 
+
+docker-compose.monitoring.yml
+
+docker-compose.monitoring.yml
+
+ 
+ 
+
+docker-compose.yml
+
+docker-compose.yml
+
+ 
+ 
+
+eslint.config.mjs
+
+eslint.config.mjs
+
+ 
+ 
+
+healthcheck.js
+
+healthcheck.js
+
+ 
+ 
+
+nest-cli.json
+
+nest-cli.json
+
+ 
+ 
+
+package-lock.json
+
+package-lock.json
+
+ 
+ 
+
+package.json
+
+package.json
+
+ 
+ 
+
+tsconfig.build.json
+
+tsconfig.build.json
+
+ 
+ 
+
+tsconfig.json
+
+tsconfig.json
+
+ 
+ 
+
+View all files
+
+Repository files navigation
+README
+
+NestJS + Docker: Good Defaults for Production-Ready Services
+
+Inspired by best practices from talented practitioners like Brett Fisher, whose guidance I've followed for over a decade.
+
+This repository demonstrates how I package and run NestJS applications with Docker using opinionated defaults that
+balance simplicity, performance, and maintainability.
+
+Most examples online either stop at a Dockerfile for local testing or drown you in Kubernetes/CI/CD specifics.
+This repo focuses on the middle ground: good defaults that actually work for production microservices, without
+overengineering.
+
+Why Another NestJS + Docker Example?
+
+Real-world context. These defaults are based on proven best practices for production-ready Node.js services using NestJS.
+
+Optimized for DX and Ops. Simple to build, secure, and predictable images suitable for production.
+
+Patterns, not snippets. You can reuse this structure across projects, not just copy/paste a Dockerfile.
+
+Key Principles
+
+Security first. Use node:22-alpine (current LTS, small, maintained, minimal attack surface).
+
+Multi-stage builds. Keep images small by separating build and runtime stages.
+
+Reproducibility. Deterministic installs (npm ci / pnpm install --frozen-lockfile).
+
+Non-root runtime. Containers drop privileges → run as unprivileged user.
+
+Operational hygiene. Containers provide health checks and log cleanly.
+
+What's Inside
+
+This template provides production-ready defaults for NestJS applications:
+
+🐳 Docker & Containerization
+
+Multi-stage Dockerfile with security hardening
+
+Non-root user, minimal attack surface
+
+External health checks for container monitoring
+
+Production-ready image optimization
+
+→ See Docker Usage for details
+
+🛠️ Code Quality & Developer Experience
+
+ESLint + Prettier with TypeScript rules
+
+Husky Git hooks for pre-commit/pre-push checks
+
+Coverage thresholds (80%) enforced in CI/CD
+
+GitHub Actions CI workflow
+
+→ See Development Workflow for details
+
+🔒 Security & Configuration
+
+Helmet middleware with essential security headers
+
+CORS configuration with environment-specific settings
+
+Rate limiting with configurable throttling
+
+Environment-aware configuration management
+
+→ See Configuration Guide for details
+
+Quick Start
+
+Docker
+
+# Build and run
+docker build -t my-nest-service:latest .
+docker run --rm -p 3000:3000 my-nest-service:latest
+
+Local Development
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run start:dev
+
+See docs/DOCKER.md for detailed Docker usage.
+
+Documentation
+
+Docker Usage - Docker build, run, and environment configuration
+
+Configuration Guide - All configuration options and customization
+
+Development Workflow - Code quality, testing, and CI/CD
+
+Logging - Pino logging configuration and Grafana stack setup
+
+Assessments
+
+Dockerfile Assessment
+
+Score: 9.7 / 10
+
+Strengths: Security hardening, clean architecture, attack surface reduction, full documentation
+
+Verdict: Production-ready, enterprise-hardened, passes security audits
+
+Code Quality Tooling Assessment
+
+Score: 9.5 / 10
+
+Strengths: Comprehensive ESLint/Prettier setup, automated Git hooks, coverage enforcement
+
+Verdict: Enterprise-grade development workflow with automated quality gates
+
+Security Assessment
+
+Score: 9.8 / 10
+
+Strengths: Essential security headers, CORS configuration, rate limiting, comprehensive testing
+
+Verdict: Complete security implementation with proper testing coverage
+
+📖 Related Articles
+
+🐳 Docker & Containerization
+
+Production-Ready Docker for NestJS: Good Defaults That Actually Work
+
+➡️ Read the full article
+
+🛠️ Code Quality & Developer Experience
+
+Code Quality & Developer Experience in NestJS: How Not to Kill Your Team
+
+➡️ Read the full article
+
+🔒 Security & Production Defaults
+
+Secure Your NestJS Application: Production-Ready Defaults for Safety and DX
+
+➡️ Read the full article
+
+About
+
+This repository demonstrates how to build production-ready Docker images for NestJS applications using opinionated, best-practice defaults. It includes multi-stage builds, minimal Alpine-based images, deterministic dependency installs with npm ci, non-root runtime, and a flexible healthcheck script.
+
+Resources
+
+Readme
+
+Uh oh!
+
+There was an error while loading. Please reload this page.
+
+Activity 
+
+Stars
+
+1
+star 
+
+Watchers
+
+0
+watching 
+
+Forks
+
+3
+forks 
+
+Report repository
+
+Releases
+
+2
+tags
+
+Packages
+0
+
+Uh oh!
+
+There was an error while loading. Please reload this page.
+
+Contributors 
+
+Uh oh!
+
+There was an error while loading. Please reload this page.
+
+Languages
+
+TypeScript
+80.3%
+
+Dockerfile
+9.9%
+
+JavaScript
+9.8%
+
+Footer
+
+&copy; 2026 GitHub, Inc.
+
+Footer navigation
+
+Terms
+
+Privacy
+
+Security
+
+Status
+
+Community
+
+Docs
+
+Contact
+
+Manage cookies
+
+Do not share my personal information
+
+You can’t perform that action at this time.

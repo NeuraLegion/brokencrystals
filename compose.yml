@@ -5,7 +5,7 @@ services:
     healthcheck:
       interval: 10s
       retries: 10
-      test: ['CMD-SHELL', 'pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}']
+      test: ['CMD-SHELL', 'pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_USER}']
       timeout: 45s
     environment:
       POSTGRES_DB: ${DATABASE_SCHEMA}
@@ -17,8 +17,14 @@ services:
       - './pg.sql:/docker-entrypoint-initdb.d/pg.sql'
       - '.data/nodejs:/var/lib/postgresql/data/'
 
+  # Boot the application in HTTP mode for the compose healthcheck and proxy path.
+  # Production TLS/cert bootstrap is not configured in this compose file.
   nodejs:
-    image: 'brightsec/brokencrystals'
+    # image: brightsec/brokencrystals  # replaced — must build from source
+    build:
+      context: .
+    ports:
+      - '3000:3000'
     restart: always
     healthcheck:
       interval: 5s
@@ -27,7 +33,7 @@ services:
         ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/api/config']
       timeout: 30s
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
