@@ -4,7 +4,8 @@ import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 import type { Finding, BrightApiContext } from "../types.js";
 import type { RegisteredEntrypoint } from "./entrypoints.js";
-import { chatWithTools } from "../inference.js";
+import { chatWithTools, type ToolHandler } from "../inference.js";
+import { codebaseTools, createToolHandler } from "../tools.js";
 import { runSecurityScan, waitForScanCompletion, isFailureStatus } from "./scan.js";
 import { fetchFindings } from "./findings.js";
 import { extractJson, parseJsonLenient } from "../utils.js";
@@ -172,7 +173,9 @@ export function summarizeResults(results: ValidationResult[]): {
 /** A mappable finding paired with the entrypoint IDs that can exercise it. */
 export interface MappedFinding {
   finding: SarifFinding;
-  entrypointIds: string[]; // empty = scan broadly (all endpoints) with the test
+  entrypointIds: string[];
+  /** True when call-graph tracing found no path from any endpoint (likely dead/unreachable code). */
+  unreachable?: boolean;
 }
 
 /** True if a SARIF file path and an endpoint's source file refer to the same file. */
@@ -193,20 +196,23 @@ function filesMatch(sarifFile: string, endpointFile: string): boolean {
  *
  * Strategy:
  *  1. Direct file match — finding's source file == an endpoint's controller file.
- *  2. LLM correlation — for findings in service/model/util files, ask the model
- *     which endpoint(s) reach that code via data flow.
- *  3. Fallback — associate with all endpoints (broad scan) so we never emit a
- *     false "not-validated" just because mapping was uncertain.
+ *  2. Call-graph tracing — for findings in service/model/util files, the LLM
+ *     uses codebase tools (read/grep/list) to follow callers from the vulnerable
+ *     function up to the controller/route that reaches it. Findings in the same
+ *     source file share a trace (same reachability), so we trace per unique file.
+ *  3. If a real trace finds no path, the code is unreachable/dead — flagged as
+ *     such rather than broad-scanning (which would risk false validations).
  */
 export async function mapFindingsToEndpoints(
   llm: OpenAI,
   findings: SarifFinding[],
   registered: RegisteredEntrypoint[],
   model: string,
+  repoPath: string,
 ): Promise<MappedFinding[]> {
   const mappable = findings.filter((f) => f.brightTest !== null);
   const mapped: MappedFinding[] = [];
-  const needsLlm: SarifFinding[] = [];
+  const needsTrace: SarifFinding[] = [];
 
   for (const finding of mappable) {
     const direct = registered.filter((r) =>
@@ -215,90 +221,111 @@ export async function mapFindingsToEndpoints(
     if (direct.length > 0) {
       mapped.push({ finding, entrypointIds: direct.map((r) => r.entrypointId) });
     } else {
-      needsLlm.push(finding);
+      needsTrace.push(finding);
     }
   }
 
-  if (needsLlm.length > 0) {
-    const llmMapped = await correlateViaLlm(llm, needsLlm, registered, model);
-    mapped.push(...llmMapped);
+  if (needsTrace.length === 0) return mapped;
+
+  // Group findings by source file — reachability is per-file, so one trace per
+  // unique file covers all its findings.
+  const byFile = new Map<string, SarifFinding[]>();
+  for (const f of needsTrace) {
+    const key = f.file || "<unknown>";
+    if (!byFile.has(key)) byFile.set(key, []);
+    byFile.get(key)!.push(f);
+  }
+
+  const handler = createToolHandler(repoPath);
+  const files = [...byFile.entries()];
+
+  // Trace files concurrently (bounded) — independent of each other.
+  const CONCURRENCY = 4;
+  for (let i = 0; i < files.length; i += CONCURRENCY) {
+    const batch = files.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(([file, fileFindings]) =>
+        traceFileToEndpoints(llm, file, fileFindings, registered, handler, model),
+      ),
+    );
+    for (const r of results) mapped.push(...r);
   }
 
   return mapped;
 }
 
-/** Ask the LLM to correlate findings (in non-controller files) to endpoints. */
-async function correlateViaLlm(
+/**
+ * Trace a single source file to the endpoint(s) that reach it, using codebase
+ * tools to follow the call graph. Returns a MappedFinding per finding in the file.
+ */
+async function traceFileToEndpoints(
   llm: OpenAI,
-  findings: SarifFinding[],
+  file: string,
+  fileFindings: SarifFinding[],
   registered: RegisteredEntrypoint[],
+  handler: ToolHandler,
   model: string,
 ): Promise<MappedFinding[]> {
   const endpointList = registered.map((r, i) => ({
     index: i,
-    id: r.entrypointId,
     method: r.endpoint.method,
     path: r.endpoint.path,
     file: r.endpoint.filePath,
   }));
 
-  const prompt = `You are correlating static-analysis (CodeQL) findings to live HTTP endpoints for DAST validation.
+  const lines = [...new Set(fileFindings.map((f) => f.startLine))].sort((a, b) => a - b);
+  const rules = [...new Set(fileFindings.map((f) => f.ruleId))];
 
-For each finding, identify which endpoint(s) reach the vulnerable code at runtime. A finding in a service/model/helper file is reachable through whichever controller(s) call that code.
+  const prompt = `You are tracing a static-analysis (CodeQL) finding to the live HTTP endpoint(s) that reach its vulnerable code, so a DAST scanner can validate it.
 
-ENDPOINTS:
+VULNERABLE FILE: ${file}
+LINES: ${lines.join(", ")}
+CODEQL RULES: ${rules.join(", ")}
+
+Your job: find which registered endpoint(s) can reach this code at runtime. Use the tools to go down the call graph:
+- read_file to inspect the vulnerable file and understand which function/export contains the flagged lines
+- search_files to find who imports/calls that function (trace callers upward)
+- repeat until you reach a controller/route handler that maps to one of the registered endpoints below
+
+Almost everything is reachable through SOME endpoint. Only conclude "unreachable" if the code is genuinely dead — no caller chain leads to any registered endpoint (e.g. it is only called from tests, CLI scripts, or unused exports).
+
+REGISTERED ENDPOINTS:
 ${JSON.stringify(endpointList, null, 2)}
 
-FINDINGS:
-${JSON.stringify(
-  findings.map((f, i) => ({
-    index: i,
-    rule: f.ruleId,
-    file: f.file,
-    line: f.startLine,
-    message: f.message.slice(0, 200),
-  })),
-  null,
-  2,
-)}
-
-Return ONLY a JSON array. For each finding, give the endpoint indices that can exercise it. If you cannot determine any endpoint, use an empty array (the scanner will then test all endpoints with the relevant attack):
-[{ "findingIndex": 0, "endpointIndices": [2, 5] }, ...]`;
+When done, respond with ONLY a JSON object:
+{ "endpointIndices": [<indices of reaching endpoints>], "reachable": true }
+or, if it is genuinely dead/unreachable code:
+{ "endpointIndices": [], "reachable": false }`;
 
   const messages: ChatCompletionMessageParam[] = [
-    { role: "system", content: "You are a precise security data-flow analyst. Respond with JSON only." },
+    { role: "system", content: "You are a precise security data-flow analyst. Trace call graphs using the tools, then respond with JSON only." },
     { role: "user", content: prompt },
   ];
 
   let raw: string;
   try {
-    raw = await chatWithTools(llm, messages, [], async () => "", model, 1);
+    raw = await chatWithTools(llm, messages, codebaseTools, handler, model, 20);
   } catch {
-    // LLM failed — fall back to broad scan for all of these.
-    return findings.map((finding) => ({ finding, entrypointIds: [] }));
+    // Trace errored — leave unmapped (treated as inconclusive downstream).
+    return fileFindings.map((finding) => ({ finding, entrypointIds: [], unreachable: false }));
   }
 
-  let parsed: Array<{ findingIndex: number; endpointIndices: number[] }> = [];
+  let parsed: { endpointIndices?: number[]; reachable?: boolean } = {};
   try {
-    parsed = parseJsonLenient(extractJson(raw)) as Array<{ findingIndex: number; endpointIndices: number[] }>;
+    parsed = parseJsonLenient(extractJson(raw)) as { endpointIndices?: number[]; reachable?: boolean };
   } catch {
-    return findings.map((finding) => ({ finding, entrypointIds: [] }));
+    return fileFindings.map((finding) => ({ finding, entrypointIds: [], unreachable: false }));
   }
 
-  const byIndex = new Map<number, number[]>();
-  for (const entry of parsed) {
-    if (typeof entry?.findingIndex === "number") {
-      byIndex.set(entry.findingIndex, Array.isArray(entry.endpointIndices) ? entry.endpointIndices : []);
-    }
-  }
+  const indices = Array.isArray(parsed.endpointIndices) ? parsed.endpointIndices : [];
+  const entrypointIds = indices
+    .map((idx) => registered[idx]?.entrypointId)
+    .filter((id): id is string => Boolean(id));
 
-  return findings.map((finding, i) => {
-    const indices = byIndex.get(i) ?? [];
-    const entrypointIds = indices
-      .map((idx) => registered[idx]?.entrypointId)
-      .filter((id): id is string => Boolean(id));
-    return { finding, entrypointIds };
-  });
+  // No endpoints found AND the model declared it unreachable → dead code.
+  const unreachable = entrypointIds.length === 0 && parsed.reachable === false;
+
+  return fileFindings.map((finding) => ({ finding, entrypointIds, unreachable }));
 }
 
 // ---------------------------------------------------------------------------
@@ -321,20 +348,17 @@ export async function runValidationScans(
   mapped: MappedFinding[],
   hasPathParams: boolean,
 ): Promise<ValidationResult[]> {
-  const allEntrypointIds = registered.map((r) => r.entrypointId);
-
   // Group mapped findings by Bright test, unioning their target endpoints.
+  // Findings with no mapped endpoint (unreachable/inconclusive) are NOT scanned
+  // — broad-scanning every endpoint is both expensive and risks false
+  // validations (an unrelated finding of the same class on another endpoint).
   const byTest = new Map<string, Set<string>>();
   for (const m of mapped) {
+    if (m.entrypointIds.length === 0) continue;
     const test = m.finding.brightTest!;
     if (!byTest.has(test)) byTest.set(test, new Set());
     const set = byTest.get(test)!;
-    if (m.entrypointIds.length === 0) {
-      // Broad scan — this test must cover every endpoint.
-      for (const id of allEntrypointIds) set.add(id);
-    } else {
-      for (const id of m.entrypointIds) set.add(id);
-    }
+    for (const id of m.entrypointIds) set.add(id);
   }
 
   // Launch one scan per test.
@@ -396,13 +420,30 @@ export function buildVerdicts(
     const m = mappedSet.get(finding);
     const targetIds = m?.entrypointIds ?? [];
 
-    // Did Bright produce a finding with the same test tag (and matching
-    // endpoint when we have a specific mapping)?
-    const match = brightFindings.find((bf) => {
-      if (bf.testTag !== finding.brightTest) return false;
-      if (targetIds.length === 0) return true; // broad scan — any endpoint counts
-      return bf.entrypointId !== undefined && targetIds.includes(bf.entrypointId);
-    });
+    // No endpoint reaches this code. Distinguish dead code from an inconclusive
+    // trace, but in both cases there is nothing for DAST to confirm.
+    if (targetIds.length === 0) {
+      if (m?.unreachable) {
+        return {
+          finding,
+          verdict: "not-validated" as const,
+          detail: `Code at ${finding.file}:${finding.startLine} is not reachable from any registered endpoint (likely dead/unused code) — cannot be exercised by DAST.`,
+        };
+      }
+      return {
+        finding,
+        verdict: "not-validated" as const,
+        detail: `Could not trace ${finding.file}:${finding.startLine} to a live endpoint — no DAST scan was run for it.`,
+      };
+    }
+
+    // Did Bright produce a finding with the same test tag on a mapped endpoint?
+    const match = brightFindings.find(
+      (bf) =>
+        bf.testTag === finding.brightTest &&
+        bf.entrypointId !== undefined &&
+        targetIds.includes(bf.entrypointId),
+    );
 
     if (match) {
       return {

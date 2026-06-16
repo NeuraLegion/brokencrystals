@@ -2299,6 +2299,7 @@ async function runValidationFlow(
     sarifFindings,
     registered,
     config.modelSelector.current(),
+    ctx.repoPath,
   );
   await progress.phaseDetail(
     "validation",

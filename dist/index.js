@@ -35709,10 +35709,10 @@ function filesMatch(sarifFile, endpointFile) {
   if (a.endsWith(b) || b.endsWith(a)) return true;
   return basename2(a) === basename2(b) && basename2(a).length > 0;
 }
-async function mapFindingsToEndpoints(llm, findings, registered, model) {
+async function mapFindingsToEndpoints(llm, findings, registered, model, repoPath) {
   const mappable = findings.filter((f) => f.brightTest !== null);
   const mapped = [];
-  const needsLlm = [];
+  const needsTrace = [];
   for (const finding of mappable) {
     const direct = registered.filter(
       (r) => filesMatch(finding.file, r.endpoint.filePath)
@@ -35720,85 +35720,88 @@ async function mapFindingsToEndpoints(llm, findings, registered, model) {
     if (direct.length > 0) {
       mapped.push({ finding, entrypointIds: direct.map((r) => r.entrypointId) });
     } else {
-      needsLlm.push(finding);
+      needsTrace.push(finding);
     }
   }
-  if (needsLlm.length > 0) {
-    const llmMapped = await correlateViaLlm(llm, needsLlm, registered, model);
-    mapped.push(...llmMapped);
+  if (needsTrace.length === 0) return mapped;
+  const byFile = /* @__PURE__ */ new Map();
+  for (const f of needsTrace) {
+    const key = f.file || "<unknown>";
+    if (!byFile.has(key)) byFile.set(key, []);
+    byFile.get(key).push(f);
+  }
+  const handler = createToolHandler(repoPath);
+  const files = [...byFile.entries()];
+  const CONCURRENCY2 = 4;
+  for (let i = 0; i < files.length; i += CONCURRENCY2) {
+    const batch = files.slice(i, i + CONCURRENCY2);
+    const results = await Promise.all(
+      batch.map(
+        ([file, fileFindings]) => traceFileToEndpoints(llm, file, fileFindings, registered, handler, model)
+      )
+    );
+    for (const r of results) mapped.push(...r);
   }
   return mapped;
 }
-async function correlateViaLlm(llm, findings, registered, model) {
+async function traceFileToEndpoints(llm, file, fileFindings, registered, handler, model) {
   const endpointList = registered.map((r, i) => ({
     index: i,
-    id: r.entrypointId,
     method: r.endpoint.method,
     path: r.endpoint.path,
     file: r.endpoint.filePath
   }));
-  const prompt = `You are correlating static-analysis (CodeQL) findings to live HTTP endpoints for DAST validation.
+  const lines = [...new Set(fileFindings.map((f) => f.startLine))].sort((a, b) => a - b);
+  const rules = [...new Set(fileFindings.map((f) => f.ruleId))];
+  const prompt = `You are tracing a static-analysis (CodeQL) finding to the live HTTP endpoint(s) that reach its vulnerable code, so a DAST scanner can validate it.
 
-For each finding, identify which endpoint(s) reach the vulnerable code at runtime. A finding in a service/model/helper file is reachable through whichever controller(s) call that code.
+VULNERABLE FILE: ${file}
+LINES: ${lines.join(", ")}
+CODEQL RULES: ${rules.join(", ")}
 
-ENDPOINTS:
+Your job: find which registered endpoint(s) can reach this code at runtime. Use the tools to go down the call graph:
+- read_file to inspect the vulnerable file and understand which function/export contains the flagged lines
+- search_files to find who imports/calls that function (trace callers upward)
+- repeat until you reach a controller/route handler that maps to one of the registered endpoints below
+
+Almost everything is reachable through SOME endpoint. Only conclude "unreachable" if the code is genuinely dead \u2014 no caller chain leads to any registered endpoint (e.g. it is only called from tests, CLI scripts, or unused exports).
+
+REGISTERED ENDPOINTS:
 ${JSON.stringify(endpointList, null, 2)}
 
-FINDINGS:
-${JSON.stringify(
-    findings.map((f, i) => ({
-      index: i,
-      rule: f.ruleId,
-      file: f.file,
-      line: f.startLine,
-      message: f.message.slice(0, 200)
-    })),
-    null,
-    2
-  )}
-
-Return ONLY a JSON array. For each finding, give the endpoint indices that can exercise it. If you cannot determine any endpoint, use an empty array (the scanner will then test all endpoints with the relevant attack):
-[{ "findingIndex": 0, "endpointIndices": [2, 5] }, ...]`;
+When done, respond with ONLY a JSON object:
+{ "endpointIndices": [<indices of reaching endpoints>], "reachable": true }
+or, if it is genuinely dead/unreachable code:
+{ "endpointIndices": [], "reachable": false }`;
   const messages = [
-    { role: "system", content: "You are a precise security data-flow analyst. Respond with JSON only." },
+    { role: "system", content: "You are a precise security data-flow analyst. Trace call graphs using the tools, then respond with JSON only." },
     { role: "user", content: prompt }
   ];
   let raw;
   try {
-    raw = await chatWithTools(llm, messages, [], async () => "", model, 1);
+    raw = await chatWithTools(llm, messages, codebaseTools, handler, model, 20);
   } catch {
-    return findings.map((finding) => ({ finding, entrypointIds: [] }));
+    return fileFindings.map((finding) => ({ finding, entrypointIds: [], unreachable: false }));
   }
-  let parsed = [];
+  let parsed = {};
   try {
     parsed = parseJsonLenient(extractJson(raw));
   } catch {
-    return findings.map((finding) => ({ finding, entrypointIds: [] }));
+    return fileFindings.map((finding) => ({ finding, entrypointIds: [], unreachable: false }));
   }
-  const byIndex = /* @__PURE__ */ new Map();
-  for (const entry of parsed) {
-    if (typeof entry?.findingIndex === "number") {
-      byIndex.set(entry.findingIndex, Array.isArray(entry.endpointIndices) ? entry.endpointIndices : []);
-    }
-  }
-  return findings.map((finding, i) => {
-    const indices = byIndex.get(i) ?? [];
-    const entrypointIds = indices.map((idx) => registered[idx]?.entrypointId).filter((id) => Boolean(id));
-    return { finding, entrypointIds };
-  });
+  const indices = Array.isArray(parsed.endpointIndices) ? parsed.endpointIndices : [];
+  const entrypointIds = indices.map((idx) => registered[idx]?.entrypointId).filter((id) => Boolean(id));
+  const unreachable = entrypointIds.length === 0 && parsed.reachable === false;
+  return fileFindings.map((finding) => ({ finding, entrypointIds, unreachable }));
 }
 async function runValidationScans(api, projectId, repeaterId, registered, allFindings, mapped, hasPathParams) {
-  const allEntrypointIds = registered.map((r) => r.entrypointId);
   const byTest = /* @__PURE__ */ new Map();
   for (const m of mapped) {
+    if (m.entrypointIds.length === 0) continue;
     const test = m.finding.brightTest;
     if (!byTest.has(test)) byTest.set(test, /* @__PURE__ */ new Set());
     const set = byTest.get(test);
-    if (m.entrypointIds.length === 0) {
-      for (const id of allEntrypointIds) set.add(id);
-    } else {
-      for (const id of m.entrypointIds) set.add(id);
-    }
+    for (const id of m.entrypointIds) set.add(id);
   }
   const scanIds = [];
   for (const [test, idSet] of byTest.entries()) {
@@ -35843,11 +35846,23 @@ function buildVerdicts(allFindings, mapped, brightFindings) {
     }
     const m = mappedSet.get(finding);
     const targetIds = m?.entrypointIds ?? [];
-    const match = brightFindings.find((bf) => {
-      if (bf.testTag !== finding.brightTest) return false;
-      if (targetIds.length === 0) return true;
-      return bf.entrypointId !== void 0 && targetIds.includes(bf.entrypointId);
-    });
+    if (targetIds.length === 0) {
+      if (m?.unreachable) {
+        return {
+          finding,
+          verdict: "not-validated",
+          detail: `Code at ${finding.file}:${finding.startLine} is not reachable from any registered endpoint (likely dead/unused code) \u2014 cannot be exercised by DAST.`
+        };
+      }
+      return {
+        finding,
+        verdict: "not-validated",
+        detail: `Could not trace ${finding.file}:${finding.startLine} to a live endpoint \u2014 no DAST scan was run for it.`
+      };
+    }
+    const match = brightFindings.find(
+      (bf) => bf.testTag === finding.brightTest && bf.entrypointId !== void 0 && targetIds.includes(bf.entrypointId)
+    );
     if (match) {
       return {
         finding,
@@ -37909,7 +37924,8 @@ async function runValidationFlow(ctx, progress, projectId, repeaterId, registere
     llm,
     sarifFindings,
     registered,
-    config.modelSelector.current()
+    config.modelSelector.current(),
+    ctx.repoPath
   );
   await progress.phaseDetail(
     "validation",

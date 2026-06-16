@@ -152,24 +152,46 @@ describe("buildVerdicts", () => {
     expect(results[0].verdict).toBe("not-validated");
   });
 
-  it("broad-scan finding (no mapped endpoints) matches any endpoint", () => {
-    const mapped: MappedFinding[] = [{ finding: sqliFinding, entrypointIds: [] }];
+  it("marks unreachable (dead code) findings as not-validated without scanning", () => {
+    const mapped: MappedFinding[] = [
+      { finding: sqliFinding, entrypointIds: [], unreachable: true },
+    ];
+    const results = buildVerdicts([sqliFinding], mapped, []);
+    expect(results[0].verdict).toBe("not-validated");
+    expect(results[0].detail).toMatch(/not reachable|dead/i);
+  });
+
+  it("marks inconclusive (empty mapping, not flagged dead) findings as not-validated", () => {
+    const mapped: MappedFinding[] = [
+      { finding: sqliFinding, entrypointIds: [], unreachable: false },
+    ];
+    const results = buildVerdicts([sqliFinding], mapped, []);
+    expect(results[0].verdict).toBe("not-validated");
+    expect(results[0].detail).toMatch(/could not trace/i);
+  });
+
+  it("does not validate from an unrelated endpoint when mapping is empty", () => {
+    // A finding with no mapped endpoint must NOT be validated by a same-class
+    // finding on a different endpoint (no broad-scan false positives).
+    const mapped: MappedFinding[] = [
+      { finding: sqliFinding, entrypointIds: [], unreachable: false },
+    ];
     const brightFindings: Finding[] = [
       {
         id: "1",
         name: "SQL Injection",
         severity: "High",
-        url: "http://localhost/anything",
+        url: "http://localhost/unrelated",
         method: "GET",
         details: "",
         remedy: "",
-        entrypointId: "ep-random",
+        entrypointId: "ep-other",
         testTag: "sqli",
         issueId: "1",
       },
     ];
     const results = buildVerdicts([sqliFinding], mapped, brightFindings);
-    expect(results[0].verdict).toBe("validated");
+    expect(results[0].verdict).toBe("not-validated");
   });
 });
 
