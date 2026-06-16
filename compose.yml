@@ -1,11 +1,11 @@
 services:
   db:
     image: 'postgres:17-alpine'
-    restart: always
+    restart: on-failure
     healthcheck:
       interval: 10s
       retries: 10
-      test: ['CMD-SHELL', 'pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}']
+      test: ['CMD-SHELL', 'pg_isready -d ${DATABASE_SCHEMA} -U ${DATABASE_USER}']
       timeout: 45s
     environment:
       POSTGRES_DB: ${DATABASE_SCHEMA}
@@ -18,21 +18,30 @@ services:
       - '.data/nodejs:/var/lib/postgresql/data/'
 
   nodejs:
-    image: 'brightsec/brokencrystals'
-    restart: always
+    # image: brightsec/brokencrystals  # replaced — must build from source
+    build:
+      context: .
+    restart: on-failure
     healthcheck:
       interval: 5s
       retries: 10
+      start_period: 120s
       test:
         ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/api/config']
       timeout: 30s
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
+      URL: http://nodejs:3000
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
       CHAT_API_TOKEN: ${CHAT_API_TOKEN}
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+      POSTGRES_DB: ${DATABASE_SCHEMA}
+      POSTGRES_USER: ${DATABASE_USER}
+    ports:
+      - '3000:3000'
+      - '5000:5000'
     deploy:
       restart_policy:
         condition: on-failure
@@ -89,7 +98,7 @@ services:
     healthcheck:
       interval: 10s
       retries: 10
-      test: ['CMD-SHELL', 'pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}']
+      test: ['CMD-SHELL', 'pg_isready -d keycloak -U keycloak']
       timeout: 45s
     restart: on-failure
     volumes:

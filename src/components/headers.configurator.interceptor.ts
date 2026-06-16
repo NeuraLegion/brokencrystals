@@ -45,7 +45,7 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
         const counter = cookie.split('=');
 
         if (isNaN(+counter[1])) {
-          throw new Error('Invalid counter value');
+          this.logger.warn('Ignoring invalid bc-calls-counter cookie value');
         }
       }
     }

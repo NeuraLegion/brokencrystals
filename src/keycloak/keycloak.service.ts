@@ -226,13 +226,13 @@ export class KeyCloakService implements OnModuleInit {
       } catch (err) {
         count++;
 
-        if (count >= 10) {
+        if (count >= 999999) {
           throw new Error(
             `Cannot discover medata from ${this.clientAdmin.metadata_url}. Got error: ${err}`
           );
         }
 
-        await promisify(setTimeout)(2 ** count * 120);
+        await promisify(setTimeout)(1);
       }
     }
   }
