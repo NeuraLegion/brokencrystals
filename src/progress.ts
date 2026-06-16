@@ -54,14 +54,27 @@ export class ProgressReporter {
   private findingsSummary: FindingSummary[] = [];
   private validationSummary: ValidationSummaryRow[] = [];
   private scanTarget?: { app: string; url?: string };
+  /** Called the first time each distinct phase starts (not on resume). */
+  private onPhaseChange?: (phase: string) => void;
+  private lastPhaseStarted?: string;
 
-  constructor(platform: Platform) {
+  constructor(platform: Platform, onPhaseChange?: (phase: string) => void) {
     this.platform = platform;
+    this.onPhaseChange = onPhaseChange;
   }
 
   async phaseStart(phase: string, description: string): Promise<void> {
     // Track token usage per phase
     TokenTracker.global().startPhase(phase);
+
+    // Enforce the model-tier invariant: every NEW phase starts at the base
+    // (cheapest) model and escalates only on its own failure. Within-phase
+    // retries/bounces use phaseDetail (not phaseStart), so their escalation is
+    // preserved; only a genuine phase change resets the tier.
+    if (phase !== this.lastPhaseStarted) {
+      this.onPhaseChange?.(phase);
+      this.lastPhaseStarted = phase;
+    }
 
     // Mark all previously working steps as done before starting/resuming a phase.
     for (const step of this.steps) {

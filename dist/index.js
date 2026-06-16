@@ -25103,11 +25103,19 @@ var ProgressReporter = class {
   findingsSummary = [];
   validationSummary = [];
   scanTarget;
-  constructor(platform) {
+  /** Called the first time each distinct phase starts (not on resume). */
+  onPhaseChange;
+  lastPhaseStarted;
+  constructor(platform, onPhaseChange) {
     this.platform = platform;
+    this.onPhaseChange = onPhaseChange;
   }
   async phaseStart(phase, description) {
     TokenTracker.global().startPhase(phase);
+    if (phase !== this.lastPhaseStarted) {
+      this.onPhaseChange?.(phase);
+      this.lastPhaseStarted = phase;
+    }
     for (const step of this.steps) {
       if (step.status === "working") step.status = "done";
     }
@@ -36928,7 +36936,12 @@ async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig
 }
 async function runOrchestrator(ctx) {
   const { repoPath, platform, llm, config } = ctx;
-  const progress = new ProgressReporter(platform);
+  const progress = new ProgressReporter(platform, (phase) => {
+    if (config.modelSelector.isEscalated()) {
+      console.log(`[Model] New phase "${phase}" \u2014 resetting to base model`);
+      config.modelSelector.reset();
+    }
+  });
   let appProcess;
   let repeater;
   let harnessResult;

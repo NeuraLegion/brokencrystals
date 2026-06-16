@@ -412,7 +412,15 @@ async function runSetupIfNeeded(
 
 export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
   const { repoPath, platform, llm, config } = ctx;
-  const progress = new ProgressReporter(platform);
+  // Every new phase starts at the base model and escalates only on its own
+  // failure — reset the tier on each phase change so escalation never leaks
+  // across phase boundaries.
+  const progress = new ProgressReporter(platform, (phase) => {
+    if (config.modelSelector.isEscalated()) {
+      console.log(`[Model] New phase "${phase}" — resetting to base model`);
+      config.modelSelector.reset();
+    }
+  });
 
   let appProcess: ChildProcess | undefined;
   let repeater: RepeaterHandle | undefined;
