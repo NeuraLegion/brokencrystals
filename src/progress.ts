@@ -1,5 +1,6 @@
 import type { Platform } from "./platform.js";
 import { TokenTracker } from "./inference.js";
+import { progress as logProgress } from "./logger.js";
 
 interface Step {
   /** Logical phase key — repeated phaseStart calls with the same key merge into one step. */
@@ -57,6 +58,7 @@ export class ProgressReporter {
   /** Called the first time each distinct phase starts (not on resume/loop re-entry). */
   private onPhaseChange?: (phase: string) => void;
   private seenPhases = new Set<string>();
+  private lastProgressLine?: string;
 
   constructor(platform: Platform, onPhaseChange?: (phase: string) => void) {
     this.platform = platform;
@@ -76,6 +78,13 @@ export class ProgressReporter {
     if (!this.seenPhases.has(phase)) {
       this.seenPhases.add(phase);
       this.onPhaseChange?.(phase);
+    }
+
+    // Customer-facing milestone (clean stdout). Dedup identical consecutive
+    // lines so resumes don't spam.
+    if (description && description !== this.lastProgressLine) {
+      this.lastProgressLine = description;
+      logProgress(description);
     }
 
     // Mark all previously working steps as done before starting/resuming a phase.

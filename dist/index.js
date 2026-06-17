@@ -5586,12 +5586,12 @@ var require_common = __commonJS({
             args.unshift("%O");
           }
           let index = 0;
-          args[0] = args[0].replace(/%([a-zA-Z%])/g, (match, format) => {
+          args[0] = args[0].replace(/%([a-zA-Z%])/g, (match, format2) => {
             if (match === "%%") {
               return "%";
             }
             index++;
-            const formatter = createDebug.formatters[format];
+            const formatter = createDebug.formatters[format2];
             if (typeof formatter === "function") {
               const val = args[index];
               match = formatter.call(self2, val);
@@ -14774,8 +14774,8 @@ var require_HttpRequestRunner = __commonJS({
       get protocol() {
         return models_1.Protocol.HTTP;
       }
-      constructor(logger, proxyFactory, options) {
-        this.logger = logger;
+      constructor(logger2, proxyFactory, options) {
+        this.logger = logger2;
         this.proxyFactory = proxyFactory;
         this.options = options;
         this.DEFAULT_MIME_TYPE = "application/octet-stream";
@@ -15107,9 +15107,9 @@ var require_Repeater = __commonJS({
       get runningStatus() {
         return this._runningStatus;
       }
-      constructor(repeaterId, logger, repeaterServer, repeaterCommands, requestRunnerOptions) {
+      constructor(repeaterId, logger2, repeaterServer, repeaterCommands, requestRunnerOptions) {
         this.repeaterId = repeaterId;
-        this.logger = logger;
+        this.logger = logger2;
         this.repeaterServer = repeaterServer;
         this.repeaterCommands = repeaterCommands;
         this.requestRunnerOptions = requestRunnerOptions;
@@ -19192,7 +19192,7 @@ var require_extension = __commonJS({
       }
       return offers;
     }
-    function format(extensions) {
+    function format2(extensions) {
       return Object.keys(extensions).map((extension) => {
         let configurations = extensions[extension];
         if (!Array.isArray(configurations)) configurations = [configurations];
@@ -19207,7 +19207,7 @@ var require_extension = __commonJS({
         }).join(", ");
       }).join(", ");
     }
-    module.exports = { format, parse };
+    module.exports = { format: format2, parse };
   }
 });
 
@@ -19240,7 +19240,7 @@ var require_websocket = __commonJS({
     var {
       EventTarget: { addEventListener: addEventListener2, removeEventListener: removeEventListener2 }
     } = require_event_target();
-    var { format, parse } = require_extension();
+    var { format: format2, parse } = require_extension();
     var { toBuffer } = require_buffer_util();
     var closeTimeout = 30 * 1e3;
     var kAborted = /* @__PURE__ */ Symbol("kAborted");
@@ -19770,7 +19770,7 @@ var require_websocket = __commonJS({
           false,
           opts.maxPayload
         );
-        opts.headers["Sec-WebSocket-Extensions"] = format({
+        opts.headers["Sec-WebSocket-Extensions"] = format2({
           [PerMessageDeflate.extensionName]: perMessageDeflate.offer()
         });
       }
@@ -24258,8 +24258,8 @@ var require_DefaultRepeaterServer = __commonJS({
         }
         return this._socket;
       }
-      constructor(logger, options) {
-        this.logger = logger;
+      constructor(logger2, options) {
+        this.logger = logger2;
         this.options = options;
         this.MAX_DEPLOYMENT_TIMEOUT = 6e4;
         this.MAX_RECONNECTION_ATTEMPTS = 20;
@@ -25086,6 +25086,109 @@ function parseRunMode(value) {
 var import_tree_kill = __toESM(require_tree_kill(), 1);
 import { execFileSync as execFileSync4 } from "child_process";
 
+// src/logger.ts
+import { mkdirSync as mkdirSync2, appendFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
+import { format } from "util";
+var DEBUG = process.env.BRIGHT_DEBUG === "1" || process.env.BRIGHT_DEBUG === "true" || process.env.BRIGHT_DEBUG === "yes";
+var logFile;
+var fileSinkBroken = false;
+var secrets = /* @__PURE__ */ new Set();
+var SECRET_ENV_KEYS = [
+  "BRIGHT_TOKEN",
+  "REPO_ACCESS_TOKEN",
+  "OPENAI_API_KEY",
+  "INFERENCE_TOKEN",
+  "GIT_TOKEN"
+];
+function addSecret(value) {
+  if (value && value.length >= 6) secrets.add(value);
+}
+function loadEnvSecrets() {
+  for (const k of SECRET_ENV_KEYS) addSecret(process.env[k]);
+}
+function redact(line) {
+  let out = line;
+  for (const s of secrets) {
+    if (!s) continue;
+    out = out.split(s).join("\xABredacted\xBB");
+  }
+  out = out.replace(
+    /\b(Authorization"?\s*[:=]\s*"?)(?:Bearer\s+|Api-Key\s+)?[A-Za-z0-9._\-]{8,}/gi,
+    "$1\xABredacted\xBB"
+  );
+  out = out.replace(/\b(Set-Cookie"?\s*[:=]\s*"?)[^"\n,;]+/gi, "$1\xABredacted\xBB");
+  out = out.replace(/\bBearer\s+[A-Za-z0-9._\-]{8,}/g, "Bearer \xABredacted\xBB");
+  return out;
+}
+function timestamp() {
+  return (/* @__PURE__ */ new Date()).toLocaleString("sv-SE", { hour12: false }).replace(" ", "T");
+}
+function initLogger() {
+  loadEnvSecrets();
+  try {
+    const dir = join(homedir(), ".bright-agent", "logs");
+    mkdirSync2(dir, { recursive: true });
+    const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+    logFile = join(dir, `run-${stamp}.log`);
+    appendFileSync(logFile, `# Bright Agent run log \u2014 ${(/* @__PURE__ */ new Date()).toISOString()}
+`);
+  } catch {
+    fileSinkBroken = true;
+    logFile = void 0;
+  }
+}
+function logFilePath() {
+  return logFile;
+}
+function writeFileLine(line) {
+  if (!logFile || fileSinkBroken) return;
+  try {
+    appendFileSync(logFile, line + "\n");
+  } catch {
+    fileSinkBroken = true;
+  }
+}
+function internal(stream, args) {
+  const line = redact(`${timestamp()} ${format(...args)}`);
+  writeFileLine(line);
+  if (DEBUG || fileSinkBroken && stream === "error") {
+    (stream === "error" ? process.stderr : process.stdout).write(line + "\n");
+  } else if (fileSinkBroken && DEBUG) {
+    process.stdout.write(line + "\n");
+  }
+}
+function progress(message) {
+  const clean = redact(message);
+  process.stdout.write(`${clean}
+`);
+  writeFileLine(`${timestamp()} [progress] ${clean}`);
+}
+function logError(message) {
+  const clean = redact(message);
+  process.stderr.write(`${clean}
+`);
+  writeFileLine(`${timestamp()} [error] ${clean}`);
+}
+function installConsoleRouting() {
+  console.log = (...args) => internal("log", args);
+  console.info = (...args) => internal("log", args);
+  console.debug = (...args) => internal("log", args);
+  console.warn = (...args) => internal("warn", args);
+  console.error = (...args) => internal("error", args);
+}
+var logger = {
+  init: initLogger,
+  installConsoleRouting,
+  progress,
+  error: logError,
+  addSecret,
+  redact,
+  logFilePath,
+  isDebug: () => DEBUG
+};
+
 // src/progress.ts
 function condenseDetail(detail) {
   const trimmed = detail.trim();
@@ -25106,6 +25209,7 @@ var ProgressReporter = class {
   /** Called the first time each distinct phase starts (not on resume/loop re-entry). */
   onPhaseChange;
   seenPhases = /* @__PURE__ */ new Set();
+  lastProgressLine;
   constructor(platform, onPhaseChange) {
     this.platform = platform;
     this.onPhaseChange = onPhaseChange;
@@ -25115,6 +25219,10 @@ var ProgressReporter = class {
     if (!this.seenPhases.has(phase)) {
       this.seenPhases.add(phase);
       this.onPhaseChange?.(phase);
+    }
+    if (description && description !== this.lastProgressLine) {
+      this.lastProgressLine = description;
+      progress(description);
     }
     for (const step of this.steps) {
       if (step.status === "working") step.status = "done";
@@ -31763,9 +31871,9 @@ ${combined}
   } catch {
   }
   try {
-    const logFile = `${repoPath}/.bright-container-logs.txt`;
-    if (existsSync3(logFile)) {
-      const logContent = readFileSync2(logFile, "utf-8");
+    const logFile2 = `${repoPath}/.bright-container-logs.txt`;
+    if (existsSync3(logFile2)) {
+      const logContent = readFileSync2(logFile2, "utf-8");
       const errorPatterns = /error|failed|fatal|panic|exception|denied|refused|password.*match|login failed|permission|timeout|not found|cannot connect/i;
       const errorLines = logContent.split("\n").filter((line) => errorPatterns.test(line)).slice(0, 20).map((line) => line.trim().slice(0, 300));
       if (errorLines.length > 0) {
@@ -34373,7 +34481,7 @@ function extractIssueTestTag(issue) {
 }
 
 // src/phases/fix.ts
-import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2 } from "fs";
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync3 } from "fs";
 import { resolve as resolve2, dirname, basename } from "path";
 
 // src/prompts/generate-fix.ts
@@ -34626,7 +34734,7 @@ function applyFixes(repoPath, fixes) {
         continue;
       }
       const fullPath = resolve2(repoPath, file.path);
-      mkdirSync2(dirname(fullPath), { recursive: true });
+      mkdirSync3(dirname(fullPath), { recursive: true });
       writeFileSync2(fullPath, file.content, "utf-8");
       console.log(`[Fix] Wrote ${file.path}`);
     }
@@ -36884,10 +36992,10 @@ async function restartApp(current, llm, repoPath, techStack, startupConfig, mode
     monitor?.resume();
   }
 }
-async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, modelSelector, progress, context) {
+async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig, postStartSetupHints, modelSelector, progress2, context) {
   const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
   if (!needs) return { ran: false, completed: false, summary: "Setup not needed" };
-  await progress.phaseStart("first_run_setup", "Completing first-time application setup");
+  await progress2.phaseStart("first_run_setup", "Completing first-time application setup");
   console.log(`[Engine] App needs first-run setup (${context}) \u2014 running setup phase`);
   const baseModel = modelSelector.current();
   const criticModel = modelSelector.peekEscalated();
@@ -36903,7 +37011,7 @@ async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig
   );
   if (!setupResult.completed && setupResult.infraRepairHint) {
     console.log(`[Engine] First-run setup needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
-    await progress.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
+    await progress2.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
     return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
   }
   if (!setupResult.completed && modelSelector.escalate()) {
@@ -36920,23 +37028,23 @@ async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig
     );
     if (!setupResult.completed && setupResult.infraRepairHint) {
       console.log(`[Engine] Escalated setup also needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
-      await progress.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
+      await progress2.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
       return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
     }
   }
   if (setupResult.completed) {
-    await progress.phaseDetail("first_run_setup", "done", `Setup completed: ${setupResult.summary}`);
+    await progress2.phaseDetail("first_run_setup", "done", `Setup completed: ${setupResult.summary}`);
     console.log(`[Engine] First-run setup completed (${context}): ${setupResult.summary}`);
     modelSelector.reset();
     return { ran: true, completed: true, credentials: setupResult.credentials, summary: setupResult.summary };
   }
   console.warn(`[Engine] First-run setup failed (${context}): ${setupResult.summary}`);
-  await progress.phaseDetail("first_run_setup", "failed", `Setup failed: ${setupResult.summary}`);
+  await progress2.phaseDetail("first_run_setup", "failed", `Setup failed: ${setupResult.summary}`);
   return { ran: true, completed: false, summary: setupResult.summary };
 }
 async function runOrchestrator(ctx) {
   const { repoPath, platform, llm, config } = ctx;
-  const progress = new ProgressReporter(platform, (phase) => {
+  const progress2 = new ProgressReporter(platform, (phase) => {
     if (config.modelSelector.isEscalated()) {
       console.log(`[Model] New phase "${phase}" \u2014 resetting to base model`);
       config.modelSelector.reset();
@@ -36958,14 +37066,14 @@ async function runOrchestrator(ctx) {
   const activeScanIds = [];
   const pausedForThrottle = [];
   try {
-    await progress.phaseStart(
+    await progress2.phaseStart(
       "startup",
       "Detecting tech stack and starting the application"
     );
     const techStack = await detectTechStack(
       repoPath
     );
-    await progress.phaseDetail(
+    await progress2.phaseDetail(
       "startup",
       "tech_stack",
       `Tech stack: ${formatTechStack(techStack)}`
@@ -36973,7 +37081,7 @@ async function runOrchestrator(ctx) {
     loadedBrightStar = readBrightStar(repoPath);
     if (loadedBrightStar) {
       console.log("[BrightStar] Found BRIGHT_STAR.md \u2014 pre-prepping pipeline from prior run memory");
-      await progress.phaseDetail(
+      await progress2.phaseDetail(
         "startup",
         "brightstar",
         "Loaded prior run memory (BRIGHT_STAR.md) \u2014 reusing known-good startup/auth config"
@@ -36981,7 +37089,7 @@ async function runOrchestrator(ctx) {
     }
     if (config.runMode === "function") {
       console.log("[Engine] Running in function harness mode");
-      await progress.phaseStart(
+      await progress2.phaseStart(
         "harness",
         "Running function harness mode \u2014 wrapping critical functions for scanning"
       );
@@ -36992,18 +37100,18 @@ async function runOrchestrator(ctx) {
         const msg = toErrorMessage(err);
         console.error(`[Harness] Function harness failed: ${msg}`);
         const brief = msg.length > 200 ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "\u2026" : msg;
-        await progress.phaseStart("done", `Function harness mode failed: ${brief}`);
+        await progress2.phaseStart("done", `Function harness mode failed: ${brief}`);
         return;
       }
-      await progress.phaseDetail(
+      await progress2.phaseDetail(
         "harness",
         "ready",
         `Harness running with ${harnessResult.endpoints.length} endpoint(s) on port ${harnessResult.config.port}`
       );
-      return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+      return await runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
     }
     if (!canBuildFromSource(repoPath)) {
-      await progress.phaseStart(
+      await progress2.phaseStart(
         "done",
         "Cannot build application from source \u2014 no Dockerfile, package.json, or build system found. Fixes cannot be tested against a pre-built remote image. Aborting."
       );
@@ -37028,7 +37136,7 @@ async function runOrchestrator(ctx) {
           const { strippedFile, removed } = stripNonEssentialServices(repoPath, composeFile);
           if (removed.length > 0) {
             console.log(`[Engine] Attempting partial boot without: ${removed.join(", ")}`);
-            await progress.phaseDetail(
+            await progress2.phaseDetail(
               "startup",
               "partial_boot",
               `Trying partial boot \u2014 stripped ${removed.length} non-essential service(s): ${removed.join(", ")}`
@@ -37057,11 +37165,11 @@ async function runOrchestrator(ctx) {
       if (!startup) {
         if (config.runMode === "dynamic") {
           const brief = msg.length > 200 ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "\u2026" : msg;
-          await progress.phaseStart("done", `Application startup failed: ${brief}`);
+          await progress2.phaseStart("done", `Application startup failed: ${brief}`);
           return;
         }
         console.log("[Engine] Falling back to function harness mode...");
-        await progress.phaseDetail(
+        await progress2.phaseDetail(
           "startup",
           "fallback",
           "Full app startup failed \u2014 falling back to function harness mode"
@@ -37069,12 +37177,12 @@ async function runOrchestrator(ctx) {
         try {
           harnessResult = await runFunctionHarness(llm, repoPath, techStack, config.modelSelector);
           appProcess = harnessResult.process;
-          await progress.phaseDetail(
+          await progress2.phaseDetail(
             "startup",
             "harness_ready",
             `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`
           );
-          return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+          return await runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
         } catch (harnessErr) {
           console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
           throw startupErr;
@@ -37085,8 +37193,8 @@ async function runOrchestrator(ctx) {
     let startupConfig = startup.config;
     let baseUrl = `http://localhost:${startupConfig.port}`;
     const selectedApp = techStack.serviceRoot && techStack.serviceRoot !== "." ? techStack.serviceRoot : "repository root";
-    await progress.setScanTarget(selectedApp, baseUrl);
-    await progress.phaseDetail(
+    await progress2.setScanTarget(selectedApp, baseUrl);
+    await progress2.phaseDetail(
       "startup",
       "app_running",
       `Application running at ${baseUrl} (${selectedApp})`
@@ -37181,7 +37289,7 @@ async function runOrchestrator(ctx) {
       return { ok: false, detail: qr.diagnostics ?? "quick restart failed" };
     });
     healthMonitor.start();
-    await progress.phaseStart(
+    await progress2.phaseStart(
       "setup",
       "Setting up Bright security scanner and Repeater"
     );
@@ -37196,7 +37304,7 @@ async function runOrchestrator(ctx) {
       projectId,
       config
     );
-    await progress.phaseDetail(
+    await progress2.phaseDetail(
       "setup",
       "repeater",
       "Repeater connected"
@@ -37213,7 +37321,7 @@ async function runOrchestrator(ctx) {
         startupConfig,
         startup.postStartSetupHints,
         config.modelSelector,
-        progress,
+        progress2,
         setupBounce === 0 ? "initial" : `bounce-${setupBounce}`
       );
       if (r.completed) {
@@ -37224,7 +37332,7 @@ async function runOrchestrator(ctx) {
       if (!r.infraRepairHint || setupBounce >= MAX_SETUP_BOUNCEBACKS) break;
       console.log(`[Engine] Setup infra bounce-back ${setupBounce + 1}/${MAX_SETUP_BOUNCEBACKS} \u2014 repairing infrastructure`);
       console.log(`[Engine] Hint: ${r.infraRepairHint.slice(0, 200)}`);
-      await progress.phaseDetail(
+      await progress2.phaseDetail(
         "first_run_setup",
         "infra_repair",
         `Bounce-back ${setupBounce + 1}: ${r.infraRepairHint.slice(0, 120)}`
@@ -37287,7 +37395,7 @@ async function runOrchestrator(ctx) {
         break;
       }
     }
-    await progress.phaseStart("scan_prep", "Preparing application for security scanning");
+    await progress2.phaseStart("scan_prep", "Preparing application for security scanning");
     await healthMonitor?.pause();
     let scanPrepReplayCommands = [];
     const authHints = [];
@@ -37310,7 +37418,7 @@ async function runOrchestrator(ctx) {
       );
       if (prepResult.failureKind === "verification_missing") {
         console.warn("[Engine] Scan prep skipped mandatory POST verification \u2014 retrying targeted verification pass");
-        await progress.phaseDetail("scan_prep", "verification_retry", prepResult.summary);
+        await progress2.phaseDetail("scan_prep", "verification_retry", prepResult.summary);
         prepResult = await prepareScanEnvironment(
           llm,
           repoPath,
@@ -37325,7 +37433,7 @@ async function runOrchestrator(ctx) {
         );
       }
       if (prepResult.completed && prepResult.changes.length > 0) {
-        await progress.phaseDetail("scan_prep", "done", prepResult.summary);
+        await progress2.phaseDetail("scan_prep", "done", prepResult.summary);
         if (prepResult.replayCommands?.length) {
           scanPrepReplayCommands = prepResult.replayCommands;
         }
@@ -37334,11 +37442,11 @@ async function runOrchestrator(ctx) {
           addHint(authHints, `[scan-prep] ${change}`);
         }
       } else if (prepResult.completed) {
-        await progress.phaseDetail("scan_prep", "done", "No changes needed");
+        await progress2.phaseDetail("scan_prep", "done", "No changes needed");
         addHint(authHints, "[scan-prep] Completed: no rate-limit/security-control changes needed.");
       } else if (prepResult.failureKind === "login_5xx" && config.runMode === "dynamic") {
         console.warn(`[Engine] Scan prep found a crashing login endpoint \u2014 running durable source repair before auth`);
-        await progress.phaseDetail("scan_prep", "login_repair", prepResult.summary);
+        await progress2.phaseDetail("scan_prep", "login_repair", prepResult.summary);
         addHint(authHints, `[scan-prep] ${prepResult.summary}`);
         const repairHints = [
           `[scan-prep-login-repair] ${prepResult.summary}`,
@@ -37391,7 +37499,7 @@ async function runOrchestrator(ctx) {
         healthMonitor.start();
       } else {
         console.warn(`[Engine] Scan prep failed (${prepResult.failureKind ?? "unknown"}): ${prepResult.summary} \u2014 retrying with escalated model`);
-        await progress.phaseDetail("scan_prep", "retry", prepResult.summary);
+        await progress2.phaseDetail("scan_prep", "retry", prepResult.summary);
         config.modelSelector.escalate();
         const retryResult = await prepareScanEnvironment(
           llm,
@@ -37402,7 +37510,7 @@ async function runOrchestrator(ctx) {
           `Previous attempt failed: ${prepResult.summary}. You MUST find and disable ALL rate limiters and security controls. If you found throttle/rate-limit code references in the codebase, PATCH THEM \u2014 do not report failure without attempting source code patches. Rebuild the app after patching, then verify with rapid requests.`
         );
         if (retryResult.completed && retryResult.changes.length > 0) {
-          await progress.phaseDetail("scan_prep", "done", retryResult.summary);
+          await progress2.phaseDetail("scan_prep", "done", retryResult.summary);
           if (retryResult.replayCommands?.length) {
             scanPrepReplayCommands = retryResult.replayCommands;
           }
@@ -37412,7 +37520,7 @@ async function runOrchestrator(ctx) {
           }
         } else {
           console.warn(`[Engine] Scan prep retry also failed: ${retryResult.summary} \u2014 continuing anyway`);
-          await progress.phaseDetail("scan_prep", "warning", retryResult.summary);
+          await progress2.phaseDetail("scan_prep", "warning", retryResult.summary);
           addHint(authHints, `[scan-prep-warning] ${retryResult.summary}`);
         }
       }
@@ -37423,7 +37531,7 @@ async function runOrchestrator(ctx) {
       rateLimitRecoveryAttempts = 0;
       healthMonitor?.resume();
     }
-    await progress.phaseStart("auth", "Detecting authentication requirements");
+    await progress2.phaseStart("auth", "Detecting authentication requirements");
     await healthMonitor?.pause();
     let preAuthContext = buildContextSummary(techStack, startupConfig, [], 0);
     if (setupCredentials) {
@@ -37454,11 +37562,11 @@ This user should work for authentication. Skip user registration/seeding and go 
     mergeHints(authHints, authResult.authHints);
     authRegistration = authResult.registration;
     if (authResult.authObjectId) {
-      await progress.phaseDetail("auth", "auth_done", "Auth configured");
+      await progress2.phaseDetail("auth", "auth_done", "Auth configured");
     } else if (!authResult.authFailed) {
-      await progress.phaseDetail("auth", "auth_done", "No authentication required");
+      await progress2.phaseDetail("auth", "auth_done", "No authentication required");
     } else {
-      await progress.phaseDetail(
+      await progress2.phaseDetail(
         "auth",
         "auth_attempt_failed",
         authResult.infraRepairHint ? "Auth needs application repair before configuration can continue" : "Auth configuration attempt failed"
@@ -37472,7 +37580,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       config.modelSelector.escalate();
       console.log(`[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} \u2014 repairing infrastructure`);
       console.log(`[Engine] Hint: ${authResult.infraRepairHint.slice(0, 200)}`);
-      await progress.phaseDetail(
+      await progress2.phaseDetail(
         "auth",
         "infra_repair",
         `Bounce-back ${bounce}: ${authResult.infraRepairHint.slice(0, 120)}`
@@ -37490,7 +37598,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             authResult.infraRepairHint
           );
           if (rateLimitRepair.completed) {
-            await progress.phaseDetail("auth", "rate_limit_repair", rateLimitRepair.summary);
+            await progress2.phaseDetail("auth", "rate_limit_repair", rateLimitRepair.summary);
             addHint(authHints, `[auth-rate-limit-repair] ${rateLimitRepair.summary}`);
             if (rateLimitRepair.replayCommands?.length) {
               scanPrepReplayCommands = [
@@ -37500,7 +37608,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             }
           } else {
             console.warn(`[Engine] Targeted rate-limit repair did not complete: ${rateLimitRepair.summary}`);
-            await progress.phaseDetail("auth", "rate_limit_repair_failed", rateLimitRepair.summary);
+            await progress2.phaseDetail("auth", "rate_limit_repair_failed", rateLimitRepair.summary);
             addHint(authHints, `[auth-rate-limit-repair-failed] ${rateLimitRepair.summary}`);
           }
           if (startupConfig.docker) {
@@ -37526,7 +37634,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           authRegistration = authResult.registration;
           if (retryAuthResult2.authObjectId) {
             console.log(`[Engine] Auth rate-limit repair ${bounce} succeeded: ${retryAuthResult2.authObjectId}`);
-            await progress.phaseDetail(
+            await progress2.phaseDetail(
               "auth",
               "auth_done",
               "Auth configured (after rate-limit repair)"
@@ -37549,7 +37657,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         const hintIsSpecific = isSpecificInfraHint(authResult.infraRepairHint, injected.length);
         if (appStillHealthy && !hintIsSpecific) {
           console.warn(`[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} \u2192 OK) and the hint is not evidence-backed. Skipping infrastructure teardown \u2014 problem is auth config, not infra.`);
-          await progress.phaseDetail(
+          await progress2.phaseDetail(
             "auth",
             "infra_repair_skipped",
             "App is healthy \u2014 auth issue is not infrastructure-related"
@@ -37582,7 +37690,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           authRegistration = authResult.registration;
           if (retryAuthResult2.authObjectId) {
             console.log(`[Engine] Auth recovered after non-infra retry on bounce ${bounce}: ${retryAuthResult2.authObjectId}`);
-            await progress.phaseDetail(
+            await progress2.phaseDetail(
               "auth",
               "auth_done",
               "Auth configured (after non-infra retry)"
@@ -37608,7 +37716,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           console.log(
             `[Engine] /health is OK but the auth INFRA_REPAIR hint is specific (env-var + concrete error pattern${injected.length > 0 ? ` and ${injected.length} env var(s) were injected` : ""}). Trusting the LLM diagnosis and rebuilding.`
           );
-          await progress.phaseDetail(
+          await progress2.phaseDetail(
             "auth",
             "infra_repair_forced",
             "Specific evidence-backed hint \u2014 proceeding with infra rebuild despite /health=OK"
@@ -37645,7 +37753,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             startupConfig,
             repairedStartup.postStartSetupHints ?? startup.postStartSetupHints,
             config.modelSelector,
-            progress,
+            progress2,
             `bounce-back ${bounce}`
           );
           if (setupRetry.completed && setupRetry.credentials) {
@@ -37683,7 +37791,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         authRegistration = authResult.registration;
         if (retryAuthResult.authObjectId) {
           console.log(`[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
-          await progress.phaseDetail(
+          await progress2.phaseDetail(
             "auth",
             "auth_done",
             "Auth configured (after infra repair)"
@@ -37703,7 +37811,7 @@ This user should work for authentication. Skip user registration/seeding and go 
     if (authResult.authFailed) {
       if (config.runMode === "dynamic") {
         console.error("[Engine] Auth configuration failed \u2014 aborting (dynamic mode requires working auth)");
-        await progress.phaseDetail(
+        await progress2.phaseDetail(
           "auth",
           "auth_failed",
           "Auth configuration failed \u2014 cannot scan without authentication in dynamic mode"
@@ -37711,7 +37819,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         throw new Error("Auth configuration failed: the application requires authentication but we could not configure it. Aborting.");
       } else {
         console.warn("[Engine] Auth configuration failed \u2014 falling back to function harness mode");
-        await progress.phaseDetail(
+        await progress2.phaseDetail(
           "auth",
           "fallback",
           "Auth failed \u2014 falling back to function harness mode (no auth needed)"
@@ -37720,15 +37828,15 @@ This user should work for authentication. Skip user registration/seeding and go 
           await killProcess(appProcess);
           harnessResult = await runFunctionHarness(llm, repoPath, techStack, config.modelSelector);
           appProcess = harnessResult.process;
-          await progress.phaseDetail(
+          await progress2.phaseDetail(
             "auth",
             "harness_ready",
             `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`
           );
-          return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+          return await runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
         } catch (harnessErr) {
           console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
-          await progress.phaseStart(
+          await progress2.phaseStart(
             "done",
             "Authentication and function harness both failed. Cannot scan."
           );
@@ -37769,7 +37877,7 @@ This user should work for authentication. Skip user registration/seeding and go 
     const swaggerResult = await discoverEndpointsViaSwagger(baseUrl);
     let swaggerEndpoints = [];
     if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {
-      await progress.phaseStart(
+      await progress2.phaseStart(
         "swagger",
         "Probing for OpenAPI/Swagger spec"
       );
@@ -37777,7 +37885,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       console.log(
         `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from existing OpenAPI spec`
       );
-      await progress.phaseDetail(
+      await progress2.phaseDetail(
         "swagger",
         "spec_found",
         `OpenAPI spec found \u2014 ${swaggerEndpoints.length} endpoints`
@@ -37785,7 +37893,7 @@ This user should work for authentication. Skip user registration/seeding and go 
     } else {
       console.log("[Swagger] No spec found \u2014 will rely on static analysis");
     }
-    await progress.phaseStart(
+    await progress2.phaseStart(
       "analyze",
       "Analyzing source code for endpoints and parameters"
     );
@@ -37819,20 +37927,20 @@ This user should work for authentication. Skip user registration/seeding and go 
     for (const ep of endpoints) {
       console.log(`[Analyze]   ${ep.method} ${ep.path}`);
     }
-    await progress.phaseDetail(
+    await progress2.phaseDetail(
       "analyze",
       "endpoints",
       `${endpoints.length} endpoints (${swaggerEndpoints.length > 0 ? `${swaggerEndpoints.length} from spec + ${staticEndpoints.length} from code` : "static analysis"})`
     );
     if (endpoints.length === 0) {
-      await progress.phaseStart(
+      await progress2.phaseStart(
         "done",
         "No HTTP endpoints found. Nothing to scan."
       );
       return;
     }
     const contextSummary = buildContextSummary(techStack, startupConfig, endpoints, swaggerEndpoints.length);
-    await progress.phaseStart(
+    await progress2.phaseStart(
       "entrypoints",
       "Registering API endpoints for scanning"
     );
@@ -37874,7 +37982,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       authResult.authObjectId,
       healthMonitor
     );
-    await progress.phaseDetail(
+    await progress2.phaseDetail(
       "entrypoints",
       "registered",
       `Registered ${registered.length} entrypoints`
@@ -37904,14 +38012,14 @@ This user should work for authentication. Skip user registration/seeding and go 
         projectId,
         registered
       );
-      await progress.phaseDetail(
+      await progress2.phaseDetail(
         "entrypoints",
         "pruned",
         `${registered.length} live entrypoints after pruning 404s`
       );
     }
     if (registered.length === 0) {
-      await progress.phaseStart(
+      await progress2.phaseStart(
         "done",
         "No entrypoints could be registered with Bright. Check Bright API logs for validation errors."
       );
@@ -37928,14 +38036,14 @@ This user should work for authentication. Skip user registration/seeding and go 
     if (config.runMode === "validation") {
       await runValidationFlow(
         ctx,
-        progress,
+        progress2,
         projectId,
         repeater.repeaterId,
         registered
       );
       return;
     }
-    await progress.phaseStart(
+    await progress2.phaseStart(
       "test_selection",
       "Selecting relevant security tests per endpoint"
     );
@@ -37948,7 +38056,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       authResult.hasAuth,
       config.modelSelector.current()
     );
-    await progress.phaseDetail(
+    await progress2.phaseDetail(
       "test_selection",
       "selected",
       `Created ${scanGroups.length} scan group(s) with per-endpoint test selection`
@@ -37982,21 +38090,21 @@ This user should work for authentication. Skip user registration/seeding and go 
               config.modelSelector.current()
             );
             if (!retryOk) {
-              await progress.phaseDetail(
+              await progress2.phaseDetail(
                 "scan",
                 "auth_broken",
                 "Auth broken after fixes \u2014 cannot continue scanning"
               );
-              buildSummaryTable(progress, allFindings, fixedKeys);
-              await progress.phaseStart(
+              buildSummaryTable(progress2, allFindings, fixedKeys);
+              await progress2.phaseStart(
                 "done",
                 `Authentication broke after round ${iteration} fixes and could not be repaired. ${allFixes.length} fixes were applied.`
               );
               return;
             }
           } catch {
-            buildSummaryTable(progress, allFindings, fixedKeys);
-            await progress.phaseStart(
+            buildSummaryTable(progress2, allFindings, fixedKeys);
+            await progress2.phaseStart(
               "done",
               `App failed to restart for auth repair. ${allFixes.length} fixes were applied.`
             );
@@ -38015,7 +38123,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           console.log("[Scan] App restarted successfully");
         } catch (err) {
           console.error(`[Scan] Failed to restart app: ${err}`);
-          await progress.phaseStart(
+          await progress2.phaseStart(
             "scan_error",
             "Application crashed and could not be restarted."
           );
@@ -38030,7 +38138,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         );
       }
       const roundScanGroups = useTargetedValidation ? validationPlan.groups : scanGroups;
-      await progress.phaseStart(
+      await progress2.phaseStart(
         "scan",
         useTargetedValidation ? `Running targeted validation scans \u2014 round ${iteration + 1}` : `Running scans \u2014 round ${iteration + 1}`
       );
@@ -38071,7 +38179,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           scanIds.push(scanId);
           allScanIds.push(scanId);
           activeScanIds.push(scanId);
-          await progress.phaseDetail(
+          await progress2.phaseDetail(
             "scan",
             "scan_launched",
             `${useTargetedValidation ? "Validation" : "Group"} ${gi + 1}: ${group.entrypointIds.length} endpoints \xB7 tests: ${group.tests.join(", ")}`
@@ -38083,7 +38191,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         }
       }
       if (scanIds.length === 0) {
-        await progress.phaseStart(
+        await progress2.phaseStart(
           "scan_error",
           "All scan launches failed. Check Bright API logs."
         );
@@ -38150,7 +38258,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             console.log(
               "[Scan] App restarted \u2014 will retry scans on next iteration"
             );
-            await progress.phaseDetail(
+            await progress2.phaseDetail(
               "scan",
               "app_restart",
               `App crashed during round ${iteration + 1} \u2014 restarted, retrying`
@@ -38160,14 +38268,14 @@ This user should work for authentication. Skip user registration/seeding and go 
             console.error(
               `[Scan] Failed to restart app after crash: ${restartErr}`
             );
-            await progress.phaseStart(
+            await progress2.phaseStart(
               "scan_error",
               `Application crashed during round ${iteration + 1} and could not be restarted.`
             );
             break;
           }
         }
-        await progress.phaseStart(
+        await progress2.phaseStart(
           "scan_error",
           `All ${totalScans} scan(s) failed on round ${iteration + 1}. Check Bright dashboard.`
         );
@@ -38177,7 +38285,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         console.warn(
           `[Scan] Round ${iteration + 1}: ${failedCount}/${totalScans} scan(s) failed \u2014 proceeding with ${succeededScanIds.length} successful scan(s). Failed: ${failedScanDetails.join(", ")}`
         );
-        await progress.phaseDetail(
+        await progress2.phaseDetail(
           "scan",
           "partial_failure",
           `Round ${iteration + 1}: ${failedCount}/${totalScans} scan(s) failed \u2014 continuing with findings from ${succeededScanIds.length} successful scan(s).`
@@ -38224,7 +38332,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           scanDetail += `, ${findings.length} remaining (${sevSummary})`;
         }
       }
-      await progress.phaseDetail("scan", "findings", scanDetail);
+      await progress2.phaseDetail("scan", "findings", scanDetail);
       for (const f of findings) {
         const key = findingKey(f);
         if (!allFindings.has(key)) {
@@ -38240,9 +38348,9 @@ This user should work for authentication. Skip user registration/seeding and go 
       if (findings.length === 0) {
         for (const [, s] of allFindings) s.status = "Fixed";
         config.modelSelector.reset();
-        buildSummaryTable(progress, allFindings, fixedKeys);
+        buildSummaryTable(progress2, allFindings, fixedKeys);
         const msg = iteration === 0 ? "No vulnerabilities found \u2014 application appears secure." : `All ${allFindings.size} vulnerabilities resolved after ${iteration + 1} round(s). ${allFixes.length} total fixes applied, ${fixedKeys.size}/${allFindings.size} validated.`;
-        await progress.phaseStart("done", msg);
+        await progress2.phaseStart("done", msg);
         return;
       }
       validationFindings = findings;
@@ -38262,8 +38370,8 @@ This user should work for authentication. Skip user registration/seeding and go 
         }
       }
       if (iteration === MAX_ITERATIONS - 1) {
-        buildSummaryTable(progress, allFindings, fixedKeys);
-        await progress.phaseStart(
+        buildSummaryTable(progress2, allFindings, fixedKeys);
+        await progress2.phaseStart(
           "done",
           `Reached ${MAX_ITERATIONS} rounds. ${fixedKeys.size}/${allFindings.size} fixed, ${findings.length} remaining. ${allFixes.length} total fixes applied.`
         );
@@ -38272,7 +38380,7 @@ This user should work for authentication. Skip user registration/seeding and go 
       const fixModel = config.modelSelector.current();
       const escalated = iteration > 0 && fixModel !== lastFixModel;
       const modelNote = escalated ? ` \u2B06 escalated` : "";
-      await progress.phaseStart(
+      await progress2.phaseStart(
         "fix",
         `Fixing ${findings.length} vulnerabilities \u2014 round ${iteration + 1} (${fixModel}${modelNote})`
       );
@@ -38432,7 +38540,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           }
         }
       }
-      await progress.phaseDetail(
+      await progress2.phaseDetail(
         "fix",
         "summary",
         `Round ${iteration + 1}: ${fixedCount} fix(es) applied, ${skippedCount} skipped \u2014 model: ${fixModel}`
@@ -38441,8 +38549,8 @@ This user should work for authentication. Skip user registration/seeding and go 
   } finally {
     TokenTracker.global().endPhase();
     TokenTracker.global().logFinalReport();
-    buildSummaryTable(progress, allFindings, fixedKeys);
-    await progress.updatePrDescription();
+    buildSummaryTable(progress2, allFindings, fixedKeys);
+    await progress2.updatePrDescription();
     if (runMemory.startup) {
       try {
         const star = await assembleBrightStar({
@@ -38483,14 +38591,14 @@ This user should work for authentication. Skip user registration/seeding and go 
     }
   }
 }
-async function runValidationFlow(ctx, progress, projectId, repeaterId, registered) {
+async function runValidationFlow(ctx, progress2, projectId, repeaterId, registered) {
   const { llm, config } = ctx;
-  await progress.phaseStart(
+  await progress2.phaseStart(
     "validation",
     "Validating CodeQL findings against live DAST scans"
   );
   if (!config.sarifPath) {
-    await progress.phaseStart("done", "Validation mode requires SARIF_PATH.");
+    await progress2.phaseStart("done", "Validation mode requires SARIF_PATH.");
     return;
   }
   const sarifFindings = parseSarif(config.sarifPath);
@@ -38506,7 +38614,7 @@ async function runValidationFlow(ctx, progress, projectId, repeaterId, registere
   console.log(
     `[Validation] ${mappableCount} mappable to DAST tests, ${sarifFindings.length - mappableCount} N/A (no DAST equivalent)`
   );
-  await progress.phaseDetail(
+  await progress2.phaseDetail(
     "validation",
     "parsed",
     `${sarifFindings.length} findings (${mappableCount} DAST-testable)`
@@ -38518,13 +38626,13 @@ async function runValidationFlow(ctx, progress, projectId, repeaterId, registere
     config.modelSelector.current(),
     ctx.repoPath
   );
-  await progress.phaseDetail(
+  await progress2.phaseDetail(
     "validation",
     "mapped",
     `Mapped ${mapped.length} finding(s) to endpoints`
   );
   const hasPathParams = registered.some((r) => /[{:]/.test(r.endpoint.path));
-  await progress.phaseStart(
+  await progress2.phaseStart(
     "scan",
     "Running targeted DAST scans for mapped findings"
   );
@@ -38542,28 +38650,28 @@ async function runValidationFlow(ctx, progress, projectId, repeaterId, registere
   );
   const report = formatValidationReport(results);
   console.log(report);
-  progress.setValidationSummary(toValidationSummaryRows(results));
+  progress2.setValidationSummary(toValidationSummaryRows(results));
   const { validated, notValidated, notApplicable } = summarizeResults(results);
-  await progress.phaseStart(
+  await progress2.phaseStart(
     "done",
     `Validation complete: ${validated.length} validated, ${notValidated.length} not validated, ${notApplicable.length} N/A`
   );
 }
-async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys) {
+async function runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds, allFindings, fixedKeys) {
   const { llm, config } = ctx;
   const projectId = config.brightProjectId;
   if (!projectId) {
     throw new Error("No Bright project ID configured. Set BRIGHT_PROJECT_ID.");
   }
   const baseUrl = `http://localhost:${harnessResult.config.port}`;
-  await progress.phaseStart("setup", "Setting up Bright Repeater for harness scan");
+  await progress2.phaseStart("setup", "Setting up Bright Repeater for harness scan");
   const repeater = await setupRepeater(
     projectId,
     config
   );
-  await progress.phaseDetail("setup", "repeater", "Repeater connected");
+  await progress2.phaseDetail("setup", "repeater", "Repeater connected");
   try {
-    await progress.phaseStart("entrypoints", "Registering harness endpoints");
+    await progress2.phaseStart("entrypoints", "Registering harness endpoints");
     let registered = await registerEntrypoints(
       config,
       projectId,
@@ -38576,18 +38684,18 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
     registered = await pruneDeadEntrypoints(config, projectId, registered, {
       pruneFailedResponses: true
     });
-    await progress.phaseDetail(
+    await progress2.phaseDetail(
       "entrypoints",
       "registered",
       `Registered ${registered.length} harness entrypoints`
     );
     if (registered.length === 0) {
-      await progress.phaseStart("done", "No harness entrypoints could be registered.");
+      await progress2.phaseStart("done", "No harness entrypoints could be registered.");
       return;
     }
     const liveEndpoints = registered.map((r) => r.endpoint);
     const entrypointIds = registered.map((r) => r.entrypointId);
-    await progress.phaseStart("test_selection", "Selecting security tests for harness endpoints");
+    await progress2.phaseStart("test_selection", "Selecting security tests for harness endpoints");
     const scanGroups = await selectTestsPerEndpoint(
       llm,
       config,
@@ -38598,12 +38706,12 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
       // no auth
       config.modelSelector.current()
     );
-    await progress.phaseDetail(
+    await progress2.phaseDetail(
       "test_selection",
       "selected",
       `Created ${scanGroups.length} scan group(s)`
     );
-    await progress.phaseStart("scan", "Running security scans on harness endpoints");
+    await progress2.phaseStart("scan", "Running security scans on harness endpoints");
     const scanIds = [];
     for (const [gi, group] of scanGroups.entries()) {
       if (gi > 0) {
@@ -38623,7 +38731,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
         );
         scanIds.push(scanId);
         allScanIds.push(scanId);
-        await progress.phaseDetail(
+        await progress2.phaseDetail(
           "scan",
           "scan_launched",
           `Group ${gi + 1}: ${group.entrypointIds.length} endpoints \xB7 tests: ${group.tests.join(", ")}`
@@ -38633,7 +38741,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
       }
     }
     if (scanIds.length === 0) {
-      await progress.phaseStart("scan_error", "All harness scan launches failed.");
+      await progress2.phaseStart("scan_error", "All harness scan launches failed.");
       return;
     }
     const scanResults = await Promise.allSettled(
@@ -38666,14 +38774,14 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
       console.warn(
         `[Scan] Harness: ${failedScanDetails.length}/${scanIds.length} scan(s) failed \u2014 proceeding with ${succeededScanIds.length} successful scan(s). Failed: ${failedScanDetails.join(", ")}`
       );
-      await progress.phaseDetail(
+      await progress2.phaseDetail(
         "scan",
         "partial_failure",
         `Harness: ${failedScanDetails.length}/${scanIds.length} scan(s) failed \u2014 continuing with findings from ${succeededScanIds.length} successful scan(s).`
       );
     }
     if (succeededScanIds.length === 0) {
-      await progress.phaseStart(
+      await progress2.phaseStart(
         "scan_error",
         `All ${scanIds.length} harness scan(s) failed.`
       );
@@ -38684,7 +38792,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
       succeededScanIds
     );
     const sevSummary = buildSeveritySummary(findings);
-    await progress.phaseDetail(
+    await progress2.phaseDetail(
       "scan",
       "findings",
       findings.length > 0 ? `Harness scan complete \u2014 ${findings.length} vulnerabilities found (${sevSummary})` : "Harness scan complete \u2014 no vulnerabilities found"
@@ -38701,9 +38809,9 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
         });
       }
     }
-    buildSummaryTable(progress, allFindings, fixedKeys);
-    await progress.updatePrDescription();
-    await progress.phaseStart(
+    buildSummaryTable(progress2, allFindings, fixedKeys);
+    await progress2.updatePrDescription();
+    await progress2.phaseStart(
       "done",
       findings.length > 0 ? `Function harness scan found ${findings.length} vulnerability(ies). Review findings in Bright dashboard.` : "Function harness scan completed \u2014 no vulnerabilities found."
     );
@@ -38717,7 +38825,7 @@ async function runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, 
     }
   }
 }
-function buildSummaryTable(progress, allFindings, fixedKeys) {
+function buildSummaryTable(progress2, allFindings, fixedKeys) {
   const summaries = [];
   for (const [key, finding] of allFindings) {
     summaries.push({
@@ -38732,7 +38840,7 @@ function buildSummaryTable(progress, allFindings, fixedKeys) {
     if (a.status !== b.status) return a.status === "Open" ? -1 : 1;
     return 0;
   });
-  progress.setFindingsSummary(summaries);
+  progress2.setFindingsSummary(summaries);
 }
 function brightStarEquivalent(a, b) {
   if (!a || !b) return false;
@@ -39263,29 +39371,26 @@ function buildContextSummary(techStack, startupConfig, endpoints, swaggerEndpoin
 
 // src/index.ts
 async function main() {
-  const origLog = console.log.bind(console);
-  const origWarn = console.warn.bind(console);
-  const origError = console.error.bind(console);
-  const ts = () => (/* @__PURE__ */ new Date()).toLocaleString("sv-SE", { hour12: false }).replace(" ", "T");
-  console.log = (...args) => origLog(ts(), ...args);
-  console.warn = (...args) => origWarn(ts(), ...args);
-  console.error = (...args) => origError(ts(), ...args);
-  console.log("[Engine] Bright Security Copilot Engine starting...");
+  logger.init();
+  logger.installConsoleRouting();
+  logger.progress("Bright Agent starting\u2026");
+  const logPath = logger.logFilePath();
+  if (logPath) logger.progress(`Detailed run log: ${logPath}`);
   const config = loadConfig();
   try {
     await verifyBrightAuth({
       brightToken: config.brightToken,
       brightHostname: config.brightHostname
     });
-    console.log(
-      `[Engine] Bright credentials verified against ${config.brightHostname}`
-    );
+    logger.progress(`Connected to Bright (${config.brightHostname}).`);
   } catch (err) {
     console.error(`[Engine] Bright preflight failed: ${toErrorMessage(err)}`);
+    logger.error("Could not connect to Bright \u2014 check BRIGHT_TOKEN / BRIGHT_HOSTNAME.");
     process.exit(1);
   }
   const { platform, job } = await createPlatform(config.gitToken);
   console.log(`[Engine] Repository: ${job.repository}`);
+  logger.progress(`Target repository: ${job.repository}`);
   const repositoryUrl = process.env.REPOSITORY_URL;
   const { provider } = detectScmProvider(repositoryUrl);
   try {
@@ -39293,6 +39398,7 @@ async function main() {
     console.log(`[Engine] Repository access verified (${provider.platformName})`);
   } catch (err) {
     console.error(`[Engine] Repository access check failed: ${toErrorMessage(err)}`);
+    logger.error("Could not access the repository \u2014 check REPO_ACCESS_TOKEN and REPOSITORY_URL.");
     process.exit(1);
   }
   const repoPath = cloneRepository({
@@ -39322,14 +39428,22 @@ async function main() {
   } catch (err) {
     const msg = toErrorMessage(err);
     console.error(`[Engine] Orchestrator failed: ${msg}`);
+    const logPath2 = logger.logFilePath();
+    logger.error(
+      `Security scan did not complete${logPath2 ? ` \u2014 details in ${logPath2}` : ""}.`
+    );
     await platform.reportError(`Security scan failed: ${msg}`);
   }
   gitFinalizeChanges(repoPath, "fix: Bright security scan remediations");
-  console.log("[Engine] Done.");
+  logger.progress("Done.");
   process.exit(0);
 }
 main().catch((err) => {
   console.error("[Engine] Fatal error:", err);
+  const logPath = logger.logFilePath();
+  logger.error(
+    `Bright Agent encountered a fatal error${logPath ? ` \u2014 details in ${logPath}` : ""}.`
+  );
   process.exit(1);
 });
 /*! Bundled license information:
