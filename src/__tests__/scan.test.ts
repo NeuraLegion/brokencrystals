@@ -1,14 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseValidationError, tryFixScanConfig } from "../phases/scan.js";
 
 describe("parseValidationError", () => {
   it("parses NestJS class-validator JSON response", () => {
     const body = JSON.stringify({
       statusCode: 400,
-      message: [
-        "entryPointIds should not be empty",
-        "tests must contain at least 1 element",
-      ],
+      message: ["entryPointIds should not be empty", "tests must contain at least 1 element"],
       error: "Bad Request",
     });
     const result = parseValidationError(body);
@@ -38,7 +35,10 @@ describe("parseValidationError", () => {
     const body = JSON.stringify({
       message: "Validation failed",
       errors: [
-        { property: "attackParamLocations", constraints: { isIn: "each value in attackParamLocations must be valid" } },
+        {
+          property: "attackParamLocations",
+          constraints: { isIn: "each value in attackParamLocations must be valid" },
+        },
       ],
     });
     const result = parseValidationError(body);

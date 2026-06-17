@@ -8,9 +8,9 @@
  *                 https://dev.azure.com/org/project/_git/repo
  */
 
-import type { RepoInfo, ScmProvider } from "./types.js";
-import { GitHubProvider } from "./github.js";
 import { AzureDevOpsProvider } from "./azure-devops.js";
+import { GitHubProvider } from "./github.js";
+import type { RepoInfo, ScmProvider } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // URL parsing
@@ -51,9 +51,7 @@ function parseAzureDevOpsUrl(url: URL, raw: string): RepoInfo {
   const gitIdx = segments.indexOf("_git");
 
   if (gitIdx < 0 || gitIdx + 1 >= segments.length) {
-    throw new Error(
-      `Invalid Azure DevOps URL: "${raw}" — expected /_git/<repo> in the path`,
-    );
+    throw new Error(`Invalid Azure DevOps URL: "${raw}" — expected /_git/<repo> in the path`);
   }
 
   const organization = segments[0];
@@ -74,9 +72,7 @@ function parseGitHubUrl(url: URL, raw: string): RepoInfo {
   // /owner/repo
   const segments = url.pathname.split("/").filter(Boolean);
   if (segments.length < 2) {
-    throw new Error(
-      `Invalid GitHub URL: "${raw}" — expected /owner/repo in the path`,
-    );
+    throw new Error(`Invalid GitHub URL: "${raw}" — expected /owner/repo in the path`);
   }
   return {
     platform: "github",

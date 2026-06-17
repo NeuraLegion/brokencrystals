@@ -1,8 +1,8 @@
-import { readFileSync, existsSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
-import type { BrightApiContext, StartupConfig } from "./types.js";
-import type { AuthResult } from "./phases/auth.js";
 import { getAuthObject } from "./bright-api.js";
+import type { AuthResult } from "./phases/auth.js";
+import type { BrightApiContext, StartupConfig } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // BRIGHT_STAR.md — persistent run memory
@@ -292,9 +292,7 @@ export interface AssembleBrightStarInput {
  * configured and an API context is provided, pulls the auth-object JSON from
  * Bright so a later run can inspect/recreate it.
  */
-export async function assembleBrightStar(
-  input: AssembleBrightStarInput,
-): Promise<BrightStar> {
+export async function assembleBrightStar(input: AssembleBrightStarInput): Promise<BrightStar> {
   const star: BrightStar = {
     version: BRIGHT_STAR_VERSION,
     generatedAt: new Date().toISOString(),

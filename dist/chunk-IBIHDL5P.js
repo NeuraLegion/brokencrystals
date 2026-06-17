@@ -10849,7 +10849,9 @@ function configuredReasoningEffort(model) {
   if (raw === "low" || raw === "medium" || raw === "high") {
     return raw;
   }
-  throw new Error(`Invalid AI_REASONING_EFFORT "${process.env.AI_REASONING_EFFORT}". Expected low, medium, high, or none.`);
+  throw new Error(
+    `Invalid AI_REASONING_EFFORT "${process.env.AI_REASONING_EFFORT}". Expected low, medium, high, or none.`
+  );
 }
 function chatCompletionParams(model, messages, extra = {}, options = {}) {
   const params = {
@@ -10877,8 +10879,7 @@ var ModelSelector = class {
   tiers;
   level = 0;
   constructor(tiers) {
-    if (tiers.length === 0)
-      throw new Error("At least one model is required in AI_MODEL");
+    if (tiers.length === 0) throw new Error("At least one model is required in AI_MODEL");
     this.tiers = tiers;
   }
   /** The model name to use for the next LLM call. */
@@ -10964,7 +10965,12 @@ var TokenTracker = class _TokenTracker {
     total.cached += cachedTokens;
     this.totals.set(model, total);
     if (this.currentPhase) {
-      const phase = this.currentPhase.models.get(model) ?? { prompt: 0, completion: 0, calls: 0, cached: 0 };
+      const phase = this.currentPhase.models.get(model) ?? {
+        prompt: 0,
+        completion: 0,
+        calls: 0,
+        cached: 0
+      };
       phase.prompt += promptTokens;
       phase.completion += completionTokens;
       phase.calls += 1;
@@ -10996,12 +11002,16 @@ var TokenTracker = class _TokenTracker {
     console.log(`[Tokens] FINAL REPORT \u2014 ${calls} API call(s), ${fmtTokens(total)} total tokens`);
     console.log(`[Tokens]   Prompt: ${fmtTokens(prompt)} | Completion: ${fmtTokens(completion)}`);
     if (cached > 0) {
-      console.log(`[Tokens]   Cached: ${fmtTokens(cached)} of ${fmtTokens(prompt)} prompt tokens (${cacheRate}% cache hit rate)`);
+      console.log(
+        `[Tokens]   Cached: ${fmtTokens(cached)} of ${fmtTokens(prompt)} prompt tokens (${cacheRate}% cache hit rate)`
+      );
     }
     console.log(`[Tokens] \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
     for (const [model, usage] of byModel) {
       const modelCache = usage.cached > 0 ? ` [cached: ${fmtTokens(usage.cached)}]` : "";
-      console.log(`[Tokens]   ${model}: ${fmtTokens(usage.prompt + usage.completion)} (${usage.calls} calls, ${fmtTokens(usage.prompt)}\u2192${fmtTokens(usage.completion)})${modelCache}`);
+      console.log(
+        `[Tokens]   ${model}: ${fmtTokens(usage.prompt + usage.completion)} (${usage.calls} calls, ${fmtTokens(usage.prompt)}\u2192${fmtTokens(usage.completion)})${modelCache}`
+      );
     }
     if (this.phases.length > 0) {
       console.log(`[Tokens] \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
@@ -11009,10 +11019,14 @@ var TokenTracker = class _TokenTracker {
       for (const p of this.phases) {
         const phaseTotal = sumPhase(p);
         const elapsed = p.endedAt ? ` (${Math.round((p.endedAt - p.startedAt) / 1e3)}s)` : "";
-        console.log(`[Tokens]   ${p.name}${elapsed}: ${fmtTokens(phaseTotal.prompt + phaseTotal.completion)} (${phaseTotal.calls} calls)`);
+        console.log(
+          `[Tokens]   ${p.name}${elapsed}: ${fmtTokens(phaseTotal.prompt + phaseTotal.completion)} (${phaseTotal.calls} calls)`
+        );
         for (const [model, usage] of p.models) {
           const mCache = usage.cached > 0 ? ` [cached: ${fmtTokens(usage.cached)}]` : "";
-          console.log(`[Tokens]     ${model}: ${fmtTokens(usage.prompt)}\u2192${fmtTokens(usage.completion)}${mCache}`);
+          console.log(
+            `[Tokens]     ${model}: ${fmtTokens(usage.prompt)}\u2192${fmtTokens(usage.completion)}${mCache}`
+          );
         }
       }
     }
@@ -11060,9 +11074,7 @@ async function validateModelTiers(client, selector, provider = "openai") {
       available.push(model.id);
     }
   } catch (err) {
-    console.warn(
-      `[Model] Could not list available models \u2014 skipping tier validation: ${err}`
-    );
+    console.warn(`[Model] Could not list available models \u2014 skipping tier validation: ${err}`);
     return;
   }
   const availableSet = new Set(available);
@@ -11075,9 +11087,7 @@ Available models:
   - ${availableSorted}`
     );
   }
-  console.log(
-    `[Model] All ${tiers.length} model tier(s) validated successfully`
-  );
+  console.log(`[Model] All ${tiers.length} model tier(s) validated successfully`);
 }
 var DEFAULT_MODEL = "gpt-5.4-mini";
 async function chatWithTools(client, messages, tools, handleToolCall, model = DEFAULT_MODEL, maxTurns = 40) {
@@ -11085,15 +11095,27 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
   const allowReasoningEffort = tools.length === 0;
   for (let turn = 0; turn < maxTurns; turn++) {
     const isLastTurn = turn === maxTurns - 1;
-    const response = await client.chat.completions.create(chatCompletionParams(model, conversation, {
-      tools: !isLastTurn && tools.length > 0 ? tools : void 0
-    }, { allowReasoningEffort }));
+    const response = await client.chat.completions.create(
+      chatCompletionParams(
+        model,
+        conversation,
+        {
+          tools: !isLastTurn && tools.length > 0 ? tools : void 0
+        },
+        { allowReasoningEffort }
+      )
+    );
     const choice = response.choices[0];
     if (!choice) throw new Error("No response from model");
     const msg = choice.message;
     const usage = response.usage;
     if (usage) {
-      TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0, usage.prompt_tokens_details?.cached_tokens ?? 0);
+      TokenTracker.global().record(
+        model,
+        usage.prompt_tokens ?? 0,
+        usage.completion_tokens ?? 0,
+        usage.prompt_tokens_details?.cached_tokens ?? 0
+      );
     }
     conversation.push(msg);
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
@@ -11146,7 +11168,9 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
         }
       }
       if (trimmedChars > 0) {
-        console.log(`[Inference] Checkpoint trim (turn ${turn + 1}): freed ${trimmedChars} chars from stale tool results`);
+        console.log(
+          `[Inference] Checkpoint trim (turn ${turn + 1}): freed ${trimmedChars} chars from stale tool results`
+        );
       }
     }
     const MAX_CONTEXT_CHARS = 8e5;
@@ -11168,7 +11192,9 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
           trimmed += before - tm.content.length;
         }
       }
-      console.warn(`[Inference] Context overflow guard: trimmed ${trimmed} chars from tool results`);
+      console.warn(
+        `[Inference] Context overflow guard: trimmed ${trimmed} chars from tool results`
+      );
     }
   }
   console.warn(
@@ -11180,30 +11206,37 @@ async function chatWithTools(client, messages, tools, handleToolCall, model = DE
       return typeof m.content === "string" ? m.content : JSON.stringify(m.content);
     }
   }
-  throw new Error(
-    "chatWithTools: exceeded maximum tool-calling turns with no assistant response"
-  );
+  throw new Error("chatWithTools: exceeded maximum tool-calling turns with no assistant response");
 }
 async function chatWithSchema(client, messages, schemaName, schema, model = DEFAULT_MODEL) {
-  const response = await client.chat.completions.create(chatCompletionParams(model, messages, {
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: schemaName,
-        strict: true,
-        schema
+  const response = await client.chat.completions.create(
+    chatCompletionParams(model, messages, {
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: schemaName,
+          strict: true,
+          schema
+        }
       }
-    }
-  }));
+    })
+  );
   const usage = response.usage;
   if (usage) {
-    TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0, usage.prompt_tokens_details?.cached_tokens ?? 0);
+    TokenTracker.global().record(
+      model,
+      usage.prompt_tokens ?? 0,
+      usage.completion_tokens ?? 0,
+      usage.prompt_tokens_details?.cached_tokens ?? 0
+    );
   }
   const choice = response.choices[0];
   const content = choice?.message.content;
   if (!content) throw new Error("No content in structured response");
   if (choice.finish_reason === "length") {
-    throw new Error(`Structured response truncated (${content.length} chars) \u2014 output exceeded max_completion_tokens`);
+    throw new Error(
+      `Structured response truncated (${content.length} chars) \u2014 output exceeded max_completion_tokens`
+    );
   }
   return JSON.parse(content);
 }
@@ -11228,4 +11261,4 @@ humanize-ms/index.js:
    * MIT Licensed
    *)
 */
-//# sourceMappingURL=chunk-KJPDIBSE.js.map
+//# sourceMappingURL=chunk-IBIHDL5P.js.map

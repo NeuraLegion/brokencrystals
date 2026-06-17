@@ -1,14 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { writeFileSync, rmSync } from "fs";
+import { rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { describe, expect, it } from "vitest";
 import {
-  parseSarif,
   buildVerdicts,
+  type MappedFinding,
+  parseSarif,
+  type SarifFinding,
   summarizeResults,
   toValidationSummaryRows,
-  type SarifFinding,
-  type MappedFinding,
 } from "../phases/validation.js";
 import type { Finding } from "../types.js";
 
@@ -61,7 +61,9 @@ describe("parseSarif", () => {
               ruleId: "js/unused-local-variable",
               message: { text: "Unused variable" },
               locations: [
-                { physicalLocation: { artifactLocation: { uri: "a.js" }, region: { startLine: 1 } } },
+                {
+                  physicalLocation: { artifactLocation: { uri: "a.js" }, region: { startLine: 1 } },
+                },
               ],
             },
           ],
@@ -104,7 +106,11 @@ describe("parseSarif", () => {
             {
               ruleId: "js/sql-injection",
               message: { text: "SQLi" },
-              locations: [{ physicalLocation: { artifactLocation: { uri: "a.js" }, region: { startLine: 5 } } }],
+              locations: [
+                {
+                  physicalLocation: { artifactLocation: { uri: "a.js" }, region: { startLine: 5 } },
+                },
+              ],
             },
           ],
         },
@@ -128,7 +134,11 @@ describe("parseSarif", () => {
               ruleId: "js/reflected-xss",
               message: { text: "x" },
               level: "warning",
-              locations: [{ physicalLocation: { artifactLocation: { uri: "a.js" }, region: { startLine: 1 } } }],
+              locations: [
+                {
+                  physicalLocation: { artifactLocation: { uri: "a.js" }, region: { startLine: 1 } },
+                },
+              ],
             },
           ],
         },
@@ -155,9 +165,7 @@ describe("toValidationSummaryRows", () => {
       severity: "High",
       brightTest: "sqli",
     };
-    const rows = toValidationSummaryRows([
-      { finding, verdict: "validated", detail: "" },
-    ]);
+    const rows = toValidationSummaryRows([{ finding, verdict: "validated", detail: "" }]);
     expect(rows[0]).toEqual({
       severity: "High",
       name: "SQL Injection",
@@ -167,7 +175,6 @@ describe("toValidationSummaryRows", () => {
     });
   });
 });
-
 
 describe("buildVerdicts", () => {
   const sqliFinding: SarifFinding = {

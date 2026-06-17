@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { ProgressReporter } from "../progress.js";
+import { describe, expect, it, vi } from "vitest";
 import type { Platform } from "../platform.js";
+import { ProgressReporter } from "../progress.js";
 
 // Minimal Platform stub — ProgressReporter only calls these for reporting.
 const stubPlatform = (): Platform =>

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { redact, addSecret } from "../logger.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { addSecret, redact } from "../logger.js";
 
 describe("logger redaction", () => {
   it("redacts a registered secret value", () => {
@@ -26,7 +26,7 @@ describe("logger redaction", () => {
   });
 
   it("redacts Set-Cookie values", () => {
-    const out = redact('Set-Cookie: connect.sid=s%3Aabc123.def456; path=/');
+    const out = redact("Set-Cookie: connect.sid=s%3Aabc123.def456; path=/");
     expect(out).toContain("«redacted»");
     expect(out).not.toContain("connect.sid=s%3Aabc123.def456");
   });

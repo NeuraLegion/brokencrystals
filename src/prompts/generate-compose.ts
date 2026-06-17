@@ -1,6 +1,6 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
-import type { ProjectDiscovery } from "../types.js";
 import { HintStore } from "../hints.js";
+import type { ProjectDiscovery } from "../types.js";
 
 /**
  * Prompt for LLM-based Docker Compose file generation.
@@ -15,9 +15,10 @@ export function generateComposePrompt(
 ): ChatCompletionMessageParam[] {
   const discoveryJson = JSON.stringify(discovery, null, 2);
 
-  const hintsSection = hints && hints.length > 0
-    ? `\n${HintStore.fromLegacyArray(hints).format(undefined, "## Hints from previous attempts") || ""}\nThese were discovered through investigation — use them.\n`
-    : "";
+  const hintsSection =
+    hints && hints.length > 0
+      ? `\n${HintStore.fromLegacyArray(hints).format(undefined, "## Hints from previous attempts") || ""}\nThese were discovered through investigation — use them.\n`
+      : "";
 
   return [
     {
@@ -32,11 +33,13 @@ ${hintsSection}
 Generate a complete \`compose.yml\` (v3+ syntax, no "version:" key needed) that includes:
 
 1. **App service**:
-   - ${hasDockerfile
-      ? dockerfileName && dockerfileName !== "Dockerfile"
-        ? `\`build:\\n  context: .\\n  dockerfile: ${dockerfileName}\` (non-standard Dockerfile name — you MUST use the extended build syntax)`
-        : '`build: .` (Dockerfile already exists)'
-      : '`build: .` (a Dockerfile will be generated separately)'}
+   - ${
+     hasDockerfile
+       ? dockerfileName && dockerfileName !== "Dockerfile"
+         ? `\`build:\\n  context: .\\n  dockerfile: ${dockerfileName}\` (non-standard Dockerfile name — you MUST use the extended build syntax)`
+         : "`build: .` (Dockerfile already exists)"
+       : "`build: .` (a Dockerfile will be generated separately)"
+}
    - Maps port ${discovery.port}
    - Sets all environment variables from appEnvironment
    - Depends on all other services with \`condition: service_healthy\` (or \`service_started\` if no healthcheck)

@@ -5,7 +5,7 @@
  * Authentication: Basic auth with PAT (username can be anything).
  */
 
-import type { ScmProvider, RepoInfo } from "./types.js";
+import type { RepoInfo, ScmProvider } from "./types.js";
 
 const API_VERSION = "7.1-preview.1";
 
@@ -29,9 +29,7 @@ export class AzureDevOpsProvider implements ScmProvider {
     const path = this.hasExplicitProject
       ? `${organization}/${project}/_git/${repository}`
       : `${organization}/_git/${repository}`;
-    return token
-      ? `https://x-pat:${token}@dev.azure.com/${path}`
-      : `https://dev.azure.com/${path}`;
+    return token ? `https://x-pat:${token}@dev.azure.com/${path}` : `https://dev.azure.com/${path}`;
   }
 
   repoSlug(): string {
@@ -53,10 +51,9 @@ export class AzureDevOpsProvider implements ScmProvider {
         `Missing REPO_ACCESS_TOKEN — an Azure DevOps Personal Access Token is required to clone and push to ${this.repoSlug()}.`,
       );
     }
-    const res = await fetch(
-      `${this.apiBase}?api-version=${API_VERSION}`,
-      { headers: this.authHeaders(token) },
-    );
+    const res = await fetch(`${this.apiBase}?api-version=${API_VERSION}`, {
+      headers: this.authHeaders(token),
+    });
     if (res.status === 401 || res.status === 403) {
       throw new Error(
         `REPO_ACCESS_TOKEN is invalid or lacks access to ${this.repoSlug()} (HTTP ${res.status}). ` +
@@ -78,23 +75,21 @@ export class AzureDevOpsProvider implements ScmProvider {
 
   async getDefaultBranch(token: string): Promise<string> {
     try {
-      const res = await fetch(
-        `${this.apiBase}?api-version=${API_VERSION}`,
-        { headers: this.authHeaders(token) },
-      );
+      const res = await fetch(`${this.apiBase}?api-version=${API_VERSION}`, {
+        headers: this.authHeaders(token),
+      });
       if (res.ok) {
         const data = (await res.json()) as { defaultBranch: string };
         // Azure returns "refs/heads/main" — strip the prefix
         return data.defaultBranch.replace(/^refs\/heads\//, "");
       }
-    } catch { /* fallback */ }
+    } catch {
+      /* fallback */
+    }
     return "main";
   }
 
-  async findPullRequest(
-    token: string,
-    branch: string,
-  ): Promise<number | null> {
+  async findPullRequest(token: string, branch: string): Promise<number | null> {
     const url =
       `${this.apiBase}/pullrequests` +
       `?searchCriteria.sourceRefName=refs/heads/${branch}` +
@@ -134,9 +129,7 @@ export class AzureDevOpsProvider implements ScmProvider {
       });
       if (!res.ok) {
         const text = await res.text();
-        console.warn(
-          `[AzureDevOps] Failed to create PR: ${res.status} ${text}`,
-        );
+        console.warn(`[AzureDevOps] Failed to create PR: ${res.status} ${text}`);
         return null;
       }
       const pr = (await res.json()) as { pullRequestId: number };
@@ -147,11 +140,7 @@ export class AzureDevOpsProvider implements ScmProvider {
     }
   }
 
-  async updatePullRequestBody(
-    token: string,
-    prId: number,
-    body: string,
-  ): Promise<void> {
+  async updatePullRequestBody(token: string, prId: number, body: string): Promise<void> {
     const url = `${this.apiBase}/pullrequests/${prId}?api-version=${API_VERSION}`;
     const res = await fetch(url, {
       method: "PATCH",

@@ -110,7 +110,10 @@ export class AppHealthMonitor {
     const path = this.healthProbe.path.startsWith("/")
       ? this.healthProbe.path
       : `/${this.healthProbe.path}`;
-    const method = (this.healthProbe.method ?? (this.healthProbe.formData || this.healthProbe.body ? "POST" : "GET")).toUpperCase();
+    const method = (
+      this.healthProbe.method ??
+      (this.healthProbe.formData || this.healthProbe.body ? "POST" : "GET")
+    ).toUpperCase();
     return `${method} http://localhost:${this.port}${path}`;
   }
 
@@ -153,7 +156,11 @@ export class AppHealthMonitor {
     // Wait for any in-flight recovery to complete so there's no concurrent
     // quickRestartCompose racing with the orchestrator's rebuild.
     if (this.recoveryInFlight) {
-      try { await this.recoveryInFlight; } catch { /* ignore */ }
+      try {
+        await this.recoveryInFlight;
+      } catch {
+        /* ignore */
+      }
     }
     console.log("[AppHealth] Monitor paused (orchestrator owns the app lifecycle)");
   }
@@ -192,7 +199,10 @@ export class AppHealthMonitor {
     // Don't block forever if recovery failed — throw after timeout so
     // callers can bail rather than hanging the process indefinitely.
     const timeout = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("waitHealthy timed out — app recovery did not succeed")), timeoutMs);
+      setTimeout(
+        () => reject(new Error("waitHealthy timed out — app recovery did not succeed")),
+        timeoutMs,
+      );
     });
     await Promise.race([this.gate.promise, timeout]);
   }
@@ -294,9 +304,7 @@ export class AppHealthMonitor {
     try {
       const result = await this.onDeepProbe();
       if (!result.healthy) {
-        console.warn(
-          `[AppHealth] Deep probe (${reason}) UNHEALTHY — ${result.reason}`,
-        );
+        console.warn(`[AppHealth] Deep probe (${reason}) UNHEALTHY — ${result.reason}`);
         if (this.healthy) {
           this.lastUnhealthyReason = `deep health probe flagged the app as unhealthy: ${result.reason}`;
           this.deepUnhealthy = true;
@@ -315,9 +323,7 @@ export class AppHealthMonitor {
     } catch (err) {
       // Deep probe itself failed (network, LLM error). Don't trip unhealthy
       // on this — the shallow probe will catch real outages.
-      console.warn(
-        `[AppHealth] Deep probe (${reason}) errored: ${toErrorMessage(err)} — ignoring`,
-      );
+      console.warn(`[AppHealth] Deep probe (${reason}) errored: ${toErrorMessage(err)} — ignoring`);
       return { healthy: true, reason: "deep probe errored, ignoring" };
     } finally {
       this.deepProbeInFlight = false;
@@ -333,9 +339,7 @@ export class AppHealthMonitor {
       });
       this.gate = { promise, resolve };
     }
-    console.warn(
-      `[AppHealth] App marked UNHEALTHY — pausing dependent operations`,
-    );
+    console.warn(`[AppHealth] App marked UNHEALTHY — pausing dependent operations`);
   }
 
   private markHealthy(): void {
@@ -357,9 +361,7 @@ export class AppHealthMonitor {
     const hint = this.lastUnhealthyReason;
     this.recoveryInFlight = (async () => {
       try {
-        console.log(
-          `[AppHealth] Triggering recovery${hint ? ` — hint: ${hint}` : ""}...`,
-        );
+        console.log(`[AppHealth] Triggering recovery${hint ? ` — hint: ${hint}` : ""}...`);
         const result = await cb(hint);
         if (result.ok) {
           // Probe immediately to confirm and open the gate
@@ -369,9 +371,7 @@ export class AppHealthMonitor {
           await this.probe("post-recovery");
           if (!this.healthy) this.markHealthy(); // force-open even if probe was racy
         } else {
-          console.error(
-            `[AppHealth] Recovery did not restore health: ${result.detail}`,
-          );
+          console.error(`[AppHealth] Recovery did not restore health: ${result.detail}`);
         }
         return result;
       } catch (err) {

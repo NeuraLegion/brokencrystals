@@ -1,15 +1,15 @@
-import { describe, it, expect } from "vitest";
-import { writeFileSync, rmSync, mkdtempSync } from "fs";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { describe, expect, it } from "vitest";
 import {
-  type BrightStar,
   BRIGHT_STAR_VERSION,
-  renderBrightStar,
+  type BrightStar,
+  brightStarPath,
   parseBrightStar,
   readBrightStar,
+  renderBrightStar,
   writeBrightStar,
-  brightStarPath,
 } from "../brightstar.js";
 
 const sample: BrightStar = {

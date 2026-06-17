@@ -1,21 +1,18 @@
+import { execFileSync } from "child_process";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import { glob } from "glob";
 import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
-import { readFileSync, existsSync, readdirSync, statSync } from "fs";
-import { relative, resolve, extname } from "path";
-import { execFileSync } from "child_process";
-import { glob } from "glob";
-import type { TechStack, DiscoveredEndpoint } from "../types.js";
+import { extname, relative, resolve } from "path";
 import { chatWithTools, type ToolHandler } from "../inference.js";
+import type { DiscoveredEndpoint, TechStack } from "../types.js";
 import { extractJson, parseJsonLenient } from "../utils.js";
 
 // ---------------------------------------------------------------------------
 // Phase 1: Deterministic tech-stack detection (zero LLM calls)
 // ---------------------------------------------------------------------------
 
-export async function detectTechStack(
-  repoPath: string,
-  serviceRoot?: string,
-): Promise<TechStack> {
+export async function detectTechStack(repoPath: string, serviceRoot?: string): Promise<TechStack> {
   const base = await detectTechStackFromFiles(repoPath);
   // For monorepos, also scan the selected service subdirectory
   // (root package.json often only has workspace tooling, not the actual frameworks)
@@ -56,8 +53,7 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
     const pkg = readJson("package.json");
     const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
     languages.add("JavaScript");
-    if (allDeps?.typescript || has("tsconfig.json"))
-      languages.add("TypeScript");
+    if (allDeps?.typescript || has("tsconfig.json")) languages.add("TypeScript");
     // Frameworks
     if (allDeps?.express) frameworks.add("Express");
     if (allDeps?.fastify) frameworks.add("Fastify");
@@ -74,20 +70,13 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
     if (allDeps?.sequelize) databases.add("SQL (Sequelize)");
     if (allDeps?.knex) databases.add("SQL (Knex)");
     if (allDeps?.redis || allDeps?.ioredis) databases.add("Redis");
-    if (allDeps?.sqlite3 || allDeps?.["better-sqlite3"])
-      databases.add("SQLite");
+    if (allDeps?.sqlite3 || allDeps?.["better-sqlite3"]) databases.add("SQLite");
     if (allDeps?.typeorm) databases.add("SQL (TypeORM)");
-    if (allDeps?.prisma || allDeps?.["@prisma/client"])
-      databases.add("SQL (Prisma)");
+    if (allDeps?.prisma || allDeps?.["@prisma/client"]) databases.add("SQL (Prisma)");
   }
 
   // ---- Python ----
-  if (
-    has("requirements.txt") ||
-    has("pyproject.toml") ||
-    has("setup.py") ||
-    has("Pipfile")
-  ) {
+  if (has("requirements.txt") || has("pyproject.toml") || has("setup.py") || has("Pipfile")) {
     languages.add("Python");
     const readReqs = () => {
       for (const f of ["requirements.txt", "Pipfile"]) {
@@ -98,10 +87,7 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
         }
       }
       try {
-        return readFileSync(
-          resolve(repoPath, "pyproject.toml"),
-          "utf-8",
-        ).toLowerCase();
+        return readFileSync(resolve(repoPath, "pyproject.toml"), "utf-8").toLowerCase();
       } catch {
         return "";
       }
@@ -119,10 +105,7 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
   if (has("Gemfile")) {
     languages.add("Ruby");
     try {
-      const gemfile = readFileSync(
-        resolve(repoPath, "Gemfile"),
-        "utf-8",
-      ).toLowerCase();
+      const gemfile = readFileSync(resolve(repoPath, "Gemfile"), "utf-8").toLowerCase();
       if (gemfile.includes("rails")) frameworks.add("Rails");
       if (gemfile.includes("sinatra")) frameworks.add("Sinatra");
       if (gemfile.includes("pg")) databases.add("PostgreSQL");
@@ -150,21 +133,16 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
     const build = readBuild();
     if (build.includes("spring")) frameworks.add("Spring");
     if (build.includes("quarkus")) frameworks.add("Quarkus");
-    if (build.includes("postgresql") || build.includes("postgres"))
-      databases.add("PostgreSQL");
+    if (build.includes("postgresql") || build.includes("postgres")) databases.add("PostgreSQL");
     if (build.includes("mysql")) databases.add("MySQL");
-    if (build.includes("mongodb") || build.includes("mongo"))
-      databases.add("MongoDB");
+    if (build.includes("mongodb") || build.includes("mongo")) databases.add("MongoDB");
   }
 
   // ---- Go ----
   if (has("go.mod")) {
     languages.add("Go");
     try {
-      const gomod = readFileSync(
-        resolve(repoPath, "go.mod"),
-        "utf-8",
-      ).toLowerCase();
+      const gomod = readFileSync(resolve(repoPath, "go.mod"), "utf-8").toLowerCase();
       if (gomod.includes("gin-gonic")) frameworks.add("Gin");
       if (gomod.includes("gorilla/mux")) frameworks.add("Gorilla Mux");
       if (gomod.includes("fiber")) frameworks.add("Fiber");
@@ -184,14 +162,8 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
     languages.add("C#");
     for (const f of csprojFiles.slice(0, 5)) {
       try {
-        const content = readFileSync(
-          resolve(repoPath, f),
-          "utf-8",
-        ).toLowerCase();
-        if (
-          content.includes("microsoft.aspnetcore") ||
-          content.includes("aspnet")
-        )
+        const content = readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
+        if (content.includes("microsoft.aspnetcore") || content.includes("aspnet"))
           frameworks.add("ASP.NET");
         if (content.includes("entityframework")) databases.add("SQL (EF Core)");
         if (content.includes("npgsql")) databases.add("PostgreSQL");
@@ -206,10 +178,7 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
   if (has("Cargo.toml")) {
     languages.add("Rust");
     try {
-      const cargo = readFileSync(
-        resolve(repoPath, "Cargo.toml"),
-        "utf-8",
-      ).toLowerCase();
+      const cargo = readFileSync(resolve(repoPath, "Cargo.toml"), "utf-8").toLowerCase();
       if (cargo.includes("actix")) frameworks.add("Actix");
       if (cargo.includes("axum")) frameworks.add("Axum");
       if (cargo.includes("rocket")) frameworks.add("Rocket");
@@ -230,7 +199,9 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
       if (sbt.includes("slick")) databases.add("SQL (Slick)");
       if (sbt.includes("reactivemongo") || sbt.includes("mongo")) databases.add("MongoDB");
       if (sbt.includes("postgres")) databases.add("PostgreSQL");
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // ---- Elixir ----
@@ -240,7 +211,9 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
       const mix = readFileSync(resolve(repoPath, "mix.exs"), "utf-8").toLowerCase();
       if (mix.includes("phoenix")) frameworks.add("Phoenix");
       if (mix.includes("ecto")) databases.add("SQL (Ecto)");
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // ---- PHP ----
@@ -259,20 +232,11 @@ async function detectTechStackFromFiles(repoPath: string): Promise<TechStack> {
     has("compose.yml") ||
     has("compose.yaml")
   ) {
-    for (const f of [
-      "docker-compose.yml",
-      "docker-compose.yaml",
-      "compose.yml",
-      "compose.yaml",
-    ]) {
+    for (const f of ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]) {
       try {
-        const content = readFileSync(
-          resolve(repoPath, f),
-          "utf-8",
-        ).toLowerCase();
+        const content = readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
         if (content.includes("postgres")) databases.add("PostgreSQL");
-        if (content.includes("mysql") || content.includes("mariadb"))
-          databases.add("MySQL");
+        if (content.includes("mysql") || content.includes("mariadb")) databases.add("MySQL");
         if (content.includes("mongo")) databases.add("MongoDB");
         if (content.includes("redis")) databases.add("Redis");
       } catch {
@@ -394,9 +358,7 @@ async function selectServiceForTesting(
     "turbo.json",
     "rush.json",
   ];
-  const hasWorkspaceConfig = monorepoIndicators.some((f) =>
-    existsSync(resolve(repoPath, f)),
-  );
+  const hasWorkspaceConfig = monorepoIndicators.some((f) => existsSync(resolve(repoPath, f)));
 
   // .NET multi-project: many .csproj files in different dirs
   const csprojFiles = await glob("**/*.csproj", {
@@ -435,11 +397,7 @@ async function selectServiceForTesting(
   });
   const isGoMulti = goMains.length > 2;
 
-  if (
-    !isDotnetMultiProject &&
-    !isJsMonorepo &&
-    !isGoMulti
-  ) {
+  if (!isDotnetMultiProject && !isJsMonorepo && !isGoMulti) {
     return ".";
   }
 
@@ -460,10 +418,10 @@ async function selectServiceForTesting(
   // --- JS/TS candidates: each dir with its own package.json ---
   if (isJsMonorepo) {
     // Also check apps/*/package.json, packages/*/package.json patterns
-    const allPkgJsons = await glob(
-      "{*/,apps/*/,packages/*/,services/*/}package.json",
-      { cwd: repoPath, nodir: true },
-    );
+    const allPkgJsons = await glob("{*/,apps/*/,packages/*/,services/*/}package.json", {
+      cwd: repoPath,
+      nodir: true,
+    });
     for (const pkg of allPkgJsons) {
       const dir = pkg.replace(/\/package\.json$/, "");
       const name = dir.replace(/.*\//, "");
@@ -522,13 +480,16 @@ async function scoreCandidate(
 
   // Bonus: has its own Dockerfile (standard name or Dockerfile.* variant)
   const hasDockerfile =
-    existsSync(resolve(absDir, "Dockerfile")) ||
-    existsSync(resolve(absDir, "dockerfile"));
-  const hasDockerfileVariant = !hasDockerfile && (() => {
-    try {
-      return readdirSync(absDir).some((f) => /^Dockerfile\./i.test(f));
-    } catch { return false; }
-  })();
+    existsSync(resolve(absDir, "Dockerfile")) || existsSync(resolve(absDir, "dockerfile"));
+  const hasDockerfileVariant =
+    !hasDockerfile &&
+    (() => {
+      try {
+        return readdirSync(absDir).some((f) => /^Dockerfile\./i.test(f));
+      } catch {
+        return false;
+      }
+    })();
   if (hasDockerfile || hasDockerfileVariant) {
     score += 10;
   }
@@ -588,19 +549,9 @@ async function scoreCandidate(
 async function scoreHttpFramework(absDir: string): Promise<number> {
   // Node.js
   try {
-    const pkg = JSON.parse(
-      readFileSync(resolve(absDir, "package.json"), "utf-8"),
-    );
+    const pkg = JSON.parse(readFileSync(resolve(absDir, "package.json"), "utf-8"));
     const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
-    const httpPkgs = [
-      "express",
-      "fastify",
-      "koa",
-      "@hapi/hapi",
-      "@nestjs/core",
-      "next",
-      "nuxt",
-    ];
+    const httpPkgs = ["express", "fastify", "koa", "@hapi/hapi", "@nestjs/core", "next", "nuxt"];
     if (httpPkgs.some((p) => allDeps?.[p])) return 8;
   } catch {
     /* not a Node project */
@@ -622,9 +573,7 @@ async function scoreHttpFramework(absDir: string): Promise<number> {
       }
       // Check actual PackageReference elements, not comments
       const pkgRefs = content.match(/<PackageReference\s[^>]*Include="[^"]*"/gi) || [];
-      const hasAspNet = pkgRefs.some(
-        (ref) => /aspnetcore|aspnet|microsoft\.aspnetcore/i.test(ref),
-      );
+      const hasAspNet = pkgRefs.some((ref) => /aspnetcore|aspnet|microsoft\.aspnetcore/i.test(ref));
       if (hasAspNet) {
         return 8;
       }
@@ -637,11 +586,7 @@ async function scoreHttpFramework(absDir: string): Promise<number> {
   for (const f of ["requirements.txt", "pyproject.toml"]) {
     try {
       const content = readFileSync(resolve(absDir, f), "utf-8").toLowerCase();
-      if (
-        content.includes("django") ||
-        content.includes("flask") ||
-        content.includes("fastapi")
-      ) {
+      if (content.includes("django") || content.includes("flask") || content.includes("fastapi")) {
         return 8;
       }
     } catch {
@@ -651,10 +596,7 @@ async function scoreHttpFramework(absDir: string): Promise<number> {
 
   // Go
   try {
-    const gomod = readFileSync(
-      resolve(absDir, "go.mod"),
-      "utf-8",
-    ).toLowerCase();
+    const gomod = readFileSync(resolve(absDir, "go.mod"), "utf-8").toLowerCase();
     if (
       gomod.includes("gin-gonic") ||
       gomod.includes("gorilla/mux") ||
@@ -797,10 +739,7 @@ function toRepoRelative(prefix: string, filePath: string): string {
   return prefix ? `${prefix}/${filePath}`.replace(/\/+/g, "/") : filePath;
 }
 
-async function findControllerFiles(
-  searchRoot: string,
-  pathPrefix = "",
-): Promise<string[]> {
+async function findControllerFiles(searchRoot: string, pathPrefix = ""): Promise<string[]> {
   const files = new Set<string>();
   for (const pattern of CONTROLLER_GLOBS) {
     for (const f of await glob(pattern, {
@@ -826,7 +765,7 @@ async function extractFsBasedRoutes(
   const endpoints: DiscoveredEndpoint[] = [];
 
   // Next.js: pages/api/**/*.{ts,js,tsx,jsx} or app/api/**/route.{ts,js}
-  const isNextJs = techStack.frameworks.some(f => /next/i.test(f));
+  const isNextJs = techStack.frameworks.some((f) => /next/i.test(f));
   if (isNextJs) {
     // Pages Router: pages/api/users/[id].ts → GET /api/users/:id
     const pagesApiFiles = await glob("pages/api/**/*.{ts,js,tsx,jsx}", {
@@ -835,12 +774,14 @@ async function extractFsBasedRoutes(
       ignore: GLOB_IGNORE,
     });
     for (const f of pagesApiFiles) {
-      const route = "/" + f
-        .replace(/^pages\//, "")
-        .replace(/\/index\.\w+$/, "")
-        .replace(/\.\w+$/, "")
-        .replace(/\[\.\.\.(\w+)\]/g, ":$1*")
-        .replace(/\[(\w+)\]/g, ":$1");
+      const route =
+        "/" +
+        f
+          .replace(/^pages\//, "")
+          .replace(/\/index\.\w+$/, "")
+          .replace(/\.\w+$/, "")
+          .replace(/\[\.\.\.(\w+)\]/g, ":$1*")
+          .replace(/\[(\w+)\]/g, ":$1");
       endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
     }
 
@@ -851,16 +792,18 @@ async function extractFsBasedRoutes(
       ignore: GLOB_IGNORE,
     });
     for (const f of appApiFiles) {
-      const route = "/" + f
-        .replace(/^app\//, "")
-        .replace(/\/route\.\w+$/, "")
-        .replace(/\[\.\.\.(\w+)\]/g, ":$1*")
-        .replace(/\[(\w+)\]/g, ":$1");
+      const route =
+        "/" +
+        f
+          .replace(/^app\//, "")
+          .replace(/\/route\.\w+$/, "")
+          .replace(/\[\.\.\.(\w+)\]/g, ":$1*")
+          .replace(/\[(\w+)\]/g, ":$1");
       // Detect exported HTTP methods from the file
       try {
         const content = readFileSync(resolve(searchRoot, f), "utf-8");
-        const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"].filter(
-          m => new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b`, "i").test(content),
+        const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"].filter((m) =>
+          new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b`, "i").test(content),
         );
         for (const method of methods.length > 0 ? methods : ["GET"]) {
           endpoints.push({ method, path: route, filePath: toRepoRelative(pathPrefix, f) });
@@ -872,7 +815,7 @@ async function extractFsBasedRoutes(
   }
 
   // Remix: app/routes/**/*.{ts,tsx,js,jsx}
-  const isRemix = techStack.frameworks.some(f => /remix/i.test(f));
+  const isRemix = techStack.frameworks.some((f) => /remix/i.test(f));
   if (isRemix) {
     const remixFiles = await glob("app/routes/**/*.{ts,tsx,js,jsx}", {
       cwd: searchRoot,
@@ -881,13 +824,15 @@ async function extractFsBasedRoutes(
     });
     for (const f of remixFiles) {
       // Remix flat routes: app/routes/users.$userId.tsx → /users/:userId
-      const route = "/" + f
-        .replace(/^app\/routes\//, "")
-        .replace(/\.\w+$/, "")        // remove extension
-        .replace(/_index$/, "")        // _index → parent route
-        .replace(/\$/g, ":")           // $param → :param
-        .replace(/\./g, "/")          // dot → slash (flat routes)
-        .replace(/\/_/, "/");          // _layout segments
+      const route =
+        "/" +
+        f
+          .replace(/^app\/routes\//, "")
+          .replace(/\.\w+$/, "") // remove extension
+          .replace(/_index$/, "") // _index → parent route
+          .replace(/\$/g, ":") // $param → :param
+          .replace(/\./g, "/") // dot → slash (flat routes)
+          .replace(/\/_/, "/"); // _layout segments
       if (route && route !== "/") {
         endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
       }
@@ -927,7 +872,8 @@ async function detectRoutePrefixes(
     }
 
     // app.use('/api/v1', usersRouter)  or  app.use('/api', require('./routes/users'))
-    const useRe = /\.use\(\s*["'`](\/[^"'`]*)["'`]\s*,\s*(?:require\(\s*["'`]([^"'`]+)["'`]\s*\)|(\w+))/g;
+    const useRe =
+      /\.use\(\s*["'`](\/[^"'`]*)["'`]\s*,\s*(?:require\(\s*["'`]([^"'`]+)["'`]\s*\)|(\w+))/g;
     let m;
     while ((m = useRe.exec(content)) !== null) {
       const prefix = m[1];
@@ -944,11 +890,13 @@ async function detectRoutePrefixes(
         // import usersRouter from './routes/users'
         const importRe = new RegExp(
           `import\\s+${varName}\\s+from\\s+["'\`]([^"'\`]+)["'\`]` +
-          `|const\\s+${varName}\\s*=\\s*require\\(\\s*["'\`]([^"'\`]+)["'\`]\\s*\\)`,
+            `|const\\s+${varName}\\s*=\\s*require\\(\\s*["'\`]([^"'\`]+)["'\`]\\s*\\)`,
         );
         const importMatch = content.match(importRe);
         if (importMatch) {
-          const importPath = (importMatch[1] ?? importMatch[2]).replace(/^\.\//, "").replace(/\.\w+$/, "");
+          const importPath = (importMatch[1] ?? importMatch[2])
+            .replace(/^\.\//, "")
+            .replace(/\.\w+$/, "");
           prefixMap.set(toRepoRelative(pathPrefix, importPath), prefix);
         }
       }
@@ -962,10 +910,7 @@ async function detectRoutePrefixes(
  * Given a file path like "routes/users.ts", find the best matching
  * prefix from the prefix map (e.g. "routes/users" → "/api").
  */
-function findPrefixForFile(
-  filePath: string,
-  prefixMap: Map<string, string>,
-): string {
+function findPrefixForFile(filePath: string, prefixMap: Map<string, string>): string {
   const normalized = filePath.replace(/\.\w+$/, "");
   // Direct match
   if (prefixMap.has(normalized)) return prefixMap.get(normalized)!;
@@ -979,10 +924,7 @@ function findPrefixForFile(
 }
 
 /** Extract HTTP endpoints from source code using regex patterns per framework */
-function extractEndpointsFromFile(
-  content: string,
-  filePath: string,
-): DiscoveredEndpoint[] {
+function extractEndpointsFromFile(content: string, filePath: string): DiscoveredEndpoint[] {
   const endpoints: DiscoveredEndpoint[] = [];
   const ext = extname(filePath).toLowerCase();
 
@@ -1024,15 +966,18 @@ function extractEndpointsFromFile(
     // NestJS: extract @Controller('prefix') for prepending to routes
     const controllerMatch = content.match(/@Controller\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/);
     const nestPrefix = controllerMatch?.[1]
-      ? (controllerMatch[1].startsWith("/") ? controllerMatch[1] : "/" + controllerMatch[1])
+      ? controllerMatch[1].startsWith("/")
+        ? controllerMatch[1]
+        : "/" + controllerMatch[1]
       : "";
 
     // NestJS @Crud() + @Controller('path') → generate standard CRUD endpoints
     if (/@Crud\s*\(/.test(content) && nestPrefix) {
       for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"] as const) {
-        const crudPath = method === "GET" || method === "DELETE" || method === "PUT" || method === "PATCH"
-          ? `${nestPrefix}/:id`
-          : nestPrefix;
+        const crudPath =
+          method === "GET" || method === "DELETE" || method === "PUT" || method === "PATCH"
+            ? `${nestPrefix}/:id`
+            : nestPrefix;
         endpoints.push({ method, path: crudPath, filePath });
       }
       // Also add GET for list (no :id)
@@ -1040,13 +985,13 @@ function extractEndpointsFromFile(
     }
 
     // NestJS decorators: @Get("/path"), @Post("/path")
-    const nestRe =
-      /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/gi;
+    const nestRe = /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/gi;
     while ((m = nestRe.exec(content)) !== null) {
       const subPath = m[2];
-      const fullPath = nestPrefix && subPath
-        ? `${nestPrefix}/${subPath.replace(/^\//, "")}`
-        : nestPrefix + (subPath.startsWith("/") ? subPath : `/${subPath}`);
+      const fullPath =
+        nestPrefix && subPath
+          ? `${nestPrefix}/${subPath.replace(/^\//, "")}`
+          : nestPrefix + (subPath.startsWith("/") ? subPath : `/${subPath}`);
       endpoints.push({ method: m[1].toUpperCase(), path: fullPath || "/", filePath });
     }
     // NestJS decorators without path: @Get()
@@ -1079,13 +1024,9 @@ function extractEndpointsFromFile(
     // Replace [controller] placeholder with controller name from class
     const classNameMatch = content.match(/class\s+(\w+?)(?:Controller)\b/);
     if (classNameMatch) {
-      routePrefix = routePrefix.replace(
-        /\[controller\]/gi,
-        classNameMatch[1].toLowerCase(),
-      );
+      routePrefix = routePrefix.replace(/\[controller\]/gi, classNameMatch[1].toLowerCase());
     }
-    if (routePrefix && !routePrefix.startsWith("/"))
-      routePrefix = "/" + routePrefix;
+    if (routePrefix && !routePrefix.startsWith("/")) routePrefix = "/" + routePrefix;
 
     // [HttpGet], [HttpPost("subpath")], etc.
     const csMethodRe =
@@ -1125,8 +1066,7 @@ function extractEndpointsFromFile(
   // ---- Python / Flask / FastAPI / Django ----
   if (ext === ".py") {
     // @app.route("/path", methods=["GET", "POST"])
-    const flaskRe =
-      /@\w+\.route\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?\s*\)/gi;
+    const flaskRe = /@\w+\.route\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?\s*\)/gi;
     let m;
     while ((m = flaskRe.exec(content)) !== null) {
       const path = m[1];
@@ -1136,8 +1076,7 @@ function extractEndpointsFromFile(
       }
     }
     // FastAPI: @app.get("/path"), @router.post("/path")
-    const fastapiRe =
-      /@\w+\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi;
+    const fastapiRe = /@\w+\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi;
     while ((m = fastapiRe.exec(content)) !== null) {
       endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
     }
@@ -1179,7 +1118,8 @@ function extractEndpointsFromFile(
       endpoints.push({ method: "GET", path: m[1], filePath });
     }
     // http.NewServeMux / mux patterns: mux.HandleFunc("GET /path", handler)
-    const muxMethodRe = /(?:HandleFunc|Handle)\(\s*"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+([^"]+)"/gi;
+    const muxMethodRe =
+      /(?:HandleFunc|Handle)\(\s*"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+([^"]+)"/gi;
     while ((m = muxMethodRe.exec(content)) !== null) {
       endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
     }
@@ -1215,18 +1155,14 @@ function extractEndpointsFromFile(
       const trimmed = line.trim();
 
       // namespace :admin do → prefix "/admin"
-      const nsMatch = trimmed.match(
-        /^\s*namespace\s+[:"'](\w+)/,
-      );
+      const nsMatch = trimmed.match(/^\s*namespace\s+[:"'](\w+)/);
       if (nsMatch) {
         prefixStack.push(`/${nsMatch[1]}`);
         continue;
       }
 
       // scope "/api/v1" do → prefix "/api/v1"
-      const scopeMatch = trimmed.match(
-        /^\s*scope\s+["']([^"']+)["']/,
-      );
+      const scopeMatch = trimmed.match(/^\s*scope\s+["']([^"']+)["']/);
       if (scopeMatch) {
         prefixStack.push(scopeMatch[1].startsWith("/") ? scopeMatch[1] : `/${scopeMatch[1]}`);
         continue;
@@ -1245,9 +1181,7 @@ function extractEndpointsFromFile(
       //   resources :users, only: [:index, :show]
       //   resources :users, only: :index
       //   resources :users, except: %i[destroy]
-      const resMatch = trimmed.match(
-        /^\s*(resources?)\s+:(\w+)(.*)$/,
-      );
+      const resMatch = trimmed.match(/^\s*(resources?)\s+:(\w+)(.*)$/);
       if (resMatch) {
         const keyword = resMatch[1];
         const name = resMatch[2];
@@ -1258,22 +1192,26 @@ function extractEndpointsFromFile(
         // Map each Rails action to its (method, path-suffix) tuple.
         // Plural resources have 7 standard actions; singular has 6 (no :id, no index).
         const pluralActions: Record<string, Array<{ method: string; suffix: string }>> = {
-          index:   [{ method: "GET",    suffix: "" }],
-          create:  [{ method: "POST",   suffix: "" }],
-          new:     [{ method: "GET",    suffix: "/new" }],
-          show:    [{ method: "GET",    suffix: "/:id" }],
-          edit:    [{ method: "GET",    suffix: "/:id/edit" }],
-          update:  [{ method: "PUT",    suffix: "/:id" },
-                    { method: "PATCH",  suffix: "/:id" }],
+          index: [{ method: "GET", suffix: "" }],
+          create: [{ method: "POST", suffix: "" }],
+          new: [{ method: "GET", suffix: "/new" }],
+          show: [{ method: "GET", suffix: "/:id" }],
+          edit: [{ method: "GET", suffix: "/:id/edit" }],
+          update: [
+            { method: "PUT", suffix: "/:id" },
+            { method: "PATCH", suffix: "/:id" },
+          ],
           destroy: [{ method: "DELETE", suffix: "/:id" }],
         };
         const singularActions: Record<string, Array<{ method: string; suffix: string }>> = {
-          create:  [{ method: "POST",   suffix: "" }],
-          new:     [{ method: "GET",    suffix: "/new" }],
-          show:    [{ method: "GET",    suffix: "" }],
-          edit:    [{ method: "GET",    suffix: "/edit" }],
-          update:  [{ method: "PUT",    suffix: "" },
-                    { method: "PATCH",  suffix: "" }],
+          create: [{ method: "POST", suffix: "" }],
+          new: [{ method: "GET", suffix: "/new" }],
+          show: [{ method: "GET", suffix: "" }],
+          edit: [{ method: "GET", suffix: "/edit" }],
+          update: [
+            { method: "PUT", suffix: "" },
+            { method: "PATCH", suffix: "" },
+          ],
           destroy: [{ method: "DELETE", suffix: "" }],
         };
         const actionMap = isSingular ? singularActions : pluralActions;
@@ -1287,7 +1225,11 @@ function extractEndpointsFromFile(
           if (m) return m[1].split(/\s+/).filter(Boolean);
           // [:index, :show] form
           m = r.match(/^\[\s*([^\]]+)\]/);
-          if (m) return m[1].split(",").map((s) => s.trim().replace(/^:/, "")).filter(Boolean);
+          if (m)
+            return m[1]
+              .split(",")
+              .map((s) => s.trim().replace(/^:/, ""))
+              .filter(Boolean);
           // :index single symbol form
           m = r.match(/^:(\w+)/);
           if (m) return [m[1]];
@@ -1364,8 +1306,7 @@ export function extractParamsFromCode(
   if (ext === ".cs") {
     const queryParams: Array<{ name: string; value: string }> = [];
     // [FromQuery] parameters
-    const fromQueryRe =
-      /\[FromQuery(?:\(Name\s*=\s*"(\w+)")?\)?\]\s*\w+\s+(\w+)/g;
+    const fromQueryRe = /\[FromQuery(?:\(Name\s*=\s*"(\w+)")?\)?\]\s*\w+\s+(\w+)/g;
     let m;
     while ((m = fromQueryRe.exec(content)) !== null) {
       const name = m[1] ?? m[2];
@@ -1467,7 +1408,10 @@ function normalizePathParams(path: string): string {
       // Unnamed capture groups: (\d+), ([^/]+), (.+)
       .replace(/\([^?][^)]*\)/g, () => `{id${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`)
       // Bare regex fragments left in a segment: [^/]+, \d+, .+ (between slashes)
-      .replace(/(?<=\/)\[?\^?[/\\dws.*+]+\]?\+?(?=\/|$)/g, () => `{param${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`)
+      .replace(
+        /(?<=\/)\[?\^?[/\\dws.*+]+\]?\+?(?=\/|$)/g,
+        () => `{param${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`,
+      )
       // Clean up leftover regex anchors
       .replace(/[\^$]/g, "")
       // Collapse double slashes from empty replacements
@@ -1477,8 +1421,7 @@ function normalizePathParams(path: string): string {
   );
 }
 
-const HTTP_METHOD_PREFIX_RE =
-  /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(.+)$/i;
+const HTTP_METHOD_PREFIX_RE = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(.+)$/i;
 
 function normalizeEndpointMethodAndPath(ep: DiscoveredEndpoint): void {
   const path = ep.path.trim();
@@ -1500,11 +1443,7 @@ function normalizeEndpointMethodAndPath(ep: DiscoveredEndpoint): void {
  * Returns the snippet with line numbers prefixed so the LLM can request more
  * via the read_lines tool.
  */
-function extractSnippet(
-  content: string,
-  anchor: string,
-  contextLines = 30,
-): string {
+function extractSnippet(content: string, anchor: string, contextLines = 30): string {
   const lines = content.split("\n");
   const regions: Array<[number, number]> = [];
 
@@ -1599,8 +1538,7 @@ const bodyExtractionTools = [
           query: { type: "string", description: "Search string (fixed text)" },
           glob: {
             type: "string",
-            description:
-              'Optional glob to restrict search (e.g. "*.cs", "*.ts")',
+            description: 'Optional glob to restrict search (e.g. "*.cs", "*.ts")',
           },
         },
         required: ["query"],
@@ -1653,12 +1591,12 @@ const PARAM_EXTRACTION_RETRY_TURNS = 3;
 
 function parseParamExtractionResponse(response: string): Record<string, unknown>[] | undefined {
   const trimmed = response.trim();
-  if (!trimmed || !/[\[{]/.test(trimmed)) {
+  if (!trimmed || !/[[{]/.test(trimmed)) {
     return undefined;
   }
 
   const json = extractJson(trimmed).trim();
-  if (!json || !/^[\[{]/.test(json)) {
+  if (!json || !/^[[{]/.test(json)) {
     return undefined;
   }
 
@@ -1678,10 +1616,7 @@ function responseSnippet(response: string): string {
 }
 
 function createBodyExtractionToolHandler(repoPath: string): ToolHandler {
-  return async (
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<string> => {
+  return async (name: string, args: Record<string, unknown>): Promise<string> => {
     if (name === "read_lines") {
       const file = String(args.file ?? "");
       const startLine = Number(args.start_line ?? 1);
@@ -1709,24 +1644,16 @@ function createBodyExtractionToolHandler(repoPath: string): ToolHandler {
       const files = await glob(pattern, {
         cwd: repoPath,
         nodir: true,
-        ignore: [
-          "**/node_modules/**",
-          "**/vendor/**",
-          "**/bin/**",
-          "**/obj/**",
-        ],
+        ignore: ["**/node_modules/**", "**/vendor/**", "**/bin/**", "**/obj/**"],
       });
-      const typeRe = new RegExp(
-        `\\b(?:class|interface|struct|type|record|enum)\\s+${typeName}\\b`,
-      );
+      const typeRe = new RegExp(`\\b(?:class|interface|struct|type|record|enum)\\s+${typeName}\\b`);
       for (const f of files) {
         try {
           const content = readFileSync(resolve(repoPath, f), "utf-8");
           const match = typeRe.exec(content);
           if (match) {
             const lines = content.split("\n");
-            const lineIdx =
-              content.substring(0, match.index).split("\n").length - 1;
+            const lineIdx = content.substring(0, match.index).split("\n").length - 1;
             const start = Math.max(0, lineIdx - 2);
             const end = Math.min(lines.length, lineIdx + 40);
             const snippet = lines
@@ -1772,10 +1699,7 @@ function createBodyExtractionToolHandler(repoPath: string): ToolHandler {
         });
         const lines = output.trim().split("\n");
         if (lines.length > 30) {
-          return (
-            lines.slice(0, 30).join("\n") +
-            `\n... (${lines.length} matches total)`
-          );
+          return lines.slice(0, 30).join("\n") + `\n... (${lines.length} matches total)`;
         }
         return lines.join("\n");
       } catch {
@@ -1824,9 +1748,7 @@ async function extractEndpointsViaLlm(
       .join("\n");
     const truncated = lines.length > 80 ? ` (showing first 80 of ${lines.length} lines)` : "";
 
-    console.log(
-      `[Analyze] LLM endpoint discovery: ${filePath}${truncated}`,
-    );
+    console.log(`[Analyze] LLM endpoint discovery: ${filePath}${truncated}`);
 
     const messages = [
       {
@@ -1881,7 +1803,7 @@ Find all HTTP endpoints registered in this file. If routes are registered via he
       const eps = Array.isArray(parsed)
         ? parsed
         : Array.isArray((parsed as Record<string, unknown>).endpoints)
-          ? (parsed as Record<string, unknown>).endpoints as unknown[]
+          ? ((parsed as Record<string, unknown>).endpoints as unknown[])
           : [];
       for (const ep of eps) {
         if (ep.method && ep.path) {
@@ -1893,14 +1815,10 @@ Find all HTTP endpoints registered in this file. If routes are registered via he
         }
       }
       if (eps.length > 0) {
-        console.log(
-          `[Analyze] LLM found ${eps.length} endpoint(s) in ${filePath}`,
-        );
+        console.log(`[Analyze] LLM found ${eps.length} endpoint(s) in ${filePath}`);
       }
     } catch (err) {
-      console.warn(
-        `[Analyze] LLM fallback failed for ${filePath}: ${err}`,
-      );
+      console.warn(`[Analyze] LLM fallback failed for ${filePath}: ${err}`);
     }
   }
 
@@ -1922,12 +1840,33 @@ async function checkForMissedRouteFiles(
 ): Promise<DiscoveredEndpoint[]> {
   // Build a compact directory tree (source files only, max 200 entries)
   const sourceExts = new Set([
-    ".ts", ".js", ".py", ".rb", ".go", ".java", ".kt", ".cs", ".php",
-    ".tsx", ".jsx", ".mjs", ".cjs",
+    ".ts",
+    ".js",
+    ".py",
+    ".rb",
+    ".go",
+    ".java",
+    ".kt",
+    ".cs",
+    ".php",
+    ".tsx",
+    ".jsx",
+    ".mjs",
+    ".cjs",
   ]);
   const ignoreDirs = new Set([
-    "node_modules", ".git", "vendor", "dist", "build", "__pycache__",
-    ".next", "coverage", "tmp", ".cache", "venv", "env",
+    "node_modules",
+    ".git",
+    "vendor",
+    "dist",
+    "build",
+    "__pycache__",
+    ".next",
+    "coverage",
+    "tmp",
+    ".cache",
+    "venv",
+    "env",
   ]);
 
   const tree: string[] = [];
@@ -2041,16 +1980,12 @@ export async function discoverEndpoints(
 ): Promise<DiscoveredEndpoint[]> {
   const scope = endpointSearchScope(repoPath, techStack);
   if (scope.prefix) {
-    console.log(
-      `[Analyze] Endpoint discovery scoped to selected service: ${scope.prefix}`,
-    );
+    console.log(`[Analyze] Endpoint discovery scoped to selected service: ${scope.prefix}`);
   }
 
   // Step 1: Find controller files (pure glob, zero LLM)
   const controllerFiles = await findControllerFiles(scope.root, scope.prefix);
-  console.log(
-    `[Analyze] Found ${controllerFiles.length} controller files via glob`,
-  );
+  console.log(`[Analyze] Found ${controllerFiles.length} controller files via glob`);
 
   // Step 2: Extract endpoints from each file using regex (zero LLM)
   const allEndpoints: DiscoveredEndpoint[] = [];
@@ -2072,15 +2007,9 @@ export async function discoverEndpoints(
   }
 
   // Step 2a: FS-based routes (Next.js pages/api, App Router, Remix flat routes)
-  const fsRoutes = await extractFsBasedRoutes(
-    scope.root,
-    techStack,
-    scope.prefix,
-  );
+  const fsRoutes = await extractFsBasedRoutes(scope.root, techStack, scope.prefix);
   if (fsRoutes.length > 0) {
-    console.log(
-      `[Analyze] Extracted ${fsRoutes.length} endpoints from file-system routes`,
-    );
+    console.log(`[Analyze] Extracted ${fsRoutes.length} endpoints from file-system routes`);
     allEndpoints.push(...fsRoutes);
   }
 
@@ -2103,9 +2032,7 @@ export async function discoverEndpoints(
   // Skip Rails controller files — they define action METHODS (def index, def show)
   // not routes. Routes are centrally defined in config/routes.rb which is handled
   // by regex extraction above.
-  const llmCandidates = noMatchFiles.filter(
-    (f) => !/\bapp\/controllers\/.*\.rb$/.test(f),
-  );
+  const llmCandidates = noMatchFiles.filter((f) => !/\bapp\/controllers\/.*\.rb$/.test(f));
   if (noMatchFiles.length > llmCandidates.length) {
     console.log(
       `[Analyze] Skipping ${noMatchFiles.length - llmCandidates.length} Rails controller file(s) — routes are in config/routes.rb`,
@@ -2158,33 +2085,17 @@ export async function discoverEndpoints(
   }
 
   // De-duplicate by method+path
-  const validMethods = new Set([
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "HEAD",
-    "OPTIONS",
-  ]);
+  const validMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
   const seen = new Set<string>();
   const unique = allEndpoints.filter((ep) => {
     const method = ep.method?.toUpperCase();
-    if (
-      !method ||
-      !validMethods.has(method) ||
-      !ep.path ||
-      ep.path === "unknown"
-    )
-      return false;
+    if (!method || !validMethods.has(method) || !ep.path || ep.path === "unknown") return false;
     const key = `${method} ${ep.path}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
-  console.log(
-    `[Analyze] Extracted ${unique.length} unique endpoints via regex`,
-  );
+  console.log(`[Analyze] Extracted ${unique.length} unique endpoints via regex`);
 
   // Step 3: Enrich with params — programmatic first, LLM only for POST/PUT/PATCH bodies
   const enriched: DiscoveredEndpoint[] = [];
@@ -2219,9 +2130,7 @@ export async function discoverEndpoints(
     //    programmatic source gave us a real one). A placeholder like "test" often
     //    produces a 4xx/5xx baseline that degrades DAST attacks, so these need
     //    real values too — this is the whole point of param extraction.
-    const needsBody = ["POST", "PUT", "PATCH"].includes(
-      ep.method.toUpperCase(),
-    );
+    const needsBody = ["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase());
     const hasPathParams = /[:{}]/.test(ep.path);
     const hasPlaceholderQuery = (ep.queryParams ?? []).some(
       (q) => q.value === "test" || q.value === "" || q.value == null,
@@ -2268,59 +2177,63 @@ export async function discoverEndpoints(
         const idx = fileIdx++;
         const [filePath, fileEndpoints] = fileEntries[idx];
 
-    const fullPath = resolve(repoPath, filePath);
-    let content: string;
-    try {
-      content = readFileSync(fullPath, "utf-8");
-    } catch {
-      enriched.push(...fileEndpoints);
-      processedCount += fileEndpoints.length;
-      continue;
-    }
-
-    // Keep param extraction batches small enough to leave turn budget for save_result.
-    for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += PARAM_EXTRACTION_BATCH_SIZE) {
-      const batch = fileEndpoints.slice(batchStart, batchStart + PARAM_EXTRACTION_BATCH_SIZE);
-      processedCount += batch.length;
-      console.log(
-        `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`,
-      );
-
-      // Build a combined snippet — use the first path segment of each endpoint as anchor
-      const anchors = new Set(
-        batch.flatMap((ep) => {
-          const parts = ep.path.replace(/^\//, "").split("/");
-          return [parts[0], parts[1]].filter(Boolean);
-        }),
-      );
-      let combinedSnippet = "";
-      for (const anchor of anchors) {
-        const snip = extractSnippet(content, anchor);
-        if (snip && !combinedSnippet.includes(snip)) {
-          combinedSnippet += (combinedSnippet ? "\n...\n" : "") + snip;
+        const fullPath = resolve(repoPath, filePath);
+        let content: string;
+        try {
+          content = readFileSync(fullPath, "utf-8");
+        } catch {
+          enriched.push(...fileEndpoints);
+          processedCount += fileEndpoints.length;
+          continue;
         }
-      }
-      if (!combinedSnippet) {
-        // Fallback: first 120 lines
-        combinedSnippet = content
-          .split("\n")
-          .slice(0, 120)
-          .map((l, i) => `${i + 1}: ${l}`)
-          .join("\n");
-      }
-      const totalLines = content.split("\n").length;
 
-      const endpointList = batch
-        .map(
-          (ep, i) =>
-            `[${i}] ${ep.method} ${ep.path}${["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()) ? " (needs body)" : ""}${/[:{}]/.test(ep.path) ? " (has path params)" : ""}`,
-        )
-        .join("\n");
+        // Keep param extraction batches small enough to leave turn budget for save_result.
+        for (
+          let batchStart = 0;
+          batchStart < fileEndpoints.length;
+          batchStart += PARAM_EXTRACTION_BATCH_SIZE
+        ) {
+          const batch = fileEndpoints.slice(batchStart, batchStart + PARAM_EXTRACTION_BATCH_SIZE);
+          processedCount += batch.length;
+          console.log(
+            `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`,
+          );
 
-      const messages: ChatCompletionMessageParam[] = [
-        {
-          role: "system" as const,
-          content: `You are an API analyst. Given code snippets and a list of endpoints, determine the parameters for EACH endpoint with realistic sample values.
+          // Build a combined snippet — use the first path segment of each endpoint as anchor
+          const anchors = new Set(
+            batch.flatMap((ep) => {
+              const parts = ep.path.replace(/^\//, "").split("/");
+              return [parts[0], parts[1]].filter(Boolean);
+            }),
+          );
+          let combinedSnippet = "";
+          for (const anchor of anchors) {
+            const snip = extractSnippet(content, anchor);
+            if (snip && !combinedSnippet.includes(snip)) {
+              combinedSnippet += (combinedSnippet ? "\n...\n" : "") + snip;
+            }
+          }
+          if (!combinedSnippet) {
+            // Fallback: first 120 lines
+            combinedSnippet = content
+              .split("\n")
+              .slice(0, 120)
+              .map((l, i) => `${i + 1}: ${l}`)
+              .join("\n");
+          }
+          const totalLines = content.split("\n").length;
+
+          const endpointList = batch
+            .map(
+              (ep, i) =>
+                `[${i}] ${ep.method} ${ep.path}${["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()) ? " (needs body)" : ""}${/[:{}]/.test(ep.path) ? " (has path params)" : ""}`,
+            )
+            .join("\n");
+
+          const messages: ChatCompletionMessageParam[] = [
+            {
+              role: "system" as const,
+              content: `You are an API analyst. Given code snippets and a list of endpoints, determine the parameters for EACH endpoint with realistic sample values.
 
 You have tools to inspect more code:
 - read_lines: read specific line ranges from any file
@@ -2335,10 +2248,10 @@ The result array should have one entry per endpoint (matching the [index]):
 For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"id": "1", "slug": "default"}). Prefer the LOWEST plausible value (1, "default", "me") since higher IDs likely don't exist in a freshly-seeded database.
 
 For gRPC-Web endpoints (content-type: application/grpc-web+proto), the body must be a raw gRPC frame as a string with binary characters using JSON escape sequences. Format: 5-byte header (\\u0000 compressed flag + 4-byte big-endian message length) followed by the protobuf-encoded message. Use the .proto message definitions to construct a realistic payload. Set contentType to "application/grpc-web+proto". Example for a message with a single string field "command" = "pwd" (field 1, wire type 2, length 3): "\\u0000\\u0000\\u0000\\u0000\\u0005\\n\\u0003pwd". The \\n is 0x0a (field tag), \\u0003 is the string length prefix. Always include realistic field values from the proto definitions so the scanner can fuzz them effectively.`,
-        },
-        {
-          role: "user" as const,
-          content: `Endpoints from ${filePath} (${totalLines} lines):
+            },
+            {
+              role: "user" as const,
+              content: `Endpoints from ${filePath} (${totalLines} lines):
 ${endpointList}
 
 Relevant code:
@@ -2347,137 +2260,136 @@ ${combinedSnippet.slice(0, 6000)}
 \`\`\`
 
 Look up any referenced DTOs/models. Call save_result with the JSON array of params for each endpoint index.`,
-        },
-      ];
-
-      try {
-        // Capture save_result tool call args via closure
-        let savedResult: Record<string, unknown>[] | undefined;
-        const wrappedHandler: ToolHandler = async (name, args) => {
-          if (name === "save_result") {
-            const r = args.result;
-            if (Array.isArray(r)) savedResult = r as Record<string, unknown>[];
-            return "Result saved.";
-          }
-          return handleTool(name, args);
-        };
-
-        let response = await chatWithTools(
-          llm,
-          messages,
-          bodyExtractionTools,
-          wrappedHandler,
-          model,
-          PARAM_EXTRACTION_MAX_TURNS,
-        );
-
-        // Prefer captured tool result over parsing text response
-        let entries: Record<string, unknown>[] | undefined;
-        if (savedResult && savedResult.length > 0) {
-          entries = savedResult;
-        } else {
-          entries = parseParamExtractionResponse(response);
-        }
-
-        if (!entries) {
-          console.warn(
-            `[Analyze] Param extraction for ${filePath} did not call save_result; retrying focused extraction${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`,
-          );
-          let retrySavedResult: Record<string, unknown>[] | undefined;
-          const retryHandler: ToolHandler = async (name, args) => {
-            if (name === "save_result") {
-              const r = args.result;
-              if (Array.isArray(r)) retrySavedResult = r as Record<string, unknown>[];
-              return "Result saved.";
-            }
-            return handleTool(name, args);
-          };
-          const retryMessages: ChatCompletionMessageParam[] = [
-            ...messages,
-            {
-              role: "assistant",
-              content: response.trim() || "I did not save a result.",
             },
-            {
-              role: "user",
-              content: `You must now call save_result with one result object for each endpoint index below. Do not inspect more files and do not answer in text.
+          ];
+
+          try {
+            // Capture save_result tool call args via closure
+            let savedResult: Record<string, unknown>[] | undefined;
+            const wrappedHandler: ToolHandler = async (name, args) => {
+              if (name === "save_result") {
+                const r = args.result;
+                if (Array.isArray(r)) savedResult = r as Record<string, unknown>[];
+                return "Result saved.";
+              }
+              return handleTool(name, args);
+            };
+
+            let response = await chatWithTools(
+              llm,
+              messages,
+              bodyExtractionTools,
+              wrappedHandler,
+              model,
+              PARAM_EXTRACTION_MAX_TURNS,
+            );
+
+            // Prefer captured tool result over parsing text response
+            let entries: Record<string, unknown>[] | undefined;
+            if (savedResult && savedResult.length > 0) {
+              entries = savedResult;
+            } else {
+              entries = parseParamExtractionResponse(response);
+            }
+
+            if (!entries) {
+              console.warn(
+                `[Analyze] Param extraction for ${filePath} did not call save_result; retrying focused extraction${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`,
+              );
+              let retrySavedResult: Record<string, unknown>[] | undefined;
+              const retryHandler: ToolHandler = async (name, args) => {
+                if (name === "save_result") {
+                  const r = args.result;
+                  if (Array.isArray(r)) retrySavedResult = r as Record<string, unknown>[];
+                  return "Result saved.";
+                }
+                return handleTool(name, args);
+              };
+              const retryMessages: ChatCompletionMessageParam[] = [
+                ...messages,
+                {
+                  role: "assistant",
+                  content: response.trim() || "I did not save a result.",
+                },
+                {
+                  role: "user",
+                  content: `You must now call save_result with one result object for each endpoint index below. Do not inspect more files and do not answer in text.
 
 ${endpointList}
 
 Use empty strings/objects for fields you cannot infer confidently, but preserve every endpoint index.`,
-            },
-          ];
-          response = await chatWithTools(
-            llm,
-            retryMessages,
-            [saveResultTool],
-            retryHandler,
-            model,
-            PARAM_EXTRACTION_RETRY_TURNS,
-          );
-          entries = retrySavedResult && retrySavedResult.length > 0
-            ? retrySavedResult
-            : parseParamExtractionResponse(response);
-        }
-
-        if (!entries) {
-          throw new Error(
-            `LLM did not provide parseable param extraction JSON${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`,
-          );
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const entry of entries as any[]) {
-          const idx = typeof entry.index === "number" ? entry.index : 0;
-          const ep = batch[idx] ?? batch[0];
-          if (!ep) continue;
-
-          let resolvedPath = ep.path;
-          if (entry.pathParams && typeof entry.pathParams === "object") {
-            for (const [param, value] of Object.entries(entry.pathParams)) {
-              resolvedPath = resolvedPath
-                .replace(`:${param}`, String(value))
-                .replace(`{${param}}`, String(value));
+                },
+              ];
+              response = await chatWithTools(
+                llm,
+                retryMessages,
+                [saveResultTool],
+                retryHandler,
+                model,
+                PARAM_EXTRACTION_RETRY_TURNS,
+              );
+              entries =
+                retrySavedResult && retrySavedResult.length > 0
+                  ? retrySavedResult
+                  : parseParamExtractionResponse(response);
             }
-          }
-          enriched.push({
-            ...ep,
-            path: resolvedPath,
-            queryParams:
-              Array.isArray(entry.queryParams) && entry.queryParams.length > 0
-                ? entry.queryParams
-                : ep.queryParams,
-            body: entry.body
-              ? (typeof entry.body === "string" ? entry.body : JSON.stringify(entry.body))
-              : undefined,
-            contentType: entry.contentType ? String(entry.contentType) : undefined,
-          });
-        }
 
-        // Add any batch entries that weren't covered by the LLM response
-        const coveredIndices = new Set(
-          entries
-            .filter((e) => typeof e.index === "number")
-            .map((e) => e.index as number),
-        );
-        for (let i = 0; i < batch.length; i++) {
-          if (!coveredIndices.has(i) && entries.length !== 1) {
-            enriched.push(batch[i]);
+            if (!entries) {
+              throw new Error(
+                `LLM did not provide parseable param extraction JSON${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`,
+              );
+            }
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            for (const entry of entries as any[]) {
+              const idx = typeof entry.index === "number" ? entry.index : 0;
+              const ep = batch[idx] ?? batch[0];
+              if (!ep) continue;
+
+              let resolvedPath = ep.path;
+              if (entry.pathParams && typeof entry.pathParams === "object") {
+                for (const [param, value] of Object.entries(entry.pathParams)) {
+                  resolvedPath = resolvedPath
+                    .replace(`:${param}`, String(value))
+                    .replace(`{${param}}`, String(value));
+                }
+              }
+              enriched.push({
+                ...ep,
+                path: resolvedPath,
+                queryParams:
+                  Array.isArray(entry.queryParams) && entry.queryParams.length > 0
+                    ? entry.queryParams
+                    : ep.queryParams,
+                body: entry.body
+                  ? typeof entry.body === "string"
+                    ? entry.body
+                    : JSON.stringify(entry.body)
+                  : undefined,
+                contentType: entry.contentType ? String(entry.contentType) : undefined,
+              });
+            }
+
+            // Add any batch entries that weren't covered by the LLM response
+            const coveredIndices = new Set(
+              entries.filter((e) => typeof e.index === "number").map((e) => e.index as number),
+            );
+            for (let i = 0; i < batch.length; i++) {
+              if (!coveredIndices.has(i) && entries.length !== 1) {
+                enriched.push(batch[i]);
+              }
+            }
+            // If only one entry returned without index, skip adding duplicates
+            if (entries.length === 1 && typeof entries[0].index !== "number" && batch.length > 1) {
+              for (let i = 1; i < batch.length; i++) {
+                enriched.push(batch[i]);
+              }
+            }
+          } catch (err) {
+            console.warn(`[Analyze] Failed batch param extraction for ${filePath}: ${err}`);
+            enriched.push(...batch);
           }
         }
-        // If only one entry returned without index, skip adding duplicates
-        if (entries.length === 1 && typeof entries[0].index !== "number" && batch.length > 1) {
-          for (let i = 1; i < batch.length; i++) {
-            enriched.push(batch[i]);
-          }
-        }
-      } catch (err) {
-        console.warn(
-          `[Analyze] Failed batch param extraction for ${filePath}: ${err}`,
-        );
-        enriched.push(...batch);
-      }
-    }
       }
     },
   );

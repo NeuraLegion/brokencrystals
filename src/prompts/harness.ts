@@ -5,9 +5,7 @@ import type { HarnessTarget } from "../types.js";
 // Prompt 1: Identify critical functions for harness-based scanning
 // ---------------------------------------------------------------------------
 
-export function identifyHarnessTargetsPrompt(
-  techStack: string,
-): ChatCompletionMessageParam[] {
+export function identifyHarnessTargetsPrompt(techStack: string): ChatCompletionMessageParam[] {
   return [
     {
       role: "system",
@@ -117,19 +115,15 @@ export function generateHarnessPrompt(
   infraInfo: string,
 ): ChatCompletionMessageParam[] {
   const targetList = targets
-    .map(
-      (t, i) => {
-        const pathSlug = `${t.className}-${t.name}`
-          .toLowerCase()
-          .replace(/[^a-z0-9-]/g, "-");
-        return `${i + 1}. ${t.className}.${t.name}(${t.params.map((p) => p.name).join(", ")}) — file: ${t.file}
+    .map((t, i) => {
+      const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+      return `${i + 1}. ${t.className}.${t.name}(${t.params.map((p) => p.name).join(", ")}) — file: ${t.file}
    Deps: ${t.deps.join(", ")} | Vulns: ${t.vulnTypes.join(", ")} | Method: ${t.httpMethod}
    Route: /harness/${pathSlug}
    Params: ${JSON.stringify(t.params)}
    Desc: ${t.description}
    Tier: ${t.tier ?? "unknown"} | Requires: ${JSON.stringify(t.requireStatements ?? [])}`;
-      },
-    )
+    })
     .join("\n");
 
   return [
@@ -188,9 +182,7 @@ For Docker-based projects where the deps are inside a container, the harness sho
 // Prompt 3: Identify minimal infrastructure from compose files
 // ---------------------------------------------------------------------------
 
-export function identifyInfraPrompt(
-  techStack: string,
-): ChatCompletionMessageParam[] {
+export function identifyInfraPrompt(techStack: string): ChatCompletionMessageParam[] {
   return [
     {
       role: "system",
@@ -281,10 +273,20 @@ export function standaloneHarnessDockerfilePrompt(
   harnessFileName: string,
   startCommand: string,
   port: number,
-  targets: Array<{ file: string; className: string; name: string; deps: string[]; tier?: number; requireStatements?: string[] }>,
+  targets: Array<{
+    file: string;
+    className: string;
+    name: string;
+    deps: string[];
+    tier?: number;
+    requireStatements?: string[];
+  }>,
 ): ChatCompletionMessageParam[] {
   const targetSummary = targets
-    .map((t) => `- ${t.className}.${t.name} (${t.file}) — deps: ${t.deps.join(",")} — tier: ${t.tier ?? "?"}`)
+    .map(
+      (t) =>
+        `- ${t.className}.${t.name} (${t.file}) — deps: ${t.deps.join(",")} — tier: ${t.tier ?? "?"}`,
+    )
     .join("\n");
   const allFiles = [...new Set(targets.map((t) => t.file))];
 
@@ -350,14 +352,25 @@ export function harnessCodeRepairPrompt(
   harnessCode: string,
   harnessFileName: string,
   endpointErrors: Array<{ method: string; path: string; status: number; body: string }>,
-  targets: Array<{ name: string; className: string; file: string; params: Array<{ name: string; type: string; sample: string }>; deps: string[]; tier?: number; requireStatements?: string[] }>,
+  targets: Array<{
+    name: string;
+    className: string;
+    file: string;
+    params: Array<{ name: string; type: string; sample: string }>;
+    deps: string[];
+    tier?: number;
+    requireStatements?: string[];
+  }>,
 ): ChatCompletionMessageParam[] {
   const errorSummary = endpointErrors
     .map((e) => `${e.method} ${e.path} → ${e.status}\n  ${e.body}`)
     .join("\n\n");
 
   const targetSummary = targets
-    .map((t) => `- ${t.className}.${t.name} (${t.file}) — deps: ${t.deps.join(",")} — tier: ${t.tier ?? "?"}`)
+    .map(
+      (t) =>
+        `- ${t.className}.${t.name} (${t.file}) — deps: ${t.deps.join(",")} — tier: ${t.tier ?? "?"}`,
+    )
     .join("\n");
 
   return [

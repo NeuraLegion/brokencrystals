@@ -1,4 +1,4 @@
-import type { TechStack, DiscoveredEndpoint } from "../types.js";
+import type { DiscoveredEndpoint, TechStack } from "../types.js";
 import { FETCH_TIMEOUT_SHORT } from "../utils.js";
 
 // ---------------------------------------------------------------------------
@@ -43,9 +43,7 @@ export interface SwaggerProbeResult {
   spec?: Record<string, unknown>;
 }
 
-export async function probeSwaggerSpec(
-  baseUrl: string,
-): Promise<SwaggerProbeResult> {
+export async function probeSwaggerSpec(baseUrl: string): Promise<SwaggerProbeResult> {
   for (const path of UNIQUE_SWAGGER_PATHS) {
     const url = `${baseUrl.replace(/\/$/, "")}${path}`;
     try {
@@ -75,9 +73,7 @@ export async function probeSwaggerSpec(
 // 2. Parse OpenAPI spec → DiscoveredEndpoint[]
 // ---------------------------------------------------------------------------
 
-export function parseOpenApiToEndpoints(
-  spec: Record<string, unknown>,
-): DiscoveredEndpoint[] {
+export function parseOpenApiToEndpoints(spec: Record<string, unknown>): DiscoveredEndpoint[] {
   const endpoints: DiscoveredEndpoint[] = [];
   const paths = spec.paths as Record<string, Record<string, unknown>> | undefined;
   if (!paths) return endpoints;
@@ -118,10 +114,7 @@ export function parseOpenApiToEndpoints(
       };
 
       // Build the path — replace {param} with :param for consistency
-      const normalizedPath = (basePath + pathTemplate).replace(
-        /\{(\w+)\}/g,
-        ":$1",
-      );
+      const normalizedPath = (basePath + pathTemplate).replace(/\{(\w+)\}/g, ":$1");
 
       // Extract query params
       const queryParams: Array<{ name: string; value: string }> = [];
@@ -195,10 +188,7 @@ function sampleForType(type?: string): string | number | boolean {
 }
 
 /** Generate a sample JSON object from an OpenAPI schema */
-function generateSampleFromSchema(
-  schema: Record<string, unknown>,
-  depth = 0,
-): unknown {
+function generateSampleFromSchema(schema: Record<string, unknown>, depth = 0): unknown {
   if (depth > 5) return {};
 
   // Handle $ref — we won't resolve it here, just return a placeholder

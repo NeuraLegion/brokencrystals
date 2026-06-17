@@ -3,7 +3,7 @@
  * and GitHub Enterprise Server instances.
  */
 
-import type { ScmProvider, RepoInfo } from "./types.js";
+import type { RepoInfo, ScmProvider } from "./types.js";
 
 export class GitHubProvider implements ScmProvider {
   readonly platformName = "GitHub";
@@ -13,9 +13,7 @@ export class GitHubProvider implements ScmProvider {
   constructor(info: RepoInfo) {
     this.info = info;
     const host = new URL(info.url).host;
-    this.apiBase = host === "github.com"
-      ? "https://api.github.com"
-      : `https://${host}/api/v3`;
+    this.apiBase = host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`;
   }
 
   buildCloneUrl(token: string): string {
@@ -75,14 +73,13 @@ export class GitHubProvider implements ScmProvider {
         const data = (await res.json()) as { default_branch: string };
         return data.default_branch;
       }
-    } catch { /* fallback */ }
+    } catch {
+      /* fallback */
+    }
     return "main";
   }
 
-  async findPullRequest(
-    token: string,
-    branch: string,
-  ): Promise<number | null> {
+  async findPullRequest(token: string, branch: string): Promise<number | null> {
     const { owner, repo } = this.info;
     const url = `${this.apiBase}/repos/${owner}/${repo}/pulls?head=${owner}:${branch}&state=open&per_page=1`;
     try {
@@ -132,11 +129,7 @@ export class GitHubProvider implements ScmProvider {
     }
   }
 
-  async updatePullRequestBody(
-    token: string,
-    prId: number,
-    body: string,
-  ): Promise<void> {
+  async updatePullRequestBody(token: string, prId: number, body: string): Promise<void> {
     const { owner, repo } = this.info;
     const url = `${this.apiBase}/repos/${owner}/${repo}/pulls/${prId}`;
     const res = await fetch(url, {
@@ -149,9 +142,7 @@ export class GitHubProvider implements ScmProvider {
       body: JSON.stringify({ body }),
     });
     if (!res.ok) {
-      console.warn(
-        `[GitHub] Failed to update PR description: ${res.status} ${res.statusText}`,
-      );
+      console.warn(`[GitHub] Failed to update PR description: ${res.status} ${res.statusText}`);
     }
   }
 }

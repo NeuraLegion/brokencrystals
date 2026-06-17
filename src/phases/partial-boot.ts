@@ -104,13 +104,13 @@ export function stripNonEssentialServices(
   let i = servicesLineIdx + 1;
   while (i < lines.length) {
     // A service definition starts with exactly 2 spaces + a word + colon
-    const svcMatch = lines[i].match(/^  (\w[\w-]*):\s*$/);
+    const svcMatch = lines[i].match(/^ {2}(\w[\w-]*):\s*$/);
     if (svcMatch) {
       const name = svcMatch[1];
       const startLine = i;
       i++;
       // Find end of this service block (next 2-space service or end of file / top-level key)
-      while (i < lines.length && !(/^  \w[\w-]*:\s*$/.test(lines[i])) && !(/^\w/.test(lines[i]))) {
+      while (i < lines.length && !/^ {2}\w[\w-]*:\s*$/.test(lines[i]) && !/^\w/.test(lines[i])) {
         i++;
       }
       const section = lines.slice(startLine, i).join("\n");
@@ -161,14 +161,8 @@ export function stripNonEssentialServices(
   let result = stripped.join("\n");
   for (const name of toRemove) {
     // Remove lines like "      - keycloak" or "      keycloak:" under depends_on
-    result = result.replace(
-      new RegExp(`^\\s+- ${name}\\s*$`, "gm"),
-      "",
-    );
-    result = result.replace(
-      new RegExp(`^\\s+${name}:\\s*\\n(\\s+condition:.*\\n)?`, "gm"),
-      "",
-    );
+    result = result.replace(new RegExp(`^\\s+- ${name}\\s*$`, "gm"), "");
+    result = result.replace(new RegExp(`^\\s+${name}:\\s*\\n(\\s+condition:.*\\n)?`, "gm"), "");
   }
 
   // Clean up empty depends_on blocks left behind

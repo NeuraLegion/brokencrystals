@@ -1,4 +1,4 @@
-import type { Finding, BrightApiContext } from "../types.js";
+import type { BrightApiContext, Finding } from "../types.js";
 import { findingKey } from "../utils.js";
 
 /**
@@ -7,10 +7,7 @@ import { findingKey } from "../utils.js";
  * issues — not stale project-level ones — so results reflect exactly what this
  * run found.
  */
-export async function fetchFindings(
-  api: BrightApiContext,
-  scanIds: string[],
-): Promise<Finding[]> {
+export async function fetchFindings(api: BrightApiContext, scanIds: string[]): Promise<Finding[]> {
   const findings: Finding[] = [];
   const seen = new Set<string>();
 
@@ -18,7 +15,11 @@ export async function fetchFindings(
     const issues = await fetchScanIssues(api, scanId);
     for (const issue of issues) {
       // Deduplicate across scan groups (same project-issue can surface in multiple scans)
-      const key = findingKey({ name: issue.name, method: issue.method ?? "GET", url: issue.url ?? "" });
+      const key = findingKey({
+        name: issue.name,
+        method: issue.method ?? "GET",
+        url: issue.url ?? "",
+      });
       if (seen.has(key)) continue;
       seen.add(key);
 
@@ -60,10 +61,7 @@ interface ScanIssue {
   test?: string | { tag?: string; id?: string; name?: string };
 }
 
-async function fetchScanIssues(
-  api: BrightApiContext,
-  scanId: string,
-): Promise<ScanIssue[]> {
+async function fetchScanIssues(api: BrightApiContext, scanId: string): Promise<ScanIssue[]> {
   const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/issues`;
   console.log(`[Findings] Fetching issues for scan ${scanId}`);
 
@@ -73,9 +71,7 @@ async function fetchScanIssues(
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.error(
-      `[Findings] Failed to fetch issues for scan ${scanId}: ${res.status} ${body}`,
-    );
+    console.error(`[Findings] Failed to fetch issues for scan ${scanId}: ${res.status} ${body}`);
     return [];
   }
 

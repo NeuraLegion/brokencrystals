@@ -1,33 +1,40 @@
-import { describe, it, expect, vi } from "vitest";
-import { chatWithTools } from "../inference.js";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions.mjs";
+import { describe, expect, it, vi } from "vitest";
 import type { ToolHandler } from "../inference.js";
-import type { ChatCompletionTool, ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
+import { chatWithTools } from "../inference.js";
 
 /**
  * Creates a mock OpenAI client that returns pre-scripted responses.
  * Each call to chat.completions.create pops the next response from the queue.
  */
-function createMockLLM(responses: Array<{
-  content?: string | null;
-  tool_calls?: Array<{
-    id: string;
-    type: "function";
-    function: { name: string; arguments: string };
-  }>;
-}>) {
+function createMockLLM(
+  responses: Array<{
+    content?: string | null;
+    tool_calls?: Array<{
+      id: string;
+      type: "function";
+      function: { name: string; arguments: string };
+    }>;
+  }>,
+) {
   let callIndex = 0;
   const create = vi.fn().mockImplementation(async () => {
     const resp = responses[callIndex++];
     if (!resp) throw new Error("Mock LLM ran out of scripted responses");
     return {
-      choices: [{
-        message: {
-          role: "assistant",
-          content: resp.content ?? null,
-          tool_calls: resp.tool_calls ?? undefined,
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: resp.content ?? null,
+            tool_calls: resp.tool_calls ?? undefined,
+          },
+          finish_reason: resp.tool_calls ? "tool_calls" : "stop",
         },
-        finish_reason: resp.tool_calls ? "tool_calls" : "stop",
-      }],
+      ],
       usage: { prompt_tokens: 100, completion_tokens: 50 },
     };
   });
@@ -51,9 +58,7 @@ const sampleTools: ChatCompletionTool[] = [
 
 describe("chatWithTools integration", () => {
   it("returns direct text response when no tools are called", async () => {
-    const llm = createMockLLM([
-      { content: "Hello! The weather is nice." },
-    ]);
+    const llm = createMockLLM([{ content: "Hello! The weather is nice." }]);
     const messages: ChatCompletionMessageParam[] = [
       { role: "user", content: "What's the weather?" },
     ];
@@ -69,11 +74,13 @@ describe("chatWithTools integration", () => {
   it("executes tool calls and feeds results back to the LLM", async () => {
     const llm = createMockLLM([
       {
-        tool_calls: [{
-          id: "call_1",
-          type: "function",
-          function: { name: "get_weather", arguments: '{"city":"Tel Aviv"}' },
-        }],
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"Tel Aviv"}' },
+          },
+        ],
       },
       { content: "It's 32°C and sunny in Tel Aviv." },
     ]);
@@ -93,13 +100,22 @@ describe("chatWithTools integration", () => {
     const llm = createMockLLM([
       {
         tool_calls: [
-          { id: "call_1", type: "function", function: { name: "get_weather", arguments: '{"city":"TLV"}' } },
-          { id: "call_2", type: "function", function: { name: "get_weather", arguments: '{"city":"NYC"}' } },
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"TLV"}' },
+          },
+          {
+            id: "call_2",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"NYC"}' },
+          },
         ],
       },
       { content: "TLV: 32°C, NYC: 20°C" },
     ]);
-    const handler: ToolHandler = vi.fn()
+    const handler: ToolHandler = vi
+      .fn()
       .mockResolvedValueOnce("32°C sunny")
       .mockResolvedValueOnce("20°C cloudy");
 
@@ -119,11 +135,13 @@ describe("chatWithTools integration", () => {
   it("respects maxTurns and throws when no text response is available", async () => {
     // LLM keeps calling tools on every turn
     const responses = Array.from({ length: 3 }, (_, i) => ({
-      tool_calls: [{
-        id: `call_${i}`,
-        type: "function" as const,
-        function: { name: "get_weather", arguments: '{"city":"loop"}' },
-      }],
+      tool_calls: [
+        {
+          id: `call_${i}`,
+          type: "function" as const,
+          function: { name: "get_weather", arguments: '{"city":"loop"}' },
+        },
+      ],
     }));
 
     const llm = createMockLLM(responses);
@@ -132,18 +150,27 @@ describe("chatWithTools integration", () => {
     // On the last turn, tools are stripped — but our mock still returns tool_calls
     // which means no text content is ever produced → should throw
     await expect(
-      chatWithTools(llm as any, [{ role: "user", content: "loop" }], sampleTools, handler, "gpt-4", 3),
+      chatWithTools(
+        llm as any,
+        [{ role: "user", content: "loop" }],
+        sampleTools,
+        handler,
+        "gpt-4",
+        3,
+      ),
     ).rejects.toThrow("exceeded maximum tool-calling turns");
   });
 
   it("truncates large tool results when context overflows", async () => {
     const llm = createMockLLM([
       {
-        tool_calls: [{
-          id: "call_big",
-          type: "function",
-          function: { name: "get_weather", arguments: '{"city":"huge"}' },
-        }],
+        tool_calls: [
+          {
+            id: "call_big",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"huge"}' },
+          },
+        ],
       },
       { content: "Got it, that was a lot of data." },
     ]);
@@ -152,9 +179,7 @@ describe("chatWithTools integration", () => {
     const hugeResult = "x".repeat(900_000);
     const handler: ToolHandler = vi.fn().mockResolvedValue(hugeResult);
 
-    const messages: ChatCompletionMessageParam[] = [
-      { role: "user", content: "Get me everything" },
-    ];
+    const messages: ChatCompletionMessageParam[] = [{ role: "user", content: "Get me everything" }];
 
     const result = await chatWithTools(llm as any, messages, sampleTools, handler, "gpt-4", 5);
 
@@ -171,11 +196,13 @@ describe("chatWithTools integration", () => {
   it("handles malformed tool call arguments gracefully", async () => {
     const llm = createMockLLM([
       {
-        tool_calls: [{
-          id: "call_bad",
-          type: "function",
-          function: { name: "get_weather", arguments: "not valid json{{{" },
-        }],
+        tool_calls: [
+          {
+            id: "call_bad",
+            type: "function",
+            function: { name: "get_weather", arguments: "not valid json{{{" },
+          },
+        ],
       },
       { content: "Handled the error." },
     ]);

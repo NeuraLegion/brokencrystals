@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import type {
-  ChatCompletionMessageParam,
   ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionMessageParam,
   ChatCompletionTool,
 } from "openai/resources/chat/completions.mjs";
 import type { ReasoningEffort } from "openai/resources/shared.mjs";
@@ -18,19 +18,12 @@ export type InferenceProvider = "openai" | "github-models" | "ollama";
  */
 export function detectProvider(baseUrl: string): InferenceProvider {
   const explicit = process.env.INFERENCE_PROVIDER?.toLowerCase();
-  if (
-    explicit === "github-models" ||
-    explicit === "ollama" ||
-    explicit === "openai"
-  ) {
+  if (explicit === "github-models" || explicit === "ollama" || explicit === "openai") {
     return explicit;
   }
 
   const url = baseUrl.toLowerCase();
-  if (
-    url.includes("models.github.ai") ||
-    url.includes("models.inference.ai.azure.com")
-  ) {
+  if (url.includes("models.github.ai") || url.includes("models.inference.ai.azure.com")) {
     return "github-models";
   }
   if (
@@ -47,10 +40,7 @@ export function detectProvider(baseUrl: string): InferenceProvider {
  * Normalize the base URL for each provider so the OpenAI SDK sends requests
  * to the correct path.
  */
-function normalizeBaseUrl(
-  baseUrl: string,
-  provider: InferenceProvider,
-): string {
+function normalizeBaseUrl(baseUrl: string, provider: InferenceProvider): string {
   if (provider === "ollama") {
     // Ollama exposes OpenAI-compat at /v1 — ensure the suffix is present
     const trimmed = baseUrl.replace(/\/+$/, "");
@@ -88,23 +78,22 @@ function sanitizeForJson(s: string): string {
   return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
 }
 
-export type ToolHandler = (
-  name: string,
-  args: Record<string, unknown>,
-) => Promise<string>;
+export type ToolHandler = (name: string, args: Record<string, unknown>) => Promise<string>;
 
 const loggedReasoningModels = new Set<string>();
 const loggedReasoningSkippedForTools = new Set<string>();
 
 function isReasoningModel(model: string): boolean {
   const normalized = model.toLowerCase();
-  return /(?:^|[-_.])o[1-9](?:$|[-_.])/.test(normalized) ||
+  return (
+    /(?:^|[-_.])o[1-9](?:$|[-_.])/.test(normalized) ||
     normalized.startsWith("o1") ||
     normalized.startsWith("o3") ||
     normalized.startsWith("o4") ||
     normalized.startsWith("gpt-5") ||
     normalized.includes("codex") ||
-    normalized.startsWith("gpt-oss");
+    normalized.startsWith("gpt-oss")
+  );
 }
 
 function configuredReasoningEffort(model: string): ReasoningEffort | undefined {
@@ -117,13 +106,18 @@ function configuredReasoningEffort(model: string): ReasoningEffort | undefined {
   if (raw === "low" || raw === "medium" || raw === "high") {
     return raw;
   }
-  throw new Error(`Invalid AI_REASONING_EFFORT "${process.env.AI_REASONING_EFFORT}". Expected low, medium, high, or none.`);
+  throw new Error(
+    `Invalid AI_REASONING_EFFORT "${process.env.AI_REASONING_EFFORT}". Expected low, medium, high, or none.`,
+  );
 }
 
 function chatCompletionParams(
   model: string,
   messages: ChatCompletionMessageParam[],
-  extra: Omit<ChatCompletionCreateParamsNonStreaming, "model" | "messages" | "max_completion_tokens"> = {},
+  extra: Omit<
+    ChatCompletionCreateParamsNonStreaming,
+    "model" | "messages" | "max_completion_tokens"
+  > = {},
   options: { allowReasoningEffort?: boolean } = {},
 ): ChatCompletionCreateParamsNonStreaming {
   const params: ChatCompletionCreateParamsNonStreaming = {
@@ -141,7 +135,11 @@ function chatCompletionParams(
       loggedReasoningModels.add(key);
       console.log(`[Inference] Reasoning model enabled: ${model} (effort=${reasoningEffort})`);
     }
-  } else if (reasoningEffort && !allowReasoningEffort && !loggedReasoningSkippedForTools.has(model)) {
+  } else if (
+    reasoningEffort &&
+    !allowReasoningEffort &&
+    !loggedReasoningSkippedForTools.has(model)
+  ) {
     loggedReasoningSkippedForTools.add(model);
     console.log(`[Inference] Reasoning effort skipped for ${model} during function-tool calls`);
   }
@@ -158,8 +156,7 @@ export class ModelSelector {
   private level = 0;
 
   constructor(tiers: string[]) {
-    if (tiers.length === 0)
-      throw new Error("At least one model is required in AI_MODEL");
+    if (tiers.length === 0) throw new Error("At least one model is required in AI_MODEL");
     this.tiers = tiers;
   }
 
@@ -229,7 +226,10 @@ interface PhaseTokenSnapshot {
 export class TokenTracker {
   private static instance: TokenTracker | undefined;
 
-  private totals = new Map<string, { prompt: number; completion: number; calls: number; cached: number }>();
+  private totals = new Map<
+    string,
+    { prompt: number; completion: number; calls: number; cached: number }
+  >();
   private phases: PhaseTokenSnapshot[] = [];
   private currentPhase: PhaseTokenSnapshot | undefined;
 
@@ -276,7 +276,12 @@ export class TokenTracker {
 
     // Update current phase
     if (this.currentPhase) {
-      const phase = this.currentPhase.models.get(model) ?? { prompt: 0, completion: 0, calls: 0, cached: 0 };
+      const phase = this.currentPhase.models.get(model) ?? {
+        prompt: 0,
+        completion: 0,
+        calls: 0,
+        cached: 0,
+      };
       phase.prompt += promptTokens;
       phase.completion += completionTokens;
       phase.calls += 1;
@@ -286,7 +291,13 @@ export class TokenTracker {
   }
 
   /** Get the total tokens across all models. */
-  getTotals(): { prompt: number; completion: number; calls: number; cached: number; byModel: Map<string, { prompt: number; completion: number; calls: number; cached: number }> } {
+  getTotals(): {
+    prompt: number;
+    completion: number;
+    calls: number;
+    cached: number;
+    byModel: Map<string, { prompt: number; completion: number; calls: number; cached: number }>;
+  } {
     let prompt = 0;
     let completion = 0;
     let calls = 0;
@@ -309,12 +320,16 @@ export class TokenTracker {
     console.log(`[Tokens] FINAL REPORT — ${calls} API call(s), ${fmtTokens(total)} total tokens`);
     console.log(`[Tokens]   Prompt: ${fmtTokens(prompt)} | Completion: ${fmtTokens(completion)}`);
     if (cached > 0) {
-      console.log(`[Tokens]   Cached: ${fmtTokens(cached)} of ${fmtTokens(prompt)} prompt tokens (${cacheRate}% cache hit rate)`);
+      console.log(
+        `[Tokens]   Cached: ${fmtTokens(cached)} of ${fmtTokens(prompt)} prompt tokens (${cacheRate}% cache hit rate)`,
+      );
     }
     console.log(`[Tokens] ───────────────────────────────────────────────────`);
     for (const [model, usage] of byModel) {
       const modelCache = usage.cached > 0 ? ` [cached: ${fmtTokens(usage.cached)}]` : "";
-      console.log(`[Tokens]   ${model}: ${fmtTokens(usage.prompt + usage.completion)} (${usage.calls} calls, ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)})${modelCache}`);
+      console.log(
+        `[Tokens]   ${model}: ${fmtTokens(usage.prompt + usage.completion)} (${usage.calls} calls, ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)})${modelCache}`,
+      );
     }
     if (this.phases.length > 0) {
       console.log(`[Tokens] ───────────────────────────────────────────────────`);
@@ -322,10 +337,14 @@ export class TokenTracker {
       for (const p of this.phases) {
         const phaseTotal = sumPhase(p);
         const elapsed = p.endedAt ? ` (${Math.round((p.endedAt - p.startedAt) / 1000)}s)` : "";
-        console.log(`[Tokens]   ${p.name}${elapsed}: ${fmtTokens(phaseTotal.prompt + phaseTotal.completion)} (${phaseTotal.calls} calls)`);
+        console.log(
+          `[Tokens]   ${p.name}${elapsed}: ${fmtTokens(phaseTotal.prompt + phaseTotal.completion)} (${phaseTotal.calls} calls)`,
+        );
         for (const [model, usage] of p.models) {
           const mCache = usage.cached > 0 ? ` [cached: ${fmtTokens(usage.cached)}]` : "";
-          console.log(`[Tokens]     ${model}: ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)}${mCache}`);
+          console.log(
+            `[Tokens]     ${model}: ${fmtTokens(usage.prompt)}→${fmtTokens(usage.completion)}${mCache}`,
+          );
         }
       }
     }
@@ -335,7 +354,9 @@ export class TokenTracker {
   private logPhaseReport(snapshot: PhaseTokenSnapshot): void {
     const phaseTotal = sumPhase(snapshot);
     if (phaseTotal.calls === 0) return; // no LLM calls in this phase
-    const elapsed = snapshot.endedAt ? ` in ${Math.round((snapshot.endedAt - snapshot.startedAt) / 1000)}s` : "";
+    const elapsed = snapshot.endedAt
+      ? ` in ${Math.round((snapshot.endedAt - snapshot.startedAt) / 1000)}s`
+      : "";
     const { prompt, completion } = this.getTotals();
     console.log(
       `[Tokens] Phase "${snapshot.name}" done${elapsed}: ${fmtTokens(phaseTotal.prompt + phaseTotal.completion)} tokens (${phaseTotal.calls} calls). Running total: ${fmtTokens(prompt + completion)}`,
@@ -343,8 +364,16 @@ export class TokenTracker {
   }
 }
 
-function sumPhase(p: PhaseTokenSnapshot): { prompt: number; completion: number; calls: number; cached: number } {
-  let prompt = 0, completion = 0, calls = 0, cached = 0;
+function sumPhase(p: PhaseTokenSnapshot): {
+  prompt: number;
+  completion: number;
+  calls: number;
+  cached: number;
+} {
+  let prompt = 0,
+    completion = 0,
+    calls = 0,
+    cached = 0;
   for (const v of p.models.values()) {
     prompt += v.prompt;
     completion += v.completion;
@@ -388,9 +417,7 @@ export async function validateModelTiers(
       available.push(model.id);
     }
   } catch (err) {
-    console.warn(
-      `[Model] Could not list available models — skipping tier validation: ${err}`,
-    );
+    console.warn(`[Model] Could not list available models — skipping tier validation: ${err}`);
     return;
   }
 
@@ -405,9 +432,7 @@ export async function validateModelTiers(
     );
   }
 
-  console.log(
-    `[Model] All ${tiers.length} model tier(s) validated successfully`,
-  );
+  console.log(`[Model] All ${tiers.length} model tier(s) validated successfully`);
 }
 
 /**
@@ -430,9 +455,16 @@ export async function chatWithTools(
   for (let turn = 0; turn < maxTurns; turn++) {
     // On the last turn, strip tools to force a text response
     const isLastTurn = turn === maxTurns - 1;
-    const response = await client.chat.completions.create(chatCompletionParams(model, conversation, {
-      tools: !isLastTurn && tools.length > 0 ? tools : undefined,
-    }, { allowReasoningEffort }));
+    const response = await client.chat.completions.create(
+      chatCompletionParams(
+        model,
+        conversation,
+        {
+          tools: !isLastTurn && tools.length > 0 ? tools : undefined,
+        },
+        { allowReasoningEffort },
+      ),
+    );
 
     const choice = response.choices[0];
     if (!choice) throw new Error("No response from model");
@@ -440,7 +472,12 @@ export async function chatWithTools(
     const msg = choice.message;
     const usage = response.usage;
     if (usage) {
-      TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0, (usage as any).prompt_tokens_details?.cached_tokens ?? 0);
+      TokenTracker.global().record(
+        model,
+        usage.prompt_tokens ?? 0,
+        usage.completion_tokens ?? 0,
+        (usage as any).prompt_tokens_details?.cached_tokens ?? 0,
+      );
     }
     conversation.push(msg);
 
@@ -493,18 +530,26 @@ export async function chatWithTools(
       const prefixLen = messages.length; // initial messages = cache prefix
       // "Recent" = messages from the last TRIM_KEEP turns. Each turn adds
       // 1 assistant + N tool messages. Approximate: last TRIM_KEEP * 3 messages.
-      const recentBoundary = conversation.length - (TRIM_KEEP * 3);
+      const recentBoundary = conversation.length - TRIM_KEEP * 3;
       let trimmedChars = 0;
       for (let i = prefixLen; i < recentBoundary; i++) {
         const m = conversation[i];
-        if (m.role === "tool" && typeof m.content === "string" && m.content.length > TRIM_MIN_SIZE) {
+        if (
+          m.role === "tool" &&
+          typeof m.content === "string" &&
+          m.content.length > TRIM_MIN_SIZE
+        ) {
           const before = m.content.length;
-          m.content = m.content.slice(0, TRIM_PREVIEW) + `\n... [trimmed — was ${before} chars. Call the tool again if you need this data.]`;
+          m.content =
+            m.content.slice(0, TRIM_PREVIEW) +
+            `\n... [trimmed — was ${before} chars. Call the tool again if you need this data.]`;
           trimmedChars += before - m.content.length;
         }
       }
       if (trimmedChars > 0) {
-        console.log(`[Inference] Checkpoint trim (turn ${turn + 1}): freed ${trimmedChars} chars from stale tool results`);
+        console.log(
+          `[Inference] Checkpoint trim (turn ${turn + 1}): freed ${trimmedChars} chars from stale tool results`,
+        );
       }
     }
 
@@ -529,7 +574,9 @@ export async function chatWithTools(
           trimmed += before - tm.content.length;
         }
       }
-      console.warn(`[Inference] Context overflow guard: trimmed ${trimmed} chars from tool results`);
+      console.warn(
+        `[Inference] Context overflow guard: trimmed ${trimmed} chars from tool results`,
+      );
     }
   }
 
@@ -540,14 +587,10 @@ export async function chatWithTools(
   for (let i = conversation.length - 1; i >= 0; i--) {
     const m = conversation[i];
     if (m.role === "assistant" && "content" in m && m.content) {
-      return typeof m.content === "string"
-        ? m.content
-        : JSON.stringify(m.content);
+      return typeof m.content === "string" ? m.content : JSON.stringify(m.content);
     }
   }
-  throw new Error(
-    "chatWithTools: exceeded maximum tool-calling turns with no assistant response",
-  );
+  throw new Error("chatWithTools: exceeded maximum tool-calling turns with no assistant response");
 }
 
 /**
@@ -560,27 +603,36 @@ export async function chatWithSchema<T>(
   schema: Record<string, unknown>,
   model = DEFAULT_MODEL,
 ): Promise<T> {
-  const response = await client.chat.completions.create(chatCompletionParams(model, messages, {
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: schemaName,
-        strict: true,
-        schema,
+  const response = await client.chat.completions.create(
+    chatCompletionParams(model, messages, {
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: schemaName,
+          strict: true,
+          schema,
+        },
       },
-    },
-  }));
+    }),
+  );
 
   const usage = response.usage;
   if (usage) {
-    TokenTracker.global().record(model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0, (usage as any).prompt_tokens_details?.cached_tokens ?? 0);
+    TokenTracker.global().record(
+      model,
+      usage.prompt_tokens ?? 0,
+      usage.completion_tokens ?? 0,
+      (usage as any).prompt_tokens_details?.cached_tokens ?? 0,
+    );
   }
 
   const choice = response.choices[0];
   const content = choice?.message.content;
   if (!content) throw new Error("No content in structured response");
   if (choice.finish_reason === "length") {
-    throw new Error(`Structured response truncated (${content.length} chars) — output exceeded max_completion_tokens`);
+    throw new Error(
+      `Structured response truncated (${content.length} chars) — output exceeded max_completion_tokens`,
+    );
   }
   return JSON.parse(content) as T;
 }

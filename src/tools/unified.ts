@@ -1,12 +1,18 @@
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import { ALL_STAGES, type HintStore, isStage, STAGE_DESCRIPTIONS, type Stage } from "../hints.js";
 import type { ToolHandler } from "../inference.js";
 import { runShellCommand } from "../utils.js";
 import { codebaseTools, createToolHandler } from "./codebase.js";
+import { createDockerfileToolHandler, verifyDockerImageTool } from "./docker.js";
+import {
+  editFileTool,
+  execInDocker,
+  handleEditFile,
+  runCommandInDockerTool,
+  runCommandOnHostTool,
+} from "./infra.js";
 import { probeUrl, probeUrlTool } from "./probe.js";
-import { webSearchTools, createWebSearchHandler } from "./web.js";
-import { verifyDockerImageTool, createDockerfileToolHandler } from "./docker.js";
-import { execInDocker, handleEditFile, editFileTool, runCommandOnHostTool, runCommandInDockerTool } from "./infra.js";
-import { ALL_STAGES, isStage, STAGE_DESCRIPTIONS, type HintStore, type Stage } from "../hints.js";
+import { createWebSearchHandler, webSearchTools } from "./web.js";
 
 // ---------------------------------------------------------------------------
 // Unified tool handler — configurable handler covering all common tools.
@@ -80,10 +86,7 @@ export function buildToolDefs(opts: UnifiedToolHandlerOptions): ChatCompletionTo
  * neither is available so the handler can return a clean error instead of
  * silently filing into the wrong bucket.
  */
-function resolveStage(
-  args: Record<string, unknown>,
-  defaultStage?: Stage,
-): Stage | null {
+function resolveStage(args: Record<string, unknown>, defaultStage?: Stage): Stage | null {
   const raw = args.stage;
   if (typeof raw === "string" && isStage(raw)) return raw;
   if (defaultStage) return defaultStage;
@@ -148,7 +151,9 @@ export function handleHintTool(
       if (stageArg == null || stageArg === "" || stageArg === "all") {
         const stages = store.stages();
         if (stages.length === 0) return "No hints saved yet.";
-        const lines = stages.map((s) => `- ${s}: ${store.count(s)} hint(s) — ${STAGE_DESCRIPTIONS[s]}`);
+        const lines = stages.map(
+          (s) => `- ${s}: ${store.count(s)} hint(s) — ${STAGE_DESCRIPTIONS[s]}`,
+        );
         return [
           `Available hint stages (${stages.length} of ${ALL_STAGES.length} populated):`,
           ...lines,
@@ -177,7 +182,9 @@ export function createUnifiedToolHandler(
 ): ToolHandler {
   const codeHandler = createToolHandler(repoPath);
   const webHandler = opts.enableWeb ? createWebSearchHandler(repoPath) : undefined;
-  const dockerfileHandler = opts.enableDockerVerify ? createDockerfileToolHandler(repoPath) : undefined;
+  const dockerfileHandler = opts.enableDockerVerify
+    ? createDockerfileToolHandler(repoPath)
+    : undefined;
 
   return async (name: string, args: Record<string, unknown>) => {
     switch (name) {
@@ -212,7 +219,9 @@ export function createUnifiedToolHandler(
         if (!opts.enableDocker) break;
         const container = String(args.container ?? "");
         const cmd = String(args.command ?? "");
-        console.log(`[${opts.label ?? "Tool"}] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`);
+        console.log(
+          `[${opts.label ?? "Tool"}] run_command_in_docker [${container}]: ${cmd.slice(0, 200)}`,
+        );
         const result = execInDocker(repoPath, container, cmd, 120_000);
         if (opts.onDocker) opts.onDocker(container, cmd, result);
         return result;
@@ -229,9 +238,7 @@ export function createUnifiedToolHandler(
       // --- Probe URL ---
       case "probe_url": {
         if (!opts.enableProbe) break;
-        const result = opts.customProbe
-          ? await opts.customProbe(args)
-          : await probeUrl(args);
+        const result = opts.customProbe ? await opts.customProbe(args) : await probeUrl(args);
         if (opts.onProbe) opts.onProbe(args, result);
         return result;
       }
@@ -276,9 +283,7 @@ export function createUnifiedToolHandler(
 // Hint tools (reused in buildToolDefs)
 // ---------------------------------------------------------------------------
 
-const stageEnumDescription = ALL_STAGES
-  .map((s) => `"${s}" — ${STAGE_DESCRIPTIONS[s]}`)
-  .join(" | ");
+const stageEnumDescription = ALL_STAGES.map((s) => `"${s}" — ${STAGE_DESCRIPTIONS[s]}`).join(" | ");
 
 export const saveHintTool: ChatCompletionTool = {
   type: "function",
@@ -320,8 +325,7 @@ export const removeHintTool: ChatCompletionTool = {
       properties: {
         hint: {
           type: "string",
-          description:
-            "Exact text or distinctive substring of the hint to remove.",
+          description: "Exact text or distinctive substring of the hint to remove.",
         },
         stage: {
           type: "string",

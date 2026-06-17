@@ -180,11 +180,16 @@ export function configureAuthPrompt(
   preProbeContext?: string,
   authHints: string[] = [],
 ): ChatCompletionMessageParam[] {
-  const authStyle = detection.authType === "session" ? "session"
-    : detection.authType === "jwt" ? "jwt"
-    : detection.authType === "api_key" ? "api_key"
-    : detection.authType === "oauth" ? "oidc"
-    : "session";
+  const authStyle =
+    detection.authType === "session"
+      ? "session"
+      : detection.authType === "jwt"
+        ? "jwt"
+        : detection.authType === "api_key"
+          ? "api_key"
+          : detection.authType === "oauth"
+            ? "oidc"
+            : "session";
 
   const isApiAuth = authStyle === "oidc" || authStyle === "api_key";
   const credentialNote = isApiAuth
@@ -214,7 +219,9 @@ You **MUST** use \`create_auth_raw\` (NOT create_auth) to handle this. The CSRF 
 **Do NOT skip the CSRF field** — login will appear to succeed (302) but the session won't actually be authenticated.`;
   } else if (detection.csrfRequired && detection.csrfDelivery === "json_body") {
     const fieldName = detection.csrfFieldName ?? "csrfToken";
-    const csrfUrl = detection.csrfFormUrl ? `${baseUrl}${detection.csrfFormUrl}` : `${baseUrl}/api/auth/csrf`;
+    const csrfUrl = detection.csrfFormUrl
+      ? `${baseUrl}${detection.csrfFormUrl}`
+      : `${baseUrl}/api/auth/csrf`;
     const extractPattern = detection.csrfExtractPattern ?? `"${fieldName}"\\s*:\\s*"([^"]+)"`;
     csrfGuidance = `
 
@@ -248,13 +255,14 @@ This app uses header-based CSRF (e.g. X-CSRF-Token from a JSON endpoint). You ca
     const scope = detection.oauthScope ?? "";
     const grantType = detection.oauthGrantType ?? "client_credentials";
 
-    const credsBlock = clientId && clientSecret
-      ? `**Available credentials (seeded or found):**
+    const credsBlock =
+      clientId && clientSecret
+        ? `**Available credentials (seeded or found):**
 - clientId: "${clientId}"
 - clientSecret: "${clientSecret}"
 ${tokenEndpoint ? `- tokenEndpoint: "${tokenEndpoint}"` : "- tokenEndpoint: unknown (probe to find)"}
 Use these for EITHER OIDC token exchange OR as static header values.`
-      : `**No pre-seeded credentials found.** Use run_command_in_docker/run_command_on_host to:
+        : `**No pre-seeded credentials found.** Use run_command_in_docker/run_command_on_host to:
 1. Search the database for existing clients/keys: OAuthClient, ApiKey, api_keys, oauth_clients tables
 2. Create one via direct SQL INSERT or app CLI`;
 
@@ -270,7 +278,7 @@ Best when the token endpoint accepts client_credentials or password grant.
 ${tokenEndpoint ? `- tokenEndpoint: "${tokenEndpoint}" (probe POST with grant_type=${grantType})` : "- Probe common paths: /oauth/token, /v2/auth/oauth2/token, /.well-known/openid-configuration"}
 - clientId: "${clientId ?? "FIND_OR_CREATE"}"
 - clientSecret: "${clientSecret ?? "FIND_OR_CREATE"}"
-${grantType === "password" ? "- grantType: \"password\" + username/password from seeded user or auth hints" : `- grantType: "${grantType}"`}
+${grantType === "password" ? '- grantType: "password" + username/password from seeded user or auth hints' : `- grantType: "${grantType}"`}
 ${scope ? `- scope: "${scope}"` : ""}
 - testUrl: protected endpoint returning 401 (e.g. /v2/me, /api/me)
 
@@ -355,7 +363,7 @@ ${hintsBlock}
   With create_auth_raw, you define each step and use NexTemplate expressions to pass values between steps:
   - Body extraction: {{ auth_object.stages.<step_name>.response.body | match:/<regex_with_capture_group>/ }}
   - Header extraction MUST use Bright's documented \`get\` pipe, not dot notation: {{ auth_object.stages.<step_name>.response.headers | get: '/Header-Name' | match:/<regex>/ }}
-  - Example Authorization response header extraction: {{ auth_object.stages.login.response.headers | get: '/Authorization' | match:/(?:Bearer\s+)?([^\s,;]+)/ }}
+  - Example Authorization response header extraction: {{ auth_object.stages.login.response.headers | get: '/Authorization' | match:/(?:Bearers+)?([^s,;]+)/ }}
   - Do NOT use invalid header dot/bracket syntax such as \`response.headers.Authorization\`, \`response.headers.authorization\`, or \`response.headers["Authorization"]\`.
   Use followRedirects: false on steps where you need to capture the Location header (e.g. OAuth2 authorize → 302).
 
@@ -367,7 +375,7 @@ steps: [
   { name: "get_csrf", request: { method: "GET", url: "http://localhost:8080/login", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
   { name: "login", request: { method: "POST", url: "http://localhost:8080/login", protocol: "http",
     headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }],
-    body: "csrfmiddlewaretoken={{ auth_object.stages.get_csrf.response.body | match:/csrfmiddlewaretoken\"\\s+value=\"([^\"]+)\"/ }}&username=bright_test&password=BrightTest123%21",
+    body: "csrfmiddlewaretoken={{ auth_object.stages.get_csrf.response.body | match:/csrfmiddlewaretoken"\\s+value="([^"]+)"/ }}&username=bright_test&password=BrightTest123%21",
     followRedirects: false, maxRedirects: 0 },
     successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
 ]
@@ -382,7 +390,7 @@ steps: [
   { name: "get_csrf", request: { method: "GET", url: "http://localhost:8000/login", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
   { name: "login", request: { method: "POST", url: "http://localhost:8000/login", protocol: "http",
     headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }],
-    body: "_token={{ auth_object.stages.get_csrf.response.body | match:/name=\"_token\"\\s+value=\"([^\"]+)\"/ }}&email=bright@test.com&password=BrightTest123%21",
+    body: "_token={{ auth_object.stages.get_csrf.response.body | match:/name="_token"\\s+value="([^"]+)"/ }}&email=bright@test.com&password=BrightTest123%21",
     followRedirects: false, maxRedirects: 0 },
     successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
 ]
@@ -395,7 +403,7 @@ steps: [
   { name: "get_csrf", request: { method: "GET", url: "http://localhost:3000/api/auth/csrf", protocol: "http" }, successResponseDetection: [{ type: "status", statuses: [200] }] },
   { name: "login", request: { method: "POST", url: "http://localhost:3000/api/auth/callback/credentials", protocol: "http",
     headers: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }],
-    body: "csrfToken={{ auth_object.stages.get_csrf.response.body | match:/\"csrfToken\"\\s*:\\s*\"([^\"]+)\"/ }}&email=bright%40test.com&password=BrightTest123%21&redirect=false&json=true&callbackUrl=http%3A%2F%2Flocalhost%3A3000",
+    body: "csrfToken={{ auth_object.stages.get_csrf.response.body | match:/"csrfToken"\\s*:\\s*"([^"]+)"/ }}&email=bright%40test.com&password=BrightTest123%21&redirect=false&json=true&callbackUrl=http%3A%2F%2Flocalhost%3A3000",
     followRedirects: false, maxRedirects: 0 },
     successResponseDetection: [{ type: "status", statuses: [200, 302] }] }
 ]
@@ -417,7 +425,7 @@ Use create_auth_oidc tool:
 \`\`\`
 Key: You need a valid OAuth2 client. Use run_command_in_docker or run_command_on_host to:
 1. Check if the app has CLI commands to create OAuth2 clients (e.g. \`npx prisma db seed\`, management commands)
-2. Query the database directly to find or create a client: \`docker exec <container> sh -c "node -e \\"...\\"\"\`
+2. Query the database directly to find or create a client: \`docker exec <container> sh -c "node -e \\"...\\""\`
 3. Use the app's admin API if available to register a client
 4. Check seed files or migrations for pre-created OAuth2 clients
 
@@ -591,11 +599,11 @@ Create a user with these exact credentials:
    - read_file on the User model to understand required fields, validations, password hashing
    - Check the framework (Gemfile, package.json, requirements.txt, etc.)
 3. Create the user via docker exec + framework CLI. Common patterns:
-   - **Rails**: run_command_in_docker(container: "<id>", command: "cd /src && RAILS_ENV=development bundle exec rails runner \"u = User.new(username: :bright_test, email: :bright@test.com, password: :BrightTest123!, admin: true, active: true, approved: true); u.save!(validate: false)\"")
-   - **Django**: run_command_in_docker(container: "<id>", command: "python manage.py shell -c \"from django.contrib.auth.models import User; User.objects.create_superuser('bright_test', 'bright@test.com', 'BrightTest123!')\"")
-   - **Laravel**: run_command_in_docker(container: "<id>", command: "php artisan tinker --execute=\"\\App\\Models\\User::create(['name'=>'bright','email'=>'bright@test.com','password'=>Hash::make('BrightTest123!')])\"")
+   - **Rails**: run_command_in_docker(container: "<id>", command: "cd /src && RAILS_ENV=development bundle exec rails runner "u = User.new(username: :bright_test, email: :bright@test.com, password: :BrightTest123!, admin: true, active: true, approved: true); u.save!(validate: false)"")
+   - **Django**: run_command_in_docker(container: "<id>", command: "python manage.py shell -c "from django.contrib.auth.models import User; User.objects.create_superuser('bright_test', 'bright@test.com', 'BrightTest123!')"")
+   - **Laravel**: run_command_in_docker(container: "<id>", command: "php artisan tinker --execute="\\App\\Models\\User::create(['name'=>'bright','email'=>'bright@test.com','password'=>Hash::make('BrightTest123!')])"")
    - **Grafana**: run_command_in_docker(container: "<id>", command: "grafana-cli admin reset-admin-password 'BrightTest123!'") — username is "admin"
-   - **Node/Express**: run_command_in_docker(container: "<id>", command: "node -e \"const db = require('./models'); db.User.create({...})\"")
+   - **Node/Express**: run_command_in_docker(container: "<id>", command: "node -e "const db = require('./models'); db.User.create({...})"")
    - **Apps with built-in admin**: Reset the admin password via CLI tool or direct DB update, then report the built-in username
 4. **CRITICAL — Activate/confirm the user account:**
    Many apps require email verification before login works. After creating the user, you MUST ensure the account is fully activated:

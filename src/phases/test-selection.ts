@@ -1,7 +1,7 @@
 import type OpenAI from "openai";
-import type { DiscoveredEndpoint, TechStack, BrightApiContext } from "../types.js";
 import { listTests } from "../bright-api.js";
 import { chatWithSchema } from "../inference.js";
+import type { BrightApiContext, DiscoveredEndpoint, TechStack } from "../types.js";
 import { formatTechStack } from "../utils.js";
 
 // Tests that require multiple auth objects (different user roles) at the scan level.
@@ -10,11 +10,7 @@ const MULTI_AUTH_TESTS = new Set(["broken_access_control"]);
 // Tests that are mutually exclusive with other tests and must run alone,
 // or are destructive / counterproductive for automated scanning,
 // or produce low-severity findings (cookie/header config) not worth scanning.
-const EXCLUDED_TESTS = new Set([
-  "lrrl",
-  "header_security",
-  "cookie_security",
-]);
+const EXCLUDED_TESTS = new Set(["lrrl", "header_security", "cookie_security"]);
 
 // ---------------------------------------------------------------------------
 // Rules-based test classification
@@ -65,13 +61,25 @@ function hasInputs(ep: DiscoveredEndpoint): boolean {
 
 /** Path-level heuristics for specific test tags */
 const PATH_RULES: Array<{ pattern: RegExp; tests: string[] }> = [
-  { pattern: /\/(login|signin|auth|session|token|oauth|saml)/i, tests: ["brute_force_login", "csrf", "broken_saml_auth", "jwt"] },
+  {
+    pattern: /\/(login|signin|auth|session|token|oauth|saml)/i,
+    tests: ["brute_force_login", "csrf", "broken_saml_auth", "jwt"],
+  },
   { pattern: /\/(upload|attach|import|file)/i, tests: ["file_upload"] },
   { pattern: /\/(redirect|callback|return|next)/i, tests: ["unvalidated_redirect", "ssrf"] },
   { pattern: /\/(search|query|filter|find|lookup)/i, tests: ["sqli", "xss", "nosql"] },
-  { pattern: /\/(admin|manage|settings|config|system)/i, tests: ["directory_listing", "common_files"] },
-  { pattern: /\/(user|profile|account|member)/i, tests: ["id_enumeration", "bopla", "excessive_data_exposure"] },
-  { pattern: /\/(api|rest|graphql|v\d)/i, tests: ["id_enumeration", "bopla", "excessive_data_exposure", "improper_asset_management"] },
+  {
+    pattern: /\/(admin|manage|settings|config|system)/i,
+    tests: ["directory_listing", "common_files"],
+  },
+  {
+    pattern: /\/(user|profile|account|member)/i,
+    tests: ["id_enumeration", "bopla", "excessive_data_exposure"],
+  },
+  {
+    pattern: /\/(api|rest|graphql|v\d)/i,
+    tests: ["id_enumeration", "bopla", "excessive_data_exposure", "improper_asset_management"],
+  },
   { pattern: /graphql/i, tests: ["graphql_introspection"] },
   { pattern: /\/(email|mail|contact|notify|message)/i, tests: ["email_injection"] },
   { pattern: /\/(template|render|preview|report)/i, tests: ["ssti", "xss", "stored_xss"] },
@@ -81,9 +89,18 @@ const PATH_RULES: Array<{ pattern: RegExp; tests: string[] }> = [
   { pattern: /\/(command|exec|run|shell|ping|process)/i, tests: ["osi"] },
   { pattern: /\/(include|load|read|download|path|file)/i, tests: ["lfi", "rfi"] },
   { pattern: /\/(date|time|schedule|booking|reservation)/i, tests: ["date_manipulation"] },
-  { pattern: /\/(price|quantity|amount|total|cart|order|checkout)/i, tests: ["business_constraint_bypass"] },
-  { pattern: /\/(ai|llm|chat|prompt|generate|completion|rag)/i, tests: ["prompt_injection", "insecure_output_handling"] },
-  { pattern: /\/(s3|bucket|storage|blob|cloud)/i, tests: ["amazon_s3_takeover", "open_cloud_storage"] },
+  {
+    pattern: /\/(price|quantity|amount|total|cart|order|checkout)/i,
+    tests: ["business_constraint_bypass"],
+  },
+  {
+    pattern: /\/(ai|llm|chat|prompt|generate|completion|rag)/i,
+    tests: ["prompt_injection", "insecure_output_handling"],
+  },
+  {
+    pattern: /\/(s3|bucket|storage|blob|cloud)/i,
+    tests: ["amazon_s3_takeover", "open_cloud_storage"],
+  },
   { pattern: /wordpress|wp-/i, tests: ["wordpress", "default_login_location"] },
 ];
 
@@ -91,27 +108,33 @@ const PATH_RULES: Array<{ pattern: RegExp; tests: string[] }> = [
 function techStackTests(tech: TechStack): { include: Set<string>; exclude: Set<string> } {
   const include = new Set<string>();
   const exclude = new Set<string>();
-  const all = [...tech.languages, ...tech.frameworks, ...tech.databases].map(s => s.toLowerCase());
+  const all = [...tech.languages, ...tech.frameworks, ...tech.databases].map((s) =>
+    s.toLowerCase(),
+  );
   const joined = all.join(" ");
 
   // DB-specific injection tests
-  if (all.some(d => /postgres|mysql|mariadb|sqlite|mssql|oracle|sql/i.test(d))) {
+  if (all.some((d) => /postgres|mysql|mariadb|sqlite|mssql|oracle|sql/i.test(d))) {
     include.add("sqli");
   }
-  if (all.some(d => /mongo|couch|dynamo|firestore|nosql/i.test(d))) {
+  if (all.some((d) => /mongo|couch|dynamo|firestore|nosql/i.test(d))) {
     include.add("nosql");
   }
-  if (!all.some(d => /mongo|couch|dynamo|firestore|nosql/i.test(d))) {
+  if (!all.some((d) => /mongo|couch|dynamo|firestore|nosql/i.test(d))) {
     exclude.add("nosql");
   }
 
   // Template engines → SSTI
-  if (/jinja|django|twig|blade|thymeleaf|freemarker|mustache|handlebars|ejs|pug|nunjucks|erb|slim|haml/i.test(joined)) {
+  if (
+    /jinja|django|twig|blade|thymeleaf|freemarker|mustache|handlebars|ejs|pug|nunjucks|erb|slim|haml/i.test(
+      joined,
+    )
+  ) {
     include.add("ssti");
   }
 
   // JS ecosystem
-  if (all.some(l => /javascript|typescript|node|express|next|nuxt|react|angular|vue/i.test(l))) {
+  if (all.some((l) => /javascript|typescript|node|express|next|nuxt|react|angular|vue/i.test(l))) {
     include.add("proto_pollution");
     include.add("server_side_js_injection");
     include.add("retire_js");
@@ -122,24 +145,24 @@ function techStackTests(tech: TechStack): { include: Set<string>; exclude: Set<s
   }
 
   // GraphQL
-  if (all.some(f => /graphql|apollo|hasura/i.test(f))) {
+  if (all.some((f) => /graphql|apollo|hasura/i.test(f))) {
     include.add("graphql_introspection");
   } else {
     exclude.add("graphql_introspection");
   }
 
   // WordPress
-  if (!all.some(f => /wordpress/i.test(f))) {
+  if (!all.some((f) => /wordpress/i.test(f))) {
     exclude.add("wordpress");
   }
 
   // LDAP
-  if (!all.some(d => /ldap|active.?directory|openldap/i.test(d))) {
+  if (!all.some((d) => /ldap|active.?directory|openldap/i.test(d))) {
     exclude.add("ldapi");
   }
 
   // XML-heavy stacks
-  if (all.some(f => /java|spring|\.net|asp|soap|xml/i.test(f))) {
+  if (all.some((f) => /java|spring|\.net|asp|soap|xml/i.test(f))) {
     include.add("xxe");
     include.add("xpathi");
   }
@@ -285,16 +308,14 @@ export async function selectTestsPerEndpoint(
   // Phase 2: LLM refinement — give it the baseline and let it adjust
   const stackStr = formatTechStack(techStack);
   const dbStr = techStack.databases?.length ? techStack.databases.join(", ") : "unknown";
-  const testCatalog = eligibleTests
-    .map((t) => `- ${t.tag}: ${t.name}`)
-    .join("\n");
+  const testCatalog = eligibleTests.map((t) => `- ${t.tag}: ${t.name}`).join("\n");
 
   const endpointList = endpoints
     .map((ep, i) => {
       const parts = [`[${i}] ${ep.method} ${ep.path}`];
       parts.push(`(${ep.filePath})`);
       if (ep.queryParams?.length) {
-        parts.push(`params: ${ep.queryParams.map(p => p.name).join(",")}`);
+        parts.push(`params: ${ep.queryParams.map((p) => p.name).join(",")}`);
       }
       if (ep.body) {
         const bodyPreview = ep.body.length > 80 ? ep.body.slice(0, 80) + "…" : ep.body;
@@ -401,15 +422,11 @@ Return a JSON object with ONLY the entries you changed.`,
   const PATH_PARAM_RE = /[:{}]/;
 
   // Group endpoints that share the exact same test set
-  const groupMap = new Map<
-    string,
-    { epIds: string[]; hasPathParams: boolean }
-  >();
+  const groupMap = new Map<string, { epIds: string[]; hasPathParams: boolean }>();
   for (let i = 0; i < endpoints.length; i++) {
     if (i >= entrypointIds.length) break;
     const key = [...perEndpoint[i]].sort().join(",");
-    if (!groupMap.has(key))
-      groupMap.set(key, { epIds: [], hasPathParams: false });
+    if (!groupMap.has(key)) groupMap.set(key, { epIds: [], hasPathParams: false });
     const g = groupMap.get(key)!;
     g.epIds.push(entrypointIds[i]);
     if (PATH_PARAM_RE.test(endpoints[i].path)) g.hasPathParams = true;
@@ -434,10 +451,7 @@ Return a JSON object with ONLY the entries you changed.`,
   // Per-group entrypoint cap. Sized so that even when every endpoint ends
   // up in a different test-set bucket we can still fit them all inside
   // MAX_TOTAL_SCANS. Floor of 100 keeps grouping aggressive for small projects.
-  const MAX_ENTRYPOINTS_PER_GROUP = Math.max(
-    100,
-    Math.ceil(endpoints.length / MAX_TOTAL_SCANS),
-  );
+  const MAX_ENTRYPOINTS_PER_GROUP = Math.max(100, Math.ceil(endpoints.length / MAX_TOTAL_SCANS));
 
   // First: consolidate same-test-set groups (cheap, preserves precision).
   // Second: split any oversized groups so no single scan exceeds the per-group cap.
@@ -489,16 +503,11 @@ function splitLargeGroups(groups: ScanGroup[], maxEps: number): ScanGroup[] {
  * If there are more groups than maxGroups, merge the smallest groups
  * (by entrypoint count) into larger ones by taking the union of their tests.
  */
-function consolidateGroups(
-  groups: ScanGroup[],
-  maxGroups: number,
-): ScanGroup[] {
+function consolidateGroups(groups: ScanGroup[], maxGroups: number): ScanGroup[] {
   if (groups.length <= maxGroups) return groups;
 
   // Sort by entrypoint count ascending — merge smallest first
-  const sorted = [...groups].sort(
-    (a, b) => a.entrypointIds.length - b.entrypointIds.length,
-  );
+  const sorted = [...groups].sort((a, b) => a.entrypointIds.length - b.entrypointIds.length);
 
   while (sorted.length > maxGroups) {
     // Take the two smallest groups and merge them

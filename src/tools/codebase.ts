@@ -1,8 +1,8 @@
-import { readFileSync, existsSync, statSync } from "fs";
-import { resolve } from "path";
-import { glob } from "glob";
 import { execFileSync } from "child_process";
+import { existsSync, readFileSync, statSync } from "fs";
+import { glob } from "glob";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import { resolve } from "path";
 import type { ToolHandler } from "../inference.js";
 import { PROBE_RESPONSE_DIR } from "../utils.js";
 
@@ -11,15 +11,13 @@ export const codebaseTools: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "read_file",
-      description:
-        "Read the contents of a file from the repository. Returns the full file text.",
+      description: "Read the contents of a file from the repository. Returns the full file text.",
       parameters: {
         type: "object",
         properties: {
           path: {
             type: "string",
-            description:
-              "Relative file path from the repository root (e.g. src/app.ts)",
+            description: "Relative file path from the repository root (e.g. src/app.ts)",
           },
         },
         required: ["path"],
@@ -38,8 +36,7 @@ export const codebaseTools: ChatCompletionTool[] = [
         properties: {
           pattern: {
             type: "string",
-            description:
-              'Glob pattern relative to the repo root (e.g. "src/**/*.ts", "*.json")',
+            description: 'Glob pattern relative to the repo root (e.g. "src/**/*.ts", "*.json")',
           },
         },
         required: ["pattern"],
@@ -62,8 +59,7 @@ export const codebaseTools: ChatCompletionTool[] = [
           },
           glob: {
             type: "string",
-            description:
-              'Optional glob to restrict search to certain files (e.g. "*.ts")',
+            description: 'Optional glob to restrict search to certain files (e.g. "*.ts")',
           },
           regex: {
             type: "boolean",
@@ -84,9 +80,7 @@ export function createToolHandler(repoPath: string): ToolHandler {
       case "read_file": {
         const rawPath = String(args.path ?? "");
         // Allow absolute paths to probe response directory (saved by probe_url)
-        const filePath = rawPath.startsWith("/")
-          ? resolve(rawPath)
-          : resolve(repoPath, rawPath);
+        const filePath = rawPath.startsWith("/") ? resolve(rawPath) : resolve(repoPath, rawPath);
         if (!filePath.startsWith(repoPath) && !filePath.startsWith(PROBE_RESPONSE_DIR + "/")) {
           return "Error: path traversal attempt blocked";
         }
@@ -108,21 +102,11 @@ export function createToolHandler(repoPath: string): ToolHandler {
         const files = await glob(pattern, {
           cwd: repoPath,
           nodir: true,
-          ignore: [
-            "node_modules/**",
-            ".git/**",
-            "dist/**",
-            "build/**",
-            "vendor/**",
-            ".data/**",
-          ],
+          ignore: ["node_modules/**", ".git/**", "dist/**", "build/**", "vendor/**", ".data/**"],
         });
         if (files.length === 0) return "No files found matching that pattern.";
         if (files.length > 200) {
-          return (
-            files.slice(0, 200).join("\n") +
-            `\n... and ${files.length - 200} more`
-          );
+          return files.slice(0, 200).join("\n") + `\n... and ${files.length - 200} more`;
         }
         return files.join("\n");
       }

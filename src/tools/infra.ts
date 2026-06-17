@@ -1,21 +1,20 @@
-import { readFileSync, writeFileSync } from "fs";
-import { resolve } from "path";
 import { execSync } from "child_process";
+import { readFileSync, writeFileSync } from "fs";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import { resolve } from "path";
 import type { ToolHandler } from "../inference.js";
 import { runShellCommand, toErrorMessage } from "../utils.js";
 import { codebaseTools } from "./codebase.js";
-import { createDockerfileToolHandler } from "./docker.js";
-import { verifyDockerImageTool } from "./docker.js";
-import { createWebSearchHandler } from "./web.js";
+import { createDockerfileToolHandler, verifyDockerImageTool } from "./docker.js";
 import { probeUrl, probeUrlTool } from "./probe.js";
 import {
-  saveHintTool,
-  removeHintTool,
   getHintsTool,
-  handleHintTool,
   type HintToolDispatchOptions,
+  handleHintTool,
+  removeHintTool,
+  saveHintTool,
 } from "./unified.js";
+import { createWebSearchHandler } from "./web.js";
 
 // ---------------------------------------------------------------------------
 // Tool definitions
@@ -32,8 +31,7 @@ const writeFileTool: ChatCompletionTool = {
       properties: {
         path: {
           type: "string",
-          description:
-            "Relative file path from the repository root (e.g. bin/docker/exec)",
+          description: "Relative file path from the repository root (e.g. bin/docker/exec)",
         },
         content: {
           type: "string",
@@ -57,8 +55,7 @@ export const editFileTool: ChatCompletionTool = {
       properties: {
         path: {
           type: "string",
-          description:
-            "Relative file path from the repository root (e.g. compose.yml, Dockerfile)",
+          description: "Relative file path from the repository root (e.g. compose.yml, Dockerfile)",
         },
         old_string: {
           type: "string",
@@ -67,8 +64,7 @@ export const editFileTool: ChatCompletionTool = {
         },
         new_string: {
           type: "string",
-          description:
-            "The replacement string. Can be empty to delete the matched text.",
+          description: "The replacement string. Can be empty to delete the matched text.",
         },
       },
       required: ["path", "old_string", "new_string"],
@@ -233,10 +229,7 @@ export function execInDocker(
 /**
  * Handle an edit_file tool call — find-and-replace exactly one occurrence.
  */
-export function handleEditFile(
-  repoPath: string,
-  args: Record<string, unknown>,
-): string {
+export function handleEditFile(repoPath: string, args: Record<string, unknown>): string {
   const filePath = resolve(repoPath, String(args.path ?? ""));
   if (!filePath.startsWith(repoPath)) {
     return "Error: path traversal attempt blocked";
@@ -291,11 +284,15 @@ export function createInfraToolHandler(
 
       case "run_command_on_host": {
         const command = String(args.command ?? "");
-        if (/docker\s+compose\s+down\s+[^|]*-v/i.test(command) ||
-            /docker-compose\s+down\s+[^|]*-v/i.test(command) ||
-            /docker\s+volume\s+prune/i.test(command) ||
-            /docker\s+system\s+prune/i.test(command)) {
-          console.warn(`[Tool] BLOCKED destructive command in infra repair: ${command.slice(0, 120)}`);
+        if (
+          /docker\s+compose\s+down\s+[^|]*-v/i.test(command) ||
+          /docker-compose\s+down\s+[^|]*-v/i.test(command) ||
+          /docker\s+volume\s+prune/i.test(command) ||
+          /docker\s+system\s+prune/i.test(command)
+        ) {
+          console.warn(
+            `[Tool] BLOCKED destructive command in infra repair: ${command.slice(0, 120)}`,
+          );
           return `Error: "docker compose down -v" and volume prune commands are blocked. They destroy ALL volumes including healthy data. Instead, remove only the specific stale volume: "docker compose down && docker volume rm <volume_name> && docker compose up -d". Use "docker volume ls" to identify which volume to remove.`;
         }
         console.log(`[Tool] run_command_on_host: ${command.slice(0, 200)}`);

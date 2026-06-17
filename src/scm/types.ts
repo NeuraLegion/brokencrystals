@@ -65,9 +65,5 @@ export interface ScmProvider {
   ): Promise<number | null>;
 
   /** Update the description/body of an existing PR. */
-  updatePullRequestBody(
-    token: string,
-    prId: number,
-    body: string,
-  ): Promise<void>;
+  updatePullRequestBody(token: string, prId: number, body: string): Promise<void>;
 }

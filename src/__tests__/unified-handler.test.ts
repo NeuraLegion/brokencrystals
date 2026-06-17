@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createUnifiedToolHandler, buildToolDefs } from "../tools/unified.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UnifiedToolHandlerOptions } from "../tools/unified.js";
+import { buildToolDefs, createUnifiedToolHandler } from "../tools/unified.js";
 
 describe("buildToolDefs", () => {
   it("includes codebase tools by default", () => {
@@ -66,7 +66,7 @@ describe("createUnifiedToolHandler", () => {
   it("calls shellGuard and blocks when it returns a message", async () => {
     const handler = createUnifiedToolHandler("/tmp/test", {
       enableShell: true,
-      shellGuard: (cmd) => cmd.includes("rm") ? "blocked!" : null,
+      shellGuard: (cmd) => (cmd.includes("rm") ? "blocked!" : null),
     });
 
     const result = await handler("run_command_on_host", { command: "rm -rf /" });
@@ -92,7 +92,11 @@ describe("createUnifiedToolHandler", () => {
       onEdit,
     });
 
-    const result = await handler("edit_file", { path: "nonexistent.txt", old_str: "a", new_str: "b" });
+    const result = await handler("edit_file", {
+      path: "nonexistent.txt",
+      old_str: "a",
+      new_str: "b",
+    });
     expect(result).toContain("Error");
     // onEdit is called with args + result for observability
     expect(onEdit).toHaveBeenCalled();

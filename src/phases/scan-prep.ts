@@ -1,13 +1,9 @@
 import type OpenAI from "openai";
 import { chatWithTools } from "../inference.js";
-import {
-  createUnifiedToolHandler,
-  buildToolDefs,
-  execInDocker,
-} from "../tools.js";
-import { extractJson, formatTechStack } from "../utils.js";
 import { scanPrepPrompt, scanPrepTwoFactorPrompt } from "../prompts/scan-prep.js";
+import { buildToolDefs, createUnifiedToolHandler, execInDocker } from "../tools.js";
 import type { TechStack } from "../types.js";
+import { extractJson, formatTechStack } from "../utils.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,7 +14,14 @@ export interface ScanPrepResult {
   changes: string[];
   summary: string;
   /** Machine-readable reason for orchestration decisions. */
-  failureKind?: "login_5xx" | "login_404" | "rate_limit" | "verification_missing" | "no_changes" | "parse_error" | "unknown";
+  failureKind?:
+    | "login_5xx"
+    | "login_404"
+    | "rate_limit"
+    | "verification_missing"
+    | "no_changes"
+    | "parse_error"
+    | "unknown";
   /** Docker commands that successfully modified settings — replayed on re-run */
   replayCommands?: { container: string; command: string }[];
 }
@@ -35,11 +38,18 @@ export async function prepareScanEnvironment(
   model?: string,
   activeIssue?: string,
 ): Promise<ScanPrepResult> {
-  console.log("[ScanPrep] Starting scan preparation phase — relaxing rate limits and security controls...");
+  console.log(
+    "[ScanPrep] Starting scan preparation phase — relaxing rate limits and security controls...",
+  );
 
   // ----- Stage 1: Rate limits + security controls -----
   const rateLimitResult = await runScanPrepStage(
-    llm, repoPath, baseUrl, techStack, model, activeIssue,
+    llm,
+    repoPath,
+    baseUrl,
+    techStack,
+    model,
+    activeIssue,
     "rate_limit",
     scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue),
   );
@@ -47,17 +57,19 @@ export async function prepareScanEnvironment(
   // ----- Stage 2: 2FA/MFA bypass -----
   console.log("[ScanPrep] Stage 2 — checking 2FA/MFA requirements...");
   const twoFaResult = await runScanPrepStage(
-    llm, repoPath, baseUrl, techStack, model, undefined,
+    llm,
+    repoPath,
+    baseUrl,
+    techStack,
+    model,
+    undefined,
     "2fa",
     scanPrepTwoFactorPrompt(baseUrl, formatTechStack(techStack)),
   );
 
   // Merge results: rate-limit stage is authoritative for pass/fail,
   // but we append 2FA changes if any
-  const mergedChanges = [
-    ...(rateLimitResult.changes ?? []),
-    ...(twoFaResult.changes ?? []),
-  ];
+  const mergedChanges = [...(rateLimitResult.changes ?? []), ...(twoFaResult.changes ?? [])];
   const mergedCommands = [
     ...(rateLimitResult.replayCommands ?? []),
     ...(twoFaResult.replayCommands ?? []),
@@ -73,9 +85,10 @@ export async function prepareScanEnvironment(
   }
 
   // Both succeeded (or 2FA was not relevant)
-  const summary = twoFaResult.changes.length > 0
-    ? `${rateLimitResult.summary}; 2FA: ${twoFaResult.summary}`
-    : rateLimitResult.summary;
+  const summary =
+    twoFaResult.changes.length > 0
+      ? `${rateLimitResult.summary}; 2FA: ${twoFaResult.summary}`
+      : rateLimitResult.summary;
 
   return {
     completed: true,
@@ -116,7 +129,9 @@ async function runScanPrepStage(
         dockerCommands.push({ container: _container, command: cmd });
       }
     },
-    onEdit: () => { editFileCalls += 1; },
+    onEdit: () => {
+      editFileCalls += 1;
+    },
     onProbe: (args: Record<string, unknown>, result: string) => {
       const method = String(args.method ?? "GET").toUpperCase();
       if (method === "POST") {
@@ -150,9 +165,16 @@ async function runScanPrepStage(
 
       // For the 2FA stage, skip the strict POST-verification requirements
       if (stageName === "2fa") {
-        console.log(`[ScanPrep:2FA] Completed — ${changes.length} change(s): ${result.summary ?? "done"}`);
+        console.log(
+          `[ScanPrep:2FA] Completed — ${changes.length} change(s): ${result.summary ?? "done"}`,
+        );
         for (const c of changes) console.log(`[ScanPrep:2FA]   • ${c}`);
-        return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
+        return {
+          completed: true,
+          changes,
+          summary: result.summary ?? "Done",
+          replayCommands: dockerCommands,
+        };
       }
 
       // Rate-limit stage: strict verification
@@ -162,22 +184,26 @@ async function runScanPrepStage(
         return { completed: false, changes: [], summary, failureKind: "verification_missing" };
       }
       if (actualMutations === 0 && changes.length === 0) {
-        const summary = "Scan-prep reported success without applying or documenting any rate-limit/security-control change";
+        const summary =
+          "Scan-prep reported success without applying or documenting any rate-limit/security-control change";
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary, failureKind: "no_changes" };
       }
       if (saw429) {
-        const summary = "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
+        const summary =
+          "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary, failureKind: "rate_limit" };
       }
       if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status === 404)) {
-        const summary = "Scan-prep verification only observed HTTP 404 on login POSTs; this does not prove rate limits were relaxed";
+        const summary =
+          "Scan-prep verification only observed HTTP 404 on login POSTs; this does not prove rate limits were relaxed";
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary, failureKind: "login_404" };
       }
       if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status >= 500)) {
-        const summary = "Scan-prep verification only observed HTTP 5xx on login POSTs; the login path is crashing, not verified as scanner-ready";
+        const summary =
+          "Scan-prep verification only observed HTTP 5xx on login POSTs; the login path is crashing, not verified as scanner-ready";
         console.warn(`[ScanPrep] Failed: ${summary}`);
         return { completed: false, changes: [], summary, failureKind: "login_5xx" };
       }
@@ -185,7 +211,12 @@ async function runScanPrepStage(
       for (const c of changes) {
         console.log(`[ScanPrep]   • ${c}`);
       }
-      return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
+      return {
+        completed: true,
+        changes,
+        summary: result.summary ?? "Done",
+        replayCommands: dockerCommands,
+      };
     }
 
     const failureMessage = result.reason ?? result.summary ?? "unknown";
@@ -193,7 +224,12 @@ async function runScanPrepStage(
     return { completed: false, changes: [], summary: failureMessage, failureKind: "unknown" };
   } catch (err) {
     console.warn(`[ScanPrep:${stageName}] Could not parse response: ${err}`);
-    return { completed: false, changes: [], summary: `Parse error: ${err}`, failureKind: "parse_error" };
+    return {
+      completed: false,
+      changes: [],
+      summary: `Parse error: ${err}`,
+      failureKind: "parse_error",
+    };
   }
 }
 

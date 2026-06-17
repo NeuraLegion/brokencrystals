@@ -1,5 +1,5 @@
 import { Configuration, LogLevel } from "@sectester/core";
-import { RepeaterFactory, type Repeater } from "@sectester/repeater";
+import { type Repeater, RepeaterFactory } from "@sectester/repeater";
 import type { BrightApiContext } from "../types.js";
 
 export interface RepeaterHandle {
@@ -43,10 +43,7 @@ export async function setupRepeater(
   };
 }
 
-async function startRepeaterWithTimeout(
-  repeater: Repeater,
-  timeoutMs: number,
-): Promise<void> {
+async function startRepeaterWithTimeout(repeater: Repeater, timeoutMs: number): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
   try {
     await Promise.race([

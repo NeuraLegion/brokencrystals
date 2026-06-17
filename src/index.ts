@@ -1,16 +1,12 @@
-import {
-  createPlatform,
-  cloneRepository,
-  gitFinalizeChanges,
-} from "./platform.js";
+import { verifyBrightAuth } from "./bright-api.js";
 import { loadConfig } from "./config.js";
 import { createInferenceClient, validateModelTiers } from "./inference.js";
-import { verifyBrightAuth } from "./bright-api.js";
-import { toErrorMessage } from "./utils.js";
+import { logger } from "./logger.js";
 import { runOrchestrator } from "./orchestrator.js";
+import { cloneRepository, createPlatform, gitFinalizeChanges } from "./platform.js";
 import { detectScmProvider } from "./scm/index.js";
 import type { OrchestratorContext } from "./types.js";
-import { logger } from "./logger.js";
+import { toErrorMessage } from "./utils.js";
 
 async function main(): Promise<void> {
   // Initialize logging: full detail (redacted) goes to a local log file; stdout
@@ -71,15 +67,8 @@ async function main(): Promise<void> {
   await platform.initPr(repoPath);
 
   // 4. Initialize inference client (OpenAI-compatible)
-  const inferenceToken =
-    process.env.OPENAI_API_KEY ??
-    process.env.INFERENCE_TOKEN ??
-    "";
-  const llm = createInferenceClient(
-    config.inferenceUrl,
-    inferenceToken,
-    config.inferenceProvider,
-  );
+  const inferenceToken = process.env.OPENAI_API_KEY ?? process.env.INFERENCE_TOKEN ?? "";
+  const llm = createInferenceClient(config.inferenceUrl, inferenceToken, config.inferenceProvider);
 
   // 4b. Validate configured model tiers are available
   await validateModelTiers(llm, config.modelSelector, config.inferenceProvider);
@@ -98,9 +87,7 @@ async function main(): Promise<void> {
     const msg = toErrorMessage(err);
     console.error(`[Engine] Orchestrator failed: ${msg}`);
     const logPath = logger.logFilePath();
-    logger.error(
-      `Security scan did not complete${logPath ? ` — details in ${logPath}` : ""}.`,
-    );
+    logger.error(`Security scan did not complete${logPath ? ` — details in ${logPath}` : ""}.`);
     await platform.reportError(`Security scan failed: ${msg}`);
   }
 

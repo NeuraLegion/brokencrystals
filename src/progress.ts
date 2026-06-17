@@ -1,6 +1,6 @@
-import type { Platform } from "./platform.js";
 import { TokenTracker } from "./inference.js";
 import { progress as logProgress } from "./logger.js";
+import type { Platform } from "./platform.js";
 
 interface Step {
   /** Logical phase key — repeated phaseStart calls with the same key merge into one step. */
@@ -120,11 +120,7 @@ export class ProgressReporter {
     await this.updatePrDescription();
   }
 
-  async phaseDetail(
-    phase: string,
-    toolName: string,
-    detail: string,
-  ): Promise<void> {
+  async phaseDetail(phase: string, toolName: string, detail: string): Promise<void> {
     // Route the detail to the step matching `phase` (even if it's already
     // done — late "result" lines should still update the step's last-detail
     // summary). Fall back to the current working step if no match.
@@ -144,11 +140,7 @@ export class ProgressReporter {
    * it is replaced rather than appended. Use this for poll-style updates
    * (e.g. scan status) that would otherwise flood the PR description.
    */
-  async phaseUpdateDetail(
-    phase: string,
-    key: string,
-    detail: string,
-  ): Promise<void> {
+  async phaseUpdateDetail(phase: string, key: string, detail: string): Promise<void> {
     const current = this.steps.findLast((s) => s.status === "working");
     if (current) {
       current.keyedDetails.set(key, detail);
@@ -196,8 +188,7 @@ export class ProgressReporter {
     }
 
     for (const s of this.steps) {
-      const icon =
-        s.status === "done" ? "✅" : s.status === "working" ? "🔄" : "⬜";
+      const icon = s.status === "done" ? "✅" : s.status === "working" ? "🔄" : "⬜";
       const suffix = s.attempts > 1 ? `  _(${s.attempts} attempts)_` : "";
       lines.push(`${icon} **${s.title}**${suffix}`);
 
@@ -236,7 +227,9 @@ export class ProgressReporter {
     // Append CodeQL → DAST validation table if available
     if (this.validationSummary.length > 0) {
       const validated = this.validationSummary.filter((r) => r.verdict === "validated").length;
-      const notValidated = this.validationSummary.filter((r) => r.verdict === "not-validated").length;
+      const notValidated = this.validationSummary.filter(
+        (r) => r.verdict === "not-validated",
+      ).length;
       const na = this.validationSummary.filter((r) => r.verdict === "n/a").length;
 
       lines.push("");
@@ -260,15 +253,15 @@ export class ProgressReporter {
 
       for (const r of sorted) {
         const icon =
-          r.verdict === "validated" ? "✅ Validated" : r.verdict === "not-validated" ? "⚠️ Not validated" : "➖ N/A";
-        lines.push(
-          `| ${r.severity} | ${r.name} | \`${r.rule}\` | \`${r.location}\` | ${icon} |`,
-        );
+          r.verdict === "validated"
+            ? "✅ Validated"
+            : r.verdict === "not-validated"
+              ? "⚠️ Not validated"
+              : "➖ N/A";
+        lines.push(`| ${r.severity} | ${r.name} | \`${r.rule}\` | \`${r.location}\` | ${icon} |`);
       }
     }
 
-    await this.platform.reportPrDescription(
-      `## 🛡️ Bright Security Scan\n\n${lines.join("\n")}`,
-    );
+    await this.platform.reportPrDescription(`## 🛡️ Bright Security Scan\n\n${lines.join("\n")}`);
   }
 }

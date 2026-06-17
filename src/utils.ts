@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 // ---------------------------------------------------------------------------
@@ -134,7 +134,7 @@ export function extractJson(text: string): string {
   }
 
   // 2. Find a balanced JSON object/array by scanning for matching braces
-  const start = text.search(/[\[{]/);
+  const start = text.search(/[[{]/);
   if (start === -1) return text;
 
   const open = text[start];
@@ -193,7 +193,10 @@ export function parseJsonLenient(text: string): unknown {
   let inStr = false;
   let lastQuoteIdx = -1;
   for (let i = 0; i < s.length; i++) {
-    if (s[i] === "\\" && inStr) { i++; continue; }
+    if (s[i] === "\\" && inStr) {
+      i++;
+      continue;
+    }
     if (s[i] === '"') {
       inStr = !inStr;
       if (inStr) lastQuoteIdx = i;
@@ -201,19 +204,25 @@ export function parseJsonLenient(text: string): unknown {
   }
   if (inStr) {
     // Truncate from the last open quote (remove partial string value)
-    s = s.slice(0, lastQuoteIdx).replace(/,\s*$/, "").replace(/:\s*$/, ': null');
+    s = s.slice(0, lastQuoteIdx).replace(/,\s*$/, "").replace(/:\s*$/, ": null");
   }
 
   // Remove trailing partial object/key fragments (e.g. `{"key":` or `{"key": {`)
   // by stripping from the last comma that leaves a valid prefix
   const closeStack: string[] = [];
-  let cleaned = s;
+  const cleaned = s;
   // Find what closers are needed
   let inStr2 = false;
   for (let i = 0; i < cleaned.length; i++) {
     const ch = cleaned[i];
-    if (ch === "\\" && inStr2) { i++; continue; }
-    if (ch === '"') { inStr2 = !inStr2; continue; }
+    if (ch === "\\" && inStr2) {
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inStr2 = !inStr2;
+      continue;
+    }
     if (inStr2) continue;
     if (ch === "{" || ch === "[") closeStack.push(ch === "{" ? "}" : "]");
     else if (ch === "}" || ch === "]") closeStack.pop();
@@ -230,8 +239,14 @@ export function parseJsonLenient(text: string): unknown {
       let inS = false;
       for (let i = 0; i < candidate.length; i++) {
         const ch = candidate[i];
-        if (ch === "\\" && inS) { i++; continue; }
-        if (ch === '"') { inS = !inS; continue; }
+        if (ch === "\\" && inS) {
+          i++;
+          continue;
+        }
+        if (ch === '"') {
+          inS = !inS;
+          continue;
+        }
         if (inS) continue;
         if (ch === "{" || ch === "[") needed.push(ch === "{" ? "}" : "]");
         else if (ch === "}" || ch === "]") needed.pop();
@@ -239,14 +254,18 @@ export function parseJsonLenient(text: string): unknown {
       const repaired = candidate + needed.reverse().join("");
       try {
         return JSON.parse(repaired);
-      } catch { /* try next strategy */ }
+      } catch {
+        /* try next strategy */
+      }
     }
 
     // Just close everything
     const repaired = cleaned + closeStack.reverse().join("");
     try {
       return JSON.parse(repaired);
-    } catch { /* give up */ }
+    } catch {
+      /* give up */
+    }
   }
 
   // Final attempt: just parse cleaned as-is
@@ -263,29 +282,73 @@ export function parseJsonLenient(text: string): unknown {
  * Everything else is blocked — the LLM should never run arbitrary host commands.
  */
 const SAFE_HOST_COMMANDS = new Set([
-  "cat", "ls", "head", "tail", "grep", "find", "wc",   // read-only inspection
-  "chmod", "chown",                                       // permission fixes
-  "sed", "awk",                                           // text transforms
-  "cp", "mv", "mkdir", "touch", "ln", "rm",              // file operations
-  "echo", "printf", "tee",                                // output/write
-  "git",                                                  // version control
-  "npm", "npx", "pnpm", "yarn", "bun",                   // JS package managers
-  "bundle", "gem", "rake",                                // Ruby
-  "pip", "pip3", "python", "python3",                     // Python
-  "go", "cargo", "mvn", "gradle", "sbt",                 // Other build tools
-  "make", "cmake",                                        // Build systems
-  "env", "which", "command", "type", "test", "true",     // Shell builtins
-  "sh", "bash", "zsh",                                    // Subshells (for -c "...")
-  "curl", "wget",                                         // HTTP (for healthchecks)
-  "kill", "pkill",                                        // Process management
-  "sleep", "date",                                        // Utilities
-  "node",                                                 // Node.js
+  "cat",
+  "ls",
+  "head",
+  "tail",
+  "grep",
+  "find",
+  "wc", // read-only inspection
+  "chmod",
+  "chown", // permission fixes
+  "sed",
+  "awk", // text transforms
+  "cp",
+  "mv",
+  "mkdir",
+  "touch",
+  "ln",
+  "rm", // file operations
+  "echo",
+  "printf",
+  "tee", // output/write
+  "git", // version control
+  "npm",
+  "npx",
+  "pnpm",
+  "yarn",
+  "bun", // JS package managers
+  "bundle",
+  "gem",
+  "rake", // Ruby
+  "pip",
+  "pip3",
+  "python",
+  "python3", // Python
+  "go",
+  "cargo",
+  "mvn",
+  "gradle",
+  "sbt", // Other build tools
+  "make",
+  "cmake", // Build systems
+  "env",
+  "which",
+  "command",
+  "type",
+  "test",
+  "true", // Shell builtins
+  "sh",
+  "bash",
+  "zsh", // Subshells (for -c "...")
+  "curl",
+  "wget", // HTTP (for healthchecks)
+  "kill",
+  "pkill", // Process management
+  "sleep",
+  "date", // Utilities
+  "node", // Node.js
 ]);
 
 export function isDangerousCommand(command: string): boolean {
-
   function getFirstWord(segment: string): string {
-    return segment.trim().replace(/^(\w+=\S+\s+)*/, "").split(/\s+/)[0]?.toLowerCase() ?? "";
+    return (
+      segment
+        .trim()
+        .replace(/^(\w+=\S+\s+)*/, "")
+        .split(/\s+/)[0]
+        ?.toLowerCase() ?? ""
+    );
   }
 
   // Check the top-level command word (before any pipes/chains)
@@ -323,11 +386,7 @@ export function isDangerousCommand(command: string): boolean {
  * Run a shell command safely with output truncation and error handling.
  * Used by LLM tool handlers that need to execute commands in the repo.
  */
-export function runShellCommand(
-  repoPath: string,
-  command: string,
-  timeoutMs = 60_000,
-): string {
+export function runShellCommand(repoPath: string, command: string, timeoutMs = 60_000): string {
   if (isDangerousCommand(command)) {
     return "Error: dangerous command blocked";
   }
@@ -346,7 +405,12 @@ export function runShellCommand(
       ? "... [truncated beginning]\n" + result.slice(-10_000)
       : result || "(no output)";
   } catch (err) {
-    if (err && typeof err === "object" && "killed" in err && (err as Record<string, unknown>).killed) {
+    if (
+      err &&
+      typeof err === "object" &&
+      "killed" in err &&
+      (err as Record<string, unknown>).killed
+    ) {
       return `Command timed out after ${Math.round(timeoutMs / 1000)}s and was killed.`;
     }
     if (err && typeof err === "object" && "stderr" in err) {
@@ -393,13 +457,17 @@ export function extractCodeBlock(text: string): string | null {
 export function stripHtmlForAnalysis(html: string): string {
   // Replace <script> blocks but preserve src attributes as markers (SPA detection)
   const stripped = html
-    .replace(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>[\s\S]*?<\/script>/gi,
-      (_m, src: string) => ` [script: ${src}] `)
+    .replace(
+      /<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>[\s\S]*?<\/script>/gi,
+      (_m, src: string) => ` [script: ${src}] `,
+    )
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     // Preserve custom elements / SPA root markers before stripping tags
-    .replace(/<(app-root|consumer-root|next-root|nuxt|div\s+id\s*=\s*["'](?:root|app|__next|__nuxt)["'])[^>]*>/gi,
-      (_m, tag: string) => ` [SPA root: <${tag}>] `)
+    .replace(
+      /<(app-root|consumer-root|next-root|nuxt|div\s+id\s*=\s*["'](?:root|app|__next|__nuxt)["'])[^>]*>/gi,
+      (_m, tag: string) => ` [SPA root: <${tag}>] `,
+    )
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
@@ -419,19 +487,16 @@ export function stripHtmlForAnalysis(html: string): string {
 export const PROBE_RESPONSE_DIR = "/tmp/bright_probe_responses";
 let _probeCounter = 0;
 
-export function saveProbeBody(
-  bodyText: string,
-  contentType: string,
-): string | null {
+export function saveProbeBody(bodyText: string, contentType: string): string | null {
   if (bodyText.length <= 2000) return null;
 
   try {
     mkdirSync(PROBE_RESPONSE_DIR, { recursive: true });
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
-  const ext = contentType.includes("json") ? "json"
-    : contentType.includes("html") ? "html"
-    : "txt";
+  const ext = contentType.includes("json") ? "json" : contentType.includes("html") ? "html" : "txt";
   const filePath = `${PROBE_RESPONSE_DIR}/response_${++_probeCounter}.${ext}`;
 
   try {
@@ -482,8 +547,8 @@ export function injectEnvVarsFromHint(repoPath: string, hint: string): string[] 
     if (content.includes(`${key}=`) || content.includes(`${key}:`)) continue;
 
     // Find the first `environment:` block and append the variable
-    const envBlockMatch = content.match(/^(\s*)environment:\s*$/m)
-      ?? content.match(/^(\s*)environment:\s*\n/m);
+    const envBlockMatch =
+      content.match(/^(\s*)environment:\s*$/m) ?? content.match(/^(\s*)environment:\s*\n/m);
     if (envBlockMatch) {
       const indent = envBlockMatch[1] + "  ";
       const insertPos = (envBlockMatch.index ?? 0) + envBlockMatch[0].length;

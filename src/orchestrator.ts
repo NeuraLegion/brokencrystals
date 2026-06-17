@@ -1,80 +1,91 @@
-import { gitCommitAndPush, gitFinalizeChanges } from "./platform.js";
-import { execFileSync, type ChildProcess } from "child_process";
+import { type ChildProcess, execFileSync } from "child_process";
 import treeKill from "tree-kill";
-import type { OrchestratorContext, SecurityFix, Finding, DiscoveredEndpoint, TechStack, StartupConfig, BrightApiContext } from "./types.js";
-import { ProgressReporter, type FindingSummary } from "./progress.js";
-import { formatTechStack, toErrorMessage, findingKey, buildSeveritySummary, SEVERITY_ORDER, injectEnvVarsFromHint, sleep } from "./utils.js";
+import { AppHealthMonitor } from "./app-health.js";
+import { listTests } from "./bright-api.js";
+import {
+  assembleBrightStar,
+  type BrightStar,
+  brightStarAuthHints,
+  brightStarToStartupConfig,
+  readBrightStar,
+  writeBrightStar,
+} from "./brightstar.js";
+import { chatWithTools, type ModelSelector, TokenTracker } from "./inference.js";
 import { detectTechStack, discoverEndpoints } from "./phases/analyze.js";
 import {
-  discoverEndpointsViaSwagger,
-} from "./phases/swagger.js";
-import {
-  startApplicationWithRetries,
-  canBuildFromSource,
-  captureDockerLogs,
-  checkAppHealth,
-  deepHealthCheck,
-  quickRestartCompose,
-  findComposeFile,
-  type StartupResult,
-  type DeepProbeCache,
-} from "./phases/startup.js";
-import {
-  detectAndConfigureAuth,
-  testAuthObject,
-  reRegisterUser,
-  replaySeedCommands,
   type AuthResult,
+  detectAndConfigureAuth,
+  replaySeedCommands,
+  reRegisterUser,
   type SeedCommand,
+  testAuthObject,
 } from "./phases/auth.js";
 import {
-  detectFirstRunSetup,
-  completeFirstRunSetup,
-  type FirstRunSetupResult,
-} from "./phases/setup.js";
-import {
+  pruneDeadEntrypoints,
+  type RegisteredEntrypoint,
   registerEntrypoints,
   resolvePathParams,
   verifyEntrypointAuth,
-  pruneDeadEntrypoints,
-  type RegisteredEntrypoint,
 } from "./phases/entrypoints.js";
-import { setupRepeater, type RepeaterHandle } from "./phases/repeater.js";
+import { fetchFindings } from "./phases/findings.js";
+import { applyFixes, generateFixes } from "./phases/fix.js";
+import { cleanupHarnessInfra, type HarnessResult, runFunctionHarness } from "./phases/harness.js";
+import { type RepeaterHandle, setupRepeater } from "./phases/repeater.js";
+import {
+  isFailureStatus,
+  runSecurityScan,
+  setScanLifecycle,
+  waitForScanCompletion,
+} from "./phases/scan.js";
 import { prepareScanEnvironment, replayScanPrep } from "./phases/scan-prep.js";
 import {
-  selectTestsPerEndpoint,
-  type ScanGroup,
-} from "./phases/test-selection.js";
+  completeFirstRunSetup,
+  detectFirstRunSetup,
+  type FirstRunSetupResult,
+} from "./phases/setup.js";
 import {
-  runSecurityScan,
-  waitForScanCompletion,
-  isFailureStatus,
-  setScanLifecycle,
-} from "./phases/scan.js";
-import { fetchFindings } from "./phases/findings.js";
-import { generateFixes, applyFixes } from "./phases/fix.js";
-import { runFunctionHarness, cleanupHarnessInfra, type HarnessResult } from "./phases/harness.js";
+  canBuildFromSource,
+  captureDockerLogs,
+  checkAppHealth,
+  type DeepProbeCache,
+  deepHealthCheck,
+  findComposeFile,
+  quickRestartCompose,
+  type StartupResult,
+  startApplicationWithRetries,
+} from "./phases/startup.js";
+import { discoverEndpointsViaSwagger } from "./phases/swagger.js";
+import { type ScanGroup, selectTestsPerEndpoint } from "./phases/test-selection.js";
 import {
-  parseSarif,
-  mapFindingsToEndpoints,
-  runValidationScans,
-  resolveBrightTests,
   formatValidationReport,
+  mapFindingsToEndpoints,
+  parseSarif,
+  resolveBrightTests,
+  runValidationScans,
   summarizeResults,
   toValidationSummaryRows,
 } from "./phases/validation.js";
-import { listTests } from "./bright-api.js";
-import { chatWithTools, type ModelSelector, TokenTracker } from "./inference.js";
+import { gitCommitAndPush, gitFinalizeChanges } from "./platform.js";
+import { type FindingSummary, ProgressReporter } from "./progress.js";
 import { codebaseTools, createToolHandler } from "./tools.js";
-import { AppHealthMonitor } from "./app-health.js";
+import type {
+  BrightApiContext,
+  DiscoveredEndpoint,
+  Finding,
+  OrchestratorContext,
+  SecurityFix,
+  StartupConfig,
+  TechStack,
+} from "./types.js";
 import {
-  assembleBrightStar,
-  writeBrightStar,
-  readBrightStar,
-  brightStarToStartupConfig,
-  brightStarAuthHints,
-  type BrightStar,
-} from "./brightstar.js";
+  buildSeveritySummary,
+  findingKey,
+  formatTechStack,
+  injectEnvVarsFromHint,
+  SEVERITY_ORDER,
+  sleep,
+  toErrorMessage,
+} from "./utils.js";
 
 const MAX_ITERATIONS = 5;
 const MAX_FIX_REPAIR_ATTEMPTS = 2;
@@ -121,7 +132,12 @@ const FINDING_TEST_RULES: Array<{ pattern: RegExp; tests: string[] }> = [
 function addHint(hints: string[], hint: string): void {
   const compact = hint.replace(/\s+/g, " ").trim().slice(0, 900);
   if (!compact) return;
-  if (hints.some((existing) => existing === compact || existing.includes(compact) || compact.includes(existing))) {
+  if (
+    hints.some(
+      (existing) =>
+        existing === compact || existing.includes(compact) || compact.includes(existing),
+    )
+  ) {
     return;
   }
   hints.push(compact);
@@ -244,16 +260,19 @@ function resolveFindingEntrypointId(
   const findingPath = normalizeUrlPath(finding.url);
   if (!findingPath) return undefined;
 
-  const exact = registered.find((entry) =>
-    entry.endpoint.method.toUpperCase() === findingMethod &&
-    normalizeUrlPath(entry.endpoint.fullUrl ?? entry.endpoint.path) === findingPath,
+  const exact = registered.find(
+    (entry) =>
+      entry.endpoint.method.toUpperCase() === findingMethod &&
+      normalizeUrlPath(entry.endpoint.fullUrl ?? entry.endpoint.path) === findingPath,
   );
   if (exact) return exact.entrypointId;
 
   const withoutQuery = findingPath.split("?")[0];
-  const pathOnly = registered.find((entry) =>
-    entry.endpoint.method.toUpperCase() === findingMethod &&
-    normalizeUrlPath(entry.endpoint.fullUrl ?? entry.endpoint.path).split("?")[0] === withoutQuery,
+  const pathOnly = registered.find(
+    (entry) =>
+      entry.endpoint.method.toUpperCase() === findingMethod &&
+      normalizeUrlPath(entry.endpoint.fullUrl ?? entry.endpoint.path).split("?")[0] ===
+        withoutQuery,
   );
   return pathOnly?.entrypointId;
 }
@@ -269,10 +288,7 @@ function normalizeUrlPath(value: string): string {
   }
 }
 
-function testsForFinding(
-  finding: Finding,
-  selectedTests: Set<string> | undefined,
-): string[] {
+function testsForFinding(finding: Finding, selectedTests: Set<string> | undefined): string[] {
   const tests = new Set<string>();
   if (finding.testTag) {
     tests.add(finding.testTag);
@@ -350,7 +366,13 @@ async function runSetupIfNeeded(
   modelSelector: ModelSelector,
   progress: ProgressReporter,
   context: string,
-): Promise<{ ran: boolean; completed: boolean; credentials?: FirstRunSetupResult["credentials"]; summary: string; infraRepairHint?: string }> {
+): Promise<{
+  ran: boolean;
+  completed: boolean;
+  credentials?: FirstRunSetupResult["credentials"];
+  summary: string;
+  infraRepairHint?: string;
+}> {
   const needs = await detectFirstRunSetup(baseUrl, startupConfig, postStartSetupHints);
   if (!needs) return { ran: false, completed: false, summary: "Setup not needed" };
 
@@ -372,9 +394,20 @@ async function runSetupIfNeeded(
 
   // If infra repair needed, return immediately — caller will rebuild and retry
   if (!setupResult.completed && setupResult.infraRepairHint) {
-    console.log(`[Engine] First-run setup needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
-    await progress.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
-    return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
+    console.log(
+      `[Engine] First-run setup needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`,
+    );
+    await progress.phaseDetail(
+      "first_run_setup",
+      "failed",
+      `Setup blocked: ${setupResult.summary}`,
+    );
+    return {
+      ran: true,
+      completed: false,
+      summary: setupResult.summary,
+      infraRepairHint: setupResult.infraRepairHint,
+    };
   }
 
   if (!setupResult.completed && modelSelector.escalate()) {
@@ -392,17 +425,37 @@ async function runSetupIfNeeded(
 
     // Check again for infra repair after escalated retry
     if (!setupResult.completed && setupResult.infraRepairHint) {
-      console.log(`[Engine] Escalated setup also needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
-      await progress.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
-      return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
+      console.log(
+        `[Engine] Escalated setup also needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`,
+      );
+      await progress.phaseDetail(
+        "first_run_setup",
+        "failed",
+        `Setup blocked: ${setupResult.summary}`,
+      );
+      return {
+        ran: true,
+        completed: false,
+        summary: setupResult.summary,
+        infraRepairHint: setupResult.infraRepairHint,
+      };
     }
   }
 
   if (setupResult.completed) {
-    await progress.phaseDetail("first_run_setup", "done", `Setup completed: ${setupResult.summary}`);
+    await progress.phaseDetail(
+      "first_run_setup",
+      "done",
+      `Setup completed: ${setupResult.summary}`,
+    );
     console.log(`[Engine] First-run setup completed (${context}): ${setupResult.summary}`);
     modelSelector.reset();
-    return { ran: true, completed: true, credentials: setupResult.credentials, summary: setupResult.summary };
+    return {
+      ran: true,
+      completed: true,
+      credentials: setupResult.credentials,
+      summary: setupResult.summary,
+    };
   }
 
   console.warn(`[Engine] First-run setup failed (${context}): ${setupResult.summary}`);
@@ -460,13 +513,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
   try {
     // ----- Phase 1: Tech stack + Start application (fail fast) -----
-    await progress.phaseStart(
-      "startup",
-      "Detecting tech stack and starting the application",
-    );
-    const techStack = await detectTechStack(
-      repoPath,
-    );
+    await progress.phaseStart("startup", "Detecting tech stack and starting the application");
+    const techStack = await detectTechStack(repoPath);
     await progress.phaseDetail(
       "startup",
       "tech_stack",
@@ -478,7 +526,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // We feed it back to each phase as a strong prior to skip rediscovery.
     loadedBrightStar = readBrightStar(repoPath);
     if (loadedBrightStar) {
-      console.log("[BrightStar] Found BRIGHT_STAR.md — pre-prepping pipeline from prior run memory");
+      console.log(
+        "[BrightStar] Found BRIGHT_STAR.md — pre-prepping pipeline from prior run memory",
+      );
       await progress.phaseDetail(
         "startup",
         "brightstar",
@@ -499,9 +549,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       } catch (err) {
         const msg = toErrorMessage(err);
         console.error(`[Harness] Function harness failed: ${msg}`);
-        const brief = msg.length > 200
-          ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "…"
-          : msg;
+        const brief =
+          msg.length > 200
+            ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "…"
+            : msg;
         await progress.phaseStart("done", `Function harness mode failed: ${brief}`);
         return;
       }
@@ -511,7 +562,15 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         `Harness running with ${harnessResult.endpoints.length} endpoint(s) on port ${harnessResult.config.port}`,
       );
       // Jump into scanning with harness endpoints (no auth needed)
-      return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+      return await runScanLoop(
+        ctx,
+        progress,
+        techStack,
+        harnessResult,
+        allScanIds,
+        allFindings,
+        fixedKeys,
+      );
     }
 
     // ----- Full mode: standard app startup -----
@@ -573,7 +632,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
               techStack,
               undefined,
               config.modelSelector,
-              [`[partial-boot] Non-essential services stripped: ${removed.join(", ")}. The app may 500 on routes that need these services — that's acceptable for DAST scanning.`],
+              [
+                `[partial-boot] Non-essential services stripped: ${removed.join(", ")}. The app may 500 on routes that need these services — that's acceptable for DAST scanning.`,
+              ],
             );
             console.log("[Engine] Partial boot succeeded — proceeding with available routes");
             startup = partialStartup;
@@ -587,9 +648,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       if (!startup) {
         // In dynamic mode, no harness fallback — fail hard
         if (config.runMode === "dynamic") {
-          const brief = msg.length > 200
-            ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "…"
-            : msg;
+          const brief =
+            msg.length > 200
+              ? msg.slice(0, msg.indexOf("\n", 80) > 0 ? msg.indexOf("\n", 80) : 200) + "…"
+              : msg;
           await progress.phaseStart("done", `Application startup failed: ${brief}`);
           return;
         }
@@ -609,7 +671,15 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             "harness_ready",
             `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`,
           );
-          return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+          return await runScanLoop(
+            ctx,
+            progress,
+            techStack,
+            harnessResult,
+            allScanIds,
+            allFindings,
+            fixedKeys,
+          );
         } catch (harnessErr) {
           console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
           throw startupErr;
@@ -619,9 +689,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     appProcess = startup.process;
     let startupConfig = startup.config;
     let baseUrl = `http://localhost:${startupConfig.port}`;
-    const selectedApp = techStack.serviceRoot && techStack.serviceRoot !== "."
-      ? techStack.serviceRoot
-      : "repository root";
+    const selectedApp =
+      techStack.serviceRoot && techStack.serviceRoot !== "."
+        ? techStack.serviceRoot
+        : "repository root";
     await progress.setScanTarget(selectedApp, baseUrl);
     await progress.phaseDetail(
       "startup",
@@ -638,15 +709,19 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       port: startupConfig.port,
       healthCheckPath: startupConfig.healthCheckPath,
       healthProbe: startupConfig.healthProbe,
-      onDeepProbe: () => startupConfig.healthProbe
-        ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" })
-        : deepHealthCheck(
-            startupConfig.port,
-            startupConfig.healthCheckPath ?? "/",
-            llm,
-            config.modelSelector,
-            deepProbeCache,
-          ),
+      onDeepProbe: () =>
+        startupConfig.healthProbe
+          ? Promise.resolve({
+              healthy: true,
+              reason: "custom startup health probe configured; skipping GET-only deep probe",
+            })
+          : deepHealthCheck(
+              startupConfig.port,
+              startupConfig.healthCheckPath ?? "/",
+              llm,
+              config.modelSelector,
+              deepProbeCache,
+            ),
     });
     healthMonitor.setRecoveryCallback(async (hint) => {
       if (!startupConfig.docker) {
@@ -663,13 +738,21 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         );
 
         if (rateLimitRecoveryAttempts > MAX_RATE_LIMIT_RECOVERIES) {
-          console.warn("[Recovery] Max rate-limit recovery attempts reached — giving up (code-level fix needed)");
-          return { ok: false, detail: "rate-limit recovery exhausted — code-level throttle guard not removable by restart/replay" };
+          console.warn(
+            "[Recovery] Max rate-limit recovery attempts reached — giving up (code-level fix needed)",
+          );
+          return {
+            ok: false,
+            detail:
+              "rate-limit recovery exhausted — code-level throttle guard not removable by restart/replay",
+          };
         }
 
         // Attempt 1: replay deterministic scan-prep commands + restart
         if (scanPrepReplayCommands.length > 0) {
-          console.log(`[Recovery] Replaying ${scanPrepReplayCommands.length} scan-prep command(s) before restart...`);
+          console.log(
+            `[Recovery] Replaying ${scanPrepReplayCommands.length} scan-prep command(s) before restart...`,
+          );
           const { applied, failed } = replayScanPrep(repoPath, scanPrepReplayCommands);
           if (failed > 0) {
             console.warn(`[Recovery] Replay partial: ${applied} applied, ${failed} failed`);
@@ -681,14 +764,19 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           console.log("[Recovery] Running targeted LLM scan-prep repair for rate-limit removal...");
           try {
             const repairResult = await prepareScanEnvironment(
-              llm, repoPath, baseUrl, techStack,
+              llm,
+              repoPath,
+              baseUrl,
+              techStack,
               config.modelSelector.current(),
               `URGENT: The app health monitor detected a rate-limit/throttle error during active scanning. The app is returning ThrottlerException or 429 responses. Find the rate-limiter in the source code and DISABLE it completely. Previous restart did not fix it — this is a code-level guard that must be patched. Hint: ${hint ?? "rate limit on health endpoint"}`,
             );
             if (repairResult.completed && repairResult.replayCommands?.length) {
               scanPrepReplayCommands = [...scanPrepReplayCommands, ...repairResult.replayCommands];
             }
-            console.log(`[Recovery] LLM scan-prep repair: ${repairResult.completed ? "succeeded" : "failed"} — ${repairResult.summary}`);
+            console.log(
+              `[Recovery] LLM scan-prep repair: ${repairResult.completed ? "succeeded" : "failed"} — ${repairResult.summary}`,
+            );
           } catch (repairErr) {
             console.warn(`[Recovery] LLM scan-prep repair threw: ${toErrorMessage(repairErr)}`);
           }
@@ -698,7 +786,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         const qr = await quickRestartCompose(repoPath, startupConfig);
         if (qr.ok) {
           deepProbeCache.clear();
-          return { ok: true, detail: `rate-limit recovery (attempt ${rateLimitRecoveryAttempts}): replay + restart succeeded` };
+          return {
+            ok: true,
+            detail: `rate-limit recovery (attempt ${rateLimitRecoveryAttempts}): replay + restart succeeded`,
+          };
         }
         return { ok: false, detail: qr.diagnostics ?? "restart after rate-limit repair failed" };
       }
@@ -720,13 +811,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         pausedForThrottle.push(...toPause);
       }
 
-      console.log(
-        `[Recovery] Quick compose restart${hint ? ` — hint: ${hint}` : ""}`,
-      );
+      console.log(`[Recovery] Quick compose restart${hint ? ` — hint: ${hint}` : ""}`);
       const qr = await quickRestartCompose(repoPath, startupConfig);
       if (qr.ok) {
         deepProbeCache.clear();
-        return { ok: true, detail: `quick compose restart succeeded${shouldThrottle ? ` (throttled to ${activeScanIds.length - pausedForThrottle.length} concurrent scans)` : ""}` };
+        return {
+          ok: true,
+          detail: `quick compose restart succeeded${shouldThrottle ? ` (throttled to ${activeScanIds.length - pausedForThrottle.length} concurrent scans)` : ""}`,
+        };
       }
       console.warn(
         `[Recovery] Quick restart failed — staying unhealthy for orchestrator to handle`,
@@ -739,10 +831,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     healthMonitor.start();
 
     // ----- Phase 2: Setup Bright project + repeater -----
-    await progress.phaseStart(
-      "setup",
-      "Setting up Bright security scanner and Repeater",
-    );
+    await progress.phaseStart("setup", "Setting up Bright security scanner and Repeater");
 
     const projectId = config.brightProjectId;
     if (!projectId) {
@@ -752,15 +841,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     }
     console.log(`[Setup] Using Bright project: ${projectId}`);
 
-    repeater = await setupRepeater(
-      projectId,
-      config,
-    );
-    await progress.phaseDetail(
-      "setup",
-      "repeater",
-      "Repeater connected",
-    );
+    repeater = await setupRepeater(projectId, config);
+    await progress.phaseDetail("setup", "repeater", "Repeater connected");
 
     // ----- Phase 2.5: First-run setup (if needed) -----
     // Some apps (Umbraco, WordPress, Ghost, etc.) require completing an install wizard
@@ -788,7 +870,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       if (!r.infraRepairHint || setupBounce >= MAX_SETUP_BOUNCEBACKS) break;
 
       // ----- Setup infra bounce-back: rebuild with the hint and retry -----
-      console.log(`[Engine] Setup infra bounce-back ${setupBounce + 1}/${MAX_SETUP_BOUNCEBACKS} — repairing infrastructure`);
+      console.log(
+        `[Engine] Setup infra bounce-back ${setupBounce + 1}/${MAX_SETUP_BOUNCEBACKS} — repairing infrastructure`,
+      );
       console.log(`[Engine] Hint: ${r.infraRepairHint.slice(0, 200)}`);
       await progress.phaseDetail(
         "first_run_setup",
@@ -826,15 +910,19 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           port: startupConfig.port,
           healthCheckPath: startupConfig.healthCheckPath,
           healthProbe: startupConfig.healthProbe,
-          onDeepProbe: () => startupConfig.healthProbe
-            ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" })
-            : deepHealthCheck(
-                startupConfig.port,
-                startupConfig.healthCheckPath ?? "/",
-                llm,
-                config.modelSelector,
-                deepProbeCache,
-              ),
+          onDeepProbe: () =>
+            startupConfig.healthProbe
+              ? Promise.resolve({
+                  healthy: true,
+                  reason: "custom startup health probe configured; skipping GET-only deep probe",
+                })
+              : deepHealthCheck(
+                  startupConfig.port,
+                  startupConfig.healthCheckPath ?? "/",
+                  llm,
+                  config.modelSelector,
+                  deepProbeCache,
+                ),
         });
         healthMonitor.setRecoveryCallback(async (hint) => {
           if (!startupConfig.docker) {
@@ -843,7 +931,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           const isRateLimitIssue = isAuthRateLimitHint(hint);
           if (isRateLimitIssue && scanPrepReplayCommands.length > 0) {
             rateLimitRecoveryAttempts++;
-            console.log(`[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) — replaying scan-prep commands...`);
+            console.log(
+              `[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) — replaying scan-prep commands...`,
+            );
             replayScanPrep(repoPath, scanPrepReplayCommands);
           }
           const qr = await quickRestartCompose(repoPath, startupConfig);
@@ -888,7 +978,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         config.modelSelector.current(),
       );
       if (prepResult.failureKind === "verification_missing") {
-        console.warn("[Engine] Scan prep skipped mandatory POST verification — retrying targeted verification pass");
+        console.warn(
+          "[Engine] Scan prep skipped mandatory POST verification — retrying targeted verification pass",
+        );
         await progress.phaseDetail("scan_prep", "verification_retry", prepResult.summary);
         prepResult = await prepareScanEnvironment(
           llm,
@@ -916,7 +1008,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         await progress.phaseDetail("scan_prep", "done", "No changes needed");
         addHint(authHints, "[scan-prep] Completed: no rate-limit/security-control changes needed.");
       } else if (prepResult.failureKind === "login_5xx" && config.runMode === "dynamic") {
-        console.warn(`[Engine] Scan prep found a crashing login endpoint — running durable source repair before auth`);
+        console.warn(
+          `[Engine] Scan prep found a crashing login endpoint — running durable source repair before auth`,
+        );
         await progress.phaseDetail("scan_prep", "login_repair", prepResult.summary);
         addHint(authHints, `[scan-prep] ${prepResult.summary}`);
 
@@ -946,15 +1040,19 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           port: startupConfig.port,
           healthCheckPath: startupConfig.healthCheckPath,
           healthProbe: startupConfig.healthProbe,
-          onDeepProbe: () => startupConfig.healthProbe
-            ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" })
-            : deepHealthCheck(
-                startupConfig.port,
-                startupConfig.healthCheckPath ?? "/",
-                llm,
-                config.modelSelector,
-                deepProbeCache,
-              ),
+          onDeepProbe: () =>
+            startupConfig.healthProbe
+              ? Promise.resolve({
+                  healthy: true,
+                  reason: "custom startup health probe configured; skipping GET-only deep probe",
+                })
+              : deepHealthCheck(
+                  startupConfig.port,
+                  startupConfig.healthCheckPath ?? "/",
+                  llm,
+                  config.modelSelector,
+                  deepProbeCache,
+                ),
         });
         healthMonitor.setRecoveryCallback(async (hint) => {
           if (!startupConfig.docker) {
@@ -963,7 +1061,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           const isRateLimitIssue = isAuthRateLimitHint(hint);
           if (isRateLimitIssue && scanPrepReplayCommands.length > 0) {
             rateLimitRecoveryAttempts++;
-            console.log(`[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) — replaying scan-prep commands...`);
+            console.log(
+              `[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) — replaying scan-prep commands...`,
+            );
             replayScanPrep(repoPath, scanPrepReplayCommands);
           }
           const qr = await quickRestartCompose(repoPath, startupConfig);
@@ -976,7 +1076,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         healthMonitor.start();
       } else {
         // Scan-prep failed — retry once with escalated model and targeted hint
-        console.warn(`[Engine] Scan prep failed (${prepResult.failureKind ?? "unknown"}): ${prepResult.summary} — retrying with escalated model`);
+        console.warn(
+          `[Engine] Scan prep failed (${prepResult.failureKind ?? "unknown"}): ${prepResult.summary} — retrying with escalated model`,
+        );
         await progress.phaseDetail("scan_prep", "retry", prepResult.summary);
         config.modelSelector.escalate();
         const retryResult = await prepareScanEnvironment(
@@ -997,7 +1099,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             addHint(authHints, `[scan-prep] ${change}`);
           }
         } else {
-          console.warn(`[Engine] Scan prep retry also failed: ${retryResult.summary} — continuing anyway`);
+          console.warn(
+            `[Engine] Scan prep retry also failed: ${retryResult.summary} — continuing anyway`,
+          );
           await progress.phaseDetail("scan_prep", "warning", retryResult.summary);
           addHint(authHints, `[scan-prep-warning] ${retryResult.summary}`);
         }
@@ -1022,7 +1126,8 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     // If first-run setup created an admin, tell auth about it so it can skip user seeding
     if (setupCredentials) {
-      preAuthContext += `\n\nIMPORTANT: A test user was already created during first-run setup:\n` +
+      preAuthContext +=
+        `\n\nIMPORTANT: A test user was already created during first-run setup:\n` +
         `- username: ${setupCredentials.username}\n` +
         `- email: ${setupCredentials.email}\n` +
         `- password: ${setupCredentials.password}\n` +
@@ -1072,7 +1177,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       config.modelSelector.escalate();
 
       // ----- Auth infra bounce-back: repair infra and retry auth -----
-      console.log(`[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} — repairing infrastructure`);
+      console.log(
+        `[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} — repairing infrastructure`,
+      );
       console.log(`[Engine] Hint: ${authResult.infraRepairHint.slice(0, 200)}`);
       await progress.phaseDetail(
         "auth",
@@ -1082,7 +1189,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       try {
         if (isAuthRateLimitHint(authResult.infraRepairHint)) {
-          console.log("[Engine] Auth failure is rate-limit related — running targeted scan-prep repair instead of full startup rebuild");
+          console.log(
+            "[Engine] Auth failure is rate-limit related — running targeted scan-prep repair instead of full startup rebuild",
+          );
           await healthMonitor?.pause();
 
           const rateLimitRepair = await prepareScanEnvironment(
@@ -1103,7 +1212,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
               ];
             }
           } else {
-            console.warn(`[Engine] Targeted rate-limit repair did not complete: ${rateLimitRepair.summary}`);
+            console.warn(
+              `[Engine] Targeted rate-limit repair did not complete: ${rateLimitRepair.summary}`,
+            );
             await progress.phaseDetail("auth", "rate_limit_repair_failed", rateLimitRepair.summary);
             addHint(authHints, `[auth-rate-limit-repair-failed] ${rateLimitRepair.summary}`);
           }
@@ -1115,7 +1226,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           if (startupConfig.docker) {
             const qr = await quickRestartCompose(repoPath, startupConfig, 90_000);
             if (!qr.ok) {
-              console.warn(`[Engine] Quick restart after rate-limit repair failed: ${qr.diagnostics ?? "unknown"}`);
+              console.warn(
+                `[Engine] Quick restart after rate-limit repair failed: ${qr.diagnostics ?? "unknown"}`,
+              );
             }
           }
 
@@ -1137,7 +1250,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           authRegistration = authResult.registration;
 
           if (retryAuthResult.authObjectId) {
-            console.log(`[Engine] Auth rate-limit repair ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
+            console.log(
+              `[Engine] Auth rate-limit repair ${bounce} succeeded: ${retryAuthResult.authObjectId}`,
+            );
             await progress.phaseDetail(
               "auth",
               "auth_done",
@@ -1146,10 +1261,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             break;
           }
           if (retryAuthResult.infraRepairHint) {
-            console.warn(`[Engine] Auth still needs repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`);
+            console.warn(
+              `[Engine] Auth still needs repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`,
+            );
             continue;
           }
-          console.error("[Engine] Auth still failed after targeted rate-limit repair (not infra-related)");
+          console.error(
+            "[Engine] Auth still failed after targeted rate-limit repair (not infra-related)",
+          );
           break;
         }
 
@@ -1175,7 +1294,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         const appStillHealthy = await checkAppHealth(startupConfig.port, healthProbe);
         const hintIsSpecific = isSpecificInfraHint(authResult.infraRepairHint, injected.length);
         if (appStillHealthy && !hintIsSpecific) {
-          console.warn(`[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} → OK) and the hint is not evidence-backed. Skipping infrastructure teardown — problem is auth config, not infra.`);
+          console.warn(
+            `[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} → OK) and the hint is not evidence-backed. Skipping infrastructure teardown — problem is auth config, not infra.`,
+          );
           await progress.phaseDetail(
             "auth",
             "infra_repair_skipped",
@@ -1196,11 +1317,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           addHint(
             authHints,
             `[auth-infra-skipped] INFRA_REPAIR was requested but the application is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} → OK) so this is NOT an infrastructure problem. Do not request INFRA_REPAIR again for the same root cause. Pivot strategy: ` +
-            `(a) re-verify the auth method — if session/credentials is failing with "incorrect-email-password", check the password actually works against the real signup/login flow (a test user inserted directly into the DB may not have the right bcrypt hash); ` +
-            `(b) try alternative existing users in the DB (use run_command_in_docker against the database to list users and their roles); ` +
-            `(c) try a different auth method entirely — Bearer API key, OAuth client_credentials, x-* header auth — if the API supports more than one; ` +
-            `(d) re-verify the test URL — the chosen protected endpoint may not be reachable for the current user role; ` +
-            `(e) re-verify required login body fields (csrfToken, callbackUrl, json shape) by probing the form/login page first.`,
+              `(a) re-verify the auth method — if session/credentials is failing with "incorrect-email-password", check the password actually works against the real signup/login flow (a test user inserted directly into the DB may not have the right bcrypt hash); ` +
+              `(b) try alternative existing users in the DB (use run_command_in_docker against the database to list users and their roles); ` +
+              `(c) try a different auth method entirely — Bearer API key, OAuth client_credentials, x-* header auth — if the API supports more than one; ` +
+              `(d) re-verify the test URL — the chosen protected endpoint may not be reachable for the current user role; ` +
+              `(e) re-verify required login body fields (csrfToken, callbackUrl, json shape) by probing the form/login page first.`,
           );
 
           // Bug C fix: instead of breaking out of the bounce-back loop and
@@ -1223,7 +1344,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
               authHints,
             );
           } catch (retryErr) {
-            console.error(`[Engine] Auth retry after non-infra skip threw: ${toErrorMessage(retryErr)}`);
+            console.error(
+              `[Engine] Auth retry after non-infra skip threw: ${toErrorMessage(retryErr)}`,
+            );
             break;
           }
 
@@ -1232,7 +1355,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           authRegistration = authResult.registration;
 
           if (retryAuthResult.authObjectId) {
-            console.log(`[Engine] Auth recovered after non-infra retry on bounce ${bounce}: ${retryAuthResult.authObjectId}`);
+            console.log(
+              `[Engine] Auth recovered after non-infra retry on bounce ${bounce}: ${retryAuthResult.authObjectId}`,
+            );
             await progress.phaseDetail(
               "auth",
               "auth_done",
@@ -1331,7 +1456,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             );
           }
         } catch (setupErr) {
-          console.warn(`[Engine] Setup re-run after bounce-back failed: ${toErrorMessage(setupErr)}`);
+          console.warn(
+            `[Engine] Setup re-run after bounce-back failed: ${toErrorMessage(setupErr)}`,
+          );
         }
 
         const retryAuthResult = await detectAndConfigureAuth(
@@ -1353,15 +1480,15 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         authRegistration = authResult.registration;
 
         if (retryAuthResult.authObjectId) {
-          console.log(`[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
-          await progress.phaseDetail(
-            "auth",
-            "auth_done",
-            "Auth configured (after infra repair)",
+          console.log(
+            `[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`,
           );
+          await progress.phaseDetail("auth", "auth_done", "Auth configured (after infra repair)");
           break;
         } else if (retryAuthResult.infraRepairHint) {
-          console.warn(`[Engine] Auth needs another infra repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`);
+          console.warn(
+            `[Engine] Auth needs another infra repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`,
+          );
         } else {
           console.error("[Engine] Auth still failed after infra repair (not infra-related)");
           break; // Non-infra failure — no point bouncing again
@@ -1376,13 +1503,17 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     if (authResult.authFailed) {
       if (config.runMode === "dynamic") {
         // Dynamic mode: auth is critical — fail the run
-        console.error("[Engine] Auth configuration failed — aborting (dynamic mode requires working auth)");
+        console.error(
+          "[Engine] Auth configuration failed — aborting (dynamic mode requires working auth)",
+        );
         await progress.phaseDetail(
           "auth",
           "auth_failed",
           "Auth configuration failed — cannot scan without authentication in dynamic mode",
         );
-        throw new Error("Auth configuration failed: the application requires authentication but we could not configure it. Aborting.");
+        throw new Error(
+          "Auth configuration failed: the application requires authentication but we could not configure it. Aborting.",
+        );
       } else {
         // Full mode: fall back to function harness
         console.warn("[Engine] Auth configuration failed — falling back to function harness mode");
@@ -1400,7 +1531,15 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             "harness_ready",
             `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`,
           );
-          return await runScanLoop(ctx, progress, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+          return await runScanLoop(
+            ctx,
+            progress,
+            techStack,
+            harnessResult,
+            allScanIds,
+            allFindings,
+            fixedKeys,
+          );
         } catch (harnessErr) {
           console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
           await progress.phaseStart(
@@ -1430,7 +1569,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           console.log(`[ScanPrep] Post-bounce replay: ${applied} applied, ${failed} failed`);
         } else {
           // No replay commands stored — fall back to full LLM re-run
-          console.log("[Engine] Re-running scan-prep after bounce-back (no replay commands, using LLM)...");
+          console.log(
+            "[Engine] Re-running scan-prep after bounce-back (no replay commands, using LLM)...",
+          );
           const rePrepResult = await prepareScanEnvironment(
             llm,
             repoPath,
@@ -1439,13 +1580,17 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             config.modelSelector.current(),
           );
           if (rePrepResult.completed && rePrepResult.changes.length > 0) {
-            console.log(`[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`);
+            console.log(
+              `[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`,
+            );
           } else {
             console.log("[ScanPrep] Post-bounce re-run: no changes needed");
           }
         }
       } catch (rePrepErr) {
-        console.warn(`[Engine] Post-bounce scan-prep error: ${toErrorMessage(rePrepErr)} — continuing anyway`);
+        console.warn(
+          `[Engine] Post-bounce scan-prep error: ${toErrorMessage(rePrepErr)} — continuing anyway`,
+        );
       } finally {
         healthMonitor?.resume();
       }
@@ -1458,10 +1603,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
     let swaggerEndpoints: DiscoveredEndpoint[] = [];
     if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {
-      await progress.phaseStart(
-        "swagger",
-        "Probing for OpenAPI/Swagger spec",
-      );
+      await progress.phaseStart("swagger", "Probing for OpenAPI/Swagger spec");
       swaggerEndpoints = swaggerResult.endpoints;
       console.log(
         `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from existing OpenAPI spec`,
@@ -1476,10 +1618,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     }
 
     // ----- Phase 5: Static analysis (always runs — fills gaps, enriches params) -----
-    await progress.phaseStart(
-      "analyze",
-      "Analyzing source code for endpoints and parameters",
-    );
+    await progress.phaseStart("analyze", "Analyzing source code for endpoints and parameters");
     let staticEndpoints = await discoverEndpoints(
       llm,
       repoPath,
@@ -1488,7 +1627,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     );
 
     // If no endpoints found, escalate model and retry once
-    if (staticEndpoints.length === 0 && swaggerEndpoints.length === 0 && config.modelSelector.escalate()) {
+    if (
+      staticEndpoints.length === 0 &&
+      swaggerEndpoints.length === 0 &&
+      config.modelSelector.escalate()
+    ) {
       console.log(`[Analyze] No endpoints found — retrying with escalated model`);
       staticEndpoints = await discoverEndpoints(
         llm,
@@ -1498,9 +1641,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       );
     }
 
-    console.log(
-      `[Analyze] Discovered ${staticEndpoints.length} endpoints via static analysis`,
-    );
+    console.log(`[Analyze] Discovered ${staticEndpoints.length} endpoints via static analysis`);
 
     // Merge: swagger endpoints are authoritative for paths, static analysis
     // fills in missing endpoints and enriches params (body, query, path values)
@@ -1524,21 +1665,20 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     );
 
     if (endpoints.length === 0) {
-      await progress.phaseStart(
-        "done",
-        "No HTTP endpoints found. Nothing to scan.",
-      );
+      await progress.phaseStart("done", "No HTTP endpoints found. Nothing to scan.");
       return;
     }
 
     // Build full context summary for downstream phases (fix generation)
-    const contextSummary = buildContextSummary(techStack, startupConfig, endpoints, swaggerEndpoints.length);
+    const contextSummary = buildContextSummary(
+      techStack,
+      startupConfig,
+      endpoints,
+      swaggerEndpoints.length,
+    );
 
     // ----- Phase 6: Register entrypoints -----
-    await progress.phaseStart(
-      "entrypoints",
-      "Registering API endpoints for scanning",
-    );
+    await progress.phaseStart("entrypoints", "Registering API endpoints for scanning");
 
     // Filter out endpoints that could corrupt application state or break auth.
     // DELETE: can remove users/data. PUT/PATCH on user/account paths: fuzzing
@@ -1550,29 +1690,20 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       // Always skip DELETE — too destructive
       if (method === "DELETE") {
-        console.log(
-          `[Entrypoints] Skipping destructive endpoint: ${ep.method} ${ep.path}`,
-        );
+        console.log(`[Entrypoints] Skipping destructive endpoint: ${ep.method} ${ep.path}`);
         return false;
       }
 
       // Skip PUT/PATCH on user/account/profile mutation endpoints
-      if (
-        (method === "PUT" || method === "PATCH") &&
-        isUserMutationPath(pathLower)
-      ) {
-        console.log(
-          `[Entrypoints] Skipping user-mutation endpoint: ${ep.method} ${ep.path}`,
-        );
+      if ((method === "PUT" || method === "PATCH") && isUserMutationPath(pathLower)) {
+        console.log(`[Entrypoints] Skipping user-mutation endpoint: ${ep.method} ${ep.path}`);
         return false;
       }
 
       // Skip any endpoint whose body contains password/credential fields
       // (regardless of method) — fuzzing these breaks auth
       if (ep.body && hasCredentialFields(ep.body)) {
-        console.log(
-          `[Entrypoints] Skipping credential-mutating endpoint: ${ep.method} ${ep.path}`,
-        );
+        console.log(`[Entrypoints] Skipping credential-mutating endpoint: ${ep.method} ${ep.path}`);
         return false;
       }
 
@@ -1585,7 +1716,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     }
 
     // Resolve hallucinated path params by probing list endpoints for real IDs
-    const resolvedEndpoints = await resolvePathParams(safeEndpoints, baseUrl, authResult.directAuthHeaders);
+    const resolvedEndpoints = await resolvePathParams(
+      safeEndpoints,
+      baseUrl,
+      authResult.directAuthHeaders,
+    );
 
     let registered = await registerEntrypoints(
       config,
@@ -1607,29 +1742,17 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       console.log(
         `[Entrypoints] Verifying auth on ${registered.length} registered entrypoint(s)...`,
       );
-      const check = await verifyEntrypointAuth(
-        config,
-        projectId,
-        registered[0].entrypointId,
-      );
+      const check = await verifyEntrypointAuth(config, projectId, registered[0].entrypointId);
       if (check.ok) {
-        console.log(
-          `[Entrypoints] ✓ Auth verification passed — ${check.detail}`,
-        );
+        console.log(`[Entrypoints] ✓ Auth verification passed — ${check.detail}`);
       } else {
-        console.warn(
-          `[Entrypoints] ✗ Auth verification failed — ${check.detail}`,
-        );
+        console.warn(`[Entrypoints] ✗ Auth verification failed — ${check.detail}`);
       }
     }
 
     // Prune entrypoints that returned 404 — they waste scan time
     if (registered.length > 0) {
-      registered = await pruneDeadEntrypoints(
-        config,
-        projectId,
-        registered,
-      );
+      registered = await pruneDeadEntrypoints(config, projectId, registered);
       await progress.phaseDetail(
         "entrypoints",
         "pruned",
@@ -1664,21 +1787,12 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     // Map CodeQL/SARIF findings to endpoints, run only the relevant DAST tests,
     // and emit a validated / not-validated / N-A verdict per finding. No fixes.
     if (config.runMode === "validation") {
-      await runValidationFlow(
-        ctx,
-        progress,
-        projectId,
-        repeater.repeaterId,
-        registered,
-      );
+      await runValidationFlow(ctx, progress, projectId, repeater.repeaterId, registered);
       return;
     }
 
     // ----- Phase 7: Select relevant tests per endpoint -----
-    await progress.phaseStart(
-      "test_selection",
-      "Selecting relevant security tests per endpoint",
-    );
+    await progress.phaseStart("test_selection", "Selecting relevant security tests per endpoint");
     const scanGroups = await selectTestsPerEndpoint(
       llm,
       config,
@@ -1699,7 +1813,6 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     let lastFixModel = "";
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-
       // --- Verify auth before each scan round (after fixes) ---
       if (iteration > 0 && authResult.hasAuth && authResult.authObjectId) {
         console.log(`[Auth] Verifying auth before round ${iteration + 1}...`);
@@ -1716,7 +1829,18 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           // Auth is broken and couldn't be repaired — need to restart the app
           // in case a code repair was applied, then retry
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
+            const restart = await restartApp(
+              appProcess,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              undefined,
+              healthMonitor,
+              authResult.seedCommands,
+            );
             appProcess = restart.process;
             // Retest after restart
             const retryOk = await verifyAndRepairAuth(
@@ -1753,13 +1877,27 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
 
       // --- Verify app is alive before scanning ---
-      const appAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
+      const appAlive = await checkAppHealth(
+        startupConfig.port,
+        startupConfig.healthProbe ?? startupConfig.healthCheckPath,
+      );
       if (!appAlive) {
         console.warn(
           `[Scan] App is unreachable on port ${startupConfig.port} — restarting before scan`,
         );
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
+          const restart = await restartApp(
+            appProcess,
+            llm,
+            repoPath,
+            techStack,
+            startupConfig,
+            config.modelSelector,
+            authResult.registration,
+            undefined,
+            healthMonitor,
+            authResult.seedCommands,
+          );
           appProcess = restart.process;
           console.log("[Scan] App restarted successfully");
         } catch (err) {
@@ -1777,17 +1915,13 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           ? buildValidationScanPlan(validationFindings, registered, scanGroups)
           : undefined;
       const useTargetedValidation =
-        !!validationPlan &&
-        validationPlan.groups.length > 0 &&
-        validationPlan.missed.length === 0;
+        !!validationPlan && validationPlan.groups.length > 0 && validationPlan.missed.length === 0;
       if (validationPlan && validationPlan.missed.length > 0) {
         console.warn(
           `[Scan] Could not map ${validationPlan.missed.length}/${validationFindings.length} finding(s) to targeted validation scans — falling back to full scan groups`,
         );
       }
-      const roundScanGroups = useTargetedValidation
-        ? validationPlan.groups
-        : scanGroups;
+      const roundScanGroups = useTargetedValidation ? validationPlan.groups : scanGroups;
 
       // --- Scan selected groups ---
       await progress.phaseStart(
@@ -1805,14 +1939,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       try {
         const deep = await healthMonitor.verifyDeepHealth();
         if (!deep.healthy) {
-          console.warn(
-            `[Scan] Deep health check still unhealthy after recovery: ${deep.reason}`,
-          );
+          console.warn(`[Scan] Deep health check still unhealthy after recovery: ${deep.reason}`);
         }
       } catch (err) {
-        console.warn(
-          `[Scan] Deep health check errored (continuing): ${toErrorMessage(err)}`,
-        );
+        console.warn(`[Scan] Deep health check errored (continuing): ${toErrorMessage(err)}`);
       }
 
       const scanIds: string[] = [];
@@ -1827,7 +1957,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           const jitterMs = useTargetedValidation
             ? 5_000 + Math.floor(Math.random() * 5_000)
             : 30_000 + Math.floor(Math.random() * 30_000);
-          console.log(`[Scan] Waiting ${Math.round(jitterMs / 1000)}s before launching ${useTargetedValidation ? "validation scan" : "group"} ${gi + 1}...`);
+          console.log(
+            `[Scan] Waiting ${Math.round(jitterMs / 1000)}s before launching ${useTargetedValidation ? "validation scan" : "group"} ${gi + 1}...`,
+          );
           await sleep(jitterMs);
         }
         try {
@@ -1851,26 +1983,19 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             `${useTargetedValidation ? "Validation" : "Group"} ${gi + 1}: ${group.entrypointIds.length} endpoints · tests: ${group.tests.join(", ")}`,
           );
         } catch (err) {
-          console.error(
-            `[Scan] Failed to start scan for group ${gi + 1}: ${err}`,
-          );
+          console.error(`[Scan] Failed to start scan for group ${gi + 1}: ${err}`);
         }
       }
 
       if (scanIds.length === 0) {
-        await progress.phaseStart(
-          "scan_error",
-          "All scan launches failed. Check Bright API logs.",
-        );
+        await progress.phaseStart("scan_error", "All scan launches failed. Check Bright API logs.");
         break;
       }
 
       // Wait for all scans to complete (in parallel) — log only, no PR spam
       const scanResults = await Promise.allSettled(
         scanIds.map(async (scanId, si) => {
-          console.log(
-            `[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`,
-          );
+          console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
           const finalStatus = await waitForScanCompletion(
             config,
             scanId,
@@ -1890,14 +2015,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       for (const [si, result] of scanResults.entries()) {
         const sid = scanIds[si];
         if (result.status === "rejected") {
-          console.error(
-            `[Scan] Error waiting for scan ${sid}: ${result.reason}`,
-          );
+          console.error(`[Scan] Error waiting for scan ${sid}: ${result.reason}`);
           failedScanDetails.push(`${sid} (wait error)`);
         } else if (isFailureStatus(result.value)) {
-          console.error(
-            `[Scan] Scan ${sid} ended with status: ${result.value}`,
-          );
+          console.error(`[Scan] Scan ${sid} ended with status: ${result.value}`);
           failedScanDetails.push(`${sid} (${result.value})`);
         } else {
           succeededScanIds.push(sid);
@@ -1910,7 +2031,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       // Clear active scan tracking and resume any throttled scans
       activeScanIds.length = 0;
       if (pausedForThrottle.length > 0) {
-        console.log(`[Scan] Resuming ${pausedForThrottle.length} throttled scan(s) now that the first batch completed`);
+        console.log(
+          `[Scan] Resuming ${pausedForThrottle.length} throttled scan(s) now that the first batch completed`,
+        );
         for (const sid of pausedForThrottle) {
           await setScanLifecycle(config, sid, "resume").catch(() => {});
           activeScanIds.push(sid);
@@ -1921,17 +2044,29 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
       if (failedCount > 0 && succeededScanIds.length === 0) {
         // All scans failed — nothing to harvest. Try to recover or abort.
-        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
+        const stillAlive = await checkAppHealth(
+          startupConfig.port,
+          startupConfig.healthProbe ?? startupConfig.healthCheckPath,
+        );
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning — attempting restart and retry",
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
-            appProcess = restart.process;
-            console.log(
-              "[Scan] App restarted — will retry scans on next iteration",
+            const restart = await restartApp(
+              appProcess,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              undefined,
+              healthMonitor,
+              authResult.seedCommands,
             );
+            appProcess = restart.process;
+            console.log("[Scan] App restarted — will retry scans on next iteration");
             await progress.phaseDetail(
               "scan",
               "app_restart",
@@ -1939,9 +2074,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             );
             continue;
           } catch (restartErr) {
-            console.error(
-              `[Scan] Failed to restart app after crash: ${restartErr}`,
-            );
+            console.error(`[Scan] Failed to restart app after crash: ${restartErr}`);
             await progress.phaseStart(
               "scan_error",
               `Application crashed during round ${iteration + 1} and could not be restarted.`,
@@ -1970,13 +2103,27 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
         // If app died but we still have some findings, restart it so the
         // next round (if any) has a healthy target — but don't abort.
-        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
+        const stillAlive = await checkAppHealth(
+          startupConfig.port,
+          startupConfig.healthProbe ?? startupConfig.healthCheckPath,
+        );
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning — attempting restart before processing findings",
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
+            const restart = await restartApp(
+              appProcess,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              undefined,
+              healthMonitor,
+              authResult.seedCommands,
+            );
             appProcess = restart.process;
             console.log("[Scan] App restarted");
           } catch (restartErr) {
@@ -1988,10 +2135,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       }
 
       // --- Fetch findings (only from successful scans) ---
-      const findings = await fetchFindings(
-        config,
-        succeededScanIds,
-      );
+      const findings = await fetchFindings(config, succeededScanIds);
 
       const sevSummary = buildSeveritySummary(findings);
 
@@ -2013,11 +2157,14 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
       // Build scan-round detail with validation stats when available
       let scanDetail: string;
       if (iteration === 0) {
-        scanDetail = findings.length > 0
-          ? `Round ${iteration + 1} complete — ${findings.length} vulnerabilities found (${sevSummary})`
-          : `Round ${iteration + 1} complete — no vulnerabilities found`;
+        scanDetail =
+          findings.length > 0
+            ? `Round ${iteration + 1} complete — ${findings.length} vulnerabilities found (${sevSummary})`
+            : `Round ${iteration + 1} complete — no vulnerabilities found`;
       } else {
-        const validated = (useTargetedValidation ? validationPlan.targetKeys : new Set(allFindings.keys())).size;
+        const validated = (
+          useTargetedValidation ? validationPlan.targetKeys : new Set(allFindings.keys())
+        ).size;
         scanDetail = `Round ${iteration + 1} validation — ${roundFixedCount}/${validated} fixed`;
         if (findings.length > 0) {
           scanDetail += `, ${findings.length} remaining (${sevSummary})`;
@@ -2115,9 +2262,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             contextSummary,
           );
         } catch (err) {
-          console.error(
-            `[Fix] Failed to generate fix for ${finding.name}: ${err}`,
-          );
+          console.error(`[Fix] Failed to generate fix for ${finding.name}: ${err}`);
           skippedCount++;
           continue;
         }
@@ -2136,12 +2281,20 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
         // processors, login controllers etc. frequently break the working
         // auth flow. Catching it here (pre-commit) is cheap — we just revert
         // the working tree. Catching it post-commit requires bisect + rebuild.
-        const AUTH_FILE_PATTERN = /auth|jwt|login|session|guard|token|credential|password|oauth|keycloak/i;
+        const AUTH_FILE_PATTERN =
+          /auth|jwt|login|session|guard|token|credential|password|oauth|keycloak/i;
         const touchedAuthFile = fixes.some((f) =>
           f.files.some((fp) => AUTH_FILE_PATTERN.test(fp.path)),
         );
-        if (touchedAuthFile && authResult.hasAuth && authResult.authObjectId && startupConfig.docker) {
-          console.log(`[Fix] Fix touches auth-related file(s) — smoke-testing auth before commit...`);
+        if (
+          touchedAuthFile &&
+          authResult.hasAuth &&
+          authResult.authObjectId &&
+          startupConfig.docker
+        ) {
+          console.log(
+            `[Fix] Fix touches auth-related file(s) — smoke-testing auth before commit...`,
+          );
           try {
             // Quick restart to pick up source changes (app runs from mounted source or needs rebuild)
             const qr = await quickRestartCompose(repoPath, startupConfig, 60_000);
@@ -2155,7 +2308,9 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
                 // Revert uncommitted changes
                 try {
                   execFileSync("git", ["checkout", "--", "."], { cwd: repoPath, stdio: "pipe" });
-                } catch { /* best effort */ }
+                } catch {
+                  /* best effort */
+                }
                 // Restart again with clean state
                 await quickRestartCompose(repoPath, startupConfig, 60_000);
                 skippedCount++;
@@ -2165,16 +2320,15 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             }
             // If quick restart failed, skip the auth check (full rebuild will verify later)
           } catch (authCheckErr) {
-            console.warn(`[Fix] Auth smoke-test error: ${toErrorMessage(authCheckErr)} — proceeding with commit`);
+            console.warn(
+              `[Fix] Auth smoke-test error: ${toErrorMessage(authCheckErr)} — proceeding with commit`,
+            );
           }
         }
 
         // Commit this single fix (no restart yet)
         try {
-          gitCommitAndPush(
-            repoPath,
-            `fix: ${finding.severity.toLowerCase()} — ${finding.name}`,
-          );
+          gitCommitAndPush(repoPath, `fix: ${finding.severity.toLowerCase()} — ${finding.name}`);
           fixCommitCount.value++;
           console.log(`[Fix] Committed fix for ${finding.name}`);
         } catch (err) {
@@ -2209,11 +2363,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             const composeFileMatch = startupConfig.command.match(/-f\s+(\S+)/);
             const composeFile = composeFileMatch?.[1] ?? "compose.yml";
             try {
-              execFileSync(
-                "docker",
-                ["compose", "-f", composeFile, "up", "-d", "--build"],
-                { cwd: repoPath, stdio: "pipe", timeout: 300_000 },
-              );
+              execFileSync("docker", ["compose", "-f", composeFile, "up", "-d", "--build"], {
+                cwd: repoPath,
+                stdio: "pipe",
+                timeout: 300_000,
+              });
               const probe = startupConfig.healthProbe ?? startupConfig.healthCheckPath ?? "/";
               if (await checkAppHealth(startupConfig.port, probe)) {
                 console.log("[Fix] App healthy after incremental rebuild");
@@ -2226,8 +2380,21 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
 
           // Strategy 2: full restart (last resort)
           if (!healthy) {
-            console.log("[Fix] Incremental rebuild failed — falling back to full startApplicationWithRetries");
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
+            console.log(
+              "[Fix] Incremental rebuild failed — falling back to full startApplicationWithRetries",
+            );
+            const restart = await restartApp(
+              appProcess,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              undefined,
+              healthMonitor,
+              authResult.seedCommands,
+            );
             appProcess = restart.process;
             healthy = true;
           }
@@ -2250,21 +2417,40 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             config.modelSelector,
           );
           if (healthy) {
-            const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
+            const restart = await restartApp(
+              undefined,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              undefined,
+              healthMonitor,
+              authResult.seedCommands,
+            );
             appProcess = restart.process;
           } else {
             // Last resort: revert ALL fix commits from this round
-            console.log(
-              `[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`,
-            );
+            console.log(`[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`);
             try {
-              execFileSync(
-                "git",
-                ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`],
-                { cwd: repoPath, stdio: "pipe" },
-              );
+              execFileSync("git", ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`], {
+                cwd: repoPath,
+                stdio: "pipe",
+              });
               execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await restartApp(undefined, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, undefined, healthMonitor, authResult.seedCommands);
+              const restart = await restartApp(
+                undefined,
+                llm,
+                repoPath,
+                techStack,
+                startupConfig,
+                config.modelSelector,
+                authResult.registration,
+                undefined,
+                healthMonitor,
+                authResult.seedCommands,
+              );
               appProcess = restart.process;
             } catch {
               console.error("[Fix] Could not recover — aborting fix round");
@@ -2284,9 +2470,7 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
             config.modelSelector.current(),
           );
           if (!authOk) {
-            console.warn(
-              "[Fix] Auth broken after fixes — will attempt repair on next round",
-            );
+            console.warn("[Fix] Auth broken after fixes — will attempt repair on next round");
           }
         }
       }
@@ -2314,9 +2498,10 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
           techStack: runMemory.techStack,
           startup: runMemory.startup,
           auth: runMemory.auth,
-          setup: runMemory.setupCompleted !== undefined
-            ? { completed: runMemory.setupCompleted, credentials: runMemory.setupCredentials }
-            : undefined,
+          setup:
+            runMemory.setupCompleted !== undefined
+              ? { completed: runMemory.setupCompleted, credentials: runMemory.setupCredentials }
+              : undefined,
           scanPrepReplayCommands: runMemory.scanPrepReplayCommands,
           endpointNotes: runMemory.endpointNotes,
           api: config,
@@ -2343,17 +2528,11 @@ export async function runOrchestrator(ctx: OrchestratorContext): Promise<void> {
     await repeater?.stop();
 
     // Stop any scans that are still running
-    await stopRunningScans(
-      config,
-      allScanIds,
-    );
+    await stopRunningScans(config, allScanIds);
 
     // Delete the repeater from Bright to avoid stale entries
     if (repeater?.repeaterId) {
-      await deleteRepeater(
-        config,
-        repeater.repeaterId,
-      );
+      await deleteRepeater(config, repeater.repeaterId);
     }
 
     // Clean up harness infra (standalone DB containers)
@@ -2377,10 +2556,7 @@ async function runValidationFlow(
 ): Promise<void> {
   const { llm, config } = ctx;
 
-  await progress.phaseStart(
-    "validation",
-    "Validating CodeQL findings against live DAST scans",
-  );
+  await progress.phaseStart("validation", "Validating CodeQL findings against live DAST scans");
 
   if (!config.sarifPath) {
     await progress.phaseStart("done", "Validation mode requires SARIF_PATH.");
@@ -2398,7 +2574,9 @@ async function runValidationFlow(
     catalog = await listTests(config);
     await resolveBrightTests(llm, sarifFindings, catalog, config.modelSelector.current());
   } catch (err) {
-    console.warn(`[Validation] Test-catalog mapping failed, using static map: ${toErrorMessage(err)}`);
+    console.warn(
+      `[Validation] Test-catalog mapping failed, using static map: ${toErrorMessage(err)}`,
+    );
   }
 
   const mappableCount = sarifFindings.filter((f) => f.brightTest !== null).length;
@@ -2431,10 +2609,7 @@ async function runValidationFlow(
   // Run targeted scans + build verdicts. Scanning is a separate phase so its
   // (LLM-free) duration is attributed to "scan" rather than inflating the
   // "validation" phase's mapping/tracing time.
-  await progress.phaseStart(
-    "scan",
-    "Running targeted DAST scans for mapped findings",
-  );
+  await progress.phaseStart("scan", "Running targeted DAST scans for mapped findings");
   const results = await runValidationScans(
     config,
     projectId,
@@ -2482,10 +2657,7 @@ async function runScanLoop(
 
   // Setup repeater
   await progress.phaseStart("setup", "Setting up Bright Repeater for harness scan");
-  const repeater = await setupRepeater(
-    projectId,
-    config,
-  );
+  const repeater = await setupRepeater(projectId, config);
   await progress.phaseDetail("setup", "repeater", "Repeater connected");
 
   try {
@@ -2540,7 +2712,9 @@ async function runScanLoop(
       // Stagger scan launches to avoid overwhelming Bright's auth subsystem
       if (gi > 0) {
         const jitterMs = 30_000 + Math.floor(Math.random() * 30_000);
-        console.log(`[Scan] Waiting ${Math.round(jitterMs / 1000)}s before launching harness group ${gi + 1}...`);
+        console.log(
+          `[Scan] Waiting ${Math.round(jitterMs / 1000)}s before launching harness group ${gi + 1}...`,
+        );
         await sleep(jitterMs);
       }
       try {
@@ -2574,13 +2748,9 @@ async function runScanLoop(
     const scanResults = await Promise.allSettled(
       scanIds.map(async (scanId, si) => {
         console.log(`[Scan] Waiting for harness scan ${si + 1}/${scanIds.length}: ${scanId}`);
-        return await waitForScanCompletion(
-          config,
-          scanId,
-          (status, issues) => {
-            console.log(`[Scan] Harness scan ${si + 1}: ${status} — ${issues} issue(s)`);
-          },
-        );
+        return await waitForScanCompletion(config, scanId, (status, issues) => {
+          console.log(`[Scan] Harness scan ${si + 1}: ${status} — ${issues} issue(s)`);
+        });
       }),
     );
 
@@ -2611,18 +2781,12 @@ async function runScanLoop(
     }
 
     if (succeededScanIds.length === 0) {
-      await progress.phaseStart(
-        "scan_error",
-        `All ${scanIds.length} harness scan(s) failed.`,
-      );
+      await progress.phaseStart("scan_error", `All ${scanIds.length} harness scan(s) failed.`);
       return;
     }
 
     // Fetch findings (only from successful scans)
-    const findings = await fetchFindings(
-      config,
-      succeededScanIds,
-    );
+    const findings = await fetchFindings(config, succeededScanIds);
 
     const sevSummary = buildSeveritySummary(findings);
 
@@ -2799,13 +2963,12 @@ function killProcess(proc: ChildProcess | undefined): Promise<void> {
 
 function isAuthRateLimitHint(hint: string | undefined): boolean {
   if (!hint) return false;
-  return /\b(?:429|too\s*many\s*requests|rate[-\s]?limit|rate\s*limiting|throttle|throttling|brute|lockout|login attempt)\b/i.test(hint);
+  return /\b(?:429|too\s*many\s*requests|rate[-\s]?limit|rate\s*limiting|throttle|throttling|brute|lockout|login attempt)\b/i.test(
+    hint,
+  );
 }
 
-async function stopRunningScans(
-  api: BrightApiContext,
-  scanIds: string[],
-): Promise<void> {
+async function stopRunningScans(api: BrightApiContext, scanIds: string[]): Promise<void> {
   if (scanIds.length === 0) return;
 
   const headers = {
@@ -2839,9 +3002,7 @@ async function stopRunningScans(
       if (stopRes.ok) {
         console.log(`[Cleanup] Scan ${scanId} stopped`);
       } else {
-        console.warn(
-          `[Cleanup] Failed to stop scan ${scanId}: ${stopRes.status}`,
-        );
+        console.warn(`[Cleanup] Failed to stop scan ${scanId}: ${stopRes.status}`);
       }
     }),
   );
@@ -2852,10 +3013,7 @@ async function stopRunningScans(
   }
 }
 
-async function deleteRepeater(
-  api: BrightApiContext,
-  repeaterId: string,
-): Promise<void> {
+async function deleteRepeater(api: BrightApiContext, repeaterId: string): Promise<void> {
   try {
     console.log(`[Cleanup] Deleting repeater ${repeaterId}`);
     const res = await fetch(
@@ -2868,9 +3026,7 @@ async function deleteRepeater(
     if (res.ok || res.status === 204) {
       console.log("[Cleanup] Repeater deleted");
     } else {
-      console.warn(
-        `[Cleanup] Failed to delete repeater: ${res.status} ${res.statusText}`,
-      );
+      console.warn(`[Cleanup] Failed to delete repeater: ${res.status} ${res.statusText}`);
     }
   } catch (err) {
     console.error(`[Cleanup] Failed to delete repeater: ${err}`);
@@ -2894,18 +3050,13 @@ async function verifyAndRepairAuth(
   model?: string,
 ): Promise<boolean> {
   // First, test the auth object directly via Bright API
-  const testResult = await testAuthObject(
-    api,
-    authObjectId,
-  );
+  const testResult = await testAuthObject(api, authObjectId);
   if (testResult.passed) {
     console.log("[Auth] Pre-scan auth verification passed");
     return true;
   }
 
-  console.warn(
-    `[Auth] Pre-scan auth verification FAILED: ${testResult.summary}`,
-  );
+  console.warn(`[Auth] Pre-scan auth verification FAILED: ${testResult.summary}`);
 
   const handleTool = createToolHandler(repoPath);
   const stackStr = formatTechStack(techStack);
@@ -2975,15 +3126,8 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
         },
       ];
 
-      const response = await chatWithTools(
-        llm,
-        messages,
-        codebaseTools,
-        handleTool,
-        model,
-      );
-      const jsonStr =
-        response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
+      const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
+      const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
       const parsed = JSON.parse(jsonStr);
       const files = Array.isArray(parsed) ? parsed : [];
 
@@ -3011,10 +3155,7 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
         ]);
 
         try {
-          gitCommitAndPush(
-            repoPath,
-            `fix: repair broken authentication (attempt ${attempt})`,
-          );
+          gitCommitAndPush(repoPath, `fix: repair broken authentication (attempt ${attempt})`);
         } catch {
           /* ignore commit failure */
         }
@@ -3023,17 +3164,12 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
       }
 
       // Retest
-      const retest = await testAuthObject(
-        api,
-        authObjectId,
-      );
+      const retest = await testAuthObject(api, authObjectId);
       if (retest.passed) {
         console.log(`[Auth] Auth repaired on attempt ${attempt}`);
         return true;
       }
-      console.warn(
-        `[Auth] Auth still failing after repair attempt ${attempt}: ${retest.summary}`,
-      );
+      console.warn(`[Auth] Auth still failing after repair attempt ${attempt}: ${retest.summary}`);
     } catch (err) {
       console.error(`[Auth] Auth repair attempt ${attempt} failed: ${err}`);
     }
@@ -3075,10 +3211,7 @@ async function bisectAndRevertBrokenFixes(
         applyFixes(repoPath, repairFixes);
         allFixes.push(...repairFixes);
         try {
-          gitCommitAndPush(
-            repoPath,
-            `fix: repair broken fix (attempt ${repair + 1})`,
-          );
+          gitCommitAndPush(repoPath, `fix: repair broken fix (attempt ${repair + 1})`);
         } catch {
           /* ignore */
         }
@@ -3159,9 +3292,7 @@ async function bisectAndRevertBrokenFixes(
       console.log(`[Fix] App recovered after reverting ${i + 1} commit(s)`);
       return true;
     } catch {
-      console.log(
-        `[Fix] Still broken after reverting ${i + 1} commit(s), continuing bisect...`,
-      );
+      console.log(`[Fix] Still broken after reverting ${i + 1} commit(s), continuing bisect...`);
     }
   }
 
@@ -3191,17 +3322,22 @@ async function diagnoseAndRepairBrokenFix(
   let gitStatus = "";
   try {
     const commitCount = appliedFixes.length;
-    gitDiff = execFileSync(
-      "git", ["diff", `HEAD~${commitCount}`, "--stat", "--patch"],
-      { cwd: repoPath, encoding: "utf-8", maxBuffer: 50 * 1024 },
-    ).slice(0, 6000);
-  } catch { /* ignore */ }
+    gitDiff = execFileSync("git", ["diff", `HEAD~${commitCount}`, "--stat", "--patch"], {
+      cwd: repoPath,
+      encoding: "utf-8",
+      maxBuffer: 50 * 1024,
+    }).slice(0, 6000);
+  } catch {
+    /* ignore */
+  }
   try {
-    gitStatus = execFileSync(
-      "git", ["status", "--short"],
-      { cwd: repoPath, encoding: "utf-8" },
-    ).slice(0, 2000);
-  } catch { /* ignore */ }
+    gitStatus = execFileSync("git", ["status", "--short"], {
+      cwd: repoPath,
+      encoding: "utf-8",
+    }).slice(0, 2000);
+  } catch {
+    /* ignore */
+  }
 
   const messages: Parameters<typeof chatWithTools>[1] = [
     {
@@ -3258,17 +3394,10 @@ Respond with a JSON array of file fixes:
     },
   ];
 
-  const response = await chatWithTools(
-    llm,
-    messages,
-    codebaseTools,
-    handleTool,
-    model,
-  );
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
 
   try {
-    const jsonStr =
-      response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
+    const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
     const parsed = JSON.parse(jsonStr);
     const files = Array.isArray(parsed) ? parsed : [];
 
