@@ -10,21 +10,18 @@ import { toErrorMessage } from "./utils.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { detectScmProvider } from "./scm/index.js";
 import type { OrchestratorContext } from "./types.js";
+import { logger } from "./logger.js";
 
 async function main(): Promise<void> {
-  // Patch console methods to prepend ISO timestamps
-  const origLog = console.log.bind(console);
-  const origWarn = console.warn.bind(console);
-  const origError = console.error.bind(console);
-  const ts = () => new Date().toLocaleString("sv-SE", { hour12: false }).replace(" ", "T");
-  console.log = (...args: unknown[]) =>
-    origLog(ts(), ...args);
-  console.warn = (...args: unknown[]) =>
-    origWarn(ts(), ...args);
-  console.error = (...args: unknown[]) =>
-    origError(ts(), ...args);
+  // Initialize logging: full detail (redacted) goes to a local log file; stdout
+  // stays clean (milestones + errors) unless BRIGHT_DEBUG=1. All existing
+  // console.* calls are routed to the log file.
+  logger.init();
+  logger.installConsoleRouting();
 
-  console.log("[Engine] Bright Security Copilot Engine starting...");
+  logger.progress("Bright Agent starting…");
+  const logPath = logger.logFilePath();
+  if (logPath) logger.progress(`Detailed run log: ${logPath}`);
 
   // 1. Load configuration from environment
   const config = loadConfig();
@@ -35,17 +32,17 @@ async function main(): Promise<void> {
       brightToken: config.brightToken,
       brightHostname: config.brightHostname,
     });
-    console.log(
-      `[Engine] Bright credentials verified against ${config.brightHostname}`,
-    );
+    logger.progress(`Connected to Bright (${config.brightHostname}).`);
   } catch (err) {
     console.error(`[Engine] Bright preflight failed: ${toErrorMessage(err)}`);
+    logger.error("Could not connect to Bright — check BRIGHT_TOKEN / BRIGHT_HOSTNAME.");
     process.exit(1);
   }
 
   // 2. Initialize platform (auto-detects GitHub / Azure DevOps from REPOSITORY_URL)
   const { platform, job } = await createPlatform(config.gitToken);
   console.log(`[Engine] Repository: ${job.repository}`);
+  logger.progress(`Target repository: ${job.repository}`);
 
   // 3. Clone the repository
   const repositoryUrl = process.env.REPOSITORY_URL!;
@@ -57,6 +54,7 @@ async function main(): Promise<void> {
     console.log(`[Engine] Repository access verified (${provider.platformName})`);
   } catch (err) {
     console.error(`[Engine] Repository access check failed: ${toErrorMessage(err)}`);
+    logger.error("Could not access the repository — check REPO_ACCESS_TOKEN and REPOSITORY_URL.");
     process.exit(1);
   }
 
@@ -99,13 +97,16 @@ async function main(): Promise<void> {
   } catch (err) {
     const msg = toErrorMessage(err);
     console.error(`[Engine] Orchestrator failed: ${msg}`);
-
+    const logPath = logger.logFilePath();
+    logger.error(
+      `Security scan did not complete${logPath ? ` — details in ${logPath}` : ""}.`,
+    );
     await platform.reportError(`Security scan failed: ${msg}`);
   }
 
   // 7. Finalize - commit and push any remaining changes
   gitFinalizeChanges(repoPath, "fix: Bright security scan remediations");
-  console.log("[Engine] Done.");
+  logger.progress("Done.");
 
   // Exit explicitly — background timers (health probes) keep the event loop alive
   process.exit(0);
@@ -113,5 +114,9 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error("[Engine] Fatal error:", err);
+  const logPath = logger.logFilePath();
+  logger.error(
+    `Bright Agent encountered a fatal error${logPath ? ` — details in ${logPath}` : ""}.`,
+  );
   process.exit(1);
 });

@@ -1,0 +1,69 @@
+name: Release
+
+# Build standalone binaries and attach them to a GitHub Release when a
+# version tag is pushed (e.g. v0.1.0).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # needed to create/update the release
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: bun-linux-x64
+            name: bright-agent-linux-x64
+          - target: bun-linux-arm64
+            name: bright-agent-linux-arm64
+          - target: bun-darwin-x64
+            name: bright-agent-darwin-x64
+          - target: bun-darwin-arm64
+            name: bright-agent-darwin-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Build & verify the JS bundle with Node (typecheck + tests + tsup).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck, test, bundle
+        run: |
+          npm run typecheck
+          npm test
+          npm run build   # tsup → dist/index.js (ESM, node20)
+
+      # 2. Cross-compile the bundle into a standalone binary with Bun.
+      #    Bun can target every OS/arch from a single Linux host.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Compile ${{ matrix.name }}
+        run: |
+          bun build \
+            --compile \
+            --minify \
+            --target=${{ matrix.target }} \
+            dist/index.js \
+            --outfile ${{ matrix.name }}
+          chmod +x ${{ matrix.name }}
+          sha256sum ${{ matrix.name }} > ${{ matrix.name }}.sha256
+
+      # 3. Attach the binary (+ checksum) to the release for this tag.
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.name }}
+            ${{ matrix.name }}.sha256
+          fail_on_unmatched_files: true
+          generate_release_notes: true

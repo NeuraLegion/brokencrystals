@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:bin": "npm run build && bun build --compile --minify dist/index.js --outfile bright-agent"
   },
   "dependencies": {
     "@sectester/core": "^0.50.0",
