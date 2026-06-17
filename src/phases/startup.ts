@@ -1,39 +1,45 @@
+import { type ChildProcess, execFileSync, execSync, spawn } from "child_process";
+import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
-import {
-  spawn,
-  execSync,
-  execFileSync,
-  type ChildProcess,
-} from "child_process";
 import { createInterface } from "readline";
-import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "fs";
-import type { TechStack, StartupConfig, ProjectDiscovery, StartupHealthProbe } from "../types.js";
 import { chatWithTools, type ModelSelector, type ToolHandler } from "../inference.js";
-import {
-  codebaseTools,
-  createToolHandler,
-  dockerfileTools,
-  createDockerfileToolHandler,
-  fixDockerfileImages,
-  infraTools,
-  createInfraToolHandler,
-  verifyDockerImageTool,
-  webSearchTools,
-  createWebSearchHandler,
-  editFileTool,
-  handleEditFile,
-} from "../tools.js";
-import { sleep, formatTechStack, toErrorMessage, toDetailedErrorMessage, extractJson, extractCodeBlock, stripHtmlForAnalysis, FETCH_TIMEOUT_QUICK, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_MEDIUM } from "../utils.js";
+import { discoverProjectPrompt } from "../prompts/discover-project.js";
+import { generateComposePrompt } from "../prompts/generate-compose.js";
+import { generateDockerfilePrompt } from "../prompts/generate-dockerfile.js";
 import {
   identifyStartupPrompt,
   rebuildStartupPrompt,
   retryStartupPrompt,
 } from "../prompts/identify-startup.js";
-import { generateDockerfilePrompt } from "../prompts/generate-dockerfile.js";
-import { discoverProjectPrompt } from "../prompts/discover-project.js";
-import { generateComposePrompt } from "../prompts/generate-compose.js";
 import { preflightStartupPrompt } from "../prompts/preflight-startup.js";
+import {
+  codebaseTools,
+  createDockerfileToolHandler,
+  createInfraToolHandler,
+  createToolHandler,
+  createWebSearchHandler,
+  dockerfileTools,
+  editFileTool,
+  fixDockerfileImages,
+  handleEditFile,
+  infraTools,
+  verifyDockerImageTool,
+  webSearchTools,
+} from "../tools.js";
+import type { ProjectDiscovery, StartupConfig, StartupHealthProbe, TechStack } from "../types.js";
+import {
+  extractCodeBlock,
+  extractJson,
+  FETCH_TIMEOUT_MEDIUM,
+  FETCH_TIMEOUT_QUICK,
+  FETCH_TIMEOUT_SHORT,
+  formatTechStack,
+  sleep,
+  stripHtmlForAnalysis,
+  toDetailedErrorMessage,
+  toErrorMessage,
+} from "../utils.js";
 
 const MAX_STARTUP_ATTEMPTS = parseInt(process.env.MAX_STARTUP_ATTEMPTS ?? "15", 10);
 
@@ -83,10 +89,7 @@ function printStartupStats(stats: AttemptStat[]): void {
  * consecutive attempts — the first occurrence might be a Dockerfile issue
  * (e.g. missing COPY for source dirs) that the repair can fix.
  */
-function isSourceCodeError(
-  errorMsg: string,
-  previousErrors: string[],
-): boolean {
+function isSourceCodeError(errorMsg: string, previousErrors: string[]): boolean {
   // OOM errors are fixable by Dockerfile repair (adding -Xmx flags) — never bail on them
   if (/OutOfMemoryError|out of memory/i.test(errorMsg)) return false;
 
@@ -123,9 +126,7 @@ function isSourceCodeError(
 
   // First time seeing a compilation error — let repair try (might be a COPY issue)
   // Only bail if a previous attempt also had a compilation error
-  return previousErrors.some((prev) =>
-    patterns.some((p) => p.test(prev)),
-  );
+  return previousErrors.some((prev) => patterns.some((p) => p.test(prev)));
 }
 
 /**
@@ -176,8 +177,7 @@ export function canBuildFromSource(repoPath: string): boolean {
       /\.cabal$/i,
       /\.pro$/i,
     ];
-    if (entries.some((e) => globPatterns.some((p) => p.test(e.trim()))))
-      return true;
+    if (entries.some((e) => globPatterns.some((p) => p.test(e.trim())))) return true;
   } catch {
     /* ignore */
   }
@@ -228,15 +228,19 @@ export function findDockerfile(repoPath: string, serviceRoot?: string): string |
   }
 
   // Our own generated Dockerfile is the repo-level fallback.
-  if (existsSync(`${repoPath}/${BRIGHT_DOCKERFILE}`))
-    return BRIGHT_DOCKERFILE;
+  if (existsSync(`${repoPath}/${BRIGHT_DOCKERFILE}`)) return BRIGHT_DOCKERFILE;
 
   return findDockerfileInDirectory(repoPath);
 }
 
 function normalizeServiceRoot(serviceRoot?: string): string | undefined {
   const normalized = serviceRoot?.trim().replace(/^\.\//, "").replace(/\/$/, "");
-  if (!normalized || normalized === "." || normalized.startsWith("/") || normalized.includes("..")) {
+  if (
+    !normalized ||
+    normalized === "." ||
+    normalized.startsWith("/") ||
+    normalized.includes("..")
+  ) {
     return undefined;
   }
   return normalized;
@@ -253,15 +257,15 @@ function findDockerfileInDirectory(repoPath: string, relativeDir = ""): string |
     try {
       if (dockerfileBuildsFromSource(readFileSync(path, "utf-8"))) return `${prefix}${name}`;
       console.log(`[Startup] ${prefix}${name} found but only pulls a remote image — skipping`);
-    } catch { /* unreadable */ }
+    } catch {
+      /* unreadable */
+    }
   }
 
   // Scan for Dockerfile.* variants
   let variants: string[];
   try {
-    variants = readdirSync(dir).filter(
-      (f) => /^Dockerfile\./i.test(f) && f !== BRIGHT_DOCKERFILE,
-    );
+    variants = readdirSync(dir).filter((f) => /^Dockerfile\./i.test(f) && f !== BRIGHT_DOCKERFILE);
   } catch {
     return undefined;
   }
@@ -281,10 +285,11 @@ function findDockerfileInDirectory(repoPath: string, relativeDir = ""): string |
 
   for (const { f } of scored) {
     try {
-      if (dockerfileBuildsFromSource(readFileSync(`${dir}/${f}`, "utf-8")))
-        return `${prefix}${f}`;
+      if (dockerfileBuildsFromSource(readFileSync(`${dir}/${f}`, "utf-8"))) return `${prefix}${f}`;
       console.log(`[Startup] ${prefix}${f} found but only pulls a remote image — skipping`);
-    } catch { /* unreadable */ }
+    } catch {
+      /* unreadable */
+    }
   }
 
   return undefined;
@@ -348,24 +353,34 @@ async function discoverProject(
     }
 
     const discovery: ProjectDiscovery = {
-      services: (parsed.services ?? []).map((s: Record<string, unknown>) => ({
-        name: String(s.name ?? ""),
-        image: String(s.image ?? ""),
-        reason: String(s.reason ?? ""),
-        environment: s.environment as Record<string, string> | undefined,
-        port: typeof s.port === "number" ? s.port : undefined,
-      })).filter((s: { name: string; image: string }) => s.name && s.image),
+      services: (parsed.services ?? [])
+        .map((s: Record<string, unknown>) => ({
+          name: String(s.name ?? ""),
+          image: String(s.image ?? ""),
+          reason: String(s.reason ?? ""),
+          environment: s.environment as Record<string, string> | undefined,
+          port: typeof s.port === "number" ? s.port : undefined,
+        }))
+        .filter((s: { name: string; image: string }) => s.name && s.image),
       configNotes: Array.isArray(parsed.configNotes) ? parsed.configNotes.map(String) : [],
-      appEnvironment: typeof parsed.appEnvironment === "object" && parsed.appEnvironment ? parsed.appEnvironment as Record<string, string> : {},
+      appEnvironment:
+        typeof parsed.appEnvironment === "object" && parsed.appEnvironment
+          ? (parsed.appEnvironment as Record<string, string>)
+          : {},
       buildNotes: Array.isArray(parsed.buildNotes) ? parsed.buildNotes.map(String) : [],
       port: typeof parsed.port === "number" ? parsed.port : 3000,
-      healthCheckPath: typeof parsed.healthCheckPath === "string" ? parsed.healthCheckPath : undefined,
-      postStartSetup: Array.isArray(parsed.postStartSetup) ? parsed.postStartSetup.map(String) : undefined,
+      healthCheckPath:
+        typeof parsed.healthCheckPath === "string" ? parsed.healthCheckPath : undefined,
+      postStartSetup: Array.isArray(parsed.postStartSetup)
+        ? parsed.postStartSetup.map(String)
+        : undefined,
     };
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`[Startup] Discovery completed in ${elapsed}s:`);
-    console.log(`[Startup]   Services: ${discovery.services.map(s => `${s.name} (${s.image})`).join(", ") || "none"}`);
+    console.log(
+      `[Startup]   Services: ${discovery.services.map((s) => `${s.name} (${s.image})`).join(", ") || "none"}`,
+    );
     if (discovery.configNotes.length) {
       console.log(`[Startup]   Config notes: ${discovery.configNotes.length} items`);
     }
@@ -420,7 +435,9 @@ async function preflightValidation(
     try {
       composeContent = readFileSync(`${repoPath}/${name}`, "utf-8");
       break;
-    } catch { /* try next */ }
+    } catch {
+      /* try next */
+    }
   }
 
   const messages = preflightStartupPrompt(
@@ -471,14 +488,20 @@ async function preflightValidation(
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     if (editsApplied === 0) {
-      console.log(`[Startup] Pre-flight validation completed in ${elapsed}s — no fixes needed. ${summary}`);
+      console.log(
+        `[Startup] Pre-flight validation completed in ${elapsed}s — no fixes needed. ${summary}`,
+      );
     } else {
-      console.log(`[Startup] Pre-flight validation completed in ${elapsed}s — ${editsApplied} fix(es) applied. ${summary}`);
+      console.log(
+        `[Startup] Pre-flight validation completed in ${elapsed}s — ${editsApplied} fix(es) applied. ${summary}`,
+      );
     }
     return editsApplied;
   } catch (err) {
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    console.warn(`[Startup] Pre-flight validation failed in ${elapsed}s: ${toErrorMessage(err)} — proceeding with build`);
+    console.warn(
+      `[Startup] Pre-flight validation failed in ${elapsed}s: ${toErrorMessage(err)} — proceeding with build`,
+    );
     return 0;
   }
 }
@@ -531,7 +554,9 @@ async function generateComposeWithLLM(
   const t0 = Date.now();
 
   for (let attempt = 1; attempt <= MAX_COMPOSE_GEN_RETRIES; attempt++) {
-    console.log(`[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`);
+    console.log(
+      `[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`,
+    );
     try {
       const dfName = findDockerfile(repoPath, serviceRoot);
       const hasDockerfile = !!dfName;
@@ -548,10 +573,14 @@ async function generateComposeWithLLM(
       clearConflictingComposeFiles(repoPath);
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
       const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
-      console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
+      console.log(
+        `[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`,
+      );
       return; // success — done
     } catch (err) {
-      console.warn(`[Startup] LLM compose generation attempt ${attempt} failed: ${toErrorMessage(err)}`);
+      console.warn(
+        `[Startup] LLM compose generation attempt ${attempt} failed: ${toErrorMessage(err)}`,
+      );
       if (attempt < MAX_COMPOSE_GEN_RETRIES) {
         console.log(`[Startup] Retrying compose generation...`);
       }
@@ -559,18 +588,14 @@ async function generateComposeWithLLM(
   }
 
   // All retries exhausted — fall back to template
-  console.warn(`[Startup] All ${MAX_COMPOSE_GEN_RETRIES} compose generation attempts failed — using template fallback`);
+  console.warn(
+    `[Startup] All ${MAX_COMPOSE_GEN_RETRIES} compose generation attempts failed — using template fallback`,
+  );
   generateComposeFile(repoPath, config, serviceRoot);
 }
 
 function shouldSelectMonorepoTarget(repoPath: string): boolean {
-  const indicators = [
-    "pnpm-workspace.yaml",
-    "lerna.json",
-    "nx.json",
-    "turbo.json",
-    "rush.json",
-  ];
+  const indicators = ["pnpm-workspace.yaml", "lerna.json", "nx.json", "turbo.json", "rush.json"];
   if (indicators.some((f) => existsSync(`${repoPath}/${f}`))) return true;
 
   try {
@@ -583,14 +608,16 @@ function shouldSelectMonorepoTarget(repoPath: string): boolean {
   try {
     const appDirs = existsSync(`${repoPath}/apps`)
       ? readdirSync(`${repoPath}/apps`).filter((name) => {
-        try {
-          return existsSync(`${repoPath}/apps/${name}/project.json`) ||
-            existsSync(`${repoPath}/apps/${name}/package.json`) ||
-            readdirSync(`${repoPath}/apps/${name}`).some((f) => /^Dockerfile/i.test(f));
-        } catch {
-          return false;
-        }
-      })
+          try {
+            return (
+              existsSync(`${repoPath}/apps/${name}/project.json`) ||
+              existsSync(`${repoPath}/apps/${name}/package.json`) ||
+              readdirSync(`${repoPath}/apps/${name}`).some((f) => /^Dockerfile/i.test(f))
+            );
+          } catch {
+            return false;
+          }
+        })
       : [];
     if (appDirs.length > 1) return true;
   } catch {
@@ -638,7 +665,8 @@ Use {"serviceRoot":"."} only if there truly is no separable web/API target.`,
     },
     {
       role: "user",
-      content: "Inspect this monorepo and select the one service we should build and scan. Return the JSON object.",
+      content:
+        "Inspect this monorepo and select the one service we should build and scan. Return the JSON object.",
     },
   ];
 
@@ -655,7 +683,9 @@ Use {"serviceRoot":"."} only if there truly is no separable web/API target.`,
     const raw = String(parsed.serviceRoot ?? "").trim();
     const serviceRoot = raw.replace(/^\.\//, "").replace(/\/$/, "");
     if (!serviceRoot || serviceRoot === ".") {
-      console.log("[Startup] LLM did not find a separable monorepo service — using repository root");
+      console.log(
+        "[Startup] LLM did not find a separable monorepo service — using repository root",
+      );
       return undefined;
     }
     if (serviceRoot.startsWith("/") || serviceRoot.includes("..")) {
@@ -670,28 +700,33 @@ Use {"serviceRoot":"."} only if there truly is no separable web/API target.`,
     console.log(`[Startup] Selected monorepo target: ${serviceRoot}${reason}`);
     return serviceRoot;
   } catch (err) {
-    console.warn(`[Startup] Monorepo target selection failed (${toErrorMessage(err)}) — using repository root`);
+    console.warn(
+      `[Startup] Monorepo target selection failed (${toErrorMessage(err)}) — using repository root`,
+    );
     return undefined;
   }
 }
 
 function addComposeFileFlag(command: string, composeFile: string): string {
-  if (!/docker\s+compose\b/.test(command) || /\bdocker\s+compose\b[^\n;|&]*\s-f\s+\S+/.test(command)) {
+  if (
+    !/docker\s+compose\b/.test(command) ||
+    /\bdocker\s+compose\b[^\n;|&]*\s-f\s+\S+/.test(command)
+  ) {
     return command;
   }
   return command.replace(/\bdocker\s+compose\b/, `docker compose -f ${composeFile}`);
 }
 
-function withComposeFile(config: StartupConfig, composeFile: string, stripServiceArgs = false): StartupConfig {
+function withComposeFile(
+  config: StartupConfig,
+  composeFile: string,
+  stripServiceArgs = false,
+): StartupConfig {
   const withFile = {
     ...config,
     command: addComposeFileFlag(config.command, composeFile),
-    prerequisites: (config.prerequisites ?? []).map((cmd) =>
-      addComposeFileFlag(cmd, composeFile),
-    ),
-    postStartCommands: config.postStartCommands?.map((cmd) =>
-      addComposeFileFlag(cmd, composeFile),
-    ),
+    prerequisites: (config.prerequisites ?? []).map((cmd) => addComposeFileFlag(cmd, composeFile)),
+    postStartCommands: config.postStartCommands?.map((cmd) => addComposeFileFlag(cmd, composeFile)),
   };
 
   if (!stripServiceArgs) return withFile;
@@ -726,13 +761,13 @@ function stripComposeServiceArgsFromSegment(segment: string): string {
   const tokens = segment.trim().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return segment;
 
-  const composeIdx = tokens.findIndex((token, idx) =>
-    token === "docker" && tokens[idx + 1] === "compose",
+  const composeIdx = tokens.findIndex(
+    (token, idx) => token === "docker" && tokens[idx + 1] === "compose",
   );
   if (composeIdx === -1) return segment;
 
-  const commandIdx = tokens.findIndex((token, idx) =>
-    idx > composeIdx + 1 && (token === "up" || token === "build"),
+  const commandIdx = tokens.findIndex(
+    (token, idx) => idx > composeIdx + 1 && (token === "up" || token === "build"),
   );
   if (commandIdx === -1) return segment;
 
@@ -765,7 +800,11 @@ export async function startApplicationWithRetries(
   // Clean up any running Docker containers to avoid port conflicts
   cleanupDocker(repoPath);
 
-  if (!previousStartup && (!techStack.serviceRoot || techStack.serviceRoot === ".") && shouldSelectMonorepoTarget(repoPath)) {
+  if (
+    !previousStartup &&
+    (!techStack.serviceRoot || techStack.serviceRoot === ".") &&
+    shouldSelectMonorepoTarget(repoPath)
+  ) {
     const selectedServiceRoot = await selectMonorepoTargetWithLLM(
       llm,
       repoPath,
@@ -777,13 +816,22 @@ export async function startApplicationWithRetries(
       // Re-scan the service subdirectory for frameworks the root may not list
       // (e.g. Next.js in apps/web/package.json not in root package.json)
       try {
-        const svcPkg = JSON.parse(readFileSync(`${repoPath}/${selectedServiceRoot}/package.json`, "utf-8"));
+        const svcPkg = JSON.parse(
+          readFileSync(`${repoPath}/${selectedServiceRoot}/package.json`, "utf-8"),
+        );
         const allDeps = { ...svcPkg?.dependencies, ...svcPkg?.devDependencies };
         const frameworkMap: Array<[string, string]> = [
-          ["next", "Next.js"], ["nuxt", "Nuxt"], ["express", "Express"],
-          ["fastify", "Fastify"], ["@nestjs/core", "NestJS"], ["koa", "Koa"],
-          ["@remix-run/node", "Remix"], ["@remix-run/react", "Remix"],
-          ["rails", "Rails"], ["django", "Django"], ["flask", "Flask"],
+          ["next", "Next.js"],
+          ["nuxt", "Nuxt"],
+          ["express", "Express"],
+          ["fastify", "Fastify"],
+          ["@nestjs/core", "NestJS"],
+          ["koa", "Koa"],
+          ["@remix-run/node", "Remix"],
+          ["@remix-run/react", "Remix"],
+          ["rails", "Rails"],
+          ["django", "Django"],
+          ["flask", "Flask"],
         ];
         for (const [pkg, name] of frameworkMap) {
           if (allDeps?.[pkg] && !techStack.frameworks.includes(name)) {
@@ -791,7 +839,9 @@ export async function startApplicationWithRetries(
             console.log(`[Startup] Added framework from service root: ${name}`);
           }
         }
-      } catch { /* no package.json in service root — skip */ }
+      } catch {
+        /* no package.json in service root — skip */
+      }
     }
   }
 
@@ -807,7 +857,8 @@ export async function startApplicationWithRetries(
   // Summaries of what each prior repair LLM did + a fingerprint of the error
   // they were trying to fix. Used to detect "repair didn't break the loop"
   // and to give the next repair LLM context about what's already been tried.
-  const repairHistory: Array<{ kind: "build" | "infra"; summary: string; targetErrorFp: string }> = [];
+  const repairHistory: Array<{ kind: "build" | "infra"; summary: string; targetErrorFp: string }> =
+    [];
 
   // Run project discovery ONCE before the attempt loop (skip for rebuilds — we already know what works)
   let discovery: ProjectDiscovery | undefined;
@@ -827,7 +878,9 @@ export async function startApplicationWithRetries(
       startupHints.push(`[discovery] Post-start: ${step}`);
     }
     for (const svc of discovery.services) {
-      startupHints.push(`[discovery] Service "${svc.name}" requires image: ${svc.image} — ${svc.reason}`);
+      startupHints.push(
+        `[discovery] Service "${svc.name}" requires image: ${svc.image} — ${svc.reason}`,
+      );
     }
     if (startupHints.length > 0) {
       console.log(`[Startup] Seeded ${startupHints.length} hints from discovery`);
@@ -860,12 +913,7 @@ export async function startApplicationWithRetries(
     } else if (attempt === 1) {
       strategy = "initial";
       console.log("[Startup] Strategy: initial identification");
-      config = await identifyStartupConfig(
-        llm,
-        repoPath,
-        stackStr,
-        modelSelector?.current(),
-      );
+      config = await identifyStartupConfig(llm, repoPath, stackStr, modelSelector?.current());
     } else {
       // Escalate model on retry if available
       modelSelector?.escalate();
@@ -873,8 +921,12 @@ export async function startApplicationWithRetries(
       // If the Dockerfile or infra was repaired, retry with the same config
       if (dockerfileRepaired || infraRepaired) {
         const prev = attemptErrors[attemptErrors.length - 1];
-        strategy = dockerfileRepaired ? "retry-after-dockerfile-repair" : "retry-after-infra-repair";
-        console.log(`[Startup] ${dockerfileRepaired ? "Dockerfile" : "Infrastructure"} was repaired — retrying same config`);
+        strategy = dockerfileRepaired
+          ? "retry-after-dockerfile-repair"
+          : "retry-after-infra-repair";
+        console.log(
+          `[Startup] ${dockerfileRepaired ? "Dockerfile" : "Infrastructure"} was repaired — retrying same config`,
+        );
         config = prev.config;
         dockerfileRepaired = false;
         infraRepaired = false;
@@ -944,7 +996,7 @@ export async function startApplicationWithRetries(
       [...(config.prerequisites ?? []), config.command].join(" "),
     );
     if (discovery && discovery.services.length > 0 && config.docker && !usesComposeAlready) {
-      const serviceNames = discovery.services.map(s => s.name).join(", ");
+      const serviceNames = discovery.services.map((s) => s.name).join(", ");
       console.warn(
         `[Startup] App needs companion services (${serviceNames}) but config uses standalone docker — forcing compose mode`,
       );
@@ -963,22 +1015,31 @@ export async function startApplicationWithRetries(
     if (/docker\s+compose/.test(config.command) && config.prerequisites?.length) {
       const original = config.prerequisites;
       const movedToPostStart: string[] = [];
-      const cleaned = original.flatMap(cmd =>
-        cmd.split(/\s*&&\s*/).map(part => {
-          const trimmed = part.trim();
-          if (/docker\s+run\s/.test(trimmed) && /\s-d[\s$]/.test(trimmed)) {
-            console.warn(`[Startup] Removing conflicting prerequisite: ${trimmed.slice(0, 80)}`);
-            return "";
-          }
-          // exec needs a running container → move to postStartCommands
-          if (/docker\s+compose\s+exec\b/.test(trimmed) || /docker\s+exec\b/.test(trimmed)) {
-            console.log(`[Startup] Moving exec prerequisite to post-start: ${trimmed.slice(0, 80)}`);
-            movedToPostStart.push(trimmed);
-            return "";
-          }
-          return trimmed;
-        }).filter(p => p.length > 0)
-      ).filter(cmd => cmd.length > 0);
+      const cleaned = original
+        .flatMap((cmd) =>
+          cmd
+            .split(/\s*&&\s*/)
+            .map((part) => {
+              const trimmed = part.trim();
+              if (/docker\s+run\s/.test(trimmed) && /\s-d[\s$]/.test(trimmed)) {
+                console.warn(
+                  `[Startup] Removing conflicting prerequisite: ${trimmed.slice(0, 80)}`,
+                );
+                return "";
+              }
+              // exec needs a running container → move to postStartCommands
+              if (/docker\s+compose\s+exec\b/.test(trimmed) || /docker\s+exec\b/.test(trimmed)) {
+                console.log(
+                  `[Startup] Moving exec prerequisite to post-start: ${trimmed.slice(0, 80)}`,
+                );
+                movedToPostStart.push(trimmed);
+                return "";
+              }
+              return trimmed;
+            })
+            .filter((p) => p.length > 0),
+        )
+        .filter((cmd) => cmd.length > 0);
       if (movedToPostStart.length > 0 || cleaned.join("") !== original.join("")) {
         const existingPostStart = config.postStartCommands ?? [];
         // Prepend moved commands so they run before any existing post-start cmds
@@ -988,27 +1049,27 @@ export async function startApplicationWithRetries(
           postStartCommands: [...movedToPostStart, ...existingPostStart],
         };
         if (movedToPostStart.length) {
-          console.log(`[Startup] Moved ${movedToPostStart.length} exec command(s) from prerequisites to post-start`);
+          console.log(
+            `[Startup] Moved ${movedToPostStart.length} exec command(s) from prerequisites to post-start`,
+          );
         }
         if (cleaned.length < original.length) {
-          console.log(`[Startup] Cleaned prerequisites: ${cleaned.map(c => c.slice(0, 60)).join(" ; ") || "(none)"}`);
+          console.log(
+            `[Startup] Cleaned prerequisites: ${cleaned.map((c) => c.slice(0, 60)).join(" ; ") || "(none)"}`,
+          );
         }
       }
     }
 
     // Ensure a usable Dockerfile exists when Docker-based startup is requested
-    const existingDockerfile = config.docker ? findDockerfile(repoPath, selectedServiceRoot) : undefined;
+    const existingDockerfile = config.docker
+      ? findDockerfile(repoPath, selectedServiceRoot)
+      : undefined;
     if (config.docker && !existingDockerfile) {
       console.log(
         "[Startup] No source-building Dockerfile found — generating one for this project",
       );
-      await generateDockerfile(
-        llm,
-        repoPath,
-        stackStr,
-        modelSelector?.current(),
-        discovery,
-      );
+      await generateDockerfile(llm, repoPath, stackStr, modelSelector?.current(), discovery);
     }
     // Resolved Dockerfile name for this attempt (existing or freshly generated)
     const dockerfileName = findDockerfile(repoPath, selectedServiceRoot) ?? "Dockerfile";
@@ -1025,7 +1086,16 @@ export async function startApplicationWithRetries(
         `[Startup] Generating scan-specific compose.yml for selected service ${techStack.serviceRoot} instead of using the root monorepo compose stack`,
       );
       if (discovery && discovery.services.length > 0) {
-        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints, selectedServiceRoot);
+        await generateComposeWithLLM(
+          llm,
+          repoPath,
+          stackStr,
+          discovery,
+          config,
+          modelSelector?.current(),
+          startupHints,
+          selectedServiceRoot,
+        );
       } else {
         generateComposeFile(repoPath, config, selectedServiceRoot);
       }
@@ -1035,9 +1105,20 @@ export async function startApplicationWithRetries(
       config = withComposeFile(config, "compose.yml", true);
     } else if (usesCompose && !findComposeFile(repoPath)) {
       if (discovery && discovery.services.length > 0) {
-        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints, selectedServiceRoot);
+        await generateComposeWithLLM(
+          llm,
+          repoPath,
+          stackStr,
+          discovery,
+          config,
+          modelSelector?.current(),
+          startupHints,
+          selectedServiceRoot,
+        );
       } else {
-        console.log("[Startup] No compose file found — generating one from Dockerfile (no discovery available)");
+        console.log(
+          "[Startup] No compose file found — generating one from Dockerfile (no discovery available)",
+        );
         generateComposeFile(repoPath, config, selectedServiceRoot);
       }
     }
@@ -1140,16 +1221,17 @@ Respond with EXACTLY one JSON object:
       let lastHealthReason = "";
 
       // Create LLM-powered HTTP response health analyzer
-      const analyzeResponseFn = async (status: number, body: string): Promise<{ healthy: boolean; reason: string }> => {
+      const analyzeResponseFn = async (
+        status: number,
+        body: string,
+      ): Promise<{ healthy: boolean; reason: string }> => {
         const result = await analyzeResponseWithLLM(llm, modelSelector, status, body);
         if (result.healthy) lastHealthReason = result.reason;
         return result;
       };
 
       const proc = await startApplication(repoPath, config, analyzeLogsFn, analyzeResponseFn);
-      console.log(
-        `[Startup] Application started successfully on attempt ${attempt}`,
-      );
+      console.log(`[Startup] Application started successfully on attempt ${attempt}`);
       stats.push({
         attempt,
         strategy,
@@ -1173,7 +1255,8 @@ Respond with EXACTLY one JSON object:
       attemptErrors.push({ config, error: detailedError });
 
       // Classify the error for stats
-      const isDockerBuildError = config.docker &&
+      const isDockerBuildError =
+        config.docker &&
         !!findDockerfile(repoPath, selectedServiceRoot) &&
         /failed to build|failed to solve|ERROR:.*process.*did not complete/i.test(detailedError);
       const isTimeoutError = /did not start on port.*within/i.test(detailedError);
@@ -1219,9 +1302,9 @@ Respond with EXACTLY one JSON object:
         // try to fix this exact error, but here we are again with the same
         // fingerprint? If so, force a strategy shift in the next prompt.
         const currentFp = errorFingerprint(detailedError);
-        const lastRepair = [...repairHistory].reverse().find(
-          (r) => r.kind === (isDockerBuildError ? "build" : "infra"),
-        );
+        const lastRepair = [...repairHistory]
+          .reverse()
+          .find((r) => r.kind === (isDockerBuildError ? "build" : "infra"));
         const repeatedRootCause = lastRepair?.targetErrorFp === currentFp;
         if (repeatedRootCause) {
           console.log(
@@ -1235,10 +1318,15 @@ Respond with EXACTLY one JSON object:
         const sameKindHistory = repairHistory.filter(
           (r) => r.kind === (isDockerBuildError ? "build" : "infra"),
         );
-        const consecutiveSameFp = sameKindHistory.length > 0
-          ? sameKindHistory.slice().reverse().findIndex((r) => r.targetErrorFp !== currentFp)
-          : 0;
-        const actualConsecutive = consecutiveSameFp === -1 ? sameKindHistory.length : consecutiveSameFp;
+        const consecutiveSameFp =
+          sameKindHistory.length > 0
+            ? sameKindHistory
+                .slice()
+                .reverse()
+                .findIndex((r) => r.targetErrorFp !== currentFp)
+            : 0;
+        const actualConsecutive =
+          consecutiveSameFp === -1 ? sameKindHistory.length : consecutiveSameFp;
         if (actualConsecutive >= 3) {
           console.warn(
             `[Startup] Same error fingerprint persisted through ${actualConsecutive} consecutive repairs — fundamental approach is wrong. Skipping further repair of this kind.`,
@@ -1253,17 +1341,17 @@ Respond with EXACTLY one JSON object:
             if (devDockerfile) {
               startupHints.push(
                 `[auto-fallback] Previous Dockerfile failed ${actualConsecutive}+ times. ` +
-                `Generated simplified dev Dockerfile at Dockerfile.bright-dev. ` +
-                `Use it instead: docker build -f Dockerfile.bright-dev -t app . && docker compose up -d`,
+                  `Generated simplified dev Dockerfile at Dockerfile.bright-dev. ` +
+                  `Use it instead: docker build -f Dockerfile.bright-dev -t app . && docker compose up -d`,
               );
             }
           } else {
             startupHints.push(
               `[auto-fallback] Infrastructure repair failed ${actualConsecutive}+ times with same error. ` +
-              `The container builds but crashes at runtime. Consider: ` +
-              `1) Adding a post-start delay/healthcheck timeout increase, ` +
-              `2) Running DB migrations as a post-start command, ` +
-              `3) Checking if the app needs a config file generated before first run.`,
+                `The container builds but crashes at runtime. Consider: ` +
+                `1) Adding a post-start delay/healthcheck timeout increase, ` +
+                `2) Running DB migrations as a post-start command, ` +
+                `3) Checking if the app needs a config file generated before first run.`,
             );
           }
 
@@ -1280,7 +1368,9 @@ Respond with EXACTLY one JSON object:
           .filter((s) => s.length > 0) // skip empty/failed repairs
           .slice(-5); // last 5 repairs of this kind (was 3 — too short)
 
-        console.log(`[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`);
+        console.log(
+          `[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`,
+        );
 
         if (isDockerBuildError) {
           const buildResult = await repairDockerBuild(
@@ -1295,17 +1385,29 @@ Respond with EXACTLY one JSON object:
             selectedServiceRoot,
           );
           if (buildResult.summary) {
-            repairHistory.push({ kind: "build", summary: buildResult.summary, targetErrorFp: currentFp });
+            repairHistory.push({
+              kind: "build",
+              summary: buildResult.summary,
+              targetErrorFp: currentFp,
+            });
           } else {
-            console.warn("[Startup] Build repair LLM produced no summary — recording as failed repair attempt");
-            repairHistory.push({ kind: "build", summary: "(repair LLM exhausted turns without a fix)", targetErrorFp: currentFp });
+            console.warn(
+              "[Startup] Build repair LLM produced no summary — recording as failed repair attempt",
+            );
+            repairHistory.push({
+              kind: "build",
+              summary: "(repair LLM exhausted turns without a fix)",
+              targetErrorFp: currentFp,
+            });
           }
           if (buildResult.command) {
             console.log(`[Startup] Build repair overrode command: ${buildResult.command}`);
             config = { ...config, command: buildResult.command };
           }
           if (buildResult.prerequisites) {
-            console.log(`[Startup] Build repair overrode prerequisites: ${buildResult.prerequisites.join(" && ") || "(none)"}`);
+            console.log(
+              `[Startup] Build repair overrode prerequisites: ${buildResult.prerequisites.join(" && ") || "(none)"}`,
+            );
             config = { ...config, prerequisites: buildResult.prerequisites };
           }
           if (buildResult.port) {
@@ -1314,9 +1416,7 @@ Respond with EXACTLY one JSON object:
           }
           if (buildResult.postStartCommands?.length) {
             const existing = config.postStartCommands ?? [];
-            const deduped = buildResult.postStartCommands.filter(
-              (cmd) => !existing.includes(cmd),
-            );
+            const deduped = buildResult.postStartCommands.filter((cmd) => !existing.includes(cmd));
             config = { ...config, postStartCommands: [...existing, ...deduped] };
           }
           if (buildResult.addEnvVars) {
@@ -1329,7 +1429,9 @@ Respond with EXACTLY one JSON object:
             config = { ...config, healthCheckPath: buildResult.healthCheckPath };
           }
           if (buildResult.healthProbe) {
-            console.log(`[Startup] Build repair set health probe: ${describeHealthProbe(buildResult.healthProbe)}`);
+            console.log(
+              `[Startup] Build repair set health probe: ${describeHealthProbe(buildResult.healthProbe)}`,
+            );
             config = { ...config, healthProbe: buildResult.healthProbe };
           }
           const buildModifiedConfig = !!(
@@ -1346,7 +1448,9 @@ Respond with EXACTLY one JSON object:
             attemptErrors[attemptErrors.length - 1] = { config, error: detailedError };
             dockerfileRepaired = true;
           } else {
-            console.warn("[Startup] Build repair produced no actionable changes — next attempt must choose a new startup strategy");
+            console.warn(
+              "[Startup] Build repair produced no actionable changes — next attempt must choose a new startup strategy",
+            );
           }
         } else {
           const infraResult = await repairInfrastructure(
@@ -1361,14 +1465,31 @@ Respond with EXACTLY one JSON object:
             repeatedRootCause,
           );
           if (infraResult.summary) {
-            repairHistory.push({ kind: "infra", summary: infraResult.summary, targetErrorFp: currentFp });
+            repairHistory.push({
+              kind: "infra",
+              summary: infraResult.summary,
+              targetErrorFp: currentFp,
+            });
           } else {
             // LLM exhausted turns without producing actionable output — record as failed attempt
-            console.warn("[Startup] Infra repair LLM produced no summary — recording as failed repair attempt");
-            repairHistory.push({ kind: "infra", summary: "(repair LLM exhausted turns without a fix)", targetErrorFp: currentFp });
+            console.warn(
+              "[Startup] Infra repair LLM produced no summary — recording as failed repair attempt",
+            );
+            repairHistory.push({
+              kind: "infra",
+              summary: "(repair LLM exhausted turns without a fix)",
+              targetErrorFp: currentFp,
+            });
           }
           // Apply any config modifications from the repair LLM
-          if (infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.healthProbe) {
+          if (
+            infraResult.command ||
+            infraResult.port ||
+            infraResult.postStartCommands?.length ||
+            infraResult.addEnvVars ||
+            infraResult.healthCheckPath ||
+            infraResult.healthProbe
+          ) {
             if (infraResult.command) {
               console.log(`[Startup] Repair LLM overrode command: ${infraResult.command}`);
               config = { ...config, command: infraResult.command };
@@ -1402,7 +1523,9 @@ Respond with EXACTLY one JSON object:
               // (e.g. /api/auth/session on a service that only serves /health).
               // Reset it to a simple GET on the new path so the port check matches.
               if (!infraResult.healthProbe && config.healthProbe) {
-                console.log(`[Startup] Resetting stale health probe to match new healthCheckPath: ${infraResult.healthCheckPath}`);
+                console.log(
+                  `[Startup] Resetting stale health probe to match new healthCheckPath: ${infraResult.healthCheckPath}`,
+                );
                 config = {
                   ...config,
                   healthProbe: {
@@ -1414,7 +1537,9 @@ Respond with EXACTLY one JSON object:
               }
             }
             if (infraResult.healthProbe) {
-              console.log(`[Startup] Repair LLM set health probe: ${describeHealthProbe(infraResult.healthProbe)}`);
+              console.log(
+                `[Startup] Repair LLM set health probe: ${describeHealthProbe(infraResult.healthProbe)}`,
+              );
               config = { ...config, healthProbe: infraResult.healthProbe };
             }
             // Update the last attempt's config so the retry uses the patched version
@@ -1423,10 +1548,19 @@ Respond with EXACTLY one JSON object:
           // Reuse config only for non-timeout, non-prereq errors (e.g. compose typo, permission fix).
           // Timeouts and prereq failures usually mean the fundamental approach is wrong —
           // UNLESS the repair added new post-start commands (e.g. DB migrations) that could fix the issue.
-          const isPrereqFailure = /Command failed:.*\nprerequisite/i.test(detailedError) ||
+          const isPrereqFailure =
+            /Command failed:.*\nprerequisite/i.test(detailedError) ||
             /prerequisite.*failed|Running prerequisite/i.test(detailedError) ||
             /command not found|not found.*command/i.test(detailedError);
-          const repairModifiedConfig = !!(infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.healthProbe || infraResult.madeFileChanges);
+          const repairModifiedConfig = !!(
+            infraResult.command ||
+            infraResult.port ||
+            infraResult.postStartCommands?.length ||
+            infraResult.addEnvVars ||
+            infraResult.healthCheckPath ||
+            infraResult.healthProbe ||
+            infraResult.madeFileChanges
+          );
           if (repairModifiedConfig || (!isTimeoutError && !isPrereqFailure && !isCrash)) {
             infraRepaired = true;
           }
@@ -1475,13 +1609,7 @@ async function identifyStartupConfig(
 ): Promise<StartupConfig> {
   const messages = identifyStartupPrompt(stackStr);
   const infraHandler = createInfraToolHandler(repoPath);
-  const response = await chatWithTools(
-    llm,
-    messages,
-    infraTools,
-    infraHandler,
-    model,
-  );
+  const response = await chatWithTools(llm, messages, infraTools, infraHandler, model);
   return parseStartupConfig(response);
 }
 
@@ -1492,18 +1620,9 @@ async function rebuildStartupConfig(
   previousConfig: StartupConfig,
   model?: string,
 ): Promise<StartupConfig> {
-  const messages = rebuildStartupPrompt(
-    stackStr,
-    JSON.stringify(previousConfig, null, 2),
-  );
+  const messages = rebuildStartupPrompt(stackStr, JSON.stringify(previousConfig, null, 2));
   const infraHandler = createInfraToolHandler(repoPath);
-  const response = await chatWithTools(
-    llm,
-    messages,
-    infraTools,
-    infraHandler,
-    model,
-  );
+  const response = await chatWithTools(llm, messages, infraTools, infraHandler, model);
   return parseStartupConfig(response);
 }
 
@@ -1517,7 +1636,12 @@ function configBuildsFromSource(config: StartupConfig): boolean {
   if (/docker\s+(build|compose\s+build)/.test(all)) return true;
   if (/docker\s+compose/.test(all) && all.includes("--build")) return true;
   // Native build commands
-  if (/\b(npm run build|yarn build|pnpm build|go build|mvn\s|gradle\s|cargo build|dotnet build|make\b|bundle exec rake)/.test(all)) return true;
+  if (
+    /\b(npm run build|yarn build|pnpm build|go build|mvn\s|gradle\s|cargo build|dotnet build|make\b|bundle exec rake)/.test(
+      all,
+    )
+  )
+    return true;
   return false;
 }
 
@@ -1536,7 +1660,9 @@ function commandRunsInDocker(command: string): boolean {
  */
 function isStreamingCommand(cmd: string): boolean {
   const trimmed = cmd.trim();
-  return /\blogs\s+(-\S+\s+)*-f\b|\blogs\s+(-\S+\s+)*--follow\b|\btail\s+(-\S+\s+)*-f\b|\btail\s+(-\S+\s+)*--follow\b|\b--follow\b.*\blogs\b|\bwatch\s|\btop\b/.test(trimmed);
+  return /\blogs\s+(-\S+\s+)*-f\b|\blogs\s+(-\S+\s+)*--follow\b|\btail\s+(-\S+\s+)*-f\b|\btail\s+(-\S+\s+)*--follow\b|\b--follow\b.*\blogs\b|\bwatch\s|\btop\b/.test(
+    trimmed,
+  );
 }
 
 /**
@@ -1555,12 +1681,7 @@ function extractImageName(config: StartupConfig): string | undefined {
  * Find a compose file in the repo root. Returns the filename or undefined.
  */
 export function findComposeFile(repoPath: string): string | undefined {
-  const candidates = [
-    "docker-compose.yml",
-    "docker-compose.yaml",
-    "compose.yml",
-    "compose.yaml",
-  ];
+  const candidates = ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"];
   return candidates.find((f) => existsSync(`${repoPath}/${f}`));
 }
 
@@ -1571,7 +1692,11 @@ export function findComposeFile(repoPath: string): string | undefined {
  *   1. If the startup command references a specific service (e.g. "docker compose up app")
  *   2. Parse compose.yml for a service with `build:` that isn't a known infra image
  */
-function detectAppService(cwd: string, composeFile: string, startupCmd: string): string | undefined {
+function detectAppService(
+  cwd: string,
+  composeFile: string,
+  startupCmd: string,
+): string | undefined {
   // Heuristic 1: startup command explicitly names a service
   const upMatch = startupCmd.match(/docker\s+compose[^|]*up\s+(?:-d\s+)?([a-zA-Z][\w-]*)/);
   if (upMatch) return upMatch[1];
@@ -1579,7 +1704,8 @@ function detectAppService(cwd: string, composeFile: string, startupCmd: string):
   // Heuristic 2: parse compose file for the service with a `build:` directive
   try {
     const content = readFileSync(`${cwd}/${composeFile}`, "utf-8");
-    const infraImages = /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit/i;
+    const infraImages =
+      /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit/i;
     const serviceBlocks = content.match(/^\s{2}(\w[\w-]*):\s*$/gm);
     if (!serviceBlocks) return undefined;
 
@@ -1668,7 +1794,9 @@ function validateComposeBuildContexts(repoPath: string, composeFile: string): bo
     if (ctx === "." || ctx === "./") continue; // current dir always exists
     const resolved = ctx.startsWith("/") ? ctx : `${baseDir}/${ctx}`;
     if (!existsSync(resolved)) {
-      console.warn(`[Startup] Compose ${composeFile}: build context "${ctx}" does not exist (${resolved})`);
+      console.warn(
+        `[Startup] Compose ${composeFile}: build context "${ctx}" does not exist (${resolved})`,
+      );
       return false;
     }
   }
@@ -1696,10 +1824,13 @@ function ensureComposeBuildsFromSource(
   let content: string;
   try {
     content = readFileSync(filePath, "utf8");
-  } catch { return; }
+  } catch {
+    return;
+  }
 
   // Known infrastructure images that are fine to pull (not the app)
-  const infraImages = /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit|mailcatcher|keycloak|watchtower|nginx|traefik|haproxy|ollama|adminer|pgadmin|phpmyadmin/i;
+  const infraImages =
+    /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit|mailcatcher|keycloak|watchtower|nginx|traefik|haproxy|ollama|adminer|pgadmin|phpmyadmin/i;
 
   // Parse services: find any with `image:` but no `build:`
   // Simple YAML parsing — we look for top-level service blocks under `services:`
@@ -1710,7 +1841,7 @@ function ensureComposeBuildsFromSource(
   const servicesBlock = content.slice(servicesStart);
 
   // Match service definitions (2-space indent)
-  const serviceRe = /^  (\w[\w-]*):\s*$/gm;
+  const serviceRe = /^ {2}(\w[\w-]*):\s*$/gm;
   let match;
   const services: Array<{ name: string; start: number }> = [];
   while ((match = serviceRe.exec(servicesBlock)) !== null) {
@@ -1732,16 +1863,18 @@ function ensureComposeBuildsFromSource(
 
       // This is likely the app service pulling a pre-built image
       const buildContext = serviceRoot ? `./${serviceRoot}` : ".";
-      const dfClause = dockerfileName !== "Dockerfile"
-        ? `\n      dockerfile: ${dockerfileName}`
-        : "";
+      const dfClause =
+        dockerfileName !== "Dockerfile" ? `\n      dockerfile: ${dockerfileName}` : "";
       const buildDirective = `    build:\n      context: ${buildContext}${dfClause}`;
 
       // Replace the image: line with build: (keep image: as a comment for reference)
       const escapedImage = imageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const imageLineRe = new RegExp(`^(\\s+)image:\\s*['"]?${escapedImage}['"]?\\s*$`, "m");
       const fullContent = readFileSync(filePath, "utf8");
-      const patched = fullContent.replace(imageLineRe, `$1# image: ${imageName}  # replaced — must build from source\n${buildDirective}`);
+      const patched = fullContent.replace(
+        imageLineRe,
+        `$1# image: ${imageName}  # replaced — must build from source\n${buildDirective}`,
+      );
 
       if (patched !== fullContent) {
         writeFileSync(filePath, patched);
@@ -1763,7 +1896,8 @@ function ensureComposeBuildsFromSource(
  * Detect the monorepo package manager from the repo root.
  */
 function detectMonorepoManager(repoPath: string): "pnpm" | "yarn" | "npm" | "bun" | null {
-  if (existsSync(`${repoPath}/pnpm-lock.yaml`) || existsSync(`${repoPath}/pnpm-workspace.yaml`)) return "pnpm";
+  if (existsSync(`${repoPath}/pnpm-lock.yaml`) || existsSync(`${repoPath}/pnpm-workspace.yaml`))
+    return "pnpm";
   if (existsSync(`${repoPath}/yarn.lock`)) return "yarn";
   if (existsSync(`${repoPath}/bun.lockb`) || existsSync(`${repoPath}/bun.lock`)) return "bun";
   if (existsSync(`${repoPath}/package-lock.json`)) return "npm";
@@ -1780,8 +1914,10 @@ function detectNodeVersion(repoPath: string, serviceRoot?: string): string {
       try {
         const ver = readFileSync(`${root}/${file}`, "utf-8").trim();
         const major = ver.replace(/^v/, "").split(".")[0];
-        if (major && parseInt(major) >= 14) return major;
-      } catch { /* skip */ }
+        if (major && parseInt(major, 10) >= 14) return major;
+      } catch {
+        /* skip */
+      }
     }
     try {
       const pkg = JSON.parse(readFileSync(`${root}/package.json`, "utf-8"));
@@ -1790,7 +1926,9 @@ function detectNodeVersion(repoPath: string, serviceRoot?: string): string {
         const match = engines.match(/(\d+)/);
         if (match) return match[1];
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
   return "20"; // safe default
 }
@@ -1822,7 +1960,9 @@ function generateDevDockerfile(repoPath: string, serviceRoot?: string): boolean 
       startCmd = `node ${pkg.main}`;
     }
     hasTypeScript = !!(pkg.devDependencies?.typescript || pkg.dependencies?.typescript);
-  } catch { /* keep defaults */ }
+  } catch {
+    /* keep defaults */
+  }
 
   // Determine install command
   let installCmd: string;
@@ -1846,7 +1986,8 @@ function generateDevDockerfile(repoPath: string, serviceRoot?: string): boolean 
   // If TypeScript, try to build but don't fail on it — fallback to tsx
   let buildSection = "";
   if (hasTypeScript) {
-    const buildCmd = pm === "pnpm" ? "pnpm run build" : pm === "yarn" ? "yarn build" : "npm run build";
+    const buildCmd =
+      pm === "pnpm" ? "pnpm run build" : pm === "yarn" ? "yarn build" : "npm run build";
     buildSection = `# Try to build TypeScript — if it fails, we'll run with tsx as fallback
 RUN ${buildCmd} || echo "TypeScript build failed — will use tsx at runtime"
 
@@ -1881,7 +2022,9 @@ CMD ${JSON.stringify(startCmd.split(" "))}
 
   const outPath = `${repoPath}/Dockerfile.bright-dev`;
   writeFileSync(outPath, dockerfile);
-  console.log(`[Startup] Generated dev-mode fallback Dockerfile at Dockerfile.bright-dev (node:${nodeVer}, pm=${pm ?? "npm"}, monorepo=${isMonorepo})`);
+  console.log(
+    `[Startup] Generated dev-mode fallback Dockerfile at Dockerfile.bright-dev (node:${nodeVer}, pm=${pm ?? "npm"}, monorepo=${isMonorepo})`,
+  );
   return true;
 }
 
@@ -1892,9 +2035,7 @@ function getMonorepoContext(repoPath: string, serviceRoot?: string): string {
   if (!shouldSelectMonorepoTarget(repoPath)) return "";
 
   const pm = detectMonorepoManager(repoPath);
-  const parts: string[] = [
-    `\n⚠️  MONOREPO DETECTED (package manager: ${pm ?? "unknown"})`,
-  ];
+  const parts: string[] = [`\n⚠️  MONOREPO DETECTED (package manager: ${pm ?? "unknown"})`];
 
   if (serviceRoot) {
     parts.push(`Target service: ${serviceRoot}`);
@@ -1905,7 +2046,9 @@ function getMonorepoContext(repoPath: string, serviceRoot?: string): string {
     try {
       const wsConfig = readFileSync(`${repoPath}/pnpm-workspace.yaml`, "utf-8").slice(0, 500);
       parts.push(`pnpm-workspace.yaml:\n${wsConfig}`);
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   parts.push(
@@ -1956,7 +2099,9 @@ export async function repairDockerBuild(
   writeFileSync(errorLogPath, buildError, "utf-8");
   const errorLines = buildError.split("\n");
 
-  console.log(`[Startup] Repair input: error ${errorLines.length} lines (written to .bright-build-error.log), Dockerfile lines=${currentDockerfile.split("\n").length}`);
+  console.log(
+    `[Startup] Repair input: error ${errorLines.length} lines (written to .bright-build-error.log), Dockerfile lines=${currentDockerfile.split("\n").length}`,
+  );
 
   let errorSection: string;
   if (errorLines.length <= 100) {
@@ -2000,7 +2145,7 @@ APPROACH:
 11. BUILD FROM SOURCE. All assets must be built from the local source code. Never download pre-built artifacts from external URLs.
 12. Always verify base image tags exist with verify_docker_image before using them.
 13. **SAVE HINTS** — whenever you discover a non-obvious fact (required Node version, correct package name, file path, config setting), call save_hint so it's available to the next repair attempt even if this one fails.
-14. **PARALLELIZE BUILDS** — if the build is timing out on dependency installation (especially native extensions), ensure parallel jobs are enabled: \`bundle config set --local jobs \$(nproc)\` for Ruby, \`ENV MAKEFLAGS="-j\$(nproc)"\` for C/Make-based extensions. This dramatically reduces build time for projects with heavy native gems (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby).
+14. **PARALLELIZE BUILDS** — if the build is timing out on dependency installation (especially native extensions), ensure parallel jobs are enabled: \`bundle config set --local jobs $(nproc)\` for Ruby, \`ENV MAKEFLAGS="-j$(nproc)"\` for C/Make-based extensions. This dramatically reduces build time for projects with heavy native gems (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby).
 15. **MONOREPO BUILDS** — if this is a monorepo (pnpm workspaces, yarn workspaces, lerna, nx, turbo):
     - COPY the entire repository, not just one package. Workspace cross-references and hoisting require the full tree.
     - Run \`pnpm install\` / \`yarn install\` / \`npm ci\` from the REPO ROOT, not from the service subdirectory.
@@ -2046,15 +2191,23 @@ Current Dockerfile:
 \`\`\`dockerfile
 ${currentDockerfile}
 \`\`\`
-${getMonorepoContext(repoPath, serviceRoot)}${repeatedRootCause
+${getMonorepoContext(repoPath, serviceRoot)}${
+  repeatedRootCause
     ? `\n⚠️  STRATEGY-SHIFT REQUIRED ⚠️\nThe LAST build repair did not work — the build is failing with the SAME root cause as before. Do not return the same Dockerfile. Change the strategy: inspect compose, patch the service Dockerfile actually used by the failing build, replace broad compose with a minimal DAST compose, or change command/prerequisites.\n`
-    : ""}${previousRepairs && previousRepairs.length > 0
+    : ""
+}${
+  previousRepairs && previousRepairs.length > 0
     ? `\nWhat previous build repairs already tried (do NOT just slightly reword these):\n${previousRepairs.map((r, i) => `--- Repair ${i + 1} ---\n${r}`).join("\n")}\n`
-    : ""}${previousErrors && previousErrors.length > 0
+    : ""
+}${
+  previousErrors && previousErrors.length > 0
     ? `\nPrevious failed attempts and their errors (do NOT repeat the same mistakes):\n${previousErrors.map((e, i) => `--- Attempt ${i + 1} ---\n${e.slice(-500)}`).join("\n")}\n`
-    : ""}${hints && hints.length > 0
+    : ""
+}${
+  hints && hints.length > 0
     ? `\nHints from previous attempts:\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
-    : ""}
+    : ""
+}
 Use the tools to inspect relevant project files (and read_file on .bright-build-error.log if you need more of the build output), apply the fix at the correct layer, then return the JSON result.`,
     },
   ];
@@ -2080,19 +2233,17 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
     let usedMutatingTools = false;
     const trackingHandler: ToolHandler = async (name, args) => {
       const result = await infraHandler(name, args);
-      if (name === "write_file" || name === "edit_file" || name === "run_command_on_host" || name === "run_command_in_docker") {
+      if (
+        name === "write_file" ||
+        name === "edit_file" ||
+        name === "run_command_on_host" ||
+        name === "run_command_in_docker"
+      ) {
         usedMutatingTools = true;
       }
       return result;
     };
-    const response = await chatWithTools(
-      llm,
-      messages,
-      infraTools,
-      trackingHandler,
-      model,
-      40,
-    );
+    const response = await chatWithTools(llm, messages, infraTools, trackingHandler, model, 40);
 
     const parsedResult = parseBuildRepairResult(response);
     if (
@@ -2152,17 +2303,16 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
     // round can see what was already attempted. Prefer prose outside the code
     // block; fall back to a generic note.
     const proseBefore = response.split(/```/)[0]?.trim();
-    const summary = proseBefore && proseBefore.length > 0
-      ? proseBefore.slice(0, 400)
-      : `Rewrote Dockerfile (${fixedDockerfile.split("\n").length} lines${changed ? "" : ", no diff"})`;
+    const summary =
+      proseBefore && proseBefore.length > 0
+        ? proseBefore.slice(0, 400)
+        : `Rewrote Dockerfile (${fixedDockerfile.split("\n").length} lines${changed ? "" : ", no diff"})`;
     return {
       summary,
       madeFileChanges: changed || usedMutatingTools,
     };
   } catch (err) {
-    console.warn(
-      `[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`,
-    );
+    console.warn(`[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`);
     return {};
   }
 }
@@ -2216,8 +2366,9 @@ function errorFingerprint(error: string): string {
     .split("\n")
     .map((l) => l.trim())
     .filter((l) =>
-      /error|exception|fail|undefined|cannot|no such|missing|denied|refused|crashed|exit code|ENOENT|EACCES|did not complete|extension control file/i
-        .test(l),
+      /error|exception|fail|undefined|cannot|no such|missing|denied|refused|crashed|exit code|ENOENT|EACCES|did not complete|extension control file/i.test(
+        l,
+      ),
     )
     .slice(0, 8)
     .join("|")
@@ -2354,15 +2505,23 @@ Prerequisites: ${JSON.stringify(config.prerequisites)}
 Docker: ${config.docker}
 
 ${errorSection}
-${repeatedRootCause
+${
+  repeatedRootCause
     ? `\n⚠️  STRATEGY-SHIFT REQUIRED ⚠️\nThe LAST repair attempt did not work — the application is failing with the SAME root cause as before. Do NOT iterate on the previous fix. Pick a fundamentally different approach (e.g. change the base image, swap out the conflicting dependency, disable the failing component at the source level instead of via volume tricks, etc.).\n`
-    : ""}${previousRepairs && previousRepairs.length > 0
+    : ""
+}${
+  previousRepairs && previousRepairs.length > 0
     ? `\nWhat previous repair attempts already tried (do NOT just slightly reword these — try genuinely different approaches if these failed):\n${previousRepairs.map((r, i) => `--- Repair ${i + 1} ---\n${r}`).join("\n")}\n`
-    : ""}${previousErrors && previousErrors.length > 0
+    : ""
+}${
+  previousErrors && previousErrors.length > 0
     ? `\nPrevious failed attempts and their errors (do NOT repeat the same fixes):\n${previousErrors.map((e, i) => `--- Attempt ${i + 1} ---\n${e.slice(-500)}`).join("\n")}\n`
-    : ""}${hints && hints.length > 0
+    : ""
+}${
+  hints && hints.length > 0
     ? `\nHints from previous repair attempts (use these — they were discovered through investigation):\n${hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n`
-    : ""}${diagnosticSnapshot}
+    : ""
+}${diagnosticSnapshot}
 
 Study the diagnostic snapshot above, identify the root cause, fix it, then reply with the JSON object.`,
     },
@@ -2389,19 +2548,17 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
     let usedMutatingTools = false;
     const trackingHandler: ToolHandler = async (name, args) => {
       const result = await infraHandler(name, args);
-      if (name === "write_file" || name === "edit_file" || name === "run_command_on_host" || name === "run_command_in_docker") {
+      if (
+        name === "write_file" ||
+        name === "edit_file" ||
+        name === "run_command_on_host" ||
+        name === "run_command_in_docker"
+      ) {
         usedMutatingTools = true;
       }
       return result;
     };
-    const response = await chatWithTools(
-      llm,
-      messages,
-      infraTools,
-      trackingHandler,
-      model,
-      40,
-    );
+    const response = await chatWithTools(llm, messages, infraTools, trackingHandler, model, 40);
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
 
     // Parse config modifications from the LLM response
@@ -2421,22 +2578,27 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
 
 function parseInfraRepairResult(response: string): InfraRepairResult {
   try {
-    const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/) ??
-      response.match(/(\{[\s\S]*\})/);
+    const jsonMatch =
+      response.match(/```(?:json)?\s*([\s\S]*?)```/) ?? response.match(/(\{[\s\S]*\})/);
     if (!jsonMatch?.[1]) return {};
     const parsed = JSON.parse(jsonMatch[1]);
     const result: InfraRepairResult = {};
     if (Array.isArray(parsed.postStartCommands) && parsed.postStartCommands.length > 0) {
       result.postStartCommands = parsed.postStartCommands.filter(
-        (cmd: unknown) => typeof cmd === "string" && cmd.length > 0 && !isStreamingCommand(cmd as string),
+        (cmd: unknown) =>
+          typeof cmd === "string" && cmd.length > 0 && !isStreamingCommand(cmd as string),
       );
       if (result.postStartCommands!.length > 0) {
-        console.log(`[Startup] Infra repair added post-start commands: ${result.postStartCommands!.join(", ")}`);
+        console.log(
+          `[Startup] Infra repair added post-start commands: ${result.postStartCommands!.join(", ")}`,
+        );
       }
     }
     if (parsed.addEnvVars && typeof parsed.addEnvVars === "object") {
       result.addEnvVars = parsed.addEnvVars;
-      console.log(`[Startup] Infra repair added env vars: ${Object.keys(result.addEnvVars!).join(", ")}`);
+      console.log(
+        `[Startup] Infra repair added env vars: ${Object.keys(result.addEnvVars!).join(", ")}`,
+      );
     }
     if (typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath) {
       result.healthCheckPath = parsed.healthCheckPath;
@@ -2465,14 +2627,11 @@ function parseInfraRepairResult(response: string): InfraRepairResult {
 }
 
 function parseBuildRepairResult(response: string): BuildRepairResult {
-  const fencedBlocks = Array.from(
-    response.matchAll(/```(?:json)?\s*([\s\S]*?)```/g),
-  ).map((m) => m[1]);
+  const fencedBlocks = Array.from(response.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)).map(
+    (m) => m[1],
+  );
   const objectMatch = response.match(/(\{[\s\S]*\})/);
-  const candidates = [
-    ...fencedBlocks,
-    ...(objectMatch?.[1] ? [objectMatch[1]] : []),
-  ];
+  const candidates = [...fencedBlocks, ...(objectMatch?.[1] ? [objectMatch[1]] : [])];
 
   for (const candidate of candidates) {
     const trimmed = candidate.trim();
@@ -2531,9 +2690,10 @@ function parseHealthProbe(value: unknown): StartupHealthProbe | undefined {
   const raw = value as Record<string, unknown>;
   if (typeof raw.path !== "string" || !raw.path.trim()) return undefined;
 
-  const method = typeof raw.method === "string" && raw.method.trim()
-    ? raw.method.trim().toUpperCase()
-    : undefined;
+  const method =
+    typeof raw.method === "string" && raw.method.trim()
+      ? raw.method.trim().toUpperCase()
+      : undefined;
 
   const headers: Record<string, string> = {};
   if (raw.headers && typeof raw.headers === "object" && !Array.isArray(raw.headers)) {
@@ -2547,25 +2707,38 @@ function parseHealthProbe(value: unknown): StartupHealthProbe | undefined {
     const fd = raw.formData as Record<string, unknown>;
     const fields = Array.isArray(fd.fields)
       ? fd.fields.flatMap((field): Array<{ name: string; value: string }> => {
-        if (!field || typeof field !== "object") return [];
-        const f = field as Record<string, unknown>;
-        return typeof f.name === "string" && typeof f.value === "string"
-          ? [{ name: f.name, value: f.value }]
-          : [];
-      })
+          if (!field || typeof field !== "object") return [];
+          const f = field as Record<string, unknown>;
+          return typeof f.name === "string" && typeof f.value === "string"
+            ? [{ name: f.name, value: f.value }]
+            : [];
+        })
       : undefined;
     const files = Array.isArray(fd.files)
-      ? fd.files.flatMap((file): Array<{ name: string; filename: string; content: string; contentType?: string }> => {
-        if (!file || typeof file !== "object") return [];
-        const f = file as Record<string, unknown>;
-        if (typeof f.name !== "string" || typeof f.filename !== "string" || typeof f.content !== "string") return [];
-        return [{
-          name: f.name,
-          filename: f.filename,
-          content: f.content,
-          ...(typeof f.contentType === "string" && f.contentType ? { contentType: f.contentType } : {}),
-        }];
-      })
+      ? fd.files.flatMap(
+          (
+            file,
+          ): Array<{ name: string; filename: string; content: string; contentType?: string }> => {
+            if (!file || typeof file !== "object") return [];
+            const f = file as Record<string, unknown>;
+            if (
+              typeof f.name !== "string" ||
+              typeof f.filename !== "string" ||
+              typeof f.content !== "string"
+            )
+              return [];
+            return [
+              {
+                name: f.name,
+                filename: f.filename,
+                content: f.content,
+                ...(typeof f.contentType === "string" && f.contentType
+                  ? { contentType: f.contentType }
+                  : {}),
+              },
+            ];
+          },
+        )
       : undefined;
     if (fields?.length || files?.length) formData = { fields, files };
   }
@@ -2578,7 +2751,8 @@ function parseHealthProbe(value: unknown): StartupHealthProbe | undefined {
     path: raw.path.trim(),
     ...(method ? { method } : {}),
     ...(Object.keys(headers).length ? { headers } : {}),
-    ...(typeof raw.body === "string" || (raw.body && typeof raw.body === "object" && !Array.isArray(raw.body))
+    ...(typeof raw.body === "string" ||
+    (raw.body && typeof raw.body === "object" && !Array.isArray(raw.body))
       ? { body: raw.body as string | Record<string, unknown> }
       : {}),
     ...(formData ? { formData } : {}),
@@ -2614,19 +2788,11 @@ export async function generateDockerfile(
 ): Promise<void> {
   const dockerHandler = createDockerfileToolHandler(repoPath);
   const messages = generateDockerfilePrompt(stackStr, discovery);
-  const response = await chatWithTools(
-    llm,
-    messages,
-    dockerfileTools,
-    dockerHandler,
-    model,
-  );
+  const response = await chatWithTools(llm, messages, dockerfileTools, dockerHandler, model);
 
   const contentRaw = extractCodeBlock(response);
   if (!contentRaw) {
-    throw new Error(
-      "Failed to generate a valid Dockerfile — LLM did not return a code block",
-    );
+    throw new Error("Failed to generate a valid Dockerfile — LLM did not return a code block");
   }
 
   // Post-validate: auto-fix any FROM images that don't exist on Docker Hub
@@ -2636,9 +2802,7 @@ export async function generateDockerfile(
   }
 
   writeFileSync(`${repoPath}/${BRIGHT_DOCKERFILE}`, content);
-  console.log(
-    `[Startup] Generated ${BRIGHT_DOCKERFILE} (${content.split("\n").length} lines)`,
-  );
+  console.log(`[Startup] Generated ${BRIGHT_DOCKERFILE} (${content.split("\n").length} lines)`);
 }
 
 async function retryStartupConfig(
@@ -2676,13 +2840,7 @@ async function retryStartupConfig(
     onHint: (_stage, h) => onHint(h),
     onRemoveHint: (_stage, h) => onRemoveHint(h),
   });
-  const response = await chatWithTools(
-    llm,
-    messages,
-    infraTools,
-    infraHandler,
-    model,
-  );
+  const response = await chatWithTools(llm, messages, infraTools, infraHandler, model);
   return parseStartupConfig(response);
 }
 
@@ -2692,8 +2850,7 @@ function parseStartupConfig(response: string): StartupConfig {
     const parsed = JSON.parse(jsonStr);
     // Filter out natural language "prerequisites" that aren't real commands
     const prerequisites = (parsed.prerequisites ?? []).filter(
-      (cmd: unknown) =>
-        typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd),
+      (cmd: unknown) => typeof cmd === "string" && cmd.length > 0 && looksLikeCommand(cmd),
     );
 
     const envVars: Record<string, string> = parsed.envVars ?? {};
@@ -2767,13 +2924,11 @@ function unshallowIfNeeded(repoPath: string): void {
   // Only unshallow if the project uses git-based versioning
   const versioningIndicators = [
     "Directory.Build.props",
-    "version.json",         // Nerdbank.GitVersioning
-    "GitVersion.yml",       // GitVersion
+    "version.json", // Nerdbank.GitVersioning
+    "GitVersion.yml", // GitVersion
     "GitVersion.yaml",
   ];
-  const needsHistory = versioningIndicators.some(f =>
-    existsSync(`${repoPath}/${f}`),
-  );
+  const needsHistory = versioningIndicators.some((f) => existsSync(`${repoPath}/${f}`));
   if (!needsHistory) {
     // Also check .csproj files for Nerdbank reference
     try {
@@ -2787,9 +2942,7 @@ function unshallowIfNeeded(repoPath: string): void {
     }
   }
 
-  console.log(
-    "[Startup] Detected shallow clone with git-based versioning — fetching full history",
-  );
+  console.log("[Startup] Detected shallow clone with git-based versioning — fetching full history");
   try {
     execSync(
       "git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true",
@@ -2813,16 +2966,16 @@ function unshallowIfNeeded(repoPath: string): void {
 export function ensureDockerIgnore(repoPath: string): void {
   const ignorePath = `${repoPath}/.dockerignore`;
   const problematicDirs = ["data/", ".data/", "tmp/", "log/"];
-  
+
   let existing = "";
   try {
     existing = readFileSync(ignorePath, "utf-8");
-  } catch { /* doesn't exist yet */ }
+  } catch {
+    /* doesn't exist yet */
+  }
 
   const linesToAdd = problematicDirs.filter(
-    (dir) =>
-      !existing.includes(dir) &&
-      existsSync(`${repoPath}/${dir.replace(/\/$/, "")}`),
+    (dir) => !existing.includes(dir) && existsSync(`${repoPath}/${dir.replace(/\/$/, "")}`),
   );
 
   if (linesToAdd.length === 0) return;
@@ -2832,9 +2985,7 @@ export function ensureDockerIgnore(repoPath: string): void {
     : `# Added by bright-agent to avoid permission errors\n${linesToAdd.join("\n")}\n`;
 
   writeFileSync(ignorePath, newContent);
-  console.log(
-    `[Startup] Updated .dockerignore to exclude: ${linesToAdd.join(", ")}`,
-  );
+  console.log(`[Startup] Updated .dockerignore to exclude: ${linesToAdd.join(", ")}`);
 }
 
 /**
@@ -2890,9 +3041,7 @@ function ensureToolsAvailable(
 
   for (const { re, name } of knownTools) {
     if (re.test(fullCommand) && !isToolAvailable(name)) {
-      console.log(
-        `[Startup] "${name}" not found on host — switching to Docker build`,
-      );
+      console.log(`[Startup] "${name}" not found on host — switching to Docker build`);
       const imageName = "bright-app-local";
       const df = findDockerfile(repoPath, serviceRoot);
       const fFlag = df && df !== "Dockerfile" ? `-f ${df} ` : "";
@@ -2946,22 +3095,20 @@ function stripDockerTtyFlags(cmd: string): string {
   // Split on command separators (&&, ||, ;) to handle each segment independently.
   // Only strip TTY flags inside "docker run" and "docker exec" segments —
   // NOT "docker build -t" (tag flag) or other subcommands.
-  return cmd.replace(
-    /\bdocker\s+(run|exec)\b[^;&|]*/g,
-    (segment) =>
-      segment
-        // Replace standalone -it → -i
-        .replace(/\s-it\b/g, " -i")
-        // Replace standalone -t flag (space before AND after)
-        .replace(/\s-t\s/g, " ")
-        // Remove --tty
-        .replace(/\s--tty\b/g, "")
-        // Handle combined flags containing t (e.g. -dit → -di, -itu → -iu)
-        .replace(/\s-([a-zA-Z]*t[a-zA-Z]*)\b/g, (_m, flags: string) => {
-          if (flags.length > 5) return _m;
-          const without = flags.replace(/t/g, "");
-          return without ? ` -${without}` : "";
-        }),
+  return cmd.replace(/\bdocker\s+(run|exec)\b[^;&|]*/g, (segment) =>
+    segment
+      // Replace standalone -it → -i
+      .replace(/\s-it\b/g, " -i")
+      // Replace standalone -t flag (space before AND after)
+      .replace(/\s-t\s/g, " ")
+      // Remove --tty
+      .replace(/\s--tty\b/g, "")
+      // Handle combined flags containing t (e.g. -dit → -di, -itu → -iu)
+      .replace(/\s-([a-zA-Z]*t[a-zA-Z]*)\b/g, (_m, flags: string) => {
+        if (flags.length > 5) return _m;
+        const without = flags.replace(/t/g, "");
+        return without ? ` -${without}` : "";
+      }),
   );
 }
 
@@ -2975,10 +3122,7 @@ function stripDockerTtyFlags(cmd: string): string {
  * $() command substitution we can't resolve), we scan ALL files in the
  * same directory trees as the referenced scripts.
  */
-function patchScriptTtyFlags(
-  repoPath: string,
-  config: StartupConfig,
-): void {
+function patchScriptTtyFlags(repoPath: string, config: StartupConfig): void {
   // Collect directories containing scripts referenced in command + prerequisites
   const allCmds = [config.command, ...config.prerequisites];
   const scriptDirs = new Set<string>();
@@ -3017,7 +3161,10 @@ function patchScriptTtyFlags(
       files = execSync(`find "${dir}" -maxdepth 2 -type f 2>/dev/null`, {
         encoding: "utf-8",
         timeout: 5_000,
-      }).trim().split("\n").filter(Boolean);
+      })
+        .trim()
+        .split("\n")
+        .filter(Boolean);
     } catch {
       continue;
     }
@@ -3046,7 +3193,9 @@ function patchScriptTtyFlags(
           writeFileSync(filePath, patched);
           console.log(`[Startup] Patched TTY flags in ${filePath.replace(repoPath + "/", "")}`);
         }
-      } catch { /* ignore binary/unreadable/unwritable files */ }
+      } catch {
+        /* ignore binary/unreadable/unwritable files */
+      }
     }
   }
 }
@@ -3071,10 +3220,16 @@ export interface LogAnalyzerContext {
   port: number;
 }
 
-type LogAnalyzer = (logs: string, ctx?: LogAnalyzerContext) => Promise<{ status: "progress" | "fatal" | "unknown"; summary: string }>;
+type LogAnalyzer = (
+  logs: string,
+  ctx?: LogAnalyzerContext,
+) => Promise<{ status: "progress" | "fatal" | "unknown"; summary: string }>;
 
 /** Callback for AI-powered HTTP response health analysis */
-type ResponseAnalyzer = (status: number, body: string) => Promise<{ healthy: boolean; reason: string }>;
+type ResponseAnalyzer = (
+  status: number,
+  body: string,
+) => Promise<{ healthy: boolean; reason: string }>;
 
 async function startApplication(
   repoPath: string,
@@ -3087,13 +3242,14 @@ async function startApplication(
   if (config.docker && /docker\s+compose/.test(config.command)) {
     const composeFileMatch = config.command.match(/-f\s+(\S+)/);
     const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
-    const composeFile = composeFileMatch?.[1]
-      ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : findComposeFile(repoPath));
+    const composeFile =
+      composeFileMatch?.[1] ??
+      (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : findComposeFile(repoPath));
     if (composeFile && existsSync(`${repoPath}/${composeFile}`)) {
       if (!validateComposeBuildContexts(repoPath, composeFile)) {
         throw new Error(
           `Compose file ${composeFile} references a build context that does not exist. ` +
-          `This is likely a template scaffold — try building from the root Dockerfile instead.`,
+            `This is likely a template scaffold — try building from the root Dockerfile instead.`,
         );
       }
     }
@@ -3116,7 +3272,10 @@ async function startApplication(
     cmd = stripDockerTtyFlags(cmd);
     // Force plain progress output for Docker builds — BuildKit buffers output
     // by default, causing our stall-detection to falsely time out active builds.
-    if (/(docker\s+compose\b.*\bbuild\b|docker\s+build\b)/.test(cmd) && !cmd.includes("--progress")) {
+    if (
+      /(docker\s+compose\b.*\bbuild\b|docker\s+build\b)/.test(cmd) &&
+      !cmd.includes("--progress")
+    ) {
       cmd = /docker\s+compose\b/.test(cmd)
         ? cmd.replace(/\bbuild\b/, "build --progress=plain")
         : cmd.replace(/(docker\s+build)/, "$1 --progress=plain");
@@ -3144,9 +3303,7 @@ async function startApplication(
     command = command.replace("-d", "-d --wait");
   }
 
-  console.log(
-    `[Startup] Starting application: ${command} (port ${config.port})`,
-  );
+  console.log(`[Startup] Starting application: ${command} (port ${config.port})`);
 
   // Use shell: true so commands with inline env vars (DB_PASSWORD=x cmd),
   // && chains, pipes, and other shell features work correctly.
@@ -3264,14 +3421,21 @@ async function startApplication(
               { cwd: repoPath, stdio: "pipe", timeout: 30_000 },
             );
             await sleep(3_000);
-          } catch { /* best effort */ }
+          } catch {
+            /* best effort */
+          }
         }
 
         try {
-          await waitForPort(config.port, 120_000, config.healthProbe ?? config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
-          console.log(
-            `[Startup] Port ${config.port} is reachable despite --wait failure`,
+          await waitForPort(
+            config.port,
+            120_000,
+            config.healthProbe ?? config.healthCheckPath,
+            repoPath,
+            analyzeLogsFn,
+            analyzeResponseFn,
           );
+          console.log(`[Startup] Port ${config.port} is reachable despite --wait failure`);
           return child;
         } catch {
           throw new Error(
@@ -3301,16 +3465,21 @@ async function startApplication(
           "docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null || true",
           { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
         ).trim();
-        const appExited = appState.split("\n").some(
-          (l) => /app.*exited/i.test(l) || /web.*exited/i.test(l),
-        );
+        const appExited = appState
+          .split("\n")
+          .some((l) => /app.*exited/i.test(l) || /web.*exited/i.test(l));
         if (appExited) {
-          console.log("[Startup] App container crashed during post-start — restarting it with migrated DB...");
-          execSync("docker compose up -d --no-deps app 2>/dev/null || docker compose up -d --no-deps web 2>/dev/null || true", {
-            cwd: repoPath,
-            stdio: "pipe",
-            timeout: 30_000,
-          });
+          console.log(
+            "[Startup] App container crashed during post-start — restarting it with migrated DB...",
+          );
+          execSync(
+            "docker compose up -d --no-deps app 2>/dev/null || docker compose up -d --no-deps web 2>/dev/null || true",
+            {
+              cwd: repoPath,
+              stdio: "pipe",
+              timeout: 30_000,
+            },
+          );
           await sleep(3_000); // Give it a moment to start
         }
       } catch {
@@ -3327,7 +3496,14 @@ async function startApplication(
     const composeCrashPromise = pollComposeContainersAlive(repoPath, maxPortWaitMs);
     try {
       await Promise.race([
-        waitForPort(config.port, 300_000, config.healthProbe ?? config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
+        waitForPort(
+          config.port,
+          300_000,
+          config.healthProbe ?? config.healthCheckPath,
+          repoPath,
+          analyzeLogsFn,
+          analyzeResponseFn,
+        ),
         composeCrashPromise,
       ]);
     } catch (err) {
@@ -3381,7 +3557,9 @@ async function startApplication(
           rl.on("line", (line) => console.log(`[Container] ${line}`));
         }
         logTailer.on("error", () => {}); // ignore
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
 
     // Give the shell a moment to print container IDs, then start tailing
@@ -3401,7 +3579,14 @@ async function startApplication(
 
     try {
       await Promise.race([
-        waitForPort(config.port, portTimeoutMs, config.healthProbe ?? config.healthCheckPath, config.docker ? repoPath : undefined, analyzeLogsFn, analyzeResponseFn),
+        waitForPort(
+          config.port,
+          portTimeoutMs,
+          config.healthProbe ?? config.healthCheckPath,
+          config.docker ? repoPath : undefined,
+          analyzeLogsFn,
+          analyzeResponseFn,
+        ),
         earlyExitPromise,
         containerCrashPromise,
       ]);
@@ -3502,14 +3687,10 @@ async function runPostStartCommands(config: StartupConfig, repoPath: string): Pr
  * Logs a progress summary every 30s so long-running commands (e.g. db:prepare)
  * aren't a black box. Throws on non-zero exit or timeout.
  */
-function runPrerequisite(
-  cmd: string,
-  cwd: string,
-  envVars: Record<string, string>,
-): Promise<void> {
+function runPrerequisite(cmd: string, cwd: string, envVars: Record<string, string>): Promise<void> {
   const BASE_TIMEOUT_MS = 600_000; // 10 min base
-  const EXTENSION_MS = 300_000;    // 5 min per extension
-  const MAX_EXTENSIONS = 5;        // up to 25 min extra → 35 min max
+  const EXTENSION_MS = 300_000; // 5 min per extension
+  const MAX_EXTENSIONS = 5; // up to 25 min extra → 35 min max
   // "Still making progress" = new output appeared in the last 180s.
   const STALL_THRESHOLD_MS = 180_000;
 
@@ -3541,7 +3722,9 @@ function runPrerequisite(
       const count = execSync(
         `ps -eo comm= 2>/dev/null | grep -cE '^(cc1|cc1plus|as|ld|make|cmake|gcc|g\\+\\+|cargo|rustc|bundle|gem|pip)$' || echo 0`,
         { timeout: 3_000 },
-      ).toString().trim();
+      )
+        .toString()
+        .trim();
       return parseInt(count, 10) > 0;
     } catch {
       return false;
@@ -3607,17 +3790,20 @@ function runPrerequisite(
         if (stillActive) {
           extensionsGranted++;
           effectiveTimeoutMs += EXTENSION_MS;
-          const totalExtra = extensionsGranted * EXTENSION_MS / 1000;
-          const reason = sinceLastOutput < STALL_THRESHOLD_MS
-            ? "output still flowing"
-            : `no output for ${Math.round(sinceLastOutput / 1000)}s but system is busy (build processes or high CPU load detected)`;
+          const totalExtra = (extensionsGranted * EXTENSION_MS) / 1000;
+          const reason =
+            sinceLastOutput < STALL_THRESHOLD_MS
+              ? "output still flowing"
+              : `no output for ${Math.round(sinceLastOutput / 1000)}s but system is busy (build processes or high CPU load detected)`;
           console.log(
-            `[Startup] Prerequisite ${reason} — extending timeout by ${EXTENSION_MS / 1000}s `
-            + `(extension ${extensionsGranted}/${MAX_EXTENSIONS}, +${totalExtra}s total)`,
+            `[Startup] Prerequisite ${reason} — extending timeout by ${EXTENSION_MS / 1000}s ` +
+              `(extension ${extensionsGranted}/${MAX_EXTENSIONS}, +${totalExtra}s total)`,
           );
         } else {
           // No output AND no system activity — genuinely stalled
-          console.log(`[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1000)}s and system is idle — will not extend`);
+          console.log(
+            `[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1000)}s and system is idle — will not extend`,
+          );
         }
       }
 
@@ -3652,11 +3838,7 @@ function runPrerequisite(
         resolve();
       } else {
         const tail = outputLines.slice(-30).join("\n");
-        reject(
-          new Error(
-            `Command failed: ${cmd}\nExit code: ${code}\n\n${tail}`,
-          ),
-        );
+        reject(new Error(`Command failed: ${cmd}\nExit code: ${code}\n\n${tail}`));
       }
     });
   });
@@ -3673,7 +3855,9 @@ function gatherContainerDiagnostics(containerId: string): string {
     try {
       const out = execSync(cmd, { encoding: "utf-8", timeout }).trim();
       if (out) sections.push(`${label}:\n${out}`);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   run(`docker port ${containerId}`, "Port mappings");
@@ -3681,11 +3865,7 @@ function gatherContainerDiagnostics(containerId: string): string {
     `docker inspect --format='{{json .NetworkSettings.Ports}}' ${containerId}`,
     "Network port config",
   );
-  run(
-    `docker exec ${containerId} ps aux 2>&1 | head -30`,
-    "Processes inside container",
-    10_000,
-  );
+  run(`docker exec ${containerId} ps aux 2>&1 | head -30`, "Processes inside container", 10_000);
   run(
     `docker logs ${containerId} 2>&1 | tail -50`,
     "Container stdout/stderr (last 50 lines)",
@@ -3702,14 +3882,11 @@ function gatherContainerDiagnostics(containerId: string): string {
 
 function logDockerFailure(repoPath: string): void {
   try {
-    const ps = execSync(
-      "docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true",
-      {
-        cwd: repoPath,
-        encoding: "utf-8",
-        timeout: 10_000,
-      },
-    ).trim();
+    const ps = execSync("docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true", {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 10_000,
+    }).trim();
     if (ps) console.log(`[Startup] Docker container status:\n${ps}`);
 
     const logs = execSync("docker compose logs --tail=40 2>/dev/null || true", {
@@ -3717,10 +3894,7 @@ function logDockerFailure(repoPath: string): void {
       encoding: "utf-8",
       timeout: 15_000,
     }).trim();
-    if (logs)
-      console.log(
-        `[Startup] Docker logs (last 40 lines):\n${logs.slice(-3000)}`,
-      );
+    if (logs) console.log(`[Startup] Docker logs (last 40 lines):\n${logs.slice(-3000)}`);
   } catch {
     /* ignore */
   }
@@ -3731,7 +3905,9 @@ function logDockerFailure(repoPath: string): void {
 const MAX_PORT_WAIT_EXTENSIONS = 5;
 const PORT_WAIT_EXTENSION_MS = 180_000; // 3 minutes per extension
 
-function normalizeHealthProbe(healthCheck: string | StartupHealthProbe | undefined): StartupHealthProbe {
+function normalizeHealthProbe(
+  healthCheck: string | StartupHealthProbe | undefined,
+): StartupHealthProbe {
   if (!healthCheck) return { path: "/" };
   if (typeof healthCheck === "string") return { path: healthCheck };
   return healthCheck;
@@ -3779,9 +3955,7 @@ async function readResponsePreview(response: Response): Promise<string> {
   try {
     const text = await response.text();
     const contentType = response.headers.get("content-type") ?? "";
-    const readable = contentType.includes("html")
-      ? stripHtmlForAnalysis(text)
-      : text;
+    const readable = contentType.includes("html") ? stripHtmlForAnalysis(text) : text;
     return readable.length > 3000 ? readable.slice(0, 3000) + "..." : readable;
   } catch {
     return "";
@@ -3794,7 +3968,10 @@ export async function waitForPort(
   healthCheck: string | StartupHealthProbe = "/",
   repoPath?: string,
   analyzeLogsFn?: LogAnalyzer,
-  analyzeResponseFn?: (status: number, body: string) => Promise<{ healthy: boolean; reason: string }>,
+  analyzeResponseFn?: (
+    status: number,
+    body: string,
+  ) => Promise<{ healthy: boolean; reason: string }>,
 ): Promise<void> {
   const start = Date.now();
   const interval = 2_000;
@@ -3802,7 +3979,9 @@ export async function waitForPort(
   let lastBody = "";
   const probe = normalizeHealthProbe(healthCheck);
   const probePath = normalizeProbePath(probe.path);
-  const probeMethod = (probe.method ?? (probe.formData || probe.body ? "POST" : "GET")).toUpperCase();
+  const probeMethod = (
+    probe.method ?? (probe.formData || probe.body ? "POST" : "GET")
+  ).toUpperCase();
   let lastLogSnapshot = "";
   let lastLogCheckTime = 0;
   const logCheckInterval = 40_000; // check container logs every 40s
@@ -3839,7 +4018,9 @@ export async function waitForPort(
         });
         if (lcResp.status < 500) {
           // Port is actually reachable — AI was wrong or stale. Clear and continue.
-          console.log(`[Startup] Last-chance probe succeeded (HTTP ${lcResp.status}) — ignoring AI fatal verdict`);
+          console.log(
+            `[Startup] Last-chance probe succeeded (HTTP ${lcResp.status}) — ignoring AI fatal verdict`,
+          );
           portHasEverResponded = true;
           consecutiveConnFailures = 0;
           fatalDiagnosis = "";
@@ -3852,7 +4033,8 @@ export async function waitForPort(
       if (fatalDiagnosis) {
         let errMsg = `Application failed on port ${port}: ${fatalDiagnosis}`;
         if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
-        if (lastBody && lastBody !== fatalDiagnosis) errMsg += `\n\nHTTP response body:\n${lastBody}`;
+        if (lastBody && lastBody !== fatalDiagnosis)
+          errMsg += `\n\nHTTP response body:\n${lastBody}`;
         if (repoPath) {
           const logs = getContainerLogTail(repoPath, 40);
           if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
@@ -3878,7 +4060,9 @@ export async function waitForPort(
       const expectedStatuses = probe.expectedStatuses;
       if (expectedStatuses?.includes(response.status)) {
         lastBody = await readResponsePreview(response);
-        console.log(`[Startup] Health probe ${describeHealthProbe(probe)} returned expected HTTP ${response.status}`);
+        console.log(
+          `[Startup] Health probe ${describeHealthProbe(probe)} returned expected HTTP ${response.status}`,
+        );
         return;
       }
       if (expectedStatuses?.length && response.status < 500) {
@@ -3902,7 +4086,9 @@ export async function waitForPort(
         let responseBody = "";
         try {
           responseBody = await response.text();
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
 
         // Ask AI if this response looks healthy (only once to avoid spamming)
         if (analyzeResponseFn && !responseAnalysisDone && responseBody.length > 0) {
@@ -3912,7 +4098,8 @@ export async function waitForPort(
           const textContent = (response.headers.get("content-type") ?? "").includes("html")
             ? stripHtmlForAnalysis(responseBody)
             : responseBody;
-          const bodyPreview = textContent.length > 3000 ? textContent.slice(0, 3000) + "..." : textContent;
+          const bodyPreview =
+            textContent.length > 3000 ? textContent.slice(0, 3000) + "..." : textContent;
           try {
             const result = await analyzeResponseFn(response.status, bodyPreview);
             if (!result.healthy) {
@@ -3940,21 +4127,25 @@ export async function waitForPort(
       try {
         const text = await response.text();
         lastBody = extractErrorFromHtml(text);
-      } catch { /* ignore body read failure */ }
+      } catch {
+        /* ignore body read failure */
+      }
 
       // Distinguish gateway errors (502/503/504) from real app errors (500).
       // Gateway errors mean the reverse proxy (nginx, caddy) is up but the
       // backend (uwsgi, gunicorn, puma) isn't ready — normal during boot.
-      const isGatewayError = response.status === 502 || response.status === 503 || response.status === 504;
+      const isGatewayError =
+        response.status === 502 || response.status === 503 || response.status === 504;
 
       if (isGatewayError) {
         consecutiveGatewayErrors++;
         consecutive500s = 0; // reset real-500 counter
         // If the AI has been reporting "still progressing", extend the
         // gateway patience dynamically — the backend is clearly booting.
-        const gatewayLimit = progressCount > 0
-          ? MAX_GATEWAY_ERRORS_BEFORE_FAIL * 2  // ~4 minutes if AI says progressing
-          : MAX_GATEWAY_ERRORS_BEFORE_FAIL;
+        const gatewayLimit =
+          progressCount > 0
+            ? MAX_GATEWAY_ERRORS_BEFORE_FAIL * 2 // ~4 minutes if AI says progressing
+            : MAX_GATEWAY_ERRORS_BEFORE_FAIL;
         if (consecutiveGatewayErrors >= gatewayLimit) {
           let errMsg = `Application returning HTTP ${response.status} (gateway error) persistently on port ${port} — backend never became ready`;
           if (lastBody) errMsg += `\n\nHTTP ${response.status} response body:\n${lastBody}`;
@@ -4000,16 +4191,19 @@ export async function waitForPort(
         localhostBindingChecked = true;
         const binding = detectLocalhostBinding(repoPath, port);
         if (binding?.boundToLocalhost) {
-          console.log(`[Startup] Detected localhost binding issue — app on port ${port} is bound to 127.0.0.1 inside container ${binding.containerId}`);
-          let errMsg = `Application is running inside the container but the server is bound to 127.0.0.1 (localhost only) on port ${port}. `
-            + `Docker port forwarding cannot reach it because traffic arrives on the container's external network interface, not loopback.\n\n`
-            + `FIX: The application must bind to 0.0.0.0 (all interfaces) instead of 127.0.0.1. `
-            + `Add the appropriate environment variable to the service in compose.yml. Common options:\n`
-            + `  - Rails/Puma: BINDING=0.0.0.0  or  add "-b 0.0.0.0" to the command\n`
-            + `  - Node.js/Express: HOST=0.0.0.0\n`
-            + `  - Django/Gunicorn: BIND=0.0.0.0:${port}\n`
-            + `  - Generic: HOST=0.0.0.0 or BIND_ADDRESS=0.0.0.0\n`
-            + `  - Or set command to include "--binding 0.0.0.0" / "--host 0.0.0.0" / "-b 0.0.0.0" as appropriate for the framework`;
+          console.log(
+            `[Startup] Detected localhost binding issue — app on port ${port} is bound to 127.0.0.1 inside container ${binding.containerId}`,
+          );
+          let errMsg =
+            `Application is running inside the container but the server is bound to 127.0.0.1 (localhost only) on port ${port}. ` +
+            `Docker port forwarding cannot reach it because traffic arrives on the container's external network interface, not loopback.\n\n` +
+            `FIX: The application must bind to 0.0.0.0 (all interfaces) instead of 127.0.0.1. ` +
+            `Add the appropriate environment variable to the service in compose.yml. Common options:\n` +
+            `  - Rails/Puma: BINDING=0.0.0.0  or  add "-b 0.0.0.0" to the command\n` +
+            `  - Node.js/Express: HOST=0.0.0.0\n` +
+            `  - Django/Gunicorn: BIND=0.0.0.0:${port}\n` +
+            `  - Generic: HOST=0.0.0.0 or BIND_ADDRESS=0.0.0.0\n` +
+            `  - Or set command to include "--binding 0.0.0.0" / "--host 0.0.0.0" / "-b 0.0.0.0" as appropriate for the framework`;
           if (repoPath) {
             const logs = getContainerLogTail(repoPath, 40);
             if (logs) errMsg += `\n\nContainer logs:\n${logs}`;
@@ -4028,10 +4222,10 @@ export async function waitForPort(
           lastRestartCount = crash.restartCount;
           if (crash.crashing) {
             let errMsg =
-              `Application is crash-looping on startup (container restarted ${crash.restartCount} time(s), state: ${crash.state}). `
-              + `This is an APPLICATION CODE/RUNTIME crash, not an infrastructure problem — the process exits during boot and Docker keeps restarting it, so port ${port} is never reachable.\n\n`
-              + `Do NOT change the healthcheck, port mapping, or compose wait conditions — those will not fix a process that exits on boot. `
-              + `Read the crash error below and fix the root cause (often in the application's entrypoint/bootstrap code or a dependency version mismatch).`;
+              `Application is crash-looping on startup (container restarted ${crash.restartCount} time(s), state: ${crash.state}). ` +
+              `This is an APPLICATION CODE/RUNTIME crash, not an infrastructure problem — the process exits during boot and Docker keeps restarting it, so port ${port} is never reachable.\n\n` +
+              `Do NOT change the healthcheck, port mapping, or compose wait conditions — those will not fix a process that exits on boot. ` +
+              `Read the crash error below and fix the root cause (often in the application's entrypoint/bootstrap code or a dependency version mismatch).`;
             if (crash.error) {
               errMsg += `\n\nCrash error:\n${crash.error}`;
             } else {
@@ -4075,7 +4269,9 @@ export async function waitForPort(
                 console.log(`[Startup] AI log analysis: ${result.summary}`);
               }
             })
-            .catch(() => { analysisInFlight = false; });
+            .catch(() => {
+              analysisInFlight = false;
+            });
         } else {
           // No LLM available — just note that logs are changing
           lastLogCheckTime = Date.now();
@@ -4095,7 +4291,13 @@ export async function waitForPort(
     // don't loop indefinitely on a misconfigured app.
     const remaining = effectiveTimeoutMs - (Date.now() - start);
     const extensionCap = portHasEverResponded ? MAX_PORT_WAIT_EXTENSIONS : 1;
-    if (remaining < 30_000 && progressCount > 0 && extensionsGranted < extensionCap && analyzeLogsFn && repoPath) {
+    if (
+      remaining < 30_000 &&
+      progressCount > 0 &&
+      extensionsGranted < extensionCap &&
+      analyzeLogsFn &&
+      repoPath
+    ) {
       const snapshot = getContainerLogTail(repoPath, 40);
       if (snapshot) {
         try {
@@ -4112,13 +4314,17 @@ export async function waitForPort(
           } else if (result.status === "progress") {
             extensionsGranted++;
             effectiveTimeoutMs += PORT_WAIT_EXTENSION_MS;
-            const totalExtra = extensionsGranted * PORT_WAIT_EXTENSION_MS / 1000;
+            const totalExtra = (extensionsGranted * PORT_WAIT_EXTENSION_MS) / 1000;
             const reachNote = portHasEverResponded
               ? ""
               : " (port has never responded — capped at 1 grace extension)";
-            console.log(`[Startup] AI confirms app is still progressing — extending timeout by ${PORT_WAIT_EXTENSION_MS / 1000}s (extension ${extensionsGranted}/${extensionCap}, +${totalExtra}s total)${reachNote}`);
+            console.log(
+              `[Startup] AI confirms app is still progressing — extending timeout by ${PORT_WAIT_EXTENSION_MS / 1000}s (extension ${extensionsGranted}/${extensionCap}, +${totalExtra}s total)${reachNote}`,
+            );
           }
-        } catch { /* ignore analysis failure */ }
+        } catch {
+          /* ignore analysis failure */
+        }
       }
     }
 
@@ -4126,7 +4332,8 @@ export async function waitForPort(
   }
 
   let errMsg = `Application did not start on port ${port} within ${effectiveTimeoutMs / 1000}s`;
-  if (extensionsGranted > 0) errMsg += ` (extended ${extensionsGranted}x from ${timeoutMs / 1000}s because app was progressing)`;
+  if (extensionsGranted > 0)
+    errMsg += ` (extended ${extensionsGranted}x from ${timeoutMs / 1000}s because app was progressing)`;
   if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
   if (lastBody) errMsg += `\n\nHTTP 500 response body:\n${lastBody}`;
   // Attach final container logs so the repair LLM has full context
@@ -4149,25 +4356,31 @@ function getContainerLogTail(repoPath: string, lines = 30): string {
     // Fall back to all logs if service detection fails.
     let serviceName = "";
     try {
-      const config = execSync(
-        `docker compose config --services 2>/dev/null`,
-        { cwd: repoPath, encoding: "utf-8", timeout: 5_000 },
-      ).trim();
+      const config = execSync(`docker compose config --services 2>/dev/null`, {
+        cwd: repoPath,
+        encoding: "utf-8",
+        timeout: 5_000,
+      }).trim();
       const services = config.split("\n").filter(Boolean);
       // Prefer a service named "app" or containing "app", otherwise take the first non-db/redis/cache service
-      const infraPatterns = /^(db|mysql|postgres|redis|memcached|mongo|minio|mailpit|elasticsearch|kafka|rabbitmq|zookeeper|tinybird|analytics)/i;
+      const infraPatterns =
+        /^(db|mysql|postgres|redis|memcached|mongo|minio|mailpit|elasticsearch|kafka|rabbitmq|zookeeper|tinybird|analytics)/i;
       serviceName =
-        services.find(s => s === "app") ??
-        services.find(s => s.includes("app")) ??
-        services.find(s => !infraPatterns.test(s)) ??
+        services.find((s) => s === "app") ??
+        services.find((s) => s.includes("app")) ??
+        services.find((s) => !infraPatterns.test(s)) ??
         "";
-    } catch { /* fall through to all logs */ }
+    } catch {
+      /* fall through to all logs */
+    }
 
     const serviceArg = serviceName ? ` ${serviceName}` : "";
-    const full = execSync(
-      `docker compose logs${serviceArg} 2>/dev/null || true`,
-      { cwd: repoPath, encoding: "utf-8", timeout: 10_000, maxBuffer: 5 * 1024 * 1024 },
-    ).trim();
+    const full = execSync(`docker compose logs${serviceArg} 2>/dev/null || true`, {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 10_000,
+      maxBuffer: 5 * 1024 * 1024,
+    }).trim();
     if (!full) return "";
     const allLines = full.split("\n");
     if (allLines.length <= lines * 2) return full;
@@ -4217,10 +4430,7 @@ function extractErrorFromHtml(html: string): string {
  * (the one most likely to serve HTTP) exits.  This prevents waiting the full
  * port-check timeout when a container crashes immediately on startup.
  */
-async function pollComposeContainersAlive(
-  repoPath: string,
-  timeoutMs: number,
-): Promise<never> {
+async function pollComposeContainersAlive(repoPath: string, timeoutMs: number): Promise<never> {
   const start = Date.now();
   await sleep(3_000); // give containers a moment to start
 
@@ -4235,7 +4445,12 @@ async function pollComposeContainersAlive(
           const [name, state] = line.trim().split(/\s+/);
           if (!name || !state) continue;
           // Skip infrastructure services — we only care about the app container
-          if (/^(postgres|redis|valkey|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|opensearch|kafka|zookeeper|minio|mailhog|mailpit)/i.test(name)) continue;
+          if (
+            /^(postgres|redis|valkey|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|opensearch|kafka|zookeeper|minio|mailhog|mailpit)/i.test(
+              name,
+            )
+          )
+            continue;
           // Skip background worker containers — they don't serve HTTP
           if (/celery|sidekiq|resque|worker|cron|scheduler|beat/i.test(name)) continue;
           if (state === "exited" || state === "dead") {
@@ -4246,18 +4461,25 @@ async function pollComposeContainersAlive(
                 `docker inspect --format='{{.State.ExitCode}}' ${name} 2>/dev/null`,
                 { encoding: "utf-8", timeout: 5_000 },
               ).trim();
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
 
             // One-shot init/migration containers that exit with code 0 are
             // normal — DefectDojo initializer, Rails db:migrate, Django
             // collectstatic, etc. Don't treat them as crashes.
             if (exitInfo === "0") {
-              const isInitContainer = /init|migrat|setup|seed|bootstrap|collect|fixture/i.test(name);
+              const isInitContainer = /init|migrat|setup|seed|bootstrap|collect|fixture/i.test(
+                name,
+              );
               if (isInitContainer) continue; // expected one-shot exit
               // Even non-init containers exiting with code 0 might be fine
               // (e.g. a health-check sidecar). Only flag as crash if the name
               // looks like it should serve HTTP.
-              const looksLikeAppServer = /web|app|api|server|uwsgi|gunicorn|puma|nginx|caddy|rails|django|node|flask/i.test(name);
+              const looksLikeAppServer =
+                /web|app|api|server|uwsgi|gunicorn|puma|nginx|caddy|rails|django|node|flask/i.test(
+                  name,
+                );
               if (!looksLikeAppServer) continue;
             }
 
@@ -4325,8 +4547,12 @@ function detectLocalhostBinding(
       if (cols.length < 4 || cols[3] !== "0A") continue;
       hasListener = true;
       const localAddr = cols[1]?.split(":")[0] ?? "";
-      if (localAddr !== loopbackIPv4 && localAddr !== loopbackIPv6
-          && localAddr !== allIPv4 && localAddr !== allIPv6) {
+      if (
+        localAddr !== loopbackIPv4 &&
+        localAddr !== loopbackIPv6 &&
+        localAddr !== allIPv4 &&
+        localAddr !== allIPv6
+      ) {
         // Some other specific address — treat as non-loopback
         allOnLoopback = false;
       } else if (localAddr === allIPv4 || localAddr === allIPv6) {
@@ -4396,7 +4622,8 @@ function detectCrashLoop(
 export function extractCrashError(logs: string): string {
   if (!logs) return "";
   const lines = logs.split("\n");
-  const errorRe = /(Error:|Exception|UnhandledPromiseRejection|FATAL|panic:|Traceback|\b[A-Z][A-Za-z]*Error\b|code:\s*['"]?[A-Z_]+|errno|ECONNREFUSED|ENOENT|MODULE_NOT_FOUND)/;
+  const errorRe =
+    /(Error:|Exception|UnhandledPromiseRejection|FATAL|panic:|Traceback|\b[A-Z][A-Za-z]*Error\b|code:\s*['"]?[A-Z_]+|errno|ECONNREFUSED|ENOENT|MODULE_NOT_FOUND)/;
   // Find the LAST error block (most recent crash).
   let startIdx = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -4414,10 +4641,11 @@ export function extractCrashError(logs: string): string {
 
 function findComposeAppContainer(repoPath: string): string | undefined {
   try {
-    const ps = execSync(
-      "docker compose ps -a --format '{{.Name}}' 2>/dev/null || true",
-      { cwd: repoPath, encoding: "utf-8", timeout: 5_000 },
-    ).trim();
+    const ps = execSync("docker compose ps -a --format '{{.Name}}' 2>/dev/null || true", {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 5_000,
+    }).trim();
     if (!ps) return undefined;
     const infra = /^(postgres|redis|mysql|mongo|memcached|rabbitmq|elasticsearch|kafka|zookeeper)/i;
     for (const name of ps.split("\n")) {
@@ -4434,10 +4662,7 @@ function findComposeAppContainer(repoPath: string): string | undefined {
  * Poll a detached Docker container and reject if it stops running.
  * This catches containers that crash immediately after `docker run -d`.
  */
-async function pollContainerAlive(
-  containerName: string,
-  timeoutMs: number,
-): Promise<never> {
+async function pollContainerAlive(containerName: string, timeoutMs: number): Promise<never> {
   const start = Date.now();
   // Give the container a few seconds to start before checking
   await sleep(3_000);
@@ -4449,9 +4674,7 @@ async function pollContainerAlive(
         { encoding: "utf-8", timeout: 5_000 },
       ).trim();
       if (status === "exited" || status === "dead" || status === "removing") {
-        throw new Error(
-          `Container "${containerName}" exited unexpectedly (status: ${status})`,
-        );
+        throw new Error(`Container "${containerName}" exited unexpectedly (status: ${status})`);
       }
     } catch (err) {
       if (err instanceof Error && err.message.includes("exited unexpectedly")) {
@@ -4739,7 +4962,9 @@ HEALTHY indicators: login forms, dashboards, API data, SPA shells with JS bundle
         if (unhealthyRaw) {
           try {
             unhealthyPattern = new RegExp(unhealthyRaw, "i");
-          } catch { /* ignore bad regex */ }
+          } catch {
+            /* ignore bad regex */
+          }
         }
         fingerprint = { healthyPattern, unhealthyPattern, expectedStatus: status };
         // Include API probe path from LLM if provided
@@ -4922,7 +5147,10 @@ function applyFingerprint(
 ): ResponseHealthResult {
   // Status code regression (was 200, now 500+)
   if (status >= 500) {
-    return { healthy: false, reason: `HTTP ${status} server error on ${path} (was ${fp.expectedStatus})` };
+    return {
+      healthy: false,
+      reason: `HTTP ${status} server error on ${path} (was ${fp.expectedStatus})`,
+    };
   }
 
   // Check for unhealthy signals first — but skip if the healthy pattern
@@ -4977,10 +5205,11 @@ function captureExitedContainers(
   composeFile: string,
 ): Array<{ service: string; status: string; logs: string }> {
   try {
-    const psOut = execSync(
-      `docker compose -f ${composeFile} ps -a --format json`,
-      { cwd: repoPath, encoding: "utf-8", timeout: 15_000 },
-    ).trim();
+    const psOut = execSync(`docker compose -f ${composeFile} ps -a --format json`, {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 15_000,
+    }).trim();
     if (!psOut) return [];
 
     // `docker compose ps --format json` emits one JSON object per line
@@ -5065,16 +5294,21 @@ export async function quickRestartCompose(
     composeFile = findComposeFile(cwd) ?? findComposeFile(repoPath) ?? "docker-compose.yml";
   }
   const healthCheck = config.healthProbe ?? config.healthCheckPath ?? "/";
-  const probeDescription = typeof healthCheck === "string"
-    ? `GET http://localhost:${config.port}${healthCheck.startsWith("/") ? healthCheck : `/${healthCheck}`}`
-    : `${describeHealthProbe(healthCheck).replace(" ", ` http://localhost:${config.port}`)}`;
+  const probeDescription =
+    typeof healthCheck === "string"
+      ? `GET http://localhost:${config.port}${healthCheck.startsWith("/") ? healthCheck : `/${healthCheck}`}`
+      : `${describeHealthProbe(healthCheck).replace(" ", ` http://localhost:${config.port}`)}`;
 
   // Strategy 1: plain restart
-  console.log(`[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${cwd})`);
+  console.log(
+    `[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${cwd})`,
+  );
   const triedStrategies: string[] = [];
   try {
     execSync(`docker compose -f ${composeFile} restart`, {
-      cwd, stdio: "pipe", timeout: 60_000,
+      cwd,
+      stdio: "pipe",
+      timeout: 60_000,
     });
     triedStrategies.push("docker compose restart");
     if (await waitForAppHealthy(config.port, healthCheck, waitMs)) {
@@ -5082,17 +5316,23 @@ export async function quickRestartCompose(
       return { ok: true };
     }
   } catch (err) {
-    triedStrategies.push(`docker compose restart (failed: ${err instanceof Error ? err.message : String(err)})`);
+    triedStrategies.push(
+      `docker compose restart (failed: ${err instanceof Error ? err.message : String(err)})`,
+    );
   }
 
   // Strategy 2: force-recreate only the APP service (preserve DB/Redis volumes)
   // Detect app service name from the startup command or compose config
   const appService = detectAppService(cwd, composeFile, config.command);
   const recreateTarget = appService ? `--force-recreate ${appService}` : "--force-recreate";
-  console.log(`[AppHealth] Restart insufficient; trying force-recreate${appService ? ` (service: ${appService})` : " (all services)"}`);
+  console.log(
+    `[AppHealth] Restart insufficient; trying force-recreate${appService ? ` (service: ${appService})` : " (all services)"}`,
+  );
   try {
     execSync(`docker compose -f ${composeFile} up -d ${recreateTarget}`, {
-      cwd, stdio: "pipe", timeout: 120_000,
+      cwd,
+      stdio: "pipe",
+      timeout: 120_000,
     });
     triedStrategies.push(`docker compose up -d ${recreateTarget}`);
     if (await waitForAppHealthy(config.port, healthCheck, waitMs)) {
@@ -5100,7 +5340,9 @@ export async function quickRestartCompose(
       return { ok: true };
     }
   } catch (err) {
-    triedStrategies.push(`docker compose up -d ${recreateTarget} (failed: ${err instanceof Error ? err.message : String(err)})`);
+    triedStrategies.push(
+      `docker compose up -d ${recreateTarget} (failed: ${err instanceof Error ? err.message : String(err)})`,
+    );
   }
 
   // Both strategies exhausted — gather diagnostics for the LLM stage
@@ -5113,7 +5355,13 @@ export async function quickRestartCompose(
     };
   }
   const exitedSummary = exited
-    .map((c) => `- service "${c.service}" (${c.status})\n  logs (tail):\n${c.logs.split("\n").map((l) => `    ${l}`).join("\n")}`)
+    .map(
+      (c) =>
+        `- service "${c.service}" (${c.status})\n  logs (tail):\n${c.logs
+          .split("\n")
+          .map((l) => `    ${l}`)
+          .join("\n")}`,
+    )
     .join("\n");
   return {
     ok: false,
@@ -5161,20 +5409,22 @@ export function cleanupDocker(repoPath: string): void {
 function pruneBuildArtifacts(): void {
   try {
     // Remove dangling images (unnamed layers from failed builds)
-    const imgOut = execSync(
-      "docker image prune -f 2>/dev/null || true",
-      { encoding: "utf-8", stdio: "pipe", timeout: 30_000 },
-    ).trim();
+    const imgOut = execSync("docker image prune -f 2>/dev/null || true", {
+      encoding: "utf-8",
+      stdio: "pipe",
+      timeout: 30_000,
+    }).trim();
     if (imgOut && !imgOut.includes("0B")) {
       console.log(`[Startup] Pruned dangling images: ${imgOut.split("\n").pop()}`);
     }
 
     // Remove ALL build cache including mount-type cache layers (pnpm stores, etc.)
     // No time filter — failed builds from the current run are the main disk hog.
-    const cacheOut = execSync(
-      "docker builder prune -f --all 2>/dev/null || true",
-      { encoding: "utf-8", stdio: "pipe", timeout: 60_000 },
-    ).trim();
+    const cacheOut = execSync("docker builder prune -f --all 2>/dev/null || true", {
+      encoding: "utf-8",
+      stdio: "pipe",
+      timeout: 60_000,
+    }).trim();
     if (cacheOut && !cacheOut.includes("0B")) {
       console.log(`[Startup] Pruned build cache: ${cacheOut.split("\n").pop()}`);
     }
@@ -5193,11 +5443,11 @@ export function captureDockerLogs(repoPath: string, tailLines = 80): string {
   const containerNames: string[] = [];
   try {
     // Get running and exited containers from compose
-    const containers = execFileSync(
-      "docker",
-      ["compose", "ps", "-a", "--format", "{{.Name}}"],
-      { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
-    )
+    const containers = execFileSync("docker", ["compose", "ps", "-a", "--format", "{{.Name}}"], {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 10_000,
+    })
       .trim()
       .split("\n")
       .filter(Boolean);
@@ -5222,11 +5472,11 @@ export function captureDockerLogs(repoPath: string, tailLines = 80): string {
   for (const name of containerNames) {
     try {
       // Capture FULL logs (no --tail) for the file dump
-      const containerLog = execFileSync(
-        "docker",
-        ["logs", name],
-        { encoding: "utf-8", timeout: 15_000, maxBuffer: 10 * 1024 * 1024 },
-      );
+      const containerLog = execFileSync("docker", ["logs", name], {
+        encoding: "utf-8",
+        timeout: 15_000,
+        maxBuffer: 10 * 1024 * 1024,
+      });
       if (containerLog.trim()) {
         logs.push(`=== ${name} ===\n${containerLog.trim()}`);
       }
@@ -5242,7 +5492,9 @@ export function captureDockerLogs(repoPath: string, tailLines = 80): string {
   // Write full logs to a file the repair LLM can read
   try {
     writeFileSync(`${repoPath}/.bright-container-logs.txt`, fullLogs, "utf-8");
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 
   // Return head+tail excerpt for inline error context
   const lines = fullLogs.split("\n");
@@ -5272,7 +5524,9 @@ function gatherDiagnosticSnapshot(repoPath: string): string {
       { encoding: "utf-8", timeout: 10_000 },
     ).trim();
     sections.push(`## Container Status\n\`\`\`\n${ps}\n\`\`\``);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // 2. Docker volumes (stale volumes are a common cause of password/state issues)
   try {
@@ -5282,15 +5536,29 @@ function gatherDiagnosticSnapshot(repoPath: string): string {
       { encoding: "utf-8", timeout: 10_000 },
     ).trim();
     sections.push(`## Docker Volumes\n\`\`\`\n${volumes}\n\`\`\``);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // 3. Health check details for unhealthy containers
   try {
     const containers = execFileSync(
       "docker",
-      ["ps", "-a", "--filter", "health=unhealthy", "--filter", "health=starting", "--format", "{{.Names}}"],
+      [
+        "ps",
+        "-a",
+        "--filter",
+        "health=unhealthy",
+        "--filter",
+        "health=starting",
+        "--format",
+        "{{.Names}}",
+      ],
       { encoding: "utf-8", timeout: 10_000 },
-    ).trim().split("\n").filter(Boolean);
+    )
+      .trim()
+      .split("\n")
+      .filter(Boolean);
     for (const name of containers.slice(0, 3)) {
       try {
         const health = execFileSync(
@@ -5300,85 +5568,123 @@ function gatherDiagnosticSnapshot(repoPath: string): string {
         ).trim();
         try {
           const parsed = JSON.parse(health);
-          const lastLogs = (parsed.Log || []).slice(-3).map((l: { ExitCode: number; Output: string }) =>
-            `  exit=${l.ExitCode}: ${(l.Output || "").trim().slice(0, 200)}`
-          ).join("\n");
+          const lastLogs = (parsed.Log || [])
+            .slice(-3)
+            .map(
+              (l: { ExitCode: number; Output: string }) =>
+                `  exit=${l.ExitCode}: ${(l.Output || "").trim().slice(0, 200)}`,
+            )
+            .join("\n");
           sections.push(`## Health Check: ${name} (${parsed.Status})\nLast checks:\n${lastLogs}`);
         } catch {
           sections.push(`## Health Check: ${name}\n${health.slice(0, 500)}`);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // 4. Full recent logs from unhealthy/restarting app containers
   // This is the #1 thing the repair LLM needs — without it, it wastes turns running docker logs
   try {
     const unhealthyContainers = execFileSync(
       "docker",
-      ["ps", "-a", "--filter", "health=unhealthy", "--filter", "health=starting", "--format", "{{.Names}}"],
+      [
+        "ps",
+        "-a",
+        "--filter",
+        "health=unhealthy",
+        "--filter",
+        "health=starting",
+        "--format",
+        "{{.Names}}",
+      ],
       { encoding: "utf-8", timeout: 10_000 },
-    ).trim().split("\n").filter(Boolean);
+    )
+      .trim()
+      .split("\n")
+      .filter(Boolean);
     // Also get containers that exited (crashed)
     const exitedContainers = execFileSync(
       "docker",
       ["ps", "-a", "--filter", "status=exited", "--format", "{{.Names}}"],
       { encoding: "utf-8", timeout: 10_000 },
-    ).trim().split("\n").filter(Boolean);
+    )
+      .trim()
+      .split("\n")
+      .filter(Boolean);
     const allFailing = [...new Set([...unhealthyContainers, ...exitedContainers])].slice(0, 3);
     for (const name of allFailing) {
       try {
-        const logs = execFileSync(
-          "docker",
-          ["logs", "--tail", "80", name],
-          { encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"] },
-        );
+        const logs = execFileSync("docker", ["logs", "--tail", "80", name], {
+          encoding: "utf-8",
+          timeout: 10_000,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
         // Also capture stderr
         let stderrLogs = "";
         try {
-          stderrLogs = execFileSync(
-            "docker",
-            ["logs", "--tail", "80", name],
-            { encoding: "utf-8", timeout: 10_000 },
-          );
-        } catch { /* ignore */ }
+          stderrLogs = execFileSync("docker", ["logs", "--tail", "80", name], {
+            encoding: "utf-8",
+            timeout: 10_000,
+          });
+        } catch {
+          /* ignore */
+        }
         const combined = (logs + "\n" + stderrLogs).trim().slice(-4000);
         if (combined.length > 10) {
           sections.push(`## Container Logs: ${name} (last 80 lines)\n\`\`\`\n${combined}\n\`\`\``);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // 5. Key error lines from container logs file (supplementary)
   try {
     const logFile = `${repoPath}/.bright-container-logs.txt`;
     if (existsSync(logFile)) {
       const logContent = readFileSync(logFile, "utf-8");
-      const errorPatterns = /error|failed|fatal|panic|exception|denied|refused|password.*match|login failed|permission|timeout|not found|cannot connect/i;
-      const errorLines = logContent.split("\n")
-        .filter(line => errorPatterns.test(line))
+      const errorPatterns =
+        /error|failed|fatal|panic|exception|denied|refused|password.*match|login failed|permission|timeout|not found|cannot connect/i;
+      const errorLines = logContent
+        .split("\n")
+        .filter((line) => errorPatterns.test(line))
         .slice(0, 20)
-        .map(line => line.trim().slice(0, 300));
+        .map((line) => line.trim().slice(0, 300));
       if (errorLines.length > 0) {
-        sections.push(`## Key Error Lines from Container Logs\n\`\`\`\n${errorLines.join("\n")}\n\`\`\``);
+        sections.push(
+          `## Key Error Lines from Container Logs\n\`\`\`\n${errorLines.join("\n")}\n\`\`\``,
+        );
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // 5. Resolved compose config (shows actual interpolated values)
   try {
-    const composeConfig = execFileSync(
-      "docker",
-      ["compose", "config"],
-      { cwd: repoPath, encoding: "utf-8", timeout: 10_000 },
-    ).trim();
+    const composeConfig = execFileSync("docker", ["compose", "config"], {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 10_000,
+    }).trim();
     if (composeConfig.length < 3000) {
       sections.push(`## Resolved Compose Config\n\`\`\`yaml\n${composeConfig}\n\`\`\``);
     } else {
-      sections.push(`## Resolved Compose Config (truncated)\n\`\`\`yaml\n${composeConfig.slice(0, 3000)}\n...(truncated)\n\`\`\``);
+      sections.push(
+        `## Resolved Compose Config (truncated)\n\`\`\`yaml\n${composeConfig.slice(0, 3000)}\n...(truncated)\n\`\`\``,
+      );
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   if (sections.length === 0) return "";
   return `\n\n# DIAGNOSTIC SNAPSHOT (current Docker state)\n${sections.join("\n\n")}`;

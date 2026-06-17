@@ -162,7 +162,8 @@ If you tried but failed:
     },
     {
       role: "user",
-      content: "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how the public OSS app/framework handles rate limiting, but never search local repo paths or internal service names. Return the JSON result when done.",
+      content:
+        "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how the public OSS app/framework handles rate limiting, but never search local repo paths or internal service names. Return the JSON result when done.",
     },
   ];
 }
@@ -239,7 +240,8 @@ If you tried but failed:
     },
     {
       role: "user",
-      content: "Check if this application enforces 2FA/MFA on the test user. If it does, disable it and ensure the user is fully active. Return the JSON result when done.",
+      content:
+        "Check if this application enforces 2FA/MFA on the test user. If it does, disable it and ensure the user is fully active. Return the JSON result when done.",
     },
   ];
 }

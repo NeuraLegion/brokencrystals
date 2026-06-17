@@ -1,15 +1,15 @@
 import { readFileSync } from "fs";
-import { basename } from "path";
 import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
-import type { Finding, BrightApiContext } from "../types.js";
-import type { RegisteredEntrypoint } from "./entrypoints.js";
+import { basename } from "path";
+import type { BrightTest } from "../bright-api.js";
 import { chatWithTools, type ToolHandler } from "../inference.js";
 import { codebaseTools, createToolHandler } from "../tools.js";
-import { runSecurityScan, waitForScanCompletion, isFailureStatus } from "./scan.js";
-import { fetchFindings } from "./findings.js";
-import type { BrightTest } from "../bright-api.js";
+import type { BrightApiContext, Finding } from "../types.js";
 import { extractJson, parseJsonLenient } from "../utils.js";
+import type { RegisteredEntrypoint } from "./entrypoints.js";
+import { fetchFindings } from "./findings.js";
+import { isFailureStatus, runSecurityScan, waitForScanCompletion } from "./scan.js";
 
 // ---------------------------------------------------------------------------
 // SARIF parsing + CodeQL rule → Bright test mapping
@@ -163,9 +163,7 @@ export function parseSarif(sarifPath: string): SarifFinding[] {
       const ruleMeta = ruleIndex.get(ruleId);
       const resultCvss = result.properties?.["security-severity"];
       const severity =
-        normalizeSarifSeverity(resultCvss, result.level) ??
-        ruleMeta?.severity ??
-        "Medium";
+        normalizeSarifSeverity(resultCvss, result.level) ?? ruleMeta?.severity ?? "Medium";
 
       // Name: rule metadata name, else a humanized rule id.
       const name = ruleMeta?.name ?? humanizeRuleId(ruleId);
@@ -182,10 +180,7 @@ export function parseSarif(sarifPath: string): SarifFinding[] {
  * Prefers a numeric CVSS "security-severity" score, falling back to the SARIF
  * level (error/warning/note). Returns undefined if neither is present.
  */
-function normalizeSarifSeverity(
-  cvss: unknown,
-  level: unknown,
-): string | undefined {
+function normalizeSarifSeverity(cvss: unknown, level: unknown): string | undefined {
   const score = typeof cvss === "string" ? parseFloat(cvss) : typeof cvss === "number" ? cvss : NaN;
   if (!Number.isNaN(score)) {
     if (score >= 9.0) return "Critical";
@@ -275,7 +270,7 @@ Return ONLY a JSON object mapping each rule id to a catalog tag or null, e.g.:
   if (!map || typeof map !== "object") return;
 
   for (const f of findings) {
-    if (Object.prototype.hasOwnProperty.call(map, f.ruleId)) {
+    if (Object.hasOwn(map, f.ruleId)) {
       const tag = map[f.ruleId];
       f.brightTest = tag && validTags.has(tag) ? tag : null;
     }
@@ -346,9 +341,7 @@ export async function mapFindingsToEndpoints(
   const needsTrace: SarifFinding[] = [];
 
   for (const finding of mappable) {
-    const direct = registered.filter((r) =>
-      filesMatch(finding.file, r.endpoint.filePath),
-    );
+    const direct = registered.filter((r) => filesMatch(finding.file, r.endpoint.filePath));
     if (direct.length > 0) {
       mapped.push({ finding, entrypointIds: direct.map((r) => r.entrypointId) });
     } else {
@@ -429,7 +422,11 @@ or, if it is genuinely dead/unreachable code:
 { "endpointIndices": [], "reachable": false }`;
 
   const messages: ChatCompletionMessageParam[] = [
-    { role: "system", content: "You are a precise security data-flow analyst. Trace call graphs using the tools, then respond with JSON only." },
+    {
+      role: "system",
+      content:
+        "You are a precise security data-flow analyst. Trace call graphs using the tools, then respond with JSON only.",
+    },
     { role: "user", content: prompt },
   ];
 
@@ -443,7 +440,10 @@ or, if it is genuinely dead/unreachable code:
 
   let parsed: { endpointIndices?: number[]; reachable?: boolean } = {};
   try {
-    parsed = parseJsonLenient(extractJson(raw)) as { endpointIndices?: number[]; reachable?: boolean };
+    parsed = parseJsonLenient(extractJson(raw)) as {
+      endpointIndices?: number[];
+      reachable?: boolean;
+    };
   } catch {
     return fileFindings.map((finding) => ({ finding, entrypointIds: [], unreachable: false }));
   }
@@ -512,7 +512,9 @@ export async function runValidationScans(
         true, // smart scan — the zero-findings issue was param extraction, not smart
       );
       scanIds.push(scanId);
-      console.log(`[Validation] Launched scan for test "${test}" over ${ids.length} endpoint(s): ${scanId}`);
+      console.log(
+        `[Validation] Launched scan for test "${test}" over ${ids.length} endpoint(s): ${scanId}`,
+      );
     } catch (err) {
       console.error(`[Validation] Failed to launch scan for test "${test}": ${err}`);
     }
@@ -574,7 +576,10 @@ Each SARIF finding below was scanned by a DAST tool. Decide which DAST finding (
 
 SARIF FINDINGS (scanned):
 ${scanned
-  .map((f, i) => `[${i}] rule=${f.ruleId} class=${f.brightTest} name="${f.name}" at ${f.file}:${f.startLine}`)
+  .map(
+    (f, i) =>
+      `[${i}] rule=${f.ruleId} class=${f.brightTest} name="${f.name}" at ${f.file}:${f.startLine}`,
+  )
   .join("\n")}
 
 DAST FINDINGS produced by the scanner:
@@ -696,7 +701,9 @@ export function formatValidationReport(results: ValidationResult[]): string {
   lines.push("───────────────────────────────────────────────────");
   for (const r of results) {
     const mark = r.verdict === "validated" ? "✓" : r.verdict === "not-validated" ? "✗" : "–";
-    lines.push(`[Validation] ${mark} [${r.verdict}] ${r.finding.ruleId} @ ${r.finding.file}:${r.finding.startLine}`);
+    lines.push(
+      `[Validation] ${mark} [${r.verdict}] ${r.finding.ruleId} @ ${r.finding.file}:${r.finding.startLine}`,
+    );
     lines.push(`[Validation]     ${r.detail}`);
   }
   lines.push("═══════════════════════════════════════════════════");
@@ -704,9 +711,7 @@ export function formatValidationReport(results: ValidationResult[]): string {
 }
 
 /** Convert validation results into PR-table rows for ProgressReporter. */
-export function toValidationSummaryRows(
-  results: ValidationResult[],
-): Array<{
+export function toValidationSummaryRows(results: ValidationResult[]): Array<{
   severity: string;
   name: string;
   rule: string;

@@ -1,13 +1,20 @@
 import type OpenAI from "openai";
-import type { ChatCompletionTool, ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions.mjs";
 import { chatWithTools, type ToolHandler } from "../inference.js";
-import {
-  createUnifiedToolHandler,
-  buildToolDefs,
-} from "../tools.js";
-import { extractJson, formatTechStack, extractSetCookies, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_DEFAULT, FETCH_TIMEOUT_LONG } from "../utils.js";
 import { firstRunSetupPrompt } from "../prompts/setup.js";
-import type { TechStack, StartupConfig } from "../types.js";
+import { buildToolDefs, createUnifiedToolHandler } from "../tools.js";
+import type { StartupConfig, TechStack } from "../types.js";
+import {
+  extractJson,
+  extractSetCookies,
+  FETCH_TIMEOUT_DEFAULT,
+  FETCH_TIMEOUT_LONG,
+  FETCH_TIMEOUT_SHORT,
+  formatTechStack,
+} from "../utils.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -172,10 +179,7 @@ function publicSetupSearchSubject(techStack: string): string {
   return sanitized || "web application";
 }
 
-async function gatherSetupContext(
-  baseUrl: string,
-  techStack: string,
-): Promise<string> {
+async function gatherSetupContext(baseUrl: string, techStack: string): Promise<string> {
   const sections: string[] = [];
 
   // --- 1. Web search for installation docs ---
@@ -187,16 +191,13 @@ async function gatherSetupContext(
   for (const query of searchQueries) {
     try {
       console.log(`[Setup] Pre-searching: ${query}`);
-      const res = await fetch(
-        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-        {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
-            Accept: "text/html",
-          },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
+      const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+          Accept: "text/html",
         },
-      );
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
+      });
       if (res.ok) {
         const html = await res.text();
         const blocks = html.split(/class="result\s/);
@@ -239,16 +240,19 @@ async function gatherSetupContext(
       // Extract API routes from import maps, script references, form actions
       const apiRoutes = extractApiRoutes(bodyPreview);
       const forms = extractForms(bodyPreview);
-      const redirect = resp.status >= 300 && resp.status < 400
-        ? ` → ${resp.headers.get("location") ?? ""}`
-        : "";
+      const redirect =
+        resp.status >= 300 && resp.status < 400 ? ` → ${resp.headers.get("location") ?? ""}` : "";
 
       let entry = `**${path}** → HTTP ${status}${redirect}`;
-      if (apiRoutes.length > 0) entry += `\n  API routes found: ${apiRoutes.slice(0, 15).join(", ")}`;
+      if (apiRoutes.length > 0)
+        entry += `\n  API routes found: ${apiRoutes.slice(0, 15).join(", ")}`;
       if (forms.length > 0) entry += `\n  Forms: ${forms.join("; ")}`;
       if (body.length < 500) {
         // Small response — include full text
-        const text = body.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        const text = body
+          .replace(/<[^>]*>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
         if (text.length > 0 && text.length < 300) entry += `\n  Content: ${text}`;
       }
       probeResults.push(entry);
@@ -279,7 +283,10 @@ function extractApiRoutes(html: string): string[] {
   }
 
   // Any URL-like patterns that look like API endpoints
-  const apiPatterns = html.match(/["'](\/[a-z0-9/_.-]*(?:api|management|admin|auth|security|login|install|setup)[a-z0-9/_.-]*)["']/gi) ?? [];
+  const apiPatterns =
+    html.match(
+      /["'](\/[a-z0-9/_.-]*(?:api|management|admin|auth|security|login|install|setup)[a-z0-9/_.-]*)["']/gi,
+    ) ?? [];
   for (const m of apiPatterns) {
     const clean = m.replace(/^["']|["']$/g, "");
     if (clean.length > 3 && clean.length < 150) routes.add(clean);
@@ -362,15 +369,18 @@ export async function completeFirstRunSetup(
         properties: {
           verification_command: {
             type: "string",
-            description: "The exact command, SQL query, or HTTP probe used to verify setup (e.g. \"sqlcmd -Q 'SELECT count(*) FROM umbracoUser'\" or \"POST /umbraco/management/api/v1/security/back-office/login\")",
+            description:
+              'The exact command, SQL query, or HTTP probe used to verify setup (e.g. "sqlcmd -Q \'SELECT count(*) FROM umbracoUser\'" or "POST /umbraco/management/api/v1/security/back-office/login")',
           },
           verification_output: {
             type: "string",
-            description: "The raw, unmodified output captured from the verification command. Paste the actual response/result, not a summary.",
+            description:
+              "The raw, unmodified output captured from the verification command. Paste the actual response/result, not a summary.",
           },
           why_this_proves_setup_complete: {
             type: "string",
-            description: "Short explanation of why this specific output proves the setup achieved its goal (schema created, admin user exists, etc.)",
+            description:
+              "Short explanation of why this specific output proves the setup achieved its goal (schema created, admin user exists, etc.)",
           },
         },
         required: ["verification_command", "verification_output", "why_this_proves_setup_complete"],
@@ -390,8 +400,15 @@ export async function completeFirstRunSetup(
         type: "object",
         properties: {
           url: { type: "string", description: "Full URL to probe" },
-          method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
-          headers: { type: "string", description: 'JSON headers, e.g. \'{"Content-Type":"application/json"}\'' },
+          method: {
+            type: "string",
+            enum: ["GET", "POST", "PUT", "DELETE"],
+            description: "HTTP method. Default: GET",
+          },
+          headers: {
+            type: "string",
+            description: 'JSON headers, e.g. \'{"Content-Type":"application/json"}\'',
+          },
           body: { type: "string", description: "Request body for POST/PUT" },
         },
         required: ["url"],
@@ -420,7 +437,9 @@ export async function completeFirstRunSetup(
         return "Evidence rejected: each field must contain real content. Re-run a verification command and paste actual output.";
       }
       collectedEvidence.push({ command, output, reasoning });
-      console.log(`[Setup] Evidence #${collectedEvidence.length} recorded: ${command.slice(0, 120)}`);
+      console.log(
+        `[Setup] Evidence #${collectedEvidence.length} recorded: ${command.slice(0, 120)}`,
+      );
       return `Evidence recorded (${collectedEvidence.length} total). You may report more evidence or proceed to the final JSON answer.`;
     }
     return baseHandler(name, args);
@@ -456,7 +475,9 @@ export async function completeFirstRunSetup(
     // Check for infra repair request — setup discovered an infrastructure issue
     // it cannot fix from within (e.g. missing DB extension, wrong Docker image)
     if (!result.completed && result.infraRepairHint) {
-      console.log(`[Setup] Infrastructure repair requested: ${result.infraRepairHint.slice(0, 200)}`);
+      console.log(
+        `[Setup] Infrastructure repair requested: ${result.infraRepairHint.slice(0, 200)}`,
+      );
       return {
         completed: false,
         summary: result.reason ?? result.infraRepairHint,
@@ -496,18 +517,29 @@ export async function completeFirstRunSetup(
       if (result.alreadySetUp) {
         const stillInSetup = await verifyStillInSetupMode(baseUrl);
         if (stillInSetup) {
-          console.warn("[Setup] LLM claimed app is set up, but installer endpoints still respond — treating as incomplete");
-          return { completed: false, summary: "LLM claimed already set up but installer endpoints are still active" };
+          console.warn(
+            "[Setup] LLM claimed app is set up, but installer endpoints still respond — treating as incomplete",
+          );
+          return {
+            completed: false,
+            summary: "LLM claimed already set up but installer endpoints are still active",
+          };
         }
       }
 
-      const summary = result.summary ?? (result.alreadySetUp ? "Already set up" : "Setup completed");
+      const summary =
+        result.summary ?? (result.alreadySetUp ? "Already set up" : "Setup completed");
       console.log(`[Setup] First-run setup completed: ${summary}`);
 
       // Return credentials if the setup created an admin
-      const credentials = result.username && result.password
-        ? { username: result.username, password: result.password, email: result.email ?? "bright@test.com" }
-        : undefined;
+      const credentials =
+        result.username && result.password
+          ? {
+              username: result.username,
+              password: result.password,
+              email: result.email ?? "bright@test.com",
+            }
+          : undefined;
 
       return { completed: true, credentials, summary };
     }
@@ -533,11 +565,12 @@ async function runEvidenceCritic(
   criticModel?: string,
 ): Promise<{ convincing: boolean; reason: string }> {
   const evidenceBlock = evidence
-    .map((e, i) =>
-      `### Evidence #${i + 1}\n` +
-      `Command/probe: \`${e.command}\`\n` +
-      `Raw output:\n\`\`\`\n${e.output.slice(0, 3000)}\n\`\`\`\n` +
-      `Agent's reasoning: ${e.reasoning}`,
+    .map(
+      (e, i) =>
+        `### Evidence #${i + 1}\n` +
+        `Command/probe: \`${e.command}\`\n` +
+        `Raw output:\n\`\`\`\n${e.output.slice(0, 3000)}\n\`\`\`\n` +
+        `Agent's reasoning: ${e.reasoning}`,
     )
     .join("\n\n");
 
@@ -618,11 +651,17 @@ async function verifyStillInSetupMode(baseUrl: string): Promise<boolean> {
       if (resp.status === 200) {
         const body = await resp.text();
         // Look for strong setup indicators in the page content
-        if (/(?:install(?:er|ation)|setup.wizard|first.run|finish.installation|create.*admin.*account)/i.test(body)) {
+        if (
+          /(?:install(?:er|ation)|setup.wizard|first.run|finish.installation|create.*admin.*account)/i.test(
+            body,
+          )
+        ) {
           // But avoid false positives on pages that merely mention "install" in docs/text
           const url = resp.url.toLowerCase();
           if (/install|setup|wizard/.test(url)) {
-            console.log(`[Setup] App appears to still be in setup mode (redirected to ${resp.url})`);
+            console.log(
+              `[Setup] App appears to still be in setup mode (redirected to ${resp.url})`,
+            );
             return true;
           }
         }
@@ -698,12 +737,15 @@ async function probeUrlWithCookies(
 
     // Truncate large responses
     const maxLen = 8000;
-    const truncated = respBody.length > maxLen
-      ? respBody.slice(0, maxLen) + `\n... (truncated, ${respBody.length} bytes total)`
-      : respBody;
+    const truncated =
+      respBody.length > maxLen
+        ? respBody.slice(0, maxLen) + `\n... (truncated, ${respBody.length} bytes total)`
+        : respBody;
 
     const headerSummary = Object.entries(respHeaders)
-      .filter(([k]) => ["content-type", "location", "set-cookie", "x-csrf-token"].includes(k.toLowerCase()))
+      .filter(([k]) =>
+        ["content-type", "location", "set-cookie", "x-csrf-token"].includes(k.toLowerCase()),
+      )
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
 

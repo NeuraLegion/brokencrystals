@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { extractCrashError } from "../phases/startup.js";
 
 describe("extractCrashError", () => {
@@ -7,11 +7,7 @@ describe("extractCrashError", () => {
   });
 
   it("returns empty when there is no error signature", () => {
-    const logs = [
-      "Server starting",
-      "Routes mapped",
-      "Listening on 3000",
-    ].join("\n");
+    const logs = ["Server starting", "Routes mapped", "Listening on 3000"].join("\n");
     expect(extractCrashError(logs)).toBe("");
   });
 

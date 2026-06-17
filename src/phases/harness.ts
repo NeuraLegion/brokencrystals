@@ -1,30 +1,35 @@
+import { type ChildProcess, execSync, spawn } from "child_process";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import type OpenAI from "openai";
-import { execSync, spawn, type ChildProcess } from "child_process";
-import { writeFileSync, existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 import { createInterface } from "readline";
+import { chatWithTools, type ModelSelector, type ToolHandler } from "../inference.js";
+import {
+  generateHarnessPrompt,
+  harnessCodeRepairPrompt,
+  harnessDockerfileRepairPrompt,
+  identifyHarnessTargetsPrompt,
+  identifyInfraPrompt,
+  standaloneHarnessDockerfilePrompt,
+} from "../prompts/harness.js";
+import { codebaseTools, createToolHandler } from "../tools.js";
 import type {
-  TechStack,
-  HarnessTarget,
+  DiscoveredEndpoint,
   HarnessConfig,
   HarnessEndpoint,
-  DiscoveredEndpoint,
+  HarnessTarget,
+  TechStack,
 } from "../types.js";
-import { chatWithTools, type ToolHandler, type ModelSelector } from "../inference.js";
-import { codebaseTools, createToolHandler } from "../tools.js";
-import { extractJson, extractCodeBlock, formatTechStack, sleep, toErrorMessage, FETCH_TIMEOUT_QUICK, FETCH_TIMEOUT_DEFAULT } from "../utils.js";
 import {
-  identifyHarnessTargetsPrompt,
-  generateHarnessPrompt,
-  identifyInfraPrompt,
-  harnessDockerfileRepairPrompt,
-  standaloneHarnessDockerfilePrompt,
-  harnessCodeRepairPrompt,
-} from "../prompts/harness.js";
-import {
-  cleanupDocker,
-  ensureDockerIgnore,
-} from "./startup.js";
+  extractCodeBlock,
+  extractJson,
+  FETCH_TIMEOUT_DEFAULT,
+  FETCH_TIMEOUT_QUICK,
+  formatTechStack,
+  sleep,
+  toErrorMessage,
+} from "../utils.js";
+import { cleanupDocker, ensureDockerIgnore } from "./startup.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -56,7 +61,13 @@ export async function runFunctionHarness(
 
   // Step 1: Analyze infrastructure needs and start data stores
   console.log("[Harness] Analyzing infrastructure requirements...");
-  const infraInfo = await identifyInfra(llm, repoPath, stackStr, handleTool, modelSelector.current());
+  const infraInfo = await identifyInfra(
+    llm,
+    repoPath,
+    stackStr,
+    handleTool,
+    modelSelector.current(),
+  );
 
   console.log("[Harness] Starting minimal infrastructure...");
   await startMinimalInfra(repoPath, infraInfo);
@@ -78,19 +89,25 @@ export async function runFunctionHarness(
 
   console.log(`[Harness] Identified ${targets.length} target function(s):`);
   for (const t of targets) {
-    console.log(`[Harness]   ${t.className}.${t.name} — tier ${t.tier ?? "?"} — ${t.vulnTypes.join(", ")} — deps: ${t.deps.join(", ")}`);
+    console.log(
+      `[Harness]   ${t.className}.${t.name} — tier ${t.tier ?? "?"} — ${t.vulnTypes.join(", ")} — deps: ${t.deps.join(", ")}`,
+    );
   }
 
   // Drop tier 3 targets — harness mode is a fallback from full-app startup,
   // so targets requiring full framework boot would just repeat the same failure.
   const tier3Count = targets.filter((t) => (t.tier ?? 3) >= 3).length;
   if (tier3Count > 0) {
-    console.log(`[Harness] Dropping ${tier3Count} tier-3 target(s) (full framework boot not available in harness mode)`);
+    console.log(
+      `[Harness] Dropping ${tier3Count} tier-3 target(s) (full framework boot not available in harness mode)`,
+    );
     targets = targets.filter((t) => (t.tier ?? 3) < 3);
   }
 
   if (targets.length === 0) {
-    throw new Error("No tier 1/2 targets found — all identified functions require full framework boot");
+    throw new Error(
+      "No tier 1/2 targets found — all identified functions require full framework boot",
+    );
   }
 
   // Step 3 + 4: Generate harness, build & start — with tier fallback
@@ -107,7 +124,9 @@ export async function runFunctionHarness(
         // No tier 1 targets to fall back to, or we already tried with only tier 1
         throw new Error("Harness failed to build or start after all repair attempts");
       }
-      console.log(`[Harness] Retrying with ${tier1Only.length} tier-1 targets only (no external deps)...`);
+      console.log(
+        `[Harness] Retrying with ${tier1Only.length} tier-1 targets only (no external deps)...`,
+      );
       activeTargets = tier1Only;
       modelSelector.reset();
     }
@@ -173,7 +192,9 @@ export async function runFunctionHarness(
   if (discoveredEndpoints.length === 0) {
     throw new Error("No healthy harness endpoints — all targets failed to load or returned errors");
   }
-  console.log(`[Harness] Registering ${discoveredEndpoints.length}/${harnessConfig!.endpoints.length} healthy endpoints`);
+  console.log(
+    `[Harness] Registering ${discoveredEndpoints.length}/${harnessConfig!.endpoints.length} healthy endpoints`,
+  );
 
   return { process: proc!, config: harnessConfig!, endpoints: discoveredEndpoints };
 }
@@ -226,9 +247,17 @@ async function identifyInfra(
     // Ensure DB connections use TCP (localhost) instead of Unix sockets.
     // When running containers with --network host, services are on localhost
     // but many frameworks default to Unix socket connections.
-    const services: Array<{ name: string; image: string; ports: string[]; env: Record<string, string>; essential: boolean }> = parsed.services ?? [];
+    const services: Array<{
+      name: string;
+      image: string;
+      ports: string[];
+      env: Record<string, string>;
+      essential: boolean;
+    }> = parsed.services ?? [];
     const hasPostgres = services.some((s) => /postgres/i.test(s.name) || /postgres/i.test(s.image));
-    const hasMysql = services.some((s) => /mysql|mariadb/i.test(s.name) || /mysql|mariadb/i.test(s.image));
+    const hasMysql = services.some(
+      (s) => /mysql|mariadb/i.test(s.name) || /mysql|mariadb/i.test(s.image),
+    );
     const hasRedis = services.some((s) => /redis/i.test(s.name) || /redis/i.test(s.image));
 
     if (hasPostgres) {
@@ -333,9 +362,7 @@ const DEFAULT_SERVICE_IMAGES: Record<string, { image: string; ports: string[] }>
   elasticsearch: { image: "elasticsearch:8.13.0", ports: ["9200:9200"] },
 };
 
-async function startServicesStandalone(
-  services: InfraInfo["services"],
-): Promise<void> {
+async function startServicesStandalone(services: InfraInfo["services"]): Promise<void> {
   for (const svc of services) {
     // Resolve image — fall back to well-known defaults when the LLM returns null/empty
     let image = svc.image;
@@ -415,7 +442,9 @@ async function identifyTargets(
           // Has deps (db, filesystem, http) but can be initialized standalone
           t.tier = 2;
         }
-        console.log(`[Harness] Auto-inferred tier ${t.tier} for ${t.className}.${t.name} (deps: ${t.deps.join(", ")})`);
+        console.log(
+          `[Harness] Auto-inferred tier ${t.tier} for ${t.className}.${t.name} (deps: ${t.deps.join(", ")})`,
+        );
       }
     }
 
@@ -439,9 +468,13 @@ async function generateHarness(
   handleTool: ToolHandler,
   model: string,
 ): Promise<HarnessConfig> {
-  const infraDescription = infra.services.length > 0
-    ? `Services running: ${infra.services.filter((s) => s.essential).map((s) => `${s.name} (${s.image})`).join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}`
-    : "No infrastructure services — all targets are stateless or use local file system only.";
+  const infraDescription =
+    infra.services.length > 0
+      ? `Services running: ${infra.services
+          .filter((s) => s.essential)
+          .map((s) => `${s.name} (${s.image})`)
+          .join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}`
+      : "No infrastructure services — all targets are stateless or use local file system only.";
 
   // TypeScript projects: remap target file paths from src/*.ts to dist/*.js
   // so the harness can require() them directly without ts-node. Node.js can't
@@ -459,24 +492,28 @@ async function generateHarness(
     try {
       const tsconfig = readFileSync(`${repoPath}/tsconfig.json`, "utf-8");
       hasCompiledOutput = /"outDir"\s*:\s*"\.?\/?(dist|build|out)"/.test(tsconfig);
-    } catch { /* no tsconfig */ }
+    } catch {
+      /* no tsconfig */
+    }
     // Check Dockerfile for a build step that produces dist/
     if (!hasCompiledOutput) {
       try {
         const dockerfile = readFileSync(`${repoPath}/Dockerfile`, "utf-8");
         hasCompiledOutput = /npm run build|yarn build|tsc\b|nest build/.test(dockerfile);
-      } catch { /* no Dockerfile */ }
+      } catch {
+        /* no Dockerfile */
+      }
     }
   }
   if (isTypeScript && hasCompiledOutput) {
     for (const t of targets) {
       if (t.file.endsWith(".ts")) {
-        t.file = t.file
-          .replace(/^src\//, "dist/")
-          .replace(/\.ts$/, ".js");
+        t.file = t.file.replace(/^src\//, "dist/").replace(/\.ts$/, ".js");
       }
     }
-    console.log("[Harness] TypeScript project with compiled output — remapped target paths from src/*.ts to dist/*.js");
+    console.log(
+      "[Harness] TypeScript project with compiled output — remapped target paths from src/*.ts to dist/*.js",
+    );
   }
 
   const messages = generateHarnessPrompt(stackStr, targets, infraDescription);
@@ -500,14 +537,22 @@ async function generateHarness(
       startCommand = meta.startCommand ?? "";
       docker = meta.docker ?? false;
       harnessFileName = meta.harnessFileName ?? "";
-    } catch { /* use defaults */ }
+    } catch {
+      /* use defaults */
+    }
   }
 
   // Derive filename from code block language tag if LLM didn't provide it
   if (!harnessFileName) {
     const extMap: Record<string, string> = {
-      ruby: ".rb", javascript: ".js", typescript: ".ts",
-      python: ".py", go: ".go", csharp: ".cs", java: ".java", php: ".php",
+      ruby: ".rb",
+      javascript: ".js",
+      typescript: ".ts",
+      python: ".py",
+      go: ".go",
+      csharp: ".cs",
+      java: ".java",
+      php: ".php",
     };
     const ext = extMap[language] ?? "." + language;
     harnessFileName = `harness${ext}`;
@@ -517,8 +562,10 @@ async function generateHarness(
   if (!startCommand) {
     // Last resort — infer from extension
     const cmdMap: Record<string, string> = {
-      ".rb": `ruby ${harnessFileName}`, ".js": `node ${harnessFileName}`,
-      ".ts": `npx tsx ${harnessFileName}`, ".py": `python ${harnessFileName}`,
+      ".rb": `ruby ${harnessFileName}`,
+      ".js": `node ${harnessFileName}`,
+      ".ts": `npx tsx ${harnessFileName}`,
+      ".py": `python ${harnessFileName}`,
       ".go": `go run ${harnessFileName}`,
     };
     const ext = harnessFileName.slice(harnessFileName.lastIndexOf("."));
@@ -531,16 +578,12 @@ async function generateHarness(
 
   // Build endpoint list from targets
   const endpoints: HarnessEndpoint[] = targets.map((t) => {
-    const pathSlug = `${t.className}-${t.name}`
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "-");
+    const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
 
     const sampleBody =
       t.httpMethod === "GET"
         ? undefined
-        : JSON.stringify(
-            Object.fromEntries(t.params.map((p) => [p.name, p.sample])),
-          );
+        : JSON.stringify(Object.fromEntries(t.params.map((p) => [p.name, p.sample])));
 
     return {
       method: t.httpMethod,
@@ -588,7 +631,9 @@ async function startHarness(
   // All tier 3 targets have already been filtered out before reaching here.
   // Harness mode is a fallback — full framework boot is not attempted.
   const maxTier = Math.max(...targets.map((t) => t.tier ?? 2)) as 1 | 2;
-  console.log(`[Harness] All targets are tier ≤${maxTier} — skipping full app build, using stock runtime image`);
+  console.log(
+    `[Harness] All targets are tier ≤${maxTier} — skipping full app build, using stock runtime image`,
+  );
 
   // Ensure .dockerignore excludes problematic dirs
   ensureDockerIgnore(repoPath);
@@ -602,7 +647,11 @@ async function startHarness(
   // LLM generates Dockerfile.harness — always self-contained (no base app image)
   console.log("[Harness] Generating Dockerfile.harness via LLM...");
   const genMessages = standaloneHarnessDockerfilePrompt(
-    techStack, harnessCode, harnessFileName, config.startCommand, config.port,
+    techStack,
+    harnessCode,
+    harnessFileName,
+    config.startCommand,
+    config.port,
     targets.map((t) => ({
       file: t.file,
       className: t.className,
@@ -613,7 +662,12 @@ async function startHarness(
     })),
   );
   const genResponse = await chatWithTools(
-    llm, genMessages, codebaseTools, handleTool, modelSelector.current(), 10,
+    llm,
+    genMessages,
+    codebaseTools,
+    handleTool,
+    modelSelector.current(),
+    10,
   );
   let harnessDockerfileContent = extractCodeBlock(genResponse);
   if (!harnessDockerfileContent) {
@@ -621,7 +675,12 @@ async function startHarness(
     console.warn("[Harness] LLM did not return a Dockerfile block, retrying...");
     modelSelector.escalate();
     const retryResponse = await chatWithTools(
-      llm, genMessages, codebaseTools, handleTool, modelSelector.current(), 10,
+      llm,
+      genMessages,
+      codebaseTools,
+      handleTool,
+      modelSelector.current(),
+      10,
     );
     harnessDockerfileContent = extractCodeBlock(retryResponse);
     if (!harnessDockerfileContent) {
@@ -629,13 +688,17 @@ async function startHarness(
     }
   }
   writeFileSync(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
-  console.log(`[Harness] Generated Dockerfile.harness (${harnessDockerfileContent.split("\n").length} lines)`);
+  console.log(
+    `[Harness] Generated Dockerfile.harness (${harnessDockerfileContent.split("\n").length} lines)`,
+  );
 
   // Build + start with LLM repair loop
   const MAX_HARNESS_ATTEMPTS = 5;
   for (let attempt = 0; attempt < MAX_HARNESS_ATTEMPTS; attempt++) {
     // Build harness image
-    console.log(`[Harness] Building harness image (attempt ${attempt + 1}/${MAX_HARNESS_ATTEMPTS})...`);
+    console.log(
+      `[Harness] Building harness image (attempt ${attempt + 1}/${MAX_HARNESS_ATTEMPTS})...`,
+    );
     try {
       execSync(`docker build -t ${HARNESS_IMAGE} -f Dockerfile.harness .`, {
         cwd: repoPath,
@@ -647,7 +710,13 @@ async function startHarness(
       console.warn(`[Harness] Harness image build failed (attempt ${attempt + 1})`);
       if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
         await repairHarnessDockerfile(
-          llm, repoPath, errMsg, harnessCode, harnessFileName, handleTool, modelSelector,
+          llm,
+          repoPath,
+          errMsg,
+          harnessCode,
+          harnessFileName,
+          handleTool,
+          modelSelector,
         );
       }
       continue;
@@ -656,9 +725,12 @@ async function startHarness(
     // Clean up any previous harness container
     try {
       execSync(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
-        stdio: "ignore", timeout: 10_000,
+        stdio: "ignore",
+        timeout: 10_000,
       });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     // Start harness container with --network host
     const envFlags: string[] = ["-e", `PORT=${config.port}`];
@@ -666,8 +738,14 @@ async function startHarness(
       envFlags.push("-e", `${k}=${v}`);
     }
     const dockerArgs = [
-      "run", "--rm", "--name", HARNESS_CONTAINER, "--network", "host",
-      ...envFlags, HARNESS_IMAGE,
+      "run",
+      "--rm",
+      "--name",
+      HARNESS_CONTAINER,
+      "--network",
+      "host",
+      ...envFlags,
+      HARNESS_IMAGE,
     ];
     console.log(`[Harness] Starting container: docker ${dockerArgs.join(" ")}`);
     const child = spawn("docker", dockerArgs, {
@@ -697,9 +775,7 @@ async function startHarness(
             `[Harness] Proceeding with partial coverage: ${healthyPaths.size}/${totalEps} endpoints healthy`,
           );
         }
-        console.log(
-          `[Harness] ${healthyPaths.size}/${totalEps} endpoints healthy — proceeding`,
-        );
+        console.log(`[Harness] ${healthyPaths.size}/${totalEps} endpoints healthy — proceeding`);
         return { process: child, healthyPaths };
       }
 
@@ -709,7 +785,13 @@ async function startHarness(
       if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
         child.kill();
         await repairHarnessCode(
-          llm, repoPath, config, probeErrors, targets, handleTool, modelSelector,
+          llm,
+          repoPath,
+          config,
+          probeErrors,
+          targets,
+          handleTool,
+          modelSelector,
         );
         // Re-read updated harness code for next Docker build
         harnessCode = readFileSync(config.harnessFile, "utf-8");
@@ -724,9 +806,7 @@ async function startHarness(
       }
 
       child.kill();
-      throw new Error(
-        `No healthy harness endpoints after ${MAX_HARNESS_ATTEMPTS} attempts`,
-      );
+      throw new Error(`No healthy harness endpoints after ${MAX_HARNESS_ATTEMPTS} attempts`);
     } catch (err) {
       child.kill();
       const errStr = toErrorMessage(err);
@@ -737,14 +817,24 @@ async function startHarness(
         if (isHarnessCodeError(errStr)) {
           console.log("[Harness] Error is in harness code, not Dockerfile — repairing harness...");
           await repairHarnessCode(
-            llm, repoPath, config,
+            llm,
+            repoPath,
+            config,
             [{ method: "STARTUP", path: "/", status: 0, body: errStr }],
-            targets, handleTool, modelSelector,
+            targets,
+            handleTool,
+            modelSelector,
           );
           harnessCode = readFileSync(config.harnessFile, "utf-8");
         } else {
           await repairHarnessDockerfile(
-            llm, repoPath, errStr, harnessCode, harnessFileName, handleTool, modelSelector,
+            llm,
+            repoPath,
+            errStr,
+            harnessCode,
+            harnessFileName,
+            handleTool,
+            modelSelector,
           );
         }
       }
@@ -760,10 +850,7 @@ function targetHealthyHarnessEndpoints(totalEndpoints: number): number {
   }
   return Math.min(
     totalEndpoints,
-    Math.max(
-      MIN_HARNESS_HEALTHY_ENDPOINTS,
-      Math.ceil(totalEndpoints * MIN_HARNESS_HEALTH_RATIO),
-    ),
+    Math.max(MIN_HARNESS_HEALTHY_ENDPOINTS, Math.ceil(totalEndpoints * MIN_HARNESS_HEALTH_RATIO)),
   );
 }
 
@@ -818,13 +905,21 @@ async function repairHarnessDockerfile(
   modelSelector.escalate();
   const truncatedError = error.length > 3000 ? error.slice(-3000) : error;
   const messages = harnessDockerfileRepairPrompt(
-    truncatedError, currentDockerfile, harnessCode, harnessFileName,
+    truncatedError,
+    currentDockerfile,
+    harnessCode,
+    harnessFileName,
   );
 
   try {
     console.log("[Harness] Asking LLM to repair Dockerfile.harness...");
     const response = await chatWithTools(
-      llm, messages, codebaseTools, handleTool, modelSelector.current(), 40,
+      llm,
+      messages,
+      codebaseTools,
+      handleTool,
+      modelSelector.current(),
+      40,
     );
     const fixed = extractCodeBlock(response);
     if (!fixed) {
@@ -857,18 +952,14 @@ interface ProbeResult {
   healthyPaths: Set<string>;
 }
 
-async function probeEndpoints(
-  port: number,
-  endpoints: HarnessEndpoint[],
-): Promise<ProbeResult> {
+async function probeEndpoints(port: number, endpoints: HarnessEndpoint[]): Promise<ProbeResult> {
   const errors: ProbeError[] = [];
   const healthyPaths = new Set<string>();
   const baseUrl = `http://localhost:${port}`;
 
   for (const ep of endpoints) {
     try {
-      const sampleValue = (v: unknown): string =>
-        typeof v === "string" ? v : JSON.stringify(v);
+      const sampleValue = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v));
 
       const url =
         ep.method === "GET" && ep.target.params.length > 0
@@ -928,7 +1019,12 @@ async function repairHarnessCode(
   try {
     console.log("[Harness] Asking LLM to repair harness code based on probe errors...");
     const response = await chatWithTools(
-      llm, messages, codebaseTools, handleTool, modelSelector.current(), 40,
+      llm,
+      messages,
+      codebaseTools,
+      handleTool,
+      modelSelector.current(),
+      40,
     );
     const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
     if (!codeMatch) {
@@ -946,10 +1042,7 @@ async function repairHarnessCode(
   }
 }
 
-async function waitForHarnessHealthy(
-  child: ChildProcess,
-  port: number,
-): Promise<ChildProcess> {
+async function waitForHarnessHealthy(child: ChildProcess, port: number): Promise<ChildProcess> {
   const outputLines: string[] = [];
 
   if (child.stdout) {
@@ -1011,16 +1104,18 @@ async function waitForHarnessHealthy(
 export function cleanupHarnessInfra(repoPath: string): void {
   try {
     // Stop harness container specifically
-    execSync(
-      `docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`,
-      { stdio: "ignore", timeout: 15_000 },
-    );
+    execSync(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
+      stdio: "ignore",
+      timeout: 15_000,
+    });
     // Clean up standalone infra containers (harness_postgres, harness_redis, etc.)
-    execSync(
-      "docker rm -f $(docker ps -aq --filter name=harness_) 2>/dev/null || true",
-      { stdio: "ignore", timeout: 15_000 },
-    );
-  } catch { /* ignore */ }
+    execSync("docker rm -f $(docker ps -aq --filter name=harness_) 2>/dev/null || true", {
+      stdio: "ignore",
+      timeout: 15_000,
+    });
+  } catch {
+    /* ignore */
+  }
   // Reuse shared cleanup for compose teardown
   cleanupDocker(repoPath);
 }

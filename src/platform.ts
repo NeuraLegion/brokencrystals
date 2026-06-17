@@ -21,12 +21,7 @@ export interface Platform {
   fetchJobDetails(): Promise<JobDetails>;
   initPr(repoPath: string): Promise<void>;
   reportPhase(phase: string, description: string, turn: number): Promise<void>;
-  reportDetail(
-    phase: string,
-    toolName: string,
-    detail: string,
-    turn: number,
-  ): Promise<void>;
+  reportDetail(phase: string, toolName: string, detail: string, turn: number): Promise<void>;
   reportError(message: string): Promise<void>;
   reportPrDescription(description: string): Promise<void>;
 }
@@ -37,8 +32,8 @@ export interface Platform {
 
 import { execFileSync } from "child_process";
 import { existsSync, mkdirSync } from "fs";
-import type { ScmProvider } from "./scm/types.js";
 import { detectScmProvider } from "./scm/detect.js";
+import type { ScmProvider } from "./scm/types.js";
 
 export function cloneRepository(opts: {
   provider: ScmProvider;
@@ -76,16 +71,14 @@ export function cloneRepository(opts: {
   }
 
   // Configure git author
-  execFileSync(
-    "git",
-    ["config", "user.name", opts.commitLogin || "BrightSec"],
-    { cwd: dest, stdio: "pipe" },
-  );
-  execFileSync(
-    "git",
-    ["config", "user.email", opts.commitEmail || "bot@brightsec.com"],
-    { cwd: dest, stdio: "pipe" },
-  );
+  execFileSync("git", ["config", "user.name", opts.commitLogin || "BrightSec"], {
+    cwd: dest,
+    stdio: "pipe",
+  });
+  execFileSync("git", ["config", "user.email", opts.commitEmail || "bot@brightsec.com"], {
+    cwd: dest,
+    stdio: "pipe",
+  });
 
   return dest;
 }
@@ -148,12 +141,7 @@ export class DefaultPlatform implements Platform {
     try {
       execFileSync(
         "git",
-        [
-          "commit",
-          "--allow-empty",
-          "-m",
-          "chore: initialize Bright security scan",
-        ],
+        ["commit", "--allow-empty", "-m", "chore: initialize Bright security scan"],
         {
           cwd: repoPath,
           stdio: "pipe",
@@ -180,10 +168,7 @@ export class DefaultPlatform implements Platform {
     }
 
     // Check if a PR already exists for this branch
-    this.prNumber = await this.provider.findPullRequest(
-      this.gitToken,
-      this.job.branchName,
-    );
+    this.prNumber = await this.provider.findPullRequest(this.gitToken, this.job.branchName);
 
     if (!this.prNumber) {
       const baseBranch = await this.provider.getDefaultBranch(this.gitToken);
@@ -200,9 +185,7 @@ export class DefaultPlatform implements Platform {
     if (this.prNumber) {
       console.log(`[Platform] PR #${this.prNumber} ready for progress updates`);
     } else {
-      console.warn(
-        `[Platform] Could not create PR — progress will only appear in logs`,
-      );
+      console.warn(`[Platform] Could not create PR — progress will only appear in logs`);
     }
   }
 
@@ -210,11 +193,7 @@ export class DefaultPlatform implements Platform {
     return this.job;
   }
 
-  async reportPhase(
-    _phase: string,
-    description: string,
-    _turn: number,
-  ): Promise<void> {
+  async reportPhase(_phase: string, description: string, _turn: number): Promise<void> {
     console.log(`[Phase] ${description}`);
   }
 
@@ -234,11 +213,7 @@ export class DefaultPlatform implements Platform {
   async reportPrDescription(description: string): Promise<void> {
     if (!this.gitToken || !this.prNumber) return;
 
-    await this.provider.updatePullRequestBody(
-      this.gitToken,
-      this.prNumber,
-      description,
-    );
+    await this.provider.updatePullRequestBody(this.gitToken, this.prNumber, description);
   }
 }
 

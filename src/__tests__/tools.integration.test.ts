@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "fs";
-import { join } from "path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
+import { join } from "path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createToolHandler } from "../tools/codebase.js";
-import { createUnifiedToolHandler, buildToolDefs } from "../tools/unified.js";
+import { buildToolDefs, createUnifiedToolHandler } from "../tools/unified.js";
 
 let testDir: string;
 
@@ -14,11 +14,11 @@ beforeAll(() => {
   mkdirSync(join(testDir, "src/utils"));
   writeFileSync(join(testDir, "package.json"), '{"name": "test-app"}');
   writeFileSync(join(testDir, "src/index.ts"), 'export const main = () => console.log("hello");\n');
-  writeFileSync(join(testDir, "src/utils/helper.ts"), 'export function add(a: number, b: number) { return a + b; }\n');
   writeFileSync(
-    join(testDir, "src/big-file.ts"),
-    "x".repeat(60_000) + "\n// end",
+    join(testDir, "src/utils/helper.ts"),
+    "export function add(a: number, b: number) { return a + b; }\n",
   );
+  writeFileSync(join(testDir, "src/big-file.ts"), "x".repeat(60_000) + "\n// end");
 });
 
 afterAll(() => {

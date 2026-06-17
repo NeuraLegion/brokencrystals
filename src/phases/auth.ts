@@ -1,29 +1,45 @@
 import type OpenAI from "openai";
-import type { TechStack, BrightApiContext } from "../types.js";
-import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions.mjs";
+import { getAuthObject, listAuthObjects } from "../bright-api.js";
+import { HintStore, parseLegacyHint, type Stage } from "../hints.js";
 import { chatWithTools, type ToolHandler } from "../inference.js";
+import {
+  configureAuthPrompt,
+  detectAuthPrompt,
+  repairBrokenLoginPrompt,
+  seedUserPrompt,
+} from "../prompts/auth.js";
+import { getHintsTool, handleHintTool, removeHintTool, saveHintTool } from "../tools/unified.js";
 import {
   codebaseTools,
   createToolHandler,
-  webSearchTools,
   createWebSearchHandler,
-  runCommandOnHostTool,
-  runCommandInDockerTool,
   editFileTool,
-  probeUrlTool,
   execInDocker,
   handleEditFile,
+  probeUrlTool,
+  runCommandInDockerTool,
+  runCommandOnHostTool,
+  webSearchTools,
 } from "../tools.js";
+import type { BrightApiContext, TechStack } from "../types.js";
 import {
-  saveHintTool,
-  removeHintTool,
-  getHintsTool,
-  handleHintTool,
-} from "../tools/unified.js";
-import { HintStore, parseLegacyHint, type Stage } from "../hints.js";
-import { listAuthObjects, getAuthObject } from "../bright-api.js";
-import { formatTechStack, extractJson, runShellCommand, toErrorMessage, saveProbeBody, stripHtmlForAnalysis, extractSetCookies, FETCH_TIMEOUT_SHORT, FETCH_TIMEOUT_MEDIUM, FETCH_TIMEOUT_DEFAULT, FETCH_TIMEOUT_LONG, FETCH_TIMEOUT_EXTENDED } from "../utils.js";
-import { detectAuthPrompt, configureAuthPrompt, seedUserPrompt, repairBrokenLoginPrompt } from "../prompts/auth.js";
+  extractJson,
+  extractSetCookies,
+  FETCH_TIMEOUT_DEFAULT,
+  FETCH_TIMEOUT_EXTENDED,
+  FETCH_TIMEOUT_LONG,
+  FETCH_TIMEOUT_MEDIUM,
+  FETCH_TIMEOUT_SHORT,
+  formatTechStack,
+  runShellCommand,
+  saveProbeBody,
+  stripHtmlForAnalysis,
+  toErrorMessage,
+} from "../utils.js";
 
 const CONTENT_TYPE_MAP: Record<string, string> = {
   json: "application/json",
@@ -40,11 +56,20 @@ function compactAuthHint(hint: string, max = 500): string {
   return hint.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
-function addAuthHint(hints: string[] | undefined, hint: string, opts: { silent?: boolean } = {}): void {
+function addAuthHint(
+  hints: string[] | undefined,
+  hint: string,
+  opts: { silent?: boolean } = {},
+): void {
   if (!hints) return;
   const compacted = compactAuthHint(hint, 900);
   if (!compacted) return;
-  if (hints.some((existing) => existing === compacted || existing.includes(compacted) || compacted.includes(existing))) {
+  if (
+    hints.some(
+      (existing) =>
+        existing === compacted || existing.includes(compacted) || compacted.includes(existing),
+    )
+  ) {
     return;
   }
   hints.push(compacted);
@@ -180,9 +205,7 @@ export async function detectAndConfigureAuth(
     return { authObjectId: undefined, hasAuth: false, authFailed: false, authHints };
   }
 
-  console.log(
-    `[Auth] Detected auth: ${detection.authType} — ${detection.notes}`,
-  );
+  console.log(`[Auth] Detected auth: ${detection.authType} — ${detection.notes}`);
   console.log(
     `[Auth] loginEndpoint=${detection.loginEndpoint}, protectedEndpoint=${detection.protectedEndpointPath}`,
   );
@@ -200,13 +223,21 @@ export async function detectAndConfigureAuth(
   // decide whether to use OIDC token exchange, static headers, or raw multistep.
   if (detection.authType === "oauth" || detection.authType === "api_key") {
     const grantType = detection.oauthGrantType ?? null;
-    console.log(`[Auth] API auth detected (type=${detection.authType}, grant=${grantType ?? "n/a"}) — seeding credentials`);
+    console.log(
+      `[Auth] API auth detected (type=${detection.authType}, grant=${grantType ?? "n/a"}) — seeding credentials`,
+    );
 
     if (detection.oauthTokenEndpoint) {
-      addAuthHint(authHints, `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Reported grant type: ${grantType ?? "unknown"}.`);
+      addAuthHint(
+        authHints,
+        `[auth-oauth] OAuth2 token endpoint: ${detection.oauthTokenEndpoint}. Reported grant type: ${grantType ?? "unknown"}.`,
+      );
     }
     if (detection.oauthClientId) {
-      addAuthHint(authHints, `[auth-oauth-client] Found OAuth2 client in codebase: id=${detection.oauthClientId}, secret=${detection.oauthClientSecret ?? "unknown"}.`);
+      addAuthHint(
+        authHints,
+        `[auth-oauth-client] Found OAuth2 client in codebase: id=${detection.oauthClientId}, secret=${detection.oauthClientSecret ?? "unknown"}.`,
+      );
     }
 
     // Seed an OAuth2 client if we don't already have credentials
@@ -218,9 +249,14 @@ export async function detectAndConfigureAuth(
         if (oauthClient.tokenEndpoint) {
           detection.oauthTokenEndpoint = oauthClient.tokenEndpoint;
         }
-        addAuthHint(authHints, `[auth-seeded-client] Seeded OAuth2 client: id=${oauthClient.clientId}, secret=${oauthClient.clientSecret}${oauthClient.tokenEndpoint ? `, tokenEndpoint=${oauthClient.tokenEndpoint}` : ""}. These can be used for OIDC token exchange OR as static header values (x-cal-client-id / x-cal-secret-key / etc).`);
+        addAuthHint(
+          authHints,
+          `[auth-seeded-client] Seeded OAuth2 client: id=${oauthClient.clientId}, secret=${oauthClient.clientSecret}${oauthClient.tokenEndpoint ? `, tokenEndpoint=${oauthClient.tokenEndpoint}` : ""}. These can be used for OIDC token exchange OR as static header values (x-cal-client-id / x-cal-secret-key / etc).`,
+        );
       } else {
-        console.warn("[Auth] Could not seed OAuth client — LLM will try to create one during auth config");
+        console.warn(
+          "[Auth] Could not seed OAuth client — LLM will try to create one during auth config",
+        );
       }
     }
 
@@ -228,17 +264,28 @@ export async function detectAndConfigureAuth(
     if (grantType === "password") {
       console.log("[Auth] Password grant hint — seeding test user for resource owner credentials");
       if (detection.loginBody) {
-        addAuthHint(authHints, `[auth-oauth-user] Resource owner credentials from detection: ${detection.loginBody}`);
+        addAuthHint(
+          authHints,
+          `[auth-oauth-user] Resource owner credentials from detection: ${detection.loginBody}`,
+        );
       }
     }
 
     // Auth configuration — LLM has all tools: create_auth_oidc, create_auth_header, create_auth_raw
     const probeContext = await preProbeForAuth(baseUrl, detection);
     const verifiedTestUrl = await resolveVerifiedAuthTestUrl(
-      llm, repoPath, baseUrl, detection, model, probeContext,
+      llm,
+      repoPath,
+      baseUrl,
+      detection,
+      model,
+      probeContext,
     );
     if (verifiedTestUrl) {
-      addAuthHint(authHints, `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl.testUrl}. Evidence: ${verifiedTestUrl.evidence}`);
+      addAuthHint(
+        authHints,
+        `[auth-test-url] Verified Bright auth validation URL is ${verifiedTestUrl.testUrl}. Evidence: ${verifiedTestUrl.evidence}`,
+      );
     }
 
     const MAX_AUTH_ATTEMPTS = 3;
@@ -253,9 +300,10 @@ export async function detectAndConfigureAuth(
     for (let attempt = 1; attempt <= MAX_AUTH_ATTEMPTS; attempt++) {
       let attemptContext = fullProbeContext;
       if (allAttemptLogs.length > 0) {
-        attemptContext += "\n\n## Previous attempt failures\n"
-          + "Learn from these mistakes. Do NOT repeat the same configurations.\n\n"
-          + allAttemptLogs.join("\n\n---\n\n");
+        attemptContext +=
+          "\n\n## Previous attempt failures\n" +
+          "Learn from these mistakes. Do NOT repeat the same configurations.\n\n" +
+          allAttemptLogs.join("\n\n---\n\n");
       }
       if (authHints.length > 0) {
         attemptContext += "\n\n## Saved auth hints\n" + formatAuthHints(authHints);
@@ -263,13 +311,31 @@ export async function detectAndConfigureAuth(
 
       console.log(`[Auth] API auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS}...`);
       const result = await createAuthViaMcp(
-        llm, repoPath, detection, false, projectId, baseUrl, repeaterId, api, model,
-        attemptContext, verifiedTestUrl?.testUrl, authHints,
+        llm,
+        repoPath,
+        detection,
+        false,
+        projectId,
+        baseUrl,
+        repeaterId,
+        api,
+        model,
+        attemptContext,
+        verifiedTestUrl?.testUrl,
+        authHints,
       );
 
       if (result.infraRepairHint) {
-        console.warn(`[Auth] API auth LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`);
-        return { authObjectId: undefined, hasAuth: false, authFailed: true, authHints, infraRepairHint: result.infraRepairHint };
+        console.warn(
+          `[Auth] API auth LLM requested infra repair: ${result.infraRepairHint.slice(0, 200)}`,
+        );
+        return {
+          authObjectId: undefined,
+          hasAuth: false,
+          authFailed: true,
+          authHints,
+          infraRepairHint: result.infraRepairHint,
+        };
       }
 
       if (result.authId) {
@@ -284,7 +350,13 @@ export async function detectAndConfigureAuth(
 
     if (authObjectId) {
       console.log(`[Auth] API auth configured successfully: ${authObjectId}`);
-      return { authObjectId, hasAuth: true, authFailed: false, authHints, directAuthHeaders: capturedDirectHeaders };
+      return {
+        authObjectId,
+        hasAuth: true,
+        authFailed: false,
+        authHints,
+        directAuthHeaders: capturedDirectHeaders,
+      };
     }
     console.error("[Auth] API auth configuration failed after all attempts");
     return { authObjectId: undefined, hasAuth: false, authFailed: true, authHints };
@@ -294,7 +366,10 @@ export async function detectAndConfigureAuth(
   let registrationOk = await registerUser(baseUrl, detection);
   if (registrationOk) {
     updateLoginBodyFromRegisteredUser(detection);
-    addAuthHint(authHints, `[auth-registration] HTTP registration succeeded. Use registered test credentials in login body: ${detection.loginBody ?? "unknown"}.`);
+    addAuthHint(
+      authHints,
+      `[auth-registration] HTTP registration succeeded. Use registered test credentials in login body: ${detection.loginBody ?? "unknown"}.`,
+    );
   }
 
   // Phase 3: If no confirmed user, run the seed user sub-phase (dedicated LLM session)
@@ -316,10 +391,15 @@ export async function detectAndConfigureAuth(
       // If detection didn't find a loginEndpoint, or confused setup/register
       // with login, try live endpoint discovery before verifying credentials.
       if (!detection.loginEndpoint || isSetupLikeEndpoint(detection.loginEndpoint)) {
-        const discovered = await discoverLoginEndpoint(baseUrl, detection.loginEndpoint ?? undefined);
+        const discovered = await discoverLoginEndpoint(
+          baseUrl,
+          detection.loginEndpoint ?? undefined,
+        );
         if (discovered) {
           if (detection.loginEndpoint && detection.loginEndpoint !== discovered) {
-            console.log(`[Auth] Replaced setup-like login endpoint ${detection.loginEndpoint} → ${discovered}`);
+            console.log(
+              `[Auth] Replaced setup-like login endpoint ${detection.loginEndpoint} → ${discovered}`,
+            );
           }
           detection.loginEndpoint = discovered;
           console.log(`[Auth] Discovered login endpoint: ${discovered}`);
@@ -335,12 +415,16 @@ export async function detectAndConfigureAuth(
         if (credCheck.reason.startsWith("not_activated")) {
           console.log("[Auth:Seed] User not activated — re-running seed with activation hint");
           const activationResult = await seedTestUser(
-            llm, repoPath, baseUrl, detection, model,
+            llm,
+            repoPath,
+            baseUrl,
+            detection,
+            model,
             `IMPORTANT: The test user "${seededCredentials.username}" was created but is NOT ACTIVATED. ` +
-            `The login endpoint returned: "not_activated". You MUST activate/confirm the user's email before returning. ` +
-            `Common methods: rails runner "User.find_by(email:'${seededCredentials.email ?? seededCredentials.username}')&.activate", ` +
-            `Django: User.objects.filter(email='...').update(is_active=True), ` +
-            `or update the database directly. Do NOT create a new user — just activate the existing one.`,
+              `The login endpoint returned: "not_activated". You MUST activate/confirm the user's email before returning. ` +
+              `Common methods: rails runner "User.find_by(email:'${seededCredentials.email ?? seededCredentials.username}')&.activate", ` +
+              `Django: User.objects.filter(email='...').update(is_active=True), ` +
+              `or update the database directly. Do NOT create a new user — just activate the existing one.`,
           );
           if (activationResult?.success) {
             // Re-verify after activation
@@ -348,7 +432,9 @@ export async function detectAndConfigureAuth(
             if (recheck.valid) {
               console.log("[Auth:Seed] Post-activation verification passed");
             } else {
-              console.warn(`[Auth:Seed] Post-activation verification still failed: ${recheck.reason}`);
+              console.warn(
+                `[Auth:Seed] Post-activation verification still failed: ${recheck.reason}`,
+              );
               registrationOk = false;
             }
           } else {
@@ -356,7 +442,9 @@ export async function detectAndConfigureAuth(
             registrationOk = false;
           }
         } else {
-          console.warn("[Auth:Seed] The seed LLM may have changed the password — seeded password might not match");
+          console.warn(
+            "[Auth:Seed] The seed LLM may have changed the password — seeded password might not match",
+          );
           registrationOk = false;
         }
       } else {
@@ -366,7 +454,9 @@ export async function detectAndConfigureAuth(
   }
 
   // Collect seed commands from the seed user sub-phase for replay after restarts.
-  const seedCommands = (seededCredentials as (SeedUserResult & { seedCommands?: SeedCommand[] }) | undefined)?.seedCommands;
+  const seedCommands = (
+    seededCredentials as (SeedUserResult & { seedCommands?: SeedCommand[] }) | undefined
+  )?.seedCommands;
 
   // Phase 4: Let the LLM create + test + fix the auth object via custom tools
   //   Pre-probe the app to give the LLM real data instead of forcing it to guess
@@ -377,13 +467,7 @@ export async function detectAndConfigureAuth(
   if (!loginCheck.functional) {
     // Login is broken (HTTP 5xx) — give the LLM a chance to fix the app
     console.warn("[Auth] Login endpoint broken — attempting repair...");
-    const repair = await repairBrokenLogin(
-      llm,
-      repoPath,
-      baseUrl,
-      loginCheck.diagnostic,
-      model,
-    );
+    const repair = await repairBrokenLogin(llm, repoPath, baseUrl, loginCheck.diagnostic, model);
 
     if (repair.fixed) {
       // Re-run sanity check after repair
@@ -397,7 +481,9 @@ export async function detectAndConfigureAuth(
           registration: undefined,
           seedCommands,
           authHints,
-          infraRepairHint: repair.infraRepairHint ?? `Login endpoint is still returning 5xx after repair. Apply source-level fixes durably, rebuild the app image, restart the app, and re-run auth. Diagnostic:\n${loginCheck.diagnostic}`,
+          infraRepairHint:
+            repair.infraRepairHint ??
+            `Login endpoint is still returning 5xx after repair. Apply source-level fixes durably, rebuild the app image, restart the app, and re-run auth. Diagnostic:\n${loginCheck.diagnostic}`,
         };
       }
       console.log("[Auth] Login repaired successfully — proceeding with auth setup");
@@ -410,7 +496,9 @@ export async function detectAndConfigureAuth(
         registration: undefined,
         seedCommands,
         authHints,
-        infraRepairHint: repair.infraRepairHint ?? `Login endpoint is returning 5xx and could not be repaired in the running app. Apply a source-level fix, rebuild/recreate the application containers, then retry auth. Diagnostic:\n${loginCheck.diagnostic}`,
+        infraRepairHint:
+          repair.infraRepairHint ??
+          `Login endpoint is returning 5xx and could not be repaired in the running app. Apply a source-level fix, rebuild/recreate the application containers, then retry auth. Diagnostic:\n${loginCheck.diagnostic}`,
       };
     }
   }
@@ -447,14 +535,16 @@ export async function detectAndConfigureAuth(
     // Build context from previous failures
     let attemptContext = fullProbeContext;
     if (allAttemptLogs.length > 0) {
-      attemptContext += "\n\n## Previous attempt failures\n"
-        + "Learn from these mistakes. Do NOT repeat the same configurations.\n\n"
-        + allAttemptLogs.join("\n\n---\n\n");
+      attemptContext +=
+        "\n\n## Previous attempt failures\n" +
+        "Learn from these mistakes. Do NOT repeat the same configurations.\n\n" +
+        allAttemptLogs.join("\n\n---\n\n");
     }
     if (authHints.length > 0) {
-      attemptContext += "\n\n## Saved auth hints\n"
-        + "These are durable facts from scan preparation, auth detection, verified probes, and previous auth attempts. Treat them as higher priority than guesses.\n"
-        + formatAuthHints(authHints);
+      attemptContext +=
+        "\n\n## Saved auth hints\n" +
+        "These are durable facts from scan preparation, auth detection, verified probes, and previous auth attempts. Treat them as higher priority than guesses.\n" +
+        formatAuthHints(authHints);
     }
 
     console.log(`[Auth] Auth configuration attempt ${attempt}/${MAX_AUTH_ATTEMPTS}...`);
@@ -513,7 +603,15 @@ export async function detectAndConfigureAuth(
 
   if (authObjectId) {
     console.log(`[Auth] Auth configured successfully: ${authObjectId}`);
-    return { authObjectId, hasAuth: true, authFailed: false, registration, seedCommands, authHints, directAuthHeaders: capturedDirectHeaders };
+    return {
+      authObjectId,
+      hasAuth: true,
+      authFailed: false,
+      registration,
+      seedCommands,
+      authHints,
+      directAuthHeaders: capturedDirectHeaders,
+    };
   }
 
   if (infraRepairHint) {
@@ -602,8 +700,15 @@ async function detectAuthFromCode(
         type: "object",
         properties: {
           url: { type: "string", description: "Full URL (e.g. http://localhost:3000/admin)" },
-          method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
-          headers: { type: "string", description: 'JSON headers, e.g. \'{"Accept":"application/json"}\'' },
+          method: {
+            type: "string",
+            enum: ["GET", "POST", "PUT", "DELETE"],
+            description: "HTTP method. Default: GET",
+          },
+          headers: {
+            type: "string",
+            description: 'JSON headers, e.g. \'{"Accept":"application/json"}\'',
+          },
           body: { type: "string", description: "Request body for POST/PUT" },
         },
         required: ["url"],
@@ -741,9 +846,7 @@ async function createAuthViaRestApi(
   const { authStyle, loginUrl, loginBody, loginContentType, testUrl } = params;
 
   const contentType =
-    loginContentType === "form"
-      ? "application/x-www-form-urlencoded"
-      : "application/json";
+    loginContentType === "form" ? "application/x-www-form-urlencoded" : "application/json";
   const normalizedBody = normalizeBody(loginBody, loginContentType);
 
   // --- API key: simple header auth ---
@@ -757,9 +860,7 @@ async function createAuthViaRestApi(
         request: { method: "GET", url: testUrl },
       },
       successResponseDetection: [{ type: "status", statuses: [200] }],
-      reauthTriggers: [
-        { type: "TRIGGER", location: "status", statuses: [401, 403] },
-      ],
+      reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }],
       config: {
         request: {
           url: testUrl,
@@ -796,30 +897,38 @@ async function createAuthViaRestApi(
         location: "body",
         patterns: [`action=["'][^"']*${escaped}["']`],
       };
-    } catch { /* bad URL — skip body trigger */ }
+    } catch {
+      /* bad URL — skip body trigger */
+    }
   }
 
   let reauthTriggers: Record<string, unknown>[];
   if (reauthStrat === "body" && params.reauthBodyPattern) {
-    reauthTriggers = [
-      { type: "TRIGGER", location: "body", patterns: [params.reauthBodyPattern] },
-    ];
+    reauthTriggers = [{ type: "TRIGGER", location: "body", patterns: [params.reauthBodyPattern] }];
   } else if (reauthStrat === "redirect") {
     reauthTriggers = [
-      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login|signin|sign_in|auth"] },
+      {
+        type: "TRIGGER",
+        location: "header",
+        name: "Location",
+        patterns: ["login|signin|sign_in|auth"],
+      },
       ...(loginBodyTrigger ? [{ type: "OR" } as Record<string, unknown>, loginBodyTrigger] : []),
     ];
   } else if (reauthStrat === "both") {
     reauthTriggers = [
       { type: "TRIGGER", location: "status", statuses: [401, 403] },
       { type: "OR" },
-      { type: "TRIGGER", location: "header", name: "Location", patterns: ["login|signin|sign_in|auth"] },
+      {
+        type: "TRIGGER",
+        location: "header",
+        name: "Location",
+        patterns: ["login|signin|sign_in|auth"],
+      },
       ...(loginBodyTrigger ? [{ type: "OR" } as Record<string, unknown>, loginBodyTrigger] : []),
     ];
   } else {
-    reauthTriggers = [
-      { type: "TRIGGER", location: "status", statuses: [401, 403] },
-    ];
+    reauthTriggers = [{ type: "TRIGGER", location: "status", statuses: [401, 403] }];
   }
 
   // Embedders: none for session (Bright auto-replays cookies), bearer header for JWT
@@ -827,10 +936,12 @@ async function createAuthViaRestApi(
   const tokenLocation = params.tokenLocation ?? "body";
   if (!isSession && params.tokenFieldPath) {
     const requestHeaderName = params.headerName || "Authorization";
-    const headerPrefix = params.headerPrefix ?? (requestHeaderName.toLowerCase() === "authorization" ? "Bearer " : "");
-    const template = tokenLocation === "header"
-      ? `${headerPrefix}${brightHeaderInterpolation("login", params.tokenFieldPath || requestHeaderName, headerTokenRegex(headerPrefix))}`
-      : `${headerPrefix}{{ auth_object.stages.login.response.body | match:/${bodyTokenRegex(params.tokenFieldPath)}/ }}`;
+    const headerPrefix =
+      params.headerPrefix ?? (requestHeaderName.toLowerCase() === "authorization" ? "Bearer " : "");
+    const template =
+      tokenLocation === "header"
+        ? `${headerPrefix}${brightHeaderInterpolation("login", params.tokenFieldPath || requestHeaderName, headerTokenRegex(headerPrefix))}`
+        : `${headerPrefix}{{ auth_object.stages.login.response.body | match:/${bodyTokenRegex(params.tokenFieldPath)}/ }}`;
     embedders.push({
       type: "header",
       name: requestHeaderName,
@@ -920,10 +1031,15 @@ async function createAuthViaRestApi(
     `[Auth] Creating ${authStyle} auth via REST API — login: ${loginUrl}, test: ${testUrl}${params.cookieUrl ? `, cookie: ${params.cookieUrl}` : ""}${params.csrfUrl ? `, csrf: ${params.csrfUrl}` : ""}${params.csrfExtractPattern ? `, csrfPattern: ${params.csrfExtractPattern}` : ""}`,
   );
   const steps = (body.config as Record<string, unknown>).multistep
-    ? ((body.config as Record<string, Record<string, unknown>>).multistep.steps as Record<string, unknown>[])
+    ? ((body.config as Record<string, Record<string, unknown>>).multistep.steps as Record<
+        string,
+        unknown
+      >[])
     : undefined;
   if (steps) {
-    console.log(`[Auth] Auth object steps: ${steps.map((s) => `${s.name}(${(s.request as Record<string, unknown>)?.method} ${(s.request as Record<string, unknown>)?.url})`).join(" → ")}`);
+    console.log(
+      `[Auth] Auth object steps: ${steps.map((s) => `${s.name}(${(s.request as Record<string, unknown>)?.method} ${(s.request as Record<string, unknown>)?.url})`).join(" → ")}`,
+    );
   }
   return postAuthObject(api, body);
 }
@@ -1046,8 +1162,7 @@ function buildLoginSteps(opts: {
     const extractPattern = opts.csrfExtractPattern || '"csrf"\\s*:\\s*"([^"]*)"';
     loginHeaders.push({
       name: headerName,
-      value:
-        `{{ auth_object.stages.get_csrf.response.body | match:/${extractPattern}/ }}`,
+      value: `{{ auth_object.stages.get_csrf.response.body | match:/${extractPattern}/ }}`,
       type: "clear_text",
       mergeStrategy: "replace",
     });
@@ -1225,17 +1340,25 @@ Return JSON only:
       return verified;
     }
     if (lastVerified) {
-      console.log(`[Auth] Using last tool-verified auth test URL: ${lastVerified.testUrl} — ${lastVerified.evidence}`);
+      console.log(
+        `[Auth] Using last tool-verified auth test URL: ${lastVerified.testUrl} — ${lastVerified.evidence}`,
+      );
       return lastVerified;
     }
-    console.warn(`[Auth] Could not verify auth test URL: ${parsed.reason ?? response.slice(0, 200)}`);
+    console.warn(
+      `[Auth] Could not verify auth test URL: ${parsed.reason ?? response.slice(0, 200)}`,
+    );
     return undefined;
   } catch {
     if (lastVerified) {
-      console.log(`[Auth] Using last tool-verified auth test URL: ${lastVerified.testUrl} — ${lastVerified.evidence}`);
+      console.log(
+        `[Auth] Using last tool-verified auth test URL: ${lastVerified.testUrl} — ${lastVerified.evidence}`,
+      );
       return lastVerified;
     }
-    console.warn(`[Auth] Could not parse auth test URL resolver response: ${response.slice(0, 200)}`);
+    console.warn(
+      `[Auth] Could not parse auth test URL resolver response: ${response.slice(0, 200)}`,
+    );
     return undefined;
   }
 }
@@ -1258,7 +1381,12 @@ async function verifyAuthTestUrl(
     return { verified: false, url: candidateUrl, evidence: "missing URL", reason: "missing URL" };
   }
   if (!detection.loginEndpoint) {
-    return { verified: false, url: candidateUrl, evidence: "missing login endpoint", reason: "missing login endpoint" };
+    return {
+      verified: false,
+      url: candidateUrl,
+      evidence: "missing login endpoint",
+      reason: "missing login endpoint",
+    };
   }
 
   const url = new URL(candidateUrl, baseUrl).toString();
@@ -1275,9 +1403,10 @@ async function verifyAuthTestUrl(
     const unauthBody = await unauth.text().catch(() => "");
 
     const loginUrl = `${baseUrl}${detection.loginEndpoint}`;
-    const loginContentType = detection.loginContentType === "form"
-      ? "application/x-www-form-urlencoded"
-      : "application/json";
+    const loginContentType =
+      detection.loginContentType === "form"
+        ? "application/x-www-form-urlencoded"
+        : "application/json";
     const login = await fetch(loginUrl, {
       method: detection.loginMethod ?? "POST",
       headers: {
@@ -1301,11 +1430,12 @@ async function verifyAuthTestUrl(
     }
 
     const authHeaders: Record<string, string> = { Accept: "application/json, text/plain, */*" };
-    const tokenHeaderName = detection.tokenLocation === "header"
-      ? (detection.tokenFieldPath ?? detection.headerName ?? "Authorization")
-      : undefined;
+    const tokenHeaderName =
+      detection.tokenLocation === "header"
+        ? (detection.tokenFieldPath ?? detection.headerName ?? "Authorization")
+        : undefined;
     const tokenHeader = tokenHeaderName
-      ? login.headers.get(tokenHeaderName) ?? login.headers.get(tokenHeaderName.toLowerCase())
+      ? (login.headers.get(tokenHeaderName) ?? login.headers.get(tokenHeaderName.toLowerCase()))
       : undefined;
     if (tokenHeader) {
       const requestHeaderName = detection.headerName ?? "Authorization";
@@ -1316,7 +1446,8 @@ async function verifyAuthTestUrl(
       const token = extractTokenFromBody(loginBody, detection.tokenFieldPath);
       if (token) {
         const requestHeaderName = detection.headerName ?? "Authorization";
-        authHeaders[requestHeaderName] = `${detection.headerPrefix ?? (requestHeaderName.toLowerCase() === "authorization" ? "Bearer " : "")}${token}`;
+        authHeaders[requestHeaderName] =
+          `${detection.headerPrefix ?? (requestHeaderName.toLowerCase() === "authorization" ? "Bearer " : "")}${token}`;
       }
     }
 
@@ -1327,7 +1458,11 @@ async function verifyAuthTestUrl(
       authHeaders.Cookie = cookies.join("; ");
     }
 
-    if (!authHeaders.Authorization && !authHeaders.Cookie && !(detection.headerName && authHeaders[detection.headerName])) {
+    if (
+      !authHeaders.Authorization &&
+      !authHeaders.Cookie &&
+      !(detection.headerName && authHeaders[detection.headerName])
+    ) {
       return {
         verified: false,
         url,
@@ -1345,23 +1480,28 @@ async function verifyAuthTestUrl(
       signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT),
     });
     const authBody = await auth.text().catch(() => "");
-    const sameForbidden = unauth.status === auth.status &&
+    const sameForbidden =
+      unauth.status === auth.status &&
       (auth.status === 401 || auth.status === 403) &&
       preview(unauthBody) === preview(authBody);
 
     // Primary check: status-code differentiation (401/403 unauth → 200 auth)
-    const statusVerified = (unauth.status === 401 || unauth.status === 403) &&
-      auth.status < 400 &&
-      !sameForbidden;
+    const statusVerified =
+      (unauth.status === 401 || unauth.status === 403) && auth.status < 400 && !sameForbidden;
 
     // Secondary check: body-content differentiation for SPAs/APIs that return
     // 200 for both but with different bodies (e.g. NextAuth /api/auth/session
     // returns {} unauthed vs {user:...} authed)
-    const bodyVerified = !statusVerified &&
-      unauth.status === 200 && auth.status === 200 &&
+    const bodyVerified =
+      !statusVerified &&
+      unauth.status === 200 &&
+      auth.status === 200 &&
       unauthBody !== authBody &&
       // Unauthed body should be "empty-like" (empty JSON, empty string, or very short)
-      (unauthBody.trim() === "{}" || unauthBody.trim() === "[]" || unauthBody.trim() === "" || unauthBody.trim().length < 10) &&
+      (unauthBody.trim() === "{}" ||
+        unauthBody.trim() === "[]" ||
+        unauthBody.trim() === "" ||
+        unauthBody.trim().length < 10) &&
       // Authed body should have meaningful content
       authBody.trim().length > 10;
 
@@ -1374,11 +1514,11 @@ async function verifyAuthTestUrl(
       loginStatus: login.status,
       authStatus: auth.status,
       evidence: `unauth=${unauth.status} (${preview(unauthBody)}), login=${login.status}, auth=${auth.status} (${preview(authBody)})`,
-      reason: verified ? undefined : (
-        unauth.status === 200 && auth.status === 200
+      reason: verified
+        ? undefined
+        : unauth.status === 200 && auth.status === 200
           ? "authenticated and unauthenticated responses are the same (SPA or no body differentiation)"
-          : "authenticated request did not become an accessible protected response"
-      ),
+          : "authenticated request did not become an accessible protected response",
     };
   } catch (err) {
     return {
@@ -1404,7 +1544,9 @@ function extractTokenFromBody(body: string, tokenFieldPath: string): string | un
     const lastSegment = tokenFieldPath.includes(".")
       ? tokenFieldPath.split(".").pop()!
       : tokenFieldPath;
-    const match = body.match(new RegExp(`"${lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*"([^"]+)"`));
+    const match = body.match(
+      new RegExp(`"${lastSegment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*"([^"]+)"`),
+    );
     return match?.[1];
   }
 }
@@ -1422,7 +1564,12 @@ async function createAuthViaMcp(
   preProbeContext?: string,
   verifiedTestUrl?: string,
   authHints?: string[],
-): Promise<{ authId: string | undefined; attemptLog: string[]; infraRepairHint?: string; directAuthHeaders?: Record<string, string> }> {
+): Promise<{
+  authId: string | undefined;
+  attemptLog: string[];
+  infraRepairHint?: string;
+  directAuthHeaders?: Record<string, string>;
+}> {
   // Bright auth-object inspection tools (read-only, REST-backed)
   _probeCookieJar = {};
   // Capture raw auth headers when create_auth_header succeeds — used for direct app probing
@@ -1534,8 +1681,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
             },
             loginUrl: {
               type: "string",
-              description:
-                "Full URL for the login endpoint (e.g. http://localhost:3000/session)",
+              description: "Full URL for the login endpoint (e.g. http://localhost:3000/session)",
             },
             loginBody: {
               type: "string",
@@ -1576,7 +1722,7 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
             csrfExtractPattern: {
               type: "string",
               description:
-                "(Session auth) Regex pattern to extract the CSRF token from the csrfUrl response body. Must have exactly one capture group for the token value. Default: '\"csrf\"\\s*:\\s*\"([^\"]*)\"' which matches JSON like {\"csrf\":\"token\"}. If the CSRF endpoint returns a different format, probe it first and set a matching pattern. Examples: '\"token\"\\s*:\\s*\"([^\"]*)\"' for {\"token\":\"...\"}, 'content=\"([^\"]*)\"' for HTML meta tag.",
+                '(Session auth) Regex pattern to extract the CSRF token from the csrfUrl response body. Must have exactly one capture group for the token value. Default: \'"csrf"\\s*:\\s*"([^"]*)"\' which matches JSON like {"csrf":"token"}. If the CSRF endpoint returns a different format, probe it first and set a matching pattern. Examples: \'"token"\\s*:\\s*"([^"]*)"\' for {"token":"..."}, \'content="([^"]*)"\' for HTML meta tag.',
             },
             reauthStrategy: {
               type: "string",
@@ -1612,17 +1758,10 @@ For apps where no endpoint returns 401/403 (e.g. SPA apps, Discourse): use reaut
             },
             headerValue: {
               type: "string",
-              description:
-                "(API key only) Header value (e.g. 'Bearer sk-xxx', 'my-api-key-123')",
+              description: "(API key only) Header value (e.g. 'Bearer sk-xxx', 'my-api-key-123')",
             },
           },
-          required: [
-            "authStyle",
-            "loginUrl",
-            "loginBody",
-            "loginContentType",
-            "testUrl",
-          ],
+          required: ["authStyle", "loginUrl", "loginBody", "loginContentType", "testUrl"],
           additionalProperties: false,
         },
       },
@@ -1640,7 +1779,7 @@ Use this when the simplified create_auth tool cannot express the auth flow. REQU
 You define the exact steps array, embedders, reauthTriggers, and test request. Steps execute in order. Each step can reference previous step responses via NexTemplate expressions:
 - Extract from response body: {{ auth_object.stages.<step_name>.response.body | match:/<regex_with_capture_group>/ }}
 - Extract from response header using the documented Bright syntax: {{ auth_object.stages.<step_name>.response.headers | get: '/Location' | match:/code=([^&]+)/ }}
-- JWT returned in Authorization header: {{ auth_object.stages.login.response.headers | get: '/Authorization' | match:/(?:Bearer\s+)?([^\s,;]+)/ }}
+- JWT returned in Authorization header: {{ auth_object.stages.login.response.headers | get: '/Authorization' | match:/(?:Bearers+)?([^s,;]+)/ }}
 
 Example — Django CSRF (csrfmiddlewaretoken in form body):
   steps: [
@@ -1670,7 +1809,8 @@ Example — OAuth2 PKCE flow:
             },
             testUrl: {
               type: "string",
-              description: "Full URL to a protected endpoint for session validation. Should return different responses for authenticated vs unauthenticated requests.",
+              description:
+                "Full URL to a protected endpoint for session validation. Should return different responses for authenticated vs unauthenticated requests.",
             },
             testMethod: {
               type: "string",
@@ -1679,11 +1819,13 @@ Example — OAuth2 PKCE flow:
             },
             testFollowRedirects: {
               type: "boolean",
-              description: "Whether the test request should follow HTTP redirects. Default: false. Set to TRUE when your reauthTriggers use body/dom patterns AND the app redirects unauthenticated requests (302 → login page) — without this the test sees only the raw 302 body which won't match. Keep FALSE when reauthTriggers check status codes or Location headers — following would hide the 302 you're trying to detect.",
+              description:
+                "Whether the test request should follow HTTP redirects. Default: false. Set to TRUE when your reauthTriggers use body/dom patterns AND the app redirects unauthenticated requests (302 → login page) — without this the test sees only the raw 302 body which won't match. Keep FALSE when reauthTriggers check status codes or Location headers — following would hide the 302 you're trying to detect.",
             },
             testMaxRedirects: {
               type: "number",
-              description: "Maximum redirects the test request will follow. Only relevant when testFollowRedirects is true. Default: 5.",
+              description:
+                "Maximum redirects the test request will follow. Only relevant when testFollowRedirects is true. Default: 5.",
             },
             reauthTriggers: {
               type: "string",
@@ -1748,8 +1890,7 @@ Example — OAuth2 PKCE flow:
           properties: {
             url: {
               type: "string",
-              description:
-                "Full URL to probe (e.g. http://localhost:3000/admin/plugins.json)",
+              description: "Full URL to probe (e.g. http://localhost:3000/admin/plugins.json)",
             },
             method: {
               type: "string",
@@ -1807,8 +1948,7 @@ The Bright platform handles the full token exchange and automatic refresh.`,
             },
             scope: {
               type: "string",
-              description:
-                '(Optional) Space-separated OAuth2 scopes (e.g. "read write admin")',
+              description: '(Optional) Space-separated OAuth2 scopes (e.g. "read write admin")',
             },
             audience: {
               type: "string",
@@ -1821,7 +1961,8 @@ The Bright platform handles the full token exchange and automatic refresh.`,
             grantType: {
               type: "string",
               enum: ["client_credentials", "password"],
-              description: "OAuth2 grant type. Default: client_credentials. Use 'password' when the API requires user credentials (username+password) exchanged via the token endpoint.",
+              description:
+                "OAuth2 grant type. Default: client_credentials. Use 'password' when the API requires user credentials (username+password) exchanged via the token endpoint.",
             },
             username: {
               type: "string",
@@ -1883,47 +2024,41 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
   const customHandler: ToolHandler = async (name, args) => {
     if (name === "create_auth") {
       lastCreateArgs = { ...args };
-      const result = await createAuthViaRestApi(
-        api,
-        projectId,
-        repeaterId,
-        {
-          authStyle: String(args.authStyle),
-          loginUrl: String(args.loginUrl),
-          loginBody: String(args.loginBody),
-          loginContentType: String(args.loginContentType),
-          testUrl: normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection, verifiedTestUrl),
-          csrfUrl: args.csrfUrl ? String(args.csrfUrl) : undefined,
-          csrfHeaderName: args.csrfHeaderName
-            ? String(args.csrfHeaderName)
-            : undefined,
-          csrfExtractPattern: args.csrfExtractPattern
-            ? String(args.csrfExtractPattern)
-            : undefined,
-          cookieUrl: args.cookieUrl ? String(args.cookieUrl) : undefined,
-          loginAccept: args.loginAccept ? String(args.loginAccept) : undefined,
-          reauthStrategy: args.reauthStrategy
-            ? String(args.reauthStrategy)
-            : undefined,
-          reauthBodyPattern: args.reauthBodyPattern
-            ? String(args.reauthBodyPattern)
-            : undefined,
-          tokenLocation: args.tokenLocation
-            ? String(args.tokenLocation) as "body" | "header" | "cookie"
-            : detection.tokenLocation,
-          tokenFieldPath: args.tokenFieldPath
-            ? String(args.tokenFieldPath)
-            : (detection.tokenLocation === "header"
-              ? (detection.tokenFieldPath ?? detection.headerName ?? "Authorization")
-              : (detection.tokenFieldPath ?? undefined)),
-          headerName: args.headerName ? String(args.headerName) : (detection.headerName ?? undefined),
-          headerPrefix: args.headerPrefix ? String(args.headerPrefix) : (detection.headerPrefix ?? undefined),
-          headerValue: args.headerValue ? String(args.headerValue) : undefined,
-        },
-      );
+      const result = await createAuthViaRestApi(api, projectId, repeaterId, {
+        authStyle: String(args.authStyle),
+        loginUrl: String(args.loginUrl),
+        loginBody: String(args.loginBody),
+        loginContentType: String(args.loginContentType),
+        testUrl: normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection, verifiedTestUrl),
+        csrfUrl: args.csrfUrl ? String(args.csrfUrl) : undefined,
+        csrfHeaderName: args.csrfHeaderName ? String(args.csrfHeaderName) : undefined,
+        csrfExtractPattern: args.csrfExtractPattern ? String(args.csrfExtractPattern) : undefined,
+        cookieUrl: args.cookieUrl ? String(args.cookieUrl) : undefined,
+        loginAccept: args.loginAccept ? String(args.loginAccept) : undefined,
+        reauthStrategy: args.reauthStrategy ? String(args.reauthStrategy) : undefined,
+        reauthBodyPattern: args.reauthBodyPattern ? String(args.reauthBodyPattern) : undefined,
+        tokenLocation: args.tokenLocation
+          ? (String(args.tokenLocation) as "body" | "header" | "cookie")
+          : detection.tokenLocation,
+        tokenFieldPath: args.tokenFieldPath
+          ? String(args.tokenFieldPath)
+          : detection.tokenLocation === "header"
+            ? (detection.tokenFieldPath ?? detection.headerName ?? "Authorization")
+            : (detection.tokenFieldPath ?? undefined),
+        headerName: args.headerName ? String(args.headerName) : (detection.headerName ?? undefined),
+        headerPrefix: args.headerPrefix
+          ? String(args.headerPrefix)
+          : (detection.headerPrefix ?? undefined),
+        headerValue: args.headerValue ? String(args.headerValue) : undefined,
+      });
       if (result.error) {
-        attemptLog.push(`- create_auth(loginUrl=${args.loginUrl}, testUrl=${args.testUrl}, authStyle=${args.authStyle}, reauthStrategy=${args.reauthStrategy ?? "default"}) → ERROR: ${result.error}`);
-        addAuthHint(authHints, `[auth-create-error] create_auth failed for authStyle=${args.authStyle}, testUrl=${args.testUrl}: ${result.error}`);
+        attemptLog.push(
+          `- create_auth(loginUrl=${args.loginUrl}, testUrl=${args.testUrl}, authStyle=${args.authStyle}, reauthStrategy=${args.reauthStrategy ?? "default"}) → ERROR: ${result.error}`,
+        );
+        addAuthHint(
+          authHints,
+          `[auth-create-error] create_auth failed for authStyle=${args.authStyle}, testUrl=${args.testUrl}: ${result.error}`,
+        );
         return JSON.stringify({ error: result.error });
       }
       return JSON.stringify({ authObjectId: result.id });
@@ -1967,9 +2102,7 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
         }
       }
 
-      let successDetection: Record<string, unknown>[] = [
-        { type: "status", statuses: [200] },
-      ];
+      let successDetection: Record<string, unknown>[] = [{ type: "status", statuses: [200] }];
       if (args.successResponseDetection) {
         try {
           successDetection = JSON.parse(String(args.successResponseDetection));
@@ -1982,17 +2115,24 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       }
 
       const testMethod = args.testMethod ? String(args.testMethod) : "GET";
-      const testUrl = normalizeAuthTestUrl(String(args.testUrl), baseUrl, detection, verifiedTestUrl);
+      const testUrl = normalizeAuthTestUrl(
+        String(args.testUrl),
+        baseUrl,
+        detection,
+        verifiedTestUrl,
+      );
 
       // Follow redirects on test request — LLM decides based on context:
       // - true when reauthTriggers use body/dom patterns and app redirects to login
       // - false when reauthTriggers use header/status (need to see raw 302)
-      const testFollowRedirects = args.testFollowRedirects !== undefined
-        ? Boolean(args.testFollowRedirects)
-        : false;
-      const testMaxRedirects = args.testMaxRedirects !== undefined
-        ? Number(args.testMaxRedirects)
-        : (testFollowRedirects ? 5 : 0);
+      const testFollowRedirects =
+        args.testFollowRedirects !== undefined ? Boolean(args.testFollowRedirects) : false;
+      const testMaxRedirects =
+        args.testMaxRedirects !== undefined
+          ? Number(args.testMaxRedirects)
+          : testFollowRedirects
+            ? 5
+            : 0;
 
       // Ensure each step has protocol and bodyType defaults
       for (const step of steps) {
@@ -2029,16 +2169,25 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
         },
       };
 
-      const stepNames = steps.map((s) => {
-        const req = s.request as Record<string, unknown> | undefined;
-        return `${s.name}(${req?.method ?? "?"} ${req?.url ?? "?"})`;
-      }).join(" → ");
-      console.log(`[Auth] Creating raw multistep auth — steps: ${stepNames}, test: ${testMethod} ${testUrl}`);
+      const stepNames = steps
+        .map((s) => {
+          const req = s.request as Record<string, unknown> | undefined;
+          return `${s.name}(${req?.method ?? "?"} ${req?.url ?? "?"})`;
+        })
+        .join(" → ");
+      console.log(
+        `[Auth] Creating raw multistep auth — steps: ${stepNames}, test: ${testMethod} ${testUrl}`,
+      );
 
       const result = await postAuthObject(api, body);
       if (result.error) {
-        attemptLog.push(`- create_auth_raw(steps=[${stepNames}], testUrl=${testUrl}) → ERROR: ${result.error}`);
-        addAuthHint(authHints, `[auth-create-error] create_auth_raw failed for steps=[${stepNames}], testUrl=${testUrl}: ${result.error}`);
+        attemptLog.push(
+          `- create_auth_raw(steps=[${stepNames}], testUrl=${testUrl}) → ERROR: ${result.error}`,
+        );
+        addAuthHint(
+          authHints,
+          `[auth-create-error] create_auth_raw failed for steps=[${stepNames}], testUrl=${testUrl}: ${result.error}`,
+        );
         return JSON.stringify({ error: result.error });
       }
       return JSON.stringify({ authObjectId: result.id });
@@ -2048,10 +2197,23 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       const tokenEndpoint = String(args.tokenEndpoint ?? "");
       const clientId = String(args.clientId ?? "");
       const clientSecret = String(args.clientSecret ?? "");
-      const testUrl = normalizeAuthTestUrl(String(args.testUrl ?? ""), baseUrl, detection, verifiedTestUrl);
-      const scope = args.scope ? String(args.scope).split(/[\s,]+/).filter(Boolean) : [];
+      const testUrl = normalizeAuthTestUrl(
+        String(args.testUrl ?? ""),
+        baseUrl,
+        detection,
+        verifiedTestUrl,
+      );
+      const scope = args.scope
+        ? String(args.scope)
+            .split(/[\s,]+/)
+            .filter(Boolean)
+        : [];
       const audience = args.audience ? String(args.audience) : undefined;
-      const resource = args.resource ? String(args.resource).split(/[\s,]+/).filter(Boolean) : [];
+      const resource = args.resource
+        ? String(args.resource)
+            .split(/[\s,]+/)
+            .filter(Boolean)
+        : [];
       const grantType = String(args.grantType ?? "client_credentials");
       const username = args.username ? String(args.username) : undefined;
       const password = args.password ? String(args.password) : undefined;
@@ -2069,7 +2231,9 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       // For password grant, include resource owner credentials
       if (grantType === "password") {
         if (!username || !password) {
-          return JSON.stringify({ error: "grantType 'password' requires both username and password parameters" });
+          return JSON.stringify({
+            error: "grantType 'password' requires both username and password parameters",
+          });
         }
         oidcConfig.username = username;
         oidcConfig.password = password;
@@ -2092,21 +2256,21 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
             changeMethodOnRedirect: false,
           },
         },
-        reauthTriggers: [
-          { type: "TRIGGER", location: "status", statuses: [401] },
-        ],
-        successResponseDetection: [
-          { type: "status", statuses: [200, 201, 204] },
-        ],
+        reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401] }],
+        successResponseDetection: [{ type: "status", statuses: [200, 201, 204] }],
         config: {
           oidc: oidcConfig,
         },
       };
 
-      console.log(`[Auth] Creating ${grantLabel} auth — tokenEndpoint: ${tokenEndpoint}, clientId: ${clientId}, test: ${testUrl}`);
+      console.log(
+        `[Auth] Creating ${grantLabel} auth — tokenEndpoint: ${tokenEndpoint}, clientId: ${clientId}, test: ${testUrl}`,
+      );
       const result = await postAuthObject(api, body);
       if (result.error) {
-        attemptLog.push(`- create_auth_oidc(grantType=${grantType}, tokenEndpoint=${tokenEndpoint}, clientId=${clientId}, testUrl=${testUrl}) → ERROR: ${result.error}`);
+        attemptLog.push(
+          `- create_auth_oidc(grantType=${grantType}, tokenEndpoint=${tokenEndpoint}, clientId=${clientId}, testUrl=${testUrl}) → ERROR: ${result.error}`,
+        );
         addAuthHint(authHints, `[auth-create-error] create_auth_oidc failed: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }
@@ -2118,18 +2282,27 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       try {
         headers = JSON.parse(String(args.headers));
         if (!Array.isArray(headers) || headers.length === 0) {
-          return JSON.stringify({ error: "headers must be a non-empty JSON array of {name, value} objects" });
+          return JSON.stringify({
+            error: "headers must be a non-empty JSON array of {name, value} objects",
+          });
         }
         for (const h of headers) {
           if (!h.name || !h.value) {
-            return JSON.stringify({ error: `Each header must have 'name' and 'value'. Got: ${JSON.stringify(h)}` });
+            return JSON.stringify({
+              error: `Each header must have 'name' and 'value'. Got: ${JSON.stringify(h)}`,
+            });
           }
         }
       } catch (e) {
         return JSON.stringify({ error: `Failed to parse headers JSON: ${toErrorMessage(e)}` });
       }
 
-      const testUrl = normalizeAuthTestUrl(String(args.testUrl ?? ""), baseUrl, detection, verifiedTestUrl);
+      const testUrl = normalizeAuthTestUrl(
+        String(args.testUrl ?? ""),
+        baseUrl,
+        detection,
+        verifiedTestUrl,
+      );
       const testMethod = String(args.testMethod ?? "GET");
 
       const body: Record<string, unknown> = {
@@ -2148,12 +2321,8 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
             changeMethodOnRedirect: false,
           },
         },
-        reauthTriggers: [
-          { type: "TRIGGER", location: "status", statuses: [401, 403] },
-        ],
-        successResponseDetection: [
-          { type: "status", statuses: [200, 201, 204] },
-        ],
+        reauthTriggers: [{ type: "TRIGGER", location: "status", statuses: [401, 403] }],
+        successResponseDetection: [{ type: "status", statuses: [200, 201, 204] }],
         config: {
           request: {
             headers: headers.map((h) => ({
@@ -2167,10 +2336,14 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       };
 
       const headerNames = headers.map((h) => h.name).join(", ");
-      console.log(`[Auth] Creating static header auth — headers: [${headerNames}], test: ${testMethod} ${testUrl}`);
+      console.log(
+        `[Auth] Creating static header auth — headers: [${headerNames}], test: ${testMethod} ${testUrl}`,
+      );
       const result = await postAuthObject(api, body);
       if (result.error) {
-        attemptLog.push(`- create_auth_header(headers=[${headerNames}], testUrl=${testUrl}) → ERROR: ${result.error}`);
+        attemptLog.push(
+          `- create_auth_header(headers=[${headerNames}], testUrl=${testUrl}) → ERROR: ${result.error}`,
+        );
         addAuthHint(authHints, `[auth-create-error] create_auth_header failed: ${result.error}`);
         return JSON.stringify({ error: result.error });
       }
@@ -2179,29 +2352,28 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       return JSON.stringify({ authObjectId: result.id });
     }
     if (name === "test_auth_object") {
-      const result = await testAuthObject(
-        api,
-        String(args.authObjectId),
-        appHealthProbe,
-      );
+      const result = await testAuthObject(api, String(args.authObjectId), appHealthProbe);
       // Log the test result with the create_auth params that produced this auth object
       const summary = JSON.stringify(result);
-      const configSummary = lastCreateArgs.authStyle === "raw"
-        ? `raw multistep, testUrl=${lastCreateArgs.testUrl}`
-        : lastCreateArgs.authStyle === "header"
-        ? `static headers, testUrl=${lastCreateArgs.testUrl}`
-        : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
+      const configSummary =
+        lastCreateArgs.authStyle === "raw"
+          ? `raw multistep, testUrl=${lastCreateArgs.testUrl}`
+          : lastCreateArgs.authStyle === "header"
+            ? `static headers, testUrl=${lastCreateArgs.testUrl}`
+            : `loginUrl=${lastCreateArgs.loginUrl}, testUrl=${lastCreateArgs.testUrl}, authStyle=${lastCreateArgs.authStyle}, reauthStrategy=${lastCreateArgs.reauthStrategy ?? "default"}, csrfUrl=${lastCreateArgs.csrfUrl ?? "none"}`;
       if (!result.passed) {
-        attemptLog.push(`- create_auth(${configSummary}) → test FAILED: ${result.summary ?? summary.slice(0, 300)}`);
-        addAuthHint(authHints, `[auth-test-failure] ${configSummary} failed: ${compactAuthHint(result.summary ?? summary.slice(0, 300), 700)}`);
+        attemptLog.push(
+          `- create_auth(${configSummary}) → test FAILED: ${result.summary ?? summary.slice(0, 300)}`,
+        );
+        addAuthHint(
+          authHints,
+          `[auth-test-failure] ${configSummary} failed: ${compactAuthHint(result.summary ?? summary.slice(0, 300), 700)}`,
+        );
       }
       return JSON.stringify(result);
     }
     if (name === "delete_auth_object") {
-      await deleteAuthObject(
-        api,
-        String(args.authObjectId),
-      );
+      await deleteAuthObject(api, String(args.authObjectId));
       return "Deleted successfully";
     }
     if (name === "probe_url") {
@@ -2254,11 +2426,7 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
       return webHandler(name, args);
     }
     // Codebase tools (search_files, read_file, list_files)
-    if (
-      name === "search_files" ||
-      name === "read_file" ||
-      name === "list_files"
-    ) {
+    if (name === "search_files" || name === "read_file" || name === "list_files") {
       return baseCodeHandler(name, args);
     }
     return inspectionHandler(name, args);
@@ -2271,17 +2439,17 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
   const resolvedPath = resolveProtectedEndpointPath(detection) ?? "/";
   const testUrl = verifiedTestUrl ?? `${baseUrl}${resolvedPath}`;
 
-  const messages = configureAuthPrompt(baseUrl, testUrl, detection, registrationOk, preProbeContext, authHints ?? []);
+  const messages = configureAuthPrompt(
+    baseUrl,
+    testUrl,
+    detection,
+    registrationOk,
+    preProbeContext,
+    authHints ?? [],
+  );
 
   console.log("[Auth] Starting auth configuration with custom tools...");
-  const response = await chatWithTools(
-    llm,
-    messages,
-    allTools,
-    combinedHandler,
-    model,
-    50,
-  );
+  const response = await chatWithTools(llm, messages, allTools, combinedHandler, model, 50);
 
   const trimmed = response.trim();
 
@@ -2304,11 +2472,18 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
   console.log(`[Auth] Verifying auth object ${authId} — running deterministic test...`);
   const verification = await testAuthObject(api, authId, appHealthProbe);
   if (!verification.passed) {
-    console.error(`[Auth] Verification FAILED for ${authId}: ${verification.summary?.slice(0, 300)}`);
+    console.error(
+      `[Auth] Verification FAILED for ${authId}: ${verification.summary?.slice(0, 300)}`,
+    );
     // Include full diagnostics (with DIAGNOSTIC hints) in the attempt log so
     // the next LLM attempt has specific guidance on what to fix.
-    attemptLog.push(`- Auth object ${authId} returned by LLM but deterministic verification failed:\n${verification.summary?.slice(0, 600)}`);
-    addAuthHint(authHints, `[auth-final-verification-failure] Auth object ${authId} failed deterministic verification: ${compactAuthHint(verification.summary ?? "unknown", 700)}`);
+    attemptLog.push(
+      `- Auth object ${authId} returned by LLM but deterministic verification failed:\n${verification.summary?.slice(0, 600)}`,
+    );
+    addAuthHint(
+      authHints,
+      `[auth-final-verification-failure] Auth object ${authId} failed deterministic verification: ${compactAuthHint(verification.summary ?? "unknown", 700)}`,
+    );
     // Clean up the failed auth object so it doesn't pollute the project
     await deleteAuthObject(api, authId);
     return { authId: undefined, attemptLog };
@@ -2321,19 +2496,13 @@ Supports multiple headers (e.g. both x-cal-client-id AND x-cal-secret-key).`,
 // Register a test user locally before login (for apps with no seeded users)
 // ---------------------------------------------------------------------------
 
-export async function registerUser(
-  baseUrl: string,
-  detection: AuthDetection,
-): Promise<boolean> {
+export async function registerUser(baseUrl: string, detection: AuthDetection): Promise<boolean> {
   if (!detection.registerEndpoint || !detection.registerBody) return false;
 
   const url = `${baseUrl}${detection.registerEndpoint}`;
   const registerContentType = detection.registerContentType ?? detection.loginContentType;
   const ct = CONTENT_TYPE_MAP[registerContentType] ?? "application/json";
-  const body = normalizeBody(
-    detection.registerBody,
-    registerContentType,
-  );
+  const body = normalizeBody(detection.registerBody, registerContentType);
 
   try {
     console.log(
@@ -2355,9 +2524,7 @@ export async function registerUser(
     // 2xx or 302 redirect = success; 4xx/5xx = failure
     return res.status >= 200 && res.status < 400;
   } catch (err) {
-    console.warn(
-      `[Auth] Registration call failed (user may already exist): ${err}`,
-    );
+    console.warn(`[Auth] Registration call failed (user may already exist): ${err}`);
     return false;
   }
 }
@@ -2379,7 +2546,8 @@ function updateLoginBodyFromRegisteredUser(detection: AuthDetection): void {
   const password = firstStringValue(registration, ["password", "pass", "pwd"]);
   if (!identifier || !password) return;
 
-  const existingLogin = parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
+  const existingLogin =
+    parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
   const identifierKey =
     firstExistingKey(existingLogin, ["user", "username", "email", "login", "identifier"]) ??
     (registration.email ? "email" : "username");
@@ -2392,21 +2560,23 @@ function updateLoginBodyFromRegisteredUser(detection: AuthDetection): void {
   };
   detection.loginBody = serializeRequestBody(nextLogin, detection.loginContentType);
   detection.notes = `${detection.notes}\nRegistered credentials: ${identifierKey}=${identifier}, ${passwordKey}=${password}. Use these credentials for login sanity checks and Bright auth creation.`;
-  console.log(`[Auth] Updated login body to use registered test user (${identifierKey}=${identifier})`);
+  console.log(
+    `[Auth] Updated login body to use registered test user (${identifierKey}=${identifier})`,
+  );
 }
 
 function updateLoginBodyFromSeededUser(
   detection: AuthDetection,
   credentials: Pick<SeedUserResult, "username" | "email" | "password">,
 ): void {
-  const existingLogin = parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
+  const existingLogin =
+    parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
   const identifierKey =
     firstExistingKey(existingLogin, ["user", "username", "email", "login", "identifier"]) ??
     (credentials.email ? "email" : "username");
   const passwordKey = firstExistingKey(existingLogin, ["password", "pass", "pwd"]) ?? "password";
-  const identifier = identifierKey === "username"
-    ? credentials.username
-    : (credentials.email || credentials.username);
+  const identifier =
+    identifierKey === "username" ? credentials.username : credentials.email || credentials.username;
 
   const nextLogin: Record<string, string> = {
     ...existingLogin,
@@ -2421,18 +2591,21 @@ function updateLoginBodyFromSeededUser(
 function resolveProtectedEndpointPath(detection: AuthDetection): string | null {
   if (!detection.protectedEndpointPath) return null;
   const identity = authIdentityFromDetection(detection);
-  return detection.protectedEndpointPath.replace(/:(\w+)|\{(\w+)\}/g, (_match, colonName: string | undefined, braceName: string | undefined) => {
-    const name = (colonName ?? braceName ?? "").toLowerCase();
-    let value: string | undefined;
-    if (name.includes("email") || name.includes("mail")) {
-      value = identity.email ?? identity.user ?? identity.username;
-    } else if (name.includes("user") || name.includes("login") || name.includes("name")) {
-      value = identity.user ?? identity.username ?? identity.email;
-    } else if (name === "id" || name.endsWith("id")) {
-      value = identity.id;
-    }
-    return encodeURIComponent(value ?? "1");
-  });
+  return detection.protectedEndpointPath.replace(
+    /:(\w+)|\{(\w+)\}/g,
+    (_match, colonName: string | undefined, braceName: string | undefined) => {
+      const name = (colonName ?? braceName ?? "").toLowerCase();
+      let value: string | undefined;
+      if (name.includes("email") || name.includes("mail")) {
+        value = identity.email ?? identity.user ?? identity.username;
+      } else if (name.includes("user") || name.includes("login") || name.includes("name")) {
+        value = identity.user ?? identity.username ?? identity.email;
+      } else if (name === "id" || name.endsWith("id")) {
+        value = identity.id;
+      }
+      return encodeURIComponent(value ?? "1");
+    },
+  );
 }
 
 function normalizeAuthTestUrl(
@@ -2457,7 +2630,9 @@ function normalizeAuthTestUrl(
       requested.pathname.includes("/:") ||
       requested.pathname.includes("%3A")
     ) {
-      console.log(`[Auth] Rewrote unverified auth test URL ${requested.toString()} → verified URL ${preferredUrl}`);
+      console.log(
+        `[Auth] Rewrote unverified auth test URL ${requested.toString()} → verified URL ${preferredUrl}`,
+      );
       return preferredUrl;
     }
   } catch {
@@ -2476,15 +2651,17 @@ function authIdentityFromDetection(detection: AuthDetection): {
   const login = parseRequestBody(detection.loginBody ?? "{}", detection.loginContentType) ?? {};
   const user = firstStringValue(login, ["user", "login", "identifier"]);
   const username = firstStringValue(login, ["username", "name"]);
-  const email = firstStringValue(login, ["email"])
-    ?? ([user, username].find((value) => value?.includes("@")));
+  const email =
+    firstStringValue(login, ["email"]) ?? [user, username].find((value) => value?.includes("@"));
   const id = firstStringValue(login, ["id", "userId", "user_id"]);
   return { user, username, email, id };
 }
 
 function parseRequestBody(
   body: string,
-  contentType: AuthDetection["loginContentType"] | NonNullable<AuthDetection["registerContentType"]>,
+  contentType:
+    | AuthDetection["loginContentType"]
+    | NonNullable<AuthDetection["registerContentType"]>,
 ): Record<string, string> | null {
   if (contentType === "form") {
     const params = new URLSearchParams(body);
@@ -2522,10 +2699,7 @@ function serializeRequestBody(
   return JSON.stringify(body);
 }
 
-function firstStringValue(
-  body: Record<string, string>,
-  keys: string[],
-): string | undefined {
+function firstStringValue(body: Record<string, string>, keys: string[]): string | undefined {
   for (const key of keys) {
     const value = body[key];
     if (typeof value === "string" && value.length > 0) {
@@ -2535,11 +2709,8 @@ function firstStringValue(
   return undefined;
 }
 
-function firstExistingKey(
-  body: Record<string, string>,
-  keys: string[],
-): string | undefined {
-  return keys.find((key) => Object.prototype.hasOwnProperty.call(body, key));
+function firstExistingKey(body: Record<string, string>, keys: string[]): string | undefined {
+  return keys.find((key) => Object.hasOwn(body, key));
 }
 
 /**
@@ -2567,9 +2738,7 @@ export async function reRegisterUser(
     });
     console.log(`[Auth] Re-registration response: ${res.status}`);
   } catch (err) {
-    console.warn(
-      `[Auth] Re-registration failed (user may already exist): ${err}`,
-    );
+    console.warn(`[Auth] Re-registration failed (user may already exist): ${err}`);
   }
 }
 
@@ -2578,10 +2747,7 @@ export async function reRegisterUser(
  * This handles apps that create users via CLI (docker exec, rails runner, etc.)
  * rather than HTTP registration endpoints.
  */
-export async function replaySeedCommands(
-  repoPath: string,
-  commands: SeedCommand[],
-): Promise<void> {
+export async function replaySeedCommands(repoPath: string, commands: SeedCommand[]): Promise<void> {
   console.log(`[Auth] Replaying ${commands.length} seed command(s)...`);
   for (const cmd of commands) {
     try {
@@ -2671,7 +2837,8 @@ async function seedTestUser(
       console.log(`[Auth:Seed] User created: ${result.username} / ${result.email}`);
       // Attach captured commands for replay
       if (capturedCommands.length > 0) {
-        (result as SeedUserResult & { seedCommands?: SeedCommand[] }).seedCommands = capturedCommands;
+        (result as SeedUserResult & { seedCommands?: SeedCommand[] }).seedCommands =
+          capturedCommands;
         console.log(`[Auth:Seed] Captured ${capturedCommands.length} seed command(s) for replay`);
       }
       return result;
@@ -2784,7 +2951,8 @@ Return a JSON object:
     },
     {
       role: "user",
-      content: "Create an OAuth2 client for DAST authentication. Search the codebase first, then create the client via database or CLI commands.",
+      content:
+        "Create an OAuth2 client for DAST authentication. Search the codebase first, then create the client via database or CLI commands.",
     },
   ];
 
@@ -2794,7 +2962,9 @@ Return a JSON object:
     const json = extractJson(response);
     const result = JSON.parse(json) as SeedOAuthClientResult;
     if (result.success) {
-      console.log(`[Auth:OAuth] Client created: id=${result.clientId}, endpoint=${result.tokenEndpoint}`);
+      console.log(
+        `[Auth:OAuth] Client created: id=${result.clientId}, endpoint=${result.tokenEndpoint}`,
+      );
       if (capturedCommands.length > 0) {
         console.log(`[Auth:OAuth] Captured ${capturedCommands.length} seed command(s) for replay`);
       }
@@ -2843,9 +3013,7 @@ export async function testAuthObject(
   const retryDelayMs = 5_000;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(
-      `[Auth] Testing auth object ${authObjectId} (attempt ${attempt}/${maxRetries})`,
-    );
+    console.log(`[Auth] Testing auth object ${authObjectId} (attempt ${attempt}/${maxRetries})`);
 
     try {
       const res = await fetch(url, {
@@ -2950,15 +3118,11 @@ export async function testAuthObject(
           const hdrs = r.response.headers;
           if (hdrs) {
             detail.response.headers = sanitizeHeadersForAuthDiagnostics(hdrs);
-            const ct =
-              hdrs["content-type"] ?? hdrs["Content-Type"];
+            const ct = hdrs["content-type"] ?? hdrs["Content-Type"];
             if (ct) {
-              detail.response.contentType = Array.isArray(ct)
-                ? ct[0]
-                : ct;
+              detail.response.contentType = Array.isArray(ct) ? ct[0] : ct;
             }
-            const sc =
-              hdrs["set-cookie"] ?? hdrs["Set-Cookie"];
+            const sc = hdrs["set-cookie"] ?? hdrs["Set-Cookie"];
             if (sc) {
               // Trim long cookie values — keep name + first 80 chars
               const cookies = Array.isArray(sc) ? sc : [sc];
@@ -2980,10 +3144,9 @@ export async function testAuthObject(
       // success. Mark it as a failure with a distinct kind ("app_error") so
       // the LLM and orchestrator both see the right signal and can request
       // INFRA_REPAIR instead of declaring auth done.
-      const authzAppError = stages.find((s) =>
-        s.stage === "authorization"
-        && s.status === "success"
-        && (s.response?.status ?? 0) >= 500,
+      const authzAppError = stages.find(
+        (s) =>
+          s.stage === "authorization" && s.status === "success" && (s.response?.status ?? 0) >= 500,
       );
       if (authzAppError) {
         const httpStatus = authzAppError.response?.status ?? 0;
@@ -3020,10 +3183,10 @@ export async function testAuthObject(
         const bodyExcerpt = body.length > 300 ? body.slice(0, 300) + "…" : body;
         diagnosticHints.push(
           `DIAGNOSTIC: The "${authzAppError.name ?? "authorization"}" step reached a protected endpoint with valid credentials but the application returned HTTP ${httpStatus}. ` +
-          `This is an APPLICATION crash inside the authenticated handler, NOT an auth-configuration problem. ` +
-          `Auth is likely already correct — re-running create_auth with different settings will not help.\n` +
-          `ACTION: Read the response body and identify the root cause (commonly a missing environment variable, missing database migration, or missing native dependency), then respond with INFRA_REPAIR including the exact env var name / config value to set in compose.yml or Dockerfile. ` +
-          `Response body excerpt: ${bodyExcerpt}`,
+            `This is an APPLICATION crash inside the authenticated handler, NOT an auth-configuration problem. ` +
+            `Auth is likely already correct — re-running create_auth with different settings will not help.\n` +
+            `ACTION: Read the response body and identify the root cause (commonly a missing environment variable, missing database migration, or missing native dependency), then respond with INFRA_REPAIR including the exact env var name / config value to set in compose.yml or Dockerfile. ` +
+            `Response body excerpt: ${bodyExcerpt}`,
         );
       }
       for (const s of stages) {
@@ -3041,36 +3204,38 @@ export async function testAuthObject(
         if (s.stage === "authentication" && isHtml) {
           // Check if the request had an Accept header asking for JSON
           const reqHeaders = s.request as Record<string, unknown> | undefined;
-          const alreadyAskedForJson = JSON.stringify(reqHeaders ?? {}).toLowerCase().includes("application/json");
+          const alreadyAskedForJson = JSON.stringify(reqHeaders ?? {})
+            .toLowerCase()
+            .includes("application/json");
 
           if (httpStatus === 500) {
             diagnosticHints.push(
               `DIAGNOSTIC: The "${s.name ?? "login"}" step returned HTTP 500 with Content-Type text/html. ` +
-              `This usually means the server tried to render HTML but crashed ` +
-              `(e.g. missing system dependency like ImageMagick). ` +
-              `TWO actions to consider:\n` +
-              `  1. QUICK FIX: Recreate the auth object with loginAccept='application/json' — ` +
-              `this tells the server to return JSON instead of HTML, bypassing the render crash.\n` +
-              `  2. ROOT CAUSE: The app has broken HTML rendering. Use run_command_in_docker to ` +
-              `check application logs for the actual error. ` +
-              `Consider this an infrastructure issue — report via INFRA_REPAIR.`,
+                `This usually means the server tried to render HTML but crashed ` +
+                `(e.g. missing system dependency like ImageMagick). ` +
+                `TWO actions to consider:\n` +
+                `  1. QUICK FIX: Recreate the auth object with loginAccept='application/json' — ` +
+                `this tells the server to return JSON instead of HTML, bypassing the render crash.\n` +
+                `  2. ROOT CAUSE: The app has broken HTML rendering. Use run_command_in_docker to ` +
+                `check application logs for the actual error. ` +
+                `Consider this an infrastructure issue — report via INFRA_REPAIR.`,
             );
           } else if (!alreadyAskedForJson) {
             diagnosticHints.push(
               `DIAGNOSTIC: The "${s.name ?? "login"}" step returned Content-Type text/html (HTTP ${httpStatus}). ` +
-              `The login request did NOT include an Accept header requesting JSON. ` +
-              `Many web frameworks return HTML login pages by default and only return ` +
-              `JSON when the client sends Accept: application/json.\n` +
-              `FIX: Recreate the auth object with loginAccept='application/json' (for create_auth) ` +
-              `or add a { name: "Accept", value: "application/json" } header to the login step (for create_auth_raw). ` +
-              `This is the most common cause of auth failures on server-rendered apps (Rails, Django, Laravel, etc.).`,
+                `The login request did NOT include an Accept header requesting JSON. ` +
+                `Many web frameworks return HTML login pages by default and only return ` +
+                `JSON when the client sends Accept: application/json.\n` +
+                `FIX: Recreate the auth object with loginAccept='application/json' (for create_auth) ` +
+                `or add a { name: "Accept", value: "application/json" } header to the login step (for create_auth_raw). ` +
+                `This is the most common cause of auth failures on server-rendered apps (Rails, Django, Laravel, etc.).`,
             );
           } else {
             diagnosticHints.push(
               `DIAGNOSTIC: The "${s.name ?? "login"}" step returned Content-Type text/html (HTTP ${httpStatus}) ` +
-              `even though Accept: application/json was sent. The server does not support JSON responses ` +
-              `for this endpoint, or the URL is wrong (e.g. returns the login page instead of processing the login). ` +
-              `Check that loginUrl points to the API login endpoint, not the HTML login page.`,
+                `even though Accept: application/json was sent. The server does not support JSON responses ` +
+                `for this endpoint, or the URL is wrong (e.g. returns the login page instead of processing the login). ` +
+                `Check that loginUrl points to the API login endpoint, not the HTML login page.`,
             );
           }
         }
@@ -3080,17 +3245,18 @@ export async function testAuthObject(
         if (s.stage === "validation" && isHtml && s.status !== "success") {
           diagnosticHints.push(
             `DIAGNOSTIC: The "${s.name ?? "validation"}" step (CSRF/cookie) returned HTML (HTTP ${httpStatus}). ` +
-            `If this is a CSRF token fetch, make sure csrfUrl points to a JSON API endpoint ` +
-            `(e.g. /session/csrf.json or /api/csrf) rather than an HTML page. ` +
-            `Also try adding Accept: application/json header to the request.`,
+              `If this is a CSRF token fetch, make sure csrfUrl points to a JSON API endpoint ` +
+              `(e.g. /session/csrf.json or /api/csrf) rather than an HTML page. ` +
+              `Also try adding Accept: application/json header to the request.`,
           );
         }
       }
 
       const allPassed = stages.every((s) => s.status === "success");
-      const fullSummary = diagnosticHints.length > 0
-        ? lines.join("\n") + "\n\n" + diagnosticHints.join("\n")
-        : lines.join("\n");
+      const fullSummary =
+        diagnosticHints.length > 0
+          ? lines.join("\n") + "\n\n" + diagnosticHints.join("\n")
+          : lines.join("\n");
       return { passed: allPassed, summary: fullSummary, stages };
     } catch (err) {
       const msg = toErrorMessage(err);
@@ -3198,10 +3364,7 @@ function sanitizeHeaderValueForAuthDiagnostics(name: string, value: string): str
 
 function detectHeaderTokenAuthFailure(stages: AuthTestStageDetail[]): string | null {
   const loginStage = stages.find(
-    (s) =>
-      s.stage === "authentication" &&
-      s.status === "success" &&
-      !!s.response?.headers,
+    (s) => s.stage === "authentication" && s.status === "success" && !!s.response?.headers,
   );
   const failedAuthorization = stages.find(
     (s) =>
@@ -3219,19 +3382,23 @@ function detectHeaderTokenAuthFailure(stages: AuthTestStageDetail[]): string | n
   }
 
   const headerRef = normalizeResponseHeaderName(tokenHeaderName);
-  return `DIAGNOSTIC: The "${loginStage.name ?? "login"}" step succeeded and returned a token-like response header "${tokenHeaderName}", but authorization still failed with HTTP ${failedAuthorization.response?.status}. ` +
+  return (
+    `DIAGNOSTIC: The "${loginStage.name ?? "login"}" step succeeded and returned a token-like response header "${tokenHeaderName}", but authorization still failed with HTTP ${failedAuthorization.response?.status}. ` +
     `The auth object is probably not extracting and embedding that header token.\n` +
     `FIX with create_auth: recreate with authStyle='jwt', tokenLocation='header', tokenFieldPath='${tokenHeaderName}', headerName='Authorization', headerPrefix='Bearer '.\n` +
     `FIX with create_auth_raw: use an embedder like ` +
     `[{ "type": "header", "name": "Authorization", "template": "Bearer {{ auth_object.stages.login.response.headers | get: '/${headerRef}' | match:/(?:Bearer\\\\s+)?([^\\\\s,;]+)/ }}", "mergeStrategy": "replace" }]. ` +
     `Bright's documented string interpolation syntax requires reading response headers with the get pipe (headers | get: '/Header-Name'); do NOT use response.headers.${headerRef}, lowercase dot notation, or bracket syntax. ` +
-    `Do NOT use body extractors such as "access_token" unless the login response body actually contains that field.`;
+    `Do NOT use body extractors such as "access_token" unless the login response body actually contains that field.`
+  );
 }
 
 function detectBadAuthTestUrl(stages: AuthTestStageDetail[]): string | null {
   const loginStage = stages.find((s) => s.stage === "authentication" && s.status === "success");
   const validationStage = stages.find((s) => s.stage === "validation");
-  const authorizationStage = stages.find((s) => s.stage === "authorization" && s.status !== "success");
+  const authorizationStage = stages.find(
+    (s) => s.stage === "authorization" && s.status !== "success",
+  );
   if (!loginStage || !authorizationStage?.response) return null;
 
   const authStatus = authorizationStage.response.status;
@@ -3239,14 +3406,16 @@ function detectBadAuthTestUrl(stages: AuthTestStageDetail[]): string | null {
   const validationBody = validationStage?.response?.bodyPreview ?? "";
   const validationStatus = validationStage?.response?.status;
   const isForbidden = authStatus === 403 || /forbidden/i.test(authBody);
-  const sameAsValidation = validationStatus === authStatus &&
-    validationBody.slice(0, 120) === authBody.slice(0, 120);
+  const sameAsValidation =
+    validationStatus === authStatus && validationBody.slice(0, 120) === authBody.slice(0, 120);
 
   if (!isForbidden || !sameAsValidation) return null;
 
-  return `DIAGNOSTIC: Login succeeded, but the auth test URL returned the same HTTP ${authStatus} Forbidden response before and after authentication. ` +
+  return (
+    `DIAGNOSTIC: Login succeeded, but the auth test URL returned the same HTTP ${authStatus} Forbidden response before and after authentication. ` +
     `This usually means the chosen testUrl requires a different user/role or an unresolved route parameter, not that token extraction failed. ` +
-    `Pick a protected endpoint that the configured test user can access. If the detected route contains an email placeholder such as /api/users/one/:email/photo, use the registered user's email in the URL, not a numeric placeholder like /api/users/one/1/photo.`;
+    `Pick a protected endpoint that the configured test user can access. If the detected route contains an email placeholder such as /api/users/one/:email/photo, use the registered user's email in the URL, not a numeric placeholder like /api/users/one/1/photo.`
+  );
 }
 
 function findLikelyTokenResponseHeader(headers: Record<string, string>): string | null {
@@ -3270,9 +3439,7 @@ function normalizeBody(body: string, contentType: string): string {
     try {
       const obj = JSON.parse(trimmed) as Record<string, string>;
       const encoded = new URLSearchParams(obj).toString();
-      console.log(
-        `[Auth] Converted JSON loginBody to form-encoded: ${encoded.slice(0, 200)}`,
-      );
+      console.log(`[Auth] Converted JSON loginBody to form-encoded: ${encoded.slice(0, 200)}`);
       return encoded;
     } catch {
       return body;
@@ -3285,10 +3452,7 @@ function normalizeBody(body: string, contentType: string): string {
 // Delete a broken auth object before retrying
 // ---------------------------------------------------------------------------
 
-async function deleteAuthObject(
-  api: BrightApiContext,
-  authObjectId: string,
-): Promise<void> {
+async function deleteAuthObject(api: BrightApiContext, authObjectId: string): Promise<void> {
   try {
     const res = await fetch(
       `https://${api.brightHostname}/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
@@ -3324,7 +3488,8 @@ function parseInfraRepairResponse(trimmed: string): string | undefined {
 // parseAuthResponse — validates LLM response from the configure phase
 // ---------------------------------------------------------------------------
 
-const FALSE_ESCAPE_RE = /no\s*auth|auth.*not\s*required|auth.*skipped|does\s*not\s*require|doesn['']t\s*require|no\s*authentication/i;
+const FALSE_ESCAPE_RE =
+  /no\s*auth|auth.*not\s*required|auth.*skipped|does\s*not\s*require|doesn['']t\s*require|no\s*authentication/i;
 
 function parseAuthResponse(trimmed: string): string | undefined {
   if (trimmed === "FAILED" || trimmed.length === 0) {
@@ -3340,9 +3505,7 @@ function parseAuthResponse(trimmed: string): string | undefined {
   //   • MongoDB ObjectId — 24 hex chars  (e.g. 507f1f77bcf86cd799439011)
   //   • UUID             — 36 hex+dash   (e.g. 550e8400-e29b-41d4-a716-446655440000)
   //   • NanoID           — 20-24 base62   (e.g. 8TiJo1cG18whEV69KbABWy)
-  const idMatch = trimmed.match(
-    /[0-9a-f]{24}|[0-9a-f-]{36}|[A-Za-z0-9_-]{20,24}/i,
-  );
+  const idMatch = trimmed.match(/[0-9a-f]{24}|[0-9a-f-]{36}|[A-Za-z0-9_-]{20,24}/i);
   return idMatch ? idMatch[0] : undefined;
 }
 
@@ -3378,7 +3541,9 @@ async function autoProbeCsrf(csrfUrl: string): Promise<string | undefined> {
       for (const key of COMMON_CSRF_KEYS) {
         if (typeof json[key] === "string" && json[key].length > 10) {
           const pattern = `"${key}"\\s*:\\s*"([^"]+)"`;
-          console.log(`[Auth] Auto-detected CSRF pattern: ${pattern} (key="${key}", sample="${json[key].slice(0, 20)}...")`);
+          console.log(
+            `[Auth] Auto-detected CSRF pattern: ${pattern} (key="${key}", sample="${json[key].slice(0, 20)}...")`,
+          );
           return pattern;
         }
       }
@@ -3386,7 +3551,10 @@ async function autoProbeCsrf(csrfUrl: string): Promise<string | undefined> {
       for (const [topKey, topVal] of Object.entries(json)) {
         if (topVal && typeof topVal === "object") {
           for (const key of COMMON_CSRF_KEYS) {
-            if (typeof (topVal as Record<string, unknown>)[key] === "string" && ((topVal as Record<string, unknown>)[key] as string).length > 10) {
+            if (
+              typeof (topVal as Record<string, unknown>)[key] === "string" &&
+              ((topVal as Record<string, unknown>)[key] as string).length > 10
+            ) {
               const pattern = `"${key}"\\s*:\\s*"([^"]+)"`;
               console.log(`[Auth] Auto-detected CSRF pattern (nested in ${topKey}): ${pattern}`);
               return pattern;
@@ -3415,18 +3583,15 @@ async function autoProbeCsrf(csrfUrl: string): Promise<string | undefined> {
 // preProbeForAuth — fetches key URLs before the LLM starts, providing context
 // ---------------------------------------------------------------------------
 
-async function preProbeForAuth(
-  baseUrl: string,
-  detection: AuthDetection,
-): Promise<string> {
+async function preProbeForAuth(baseUrl: string, detection: AuthDetection): Promise<string> {
   const lines: string[] = [];
 
   // 1. Probe the CSRF URL if session auth and we know the endpoint
   if (detection.authType === "session" && detection.loginEndpoint) {
     // Common CSRF endpoints for known frameworks
     const csrfCandidates = [
-      `${baseUrl}/session/csrf`,    // Discourse
-      `${baseUrl}/csrf`,            // generic
+      `${baseUrl}/session/csrf`, // Discourse
+      `${baseUrl}/csrf`, // generic
     ];
     for (const csrfUrl of csrfCandidates) {
       try {
@@ -3442,7 +3607,9 @@ async function preProbeForAuth(
           lines.push(`### CSRF probe: GET ${csrfUrl} → ${res.status}\n\`\`\`\n${preview}\n\`\`\``);
           break; // Found a working CSRF endpoint
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
   }
 
@@ -3461,12 +3628,16 @@ async function preProbeForAuth(
       const isHtml = ct.includes("html") || getBody.trimStart().startsWith("<");
       const preview = getBody.length > 1000 ? getBody.slice(0, 1000) + "..." : getBody;
       const loginType = isHtml ? "HTML page (NOT an API endpoint)" : "API endpoint";
-      lines.push(`### Login endpoint probe: GET ${loginUrl} → ${getRes.status} (${loginType})\nContent-Type: ${ct}\n\`\`\`\n${preview}\n\`\`\``);
+      lines.push(
+        `### Login endpoint probe: GET ${loginUrl} → ${getRes.status} (${loginType})\nContent-Type: ${ct}\n\`\`\`\n${preview}\n\`\`\``,
+      );
 
       // If GET /login returned 405/404, the login form is likely at a different URL
       // Many apps (Miniflux, etc.) redirect unauthenticated users to / which shows the login form
       if (getRes.status === 405 || getRes.status === 404) {
-        lines.push(`\n**NOTE**: GET ${loginUrl} returned ${getRes.status} — the login form is NOT at this URL. Probing root URL for the actual login form...`);
+        lines.push(
+          `\n**NOTE**: GET ${loginUrl} returned ${getRes.status} — the login form is NOT at this URL. Probing root URL for the actual login form...`,
+        );
         try {
           const rootRes = await fetch(baseUrl + "/", {
             method: "GET",
@@ -3479,14 +3650,25 @@ async function preProbeForAuth(
           const rootIsHtml = rootCt.includes("html") || rootBody.trimStart().startsWith("<");
           if (rootIsHtml && rootBody.length > 0) {
             const rootPreview = rootBody.length > 1500 ? rootBody.slice(0, 1500) + "..." : rootBody;
-            lines.push(`### Login form fallback: GET ${baseUrl}/ → ${rootRes.status} (login form found at root)\nContent-Type: ${rootCt}\n\`\`\`\n${rootPreview}\n\`\`\``);
+            lines.push(
+              `### Login form fallback: GET ${baseUrl}/ → ${rootRes.status} (login form found at root)\nContent-Type: ${rootCt}\n\`\`\`\n${rootPreview}\n\`\`\``,
+            );
 
             // Extract CSRF hidden inputs from the form HTML
-            const csrfInputMatch = rootBody.match(/<input[^>]+type=["']hidden["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i)
-              || rootBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+type=["']hidden["'][^>]*value=["']([^"']+)["']/i)
-              || rootBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+value=["']([^"']+)["']/i);
+            const csrfInputMatch =
+              rootBody.match(
+                /<input[^>]+type=["']hidden["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i,
+              ) ||
+              rootBody.match(
+                /<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+type=["']hidden["'][^>]*value=["']([^"']+)["']/i,
+              ) ||
+              rootBody.match(
+                /<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+value=["']([^"']+)["']/i,
+              );
             if (csrfInputMatch) {
-              lines.push(`\n**⚠️ CSRF TOKEN FOUND**: Hidden input field name="${csrfInputMatch[1]}" with a live token value. The login POST **requires** this field in the body. Use \`create_auth_raw\` with NexTemplate extraction.`);
+              lines.push(
+                `\n**⚠️ CSRF TOKEN FOUND**: Hidden input field name="${csrfInputMatch[1]}" with a live token value. The login POST **requires** this field in the body. Use \`create_auth_raw\` with NexTemplate extraction.`,
+              );
             }
 
             // Extract form action
@@ -3495,17 +3677,28 @@ async function preProbeForAuth(
               lines.push(`**Login form action**: ${formActionMatch[1]}`);
             }
           }
-        } catch { /* skip root fallback */ }
+        } catch {
+          /* skip root fallback */
+        }
       }
 
       // If it's HTML, look for form action to find the real API endpoint
       if (isHtml) {
         // Check for CSRF hidden inputs in the login form HTML
-        const csrfInputMatch = getBody.match(/<input[^>]+type=["']hidden["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i)
-          || getBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+type=["']hidden["'][^>]*value=["']([^"']+)["']/i)
-          || getBody.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+value=["']([^"']+)["']/i);
+        const csrfInputMatch =
+          getBody.match(
+            /<input[^>]+type=["']hidden["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i,
+          ) ||
+          getBody.match(
+            /<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+type=["']hidden["'][^>]*value=["']([^"']+)["']/i,
+          ) ||
+          getBody.match(
+            /<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]+value=["']([^"']+)["']/i,
+          );
         if (csrfInputMatch) {
-          lines.push(`\n**⚠️ CSRF TOKEN FOUND**: Hidden input field name="${csrfInputMatch[1]}" with a live token value. The login POST **requires** this field in the body. Use \`create_auth_raw\` with NexTemplate extraction from GET ${loginUrl}.`);
+          lines.push(
+            `\n**⚠️ CSRF TOKEN FOUND**: Hidden input field name="${csrfInputMatch[1]}" with a live token value. The login POST **requires** this field in the body. Use \`create_auth_raw\` with NexTemplate extraction from GET ${loginUrl}.`,
+          );
         }
 
         const actionMatch = getBody.match(/action=["']([^"']+)["']/i);
@@ -3539,13 +3732,21 @@ async function preProbeForAuth(
             // 403/422/400 with JSON body = likely the real API endpoint (it rejected empty creds)
             const looksLikeApi = apiRes.status !== 404 && !apiBody.trimStart().startsWith("<");
             if (looksLikeApi) {
-              lines.push(`### Candidate API login: POST ${apiUrl} → ${apiRes.status} (likely real login endpoint)\n\`\`\`\n${apiPreview}\n\`\`\``);
+              lines.push(
+                `### Candidate API login: POST ${apiUrl} → ${apiRes.status} (likely real login endpoint)\n\`\`\`\n${apiPreview}\n\`\`\``,
+              );
             }
-          } catch { /* skip */ }
+          } catch {
+            /* skip */
+          }
         }
-        lines.push(`\n**WARNING**: The detected loginEndpoint "${detection.loginEndpoint}" is an HTML page, NOT the API endpoint. Use the real API endpoint found above as loginUrl in create_auth.`);
+        lines.push(
+          `\n**WARNING**: The detected loginEndpoint "${detection.loginEndpoint}" is an HTML page, NOT the API endpoint. Use the real API endpoint found above as loginUrl in create_auth.`,
+        );
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // 3. Probe candidate test URLs to find ones that differentiate auth/unauth
@@ -3570,7 +3771,9 @@ async function preProbeForAuth(
       const body = await res.text();
       const preview = body.length > 300 ? body.slice(0, 300) + "..." : body;
       lines.push(`### Test URL probe: GET ${url} → ${res.status}\n\`\`\`\n${preview}\n\`\`\``);
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   if (lines.length === 0) {
@@ -3635,7 +3838,13 @@ async function repairBrokenLogin(
 
   try {
     const json = extractJson(response);
-    const result = JSON.parse(json) as { fixed: boolean; action?: string; reason?: string; needsRebuild?: boolean; rebuildHint?: string };
+    const result = JSON.parse(json) as {
+      fixed: boolean;
+      action?: string;
+      reason?: string;
+      needsRebuild?: boolean;
+      rebuildHint?: string;
+    };
     if (result.fixed) {
       console.log(`[Auth:Repair] Login fixed: ${result.action ?? "unknown action"}`);
       return { fixed: true };
@@ -3688,10 +3897,7 @@ async function preAuthLoginSanityCheck(
 
   // Step 1: Try to get a CSRF token if session auth
   if (detection.authType === "session") {
-    const csrfCandidates = [
-      `${baseUrl}/session/csrf`,
-      `${baseUrl}/csrf`,
-    ];
+    const csrfCandidates = [`${baseUrl}/session/csrf`, `${baseUrl}/csrf`];
     for (const csrfUrl of csrfCandidates) {
       try {
         const res = await fetch(csrfUrl, {
@@ -3708,8 +3914,7 @@ async function preAuthLoginSanityCheck(
             csrfToken = csrfMatch[1];
           }
           // Extract session cookie
-          const setCookies: string[] =
-            extractSetCookies(res.headers);
+          const setCookies: string[] = extractSetCookies(res.headers);
           for (const sc of setCookies) {
             const pair = sc.split(";")[0]?.trim();
             if (pair?.includes("=")) {
@@ -3718,9 +3923,13 @@ async function preAuthLoginSanityCheck(
           }
           break;
         } else if (res.status >= 500) {
-          lines.push(`⚠️ Optional CSRF probe ${csrfUrl} returned HTTP ${res.status}. Ignoring this unless the actual login endpoint also fails; many apps do not expose generic CSRF routes.`);
+          lines.push(
+            `⚠️ Optional CSRF probe ${csrfUrl} returned HTTP ${res.status}. Ignoring this unless the actual login endpoint also fails; many apps do not expose generic CSRF routes.`,
+          );
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
   }
 
@@ -3729,9 +3938,10 @@ async function preAuthLoginSanityCheck(
   const loginBody = detection.loginBody ?? "{}";
   {
     const headers: Record<string, string> = {
-      "Content-Type": detection.loginContentType === "form"
-        ? "application/x-www-form-urlencoded"
-        : "application/json",
+      "Content-Type":
+        detection.loginContentType === "form"
+          ? "application/x-www-form-urlencoded"
+          : "application/json",
       Accept: "application/json",
     };
     if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
@@ -3751,37 +3961,34 @@ async function preAuthLoginSanityCheck(
       if (res.status >= 500) {
         functional = false;
         lines.push(
-          `🚨 **LOGIN ENDPOINT BROKEN**: POST ${loginUrl} → HTTP ${res.status}\n`
-          + `Response: \`${preview}\`\n`
-          + `The application's login is crashing with a server error. `
-          + `This is NOT an auth configuration issue — the app itself is broken. `
-          + `Auth configuration cannot succeed until the app's login works.`,
+          `🚨 **LOGIN ENDPOINT BROKEN**: POST ${loginUrl} → HTTP ${res.status}\n` +
+            `Response: \`${preview}\`\n` +
+            `The application's login is crashing with a server error. ` +
+            `This is NOT an auth configuration issue — the app itself is broken. ` +
+            `Auth configuration cannot succeed until the app's login works.`,
         );
       } else if (res.status === 403 && body.includes("CSRF")) {
         // 403 with CSRF error means login endpoint works but needs proper CSRF
         lines.push(
-          `### Login sanity check: POST ${loginUrl} → ${res.status} (CSRF required)\n`
-          + `The login endpoint is functional but requires a valid CSRF token. `
-          + `Response: \`${preview}\``,
+          `### Login sanity check: POST ${loginUrl} → ${res.status} (CSRF required)\n` +
+            `The login endpoint is functional but requires a valid CSRF token. ` +
+            `Response: \`${preview}\``,
         );
       } else if (res.status === 200 || res.status === 201 || res.status === 302) {
         // Check if it's a success or an error-in-200
         const hasError = /error|invalid|incorrect|failed/i.test(body);
         if (hasError) {
           lines.push(
-            `### Login sanity check: POST ${loginUrl} → ${res.status} (credentials rejected)\n`
-            + `The login endpoint is functional but rejected the credentials. `
-            + `Response: \`${preview}\``,
+            `### Login sanity check: POST ${loginUrl} → ${res.status} (credentials rejected)\n` +
+              `The login endpoint is functional but rejected the credentials. ` +
+              `Response: \`${preview}\``,
           );
         } else {
-          lines.push(
-            `### Login sanity check: POST ${loginUrl} → ${res.status} ✅ Login works!`,
-          );
+          lines.push(`### Login sanity check: POST ${loginUrl} → ${res.status} ✅ Login works!`);
         }
       } else {
         lines.push(
-          `### Login sanity check: POST ${loginUrl} → ${res.status}\n`
-          + `Response: \`${preview}\``,
+          `### Login sanity check: POST ${loginUrl} → ${res.status}\n` + `Response: \`${preview}\``,
         );
       }
     } catch (err) {
@@ -3807,7 +4014,10 @@ async function preAuthLoginSanityCheck(
 // ---------------------------------------------------------------------------
 
 function isSetupLikeEndpoint(endpoint: string | null | undefined): boolean {
-  return !!endpoint && /(?:^|\/)(?:setup|install|register|registration)(?:\/|$)|authentication\/setup/i.test(endpoint);
+  return (
+    !!endpoint &&
+    /(?:^|\/)(?:setup|install|register|registration)(?:\/|$)|authentication\/setup/i.test(endpoint)
+  );
 }
 
 function deriveLoginCandidatesFromSetupEndpoint(endpoint: string | undefined): string[] {
@@ -3832,7 +4042,10 @@ function deriveLoginCandidatesFromSetupEndpoint(endpoint: string | undefined): s
   return [...candidates];
 }
 
-async function discoverLoginEndpoint(baseUrl: string, nearbyEndpoint?: string): Promise<string | null> {
+async function discoverLoginEndpoint(
+  baseUrl: string,
+  nearbyEndpoint?: string,
+): Promise<string | null> {
   const candidates = [
     ...deriveLoginCandidatesFromSetupEndpoint(nearbyEndpoint),
     "/api/login",
@@ -3858,7 +4071,9 @@ async function discoverLoginEndpoint(baseUrl: string, nearbyEndpoint?: string): 
       if (res.status !== 404) {
         return path;
       }
-    } catch { /* connection error — skip */ }
+    } catch {
+      /* connection error — skip */
+    }
   }
   return null;
 }
@@ -3887,7 +4102,7 @@ async function verifySeededCredentials(
     `${baseUrl}/csrf`,
     `${baseUrl}/session/csrf`,
     `${baseUrl}/api/csrf`,
-    `${baseUrl}/api/auth/csrf`,   // NextAuth
+    `${baseUrl}/api/auth/csrf`, // NextAuth
     `${baseUrl}/sanctum/csrf-cookie`, // Laravel Sanctum
   ];
   for (const csrfUrl of csrfCandidates) {
@@ -3912,7 +4127,9 @@ async function verifySeededCredentials(
         }
         if (csrfToken) break;
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Step 1b: If no JSON CSRF found, check for HTML form CSRF
@@ -3932,11 +4149,21 @@ async function verifySeededCredentials(
         if (res.status === 200) {
           const body = await res.text();
           // Look for hidden CSRF inputs in the HTML
-          const csrfInputMatch = body.match(/<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i)
-            || body.match(/<input[^>]+value=["']([^"']+)["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["']/i);
+          const csrfInputMatch =
+            body.match(
+              /<input[^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["'][^>]*value=["']([^"']+)["']/i,
+            ) ||
+            body.match(
+              /<input[^>]+value=["']([^"']+)["'][^>]+name=["'](csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)[^"']*["']/i,
+            );
           if (csrfInputMatch) {
             // The regex may capture groups in different orders depending on which pattern matched
-            if (csrfInputMatch[2] && /^(csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)$/i.test(csrfInputMatch[1]!)) {
+            if (
+              csrfInputMatch[2] &&
+              /^(csrf|csrfmiddlewaretoken|_token|authenticity_token|_csrf_token|csrfToken)$/i.test(
+                csrfInputMatch[1]!,
+              )
+            ) {
               csrfFieldName = csrfInputMatch[1]!;
               csrfToken = csrfInputMatch[2];
             } else {
@@ -3954,7 +4181,9 @@ async function verifySeededCredentials(
           }
           if (csrfToken) break;
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
   }
 
@@ -3990,20 +4219,29 @@ async function verifySeededCredentials(
       // Success indicators — login worked
       if (res.status === 200 || res.status === 201 || res.status === 302) {
         const setCookies: string[] = extractSetCookies(res.headers);
-        const hasSessionCookie = setCookies.some(
-          (c: string) => /(_t|_session|session_id|token|jwt|Session|grafana_session)/i.test(c),
+        const hasSessionCookie = setCookies.some((c: string) =>
+          /(_t|_session|session_id|token|jwt|Session|grafana_session)/i.test(c),
         );
-        if (hasSessionCookie || ((res.status === 200 || res.status === 201) && !/"error|invalid|incorrect|denied"/i.test(body))) {
+        if (
+          hasSessionCookie ||
+          ((res.status === 200 || res.status === 201) &&
+            !/"error|invalid|incorrect|denied"/i.test(body))
+        ) {
           return { valid: true, reason: "" };
         }
       }
 
       // 401/400 with specific error — credentials wrong but endpoint is correct
-      if ((res.status === 400 || res.status === 401) && /invalid|incorrect|wrong|bad.*login|unauthorized/i.test(body)) {
+      if (
+        (res.status === 400 || res.status === 401) &&
+        /invalid|incorrect|wrong|bad.*login|unauthorized/i.test(body)
+      ) {
         const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
         return { valid: false, reason: `Login rejected credentials: ${preview}` };
       }
-    } catch { /* skip, try next */ }
+    } catch {
+      /* skip, try next */
+    }
   }
 
   // Fallback: form-encoded body
@@ -4034,12 +4272,18 @@ async function verifySeededCredentials(
     }
 
     // Check for error indicators in the response body
-    const isNotActivated = /not.activated|not.verified|email.confirm|must.confirm|activation.required|verify.your.email/i.test(body);
+    const isNotActivated =
+      /not.activated|not.verified|email.confirm|must.confirm|activation.required|verify.your.email/i.test(
+        body,
+      );
     if (isNotActivated) {
       const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
       return { valid: false, reason: `not_activated: ${preview}` };
     }
-    if (/\b(error|invalid|incorrect|wrong|failed|denied)\b/i.test(body) && !/"current_user"/.test(body)) {
+    if (
+      /\b(error|invalid|incorrect|wrong|failed|denied)\b/i.test(body) &&
+      !/"current_user"/.test(body)
+    ) {
       const preview = body.length > 200 ? body.slice(0, 200) + "..." : body;
       return { valid: false, reason: `Login rejected credentials: ${preview}` };
     }
@@ -4048,15 +4292,20 @@ async function verifySeededCredentials(
     if (res.status === 200 || res.status === 201 || res.status === 302) {
       // Look for session cookies in response
       const setCookies: string[] = extractSetCookies(res.headers);
-      const hasSessionCookie = setCookies.some(
-        (c: string) => /(_t|_session|session_id|token|jwt|Session)/i.test(c),
+      const hasSessionCookie = setCookies.some((c: string) =>
+        /(_t|_session|session_id|token|jwt|Session)/i.test(c),
       );
       if (hasSessionCookie || res.status === 302 || res.status === 201) {
         // Step 3: Verify the session actually works by hitting a protected resource
         // This catches the case where login returns 302 but CSRF was missing (session not created)
         if (detection.protectedEndpointPath || detection.csrfRequired) {
-          const verifyCookie = setCookies.map(c => c.split(";")[0]?.trim()).filter(Boolean).join("; ")
-            || sessionCookie || "";
+          const verifyCookie =
+            setCookies
+              .map((c) => c.split(";")[0]?.trim())
+              .filter(Boolean)
+              .join("; ") ||
+            sessionCookie ||
+            "";
           const verifyUrl = detection.protectedEndpointPath
             ? `${baseUrl}${resolveProtectedEndpointPath(detection) ?? detection.protectedEndpointPath}`
             : `${baseUrl}/`;
@@ -4069,13 +4318,20 @@ async function verifySeededCredentials(
             });
             const verifyBody = await verifyRes.text();
             // If the protected resource still shows a login form, auth didn't actually work
-            const stillShowsLogin = /<form[^>]*action=["'][^"']*login/i.test(verifyBody)
-              || /<input[^>]+name=["']password["']/i.test(verifyBody)
-              || /Sign\s*In|Log\s*In/i.test(verifyBody.slice(0, 500));
+            const stillShowsLogin =
+              /<form[^>]*action=["'][^"']*login/i.test(verifyBody) ||
+              /<input[^>]+name=["']password["']/i.test(verifyBody) ||
+              /Sign\s*In|Log\s*In/i.test(verifyBody.slice(0, 500));
             if (stillShowsLogin && verifyRes.status === 200) {
-              return { valid: false, reason: "Login returned 302 but session was NOT authenticated — protected resource still shows login form (likely missing CSRF token in login POST)" };
+              return {
+                valid: false,
+                reason:
+                  "Login returned 302 but session was NOT authenticated — protected resource still shows login form (likely missing CSRF token in login POST)",
+              };
             }
-          } catch { /* verification fetch failed — don't block on this */ }
+          } catch {
+            /* verification fetch failed — don't block on this */
+          }
         }
         return { valid: true, reason: "Login succeeded with session cookie" };
       }
@@ -4144,8 +4400,7 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
 
     // Store cookies from set-cookie response headers
     try {
-      const setCookies: string[] =
-        extractSetCookies(res.headers);
+      const setCookies: string[] = extractSetCookies(res.headers);
       for (const sc of setCookies) {
         const pair = sc.split(";")[0]?.trim();
         if (pair) {
@@ -4178,9 +4433,7 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
 
     const bodyText = await res.text().catch(() => "");
     const bodyPreview =
-      bodyText.length > 2000
-        ? bodyText.slice(0, 2000) + "\n... [truncated]"
-        : bodyText;
+      bodyText.length > 2000 ? bodyText.slice(0, 2000) + "\n... [truncated]" : bodyText;
 
     const parts = [`HTTP ${status}`];
     if (headerLines.length > 0) parts.push(headerLines.join("\n"));
@@ -4196,8 +4449,8 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
     ) {
       parts.push(
         "⚠️ NOTE: This endpoint returned HTML content even though JSON was requested. " +
-        "This likely means the app is serving a catch-all page (setup wizard, SPA shell, or error page) " +
-        "rather than an actual API response. This does NOT indicate the endpoint is unprotected.",
+          "This likely means the app is serving a catch-all page (setup wizard, SPA shell, or error page) " +
+          "rather than an actual API response. This does NOT indicate the endpoint is unprotected.",
       );
     }
 
@@ -4206,7 +4459,9 @@ async function probeUrl(args: Record<string, unknown>): Promise<string> {
     // Save full body to file when truncated — LLM can read_file for details
     const savedPath = saveProbeBody(bodyText, contentType);
     if (savedPath) {
-      parts.push(`\n📄 Full response body (${bodyText.length} bytes) saved to: ${savedPath}\nUse read_file to inspect for errors, setup instructions, or configuration requirements.`);
+      parts.push(
+        `\n📄 Full response body (${bodyText.length} bytes) saved to: ${savedPath}\nUse read_file to inspect for errors, setup instructions, or configuration requirements.`,
+      );
     }
 
     console.log(`[Auth] Probe result: ${status}`);

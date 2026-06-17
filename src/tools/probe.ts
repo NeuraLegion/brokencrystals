@@ -1,8 +1,8 @@
 import { writeFileSync } from "fs";
-import { resolve } from "path";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import { resolve } from "path";
 import type { ToolHandler } from "../inference.js";
-import { toErrorMessage, FETCH_TIMEOUT_LONG, saveProbeBody } from "../utils.js";
+import { FETCH_TIMEOUT_LONG, saveProbeBody, toErrorMessage } from "../utils.js";
 
 export const probeUrlTool: ChatCompletionTool = {
   type: "function",
@@ -23,7 +23,8 @@ export const probeUrlTool: ChatCompletionTool = {
         },
         headers: {
           type: "string",
-          description: 'Optional JSON object of headers (e.g. \'{"Content-Type": "application/json"}\')',
+          description:
+            'Optional JSON object of headers (e.g. \'{"Content-Type": "application/json"}\')',
         },
         body: {
           type: "string",
@@ -76,16 +77,20 @@ export async function probeUrl(args: Record<string, unknown>): Promise<string> {
     const headerLines: string[] = [];
     for (const [k, v] of res.headers.entries()) {
       const lk = k.toLowerCase();
-      if (lk === "content-type" || lk === "location" || lk === "set-cookie" ||
-          lk === "www-authenticate" || lk === "x-csrf-token") {
+      if (
+        lk === "content-type" ||
+        lk === "location" ||
+        lk === "set-cookie" ||
+        lk === "www-authenticate" ||
+        lk === "x-csrf-token"
+      ) {
         headerLines.push(`${k}: ${v}`);
       }
     }
 
     const bodyText = await res.text().catch(() => "");
-    const bodyPreview = bodyText.length > 2000
-      ? bodyText.slice(0, 2000) + "\n... [truncated]"
-      : bodyText;
+    const bodyPreview =
+      bodyText.length > 2000 ? bodyText.slice(0, 2000) + "\n... [truncated]" : bodyText;
 
     const parts = [`HTTP ${status}`];
     if (headerLines.length > 0) parts.push(headerLines.join("\n"));
@@ -95,7 +100,9 @@ export async function probeUrl(args: Record<string, unknown>): Promise<string> {
     const contentType = res.headers.get("content-type") ?? "";
     const savedPath = saveProbeBody(bodyText, contentType);
     if (savedPath) {
-      parts.push(`\n📄 Full response body (${bodyText.length} bytes) saved to: ${savedPath}\nUse read_file to inspect for errors, setup instructions, or configuration requirements.`);
+      parts.push(
+        `\n📄 Full response body (${bodyText.length} bytes) saved to: ${savedPath}\nUse read_file to inspect for errors, setup instructions, or configuration requirements.`,
+      );
     }
 
     console.log(`[Tool] probe_url result: ${status}`);

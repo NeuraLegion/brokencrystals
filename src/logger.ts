@@ -1,4 +1,4 @@
-import { mkdirSync, appendFileSync } from "fs";
+import { appendFileSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { format } from "util";
@@ -55,13 +55,13 @@ export function redact(line: string): string {
   }
   // Authorization headers / bearer / api-key tokens
   out = out.replace(
-    /\b(Authorization"?\s*[:=]\s*"?)(?:Bearer\s+|Api-Key\s+)?[A-Za-z0-9._\-]{8,}/gi,
+    /\b(Authorization"?\s*[:=]\s*"?)(?:Bearer\s+|Api-Key\s+)?[A-Za-z0-9._-]{8,}/gi,
     "$1«redacted»",
   );
   // Set-Cookie values
   out = out.replace(/\b(Set-Cookie"?\s*[:=]\s*"?)[^"\n,;]+/gi, "$1«redacted»");
   // Bare bearer tokens
-  out = out.replace(/\bBearer\s+[A-Za-z0-9._\-]{8,}/g, "Bearer «redacted»");
+  out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{8,}/g, "Bearer «redacted»");
   return out;
 }
 
@@ -106,10 +106,10 @@ function writeFileLine(line: string): void {
 function internal(stream: "log" | "warn" | "error", args: unknown[]): void {
   const line = redact(`${timestamp()} ${format(...(args as [unknown, ...unknown[]]))}`);
   writeFileLine(line);
+  // Debug mirrors everything to the console; if the file sink is unavailable we
+  // still surface errors so the run isn't silent.
   if (DEBUG || (fileSinkBroken && stream === "error")) {
     (stream === "error" ? process.stderr : process.stdout).write(line + "\n");
-  } else if (fileSinkBroken && DEBUG) {
-    process.stdout.write(line + "\n");
   }
 }
 

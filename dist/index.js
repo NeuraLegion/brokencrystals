@@ -42,7 +42,7 @@ import {
   verifyBrightAuth,
   verifyDockerImageTool,
   webSearchTools
-} from "./chunk-2CMDMGA7.js";
+} from "./chunk-MJ45ILEP.js";
 import {
   DEFAULT_MODEL,
   ModelSelector,
@@ -53,7 +53,7 @@ import {
   detectProvider,
   require_ms,
   validateModelTiers
-} from "./chunk-KJPDIBSE.js";
+} from "./chunk-IBIHDL5P.js";
 import "./chunk-DDCCETRH.js";
 import {
   __commonJS,
@@ -24547,491 +24547,6 @@ var require_src3 = __commonJS({
   }
 });
 
-// src/platform.ts
-import { execFileSync } from "child_process";
-import { existsSync, mkdirSync } from "fs";
-
-// src/scm/github.ts
-var GitHubProvider = class {
-  platformName = "GitHub";
-  info;
-  apiBase;
-  constructor(info) {
-    this.info = info;
-    const host = new URL(info.url).host;
-    this.apiBase = host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`;
-  }
-  buildCloneUrl(token) {
-    const host = new URL(this.info.url).host;
-    const slug = this.repoSlug();
-    return token ? `https://x-access-token:${token}@${host}/${slug}.git` : `https://${host}/${slug}.git`;
-  }
-  repoSlug() {
-    return `${this.info.owner}/${this.info.repo}`;
-  }
-  async validateAccess(token) {
-    if (!token) {
-      throw new Error(
-        `Missing REPO_ACCESS_TOKEN \u2014 a GitHub Personal Access Token is required to clone and push to ${this.repoSlug()}.`
-      );
-    }
-    const { owner, repo } = this.info;
-    const res = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: "application/vnd.github+json"
-      }
-    });
-    if (res.status === 401 || res.status === 403) {
-      throw new Error(
-        `REPO_ACCESS_TOKEN is invalid or lacks access to ${this.repoSlug()} (HTTP ${res.status}). Ensure the token has "repo" scope.`
-      );
-    }
-    if (res.status === 404) {
-      throw new Error(
-        `Repository ${this.repoSlug()} not found (HTTP 404). Check that REPOSITORY_URL is correct and the token has access to this repository.`
-      );
-    }
-    if (!res.ok) {
-      throw new Error(
-        `Failed to validate repository access for ${this.repoSlug()} (HTTP ${res.status}).`
-      );
-    }
-  }
-  async getDefaultBranch(token) {
-    const { owner, repo } = this.info;
-    try {
-      const res = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: "application/vnd.github+json"
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        return data.default_branch;
-      }
-    } catch {
-    }
-    return "main";
-  }
-  async findPullRequest(token, branch) {
-    const { owner, repo } = this.info;
-    const url = `${this.apiBase}/repos/${owner}/${repo}/pulls?head=${owner}:${branch}&state=open&per_page=1`;
-    try {
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: "application/vnd.github+json"
-        }
-      });
-      if (!res.ok) return null;
-      const pulls = await res.json();
-      return pulls.length > 0 ? pulls[0].number : null;
-    } catch {
-      return null;
-    }
-  }
-  async createPullRequest(token, head, base, title, body) {
-    const { owner, repo } = this.info;
-    const url = `${this.apiBase}/repos/${owner}/${repo}/pulls`;
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ title, body, head, base })
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        console.warn(`[GitHub] Failed to create PR: ${res.status} ${text}`);
-        return null;
-      }
-      const pr = await res.json();
-      return pr.number;
-    } catch (err) {
-      console.warn(`[GitHub] Error creating PR: ${err}`);
-      return null;
-    }
-  }
-  async updatePullRequestBody(token, prId, body) {
-    const { owner, repo } = this.info;
-    const url = `${this.apiBase}/repos/${owner}/${repo}/pulls/${prId}`;
-    const res = await fetch(url, {
-      method: "PATCH",
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: "application/vnd.github+json",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ body })
-    });
-    if (!res.ok) {
-      console.warn(
-        `[GitHub] Failed to update PR description: ${res.status} ${res.statusText}`
-      );
-    }
-  }
-};
-
-// src/scm/azure-devops.ts
-var API_VERSION = "7.1-preview.1";
-var AzureDevOpsProvider = class {
-  platformName = "Azure DevOps";
-  info;
-  apiBase;
-  /** Whether the original URL included an explicit project segment. */
-  hasExplicitProject;
-  constructor(info) {
-    this.info = info;
-    this.hasExplicitProject = info.project !== info.repository;
-    const { organization, project, repository } = info;
-    this.apiBase = `https://dev.azure.com/${organization}/${project}/_apis/git/repositories/${repository}`;
-  }
-  buildCloneUrl(token) {
-    const { organization, project, repository } = this.info;
-    const path = this.hasExplicitProject ? `${organization}/${project}/_git/${repository}` : `${organization}/_git/${repository}`;
-    return token ? `https://x-pat:${token}@dev.azure.com/${path}` : `https://dev.azure.com/${path}`;
-  }
-  repoSlug() {
-    const { organization, project, repository } = this.info;
-    return `${organization}/${project}/${repository}`;
-  }
-  authHeaders(token) {
-    const basic = Buffer.from(`:${token}`).toString("base64");
-    return {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/json"
-    };
-  }
-  async validateAccess(token) {
-    if (!token) {
-      throw new Error(
-        `Missing REPO_ACCESS_TOKEN \u2014 an Azure DevOps Personal Access Token is required to clone and push to ${this.repoSlug()}.`
-      );
-    }
-    const res = await fetch(
-      `${this.apiBase}?api-version=${API_VERSION}`,
-      { headers: this.authHeaders(token) }
-    );
-    if (res.status === 401 || res.status === 403) {
-      throw new Error(
-        `REPO_ACCESS_TOKEN is invalid or lacks access to ${this.repoSlug()} (HTTP ${res.status}). Ensure the PAT has "Code (Read & Write)" scope.`
-      );
-    }
-    if (res.status === 404) {
-      throw new Error(
-        `Repository ${this.repoSlug()} not found (HTTP 404). Check that REPOSITORY_URL is correct and the token has access to this repository.`
-      );
-    }
-    if (!res.ok) {
-      throw new Error(
-        `Failed to validate repository access for ${this.repoSlug()} (HTTP ${res.status}).`
-      );
-    }
-  }
-  async getDefaultBranch(token) {
-    try {
-      const res = await fetch(
-        `${this.apiBase}?api-version=${API_VERSION}`,
-        { headers: this.authHeaders(token) }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        return data.defaultBranch.replace(/^refs\/heads\//, "");
-      }
-    } catch {
-    }
-    return "main";
-  }
-  async findPullRequest(token, branch) {
-    const url = `${this.apiBase}/pullrequests?searchCriteria.sourceRefName=refs/heads/${branch}&searchCriteria.status=active&$top=1&api-version=${API_VERSION}`;
-    try {
-      const res = await fetch(url, { headers: this.authHeaders(token) });
-      if (!res.ok) return null;
-      const data = await res.json();
-      return data.value.length > 0 ? data.value[0].pullRequestId : null;
-    } catch {
-      return null;
-    }
-  }
-  async createPullRequest(token, head, base, title, body) {
-    const url = `${this.apiBase}/pullrequests?api-version=${API_VERSION}`;
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: this.authHeaders(token),
-        body: JSON.stringify({
-          sourceRefName: `refs/heads/${head}`,
-          targetRefName: `refs/heads/${base}`,
-          title,
-          description: body
-        })
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        console.warn(
-          `[AzureDevOps] Failed to create PR: ${res.status} ${text}`
-        );
-        return null;
-      }
-      const pr = await res.json();
-      return pr.pullRequestId;
-    } catch (err) {
-      console.warn(`[AzureDevOps] Error creating PR: ${err}`);
-      return null;
-    }
-  }
-  async updatePullRequestBody(token, prId, body) {
-    const url = `${this.apiBase}/pullrequests/${prId}?api-version=${API_VERSION}`;
-    const res = await fetch(url, {
-      method: "PATCH",
-      headers: this.authHeaders(token),
-      body: JSON.stringify({ description: body })
-    });
-    if (!res.ok) {
-      console.warn(
-        `[AzureDevOps] Failed to update PR description: ${res.status} ${res.statusText}`
-      );
-    }
-  }
-};
-
-// src/scm/detect.ts
-function parseRepositoryUrl(raw) {
-  const cleaned = raw.replace(/\/+$/, "").replace(/\.git$/, "");
-  let url;
-  try {
-    url = new URL(cleaned);
-  } catch {
-    throw new Error(
-      `Invalid REPOSITORY_URL: "${raw}" \u2014 expected a full URL (e.g. https://github.com/owner/repo or https://dev.azure.com/org/_git/repo)`
-    );
-  }
-  if (url.host === "dev.azure.com") {
-    return parseAzureDevOpsUrl(url, raw);
-  }
-  return parseGitHubUrl(url, raw);
-}
-function parseAzureDevOpsUrl(url, raw) {
-  const segments = url.pathname.split("/").filter(Boolean);
-  const gitIdx = segments.indexOf("_git");
-  if (gitIdx < 0 || gitIdx + 1 >= segments.length) {
-    throw new Error(
-      `Invalid Azure DevOps URL: "${raw}" \u2014 expected /_git/<repo> in the path`
-    );
-  }
-  const organization = segments[0];
-  const repository = segments[gitIdx + 1];
-  const project = gitIdx > 1 ? segments[1] : repository;
-  return {
-    platform: "azure-devops",
-    url: raw,
-    organization,
-    project,
-    repository
-  };
-}
-function parseGitHubUrl(url, raw) {
-  const segments = url.pathname.split("/").filter(Boolean);
-  if (segments.length < 2) {
-    throw new Error(
-      `Invalid GitHub URL: "${raw}" \u2014 expected /owner/repo in the path`
-    );
-  }
-  return {
-    platform: "github",
-    url: raw,
-    owner: segments[0],
-    repo: segments[1]
-  };
-}
-function createScmProvider(info) {
-  switch (info.platform) {
-    case "github":
-      return new GitHubProvider(info);
-    case "azure-devops":
-      return new AzureDevOpsProvider(info);
-    default:
-      throw new Error(`Unsupported SCM platform: ${info.platform}`);
-  }
-}
-function detectScmProvider(repositoryUrl) {
-  const info = parseRepositoryUrl(repositoryUrl);
-  const provider = createScmProvider(info);
-  return { info, provider };
-}
-
-// src/platform.ts
-function cloneRepository(opts) {
-  const cloneUrl = opts.provider.buildCloneUrl(opts.gitToken);
-  const slug = opts.provider.repoSlug();
-  const dest = `/tmp/workspace/${slug}`;
-  if (existsSync(dest)) {
-    execFileSync("rm", ["-rf", dest]);
-  }
-  mkdirSync(dest, { recursive: true });
-  execFileSync("git", ["clone", "--depth", "2", cloneUrl, dest], {
-    stdio: "pipe",
-    timeout: 12e4
-  });
-  try {
-    execFileSync("git", ["checkout", opts.branchName], {
-      cwd: dest,
-      stdio: "pipe"
-    });
-  } catch {
-    execFileSync("git", ["checkout", "-b", opts.branchName], {
-      cwd: dest,
-      stdio: "pipe"
-    });
-  }
-  execFileSync(
-    "git",
-    ["config", "user.name", opts.commitLogin || "BrightSec"],
-    { cwd: dest, stdio: "pipe" }
-  );
-  execFileSync(
-    "git",
-    ["config", "user.email", opts.commitEmail || "bot@brightsec.com"],
-    { cwd: dest, stdio: "pipe" }
-  );
-  return dest;
-}
-function gitCommitAndPush(repoPath, message) {
-  execFileSync("git", ["add", "-A"], { cwd: repoPath, stdio: "pipe" });
-  try {
-    execFileSync("git", ["diff", "--cached", "--quiet"], {
-      cwd: repoPath,
-      stdio: "pipe"
-    });
-    return;
-  } catch {
-  }
-  execFileSync("git", ["commit", "-m", message], {
-    cwd: repoPath,
-    stdio: "pipe"
-  });
-  execFileSync("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-}
-function gitFinalizeChanges(repoPath, message) {
-  try {
-    gitCommitAndPush(repoPath, message);
-  } catch {
-    console.log("[Git] No uncommitted changes to finalize, or push failed.");
-  }
-}
-var DefaultPlatform = class {
-  job;
-  gitToken;
-  provider;
-  prNumber;
-  // undefined = not looked up yet
-  constructor(job, provider, gitToken) {
-    this.job = job;
-    this.gitToken = gitToken;
-    this.provider = provider;
-  }
-  /**
-   * Push the branch and create a PR so progress updates have somewhere to go.
-   * Call this after cloneRepository() and before the orchestrator starts.
-   */
-  async initPr(repoPath) {
-    if (!this.gitToken) return;
-    try {
-      execFileSync(
-        "git",
-        [
-          "commit",
-          "--allow-empty",
-          "-m",
-          "chore: initialize Bright security scan"
-        ],
-        {
-          cwd: repoPath,
-          stdio: "pipe"
-        }
-      );
-      execFileSync("git", ["push", "-u", "origin", this.job.branchName], {
-        cwd: repoPath,
-        stdio: "pipe"
-      });
-      console.log(`[Platform] Pushed branch ${this.job.branchName}`);
-    } catch (err) {
-      const msg = String(err);
-      if (msg.includes("Authentication failed") || msg.includes("Invalid username or token") || msg.includes("could not read Username")) {
-        throw new Error(
-          `[Platform] Git authentication failed \u2014 check your REPO_ACCESS_TOKEN. The scan cannot push results without valid credentials.`
-        );
-      }
-      console.warn(`[Platform] Failed to push branch: ${err}`);
-      return;
-    }
-    this.prNumber = await this.provider.findPullRequest(
-      this.gitToken,
-      this.job.branchName
-    );
-    if (!this.prNumber) {
-      const baseBranch = await this.provider.getDefaultBranch(this.gitToken);
-      this.prNumber = await this.provider.createPullRequest(
-        this.gitToken,
-        this.job.branchName,
-        baseBranch,
-        `\u{1F6E1}\uFE0F Bright Security Scan`,
-        `## \u{1F6E1}\uFE0F Bright Security Scan
-
-\u{1F504} **Initializing...**`
-      );
-    }
-    if (this.prNumber) {
-      console.log(`[Platform] PR #${this.prNumber} ready for progress updates`);
-    } else {
-      console.warn(
-        `[Platform] Could not create PR \u2014 progress will only appear in logs`
-      );
-    }
-  }
-  async fetchJobDetails() {
-    return this.job;
-  }
-  async reportPhase(_phase, description, _turn) {
-    console.log(`[Phase] ${description}`);
-  }
-  async reportDetail(_phase, toolName, detail, _turn) {
-    console.log(`[Detail] ${toolName}: ${detail}`);
-  }
-  async reportError(message) {
-    console.error(`[Platform] ${message}`);
-  }
-  async reportPrDescription(description) {
-    if (!this.gitToken || !this.prNumber) return;
-    await this.provider.updatePullRequestBody(
-      this.gitToken,
-      this.prNumber,
-      description
-    );
-  }
-};
-async function createPlatform(gitToken) {
-  const repositoryUrl = process.env.REPOSITORY_URL;
-  if (!repositoryUrl) {
-    throw new Error("Missing REPOSITORY_URL environment variable");
-  }
-  const { provider } = detectScmProvider(repositoryUrl);
-  const job = {
-    repository: provider.repoSlug(),
-    branchName: process.env.BRANCH ?? `bright-scan-${Date.now()}`,
-    commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",
-    commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bot@brightsec.com"
-  };
-  const platform = new DefaultPlatform(job, provider, gitToken);
-  console.log(`[Platform] Initialized (${provider.platformName} \u2014 ${provider.repoSlug()})`);
-  return { platform, job };
-}
-
 // src/config.ts
 function loadConfig() {
   const brightToken = requireEnv("BRIGHT_TOKEN");
@@ -25082,12 +24597,8 @@ function parseRunMode(value) {
   );
 }
 
-// src/orchestrator.ts
-var import_tree_kill = __toESM(require_tree_kill(), 1);
-import { execFileSync as execFileSync4 } from "child_process";
-
 // src/logger.ts
-import { mkdirSync as mkdirSync2, appendFileSync } from "fs";
+import { appendFileSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { format } from "util";
@@ -25115,11 +24626,11 @@ function redact(line) {
     out = out.split(s).join("\xABredacted\xBB");
   }
   out = out.replace(
-    /\b(Authorization"?\s*[:=]\s*"?)(?:Bearer\s+|Api-Key\s+)?[A-Za-z0-9._\-]{8,}/gi,
+    /\b(Authorization"?\s*[:=]\s*"?)(?:Bearer\s+|Api-Key\s+)?[A-Za-z0-9._-]{8,}/gi,
     "$1\xABredacted\xBB"
   );
   out = out.replace(/\b(Set-Cookie"?\s*[:=]\s*"?)[^"\n,;]+/gi, "$1\xABredacted\xBB");
-  out = out.replace(/\bBearer\s+[A-Za-z0-9._\-]{8,}/g, "Bearer \xABredacted\xBB");
+  out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{8,}/g, "Bearer \xABredacted\xBB");
   return out;
 }
 function timestamp() {
@@ -25129,7 +24640,7 @@ function initLogger() {
   loadEnvSecrets();
   try {
     const dir = join(homedir(), ".bright-agent", "logs");
-    mkdirSync2(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true });
     const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
     logFile = join(dir, `run-${stamp}.log`);
     appendFileSync(logFile, `# Bright Agent run log \u2014 ${(/* @__PURE__ */ new Date()).toISOString()}
@@ -25155,8 +24666,6 @@ function internal(stream, args) {
   writeFileLine(line);
   if (DEBUG || fileSinkBroken && stream === "error") {
     (stream === "error" ? process.stderr : process.stdout).write(line + "\n");
-  } else if (fileSinkBroken && DEBUG) {
-    process.stdout.write(line + "\n");
   }
 }
 function progress(message) {
@@ -25189,2502 +24698,14 @@ var logger = {
   isDebug: () => DEBUG
 };
 
-// src/progress.ts
-function condenseDetail(detail) {
-  const trimmed = detail.trim();
-  if (trimmed.length <= 180) return trimmed;
-  const sentenceEnd = trimmed.search(/\.\s/);
-  if (sentenceEnd > 40 && sentenceEnd < 180) {
-    return trimmed.slice(0, sentenceEnd + 1);
-  }
-  return trimmed.slice(0, 177).trimEnd() + "\u2026";
-}
-var ProgressReporter = class {
-  turn = 0;
-  steps = [];
-  platform;
-  findingsSummary = [];
-  validationSummary = [];
-  scanTarget;
-  /** Called the first time each distinct phase starts (not on resume/loop re-entry). */
-  onPhaseChange;
-  seenPhases = /* @__PURE__ */ new Set();
-  lastProgressLine;
-  constructor(platform, onPhaseChange) {
-    this.platform = platform;
-    this.onPhaseChange = onPhaseChange;
-  }
-  async phaseStart(phase, description) {
-    TokenTracker.global().startPhase(phase);
-    if (!this.seenPhases.has(phase)) {
-      this.seenPhases.add(phase);
-      this.onPhaseChange?.(phase);
-    }
-    if (description && description !== this.lastProgressLine) {
-      this.lastProgressLine = description;
-      progress(description);
-    }
-    for (const step of this.steps) {
-      if (step.status === "working") step.status = "done";
-    }
-    const existingIdx = this.steps.findIndex((s) => s.phase === phase);
-    if (existingIdx >= 0) {
-      const existing = this.steps[existingIdx];
-      existing.status = "working";
-      existing.title = description;
-      existing.attempts += 1;
-      existing.details = [];
-      existing.keyedDetails.clear();
-      this.steps.splice(existingIdx, 1);
-      this.steps.push(existing);
-    } else {
-      this.steps.push({
-        phase,
-        title: description,
-        status: "working",
-        details: [],
-        keyedDetails: /* @__PURE__ */ new Map(),
-        attempts: 1
-      });
-    }
-    await this.platform.reportPhase(phase, description, this.turn++);
-    await this.updatePrDescription();
-  }
-  async phaseDetail(phase, toolName, detail) {
-    const target = this.steps.findLast((s) => s.phase === phase) ?? this.steps.findLast((s) => s.status === "working");
-    if (target) {
-      target.details.push(detail);
-    }
-    await this.platform.reportDetail(phase, toolName, detail, this.turn);
-    await this.updatePrDescription();
-  }
-  /**
-   * Update a keyed detail in-place. If a detail with the same key exists,
-   * it is replaced rather than appended. Use this for poll-style updates
-   * (e.g. scan status) that would otherwise flood the PR description.
-   */
-  async phaseUpdateDetail(phase, key, detail) {
-    const current = this.steps.findLast((s) => s.status === "working");
-    if (current) {
-      current.keyedDetails.set(key, detail);
-    }
-    await this.updatePrDescription();
-  }
-  async phaseError(phase, error) {
-    for (const step of this.steps) {
-      if (step.status === "working") step.status = "done";
-    }
-    await this.platform.reportError(`Error in ${phase}: ${error}`);
-    await this.updatePrDescription();
-  }
-  /**
-   * Set the final findings summary table. Call this before the final "done"
-   * phase so the table appears at the bottom of the PR.
-   */
-  setFindingsSummary(findings) {
-    this.findingsSummary = findings;
-  }
-  /**
-   * Set the CodeQL → DAST validation summary table (validation run mode).
-   * Call before the final "done" phase so it renders at the bottom of the PR.
-   */
-  setValidationSummary(rows) {
-    this.validationSummary = rows;
-  }
-  async setScanTarget(app, url) {
-    this.scanTarget = { app, url };
-    await this.updatePrDescription();
-  }
-  async updatePrDescription() {
-    const lines = [];
-    if (this.scanTarget) {
-      lines.push(
-        `**Scan target:** \`${this.scanTarget.app}\`${this.scanTarget.url ? ` at ${this.scanTarget.url}` : ""}`
-      );
-      lines.push("");
-    }
-    for (const s of this.steps) {
-      const icon = s.status === "done" ? "\u2705" : s.status === "working" ? "\u{1F504}" : "\u2B1C";
-      const suffix = s.attempts > 1 ? `  _(${s.attempts} attempts)_` : "";
-      lines.push(`${icon} **${s.title}**${suffix}`);
-      if (s.status === "working") {
-        for (const d of s.details) {
-          lines.push(`   - ${d}`);
-        }
-        for (const d of s.keyedDetails.values()) {
-          lines.push(`   - ${d}`);
-        }
-      } else if (s.status === "done") {
-        const last = s.details[s.details.length - 1];
-        if (last) {
-          lines.push(`   - ${condenseDetail(last)}`);
-        }
-      }
-    }
-    if (this.findingsSummary.length > 0) {
-      lines.push("");
-      lines.push("### Findings");
-      lines.push("");
-      lines.push("| Severity | Vulnerability | Endpoint | Status |");
-      lines.push("|----------|--------------|----------|--------|");
-      for (const f of this.findingsSummary) {
-        const icon = f.status === "Fixed" ? "\u2705" : "\u{1F534}";
-        lines.push(
-          `| ${f.severity} | ${f.name} | \`${f.method} ${f.url}\` | ${icon} ${f.status} |`
-        );
-      }
-    }
-    if (this.validationSummary.length > 0) {
-      const validated = this.validationSummary.filter((r) => r.verdict === "validated").length;
-      const notValidated = this.validationSummary.filter((r) => r.verdict === "not-validated").length;
-      const na = this.validationSummary.filter((r) => r.verdict === "n/a").length;
-      lines.push("");
-      lines.push("### CodeQL \u2192 DAST Validation");
-      lines.push("");
-      lines.push(
-        `**${validated}** validated \xB7 **${notValidated}** not validated \xB7 **${na}** N/A \u2014 of **${this.validationSummary.length}** CodeQL finding(s)`
-      );
-      lines.push("");
-      lines.push("| Severity | CodeQL Finding | Rule | Location | DAST Verdict |");
-      lines.push("|----------|----------------|------|----------|--------------|");
-      const verdictRank = { validated: 0, "not-validated": 1, "n/a": 2 };
-      const sevRank = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-      const sorted = [...this.validationSummary].sort((a, b) => {
-        const va = verdictRank[a.verdict] ?? 3;
-        const vb = verdictRank[b.verdict] ?? 3;
-        if (va !== vb) return va - vb;
-        return (sevRank[a.severity] ?? 4) - (sevRank[b.severity] ?? 4);
-      });
-      for (const r of sorted) {
-        const icon = r.verdict === "validated" ? "\u2705 Validated" : r.verdict === "not-validated" ? "\u26A0\uFE0F Not validated" : "\u2796 N/A";
-        lines.push(
-          `| ${r.severity} | ${r.name} | \`${r.rule}\` | \`${r.location}\` | ${icon} |`
-        );
-      }
-    }
-    await this.platform.reportPrDescription(
-      `## \u{1F6E1}\uFE0F Bright Security Scan
-
-${lines.join("\n")}`
-    );
-  }
-};
-
-// src/phases/analyze.ts
-import { readFileSync, existsSync as existsSync2, readdirSync, statSync } from "fs";
-import { relative, resolve, extname } from "path";
-import { execFileSync as execFileSync2 } from "child_process";
-async function detectTechStack(repoPath, serviceRoot) {
-  const base = await detectTechStackFromFiles(repoPath);
-  if (serviceRoot) {
-    const svcPath = resolve(repoPath, serviceRoot);
-    if (existsSync2(svcPath)) {
-      const svc = await detectTechStackFromFiles(svcPath);
-      const langs = new Set(base.languages);
-      const fws = new Set(base.frameworks);
-      const dbs = new Set(base.databases);
-      for (const l of svc.languages) langs.add(l);
-      for (const f of svc.frameworks) fws.add(f);
-      for (const d of svc.databases) dbs.add(d);
-      base.languages = [...langs];
-      base.frameworks = [...fws];
-      base.databases = [...dbs];
-    }
-  }
-  return base;
-}
-async function detectTechStackFromFiles(repoPath) {
-  const languages = /* @__PURE__ */ new Set();
-  const frameworks = /* @__PURE__ */ new Set();
-  const databases = /* @__PURE__ */ new Set();
-  const has = (rel) => existsSync2(resolve(repoPath, rel));
-  const readJson = (rel) => {
-    try {
-      return JSON.parse(readFileSync(resolve(repoPath, rel), "utf-8"));
-    } catch {
-      return null;
-    }
-  };
-  if (has("package.json")) {
-    const pkg = readJson("package.json");
-    const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
-    languages.add("JavaScript");
-    if (allDeps?.typescript || has("tsconfig.json"))
-      languages.add("TypeScript");
-    if (allDeps?.express) frameworks.add("Express");
-    if (allDeps?.fastify) frameworks.add("Fastify");
-    if (allDeps?.koa) frameworks.add("Koa");
-    if (allDeps?.hapi || allDeps?.["@hapi/hapi"]) frameworks.add("Hapi");
-    if (allDeps?.next) frameworks.add("Next.js");
-    if (allDeps?.nuxt) frameworks.add("Nuxt");
-    if (allDeps?.["@remix-run/node"] || allDeps?.["@remix-run/react"]) frameworks.add("Remix");
-    if (allDeps?.["@nestjs/core"]) frameworks.add("NestJS");
-    if (allDeps?.mongoose || allDeps?.mongodb) databases.add("MongoDB");
-    if (allDeps?.pg || allDeps?.["pg-promise"]) databases.add("PostgreSQL");
-    if (allDeps?.mysql || allDeps?.mysql2) databases.add("MySQL");
-    if (allDeps?.sequelize) databases.add("SQL (Sequelize)");
-    if (allDeps?.knex) databases.add("SQL (Knex)");
-    if (allDeps?.redis || allDeps?.ioredis) databases.add("Redis");
-    if (allDeps?.sqlite3 || allDeps?.["better-sqlite3"])
-      databases.add("SQLite");
-    if (allDeps?.typeorm) databases.add("SQL (TypeORM)");
-    if (allDeps?.prisma || allDeps?.["@prisma/client"])
-      databases.add("SQL (Prisma)");
-  }
-  if (has("requirements.txt") || has("pyproject.toml") || has("setup.py") || has("Pipfile")) {
-    languages.add("Python");
-    const readReqs = () => {
-      for (const f of ["requirements.txt", "Pipfile"]) {
-        try {
-          return readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
-        } catch {
-        }
-      }
-      try {
-        return readFileSync(
-          resolve(repoPath, "pyproject.toml"),
-          "utf-8"
-        ).toLowerCase();
-      } catch {
-        return "";
-      }
-    };
-    const reqs = readReqs();
-    if (reqs.includes("django")) frameworks.add("Django");
-    if (reqs.includes("flask")) frameworks.add("Flask");
-    if (reqs.includes("fastapi")) frameworks.add("FastAPI");
-    if (reqs.includes("sqlalchemy")) databases.add("SQL (SQLAlchemy)");
-    if (reqs.includes("psycopg")) databases.add("PostgreSQL");
-    if (reqs.includes("pymongo")) databases.add("MongoDB");
-  }
-  if (has("Gemfile")) {
-    languages.add("Ruby");
-    try {
-      const gemfile = readFileSync(
-        resolve(repoPath, "Gemfile"),
-        "utf-8"
-      ).toLowerCase();
-      if (gemfile.includes("rails")) frameworks.add("Rails");
-      if (gemfile.includes("sinatra")) frameworks.add("Sinatra");
-      if (gemfile.includes("pg")) databases.add("PostgreSQL");
-      if (gemfile.includes("mysql")) databases.add("MySQL");
-      if (gemfile.includes("mongoid")) databases.add("MongoDB");
-    } catch {
-    }
-  }
-  if (has("pom.xml") || has("build.gradle") || has("build.gradle.kts")) {
-    languages.add("Java");
-    if (has("build.gradle.kts")) languages.add("Kotlin");
-    const readBuild = () => {
-      for (const f of ["pom.xml", "build.gradle", "build.gradle.kts"]) {
-        try {
-          return readFileSync(resolve(repoPath, f), "utf-8").toLowerCase();
-        } catch {
-        }
-      }
-      return "";
-    };
-    const build = readBuild();
-    if (build.includes("spring")) frameworks.add("Spring");
-    if (build.includes("quarkus")) frameworks.add("Quarkus");
-    if (build.includes("postgresql") || build.includes("postgres"))
-      databases.add("PostgreSQL");
-    if (build.includes("mysql")) databases.add("MySQL");
-    if (build.includes("mongodb") || build.includes("mongo"))
-      databases.add("MongoDB");
-  }
-  if (has("go.mod")) {
-    languages.add("Go");
-    try {
-      const gomod = readFileSync(
-        resolve(repoPath, "go.mod"),
-        "utf-8"
-      ).toLowerCase();
-      if (gomod.includes("gin-gonic")) frameworks.add("Gin");
-      if (gomod.includes("gorilla/mux")) frameworks.add("Gorilla Mux");
-      if (gomod.includes("fiber")) frameworks.add("Fiber");
-      if (gomod.includes("echo")) frameworks.add("Echo");
-    } catch {
-    }
-  }
-  const csprojFiles = await glob("**/*.{csproj,sln,fsproj}", {
-    cwd: repoPath,
-    nodir: true,
-    maxDepth: 3
-  });
-  if (csprojFiles.length > 0) {
-    languages.add("C#");
-    for (const f of csprojFiles.slice(0, 5)) {
-      try {
-        const content = readFileSync(
-          resolve(repoPath, f),
-          "utf-8"
-        ).toLowerCase();
-        if (content.includes("microsoft.aspnetcore") || content.includes("aspnet"))
-          frameworks.add("ASP.NET");
-        if (content.includes("entityframework")) databases.add("SQL (EF Core)");
-        if (content.includes("npgsql")) databases.add("PostgreSQL");
-        if (content.includes("umbraco")) frameworks.add("Umbraco CMS");
-      } catch {
-      }
-    }
-  }
-  if (has("Cargo.toml")) {
-    languages.add("Rust");
-    try {
-      const cargo = readFileSync(
-        resolve(repoPath, "Cargo.toml"),
-        "utf-8"
-      ).toLowerCase();
-      if (cargo.includes("actix")) frameworks.add("Actix");
-      if (cargo.includes("axum")) frameworks.add("Axum");
-      if (cargo.includes("rocket")) frameworks.add("Rocket");
-    } catch {
-    }
-  }
-  if (has("build.sbt")) {
-    languages.add("Scala");
-    if (!languages.has("Java")) languages.add("Java");
-    try {
-      const sbt = readFileSync(resolve(repoPath, "build.sbt"), "utf-8").toLowerCase();
-      if (sbt.includes("play") || sbt.includes("playframework")) frameworks.add("Play Framework");
-      if (sbt.includes("akka-http")) frameworks.add("Akka HTTP");
-      if (sbt.includes("http4s")) frameworks.add("http4s");
-      if (sbt.includes("slick")) databases.add("SQL (Slick)");
-      if (sbt.includes("reactivemongo") || sbt.includes("mongo")) databases.add("MongoDB");
-      if (sbt.includes("postgres")) databases.add("PostgreSQL");
-    } catch {
-    }
-  }
-  if (has("mix.exs")) {
-    languages.add("Elixir");
-    try {
-      const mix = readFileSync(resolve(repoPath, "mix.exs"), "utf-8").toLowerCase();
-      if (mix.includes("phoenix")) frameworks.add("Phoenix");
-      if (mix.includes("ecto")) databases.add("SQL (Ecto)");
-    } catch {
-    }
-  }
-  if (has("composer.json")) {
-    languages.add("PHP");
-    const pkg = readJson("composer.json");
-    const allDeps = { ...pkg?.require, ...pkg?.["require-dev"] };
-    if (allDeps?.["laravel/framework"]) frameworks.add("Laravel");
-    if (allDeps?.["symfony/framework-bundle"]) frameworks.add("Symfony");
-  }
-  if (has("docker-compose.yml") || has("docker-compose.yaml") || has("compose.yml") || has("compose.yaml")) {
-    for (const f of [
-      "docker-compose.yml",
-      "docker-compose.yaml",
-      "compose.yml",
-      "compose.yaml"
-    ]) {
-      try {
-        const content = readFileSync(
-          resolve(repoPath, f),
-          "utf-8"
-        ).toLowerCase();
-        if (content.includes("postgres")) databases.add("PostgreSQL");
-        if (content.includes("mysql") || content.includes("mariadb"))
-          databases.add("MySQL");
-        if (content.includes("mongo")) databases.add("MongoDB");
-        if (content.includes("redis")) databases.add("Redis");
-      } catch {
-      }
-    }
-  }
-  if (languages.size === 0) {
-    const extMap = {
-      ".py": "Python",
-      ".rb": "Ruby",
-      ".go": "Go",
-      ".rs": "Rust",
-      ".java": "Java",
-      ".scala": "Scala",
-      ".kt": "Kotlin",
-      ".cs": "C#",
-      ".php": "PHP",
-      ".ts": "TypeScript",
-      ".js": "JavaScript"
-    };
-    const srcFiles = await glob("src/**/*", {
-      cwd: repoPath,
-      nodir: true,
-      maxDepth: 3
-    });
-    for (const f of srcFiles.slice(0, 50)) {
-      const ext = extname(f);
-      if (extMap[ext]) languages.add(extMap[ext]);
-    }
-  }
-  return {
-    languages: [...languages],
-    frameworks: [...frameworks],
-    databases: [...databases],
-    serviceRoot: await selectServiceForTesting(repoPath, [...frameworks])
-  };
-}
-var SKIP_PROJECT_PATTERNS = [
-  /apphost/i,
-  /servicedefaults/i,
-  /aspire/i,
-  /\.tests?$/i,
-  /\.test$/i,
-  /\.spec$/i,
-  /\.e2e$/i,
-  /\.benchmark/i,
-  /\.shared$/i,
-  /\.common$/i,
-  /\.contracts$/i,
-  /migrations/i,
-  /\.cli$/i,
-  /\.tools?$/i,
-  /\.worker$/i,
-  /persistence/i,
-  /\.data$/i,
-  /efcore/i,
-  /entityframework/i,
-  /\.abstractions$/i,
-  /\.core$/i,
-  /\.targets$/i,
-  /\.docs?$/i,
-  /staticassets/i
-];
-var PREFER_PROJECT_PATTERNS = [
-  /api$/i,
-  /\.api$/i,
-  /web$/i,
-  /webapp$/i,
-  /(?:^|\.)server$/i,
-  /gateway$/i,
-  /host$/i,
-  /\.web\./i,
-  /\.web$/i,
-  /\.ui$/i
-];
-async function selectServiceForTesting(repoPath, rootFrameworks) {
-  const monorepoIndicators = [
-    "pnpm-workspace.yaml",
-    "lerna.json",
-    "nx.json",
-    "turbo.json",
-    "rush.json"
-  ];
-  const hasWorkspaceConfig = monorepoIndicators.some(
-    (f) => existsSync2(resolve(repoPath, f))
-  );
-  const csprojFiles = await glob("**/*.csproj", {
-    cwd: repoPath,
-    nodir: true,
-    maxDepth: 4,
-    ignore: ["**/node_modules/**", "**/bin/**", "**/obj/**"]
-  });
-  const csprojDirs = new Set(csprojFiles.map((f) => f.replace(/\/[^/]+$/, "")));
-  const isDotnetMultiProject = csprojDirs.size > 3;
-  const pkgJsonFiles = await glob("*/package.json", {
-    cwd: repoPath,
-    nodir: true
-  });
-  const hasRootGemfile = existsSync2(resolve(repoPath, "Gemfile"));
-  const hasRootGoMod = existsSync2(resolve(repoPath, "go.mod"));
-  const isJsMonorepo = !hasRootGemfile && !hasRootGoMod && (hasWorkspaceConfig ? pkgJsonFiles.length > 2 : pkgJsonFiles.length > 3);
-  const goMains = await glob("**/main.go", {
-    cwd: repoPath,
-    nodir: true,
-    maxDepth: 4,
-    ignore: ["**/vendor/**", "**/node_modules/**"]
-  });
-  const isGoMulti = goMains.length > 2;
-  if (!isDotnetMultiProject && !isJsMonorepo && !isGoMulti) {
-    return ".";
-  }
-  console.log("[Analyze] Monorepo detected \u2014 selecting best service for testing");
-  const candidates = [];
-  if (isDotnetMultiProject) {
-    for (const csproj of csprojFiles) {
-      const dir = csproj.replace(/\/[^/]+$/, "");
-      const name = csproj.replace(/\.csproj$/, "").replace(/.*\//, "");
-      const candidate = await scoreCandidate(repoPath, dir, name);
-      candidates.push(candidate);
-    }
-  }
-  if (isJsMonorepo) {
-    const allPkgJsons = await glob(
-      "{*/,apps/*/,packages/*/,services/*/}package.json",
-      { cwd: repoPath, nodir: true }
-    );
-    for (const pkg of allPkgJsons) {
-      const dir = pkg.replace(/\/package\.json$/, "");
-      const name = dir.replace(/.*\//, "");
-      const candidate = await scoreCandidate(repoPath, dir, name);
-      candidates.push(candidate);
-    }
-  }
-  if (isGoMulti) {
-    for (const mainGo of goMains) {
-      const dir = mainGo.replace(/\/main\.go$/, "");
-      const name = dir.replace(/.*\//, "");
-      const candidate = await scoreCandidate(repoPath, dir, name);
-      candidates.push(candidate);
-    }
-  }
-  if (candidates.length === 0) return ".";
-  candidates.sort((a, b) => b.score - a.score);
-  const best = candidates[0];
-  if (best.score <= 0) {
-    console.log("[Analyze] No viable web service found in monorepo \u2014 using root");
-    return ".";
-  }
-  console.log(
-    `[Analyze] Selected service: ${best.path} (score: ${best.score}) from ${candidates.length} candidates`
-  );
-  if (candidates.length > 1) {
-    const top3 = candidates.slice(0, 3).map((c) => `${c.path}(${c.score})`).join(", ");
-    console.log(`[Analyze] Top candidates: ${top3}`);
-  }
-  return best.path;
-}
-async function scoreCandidate(repoPath, dir, name) {
-  let score = 0;
-  const absDir = resolve(repoPath, dir);
-  if (SKIP_PROJECT_PATTERNS.some((p) => p.test(name))) {
-    return { path: dir, name, score: -100 };
-  }
-  const hasDockerfile = existsSync2(resolve(absDir, "Dockerfile")) || existsSync2(resolve(absDir, "dockerfile"));
-  const hasDockerfileVariant = !hasDockerfile && (() => {
-    try {
-      return readdirSync(absDir).some((f) => /^Dockerfile\./i.test(f));
-    } catch {
-      return false;
-    }
-  })();
-  if (hasDockerfile || hasDockerfileVariant) {
-    score += 10;
-  }
-  const entryPoints = [
-    "Program.cs",
-    "Startup.cs",
-    "main.go",
-    "app.py",
-    "manage.py",
-    "main.py",
-    "index.ts",
-    "index.js",
-    "server.ts",
-    "server.js",
-    "app.ts",
-    "app.js"
-  ];
-  if (entryPoints.some((ep) => existsSync2(resolve(absDir, ep)))) {
-    score += 8;
-  }
-  if (PREFER_PROJECT_PATTERNS.some((p) => p.test(name))) {
-    score += 5;
-  }
-  score += await scoreHttpFramework(absDir);
-  const controllers = await glob(
-    "**/{*controller*,*Controller*,routes*,*handler*}.{ts,js,cs,java,go,py,rb,php}",
-    { cwd: absDir, nodir: true, maxDepth: 4, ignore: GLOB_IGNORE }
-  );
-  if (controllers.length > 0) score += 3;
-  const manifests = [
-    "package.json",
-    "go.mod",
-    "Cargo.toml",
-    "pom.xml",
-    "build.gradle",
-    "build.gradle.kts",
-    "build.sbt",
-    "mix.exs",
-    "composer.json"
-  ];
-  if (manifests.some((m) => existsSync2(resolve(absDir, m)))) score += 2;
-  return { path: dir, name, score };
-}
-async function scoreHttpFramework(absDir) {
-  try {
-    const pkg = JSON.parse(
-      readFileSync(resolve(absDir, "package.json"), "utf-8")
-    );
-    const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
-    const httpPkgs = [
-      "express",
-      "fastify",
-      "koa",
-      "@hapi/hapi",
-      "@nestjs/core",
-      "next",
-      "nuxt"
-    ];
-    if (httpPkgs.some((p) => allDeps?.[p])) return 8;
-  } catch {
-  }
-  const csprojFiles = await glob("*.csproj", {
-    cwd: absDir,
-    nodir: true
-  });
-  for (const f of csprojFiles) {
-    try {
-      const content = readFileSync(resolve(absDir, f), "utf-8");
-      const lower = content.toLowerCase();
-      const noComments = content.replace(/<!--[\s\S]*?-->/g, "");
-      if (/sdk\s*=\s*"microsoft\.net\.sdk\.web"/i.test(noComments)) {
-        return 8;
-      }
-      const pkgRefs = content.match(/<PackageReference\s[^>]*Include="[^"]*"/gi) || [];
-      const hasAspNet = pkgRefs.some(
-        (ref) => /aspnetcore|aspnet|microsoft\.aspnetcore/i.test(ref)
-      );
-      if (hasAspNet) {
-        return 8;
-      }
-    } catch {
-    }
-  }
-  for (const f of ["requirements.txt", "pyproject.toml"]) {
-    try {
-      const content = readFileSync(resolve(absDir, f), "utf-8").toLowerCase();
-      if (content.includes("django") || content.includes("flask") || content.includes("fastapi")) {
-        return 8;
-      }
-    } catch {
-    }
-  }
-  try {
-    const gomod = readFileSync(
-      resolve(absDir, "go.mod"),
-      "utf-8"
-    ).toLowerCase();
-    if (gomod.includes("gin-gonic") || gomod.includes("gorilla/mux") || gomod.includes("fiber") || gomod.includes("echo") || gomod.includes("net/http")) {
-      return 8;
-    }
-  } catch {
-  }
-  return 0;
-}
-var CONTROLLER_GLOBS = [
-  // JS / TS — structured directories (use ** prefix so nested dirs like backend/ are found)
-  "src/**/*.controller.{ts,js}",
-  "src/**/routes.{ts,js}",
-  "src/**/router.{ts,js}",
-  "src/**/*.routes.{ts,js}",
-  "**/controllers/**/*.{ts,js}",
-  "**/routes/**/*.{ts,js}",
-  "**/routers/**/*.{ts,js}",
-  "**/express-routers/**/*.{ts,js}",
-  "api/**/*.{ts,js}",
-  // Express/Koa/Fastify apps often define routes directly in entry files
-  "{app,server}.{ts,js}",
-  "src/**/{app,server}.{ts,js}",
-  // JS / TS — file-name conventions (kebab-case and camelCase)
-  "**/*-controller.{ts,js}",
-  "**/*-router.{ts,js}",
-  "**/*-routes.{ts,js}",
-  "**/*Controller.{ts,js}",
-  "**/*Router.{ts,js}",
-  "**/*Routes.{ts,js}",
-  // .NET / C#
-  "**/*Controller.cs",
-  "**/*ApiController.cs",
-  "**/Controllers/**/*.cs",
-  // Java / Kotlin
-  "**/*Controller.java",
-  "**/*Controller.kt",
-  "**/controller/**/*.java",
-  "**/controllers/**/*.java",
-  // Python
-  "**/views.py",
-  "**/routes.py",
-  "**/api.py",
-  "**/endpoints.py",
-  "**/server.py",
-  "**/app.py",
-  "**/main.py",
-  "**/*_views.py",
-  "**/*_routes.py",
-  "**/urls.py",
-  "api/**/*.py",
-  // Ruby
-  "app/controllers/**/*.rb",
-  "config/routes.rb",
-  // Go
-  "**/*handler*.go",
-  "**/*router*.go",
-  "**/api/**/*.go",
-  "**/routes/**/*.go",
-  "**/server/**/*.go",
-  // PHP
-  "**/Controller/**/*.php",
-  "**/Controllers/**/*.php",
-  "routes/**/*.php",
-  // Proto (gRPC-Web endpoints exposed over HTTP)
-  "**/*.proto"
-];
-var GLOB_IGNORE = [
-  "**/node_modules/**",
-  "**/vendor/**",
-  "**/bin/**",
-  "**/obj/**",
-  "**/test/**",
-  "**/tests/**",
-  "**/*.test.*",
-  "**/*.spec.*",
-  "**/*_test.go",
-  "**/TestData/**",
-  "**/data/**",
-  "**/.data/**",
-  // Frontend framework directories — these contain client-side controllers/routes,
-  // not backend API endpoints
-  "**/frontend/**",
-  "**/client/**",
-  "**/app/assets/**",
-  "**/assets/javascripts/**",
-  "**/plugins/**/assets/**"
-];
-function endpointSearchScope(repoPath, techStack) {
-  const rawServiceRoot = (techStack.serviceRoot || ".").replace(/\\/g, "/").replace(/^\.\/?/, "").replace(/\/+$/, "");
-  if (!rawServiceRoot || rawServiceRoot === ".") {
-    return { root: repoPath, prefix: "" };
-  }
-  const root = resolve(repoPath, rawServiceRoot);
-  const rel = relative(repoPath, root);
-  if (rel.startsWith("..") || resolve(repoPath, rel) !== root) {
-    console.warn(
-      `[Analyze] Ignoring unsafe service root for endpoint discovery: ${techStack.serviceRoot}`
-    );
-    return { root: repoPath, prefix: "" };
-  }
-  try {
-    if (statSync(root).isDirectory()) {
-      return { root, prefix: rel.replace(/\\/g, "/") };
-    }
-  } catch {
-  }
-  console.warn(
-    `[Analyze] Service root ${techStack.serviceRoot} was not found; falling back to repository-wide endpoint discovery`
-  );
-  return { root: repoPath, prefix: "" };
-}
-function toRepoRelative(prefix, filePath) {
-  return prefix ? `${prefix}/${filePath}`.replace(/\/+/g, "/") : filePath;
-}
-async function findControllerFiles(searchRoot, pathPrefix = "") {
-  const files = /* @__PURE__ */ new Set();
-  for (const pattern of CONTROLLER_GLOBS) {
-    for (const f of await glob(pattern, {
-      cwd: searchRoot,
-      nodir: true,
-      ignore: GLOB_IGNORE
-    })) {
-      files.add(toRepoRelative(pathPrefix, f));
-    }
-  }
-  return [...files];
-}
-async function extractFsBasedRoutes(searchRoot, techStack, pathPrefix = "") {
-  const endpoints = [];
-  const isNextJs = techStack.frameworks.some((f) => /next/i.test(f));
-  if (isNextJs) {
-    const pagesApiFiles = await glob("pages/api/**/*.{ts,js,tsx,jsx}", {
-      cwd: searchRoot,
-      nodir: true,
-      ignore: GLOB_IGNORE
-    });
-    for (const f of pagesApiFiles) {
-      const route = "/" + f.replace(/^pages\//, "").replace(/\/index\.\w+$/, "").replace(/\.\w+$/, "").replace(/\[\.\.\.(\w+)\]/g, ":$1*").replace(/\[(\w+)\]/g, ":$1");
-      endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
-    }
-    const appApiFiles = await glob("app/api/**/route.{ts,js,tsx,jsx}", {
-      cwd: searchRoot,
-      nodir: true,
-      ignore: GLOB_IGNORE
-    });
-    for (const f of appApiFiles) {
-      const route = "/" + f.replace(/^app\//, "").replace(/\/route\.\w+$/, "").replace(/\[\.\.\.(\w+)\]/g, ":$1*").replace(/\[(\w+)\]/g, ":$1");
-      try {
-        const content = readFileSync(resolve(searchRoot, f), "utf-8");
-        const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"].filter(
-          (m) => new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b`, "i").test(content)
-        );
-        for (const method of methods.length > 0 ? methods : ["GET"]) {
-          endpoints.push({ method, path: route, filePath: toRepoRelative(pathPrefix, f) });
-        }
-      } catch {
-        endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
-      }
-    }
-  }
-  const isRemix = techStack.frameworks.some((f) => /remix/i.test(f));
-  if (isRemix) {
-    const remixFiles = await glob("app/routes/**/*.{ts,tsx,js,jsx}", {
-      cwd: searchRoot,
-      nodir: true,
-      ignore: GLOB_IGNORE
-    });
-    for (const f of remixFiles) {
-      const route = "/" + f.replace(/^app\/routes\//, "").replace(/\.\w+$/, "").replace(/_index$/, "").replace(/\$/g, ":").replace(/\./g, "/").replace(/\/_/, "/");
-      if (route && route !== "/") {
-        endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
-      }
-    }
-  }
-  return endpoints;
-}
-async function detectRoutePrefixes(searchRoot, pathPrefix = "") {
-  const prefixMap = /* @__PURE__ */ new Map();
-  const entryFiles = await glob(
-    "{index,app,server,main,src/index,src/app,src/server,src/main}.{ts,js}",
-    { cwd: searchRoot, nodir: true }
-  );
-  for (const f of entryFiles) {
-    let content;
-    try {
-      content = readFileSync(resolve(searchRoot, f), "utf-8");
-    } catch {
-      continue;
-    }
-    const useRe = /\.use\(\s*["'`](\/[^"'`]*)["'`]\s*,\s*(?:require\(\s*["'`]([^"'`]+)["'`]\s*\)|(\w+))/g;
-    let m;
-    while ((m = useRe.exec(content)) !== null) {
-      const prefix = m[1];
-      const requirePath = m[2];
-      const varName = m[3];
-      if (requirePath) {
-        const normalized = requirePath.replace(/^\.\//, "").replace(/\.\w+$/, "");
-        prefixMap.set(toRepoRelative(pathPrefix, normalized), prefix);
-      }
-      if (varName) {
-        const importRe = new RegExp(
-          `import\\s+${varName}\\s+from\\s+["'\`]([^"'\`]+)["'\`]|const\\s+${varName}\\s*=\\s*require\\(\\s*["'\`]([^"'\`]+)["'\`]\\s*\\)`
-        );
-        const importMatch = content.match(importRe);
-        if (importMatch) {
-          const importPath = (importMatch[1] ?? importMatch[2]).replace(/^\.\//, "").replace(/\.\w+$/, "");
-          prefixMap.set(toRepoRelative(pathPrefix, importPath), prefix);
-        }
-      }
-    }
-  }
-  return prefixMap;
-}
-function findPrefixForFile(filePath, prefixMap) {
-  const normalized = filePath.replace(/\.\w+$/, "");
-  if (prefixMap.has(normalized)) return prefixMap.get(normalized);
-  for (const [key, prefix] of prefixMap) {
-    if (normalized.endsWith(key) || key.endsWith(normalized.split("/").pop())) {
-      return prefix;
-    }
-  }
-  return "";
-}
-function extractEndpointsFromFile(content, filePath) {
-  const endpoints = [];
-  const ext = extname(filePath).toLowerCase();
-  if (ext === ".ts" || ext === ".js") {
-    const jsRouteRe = /\b(?:router|app|server|route)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*["'`]([^"'`]+)["'`]/gi;
-    let m;
-    while ((m = jsRouteRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
-    }
-    const looksLikeExpressApp = /\bfrom\s+["']express["']/.test(content) || /\brequire\(\s*["']express["']\s*\)/.test(content) || /\bexpress\s*\(/.test(content);
-    if (looksLikeExpressApp) {
-      const expressInstanceRouteRe = /(?:\b\w+|this\.\w+)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*["'`](\/[^"'`]*)["'`]/gi;
-      while ((m = expressInstanceRouteRe.exec(content)) !== null) {
-        endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
-      }
-    }
-    const fastifyRouteRe = /\.route\s*\(\s*\{[^}]*?method\s*:\s*["'`](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)["'`]\s*,[^}]*?url\s*:\s*["'`]([^"'`]+)["'`]/gi;
-    while ((m = fastifyRouteRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
-    }
-    const fastifyRouteRevRe = /\.route\s*\(\s*\{[^}]*?url\s*:\s*["'`]([^"'`]+)["'`]\s*,[^}]*?method\s*:\s*["'`](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)["'`]/gi;
-    while ((m = fastifyRouteRevRe.exec(content)) !== null) {
-      endpoints.push({ method: m[2].toUpperCase(), path: m[1], filePath });
-    }
-    const controllerMatch = content.match(/@Controller\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/);
-    const nestPrefix = controllerMatch?.[1] ? controllerMatch[1].startsWith("/") ? controllerMatch[1] : "/" + controllerMatch[1] : "";
-    if (/@Crud\s*\(/.test(content) && nestPrefix) {
-      for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
-        const crudPath = method === "GET" || method === "DELETE" || method === "PUT" || method === "PATCH" ? `${nestPrefix}/:id` : nestPrefix;
-        endpoints.push({ method, path: crudPath, filePath });
-      }
-      endpoints.push({ method: "GET", path: nestPrefix, filePath });
-    }
-    const nestRe = /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/gi;
-    while ((m = nestRe.exec(content)) !== null) {
-      const subPath = m[2];
-      const fullPath = nestPrefix && subPath ? `${nestPrefix}/${subPath.replace(/^\//, "")}` : nestPrefix + (subPath.startsWith("/") ? subPath : `/${subPath}`);
-      endpoints.push({ method: m[1].toUpperCase(), path: fullPath || "/", filePath });
-    }
-    const nestNoPathRe = /@(Get|Post|Put|Patch|Delete)\s*\(\s*\)/gi;
-    while ((m = nestNoPathRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: nestPrefix || "/", filePath });
-    }
-    const grpcMethodRe = /@GrpcMethod\s*\(\s*["'`](\w+)["'`]\s*,\s*["'`](\w+)["'`]\s*\)/gi;
-    while ((m = grpcMethodRe.exec(content)) !== null) {
-      const service = m[1];
-      const method = m[2];
-      endpoints.push({
-        method: "POST",
-        path: `/grpc/${service}/${method}`,
-        filePath,
-        contentType: "application/grpc-web+proto",
-        headers: { "x-grpc-web": ["1"] }
-      });
-    }
-  }
-  if (ext === ".cs") {
-    const classRouteMatch = content.match(/\[Route\(\s*"([^"]+)"\s*\)\]/);
-    let routePrefix = classRouteMatch?.[1] ?? "";
-    const classNameMatch = content.match(/class\s+(\w+?)(?:Controller)\b/);
-    if (classNameMatch) {
-      routePrefix = routePrefix.replace(
-        /\[controller\]/gi,
-        classNameMatch[1].toLowerCase()
-      );
-    }
-    if (routePrefix && !routePrefix.startsWith("/"))
-      routePrefix = "/" + routePrefix;
-    const csMethodRe = /\[(Http(Get|Post|Put|Patch|Delete|Head|Options))(?:\(\s*"([^"]*)")?\s*\)?\]/gi;
-    let m;
-    while ((m = csMethodRe.exec(content)) !== null) {
-      const method = m[2].toUpperCase();
-      const subPath = m[3] ?? "";
-      let fullPath = routePrefix;
-      if (subPath) {
-        fullPath = fullPath ? `${fullPath}/${subPath}` : `/${subPath}`;
-      }
-      if (!fullPath) fullPath = "/";
-      fullPath = fullPath.replace(/\{(\w+)(?::[^}]*)?\}/g, ":$1");
-      endpoints.push({ method, path: fullPath, filePath });
-    }
-  }
-  if (ext === ".java" || ext === ".kt") {
-    const springRe = /@(Get|Post|Put|Patch|Delete)Mapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/gi;
-    let m;
-    while ((m = springRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
-    }
-    const reqMapRe = /@RequestMapping\s*\([^)]*value\s*=\s*"([^"]+)"[^)]*method\s*=\s*RequestMethod\.(\w+)/gi;
-    while ((m = reqMapRe.exec(content)) !== null) {
-      endpoints.push({ method: m[2].toUpperCase(), path: m[1], filePath });
-    }
-  }
-  if (ext === ".py") {
-    const flaskRe = /@\w+\.route\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?\s*\)/gi;
-    let m;
-    while ((m = flaskRe.exec(content)) !== null) {
-      const path = m[1];
-      const methods = m[2] ? m[2].replace(/["'\s]/g, "").split(",") : ["GET"];
-      for (const method of methods) {
-        endpoints.push({ method: method.toUpperCase(), path, filePath });
-      }
-    }
-    const fastapiRe = /@\w+\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi;
-    while ((m = fastapiRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
-    }
-    const djangoRe = /path\(\s*["']([^"']+)["']/gi;
-    while ((m = djangoRe.exec(content)) !== null) {
-      endpoints.push({
-        method: "GET",
-        path: m[1].startsWith("/") ? m[1] : "/" + m[1],
-        filePath
-      });
-    }
-    const djangoRePathRe = /(?:re_path|url)\(\s*r?["'](?:\^)?([^"']+?)(?:\$)?["']/gi;
-    while ((m = djangoRePathRe.exec(content)) !== null) {
-      let p = m[1];
-      p = p.replace(/^\^/, "").replace(/\$$/, "");
-      if (!p.startsWith("/")) p = "/" + p;
-      endpoints.push({ method: "GET", path: p, filePath });
-    }
-  }
-  if (ext === ".go") {
-    const goRe = /\.\s*(Get|Post|Put|Patch|Delete|Head|Options|GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*"([^"]+)"/gi;
-    let m;
-    while ((m = goRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
-    }
-    const handleRe = /(?:HandleFunc|Handle)\(\s*"([^"]+)"/gi;
-    while ((m = handleRe.exec(content)) !== null) {
-      if (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\//i.test(m[1])) {
-        continue;
-      }
-      endpoints.push({ method: "GET", path: m[1], filePath });
-    }
-    const muxMethodRe = /(?:HandleFunc|Handle)\(\s*"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+([^"]+)"/gi;
-    while ((m = muxMethodRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
-    }
-  }
-  if (ext === ".php") {
-    const phpRe = /Route::(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi;
-    let m;
-    while ((m = phpRe.exec(content)) !== null) {
-      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
-    }
-  }
-  if (ext === ".rb") {
-    const railsRe = /\b(get|post|put|patch|delete)\s+["']([^"']+)["']/gi;
-    let m;
-    while ((m = railsRe.exec(content)) !== null) {
-      const routePath = m[2];
-      if (routePath.includes("#{")) continue;
-      endpoints.push({ method: m[1].toUpperCase(), path: routePath, filePath });
-    }
-    const lines = content.split("\n");
-    const prefixStack = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      const nsMatch = trimmed.match(
-        /^\s*namespace\s+[:"'](\w+)/
-      );
-      if (nsMatch) {
-        prefixStack.push(`/${nsMatch[1]}`);
-        continue;
-      }
-      const scopeMatch = trimmed.match(
-        /^\s*scope\s+["']([^"']+)["']/
-      );
-      if (scopeMatch) {
-        prefixStack.push(scopeMatch[1].startsWith("/") ? scopeMatch[1] : `/${scopeMatch[1]}`);
-        continue;
-      }
-      if (/^\s*end\b/.test(trimmed) && prefixStack.length > 0) {
-        prefixStack.pop();
-        continue;
-      }
-      const resMatch = trimmed.match(
-        /^\s*(resources?)\s+:(\w+)(.*)$/
-      );
-      if (resMatch) {
-        const keyword = resMatch[1];
-        const name = resMatch[2];
-        const rest = resMatch[3];
-        const isSingular = keyword === "resource";
-        const prefix = prefixStack.join("") + `/${name}`;
-        const pluralActions = {
-          index: [{ method: "GET", suffix: "" }],
-          create: [{ method: "POST", suffix: "" }],
-          new: [{ method: "GET", suffix: "/new" }],
-          show: [{ method: "GET", suffix: "/:id" }],
-          edit: [{ method: "GET", suffix: "/:id/edit" }],
-          update: [
-            { method: "PUT", suffix: "/:id" },
-            { method: "PATCH", suffix: "/:id" }
-          ],
-          destroy: [{ method: "DELETE", suffix: "/:id" }]
-        };
-        const singularActions = {
-          create: [{ method: "POST", suffix: "" }],
-          new: [{ method: "GET", suffix: "/new" }],
-          show: [{ method: "GET", suffix: "" }],
-          edit: [{ method: "GET", suffix: "/edit" }],
-          update: [
-            { method: "PUT", suffix: "" },
-            { method: "PATCH", suffix: "" }
-          ],
-          destroy: [{ method: "DELETE", suffix: "" }]
-        };
-        const actionMap = isSingular ? singularActions : pluralActions;
-        const allActions = Object.keys(actionMap);
-        const parseActionList = (raw) => {
-          const r = raw.trim();
-          let m2 = r.match(/^%i\[\s*([^\]]+)\]/);
-          if (m2) return m2[1].split(/\s+/).filter(Boolean);
-          m2 = r.match(/^\[\s*([^\]]+)\]/);
-          if (m2) return m2[1].split(",").map((s) => s.trim().replace(/^:/, "")).filter(Boolean);
-          m2 = r.match(/^:(\w+)/);
-          if (m2) return [m2[1]];
-          return [];
-        };
-        let activeActions = allActions;
-        const onlyMatch = rest.match(/\bonly:\s*(.*)$/);
-        const exceptMatch = rest.match(/\bexcept:\s*(.*)$/);
-        if (onlyMatch) {
-          const allowed = new Set(parseActionList(onlyMatch[1]));
-          if (allowed.size > 0) activeActions = allActions.filter((a) => allowed.has(a));
-        } else if (exceptMatch) {
-          const blocked = new Set(parseActionList(exceptMatch[1]));
-          if (blocked.size > 0) activeActions = allActions.filter((a) => !blocked.has(a));
-        }
-        for (const action of activeActions) {
-          for (const { method, suffix } of actionMap[action] ?? []) {
-            endpoints.push({ method, path: `${prefix}${suffix}`, filePath });
-          }
-        }
-      }
-    }
-  }
-  if (ext === ".proto") {
-    const pkgMatch = content.match(/^package\s+([\w.]+)\s*;/m);
-    const pkg = pkgMatch?.[1] ?? "";
-    const serviceRe = /service\s+(\w+)\s*\{([^}]*)}/gs;
-    let svc;
-    while ((svc = serviceRe.exec(content)) !== null) {
-      const serviceName = svc[1];
-      const serviceBody = svc[2];
-      const rpcRe = /rpc\s+(\w+)\s*\(/g;
-      let rpc;
-      while ((rpc = rpcRe.exec(serviceBody)) !== null) {
-        const prefix = pkg ? `${pkg}.${serviceName}` : serviceName;
-        endpoints.push({
-          method: "POST",
-          path: `/grpc/${prefix}/${rpc[1]}`,
-          filePath,
-          contentType: "application/grpc-web+proto",
-          headers: { "x-grpc-web": ["1"] }
-        });
-      }
-    }
-  }
-  return endpoints;
-}
-function extractParamsFromCode(content, endpoint) {
-  const ext = extname(endpoint.filePath).toLowerCase();
-  if (ext === ".cs") {
-    const queryParams = [];
-    const fromQueryRe = /\[FromQuery(?:\(Name\s*=\s*"(\w+)")?\)?\]\s*\w+\s+(\w+)/g;
-    let m;
-    while ((m = fromQueryRe.exec(content)) !== null) {
-      const name = m[1] ?? m[2];
-      queryParams.push({ name, value: "test" });
-    }
-    return queryParams.length > 0 ? { queryParams } : null;
-  }
-  if (ext === ".ts" || ext === ".js") {
-    const seen = /* @__PURE__ */ new Set();
-    const queryParams = [];
-    const examples = extractApiQueryExamples(content);
-    const seedFor = (name) => examples.get(name) ?? "test";
-    const add = (name) => {
-      if (name && !seen.has(name)) {
-        seen.add(name);
-        queryParams.push({ name, value: seedFor(name) });
-      }
-    };
-    const expressRe = /req\.query\.(\w+)|req\.query\["(\w+)"\]/g;
-    let m;
-    while ((m = expressRe.exec(content)) !== null) {
-      add(m[1] ?? m[2]);
-    }
-    const nestQueryRe = /@Query\(\s*['"`](\w+)['"`]\s*\)/g;
-    while ((m = nestQueryRe.exec(content)) !== null) {
-      add(m[1]);
-    }
-    return queryParams.length > 0 ? { queryParams } : null;
-  }
-  return null;
-}
-function extractApiQueryExamples(content) {
-  const map = /* @__PURE__ */ new Map();
-  const blockRe = /@ApiQuery\(\s*\{([\s\S]*?)\}\s*\)/g;
-  let block;
-  while ((block = blockRe.exec(content)) !== null) {
-    const body = block[1];
-    const nameM = body.match(/name\s*:\s*['"`]([^'"`]+)['"`]/);
-    const exampleM = body.match(/example\s*:\s*['"`]([^'"`]+)['"`]/);
-    if (nameM && exampleM) {
-      map.set(nameM[1], exampleM[1]);
-    }
-  }
-  return map;
-}
-var _unnamedCounter = 0;
-function normalizePathParams(path) {
-  _unnamedCounter = 0;
-  return path.replace(/\(\?P<(\w+)>[^)]*\)/g, (_m, name) => `{${name}}`).replace(/\(<(\w+)>[^)]*\)/g, (_m, name) => `{${name}}`).replace(/<\w+:(\w+)>/g, (_m, name) => `{${name}}`).replace(/<(\w+)>/g, (_m, name) => `{${name}}`).replace(/\([^?][^)]*\)/g, () => `{id${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`).replace(/(?<=\/)\[?\^?[/\\dws.*+]+\]?\+?(?=\/|$)/g, () => `{param${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`).replace(/[\^$]/g, "").replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
-}
-var HTTP_METHOD_PREFIX_RE = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(.+)$/i;
-function normalizeEndpointMethodAndPath(ep) {
-  const path = ep.path.trim();
-  const methodInPath = path.match(HTTP_METHOD_PREFIX_RE);
-  if (methodInPath) {
-    ep.method = methodInPath[1].toUpperCase();
-    ep.path = methodInPath[2].trim() || "/";
-    return;
-  }
-  ep.path = path;
-}
-function extractSnippet(content, anchor, contextLines = 30) {
-  const lines = content.split("\n");
-  const regions = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes(anchor)) {
-      const start = Math.max(0, i - 5);
-      const end = Math.min(lines.length - 1, i + contextLines);
-      regions.push([start, end]);
-    }
-  }
-  if (regions.length === 0) {
-    const end = Math.min(lines.length - 1, contextLines * 2);
-    regions.push([0, end]);
-  }
-  const merged = [];
-  for (const [s, e] of regions.sort((a, b) => a[0] - b[0])) {
-    const last = merged[merged.length - 1];
-    if (last && s <= last[1] + 1) {
-      last[1] = Math.max(last[1], e);
-    } else {
-      merged.push([s, e]);
-    }
-  }
-  const parts = [];
-  for (const [s, e] of merged) {
-    if (parts.length > 0) parts.push("...");
-    for (let i = s; i <= e; i++) {
-      parts.push(`${i + 1}: ${lines[i]}`);
-    }
-  }
-  return parts.join("\n");
-}
-var bodyExtractionTools = [
-  {
-    type: "function",
-    function: {
-      name: "read_lines",
-      description: "Read specific line range from a file. Use this to inspect DTO/model classes, request schemas, or other referenced types.",
-      parameters: {
-        type: "object",
-        properties: {
-          file: { type: "string", description: "Relative file path" },
-          start_line: {
-            type: "number",
-            description: "Start line number (1-based)"
-          },
-          end_line: {
-            type: "number",
-            description: "End line number (1-based, inclusive)"
-          }
-        },
-        required: ["file", "start_line", "end_line"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "find_type",
-      description: "Search for a class, interface, struct, or type definition by name across the codebase. Returns a snippet of the definition.",
-      parameters: {
-        type: "object",
-        properties: {
-          type_name: {
-            type: "string",
-            description: "The class/interface/struct name to find"
-          }
-        },
-        required: ["type_name"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "grep_code",
-      description: "Search for a text pattern across source files using grep. Returns matching lines with file paths and line numbers. Use to find where a DTO is used, how a field is set, or locate related code.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "Search string (fixed text)" },
-          glob: {
-            type: "string",
-            description: 'Optional glob to restrict search (e.g. "*.cs", "*.ts")'
-          }
-        },
-        required: ["query"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "save_result",
-      description: "Save your final JSON result. You MUST call this tool with the complete JSON array as the result parameter. Do not return JSON in your text response \u2014 always use this tool.",
-      parameters: {
-        type: "object",
-        properties: {
-          result: {
-            type: "array",
-            description: "The JSON array of endpoint param objects",
-            items: {
-              type: "object",
-              properties: {
-                index: { type: "number", description: "Endpoint index from the list" },
-                body: { type: "string", description: "Request body JSON or empty" },
-                contentType: { type: "string" },
-                queryParams: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      name: { type: "string" },
-                      value: { type: "string" }
-                    }
-                  }
-                },
-                pathParams: { type: "object" }
-              }
-            }
-          }
-        },
-        required: ["result"]
-      }
-    }
-  }
-];
-var saveResultTool = bodyExtractionTools[3];
-var PARAM_EXTRACTION_BATCH_SIZE = 5;
-var PARAM_EXTRACTION_MAX_TURNS = 12;
-var PARAM_EXTRACTION_RETRY_TURNS = 3;
-function parseParamExtractionResponse(response) {
-  const trimmed = response.trim();
-  if (!trimmed || !/[\[{]/.test(trimmed)) {
-    return void 0;
-  }
-  const json = extractJson(trimmed).trim();
-  if (!json || !/^[\[{]/.test(json)) {
-    return void 0;
-  }
-  const parsed = parseJsonLenient(json);
-  if (Array.isArray(parsed)) {
-    return parsed;
-  }
-  if (parsed && typeof parsed === "object" && Array.isArray(parsed.endpoints)) {
-    return parsed.endpoints;
-  }
-  return parsed && typeof parsed === "object" ? [parsed] : void 0;
-}
-function responseSnippet(response) {
-  const normalized = response.replace(/\s+/g, " ").trim();
-  return normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
-}
-function createBodyExtractionToolHandler(repoPath) {
-  return async (name, args) => {
-    if (name === "read_lines") {
-      const file = String(args.file ?? "");
-      const startLine = Number(args.start_line ?? 1);
-      const endLine = Number(args.end_line ?? startLine + 50);
-      try {
-        const fullPath = resolve(repoPath, file);
-        const content = readFileSync(fullPath, "utf-8");
-        const lines = content.split("\n");
-        const s = Math.max(0, startLine - 1);
-        const e = Math.min(lines.length, endLine);
-        return lines.slice(s, e).map((l, i) => `${s + i + 1}: ${l}`).join("\n");
-      } catch {
-        return `Error: could not read ${file}`;
-      }
-    }
-    if (name === "find_type") {
-      const typeName = String(args.type_name ?? "");
-      if (!typeName) return "Error: type_name is required";
-      const exts = ["cs", "ts", "js", "java", "kt", "py"];
-      const pattern = `**/*.{${exts.join(",")}}`;
-      const files = await glob(pattern, {
-        cwd: repoPath,
-        nodir: true,
-        ignore: [
-          "**/node_modules/**",
-          "**/vendor/**",
-          "**/bin/**",
-          "**/obj/**"
-        ]
-      });
-      const typeRe = new RegExp(
-        `\\b(?:class|interface|struct|type|record|enum)\\s+${typeName}\\b`
-      );
-      for (const f of files) {
-        try {
-          const content = readFileSync(resolve(repoPath, f), "utf-8");
-          const match = typeRe.exec(content);
-          if (match) {
-            const lines = content.split("\n");
-            const lineIdx = content.substring(0, match.index).split("\n").length - 1;
-            const start = Math.max(0, lineIdx - 2);
-            const end = Math.min(lines.length, lineIdx + 40);
-            const snippet = lines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join("\n");
-            return `Found in ${f}:
-${snippet}`;
-          }
-        } catch {
-        }
-      }
-      return `Type "${typeName}" not found in codebase`;
-    }
-    if (name === "grep_code") {
-      const query = String(args.query ?? "");
-      if (!query) return "Error: query is required";
-      const fileGlob = args.glob ? String(args.glob) : void 0;
-      try {
-        const grepArgs = [
-          "-rn",
-          "--binary-files=without-match",
-          "--include",
-          fileGlob ?? "*",
-          "--exclude-dir=node_modules",
-          "--exclude-dir=.git",
-          "--exclude-dir=dist",
-          "--exclude-dir=bin",
-          "--exclude-dir=obj",
-          "--exclude-dir=vendor",
-          "--exclude-dir=data",
-          "--exclude-dir=.data",
-          "-F",
-          "--",
-          query,
-          "."
-        ];
-        const output = execFileSync2("grep", grepArgs, {
-          cwd: repoPath,
-          encoding: "utf-8",
-          maxBuffer: 512 * 1024,
-          timeout: 1e4
-        });
-        const lines = output.trim().split("\n");
-        if (lines.length > 30) {
-          return lines.slice(0, 30).join("\n") + `
-... (${lines.length} matches total)`;
-        }
-        return lines.join("\n");
-      } catch {
-        return "No matches found.";
-      }
-    }
-    if (name === "save_result") {
-      return "Result saved.";
-    }
-    return `Unknown tool: ${name}`;
-  };
-}
-var endpointDiscoveryTools = [
-  bodyExtractionTools[0],
-  // read_lines
-  bodyExtractionTools[2]
-  // grep_code
-];
-async function extractEndpointsViaLlm(llm, repoPath, files, handleTool, model) {
-  const results = [];
-  for (const filePath of files) {
-    const fullPath = resolve(repoPath, filePath);
-    let content;
-    try {
-      content = readFileSync(fullPath, "utf-8");
-    } catch {
-      continue;
-    }
-    const lines = content.split("\n");
-    const snippet = lines.slice(0, Math.min(lines.length, 80)).map((l, i) => `${i + 1}: ${l}`).join("\n");
-    const truncated = lines.length > 80 ? ` (showing first 80 of ${lines.length} lines)` : "";
-    console.log(
-      `[Analyze] LLM endpoint discovery: ${filePath}${truncated}`
-    );
-    const messages = [
-      {
-        role: "system",
-        content: `You are an API route analyst. Given source code from a controller/route file, identify all HTTP endpoints it registers or calls.
-
-Look for:
-- Direct route registrations (app.get, router.post, etc.)
-- Helper functions that register routes (registerRoutes, addCrudRoutes, etc.) \u2014 follow them with grep_code if needed
-- Route configuration objects, arrays, or maps
-- Django url() and re_path() patterns in urls.py files
-- Frontend fetch/axios/xhr calls that indicate API endpoints exist
-
-IMPORTANT: Convert path parameters to {param} format. Do NOT return raw regex.
-- Django (?P<sid>\\d+) \u2192 {sid}
-- Express :id \u2192 {id}
-- Flask <int:pk> \u2192 {pk}
-
-IMPORTANT: If URLs are constructed using a variable prefix (e.g. \`API + "/users"\`, \`BASE_URL + path\`), use grep_code to find the value of that variable in the same file or other files. Always return the FULL resolved path (e.g. "/api/users", not just "/users").
-
-You have tools:
-- read_lines: read more of this or other files
-- grep_code: search the codebase for function definitions, route registrations, etc.
-
-Return ONLY a JSON array of endpoints:
-[{"method": "GET", "path": "/api/users"}, {"method": "POST", "path": "/api/users/{id}"}]
-
-If no HTTP endpoints are found, return an empty array: []`
-      },
-      {
-        role: "user",
-        content: `File: ${filePath}${truncated}
-
-\`\`\`
-${snippet}
-\`\`\`
-
-Find all HTTP endpoints registered in this file. If routes are registered via helper functions, use grep_code to find their definitions.`
-      }
-    ];
-    try {
-      const response = await chatWithTools(
-        llm,
-        messages,
-        endpointDiscoveryTools,
-        handleTool,
-        model,
-        5
-      );
-      const parsed = parseJsonLenient(extractJson(response));
-      const eps = Array.isArray(parsed) ? parsed : Array.isArray(parsed.endpoints) ? parsed.endpoints : [];
-      for (const ep of eps) {
-        if (ep.method && ep.path) {
-          results.push({
-            method: String(ep.method).toUpperCase(),
-            path: String(ep.path),
-            filePath
-          });
-        }
-      }
-      if (eps.length > 0) {
-        console.log(
-          `[Analyze] LLM found ${eps.length} endpoint(s) in ${filePath}`
-        );
-      }
-    } catch (err) {
-      console.warn(
-        `[Analyze] LLM fallback failed for ${filePath}: ${err}`
-      );
-    }
-  }
-  return results;
-}
-async function checkForMissedRouteFiles(llm, repoPath, searchRoot, pathPrefix, alreadyScannedFiles, existingEndpoints, model) {
-  const sourceExts = /* @__PURE__ */ new Set([
-    ".ts",
-    ".js",
-    ".py",
-    ".rb",
-    ".go",
-    ".java",
-    ".kt",
-    ".cs",
-    ".php",
-    ".tsx",
-    ".jsx",
-    ".mjs",
-    ".cjs"
-  ]);
-  const ignoreDirs = /* @__PURE__ */ new Set([
-    "node_modules",
-    ".git",
-    "vendor",
-    "dist",
-    "build",
-    "__pycache__",
-    ".next",
-    "coverage",
-    "tmp",
-    ".cache",
-    "venv",
-    "env"
-  ]);
-  const tree = [];
-  function walkDir(dir, prefix, depth) {
-    if (depth > 4 || tree.length >= 200) return;
-    let entries;
-    try {
-      entries = readdirSync(resolve(searchRoot, dir));
-    } catch {
-      return;
-    }
-    for (const entry of entries.sort()) {
-      if (entry.startsWith(".") || ignoreDirs.has(entry)) continue;
-      const rel = dir ? `${dir}/${entry}` : entry;
-      const fullPath = resolve(searchRoot, rel);
-      let isDir = false;
-      try {
-        isDir = statSync(fullPath).isDirectory();
-      } catch {
-        continue;
-      }
-      if (isDir) {
-        tree.push(rel + "/");
-        walkDir(rel, prefix + "  ", depth + 1);
-      } else {
-        const ext = extname(entry).toLowerCase();
-        if (sourceExts.has(ext)) {
-          tree.push(toRepoRelative(pathPrefix, rel));
-        }
-      }
-    }
-  }
-  walkDir("", "", 0);
-  if (tree.length === 0) return [];
-  const scannedSet = new Set(alreadyScannedFiles);
-  const foundRoutes = existingEndpoints.slice(0, 40).map((ep) => `${ep.method} ${ep.path}`).join("\n");
-  const handleTool = createBodyExtractionToolHandler(repoPath);
-  const messages = [
-    {
-      role: "system",
-      content: `You are verifying endpoint discovery completeness. We already found these endpoints:
-
-${foundRoutes || "(none yet)"}
-
-From these files: ${alreadyScannedFiles.slice(0, 30).join(", ")}
-
-Below is the ${pathPrefix ? `selected service (${pathPrefix})` : "project"} file tree. Your job: identify any source files in that tree that likely define HTTP routes/endpoints but were NOT in our scanned list.
-
-Look for files that:
-- Import/use HTTP frameworks (Flask, Express, Gin, Echo, Spring, etc.)
-- Have "route", "endpoint", "handler", "api" in their name or content
-- Are Python/JS/Go/Java/etc. files at the root or in api/ server/ backend/ directories
-
-Use grep_code to check suspicious files for route patterns (e.g. "@app.route", "router.get", "http.HandleFunc", "app.get(", "RequestMapping", etc.)
-
-Then use read_lines to extract the actual endpoints from any files that do define routes.
-
-Return ONLY a JSON array of newly discovered endpoints (NOT ones already listed above):
-[{"method": "GET", "path": "/api/example", "filePath": "relative/path.py"}]
-
-If nothing was missed, return: []`
-    },
-    {
-      role: "user",
-      content: `${pathPrefix ? `Selected service root: ${pathPrefix}
-
-` : ""}Project file tree (${tree.length} source files):
-${tree.join("\n")}
-
-Which of these files might define HTTP endpoints that we haven't scanned yet? Check with grep_code and extract any missed routes.`
-    }
-  ];
-  try {
-    const response = await chatWithTools(
-      llm,
-      messages,
-      endpointDiscoveryTools,
-      handleTool,
-      model,
-      5
-    );
-    const parsed = parseJsonLenient(extractJson(response));
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (ep) => ep.method && ep.path && !scannedSet.has(ep.filePath ?? "")
-    ).map((ep) => ({
-      method: ep.method.toUpperCase(),
-      path: ep.path,
-      filePath: ep.filePath ?? "unknown"
-    }));
-  } catch (err) {
-    console.warn(`[Analyze] Completeness check failed: ${err}`);
-    return [];
-  }
-}
-async function discoverEndpoints(llm, repoPath, techStack, model) {
-  const scope = endpointSearchScope(repoPath, techStack);
-  if (scope.prefix) {
-    console.log(
-      `[Analyze] Endpoint discovery scoped to selected service: ${scope.prefix}`
-    );
-  }
-  const controllerFiles = await findControllerFiles(scope.root, scope.prefix);
-  console.log(
-    `[Analyze] Found ${controllerFiles.length} controller files via glob`
-  );
-  const allEndpoints = [];
-  const noMatchFiles = [];
-  for (const filePath of controllerFiles) {
-    const fullPath = resolve(repoPath, filePath);
-    let content;
-    try {
-      content = readFileSync(fullPath, "utf-8");
-    } catch {
-      continue;
-    }
-    const eps = extractEndpointsFromFile(content, filePath);
-    if (eps.length > 0) {
-      allEndpoints.push(...eps);
-    } else {
-      noMatchFiles.push(filePath);
-    }
-  }
-  const fsRoutes = await extractFsBasedRoutes(
-    scope.root,
-    techStack,
-    scope.prefix
-  );
-  if (fsRoutes.length > 0) {
-    console.log(
-      `[Analyze] Extracted ${fsRoutes.length} endpoints from file-system routes`
-    );
-    allEndpoints.push(...fsRoutes);
-  }
-  const prefixMap = await detectRoutePrefixes(scope.root, scope.prefix);
-  if (prefixMap.size > 0) {
-    console.log(
-      `[Analyze] Detected ${prefixMap.size} route prefix mount(s): ${[...prefixMap.entries()].map(([k, v]) => `${v} \u2192 ${k}`).join(", ")}`
-    );
-    for (const ep of allEndpoints) {
-      const prefix = findPrefixForFile(ep.filePath, prefixMap);
-      if (prefix && !ep.path.startsWith(prefix)) {
-        ep.path = prefix.replace(/\/$/, "") + (ep.path.startsWith("/") ? ep.path : "/" + ep.path);
-      }
-    }
-  }
-  const llmCandidates = noMatchFiles.filter(
-    (f) => !/\bapp\/controllers\/.*\.rb$/.test(f)
-  );
-  if (noMatchFiles.length > llmCandidates.length) {
-    console.log(
-      `[Analyze] Skipping ${noMatchFiles.length - llmCandidates.length} Rails controller file(s) \u2014 routes are in config/routes.rb`
-    );
-  }
-  if (llmCandidates.length > 0) {
-    console.log(
-      `[Analyze] ${llmCandidates.length} controller file(s) had no regex matches \u2014 using LLM fallback`
-    );
-    const handleTool2 = createBodyExtractionToolHandler(repoPath);
-    const llmEndpoints = await extractEndpointsViaLlm(
-      llm,
-      repoPath,
-      llmCandidates,
-      handleTool2,
-      model
-    );
-    for (const ep of llmEndpoints) {
-      const prefix = findPrefixForFile(ep.filePath, prefixMap);
-      if (prefix && !ep.path.startsWith(prefix)) {
-        ep.path = prefix.replace(/\/$/, "") + (ep.path.startsWith("/") ? ep.path : "/" + ep.path);
-      }
-    }
-    allEndpoints.push(...llmEndpoints);
-  }
-  const missedEndpoints = await checkForMissedRouteFiles(
-    llm,
-    repoPath,
-    scope.root,
-    scope.prefix,
-    controllerFiles,
-    allEndpoints,
-    model
-  );
-  if (missedEndpoints.length > 0) {
-    console.log(
-      `[Analyze] Completeness check found ${missedEndpoints.length} additional endpoint(s) in files missed by globs`
-    );
-    allEndpoints.push(...missedEndpoints);
-  }
-  for (const ep of allEndpoints) {
-    normalizeEndpointMethodAndPath(ep);
-    ep.path = normalizePathParams(ep.path);
-  }
-  const validMethods = /* @__PURE__ */ new Set([
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "HEAD",
-    "OPTIONS"
-  ]);
-  const seen = /* @__PURE__ */ new Set();
-  const unique = allEndpoints.filter((ep) => {
-    const method = ep.method?.toUpperCase();
-    if (!method || !validMethods.has(method) || !ep.path || ep.path === "unknown")
-      return false;
-    const key = `${method} ${ep.path}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  console.log(
-    `[Analyze] Extracted ${unique.length} unique endpoints via regex`
-  );
-  const enriched = [];
-  const needsLlm = [];
-  for (const ep of unique) {
-    const fullPath = resolve(repoPath, ep.filePath);
-    let content;
-    try {
-      content = readFileSync(fullPath, "utf-8");
-    } catch {
-      enriched.push(ep);
-      continue;
-    }
-    const params = extractParamsFromCode(content, ep);
-    if (params?.queryParams) {
-      ep.queryParams = params.queryParams;
-    }
-    if (ep.method.toUpperCase() === "DELETE") {
-      enriched.push(ep);
-      continue;
-    }
-    const needsBody = ["POST", "PUT", "PATCH"].includes(
-      ep.method.toUpperCase()
-    );
-    const hasPathParams = /[:{}]/.test(ep.path);
-    const hasPlaceholderQuery = (ep.queryParams ?? []).some(
-      (q) => q.value === "test" || q.value === "" || q.value == null
-    );
-    if (needsBody || hasPathParams || hasPlaceholderQuery) {
-      needsLlm.push(ep);
-    } else {
-      enriched.push(ep);
-    }
-  }
-  if (needsLlm.length > 0) {
-    console.log(
-      `[Analyze] Using LLM for param extraction on ${needsLlm.length} endpoints (body + path params)`
-    );
-  }
-  const handleTool = createBodyExtractionToolHandler(repoPath);
-  const byFile = /* @__PURE__ */ new Map();
-  for (const ep of needsLlm) {
-    const key = ep.filePath;
-    if (!byFile.has(key)) byFile.set(key, []);
-    byFile.get(key).push(ep);
-  }
-  let processedCount = 0;
-  const PARAM_CONCURRENCY = 5;
-  const fileEntries = [...byFile.entries()];
-  console.log(
-    `[Analyze] Param extraction: ${fileEntries.length} file(s), concurrency ${PARAM_CONCURRENCY}`
-  );
-  let fileIdx = 0;
-  const workers = Array.from(
-    { length: Math.min(PARAM_CONCURRENCY, fileEntries.length) },
-    async () => {
-      while (fileIdx < fileEntries.length) {
-        const idx = fileIdx++;
-        const [filePath, fileEndpoints] = fileEntries[idx];
-        const fullPath = resolve(repoPath, filePath);
-        let content;
-        try {
-          content = readFileSync(fullPath, "utf-8");
-        } catch {
-          enriched.push(...fileEndpoints);
-          processedCount += fileEndpoints.length;
-          continue;
-        }
-        for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += PARAM_EXTRACTION_BATCH_SIZE) {
-          const batch = fileEndpoints.slice(batchStart, batchStart + PARAM_EXTRACTION_BATCH_SIZE);
-          processedCount += batch.length;
-          console.log(
-            `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`
-          );
-          const anchors = new Set(
-            batch.flatMap((ep) => {
-              const parts = ep.path.replace(/^\//, "").split("/");
-              return [parts[0], parts[1]].filter(Boolean);
-            })
-          );
-          let combinedSnippet = "";
-          for (const anchor of anchors) {
-            const snip = extractSnippet(content, anchor);
-            if (snip && !combinedSnippet.includes(snip)) {
-              combinedSnippet += (combinedSnippet ? "\n...\n" : "") + snip;
-            }
-          }
-          if (!combinedSnippet) {
-            combinedSnippet = content.split("\n").slice(0, 120).map((l, i) => `${i + 1}: ${l}`).join("\n");
-          }
-          const totalLines = content.split("\n").length;
-          const endpointList = batch.map(
-            (ep, i) => `[${i}] ${ep.method} ${ep.path}${["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()) ? " (needs body)" : ""}${/[:{}]/.test(ep.path) ? " (has path params)" : ""}`
-          ).join("\n");
-          const messages = [
-            {
-              role: "system",
-              content: `You are an API analyst. Given code snippets and a list of endpoints, determine the parameters for EACH endpoint with realistic sample values.
-
-You have tools to inspect more code:
-- read_lines: read specific line ranges from any file
-- find_type: search for a class/interface/DTO definition by name
-- grep_code: search for text patterns across source files
-
-IMPORTANT: When you have determined all endpoint parameters, you MUST call the save_result tool with the complete JSON array. Do NOT return JSON in your text response \u2014 always use save_result.
-
-The result array should have one entry per endpoint (matching the [index]):
-[{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
-
-For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"id": "1", "slug": "default"}). Prefer the LOWEST plausible value (1, "default", "me") since higher IDs likely don't exist in a freshly-seeded database.
-
-For gRPC-Web endpoints (content-type: application/grpc-web+proto), the body must be a raw gRPC frame as a string with binary characters using JSON escape sequences. Format: 5-byte header (\\u0000 compressed flag + 4-byte big-endian message length) followed by the protobuf-encoded message. Use the .proto message definitions to construct a realistic payload. Set contentType to "application/grpc-web+proto". Example for a message with a single string field "command" = "pwd" (field 1, wire type 2, length 3): "\\u0000\\u0000\\u0000\\u0000\\u0005\\n\\u0003pwd". The \\n is 0x0a (field tag), \\u0003 is the string length prefix. Always include realistic field values from the proto definitions so the scanner can fuzz them effectively.`
-            },
-            {
-              role: "user",
-              content: `Endpoints from ${filePath} (${totalLines} lines):
-${endpointList}
-
-Relevant code:
-\`\`\`
-${combinedSnippet.slice(0, 6e3)}
-\`\`\`
-
-Look up any referenced DTOs/models. Call save_result with the JSON array of params for each endpoint index.`
-            }
-          ];
-          try {
-            let savedResult;
-            const wrappedHandler = async (name, args) => {
-              if (name === "save_result") {
-                const r = args.result;
-                if (Array.isArray(r)) savedResult = r;
-                return "Result saved.";
-              }
-              return handleTool(name, args);
-            };
-            let response = await chatWithTools(
-              llm,
-              messages,
-              bodyExtractionTools,
-              wrappedHandler,
-              model,
-              PARAM_EXTRACTION_MAX_TURNS
-            );
-            let entries;
-            if (savedResult && savedResult.length > 0) {
-              entries = savedResult;
-            } else {
-              entries = parseParamExtractionResponse(response);
-            }
-            if (!entries) {
-              console.warn(
-                `[Analyze] Param extraction for ${filePath} did not call save_result; retrying focused extraction${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
-              );
-              let retrySavedResult;
-              const retryHandler = async (name, args) => {
-                if (name === "save_result") {
-                  const r = args.result;
-                  if (Array.isArray(r)) retrySavedResult = r;
-                  return "Result saved.";
-                }
-                return handleTool(name, args);
-              };
-              const retryMessages = [
-                ...messages,
-                {
-                  role: "assistant",
-                  content: response.trim() || "I did not save a result."
-                },
-                {
-                  role: "user",
-                  content: `You must now call save_result with one result object for each endpoint index below. Do not inspect more files and do not answer in text.
-
-${endpointList}
-
-Use empty strings/objects for fields you cannot infer confidently, but preserve every endpoint index.`
-                }
-              ];
-              response = await chatWithTools(
-                llm,
-                retryMessages,
-                [saveResultTool],
-                retryHandler,
-                model,
-                PARAM_EXTRACTION_RETRY_TURNS
-              );
-              entries = retrySavedResult && retrySavedResult.length > 0 ? retrySavedResult : parseParamExtractionResponse(response);
-            }
-            if (!entries) {
-              throw new Error(
-                `LLM did not provide parseable param extraction JSON${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
-              );
-            }
-            for (const entry of entries) {
-              const idx2 = typeof entry.index === "number" ? entry.index : 0;
-              const ep = batch[idx2] ?? batch[0];
-              if (!ep) continue;
-              let resolvedPath = ep.path;
-              if (entry.pathParams && typeof entry.pathParams === "object") {
-                for (const [param, value] of Object.entries(entry.pathParams)) {
-                  resolvedPath = resolvedPath.replace(`:${param}`, String(value)).replace(`{${param}}`, String(value));
-                }
-              }
-              enriched.push({
-                ...ep,
-                path: resolvedPath,
-                queryParams: Array.isArray(entry.queryParams) && entry.queryParams.length > 0 ? entry.queryParams : ep.queryParams,
-                body: entry.body ? typeof entry.body === "string" ? entry.body : JSON.stringify(entry.body) : void 0,
-                contentType: entry.contentType ? String(entry.contentType) : void 0
-              });
-            }
-            const coveredIndices = new Set(
-              entries.filter((e) => typeof e.index === "number").map((e) => e.index)
-            );
-            for (let i = 0; i < batch.length; i++) {
-              if (!coveredIndices.has(i) && entries.length !== 1) {
-                enriched.push(batch[i]);
-              }
-            }
-            if (entries.length === 1 && typeof entries[0].index !== "number" && batch.length > 1) {
-              for (let i = 1; i < batch.length; i++) {
-                enriched.push(batch[i]);
-              }
-            }
-          } catch (err) {
-            console.warn(
-              `[Analyze] Failed batch param extraction for ${filePath}: ${err}`
-            );
-            enriched.push(...batch);
-          }
-        }
-      }
-    }
-  );
-  await Promise.all(workers);
-  return enriched;
-}
-
-// src/phases/swagger.ts
-var SWAGGER_PATHS = [
-  // OpenAPI 3.x
-  "/openapi.json",
-  "/openapi.yaml",
-  "/api/openapi.json",
-  "/v3/api-docs",
-  "/docs/openapi.json",
-  // Swagger 2.x
-  "/swagger.json",
-  "/swagger/v1/swagger.json",
-  "/swagger/v2/swagger.json",
-  "/api-docs",
-  "/api-docs.json",
-  "/v2/api-docs",
-  // FastAPI
-  "/openapi.json",
-  // NestJS / @nestjs/swagger
-  "/api",
-  "/api-json",
-  // .NET
-  "/swagger/v1/swagger.json",
-  // Rails rswag
-  "/api-docs/v1/swagger.json"
-];
-var UNIQUE_SWAGGER_PATHS = [...new Set(SWAGGER_PATHS)];
-async function probeSwaggerSpec(baseUrl) {
-  for (const path of UNIQUE_SWAGGER_PATHS) {
-    const url = `${baseUrl.replace(/\/$/, "")}${path}`;
-    try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
-        headers: { Accept: "application/json" }
-      });
-      if (!res.ok) continue;
-      const text = await res.text();
-      if (!text.startsWith("{") && !text.startsWith("[")) continue;
-      const spec = JSON.parse(text);
-      if (spec.openapi || spec.swagger || spec.paths) {
-        console.log(`[Swagger] Found OpenAPI spec at ${url}`);
-        return { found: true, specUrl: url, spec };
-      }
-    } catch {
-    }
-  }
-  return { found: false };
-}
-function parseOpenApiToEndpoints(spec) {
-  const endpoints = [];
-  const paths = spec.paths;
-  if (!paths) return endpoints;
-  let basePath = "";
-  if (spec.servers && Array.isArray(spec.servers) && spec.servers.length > 0) {
-    const serverUrl = spec.servers[0]?.url ?? "";
-    try {
-      basePath = new URL(serverUrl).pathname.replace(/\/$/, "");
-    } catch {
-      basePath = serverUrl.replace(/\/$/, "");
-    }
-  } else if (typeof spec.basePath === "string") {
-    basePath = spec.basePath.replace(/\/$/, "");
-  }
-  for (const [pathTemplate, methods] of Object.entries(paths)) {
-    if (!methods || typeof methods !== "object") continue;
-    for (const [method, operation] of Object.entries(methods)) {
-      const httpMethod = method.toUpperCase();
-      if (!["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(httpMethod)) {
-        continue;
-      }
-      const op = operation;
-      const normalizedPath = (basePath + pathTemplate).replace(
-        /\{(\w+)\}/g,
-        ":$1"
-      );
-      const queryParams = [];
-      const pathParams = {};
-      for (const param of op.parameters ?? []) {
-        const sampleValue = String(
-          param.example ?? param.schema?.example ?? param.schema?.default ?? sampleForType(param.schema?.type)
-        );
-        if (param.in === "query") {
-          queryParams.push({ name: param.name, value: sampleValue });
-        } else if (param.in === "path") {
-          pathParams[param.name] = sampleValue;
-        }
-      }
-      let resolvedPath = normalizedPath;
-      for (const [name, value] of Object.entries(pathParams)) {
-        resolvedPath = resolvedPath.replace(`:${name}`, value);
-      }
-      let body;
-      let contentType;
-      if (op.requestBody?.content) {
-        const jsonContent = op.requestBody.content["application/json"];
-        if (jsonContent?.schema) {
-          contentType = "application/json";
-          body = JSON.stringify(generateSampleFromSchema(jsonContent.schema));
-        } else {
-          const [ct, def] = Object.entries(op.requestBody.content)[0] ?? [];
-          if (ct && def?.schema) {
-            contentType = ct;
-            body = JSON.stringify(generateSampleFromSchema(def.schema));
-          }
-        }
-      }
-      endpoints.push({
-        method: httpMethod,
-        path: resolvedPath,
-        filePath: "openapi-spec",
-        queryParams: queryParams.length > 0 ? queryParams : void 0,
-        body,
-        contentType
-      });
-    }
-  }
-  return endpoints;
-}
-function sampleForType(type) {
-  switch (type) {
-    case "integer":
-      return 1;
-    case "number":
-      return 1;
-    case "boolean":
-      return true;
-    case "array":
-      return "[]";
-    default:
-      return "example";
-  }
-}
-function generateSampleFromSchema(schema, depth = 0) {
-  if (depth > 5) return {};
-  if (schema.$ref) return {};
-  if (schema.example !== void 0) return schema.example;
-  const type = schema.type;
-  if (type === "object" || schema.properties) {
-    const props = schema.properties;
-    if (!props) return {};
-    const result = {};
-    for (const [key, propSchema] of Object.entries(props)) {
-      result[key] = generateSampleFromSchema(propSchema, depth + 1);
-    }
-    return result;
-  }
-  if (type === "array") {
-    const items = schema.items;
-    if (items) return [generateSampleFromSchema(items, depth + 1)];
-    return [];
-  }
-  if (type === "string") {
-    if (schema.enum && Array.isArray(schema.enum)) return schema.enum[0];
-    if (schema.format === "email") return "user@example.com";
-    if (schema.format === "date") return "2024-01-15";
-    if (schema.format === "date-time") return "2024-01-15T10:30:00Z";
-    if (schema.format === "uuid") return "550e8400-e29b-41d4-a716-446655440000";
-    if (schema.format === "uri") return "https://example.com";
-    return "string";
-  }
-  if (type === "integer") return schema.example ?? 1;
-  if (type === "number") return schema.example ?? 1;
-  if (type === "boolean") return schema.example ?? true;
-  return "example";
-}
-async function discoverEndpointsViaSwagger(baseUrl) {
-  console.log("[Swagger] Probing for existing OpenAPI/Swagger spec...");
-  const probe = await probeSwaggerSpec(baseUrl);
-  if (probe.found && probe.spec) {
-    const endpoints = parseOpenApiToEndpoints(probe.spec);
-    if (endpoints.length > 0) {
-      console.log(
-        `[Swagger] Parsed ${endpoints.length} endpoints from existing spec at ${probe.specUrl}`
-      );
-      return { endpoints, source: "existing-spec" };
-    }
-  }
-  console.log("[Swagger] No existing spec found");
-  return { endpoints: [], source: "none" };
-}
+// src/orchestrator.ts
+var import_tree_kill = __toESM(require_tree_kill(), 1);
+import { execFileSync as execFileSync4 } from "child_process";
 
 // src/phases/startup.ts
-import {
-  spawn,
-  execSync,
-  execFileSync as execFileSync3
-} from "child_process";
+import { execFileSync, execSync, spawn } from "child_process";
+import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { createInterface } from "readline";
-import { existsSync as existsSync3, readFileSync as readFileSync2, readdirSync as readdirSync2, unlinkSync, writeFileSync } from "fs";
-
-// src/prompts/identify-startup.ts
-function identifyStartupPrompt(techStack) {
-  return [
-    {
-      role: "system",
-      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally in **production-like mode** for security testing (DAST scanning). You have tools to read files, list directories, search code, run shell commands, and write files.
-
-If the tech stack description says "(service: <path>)", focus on running THAT specific service.
-
-## Guidelines
-- **BUILD FROM SOURCE using a Dockerfile** \u2014 the main application MUST be built via "docker build" or "docker compose build" from a Dockerfile in the repo. The goal is to test THIS repository's code as built from source.
-- **NEVER use pre-made dev containers** \u2014 reject any approach that pulls a pre-built image for the main application (e.g. scripts that do "docker pull <image>" or "docker run <prebuilt-image>"). Scripts like bin/docker/boot_dev, d/boot_dev, or similar convenience scripts typically pull pre-made dev images rather than building from source \u2014 DO NOT use them.
-- **Read compose files** before using them \u2014 skip CI/test-only compose files. If a compose file references a pre-built external image for the app service (not a local build context), do NOT use it as-is \u2014 either override with a local build or create your own Dockerfile.
-- **Prefer minimal DAST infrastructure** \u2014 if this is a monorepo or a compose stack with many services, start only the selected web/API service plus dependencies it needs. Do NOT build every worker, CLI, browser extension, or unrelated service unless the target app cannot run without it.
-- If no suitable Dockerfile exists, use **write_file** to create one \u2014 do NOT use heredocs or inline cat in commands
-- Dependency services (postgres, redis, memcached, elasticsearch, etc.) can use their standard upstream images.
-- For full-stack apps, use the **backend API port** (not the frontend dev server)
-- This runs in an automated CI environment \u2014 no TTY/interactive prompts available
-- Read README, Dockerfile, compose files, package.json, Makefile etc. to determine the right approach
-- Use run_command_on_host for diagnostics (e.g. docker ps, docker logs, checking ports) if needed
-
-## Command structure rules
-- **command** = the single command that starts the app (e.g. "docker compose up -d" or "docker run -d ...")
-- **prerequisites** = build steps that run before command (e.g. ["docker compose build", "docker build -t myapp ."])
-- NEVER combine build + run into one command with && \u2014 use prerequisites for builds
-- NEVER use heredocs (<<EOF), multi-line strings, or inline file creation in command or prerequisites \u2014 use write_file instead
-- Each prerequisite and the command must be a single, simple shell command
-- **CRITICAL**: The command runs ON THE HOST shell, not inside a container. If the app uses tools that only exist in the Docker image (e.g. bundle, rails, pnpm, node), the command MUST be "docker run ..." or "docker compose up ..." \u2014 NEVER a bare "bundle exec ..." or "node server.js" when docker=true.
-- **IMPORTANT**: Do NOT mix "docker run" and "docker compose" approaches. Either use docker compose for EVERYTHING (services + app) OR use manual "docker run" for everything. If you use "docker compose up -d" as the command, dependency services (postgres, redis) must be defined in the compose file \u2014 NOT started via "docker run" in prerequisites. Prerequisites should only contain build steps like "docker compose build".
-
-Return a JSON object:
-{
-  "command": "docker compose up -d",
-  "port": 3000,
-  "prerequisites": ["docker compose build"],
-  "envVars": { "NODE_ENV": "production" },
-  "docker": true,
-  "healthCheckPath": "/health",
-  "healthProbe": {
-    "method": "POST",
-    "path": "/api/health/validate",
-    "headers": {"Content-Type": "application/json"},
-    "body": {"ping": true},
-    "expectedStatuses": [200, 201, 204]
-  }
-}
-
-- **envVars**: Use production-like environment variables (NODE_ENV=production, RAILS_ENV=production, etc.). The app will be security-tested by a DAST scanner \u2014 it must behave like a production deployment.
-- **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated GET health/status endpoint like "/health", "/srv/status", or "/api/health".
-- **healthProbe** (optional): if the app is API-only or has no healthy GET endpoint, specify the real HTTP request that proves readiness: method, path, headers, JSON/raw body or multipart formData, and expectedStatuses. Prefer this over adding fake routes or probing GET /.`
-    },
-    {
-      role: "user",
-      content: `Analyze this repository and determine how to start the application locally. Use the tools to explore the project structure and config files. Return the JSON object.`
-    }
-  ];
-}
-function rebuildStartupPrompt(techStack, previousConfig) {
-  return [
-    {
-      role: "system",
-      content: `You are a DevOps engineer restarting a ${techStack} application after source code was modified (security fixes were applied). The application was previously running with a known config. You have tools to read files, list directories, run shell commands, and write files.
-
-Your job is to determine the REBUILD + RESTART procedure that ensures the running application reflects the new source code. This is critical \u2014 if you skip the rebuild step, the app will run stale code and the fixes won't take effect.
-
-The config MUST include a build step that compiles/packages the local source code into the running application:
-- Docker: use "docker build" or "docker compose build" / "docker compose up --build"
-- Native: use the project's build command (npm run build, bundle exec rake assets:precompile, go build, mvn package, etc.)
-- NEVER use scripts that pull pre-built images (bin/docker/boot_dev, etc.) \u2014 they ignore source changes
-- If the previous config used a pre-built image or a script that doesn't build from source, you MUST change the approach to build from source
-
-Use the tools to inspect the project's build configuration and determine the appropriate rebuild strategy based on the deployment method.
-
-Key principles:
-- Keep the same port and environment variables unless you have a specific reason to change them
-- All prerequisites and commands must be executable shell commands (run via /bin/sh)`
-    },
-    {
-      role: "user",
-      content: `Source code was modified. Rebuild and restart the application.
-
-Previous startup config that worked:
-${previousConfig}
-
-Determine what rebuild steps are needed for the modified source code and return the updated config. Use the tools to inspect build configuration if needed.
-
-Return a JSON object:
-{
-  "command": "docker compose up --build -d",
-  "port": 3000,
-  "prerequisites": [],
-  "envVars": {},
-  "docker": true,
-  "healthCheckPath": "/health",
-  "healthProbe": {
-    "method": "GET",
-    "path": "/health",
-    "expectedStatuses": [200]
-  }
-}`
-    }
-  ];
-}
-function retryStartupPrompt(techStack, previousConfig, errorOutput, attempt, allPreviousAttempts, hints) {
-  const historySection = allPreviousAttempts && allPreviousAttempts.length > 1 ? `
-
-Full attempt history:
-${allPreviousAttempts.map((a, i) => `Attempt ${i + 1}: ${a.config}
-Error: ${a.error.slice(-500)}`).join("\n\n")}` : "";
-  const hintsSection = hints && hints.length > 0 ? `
-
-${HintStore.fromLegacyArray(hints).format(void 0, "## Hints discovered by previous repair attempts") || ""}
-Use these hints \u2014 they save investigation time and reflect facts already verified in this run.` : "";
-  return [
-    {
-      role: "system",
-      content: `You are a DevOps engineer troubleshooting a failed application startup for a ${techStack} repository. The previous startup attempt failed. You have tools to read files, list directories, search code, run shell commands, and write files.
-
-Analyze the error and determine an alternative way to start the application. Use the tools to investigate the project structure, read config files, run diagnostics (docker logs, docker ps, etc.), and understand the root cause.
-
-Key principles:
-- Do NOT repeat the same approach that already failed \u2014 try a fundamentally different strategy
-- **BUILD FROM SOURCE using a Dockerfile** \u2014 the main application MUST be built via "docker build" or "docker compose build", not a pre-built external image. NEVER use convenience scripts (bin/docker/boot_dev, d/boot_dev, etc.) that pull pre-made dev containers.
-- **Prefer minimal DAST infrastructure** \u2014 if the failed approach builds a broad monorepo compose stack, switch to a minimal compose/startup path for the selected web/API service plus its required dependencies instead of continuing to repair unrelated service builds.
-- If no Dockerfile exists, use **write_file** to create one \u2014 do NOT use heredocs or inline cat in commands
-- Dependency services (postgres, redis, etc.) can use upstream images
-- **command** = single command that starts the app. **prerequisites** = build steps. NEVER combine with &&
-- **CRITICAL**: The command runs ON THE HOST shell, not inside a container. If the app uses tools that only exist in the Docker image (e.g. bundle, rails, pnpm, node), the command MUST be "docker run ..." or "docker compose up ..." \u2014 NEVER a bare "bundle exec ..." or "node server.js" when docker=true.
-- **IMPORTANT**: Do NOT mix "docker run" and "docker compose" approaches. Either use docker compose for EVERYTHING (services + app) OR use manual "docker run" for everything. If you use "docker compose up -d" as the command, dependency services must be in the compose file \u2014 NOT started via "docker run" in prerequisites. Prerequisites should only contain build steps.
-- NEVER use heredocs (<<EOF) or multi-line strings in command/prerequisites \u2014 use write_file instead
-- This runs in an automated CI environment \u2014 no TTY/interactive prompts available
-- For full-stack apps, use the backend API port (not the frontend dev server)
-- Use **save_hint** to record important discoveries for future attempts
-- Use **remove_hint** to delete hints from previous attempts that turned out to be wrong or misleading`
-    },
-    {
-      role: "user",
-      content: `Attempt ${attempt} to start the application failed.
-
-Previous config tried:
-${previousConfig}
-
-Error output (last 2000 chars):
-${errorOutput.slice(-2e3)}${historySection}${hintsSection}
-
-Use the tools to investigate the root cause and find an alternative startup approach.
-
-Return a JSON object with the new approach:
-{
-  "command": "docker compose up -d",
-  "port": 3000,
-  "prerequisites": [],
-  "envVars": {},
-  "docker": true,
-  "healthCheckPath": "/health",
-  "healthProbe": {
-    "method": "GET",
-    "path": "/health",
-    "expectedStatuses": [200]
-  }
-}
-
-- **healthCheckPath** (optional): if the root route returns errors during boot, use a dedicated GET health endpoint.
-- **healthProbe** (optional): if no simple GET endpoint exists, use a real API call with method/path/headers/body/formData/expectedStatuses that proves the service is ready.`
-    }
-  ];
-}
-
-// src/prompts/generate-dockerfile.ts
-var FRAMEWORK_HINTS = [
-  {
-    keywords: ["ruby", "rails"],
-    hint: `- Rails apps with JavaScript frontends need BOTH Ruby AND Node.js/pnpm in the same build environment. Prefer a single-stage Dockerfile.
-- If the project has bin/docker/ scripts, those use "docker exec -it" which fails in CI \u2014 call commands directly instead.
-- Native extensions (psych, nokogiri) need dev headers: libyaml-dev, libxml2-dev, libxslt-dev, build-essential.
-- **Production mode is required**: set RAILS_ENV=production, SECRET_KEY_BASE (use a dummy value for testing), run \`bundle exec rake assets:precompile\` during the build. Use \`bundle config set without 'development test'\` (NOT without 'production').
-- **Install runtime system tools**: ImageMagick (imagemagick), fonts (fonts-noto, fonts-liberation), and any other system deps used by gems like mini_magick, letter_avatar, wicked_pdf, etc. Check the Gemfile for gems that wrap system tools.`
-  },
-  {
-    keywords: ["typescript", "node", "express", "nestjs", "next"],
-    hint: `- TypeScript's "tsc" may exit non-zero even with "--noEmitOnError false". Append "|| true" if it's just type warnings.
-- In monorepos, read pnpm-workspace.yaml or package.json workspaces to understand the project structure before writing COPY lines.`
-  },
-  {
-    keywords: [".net", "c#", "aspnet", "dotnet"],
-    hint: `- For multi-project solutions, find and publish the correct runnable web API project, not orchestrators (AppHost, ServiceDefaults, Aspire).`
-  }
-];
-function getFrameworkHints(techStack) {
-  const lower = techStack.toLowerCase();
-  const hints = FRAMEWORK_HINTS.filter((fh) => fh.keywords.some((kw) => lower.includes(kw))).map((fh) => fh.hint);
-  return hints.length > 0 ? `
-
-Framework-specific guidance for this stack:
-${hints.join("\n")}` : "";
-}
-function getDiscoveryContext(discovery) {
-  if (!discovery) return "";
-  const parts = ["\n\n## Project Discovery (pre-analyzed infrastructure requirements)"];
-  if (discovery.services.length > 0) {
-    parts.push("Companion services this app needs (will be in Docker Compose, accessible by service name):");
-    for (const s of discovery.services) {
-      parts.push(`- **${s.name}** (${s.image}): ${s.reason}`);
-    }
-  }
-  if (discovery.configNotes.length > 0) {
-    parts.push("\nConfig file notes (patches needed for Docker networking):");
-    for (const note of discovery.configNotes) {
-      parts.push(`- ${note}`);
-    }
-    parts.push("\nIf any config files need patching for Docker networking, apply those changes IN the Dockerfile (e.g. RUN sed, or COPY a patched version) so the container works out of the box with the companion services.");
-  }
-  if (discovery.buildNotes.length > 0) {
-    parts.push("\nBuild notes:");
-    for (const note of discovery.buildNotes) {
-      parts.push(`- ${note}`);
-    }
-  }
-  return parts.join("\n");
-}
-function generateDockerfilePrompt(techStack, discovery) {
-  const frameworkHints = getFrameworkHints(techStack);
-  const discoveryContext = getDiscoveryContext(discovery);
-  return [
-    {
-      role: "system",
-      content: `You are a DevOps engineer. Generate a Dockerfile for a ${techStack} project so it can be built and run in a Docker container in **production-like mode** for security testing (DAST scanning).
-
-If the tech stack description says "(service: <path>)", this is a monorepo. Build and run THAT specific service.
-
-You have tools to read files, list directories, and verify Docker image tags. Use them to inspect:
-1. Dependency manifests (package.json, Gemfile, requirements.txt, .csproj, go.mod, pom.xml, etc.)
-2. Build configuration and scripts
-3. The application entry point and port
-4. Monorepo structure (pnpm-workspace.yaml, package.json workspaces, etc.)
-
-IMPORTANT: Use verify_docker_image to check that base image:tag EXISTS before including it in a FROM line.
-
-Principles:
-- **PRODUCTION-LIKE BUILD**. The container will be security-tested by a DAST scanner, so it MUST behave like a production deployment: precompiled/bundled assets, production-mode settings (RAILS_ENV=production, NODE_ENV=production, etc.), and all runtime dependencies installed. Development mode causes slow responses, debug error pages, and false positives that break security testing.
-- BUILD FROM SOURCE. All compilation, asset building, and dependency installation must happen from the local source code inside the container. Never rely on downloading pre-built artifacts, binaries, or asset bundles from external URLs during the build.
-- Prefer a SINGLE-STAGE Dockerfile. Multi-stage adds complexity that often breaks (missing tools/files across stages). Only use multi-stage if you have a clear reason.
-- If the project needs BOTH a backend runtime (Ruby, Python, etc.) AND a JS build tool (Node, pnpm, etc.), install them ALL in the same stage. Asset compilation steps (e.g. rake assets:precompile) often shell out to node/pnpm \u2014 they must be available.
-- **INSTALL ALL RUNTIME SYSTEM DEPENDENCIES.** Many apps need system tools at runtime \u2014 not just at build time. Common ones: ImageMagick (magick/convert for image processing), wkhtmltopdf (PDF generation), ffmpeg (media processing), gifsicle, optipng, jpegoptim, poppler-utils, ghostscript, brotli. Check the app's Gemfile/package.json/requirements.txt for gems/packages that wrap system tools (e.g. mini_magick \u2192 needs ImageMagick, wicked_pdf \u2192 needs wkhtmltopdf). Install them with apt-get. Missing runtime tools cause 500 errors on pages that use them.
-- **PRECOMPILE ASSETS** for frameworks that need it. Rails: \`bundle exec rake assets:precompile\`. Next.js: \`npm run build\`. Django: \`python manage.py collectstatic --noinput\`. This is essential for production-like behavior \u2014 without it, pages load slowly or not at all.
-- Use "COPY . ." for source code instead of cherry-picking individual directories \u2014 you will miss required files.
-- **PARALLELIZE DEPENDENCY INSTALLATION.** Large projects have many native extensions that compile slowly. Always enable parallel builds:
-  - Ruby/Bundler: \`bundle config set --local jobs $(nproc)\` before \`bundle install\`
-  - Python/pip: pip parallelizes by default, but add \`--compile\` for bytecode
-  - Node/npm: \`npm ci\` (already parallel); pnpm is parallel by default
-  - Rust/Cargo: set \`ENV CARGO_BUILD_JOBS=$(nproc)\`
-  - C/Make-based extensions: \`ENV MAKEFLAGS="-j$(nproc)"\` speeds up native gem/wheel compilation
-  For Ruby projects with many native extensions (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby), this can cut build time from 15+ minutes to under 5 minutes.
-- Copy dependency manifests FIRST and install dependencies for layer caching, then COPY the rest.
-- Install git if any build step might need it.
-- EXPOSE the correct port and set CMD to start the application in production mode (e.g. \`bundle exec rails s -e production\`, \`node dist/server.js\`, etc.).${frameworkHints}${discoveryContext}
-
-Return ONLY the Dockerfile content inside a single fenced code block. No explanation outside the code block.`
-    },
-    {
-      role: "user",
-      content: `Analyze this project and generate a Dockerfile for it. Use the tools to inspect the project's files and determine the right configuration.`
-    }
-  ];
-}
 
 // src/prompts/discover-project.ts
 function discoverProjectPrompt(techStack) {
@@ -27883,6 +24904,278 @@ Return ONLY the compose.yml content inside a single fenced code block (\`\`\`yam
   ];
 }
 
+// src/prompts/generate-dockerfile.ts
+var FRAMEWORK_HINTS = [
+  {
+    keywords: ["ruby", "rails"],
+    hint: `- Rails apps with JavaScript frontends need BOTH Ruby AND Node.js/pnpm in the same build environment. Prefer a single-stage Dockerfile.
+- If the project has bin/docker/ scripts, those use "docker exec -it" which fails in CI \u2014 call commands directly instead.
+- Native extensions (psych, nokogiri) need dev headers: libyaml-dev, libxml2-dev, libxslt-dev, build-essential.
+- **Production mode is required**: set RAILS_ENV=production, SECRET_KEY_BASE (use a dummy value for testing), run \`bundle exec rake assets:precompile\` during the build. Use \`bundle config set without 'development test'\` (NOT without 'production').
+- **Install runtime system tools**: ImageMagick (imagemagick), fonts (fonts-noto, fonts-liberation), and any other system deps used by gems like mini_magick, letter_avatar, wicked_pdf, etc. Check the Gemfile for gems that wrap system tools.`
+  },
+  {
+    keywords: ["typescript", "node", "express", "nestjs", "next"],
+    hint: `- TypeScript's "tsc" may exit non-zero even with "--noEmitOnError false". Append "|| true" if it's just type warnings.
+- In monorepos, read pnpm-workspace.yaml or package.json workspaces to understand the project structure before writing COPY lines.`
+  },
+  {
+    keywords: [".net", "c#", "aspnet", "dotnet"],
+    hint: `- For multi-project solutions, find and publish the correct runnable web API project, not orchestrators (AppHost, ServiceDefaults, Aspire).`
+  }
+];
+function getFrameworkHints(techStack) {
+  const lower = techStack.toLowerCase();
+  const hints = FRAMEWORK_HINTS.filter((fh) => fh.keywords.some((kw) => lower.includes(kw))).map(
+    (fh) => fh.hint
+  );
+  return hints.length > 0 ? `
+
+Framework-specific guidance for this stack:
+${hints.join("\n")}` : "";
+}
+function getDiscoveryContext(discovery) {
+  if (!discovery) return "";
+  const parts = ["\n\n## Project Discovery (pre-analyzed infrastructure requirements)"];
+  if (discovery.services.length > 0) {
+    parts.push(
+      "Companion services this app needs (will be in Docker Compose, accessible by service name):"
+    );
+    for (const s of discovery.services) {
+      parts.push(`- **${s.name}** (${s.image}): ${s.reason}`);
+    }
+  }
+  if (discovery.configNotes.length > 0) {
+    parts.push("\nConfig file notes (patches needed for Docker networking):");
+    for (const note of discovery.configNotes) {
+      parts.push(`- ${note}`);
+    }
+    parts.push(
+      "\nIf any config files need patching for Docker networking, apply those changes IN the Dockerfile (e.g. RUN sed, or COPY a patched version) so the container works out of the box with the companion services."
+    );
+  }
+  if (discovery.buildNotes.length > 0) {
+    parts.push("\nBuild notes:");
+    for (const note of discovery.buildNotes) {
+      parts.push(`- ${note}`);
+    }
+  }
+  return parts.join("\n");
+}
+function generateDockerfilePrompt(techStack, discovery) {
+  const frameworkHints = getFrameworkHints(techStack);
+  const discoveryContext = getDiscoveryContext(discovery);
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. Generate a Dockerfile for a ${techStack} project so it can be built and run in a Docker container in **production-like mode** for security testing (DAST scanning).
+
+If the tech stack description says "(service: <path>)", this is a monorepo. Build and run THAT specific service.
+
+You have tools to read files, list directories, and verify Docker image tags. Use them to inspect:
+1. Dependency manifests (package.json, Gemfile, requirements.txt, .csproj, go.mod, pom.xml, etc.)
+2. Build configuration and scripts
+3. The application entry point and port
+4. Monorepo structure (pnpm-workspace.yaml, package.json workspaces, etc.)
+
+IMPORTANT: Use verify_docker_image to check that base image:tag EXISTS before including it in a FROM line.
+
+Principles:
+- **PRODUCTION-LIKE BUILD**. The container will be security-tested by a DAST scanner, so it MUST behave like a production deployment: precompiled/bundled assets, production-mode settings (RAILS_ENV=production, NODE_ENV=production, etc.), and all runtime dependencies installed. Development mode causes slow responses, debug error pages, and false positives that break security testing.
+- BUILD FROM SOURCE. All compilation, asset building, and dependency installation must happen from the local source code inside the container. Never rely on downloading pre-built artifacts, binaries, or asset bundles from external URLs during the build.
+- Prefer a SINGLE-STAGE Dockerfile. Multi-stage adds complexity that often breaks (missing tools/files across stages). Only use multi-stage if you have a clear reason.
+- If the project needs BOTH a backend runtime (Ruby, Python, etc.) AND a JS build tool (Node, pnpm, etc.), install them ALL in the same stage. Asset compilation steps (e.g. rake assets:precompile) often shell out to node/pnpm \u2014 they must be available.
+- **INSTALL ALL RUNTIME SYSTEM DEPENDENCIES.** Many apps need system tools at runtime \u2014 not just at build time. Common ones: ImageMagick (magick/convert for image processing), wkhtmltopdf (PDF generation), ffmpeg (media processing), gifsicle, optipng, jpegoptim, poppler-utils, ghostscript, brotli. Check the app's Gemfile/package.json/requirements.txt for gems/packages that wrap system tools (e.g. mini_magick \u2192 needs ImageMagick, wicked_pdf \u2192 needs wkhtmltopdf). Install them with apt-get. Missing runtime tools cause 500 errors on pages that use them.
+- **PRECOMPILE ASSETS** for frameworks that need it. Rails: \`bundle exec rake assets:precompile\`. Next.js: \`npm run build\`. Django: \`python manage.py collectstatic --noinput\`. This is essential for production-like behavior \u2014 without it, pages load slowly or not at all.
+- Use "COPY . ." for source code instead of cherry-picking individual directories \u2014 you will miss required files.
+- **PARALLELIZE DEPENDENCY INSTALLATION.** Large projects have many native extensions that compile slowly. Always enable parallel builds:
+  - Ruby/Bundler: \`bundle config set --local jobs $(nproc)\` before \`bundle install\`
+  - Python/pip: pip parallelizes by default, but add \`--compile\` for bytecode
+  - Node/npm: \`npm ci\` (already parallel); pnpm is parallel by default
+  - Rust/Cargo: set \`ENV CARGO_BUILD_JOBS=$(nproc)\`
+  - C/Make-based extensions: \`ENV MAKEFLAGS="-j$(nproc)"\` speeds up native gem/wheel compilation
+  For Ruby projects with many native extensions (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby), this can cut build time from 15+ minutes to under 5 minutes.
+- Copy dependency manifests FIRST and install dependencies for layer caching, then COPY the rest.
+- Install git if any build step might need it.
+- EXPOSE the correct port and set CMD to start the application in production mode (e.g. \`bundle exec rails s -e production\`, \`node dist/server.js\`, etc.).${frameworkHints}${discoveryContext}
+
+Return ONLY the Dockerfile content inside a single fenced code block. No explanation outside the code block.`
+    },
+    {
+      role: "user",
+      content: `Analyze this project and generate a Dockerfile for it. Use the tools to inspect the project's files and determine the right configuration.`
+    }
+  ];
+}
+
+// src/prompts/identify-startup.ts
+function identifyStartupPrompt(techStack) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. Given a ${techStack} repository, determine how to start the application locally in **production-like mode** for security testing (DAST scanning). You have tools to read files, list directories, search code, run shell commands, and write files.
+
+If the tech stack description says "(service: <path>)", focus on running THAT specific service.
+
+## Guidelines
+- **BUILD FROM SOURCE using a Dockerfile** \u2014 the main application MUST be built via "docker build" or "docker compose build" from a Dockerfile in the repo. The goal is to test THIS repository's code as built from source.
+- **NEVER use pre-made dev containers** \u2014 reject any approach that pulls a pre-built image for the main application (e.g. scripts that do "docker pull <image>" or "docker run <prebuilt-image>"). Scripts like bin/docker/boot_dev, d/boot_dev, or similar convenience scripts typically pull pre-made dev images rather than building from source \u2014 DO NOT use them.
+- **Read compose files** before using them \u2014 skip CI/test-only compose files. If a compose file references a pre-built external image for the app service (not a local build context), do NOT use it as-is \u2014 either override with a local build or create your own Dockerfile.
+- **Prefer minimal DAST infrastructure** \u2014 if this is a monorepo or a compose stack with many services, start only the selected web/API service plus dependencies it needs. Do NOT build every worker, CLI, browser extension, or unrelated service unless the target app cannot run without it.
+- If no suitable Dockerfile exists, use **write_file** to create one \u2014 do NOT use heredocs or inline cat in commands
+- Dependency services (postgres, redis, memcached, elasticsearch, etc.) can use their standard upstream images.
+- For full-stack apps, use the **backend API port** (not the frontend dev server)
+- This runs in an automated CI environment \u2014 no TTY/interactive prompts available
+- Read README, Dockerfile, compose files, package.json, Makefile etc. to determine the right approach
+- Use run_command_on_host for diagnostics (e.g. docker ps, docker logs, checking ports) if needed
+
+## Command structure rules
+- **command** = the single command that starts the app (e.g. "docker compose up -d" or "docker run -d ...")
+- **prerequisites** = build steps that run before command (e.g. ["docker compose build", "docker build -t myapp ."])
+- NEVER combine build + run into one command with && \u2014 use prerequisites for builds
+- NEVER use heredocs (<<EOF), multi-line strings, or inline file creation in command or prerequisites \u2014 use write_file instead
+- Each prerequisite and the command must be a single, simple shell command
+- **CRITICAL**: The command runs ON THE HOST shell, not inside a container. If the app uses tools that only exist in the Docker image (e.g. bundle, rails, pnpm, node), the command MUST be "docker run ..." or "docker compose up ..." \u2014 NEVER a bare "bundle exec ..." or "node server.js" when docker=true.
+- **IMPORTANT**: Do NOT mix "docker run" and "docker compose" approaches. Either use docker compose for EVERYTHING (services + app) OR use manual "docker run" for everything. If you use "docker compose up -d" as the command, dependency services (postgres, redis) must be defined in the compose file \u2014 NOT started via "docker run" in prerequisites. Prerequisites should only contain build steps like "docker compose build".
+
+Return a JSON object:
+{
+  "command": "docker compose up -d",
+  "port": 3000,
+  "prerequisites": ["docker compose build"],
+  "envVars": { "NODE_ENV": "production" },
+  "docker": true,
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "POST",
+    "path": "/api/health/validate",
+    "headers": {"Content-Type": "application/json"},
+    "body": {"ping": true},
+    "expectedStatuses": [200, 201, 204]
+  }
+}
+
+- **envVars**: Use production-like environment variables (NODE_ENV=production, RAILS_ENV=production, etc.). The app will be security-tested by a DAST scanner \u2014 it must behave like a production deployment.
+- **healthCheckPath** (optional): if the app's root route ("/") is unreliable for health checks (e.g. requires setup, login, or returns errors during boot), specify a dedicated GET health/status endpoint like "/health", "/srv/status", or "/api/health".
+- **healthProbe** (optional): if the app is API-only or has no healthy GET endpoint, specify the real HTTP request that proves readiness: method, path, headers, JSON/raw body or multipart formData, and expectedStatuses. Prefer this over adding fake routes or probing GET /.`
+    },
+    {
+      role: "user",
+      content: `Analyze this repository and determine how to start the application locally. Use the tools to explore the project structure and config files. Return the JSON object.`
+    }
+  ];
+}
+function rebuildStartupPrompt(techStack, previousConfig) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer restarting a ${techStack} application after source code was modified (security fixes were applied). The application was previously running with a known config. You have tools to read files, list directories, run shell commands, and write files.
+
+Your job is to determine the REBUILD + RESTART procedure that ensures the running application reflects the new source code. This is critical \u2014 if you skip the rebuild step, the app will run stale code and the fixes won't take effect.
+
+The config MUST include a build step that compiles/packages the local source code into the running application:
+- Docker: use "docker build" or "docker compose build" / "docker compose up --build"
+- Native: use the project's build command (npm run build, bundle exec rake assets:precompile, go build, mvn package, etc.)
+- NEVER use scripts that pull pre-built images (bin/docker/boot_dev, etc.) \u2014 they ignore source changes
+- If the previous config used a pre-built image or a script that doesn't build from source, you MUST change the approach to build from source
+
+Use the tools to inspect the project's build configuration and determine the appropriate rebuild strategy based on the deployment method.
+
+Key principles:
+- Keep the same port and environment variables unless you have a specific reason to change them
+- All prerequisites and commands must be executable shell commands (run via /bin/sh)`
+    },
+    {
+      role: "user",
+      content: `Source code was modified. Rebuild and restart the application.
+
+Previous startup config that worked:
+${previousConfig}
+
+Determine what rebuild steps are needed for the modified source code and return the updated config. Use the tools to inspect build configuration if needed.
+
+Return a JSON object:
+{
+  "command": "docker compose up --build -d",
+  "port": 3000,
+  "prerequisites": [],
+  "envVars": {},
+  "docker": true,
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "GET",
+    "path": "/health",
+    "expectedStatuses": [200]
+  }
+}`
+    }
+  ];
+}
+function retryStartupPrompt(techStack, previousConfig, errorOutput, attempt, allPreviousAttempts, hints) {
+  const historySection = allPreviousAttempts && allPreviousAttempts.length > 1 ? `
+
+Full attempt history:
+${allPreviousAttempts.map((a, i) => `Attempt ${i + 1}: ${a.config}
+Error: ${a.error.slice(-500)}`).join("\n\n")}` : "";
+  const hintsSection = hints && hints.length > 0 ? `
+
+${HintStore.fromLegacyArray(hints).format(void 0, "## Hints discovered by previous repair attempts") || ""}
+Use these hints \u2014 they save investigation time and reflect facts already verified in this run.` : "";
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer troubleshooting a failed application startup for a ${techStack} repository. The previous startup attempt failed. You have tools to read files, list directories, search code, run shell commands, and write files.
+
+Analyze the error and determine an alternative way to start the application. Use the tools to investigate the project structure, read config files, run diagnostics (docker logs, docker ps, etc.), and understand the root cause.
+
+Key principles:
+- Do NOT repeat the same approach that already failed \u2014 try a fundamentally different strategy
+- **BUILD FROM SOURCE using a Dockerfile** \u2014 the main application MUST be built via "docker build" or "docker compose build", not a pre-built external image. NEVER use convenience scripts (bin/docker/boot_dev, d/boot_dev, etc.) that pull pre-made dev containers.
+- **Prefer minimal DAST infrastructure** \u2014 if the failed approach builds a broad monorepo compose stack, switch to a minimal compose/startup path for the selected web/API service plus its required dependencies instead of continuing to repair unrelated service builds.
+- If no Dockerfile exists, use **write_file** to create one \u2014 do NOT use heredocs or inline cat in commands
+- Dependency services (postgres, redis, etc.) can use upstream images
+- **command** = single command that starts the app. **prerequisites** = build steps. NEVER combine with &&
+- **CRITICAL**: The command runs ON THE HOST shell, not inside a container. If the app uses tools that only exist in the Docker image (e.g. bundle, rails, pnpm, node), the command MUST be "docker run ..." or "docker compose up ..." \u2014 NEVER a bare "bundle exec ..." or "node server.js" when docker=true.
+- **IMPORTANT**: Do NOT mix "docker run" and "docker compose" approaches. Either use docker compose for EVERYTHING (services + app) OR use manual "docker run" for everything. If you use "docker compose up -d" as the command, dependency services must be in the compose file \u2014 NOT started via "docker run" in prerequisites. Prerequisites should only contain build steps.
+- NEVER use heredocs (<<EOF) or multi-line strings in command/prerequisites \u2014 use write_file instead
+- This runs in an automated CI environment \u2014 no TTY/interactive prompts available
+- For full-stack apps, use the backend API port (not the frontend dev server)
+- Use **save_hint** to record important discoveries for future attempts
+- Use **remove_hint** to delete hints from previous attempts that turned out to be wrong or misleading`
+    },
+    {
+      role: "user",
+      content: `Attempt ${attempt} to start the application failed.
+
+Previous config tried:
+${previousConfig}
+
+Error output (last 2000 chars):
+${errorOutput.slice(-2e3)}${historySection}${hintsSection}
+
+Use the tools to investigate the root cause and find an alternative startup approach.
+
+Return a JSON object with the new approach:
+{
+  "command": "docker compose up -d",
+  "port": 3000,
+  "prerequisites": [],
+  "envVars": {},
+  "docker": true,
+  "healthCheckPath": "/health",
+  "healthProbe": {
+    "method": "GET",
+    "path": "/health",
+    "expectedStatuses": [200]
+  }
+}
+
+- **healthCheckPath** (optional): if the root route returns errors during boot, use a dedicated GET health endpoint.
+- **healthProbe** (optional): if no simple GET endpoint exists, use a real API call with method/path/headers/body/formData/expectedStatuses that proves the service is ready.`
+    }
+  ];
+}
+
 // src/prompts/preflight-startup.ts
 function preflightStartupPrompt(dockerfile, dockerfileName, composeContent, discoveryNotes, techStack) {
   const composeSection = composeContent ? `
@@ -28028,9 +25321,7 @@ function isSourceCodeError(errorMsg, previousErrors) {
   ];
   const isCompilationError = patterns.some((p) => p.test(errorMsg));
   if (!isCompilationError) return false;
-  return previousErrors.some(
-    (prev) => patterns.some((p) => p.test(prev))
-  );
+  return previousErrors.some((prev) => patterns.some((p) => p.test(prev)));
 }
 function canBuildFromSource(repoPath) {
   if (findDockerfile(repoPath)) return true;
@@ -28055,7 +25346,7 @@ function canBuildFromSource(repoPath) {
     "CMakeLists.txt",
     "meson.build"
   ];
-  if (buildIndicators.some((f) => existsSync3(`${repoPath}/${f}`))) return true;
+  if (buildIndicators.some((f) => existsSync(`${repoPath}/${f}`))) return true;
   try {
     const entries = execSync("ls -1", {
       cwd: repoPath,
@@ -28070,8 +25361,7 @@ function canBuildFromSource(repoPath) {
       /\.cabal$/i,
       /\.pro$/i
     ];
-    if (entries.some((e) => globPatterns.some((p) => p.test(e.trim()))))
-      return true;
+    if (entries.some((e) => globPatterns.some((p) => p.test(e.trim())))) return true;
   } catch {
   }
   return false;
@@ -28090,8 +25380,7 @@ function findDockerfile(repoPath, serviceRoot) {
     const serviceDockerfile = findDockerfileInDirectory(repoPath, normalizedServiceRoot);
     if (serviceDockerfile) return serviceDockerfile;
   }
-  if (existsSync3(`${repoPath}/${BRIGHT_DOCKERFILE}`))
-    return BRIGHT_DOCKERFILE;
+  if (existsSync(`${repoPath}/${BRIGHT_DOCKERFILE}`)) return BRIGHT_DOCKERFILE;
   return findDockerfileInDirectory(repoPath);
 }
 function normalizeServiceRoot(serviceRoot) {
@@ -28106,18 +25395,16 @@ function findDockerfileInDirectory(repoPath, relativeDir = "") {
   const prefix = relativeDir ? `${relativeDir}/` : "";
   for (const name of ["Dockerfile", "dockerfile"]) {
     const path = `${dir}/${name}`;
-    if (!existsSync3(path)) continue;
+    if (!existsSync(path)) continue;
     try {
-      if (dockerfileBuildsFromSource(readFileSync2(path, "utf-8"))) return `${prefix}${name}`;
+      if (dockerfileBuildsFromSource(readFileSync(path, "utf-8"))) return `${prefix}${name}`;
       console.log(`[Startup] ${prefix}${name} found but only pulls a remote image \u2014 skipping`);
     } catch {
     }
   }
   let variants;
   try {
-    variants = readdirSync2(dir).filter(
-      (f) => /^Dockerfile\./i.test(f) && f !== BRIGHT_DOCKERFILE
-    );
+    variants = readdirSync(dir).filter((f) => /^Dockerfile\./i.test(f) && f !== BRIGHT_DOCKERFILE);
   } catch {
     return void 0;
   }
@@ -28132,8 +25419,7 @@ function findDockerfileInDirectory(repoPath, relativeDir = "") {
   }).sort((a, b) => b.score - a.score);
   for (const { f } of scored) {
     try {
-      if (dockerfileBuildsFromSource(readFileSync2(`${dir}/${f}`, "utf-8")))
-        return `${prefix}${f}`;
+      if (dockerfileBuildsFromSource(readFileSync(`${dir}/${f}`, "utf-8"))) return `${prefix}${f}`;
       console.log(`[Startup] ${prefix}${f} found but only pulls a remote image \u2014 skipping`);
     } catch {
     }
@@ -28189,7 +25475,9 @@ async function discoverProject(llm, repoPath, stackStr, model) {
     };
     const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
     console.log(`[Startup] Discovery completed in ${elapsed}s:`);
-    console.log(`[Startup]   Services: ${discovery.services.map((s) => `${s.name} (${s.image})`).join(", ") || "none"}`);
+    console.log(
+      `[Startup]   Services: ${discovery.services.map((s) => `${s.name} (${s.image})`).join(", ") || "none"}`
+    );
     if (discovery.configNotes.length) {
       console.log(`[Startup]   Config notes: ${discovery.configNotes.length} items`);
     }
@@ -28212,7 +25500,7 @@ async function preflightValidation(llm, repoPath, dockerfileName, discoveryNotes
   const dfPath = `${repoPath}/${dockerfileName}`;
   let dockerfile;
   try {
-    dockerfile = readFileSync2(dfPath, "utf-8");
+    dockerfile = readFileSync(dfPath, "utf-8");
   } catch {
     console.warn("[Startup] Pre-flight: could not read Dockerfile \u2014 skipping");
     return 0;
@@ -28220,7 +25508,7 @@ async function preflightValidation(llm, repoPath, dockerfileName, discoveryNotes
   let composeContent;
   for (const name of ["compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml"]) {
     try {
-      composeContent = readFileSync2(`${repoPath}/${name}`, "utf-8");
+      composeContent = readFileSync(`${repoPath}/${name}`, "utf-8");
       break;
     } catch {
     }
@@ -28264,14 +25552,20 @@ async function preflightValidation(llm, repoPath, dockerfileName, discoveryNotes
     }
     const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
     if (editsApplied === 0) {
-      console.log(`[Startup] Pre-flight validation completed in ${elapsed}s \u2014 no fixes needed. ${summary}`);
+      console.log(
+        `[Startup] Pre-flight validation completed in ${elapsed}s \u2014 no fixes needed. ${summary}`
+      );
     } else {
-      console.log(`[Startup] Pre-flight validation completed in ${elapsed}s \u2014 ${editsApplied} fix(es) applied. ${summary}`);
+      console.log(
+        `[Startup] Pre-flight validation completed in ${elapsed}s \u2014 ${editsApplied} fix(es) applied. ${summary}`
+      );
     }
     return editsApplied;
   } catch (err) {
     const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
-    console.warn(`[Startup] Pre-flight validation failed in ${elapsed}s: ${toErrorMessage(err)} \u2014 proceeding with build`);
+    console.warn(
+      `[Startup] Pre-flight validation failed in ${elapsed}s: ${toErrorMessage(err)} \u2014 proceeding with build`
+    );
     return 0;
   }
 }
@@ -28279,7 +25573,7 @@ function clearConflictingComposeFiles(repoPath) {
   const competing = ["docker-compose.yml", "docker-compose.yaml", "compose.yaml"];
   for (const name of competing) {
     const path = `${repoPath}/${name}`;
-    if (!existsSync3(path)) continue;
+    if (!existsSync(path)) continue;
     try {
       unlinkSync(path);
       console.log(
@@ -28296,7 +25590,9 @@ async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config
   const MAX_COMPOSE_GEN_RETRIES = 3;
   const t0 = Date.now();
   for (let attempt = 1; attempt <= MAX_COMPOSE_GEN_RETRIES; attempt++) {
-    console.log(`[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`);
+    console.log(
+      `[Startup] Generating compose.yml with LLM (attempt ${attempt}/${MAX_COMPOSE_GEN_RETRIES})...`
+    );
     try {
       const dfName = findDockerfile(repoPath, serviceRoot);
       const hasDockerfile = !!dfName;
@@ -28311,36 +25607,36 @@ async function generateComposeWithLLM(llm, repoPath, stackStr, discovery, config
       clearConflictingComposeFiles(repoPath);
       const elapsed = ((Date.now() - t0) / 1e3).toFixed(1);
       const serviceCount = (content.match(/^\s+\w+:/gm) ?? []).length;
-      console.log(`[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`);
+      console.log(
+        `[Startup] Generated compose.yml in ${elapsed}s (${serviceCount} top-level keys, ${content.split("\n").length} lines)`
+      );
       return;
     } catch (err) {
-      console.warn(`[Startup] LLM compose generation attempt ${attempt} failed: ${toErrorMessage(err)}`);
+      console.warn(
+        `[Startup] LLM compose generation attempt ${attempt} failed: ${toErrorMessage(err)}`
+      );
       if (attempt < MAX_COMPOSE_GEN_RETRIES) {
         console.log(`[Startup] Retrying compose generation...`);
       }
     }
   }
-  console.warn(`[Startup] All ${MAX_COMPOSE_GEN_RETRIES} compose generation attempts failed \u2014 using template fallback`);
+  console.warn(
+    `[Startup] All ${MAX_COMPOSE_GEN_RETRIES} compose generation attempts failed \u2014 using template fallback`
+  );
   generateComposeFile(repoPath, config, serviceRoot);
 }
 function shouldSelectMonorepoTarget(repoPath) {
-  const indicators = [
-    "pnpm-workspace.yaml",
-    "lerna.json",
-    "nx.json",
-    "turbo.json",
-    "rush.json"
-  ];
-  if (indicators.some((f) => existsSync3(`${repoPath}/${f}`))) return true;
+  const indicators = ["pnpm-workspace.yaml", "lerna.json", "nx.json", "turbo.json", "rush.json"];
+  if (indicators.some((f) => existsSync(`${repoPath}/${f}`))) return true;
   try {
-    const pkg = JSON.parse(readFileSync2(`${repoPath}/package.json`, "utf-8"));
+    const pkg = JSON.parse(readFileSync(`${repoPath}/package.json`, "utf-8"));
     if (pkg?.workspaces) return true;
   } catch {
   }
   try {
-    const appDirs = existsSync3(`${repoPath}/apps`) ? readdirSync2(`${repoPath}/apps`).filter((name) => {
+    const appDirs = existsSync(`${repoPath}/apps`) ? readdirSync(`${repoPath}/apps`).filter((name) => {
       try {
-        return existsSync3(`${repoPath}/apps/${name}/project.json`) || existsSync3(`${repoPath}/apps/${name}/package.json`) || readdirSync2(`${repoPath}/apps/${name}`).some((f) => /^Dockerfile/i.test(f));
+        return existsSync(`${repoPath}/apps/${name}/project.json`) || existsSync(`${repoPath}/apps/${name}/package.json`) || readdirSync(`${repoPath}/apps/${name}`).some((f) => /^Dockerfile/i.test(f));
       } catch {
         return false;
       }
@@ -28399,14 +25695,16 @@ Use {"serviceRoot":"."} only if there truly is no separable web/API target.`
     const raw = String(parsed.serviceRoot ?? "").trim();
     const serviceRoot = raw.replace(/^\.\//, "").replace(/\/$/, "");
     if (!serviceRoot || serviceRoot === ".") {
-      console.log("[Startup] LLM did not find a separable monorepo service \u2014 using repository root");
+      console.log(
+        "[Startup] LLM did not find a separable monorepo service \u2014 using repository root"
+      );
       return void 0;
     }
     if (serviceRoot.startsWith("/") || serviceRoot.includes("..")) {
       console.warn(`[Startup] Ignoring unsafe selected service path: ${serviceRoot}`);
       return void 0;
     }
-    if (!existsSync3(`${repoPath}/${serviceRoot}`)) {
+    if (!existsSync(`${repoPath}/${serviceRoot}`)) {
       console.warn(`[Startup] Ignoring selected service path that does not exist: ${serviceRoot}`);
       return void 0;
     }
@@ -28414,7 +25712,9 @@ Use {"serviceRoot":"."} only if there truly is no separable web/API target.`
     console.log(`[Startup] Selected monorepo target: ${serviceRoot}${reason}`);
     return serviceRoot;
   } catch (err) {
-    console.warn(`[Startup] Monorepo target selection failed (${toErrorMessage(err)}) \u2014 using repository root`);
+    console.warn(
+      `[Startup] Monorepo target selection failed (${toErrorMessage(err)}) \u2014 using repository root`
+    );
     return void 0;
   }
 }
@@ -28428,12 +25728,8 @@ function withComposeFile(config, composeFile, stripServiceArgs = false) {
   const withFile = {
     ...config,
     command: addComposeFileFlag(config.command, composeFile),
-    prerequisites: (config.prerequisites ?? []).map(
-      (cmd) => addComposeFileFlag(cmd, composeFile)
-    ),
-    postStartCommands: config.postStartCommands?.map(
-      (cmd) => addComposeFileFlag(cmd, composeFile)
-    )
+    prerequisites: (config.prerequisites ?? []).map((cmd) => addComposeFileFlag(cmd, composeFile)),
+    postStartCommands: config.postStartCommands?.map((cmd) => addComposeFileFlag(cmd, composeFile))
   };
   if (!stripServiceArgs) return withFile;
   return {
@@ -28494,7 +25790,9 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
     if (selectedServiceRoot2) {
       techStack.serviceRoot = selectedServiceRoot2;
       try {
-        const svcPkg = JSON.parse(readFileSync2(`${repoPath}/${selectedServiceRoot2}/package.json`, "utf-8"));
+        const svcPkg = JSON.parse(
+          readFileSync(`${repoPath}/${selectedServiceRoot2}/package.json`, "utf-8")
+        );
         const allDeps = { ...svcPkg?.dependencies, ...svcPkg?.devDependencies };
         const frameworkMap = [
           ["next", "Next.js"],
@@ -28544,7 +25842,9 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
       startupHints.push(`[discovery] Post-start: ${step}`);
     }
     for (const svc of discovery.services) {
-      startupHints.push(`[discovery] Service "${svc.name}" requires image: ${svc.image} \u2014 ${svc.reason}`);
+      startupHints.push(
+        `[discovery] Service "${svc.name}" requires image: ${svc.image} \u2014 ${svc.reason}`
+      );
     }
     if (startupHints.length > 0) {
       console.log(`[Startup] Seeded ${startupHints.length} hints from discovery`);
@@ -28573,18 +25873,15 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
     } else if (attempt === 1) {
       strategy = "initial";
       console.log("[Startup] Strategy: initial identification");
-      config = await identifyStartupConfig(
-        llm,
-        repoPath,
-        stackStr,
-        modelSelector?.current()
-      );
+      config = await identifyStartupConfig(llm, repoPath, stackStr, modelSelector?.current());
     } else {
       modelSelector?.escalate();
       if (dockerfileRepaired || infraRepaired) {
         const prev = attemptErrors[attemptErrors.length - 1];
         strategy = dockerfileRepaired ? "retry-after-dockerfile-repair" : "retry-after-infra-repair";
-        console.log(`[Startup] ${dockerfileRepaired ? "Dockerfile" : "Infrastructure"} was repaired \u2014 retrying same config`);
+        console.log(
+          `[Startup] ${dockerfileRepaired ? "Dockerfile" : "Infrastructure"} was repaired \u2014 retrying same config`
+        );
         config = prev.config;
         dockerfileRepaired = false;
         infraRepaired = false;
@@ -28657,11 +25954,15 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         (cmd) => cmd.split(/\s*&&\s*/).map((part) => {
           const trimmed = part.trim();
           if (/docker\s+run\s/.test(trimmed) && /\s-d[\s$]/.test(trimmed)) {
-            console.warn(`[Startup] Removing conflicting prerequisite: ${trimmed.slice(0, 80)}`);
+            console.warn(
+              `[Startup] Removing conflicting prerequisite: ${trimmed.slice(0, 80)}`
+            );
             return "";
           }
           if (/docker\s+compose\s+exec\b/.test(trimmed) || /docker\s+exec\b/.test(trimmed)) {
-            console.log(`[Startup] Moving exec prerequisite to post-start: ${trimmed.slice(0, 80)}`);
+            console.log(
+              `[Startup] Moving exec prerequisite to post-start: ${trimmed.slice(0, 80)}`
+            );
             movedToPostStart.push(trimmed);
             return "";
           }
@@ -28676,10 +25977,14 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
           postStartCommands: [...movedToPostStart, ...existingPostStart]
         };
         if (movedToPostStart.length) {
-          console.log(`[Startup] Moved ${movedToPostStart.length} exec command(s) from prerequisites to post-start`);
+          console.log(
+            `[Startup] Moved ${movedToPostStart.length} exec command(s) from prerequisites to post-start`
+          );
         }
         if (cleaned.length < original.length) {
-          console.log(`[Startup] Cleaned prerequisites: ${cleaned.map((c) => c.slice(0, 60)).join(" ; ") || "(none)"}`);
+          console.log(
+            `[Startup] Cleaned prerequisites: ${cleaned.map((c) => c.slice(0, 60)).join(" ; ") || "(none)"}`
+          );
         }
       }
     }
@@ -28688,13 +25993,7 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
       console.log(
         "[Startup] No source-building Dockerfile found \u2014 generating one for this project"
       );
-      await generateDockerfile(
-        llm,
-        repoPath,
-        stackStr,
-        modelSelector?.current(),
-        discovery
-      );
+      await generateDockerfile(llm, repoPath, stackStr, modelSelector?.current(), discovery);
     }
     const dockerfileName = findDockerfile(repoPath, selectedServiceRoot) ?? "Dockerfile";
     if (dockerfileName !== "Dockerfile") {
@@ -28708,7 +26007,16 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
         `[Startup] Generating scan-specific compose.yml for selected service ${techStack.serviceRoot} instead of using the root monorepo compose stack`
       );
       if (discovery && discovery.services.length > 0) {
-        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints, selectedServiceRoot);
+        await generateComposeWithLLM(
+          llm,
+          repoPath,
+          stackStr,
+          discovery,
+          config,
+          modelSelector?.current(),
+          startupHints,
+          selectedServiceRoot
+        );
       } else {
         generateComposeFile(repoPath, config, selectedServiceRoot);
       }
@@ -28718,16 +26026,27 @@ async function startApplicationWithRetries(llm, repoPath, techStack, previousSta
       config = withComposeFile(config, "compose.yml", true);
     } else if (usesCompose && !findComposeFile(repoPath)) {
       if (discovery && discovery.services.length > 0) {
-        await generateComposeWithLLM(llm, repoPath, stackStr, discovery, config, modelSelector?.current(), startupHints, selectedServiceRoot);
+        await generateComposeWithLLM(
+          llm,
+          repoPath,
+          stackStr,
+          discovery,
+          config,
+          modelSelector?.current(),
+          startupHints,
+          selectedServiceRoot
+        );
       } else {
-        console.log("[Startup] No compose file found \u2014 generating one from Dockerfile (no discovery available)");
+        console.log(
+          "[Startup] No compose file found \u2014 generating one from Dockerfile (no discovery available)"
+        );
         generateComposeFile(repoPath, config, selectedServiceRoot);
       }
     }
     if (usesCompose && attempt === 1) {
       ensureComposeBuildsFromSource(repoPath, dockerfileName, selectedServiceRoot);
     }
-    if (attempt === 1 && config.docker && existsSync3(`${repoPath}/${dockerfileName}`)) {
+    if (attempt === 1 && config.docker && existsSync(`${repoPath}/${dockerfileName}`)) {
       await preflightValidation(
         llm,
         repoPath,
@@ -28791,7 +26110,7 @@ ${logs.slice(-3e3)}
           ]
         });
         if (resp.usage) {
-          const { TokenTracker: TokenTracker2 } = await import("./inference-K2RJK2I3.js");
+          const { TokenTracker: TokenTracker2 } = await import("./inference-UO77S2CK.js");
           TokenTracker2.global().record(
             modelSelector?.current() ?? "gpt-4o-mini",
             resp.usage.prompt_tokens ?? 0,
@@ -28816,9 +26135,7 @@ ${logs.slice(-3e3)}
         return result;
       };
       const proc = await startApplication(repoPath, config, analyzeLogsFn, analyzeResponseFn);
-      console.log(
-        `[Startup] Application started successfully on attempt ${attempt}`
-      );
+      console.log(`[Startup] Application started successfully on attempt ${attempt}`);
       stats.push({
         attempt,
         strategy,
@@ -28864,9 +26181,7 @@ ${logs.slice(-3e3)}
       if (attempt < MAX_STARTUP_ATTEMPTS) {
         if (attempt > 1) modelSelector?.escalate();
         const currentFp = errorFingerprint(detailedError);
-        const lastRepair = [...repairHistory].reverse().find(
-          (r) => r.kind === (isDockerBuildError ? "build" : "infra")
-        );
+        const lastRepair = [...repairHistory].reverse().find((r) => r.kind === (isDockerBuildError ? "build" : "infra"));
         const repeatedRootCause = lastRepair?.targetErrorFp === currentFp;
         if (repeatedRootCause) {
           console.log(
@@ -28900,7 +26215,9 @@ ${logs.slice(-3e3)}
           break;
         }
         const previousRepairs = repairHistory.filter((r) => r.kind === (isDockerBuildError ? "build" : "infra")).map((r) => r.summary).filter((s) => s.length > 0).slice(-5);
-        console.log(`[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`);
+        console.log(
+          `[Startup] Repair classification: ${isDockerBuildError ? "Dockerfile build error" : "infrastructure/runtime error"}`
+        );
         if (isDockerBuildError) {
           const buildResult = await repairDockerBuild(
             llm,
@@ -28914,17 +26231,29 @@ ${logs.slice(-3e3)}
             selectedServiceRoot
           );
           if (buildResult.summary) {
-            repairHistory.push({ kind: "build", summary: buildResult.summary, targetErrorFp: currentFp });
+            repairHistory.push({
+              kind: "build",
+              summary: buildResult.summary,
+              targetErrorFp: currentFp
+            });
           } else {
-            console.warn("[Startup] Build repair LLM produced no summary \u2014 recording as failed repair attempt");
-            repairHistory.push({ kind: "build", summary: "(repair LLM exhausted turns without a fix)", targetErrorFp: currentFp });
+            console.warn(
+              "[Startup] Build repair LLM produced no summary \u2014 recording as failed repair attempt"
+            );
+            repairHistory.push({
+              kind: "build",
+              summary: "(repair LLM exhausted turns without a fix)",
+              targetErrorFp: currentFp
+            });
           }
           if (buildResult.command) {
             console.log(`[Startup] Build repair overrode command: ${buildResult.command}`);
             config = { ...config, command: buildResult.command };
           }
           if (buildResult.prerequisites) {
-            console.log(`[Startup] Build repair overrode prerequisites: ${buildResult.prerequisites.join(" && ") || "(none)"}`);
+            console.log(
+              `[Startup] Build repair overrode prerequisites: ${buildResult.prerequisites.join(" && ") || "(none)"}`
+            );
             config = { ...config, prerequisites: buildResult.prerequisites };
           }
           if (buildResult.port) {
@@ -28933,9 +26262,7 @@ ${logs.slice(-3e3)}
           }
           if (buildResult.postStartCommands?.length) {
             const existing = config.postStartCommands ?? [];
-            const deduped = buildResult.postStartCommands.filter(
-              (cmd) => !existing.includes(cmd)
-            );
+            const deduped = buildResult.postStartCommands.filter((cmd) => !existing.includes(cmd));
             config = { ...config, postStartCommands: [...existing, ...deduped] };
           }
           if (buildResult.addEnvVars) {
@@ -28948,7 +26275,9 @@ ${logs.slice(-3e3)}
             config = { ...config, healthCheckPath: buildResult.healthCheckPath };
           }
           if (buildResult.healthProbe) {
-            console.log(`[Startup] Build repair set health probe: ${describeHealthProbe(buildResult.healthProbe)}`);
+            console.log(
+              `[Startup] Build repair set health probe: ${describeHealthProbe(buildResult.healthProbe)}`
+            );
             config = { ...config, healthProbe: buildResult.healthProbe };
           }
           const buildModifiedConfig = !!(buildResult.madeFileChanges || buildResult.command || buildResult.prerequisites || buildResult.port || buildResult.postStartCommands?.length || buildResult.addEnvVars || buildResult.healthCheckPath || buildResult.healthProbe);
@@ -28956,7 +26285,9 @@ ${logs.slice(-3e3)}
             attemptErrors[attemptErrors.length - 1] = { config, error: detailedError };
             dockerfileRepaired = true;
           } else {
-            console.warn("[Startup] Build repair produced no actionable changes \u2014 next attempt must choose a new startup strategy");
+            console.warn(
+              "[Startup] Build repair produced no actionable changes \u2014 next attempt must choose a new startup strategy"
+            );
           }
         } else {
           const infraResult = await repairInfrastructure(
@@ -28971,10 +26302,20 @@ ${logs.slice(-3e3)}
             repeatedRootCause
           );
           if (infraResult.summary) {
-            repairHistory.push({ kind: "infra", summary: infraResult.summary, targetErrorFp: currentFp });
+            repairHistory.push({
+              kind: "infra",
+              summary: infraResult.summary,
+              targetErrorFp: currentFp
+            });
           } else {
-            console.warn("[Startup] Infra repair LLM produced no summary \u2014 recording as failed repair attempt");
-            repairHistory.push({ kind: "infra", summary: "(repair LLM exhausted turns without a fix)", targetErrorFp: currentFp });
+            console.warn(
+              "[Startup] Infra repair LLM produced no summary \u2014 recording as failed repair attempt"
+            );
+            repairHistory.push({
+              kind: "infra",
+              summary: "(repair LLM exhausted turns without a fix)",
+              targetErrorFp: currentFp
+            });
           }
           if (infraResult.command || infraResult.port || infraResult.postStartCommands?.length || infraResult.addEnvVars || infraResult.healthCheckPath || infraResult.healthProbe) {
             if (infraResult.command) {
@@ -29004,7 +26345,9 @@ ${logs.slice(-3e3)}
             if (infraResult.healthCheckPath) {
               config = { ...config, healthCheckPath: infraResult.healthCheckPath };
               if (!infraResult.healthProbe && config.healthProbe) {
-                console.log(`[Startup] Resetting stale health probe to match new healthCheckPath: ${infraResult.healthCheckPath}`);
+                console.log(
+                  `[Startup] Resetting stale health probe to match new healthCheckPath: ${infraResult.healthCheckPath}`
+                );
                 config = {
                   ...config,
                   healthProbe: {
@@ -29016,7 +26359,9 @@ ${logs.slice(-3e3)}
               }
             }
             if (infraResult.healthProbe) {
-              console.log(`[Startup] Repair LLM set health probe: ${describeHealthProbe(infraResult.healthProbe)}`);
+              console.log(
+                `[Startup] Repair LLM set health probe: ${describeHealthProbe(infraResult.healthProbe)}`
+              );
               config = { ...config, healthProbe: infraResult.healthProbe };
             }
             attemptErrors[attemptErrors.length - 1] = { config, error: detailedError };
@@ -29055,35 +26400,23 @@ ${summary}`
 async function identifyStartupConfig(llm, repoPath, stackStr, model) {
   const messages = identifyStartupPrompt(stackStr);
   const infraHandler = createInfraToolHandler(repoPath);
-  const response = await chatWithTools(
-    llm,
-    messages,
-    infraTools,
-    infraHandler,
-    model
-  );
+  const response = await chatWithTools(llm, messages, infraTools, infraHandler, model);
   return parseStartupConfig(response);
 }
 async function rebuildStartupConfig(llm, repoPath, stackStr, previousConfig, model) {
-  const messages = rebuildStartupPrompt(
-    stackStr,
-    JSON.stringify(previousConfig, null, 2)
-  );
+  const messages = rebuildStartupPrompt(stackStr, JSON.stringify(previousConfig, null, 2));
   const infraHandler = createInfraToolHandler(repoPath);
-  const response = await chatWithTools(
-    llm,
-    messages,
-    infraTools,
-    infraHandler,
-    model
-  );
+  const response = await chatWithTools(llm, messages, infraTools, infraHandler, model);
   return parseStartupConfig(response);
 }
 function configBuildsFromSource(config) {
   const all = [...config.prerequisites ?? [], config.command].join(" ");
   if (/docker\s+(build|compose\s+build)/.test(all)) return true;
   if (/docker\s+compose/.test(all) && all.includes("--build")) return true;
-  if (/\b(npm run build|yarn build|pnpm build|go build|mvn\s|gradle\s|cargo build|dotnet build|make\b|bundle exec rake)/.test(all)) return true;
+  if (/\b(npm run build|yarn build|pnpm build|go build|mvn\s|gradle\s|cargo build|dotnet build|make\b|bundle exec rake)/.test(
+    all
+  ))
+    return true;
   return false;
 }
 function commandRunsInDocker(command) {
@@ -29092,7 +26425,9 @@ function commandRunsInDocker(command) {
 }
 function isStreamingCommand(cmd) {
   const trimmed = cmd.trim();
-  return /\blogs\s+(-\S+\s+)*-f\b|\blogs\s+(-\S+\s+)*--follow\b|\btail\s+(-\S+\s+)*-f\b|\btail\s+(-\S+\s+)*--follow\b|\b--follow\b.*\blogs\b|\bwatch\s|\btop\b/.test(trimmed);
+  return /\blogs\s+(-\S+\s+)*-f\b|\blogs\s+(-\S+\s+)*--follow\b|\btail\s+(-\S+\s+)*-f\b|\btail\s+(-\S+\s+)*--follow\b|\b--follow\b.*\blogs\b|\bwatch\s|\btop\b/.test(
+    trimmed
+  );
 }
 function extractImageName(config) {
   for (const cmd of config.prerequisites ?? []) {
@@ -29102,19 +26437,14 @@ function extractImageName(config) {
   return void 0;
 }
 function findComposeFile(repoPath) {
-  const candidates = [
-    "docker-compose.yml",
-    "docker-compose.yaml",
-    "compose.yml",
-    "compose.yaml"
-  ];
-  return candidates.find((f) => existsSync3(`${repoPath}/${f}`));
+  const candidates = ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"];
+  return candidates.find((f) => existsSync(`${repoPath}/${f}`));
 }
 function detectAppService(cwd, composeFile, startupCmd) {
   const upMatch = startupCmd.match(/docker\s+compose[^|]*up\s+(?:-d\s+)?([a-zA-Z][\w-]*)/);
   if (upMatch) return upMatch[1];
   try {
-    const content = readFileSync2(`${cwd}/${composeFile}`, "utf-8");
+    const content = readFileSync(`${cwd}/${composeFile}`, "utf-8");
     const infraImages = /postgres|redis|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|minio|mailhog|mailpit/i;
     const serviceBlocks = content.match(/^\s{2}(\w[\w-]*):\s*$/gm);
     if (!serviceBlocks) return void 0;
@@ -29156,7 +26486,7 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   const filePath = `${repoPath}/${composeFile}`;
   let content;
   try {
-    content = readFileSync2(filePath, "utf8");
+    content = readFileSync(filePath, "utf8");
   } catch {
     return true;
   }
@@ -29177,8 +26507,10 @@ function validateComposeBuildContexts(repoPath, composeFile) {
   for (const ctx of contexts) {
     if (ctx === "." || ctx === "./") continue;
     const resolved = ctx.startsWith("/") ? ctx : `${baseDir}/${ctx}`;
-    if (!existsSync3(resolved)) {
-      console.warn(`[Startup] Compose ${composeFile}: build context "${ctx}" does not exist (${resolved})`);
+    if (!existsSync(resolved)) {
+      console.warn(
+        `[Startup] Compose ${composeFile}: build context "${ctx}" does not exist (${resolved})`
+      );
       return false;
     }
   }
@@ -29190,7 +26522,7 @@ function ensureComposeBuildsFromSource(repoPath, dockerfileName, serviceRoot) {
   const filePath = `${repoPath}/${composeFile}`;
   let content;
   try {
-    content = readFileSync2(filePath, "utf8");
+    content = readFileSync(filePath, "utf8");
   } catch {
     return;
   }
@@ -29199,7 +26531,7 @@ function ensureComposeBuildsFromSource(repoPath, dockerfileName, serviceRoot) {
   if (!servicesMatch) return;
   const servicesStart = (servicesMatch.index ?? 0) + servicesMatch[0].length;
   const servicesBlock = content.slice(servicesStart);
-  const serviceRe = /^  (\w[\w-]*):\s*$/gm;
+  const serviceRe = /^ {2}(\w[\w-]*):\s*$/gm;
   let match;
   const services = [];
   while ((match = serviceRe.exec(servicesBlock)) !== null) {
@@ -29221,9 +26553,12 @@ function ensureComposeBuildsFromSource(repoPath, dockerfileName, serviceRoot) {
       context: ${buildContext}${dfClause}`;
       const escapedImage = imageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const imageLineRe = new RegExp(`^(\\s+)image:\\s*['"]?${escapedImage}['"]?\\s*$`, "m");
-      const fullContent = readFileSync2(filePath, "utf8");
-      const patched = fullContent.replace(imageLineRe, `$1# image: ${imageName}  # replaced \u2014 must build from source
-${buildDirective}`);
+      const fullContent = readFileSync(filePath, "utf8");
+      const patched = fullContent.replace(
+        imageLineRe,
+        `$1# image: ${imageName}  # replaced \u2014 must build from source
+${buildDirective}`
+      );
       if (patched !== fullContent) {
         writeFileSync(filePath, patched);
         console.log(
@@ -29235,10 +26570,11 @@ ${buildDirective}`);
   }
 }
 function detectMonorepoManager(repoPath) {
-  if (existsSync3(`${repoPath}/pnpm-lock.yaml`) || existsSync3(`${repoPath}/pnpm-workspace.yaml`)) return "pnpm";
-  if (existsSync3(`${repoPath}/yarn.lock`)) return "yarn";
-  if (existsSync3(`${repoPath}/bun.lockb`) || existsSync3(`${repoPath}/bun.lock`)) return "bun";
-  if (existsSync3(`${repoPath}/package-lock.json`)) return "npm";
+  if (existsSync(`${repoPath}/pnpm-lock.yaml`) || existsSync(`${repoPath}/pnpm-workspace.yaml`))
+    return "pnpm";
+  if (existsSync(`${repoPath}/yarn.lock`)) return "yarn";
+  if (existsSync(`${repoPath}/bun.lockb`) || existsSync(`${repoPath}/bun.lock`)) return "bun";
+  if (existsSync(`${repoPath}/package-lock.json`)) return "npm";
   return null;
 }
 function detectNodeVersion(repoPath, serviceRoot) {
@@ -29246,14 +26582,14 @@ function detectNodeVersion(repoPath, serviceRoot) {
   for (const root of roots) {
     for (const file of [".nvmrc", ".node-version"]) {
       try {
-        const ver = readFileSync2(`${root}/${file}`, "utf-8").trim();
+        const ver = readFileSync(`${root}/${file}`, "utf-8").trim();
         const major = ver.replace(/^v/, "").split(".")[0];
-        if (major && parseInt(major) >= 14) return major;
+        if (major && parseInt(major, 10) >= 14) return major;
       } catch {
       }
     }
     try {
-      const pkg = JSON.parse(readFileSync2(`${root}/package.json`, "utf-8"));
+      const pkg = JSON.parse(readFileSync(`${root}/package.json`, "utf-8"));
       const engines = pkg?.engines?.node;
       if (engines) {
         const match = engines.match(/(\d+)/);
@@ -29272,7 +26608,7 @@ function generateDevDockerfile(repoPath, serviceRoot) {
   let startCmd = "node index.js";
   let hasTypeScript = false;
   try {
-    const pkg = JSON.parse(readFileSync2(`${svcRoot}/package.json`, "utf-8"));
+    const pkg = JSON.parse(readFileSync(`${svcRoot}/package.json`, "utf-8"));
     if (pkg.scripts?.start) {
       startCmd = `${pm ?? "npm"} run start`;
     } else if (pkg.scripts?.dev) {
@@ -29332,22 +26668,22 @@ CMD ${JSON.stringify(startCmd.split(" "))}
 `;
   const outPath = `${repoPath}/Dockerfile.bright-dev`;
   writeFileSync(outPath, dockerfile);
-  console.log(`[Startup] Generated dev-mode fallback Dockerfile at Dockerfile.bright-dev (node:${nodeVer}, pm=${pm ?? "npm"}, monorepo=${isMonorepo})`);
+  console.log(
+    `[Startup] Generated dev-mode fallback Dockerfile at Dockerfile.bright-dev (node:${nodeVer}, pm=${pm ?? "npm"}, monorepo=${isMonorepo})`
+  );
   return true;
 }
 function getMonorepoContext(repoPath, serviceRoot) {
   if (!shouldSelectMonorepoTarget(repoPath)) return "";
   const pm = detectMonorepoManager(repoPath);
-  const parts = [
-    `
-\u26A0\uFE0F  MONOREPO DETECTED (package manager: ${pm ?? "unknown"})`
-  ];
+  const parts = [`
+\u26A0\uFE0F  MONOREPO DETECTED (package manager: ${pm ?? "unknown"})`];
   if (serviceRoot) {
     parts.push(`Target service: ${serviceRoot}`);
   }
-  if (pm === "pnpm" && existsSync3(`${repoPath}/pnpm-workspace.yaml`)) {
+  if (pm === "pnpm" && existsSync(`${repoPath}/pnpm-workspace.yaml`)) {
     try {
-      const wsConfig = readFileSync2(`${repoPath}/pnpm-workspace.yaml`, "utf-8").slice(0, 500);
+      const wsConfig = readFileSync(`${repoPath}/pnpm-workspace.yaml`, "utf-8").slice(0, 500);
       parts.push(`pnpm-workspace.yaml:
 ${wsConfig}`);
     } catch {
@@ -29371,14 +26707,16 @@ async function repairDockerBuild(llm, repoPath, buildError, model, previousError
   const dockerfilePath = `${repoPath}/${dockerfileName}`;
   let currentDockerfile;
   try {
-    currentDockerfile = readFileSync2(dockerfilePath, "utf-8");
+    currentDockerfile = readFileSync(dockerfilePath, "utf-8");
   } catch {
     return {};
   }
   const errorLogPath = `${repoPath}/.bright-build-error.log`;
   writeFileSync(errorLogPath, buildError, "utf-8");
   const errorLines = buildError.split("\n");
-  console.log(`[Startup] Repair input: error ${errorLines.length} lines (written to .bright-build-error.log), Dockerfile lines=${currentDockerfile.split("\n").length}`);
+  console.log(
+    `[Startup] Repair input: error ${errorLines.length} lines (written to .bright-build-error.log), Dockerfile lines=${currentDockerfile.split("\n").length}`
+  );
   let errorSection;
   if (errorLines.length <= 100) {
     errorSection = `Build output:
@@ -29523,14 +26861,7 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
       }
       return result;
     };
-    const response = await chatWithTools(
-      llm,
-      messages,
-      infraTools,
-      trackingHandler,
-      model,
-      40
-    );
+    const response = await chatWithTools(llm, messages, infraTools, trackingHandler, model, 40);
     const parsedResult = parseBuildRepairResult(response);
     if (parsedResult.summary || parsedResult.command || parsedResult.prerequisites || parsedResult.port || parsedResult.postStartCommands?.length || parsedResult.addEnvVars || parsedResult.healthCheckPath || parsedResult.healthProbe) {
       if (usedMutatingTools) {
@@ -29577,15 +26908,15 @@ Use the tools to inspect relevant project files (and read_file on .bright-build-
       madeFileChanges: changed || usedMutatingTools
     };
   } catch (err) {
-    console.warn(
-      `[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`
-    );
+    console.warn(`[Startup] Dockerfile repair failed: ${err instanceof Error ? err.message : err}`);
     return {};
   }
 }
 function errorFingerprint(error) {
   const interesting = error.split("\n").map((l) => l.trim()).filter(
-    (l) => /error|exception|fail|undefined|cannot|no such|missing|denied|refused|crashed|exit code|ENOENT|EACCES|did not complete|extension control file/i.test(l)
+    (l) => /error|exception|fail|undefined|cannot|no such|missing|denied|refused|crashed|exit code|ENOENT|EACCES|did not complete|extension control file/i.test(
+      l
+    )
   ).slice(0, 8).join("|").replace(/\b[0-9a-f]{12,}\b/gi, "<id>").replace(/(["'`])(?:\.{0,2}\/|\/)?[\w.-]+(?:\/[\w.-]+)+(["'`])/g, "$1<path>$2").replace(/(?:\.{1,2}\/|\/)[\w.-]+(?:\/[\w.-]+)+/g, "<path>").replace(/:\d+:\d+/g, ":<n>:<n>").replace(/:\d+\b/g, ":<n>").replace(/\d{4}-\d{2}-\d{2}T[\d:.+Z-]+/g, "<ts>").replace(/\s+/g, " ").toLowerCase();
   return interesting || error.slice(0, 200).toLowerCase();
 }
@@ -29752,14 +27083,7 @@ Study the diagnostic snapshot above, identify the root cause, fix it, then reply
       }
       return result2;
     };
-    const response = await chatWithTools(
-      llm,
-      messages,
-      infraTools,
-      trackingHandler,
-      model,
-      40
-    );
+    const response = await chatWithTools(llm, messages, infraTools, trackingHandler, model, 40);
     console.log(`[Startup] Infrastructure repair: ${response.slice(0, 200)}`);
     const result = parseInfraRepairResult(response);
     if (usedMutatingTools) {
@@ -29785,12 +27109,16 @@ function parseInfraRepairResult(response) {
         (cmd) => typeof cmd === "string" && cmd.length > 0 && !isStreamingCommand(cmd)
       );
       if (result.postStartCommands.length > 0) {
-        console.log(`[Startup] Infra repair added post-start commands: ${result.postStartCommands.join(", ")}`);
+        console.log(
+          `[Startup] Infra repair added post-start commands: ${result.postStartCommands.join(", ")}`
+        );
       }
     }
     if (parsed.addEnvVars && typeof parsed.addEnvVars === "object") {
       result.addEnvVars = parsed.addEnvVars;
-      console.log(`[Startup] Infra repair added env vars: ${Object.keys(result.addEnvVars).join(", ")}`);
+      console.log(
+        `[Startup] Infra repair added env vars: ${Object.keys(result.addEnvVars).join(", ")}`
+      );
     }
     if (typeof parsed.healthCheckPath === "string" && parsed.healthCheckPath) {
       result.healthCheckPath = parsed.healthCheckPath;
@@ -29818,14 +27146,11 @@ function parseInfraRepairResult(response) {
   }
 }
 function parseBuildRepairResult(response) {
-  const fencedBlocks = Array.from(
-    response.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)
-  ).map((m) => m[1]);
+  const fencedBlocks = Array.from(response.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)).map(
+    (m) => m[1]
+  );
   const objectMatch = response.match(/(\{[\s\S]*\})/);
-  const candidates = [
-    ...fencedBlocks,
-    ...objectMatch?.[1] ? [objectMatch[1]] : []
-  ];
+  const candidates = [...fencedBlocks, ...objectMatch?.[1] ? [objectMatch[1]] : []];
   for (const candidate of candidates) {
     const trimmed = candidate.trim();
     if (!trimmed.startsWith("{")) continue;
@@ -29886,17 +27211,22 @@ function parseHealthProbe(value) {
       const f = field;
       return typeof f.name === "string" && typeof f.value === "string" ? [{ name: f.name, value: f.value }] : [];
     }) : void 0;
-    const files = Array.isArray(fd.files) ? fd.files.flatMap((file) => {
-      if (!file || typeof file !== "object") return [];
-      const f = file;
-      if (typeof f.name !== "string" || typeof f.filename !== "string" || typeof f.content !== "string") return [];
-      return [{
-        name: f.name,
-        filename: f.filename,
-        content: f.content,
-        ...typeof f.contentType === "string" && f.contentType ? { contentType: f.contentType } : {}
-      }];
-    }) : void 0;
+    const files = Array.isArray(fd.files) ? fd.files.flatMap(
+      (file) => {
+        if (!file || typeof file !== "object") return [];
+        const f = file;
+        if (typeof f.name !== "string" || typeof f.filename !== "string" || typeof f.content !== "string")
+          return [];
+        return [
+          {
+            name: f.name,
+            filename: f.filename,
+            content: f.content,
+            ...typeof f.contentType === "string" && f.contentType ? { contentType: f.contentType } : {}
+          }
+        ];
+      }
+    ) : void 0;
     if (fields?.length || files?.length) formData = { fields, files };
   }
   const expectedStatuses = Array.isArray(raw.expectedStatuses) ? raw.expectedStatuses.filter((s) => Number.isInteger(s) && s >= 100 && s < 600) : void 0;
@@ -29918,27 +27248,17 @@ function describeHealthProbe(probe) {
 async function generateDockerfile(llm, repoPath, stackStr, model, discovery) {
   const dockerHandler = createDockerfileToolHandler(repoPath);
   const messages = generateDockerfilePrompt(stackStr, discovery);
-  const response = await chatWithTools(
-    llm,
-    messages,
-    dockerfileTools,
-    dockerHandler,
-    model
-  );
+  const response = await chatWithTools(llm, messages, dockerfileTools, dockerHandler, model);
   const contentRaw = extractCodeBlock(response);
   if (!contentRaw) {
-    throw new Error(
-      "Failed to generate a valid Dockerfile \u2014 LLM did not return a code block"
-    );
+    throw new Error("Failed to generate a valid Dockerfile \u2014 LLM did not return a code block");
   }
   const content = await fixDockerfileImages(contentRaw);
   if (content !== contentRaw) {
     console.log("[Startup] Auto-fixed invalid Docker image tags in generated Dockerfile");
   }
   writeFileSync(`${repoPath}/${BRIGHT_DOCKERFILE}`, content);
-  console.log(
-    `[Startup] Generated ${BRIGHT_DOCKERFILE} (${content.split("\n").length} lines)`
-  );
+  console.log(`[Startup] Generated ${BRIGHT_DOCKERFILE} (${content.split("\n").length} lines)`);
 }
 async function retryStartupConfig(llm, repoPath, stackStr, previousConfig, errorOutput, attempt, model, allPreviousAttempts, hints) {
   const messages = retryStartupPrompt(
@@ -29965,13 +27285,7 @@ async function retryStartupConfig(llm, repoPath, stackStr, previousConfig, error
     onHint: (_stage, h) => onHint(h),
     onRemoveHint: (_stage, h) => onRemoveHint(h)
   });
-  const response = await chatWithTools(
-    llm,
-    messages,
-    infraTools,
-    infraHandler,
-    model
-  );
+  const response = await chatWithTools(llm, messages, infraTools, infraHandler, model);
   return parseStartupConfig(response);
 }
 function parseStartupConfig(response) {
@@ -30021,7 +27335,7 @@ function extractInlineEnvVars(command) {
 }
 function unshallowIfNeeded(repoPath) {
   const shallowFile = `${repoPath}/.git/shallow`;
-  if (!existsSync3(shallowFile)) return;
+  if (!existsSync(shallowFile)) return;
   const versioningIndicators = [
     "Directory.Build.props",
     "version.json",
@@ -30030,9 +27344,7 @@ function unshallowIfNeeded(repoPath) {
     // GitVersion
     "GitVersion.yaml"
   ];
-  const needsHistory = versioningIndicators.some(
-    (f) => existsSync3(`${repoPath}/${f}`)
-  );
+  const needsHistory = versioningIndicators.some((f) => existsSync(`${repoPath}/${f}`));
   if (!needsHistory) {
     try {
       const out = execSync(
@@ -30044,9 +27356,7 @@ function unshallowIfNeeded(repoPath) {
       return;
     }
   }
-  console.log(
-    "[Startup] Detected shallow clone with git-based versioning \u2014 fetching full history"
-  );
+  console.log("[Startup] Detected shallow clone with git-based versioning \u2014 fetching full history");
   try {
     execSync(
       "git fetch --unshallow 2>/dev/null || git fetch --depth=2147483647 2>/dev/null || true",
@@ -30067,11 +27377,11 @@ function ensureDockerIgnore(repoPath) {
   const problematicDirs = ["data/", ".data/", "tmp/", "log/"];
   let existing = "";
   try {
-    existing = readFileSync2(ignorePath, "utf-8");
+    existing = readFileSync(ignorePath, "utf-8");
   } catch {
   }
   const linesToAdd = problematicDirs.filter(
-    (dir) => !existing.includes(dir) && existsSync3(`${repoPath}/${dir.replace(/\/$/, "")}`)
+    (dir) => !existing.includes(dir) && existsSync(`${repoPath}/${dir.replace(/\/$/, "")}`)
   );
   if (linesToAdd.length === 0) return;
   const newContent = existing ? `${existing.trimEnd()}
@@ -30081,9 +27391,7 @@ ${linesToAdd.join("\n")}
 ${linesToAdd.join("\n")}
 `;
   writeFileSync(ignorePath, newContent);
-  console.log(
-    `[Startup] Updated .dockerignore to exclude: ${linesToAdd.join(", ")}`
-  );
+  console.log(`[Startup] Updated .dockerignore to exclude: ${linesToAdd.join(", ")}`);
 }
 function looksLikeCommand(s) {
   const trimmed = s.trim();
@@ -30112,9 +27420,7 @@ function ensureToolsAvailable(repoPath, config, serviceRoot) {
   const fullCommand = [...config.prerequisites, config.command].join(" ");
   for (const { re, name } of knownTools) {
     if (re.test(fullCommand) && !isToolAvailable(name)) {
-      console.log(
-        `[Startup] "${name}" not found on host \u2014 switching to Docker build`
-      );
+      console.log(`[Startup] "${name}" not found on host \u2014 switching to Docker build`);
       const imageName = "bright-app-local";
       const df = findDockerfile(repoPath, serviceRoot);
       const fFlag = df && df !== "Dockerfile" ? `-f ${df} ` : "";
@@ -30157,7 +27463,7 @@ function patchScriptTtyFlags(repoPath, config) {
       if (/^\/(usr|bin|sbin)\//.test(candidate)) continue;
       if (candidate.includes(":")) continue;
       const fullPath = `${repoPath}/${candidate}`;
-      if (existsSync3(fullPath)) {
+      if (existsSync(fullPath)) {
         const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
         scriptDirs.add(dir);
       }
@@ -30176,7 +27482,7 @@ function patchScriptTtyFlags(repoPath, config) {
     }
     for (const filePath of files) {
       try {
-        const content = readFileSync2(filePath, "utf-8");
+        const content = readFileSync(filePath, "utf-8");
         if (!/docker\s+(?:exec|run)/.test(content)) continue;
         const patched = content.replace(/^(\s*)-it(\s*\\?\s*)$/gm, "$1-i$2").replace(/\b(docker\s+(?:exec|run)\s+(?:[^\n]*?\s)?)-it\b/g, "$1-i").replace(/^(\s*)-t(\s*\\?\s*)$/gm, (_m, pre, post) => {
           return post.includes("\\") ? `${pre}${post}` : "";
@@ -30203,7 +27509,7 @@ async function startApplication(repoPath, config, analyzeLogsFn, analyzeResponse
     const composeFileMatch = config.command.match(/-f\s+(\S+)/);
     const cdMatch = config.command.match(/cd\s+(\S+)\s*&&/);
     const composeFile = composeFileMatch?.[1] ?? (cdMatch ? `${cdMatch[1]}/docker-compose.yml` : findComposeFile(repoPath));
-    if (composeFile && existsSync3(`${repoPath}/${composeFile}`)) {
+    if (composeFile && existsSync(`${repoPath}/${composeFile}`)) {
       if (!validateComposeBuildContexts(repoPath, composeFile)) {
         throw new Error(
           `Compose file ${composeFile} references a build context that does not exist. This is likely a template scaffold \u2014 try building from the root Dockerfile instead.`
@@ -30232,9 +27538,7 @@ async function startApplication(repoPath, config, analyzeLogsFn, analyzeResponse
   if (config.docker && /docker\s+compose/.test(command) && command.includes("-d") && !command.includes("--wait")) {
     command = command.replace("-d", "-d --wait");
   }
-  console.log(
-    `[Startup] Starting application: ${command} (port ${config.port})`
-  );
+  console.log(`[Startup] Starting application: ${command} (port ${config.port})`);
   const child = spawn(command, [], {
     cwd: repoPath,
     env,
@@ -30338,10 +27642,15 @@ ${containerLogs}`);
           }
         }
         try {
-          await waitForPort(config.port, 12e4, config.healthProbe ?? config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn);
-          console.log(
-            `[Startup] Port ${config.port} is reachable despite --wait failure`
+          await waitForPort(
+            config.port,
+            12e4,
+            config.healthProbe ?? config.healthCheckPath,
+            repoPath,
+            analyzeLogsFn,
+            analyzeResponseFn
           );
+          console.log(`[Startup] Port ${config.port} is reachable despite --wait failure`);
           return child;
         } catch {
           throw new Error(
@@ -30360,16 +27669,19 @@ ${containerLogs}`);
           "docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null || true",
           { cwd: repoPath, encoding: "utf-8", timeout: 1e4 }
         ).trim();
-        const appExited = appState.split("\n").some(
-          (l) => /app.*exited/i.test(l) || /web.*exited/i.test(l)
-        );
+        const appExited = appState.split("\n").some((l) => /app.*exited/i.test(l) || /web.*exited/i.test(l));
         if (appExited) {
-          console.log("[Startup] App container crashed during post-start \u2014 restarting it with migrated DB...");
-          execSync("docker compose up -d --no-deps app 2>/dev/null || docker compose up -d --no-deps web 2>/dev/null || true", {
-            cwd: repoPath,
-            stdio: "pipe",
-            timeout: 3e4
-          });
+          console.log(
+            "[Startup] App container crashed during post-start \u2014 restarting it with migrated DB..."
+          );
+          execSync(
+            "docker compose up -d --no-deps app 2>/dev/null || docker compose up -d --no-deps web 2>/dev/null || true",
+            {
+              cwd: repoPath,
+              stdio: "pipe",
+              timeout: 3e4
+            }
+          );
           await sleep(3e3);
         }
       } catch {
@@ -30379,7 +27691,14 @@ ${containerLogs}`);
     const composeCrashPromise = pollComposeContainersAlive(repoPath, maxPortWaitMs);
     try {
       await Promise.race([
-        waitForPort(config.port, 3e5, config.healthProbe ?? config.healthCheckPath, repoPath, analyzeLogsFn, analyzeResponseFn),
+        waitForPort(
+          config.port,
+          3e5,
+          config.healthProbe ?? config.healthCheckPath,
+          repoPath,
+          analyzeLogsFn,
+          analyzeResponseFn
+        ),
         composeCrashPromise
       ]);
     } catch (err) {
@@ -30436,7 +27755,14 @@ ${diagnostics}`);
     })();
     try {
       await Promise.race([
-        waitForPort(config.port, portTimeoutMs, config.healthProbe ?? config.healthCheckPath, config.docker ? repoPath : void 0, analyzeLogsFn, analyzeResponseFn),
+        waitForPort(
+          config.port,
+          portTimeoutMs,
+          config.healthProbe ?? config.healthCheckPath,
+          config.docker ? repoPath : void 0,
+          analyzeLogsFn,
+          analyzeResponseFn
+        ),
         earlyExitPromise,
         containerCrashPromise
       ]);
@@ -30587,7 +27913,9 @@ function runPrerequisite(cmd, cwd, envVars) {
             `[Startup] Prerequisite ${reason} \u2014 extending timeout by ${EXTENSION_MS / 1e3}s (extension ${extensionsGranted}/${MAX_EXTENSIONS}, +${totalExtra}s total)`
           );
         } else {
-          console.log(`[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1e3)}s and system is idle \u2014 will not extend`);
+          console.log(
+            `[Startup] Prerequisite output stalled for ${Math.round(sinceLastOutput / 1e3)}s and system is idle \u2014 will not extend`
+          );
         }
       }
       if (elapsed >= effectiveTimeoutMs) {
@@ -30621,14 +27949,10 @@ ${tail}`;
         resolve5();
       } else {
         const tail = outputLines.slice(-30).join("\n");
-        reject(
-          new Error(
-            `Command failed: ${cmd}
+        reject(new Error(`Command failed: ${cmd}
 Exit code: ${code}
 
-${tail}`
-          )
-        );
+${tail}`));
       }
     });
   });
@@ -30648,11 +27972,7 @@ ${out}`);
     `docker inspect --format='{{json .NetworkSettings.Ports}}' ${containerId}`,
     "Network port config"
   );
-  run(
-    `docker exec ${containerId} ps aux 2>&1 | head -30`,
-    "Processes inside container",
-    1e4
-  );
+  run(`docker exec ${containerId} ps aux 2>&1 | head -30`, "Processes inside container", 1e4);
   run(
     `docker logs ${containerId} 2>&1 | tail -50`,
     "Container stdout/stderr (last 50 lines)",
@@ -30667,14 +27987,11 @@ ${out}`);
 }
 function logDockerFailure(repoPath) {
   try {
-    const ps = execSync(
-      "docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true",
-      {
-        cwd: repoPath,
-        encoding: "utf-8",
-        timeout: 1e4
-      }
-    ).trim();
+    const ps = execSync("docker compose ps --format '{{.Name}} {{.Status}}' 2>/dev/null || true", {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 1e4
+    }).trim();
     if (ps) console.log(`[Startup] Docker container status:
 ${ps}`);
     const logs = execSync("docker compose logs --tail=40 2>/dev/null || true", {
@@ -30682,11 +27999,8 @@ ${ps}`);
       encoding: "utf-8",
       timeout: 15e3
     }).trim();
-    if (logs)
-      console.log(
-        `[Startup] Docker logs (last 40 lines):
-${logs.slice(-3e3)}`
-      );
+    if (logs) console.log(`[Startup] Docker logs (last 40 lines):
+${logs.slice(-3e3)}`);
   } catch {
   }
 }
@@ -30772,7 +28086,9 @@ async function waitForPort(port, timeoutMs, healthCheck = "/", repoPath, analyze
           signal: AbortSignal.timeout(5e3)
         });
         if (lcResp.status < 500) {
-          console.log(`[Startup] Last-chance probe succeeded (HTTP ${lcResp.status}) \u2014 ignoring AI fatal verdict`);
+          console.log(
+            `[Startup] Last-chance probe succeeded (HTTP ${lcResp.status}) \u2014 ignoring AI fatal verdict`
+          );
           portHasEverResponded = true;
           consecutiveConnFailures = 0;
           fatalDiagnosis = "";
@@ -30783,7 +28099,8 @@ async function waitForPort(port, timeoutMs, healthCheck = "/", repoPath, analyze
       if (fatalDiagnosis) {
         let errMsg2 = `Application failed on port ${port}: ${fatalDiagnosis}`;
         if (lastStatus) errMsg2 += ` (last HTTP status: ${lastStatus})`;
-        if (lastBody && lastBody !== fatalDiagnosis) errMsg2 += `
+        if (lastBody && lastBody !== fatalDiagnosis)
+          errMsg2 += `
 
 HTTP response body:
 ${lastBody}`;
@@ -30811,7 +28128,9 @@ ${logs}`;
       const expectedStatuses = probe.expectedStatuses;
       if (expectedStatuses?.includes(response.status)) {
         lastBody = await readResponsePreview(response);
-        console.log(`[Startup] Health probe ${describeHealthProbe(probe)} returned expected HTTP ${response.status}`);
+        console.log(
+          `[Startup] Health probe ${describeHealthProbe(probe)} returned expected HTTP ${response.status}`
+        );
         return;
       }
       if (expectedStatuses?.length && response.status < 500) {
@@ -30928,7 +28247,9 @@ ${logs}`;
         localhostBindingChecked = true;
         const binding = detectLocalhostBinding(repoPath, port);
         if (binding?.boundToLocalhost) {
-          console.log(`[Startup] Detected localhost binding issue \u2014 app on port ${port} is bound to 127.0.0.1 inside container ${binding.containerId}`);
+          console.log(
+            `[Startup] Detected localhost binding issue \u2014 app on port ${port} is bound to 127.0.0.1 inside container ${binding.containerId}`
+          );
           let errMsg2 = `Application is running inside the container but the server is bound to 127.0.0.1 (localhost only) on port ${port}. Docker port forwarding cannot reach it because traffic arrives on the container's external network interface, not loopback.
 
 FIX: The application must bind to 0.0.0.0 (all interfaces) instead of 127.0.0.1. Add the appropriate environment variable to the service in compose.yml. Common options:
@@ -31025,7 +28346,9 @@ ${logs}`;
             effectiveTimeoutMs += PORT_WAIT_EXTENSION_MS;
             const totalExtra = extensionsGranted * PORT_WAIT_EXTENSION_MS / 1e3;
             const reachNote = portHasEverResponded ? "" : " (port has never responded \u2014 capped at 1 grace extension)";
-            console.log(`[Startup] AI confirms app is still progressing \u2014 extending timeout by ${PORT_WAIT_EXTENSION_MS / 1e3}s (extension ${extensionsGranted}/${extensionCap}, +${totalExtra}s total)${reachNote}`);
+            console.log(
+              `[Startup] AI confirms app is still progressing \u2014 extending timeout by ${PORT_WAIT_EXTENSION_MS / 1e3}s (extension ${extensionsGranted}/${extensionCap}, +${totalExtra}s total)${reachNote}`
+            );
           }
         } catch {
         }
@@ -31034,7 +28357,8 @@ ${logs}`;
     await sleep(interval);
   }
   let errMsg = `Application did not start on port ${port} within ${effectiveTimeoutMs / 1e3}s`;
-  if (extensionsGranted > 0) errMsg += ` (extended ${extensionsGranted}x from ${timeoutMs / 1e3}s because app was progressing)`;
+  if (extensionsGranted > 0)
+    errMsg += ` (extended ${extensionsGranted}x from ${timeoutMs / 1e3}s because app was progressing)`;
   if (lastStatus) errMsg += ` (last HTTP status: ${lastStatus})`;
   if (lastBody) errMsg += `
 
@@ -31053,20 +28377,23 @@ function getContainerLogTail(repoPath, lines = 30) {
   try {
     let serviceName = "";
     try {
-      const config = execSync(
-        `docker compose config --services 2>/dev/null`,
-        { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
-      ).trim();
+      const config = execSync(`docker compose config --services 2>/dev/null`, {
+        cwd: repoPath,
+        encoding: "utf-8",
+        timeout: 5e3
+      }).trim();
       const services = config.split("\n").filter(Boolean);
       const infraPatterns = /^(db|mysql|postgres|redis|memcached|mongo|minio|mailpit|elasticsearch|kafka|rabbitmq|zookeeper|tinybird|analytics)/i;
       serviceName = services.find((s) => s === "app") ?? services.find((s) => s.includes("app")) ?? services.find((s) => !infraPatterns.test(s)) ?? "";
     } catch {
     }
     const serviceArg = serviceName ? ` ${serviceName}` : "";
-    const full = execSync(
-      `docker compose logs${serviceArg} 2>/dev/null || true`,
-      { cwd: repoPath, encoding: "utf-8", timeout: 1e4, maxBuffer: 5 * 1024 * 1024 }
-    ).trim();
+    const full = execSync(`docker compose logs${serviceArg} 2>/dev/null || true`, {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 1e4,
+      maxBuffer: 5 * 1024 * 1024
+    }).trim();
     if (!full) return "";
     const allLines = full.split("\n");
     if (allLines.length <= lines * 2) return full;
@@ -31112,7 +28439,10 @@ async function pollComposeContainersAlive(repoPath, timeoutMs) {
         for (const line of ps.split("\n")) {
           const [name, state] = line.trim().split(/\s+/);
           if (!name || !state) continue;
-          if (/^(postgres|redis|valkey|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|opensearch|kafka|zookeeper|minio|mailhog|mailpit)/i.test(name)) continue;
+          if (/^(postgres|redis|valkey|mysql|mariadb|mongo|memcached|rabbitmq|elasticsearch|opensearch|kafka|zookeeper|minio|mailhog|mailpit)/i.test(
+            name
+          ))
+            continue;
           if (/celery|sidekiq|resque|worker|cron|scheduler|beat/i.test(name)) continue;
           if (state === "exited" || state === "dead") {
             let exitInfo = "";
@@ -31124,9 +28454,13 @@ async function pollComposeContainersAlive(repoPath, timeoutMs) {
             } catch {
             }
             if (exitInfo === "0") {
-              const isInitContainer = /init|migrat|setup|seed|bootstrap|collect|fixture/i.test(name);
+              const isInitContainer = /init|migrat|setup|seed|bootstrap|collect|fixture/i.test(
+                name
+              );
               if (isInitContainer) continue;
-              const looksLikeAppServer = /web|app|api|server|uwsgi|gunicorn|puma|nginx|caddy|rails|django|node|flask/i.test(name);
+              const looksLikeAppServer = /web|app|api|server|uwsgi|gunicorn|puma|nginx|caddy|rails|django|node|flask/i.test(
+                name
+              );
               if (!looksLikeAppServer) continue;
             }
             throw new Error(
@@ -31220,10 +28554,11 @@ function extractCrashError(logs) {
 }
 function findComposeAppContainer(repoPath) {
   try {
-    const ps = execSync(
-      "docker compose ps -a --format '{{.Name}}' 2>/dev/null || true",
-      { cwd: repoPath, encoding: "utf-8", timeout: 5e3 }
-    ).trim();
+    const ps = execSync("docker compose ps -a --format '{{.Name}}' 2>/dev/null || true", {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 5e3
+    }).trim();
     if (!ps) return void 0;
     const infra = /^(postgres|redis|mysql|mongo|memcached|rabbitmq|elasticsearch|kafka|zookeeper)/i;
     for (const name of ps.split("\n")) {
@@ -31244,9 +28579,7 @@ async function pollContainerAlive(containerName, timeoutMs) {
         { encoding: "utf-8", timeout: 5e3 }
       ).trim();
       if (status === "exited" || status === "dead" || status === "removing") {
-        throw new Error(
-          `Container "${containerName}" exited unexpectedly (status: ${status})`
-        );
+        throw new Error(`Container "${containerName}" exited unexpectedly (status: ${status})`);
       }
     } catch (err) {
       if (err instanceof Error && err.message.includes("exited unexpectedly")) {
@@ -31341,7 +28674,7 @@ ${body}
     ]
   });
   if (resp.usage) {
-    const { TokenTracker: TokenTracker2 } = await import("./inference-K2RJK2I3.js");
+    const { TokenTracker: TokenTracker2 } = await import("./inference-UO77S2CK.js");
     TokenTracker2.global().record(
       modelSelector?.current() ?? "gpt-4o-mini",
       resp.usage.prompt_tokens ?? 0,
@@ -31416,7 +28749,7 @@ ${body}
     ]
   });
   if (resp.usage) {
-    const { TokenTracker: TokenTracker2 } = await import("./inference-K2RJK2I3.js");
+    const { TokenTracker: TokenTracker2 } = await import("./inference-UO77S2CK.js");
     TokenTracker2.global().record(
       modelSelector?.current() ?? "gpt-4o-mini",
       resp.usage.prompt_tokens ?? 0,
@@ -31551,7 +28884,10 @@ async function deepProbeSingleUrl(port, path, llm, modelSelector, cache) {
 }
 function applyFingerprint(fp, status, text, path) {
   if (status >= 500) {
-    return { healthy: false, reason: `HTTP ${status} server error on ${path} (was ${fp.expectedStatus})` };
+    return {
+      healthy: false,
+      reason: `HTTP ${status} server error on ${path} (was ${fp.expectedStatus})`
+    };
   }
   const unhealthyMatch = fp.unhealthyPattern?.test(text) ?? false;
   const healthyMatch = fp.healthyPattern.test(text);
@@ -31571,10 +28907,11 @@ function applyFingerprint(fp, status, text, path) {
 }
 function captureExitedContainers(repoPath, composeFile) {
   try {
-    const psOut = execSync(
-      `docker compose -f ${composeFile} ps -a --format json`,
-      { cwd: repoPath, encoding: "utf-8", timeout: 15e3 }
-    ).trim();
+    const psOut = execSync(`docker compose -f ${composeFile} ps -a --format json`, {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 15e3
+    }).trim();
     if (!psOut) return [];
     const lines = psOut.split("\n").filter((l) => l.trim().startsWith("{"));
     const exited = [];
@@ -31624,7 +28961,9 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
   }
   const healthCheck = config.healthProbe ?? config.healthCheckPath ?? "/";
   const probeDescription = typeof healthCheck === "string" ? `GET http://localhost:${config.port}${healthCheck.startsWith("/") ? healthCheck : `/${healthCheck}`}` : `${describeHealthProbe(healthCheck).replace(" ", ` http://localhost:${config.port}`)}`;
-  console.log(`[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${cwd})`);
+  console.log(
+    `[AppHealth] quickRestartCompose: docker compose -f ${composeFile} restart (cwd=${cwd})`
+  );
   const triedStrategies = [];
   try {
     execSync(`docker compose -f ${composeFile} restart`, {
@@ -31638,11 +28977,15 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
       return { ok: true };
     }
   } catch (err) {
-    triedStrategies.push(`docker compose restart (failed: ${err instanceof Error ? err.message : String(err)})`);
+    triedStrategies.push(
+      `docker compose restart (failed: ${err instanceof Error ? err.message : String(err)})`
+    );
   }
   const appService = detectAppService(cwd, composeFile, config.command);
   const recreateTarget = appService ? `--force-recreate ${appService}` : "--force-recreate";
-  console.log(`[AppHealth] Restart insufficient; trying force-recreate${appService ? ` (service: ${appService})` : " (all services)"}`);
+  console.log(
+    `[AppHealth] Restart insufficient; trying force-recreate${appService ? ` (service: ${appService})` : " (all services)"}`
+  );
   try {
     execSync(`docker compose -f ${composeFile} up -d ${recreateTarget}`, {
       cwd,
@@ -31655,7 +28998,9 @@ async function quickRestartCompose(repoPath, config, waitMs = 9e4) {
       return { ok: true };
     }
   } catch (err) {
-    triedStrategies.push(`docker compose up -d ${recreateTarget} (failed: ${err instanceof Error ? err.message : String(err)})`);
+    triedStrategies.push(
+      `docker compose up -d ${recreateTarget} (failed: ${err instanceof Error ? err.message : String(err)})`
+    );
   }
   const exited = captureExitedContainers(cwd, composeFile);
   const triedList = triedStrategies.map((s) => `  - ${s}`).join("\n");
@@ -31667,9 +29012,11 @@ ${triedList}
 All containers report running but the HTTP probe at port ${probeDescription} never succeeded. The app process inside the container is likely wedged but not crashing.`
     };
   }
-  const exitedSummary = exited.map((c) => `- service "${c.service}" (${c.status})
+  const exitedSummary = exited.map(
+    (c) => `- service "${c.service}" (${c.status})
   logs (tail):
-${c.logs.split("\n").map((l) => `    ${l}`).join("\n")}`).join("\n");
+${c.logs.split("\n").map((l) => `    ${l}`).join("\n")}`
+  ).join("\n");
   return {
     ok: false,
     diagnostics: `Quick restart strategies did not bring the app back. Strategies tried:
@@ -31704,17 +29051,19 @@ function cleanupDocker(repoPath) {
 }
 function pruneBuildArtifacts() {
   try {
-    const imgOut = execSync(
-      "docker image prune -f 2>/dev/null || true",
-      { encoding: "utf-8", stdio: "pipe", timeout: 3e4 }
-    ).trim();
+    const imgOut = execSync("docker image prune -f 2>/dev/null || true", {
+      encoding: "utf-8",
+      stdio: "pipe",
+      timeout: 3e4
+    }).trim();
     if (imgOut && !imgOut.includes("0B")) {
       console.log(`[Startup] Pruned dangling images: ${imgOut.split("\n").pop()}`);
     }
-    const cacheOut = execSync(
-      "docker builder prune -f --all 2>/dev/null || true",
-      { encoding: "utf-8", stdio: "pipe", timeout: 6e4 }
-    ).trim();
+    const cacheOut = execSync("docker builder prune -f --all 2>/dev/null || true", {
+      encoding: "utf-8",
+      stdio: "pipe",
+      timeout: 6e4
+    }).trim();
     if (cacheOut && !cacheOut.includes("0B")) {
       console.log(`[Startup] Pruned build cache: ${cacheOut.split("\n").pop()}`);
     }
@@ -31725,15 +29074,15 @@ function captureDockerLogs(repoPath, tailLines = 80) {
   const logs = [];
   const containerNames = [];
   try {
-    const containers = execFileSync3(
-      "docker",
-      ["compose", "ps", "-a", "--format", "{{.Name}}"],
-      { cwd: repoPath, encoding: "utf-8", timeout: 1e4 }
-    ).trim().split("\n").filter(Boolean);
+    const containers = execFileSync("docker", ["compose", "ps", "-a", "--format", "{{.Name}}"], {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 1e4
+    }).trim().split("\n").filter(Boolean);
     containerNames.push(...containers);
   } catch {
     try {
-      const allContainers = execFileSync3(
+      const allContainers = execFileSync(
         "docker",
         ["ps", "-a", "--format", "{{.Names}}", "--last", "5"],
         { encoding: "utf-8", timeout: 1e4 }
@@ -31744,11 +29093,11 @@ function captureDockerLogs(repoPath, tailLines = 80) {
   }
   for (const name of containerNames) {
     try {
-      const containerLog = execFileSync3(
-        "docker",
-        ["logs", name],
-        { encoding: "utf-8", timeout: 15e3, maxBuffer: 10 * 1024 * 1024 }
-      );
+      const containerLog = execFileSync("docker", ["logs", name], {
+        encoding: "utf-8",
+        timeout: 15e3,
+        maxBuffer: 10 * 1024 * 1024
+      });
       if (containerLog.trim()) {
         logs.push(`=== ${name} ===
 ${containerLog.trim()}`);
@@ -31777,7 +29126,7 @@ ${tail}`;
 function gatherDiagnosticSnapshot(repoPath) {
   const sections = [];
   try {
-    const ps = execFileSync3(
+    const ps = execFileSync(
       "docker",
       ["ps", "-a", "--format", "table {{.Names}}	{{.Status}}	{{.Ports}}"],
       { encoding: "utf-8", timeout: 1e4 }
@@ -31789,7 +29138,7 @@ ${ps}
   } catch {
   }
   try {
-    const volumes = execFileSync3(
+    const volumes = execFileSync(
       "docker",
       ["volume", "ls", "--format", "table {{.Name}}	{{.Driver}}"],
       { encoding: "utf-8", timeout: 1e4 }
@@ -31801,14 +29150,23 @@ ${volumes}
   } catch {
   }
   try {
-    const containers = execFileSync3(
+    const containers = execFileSync(
       "docker",
-      ["ps", "-a", "--filter", "health=unhealthy", "--filter", "health=starting", "--format", "{{.Names}}"],
+      [
+        "ps",
+        "-a",
+        "--filter",
+        "health=unhealthy",
+        "--filter",
+        "health=starting",
+        "--format",
+        "{{.Names}}"
+      ],
       { encoding: "utf-8", timeout: 1e4 }
     ).trim().split("\n").filter(Boolean);
     for (const name of containers.slice(0, 3)) {
       try {
-        const health = execFileSync3(
+        const health = execFileSync(
           "docker",
           ["inspect", "--format", "{{json .State.Health}}", name],
           { encoding: "utf-8", timeout: 1e4 }
@@ -31831,12 +29189,21 @@ ${health.slice(0, 500)}`);
   } catch {
   }
   try {
-    const unhealthyContainers = execFileSync3(
+    const unhealthyContainers = execFileSync(
       "docker",
-      ["ps", "-a", "--filter", "health=unhealthy", "--filter", "health=starting", "--format", "{{.Names}}"],
+      [
+        "ps",
+        "-a",
+        "--filter",
+        "health=unhealthy",
+        "--filter",
+        "health=starting",
+        "--format",
+        "{{.Names}}"
+      ],
       { encoding: "utf-8", timeout: 1e4 }
     ).trim().split("\n").filter(Boolean);
-    const exitedContainers = execFileSync3(
+    const exitedContainers = execFileSync(
       "docker",
       ["ps", "-a", "--filter", "status=exited", "--format", "{{.Names}}"],
       { encoding: "utf-8", timeout: 1e4 }
@@ -31844,18 +29211,17 @@ ${health.slice(0, 500)}`);
     const allFailing = [.../* @__PURE__ */ new Set([...unhealthyContainers, ...exitedContainers])].slice(0, 3);
     for (const name of allFailing) {
       try {
-        const logs = execFileSync3(
-          "docker",
-          ["logs", "--tail", "80", name],
-          { encoding: "utf-8", timeout: 1e4, stdio: ["pipe", "pipe", "pipe"] }
-        );
+        const logs = execFileSync("docker", ["logs", "--tail", "80", name], {
+          encoding: "utf-8",
+          timeout: 1e4,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
         let stderrLogs = "";
         try {
-          stderrLogs = execFileSync3(
-            "docker",
-            ["logs", "--tail", "80", name],
-            { encoding: "utf-8", timeout: 1e4 }
-          );
+          stderrLogs = execFileSync("docker", ["logs", "--tail", "80", name], {
+            encoding: "utf-8",
+            timeout: 1e4
+          });
         } catch {
         }
         const combined = (logs + "\n" + stderrLogs).trim().slice(-4e3);
@@ -31872,36 +29238,40 @@ ${combined}
   }
   try {
     const logFile2 = `${repoPath}/.bright-container-logs.txt`;
-    if (existsSync3(logFile2)) {
-      const logContent = readFileSync2(logFile2, "utf-8");
+    if (existsSync(logFile2)) {
+      const logContent = readFileSync(logFile2, "utf-8");
       const errorPatterns = /error|failed|fatal|panic|exception|denied|refused|password.*match|login failed|permission|timeout|not found|cannot connect/i;
       const errorLines = logContent.split("\n").filter((line) => errorPatterns.test(line)).slice(0, 20).map((line) => line.trim().slice(0, 300));
       if (errorLines.length > 0) {
-        sections.push(`## Key Error Lines from Container Logs
+        sections.push(
+          `## Key Error Lines from Container Logs
 \`\`\`
 ${errorLines.join("\n")}
-\`\`\``);
+\`\`\``
+        );
       }
     }
   } catch {
   }
   try {
-    const composeConfig = execFileSync3(
-      "docker",
-      ["compose", "config"],
-      { cwd: repoPath, encoding: "utf-8", timeout: 1e4 }
-    ).trim();
+    const composeConfig = execFileSync("docker", ["compose", "config"], {
+      cwd: repoPath,
+      encoding: "utf-8",
+      timeout: 1e4
+    }).trim();
     if (composeConfig.length < 3e3) {
       sections.push(`## Resolved Compose Config
 \`\`\`yaml
 ${composeConfig}
 \`\`\``);
     } else {
-      sections.push(`## Resolved Compose Config (truncated)
+      sections.push(
+        `## Resolved Compose Config (truncated)
 \`\`\`yaml
 ${composeConfig.slice(0, 3e3)}
 ...(truncated)
-\`\`\``);
+\`\`\``
+      );
     }
   } catch {
   }
@@ -31910,6 +29280,5212 @@ ${composeConfig.slice(0, 3e3)}
 
 # DIAGNOSTIC SNAPSHOT (current Docker state)
 ${sections.join("\n\n")}`;
+}
+
+// src/app-health.ts
+var AppHealthMonitor = class {
+  port;
+  healthCheckPath;
+  healthProbe;
+  pollIntervalMs;
+  failureThreshold;
+  deepProbeEveryNth;
+  onRecover;
+  onDeepProbe;
+  timer;
+  running = false;
+  paused = false;
+  healthy = true;
+  consecutiveFailures = 0;
+  probeCount = 0;
+  probeInFlight = false;
+  deepProbeInFlight = false;
+  recoveryInFlight;
+  gate;
+  lastUnhealthyReason;
+  /** When true, only a successful deep probe or recovery can clear the unhealthy state.
+   *  Prevents the shallow (status-only) probe from re-marking healthy while the
+   *  body-aware deep probe has identified a degraded state (e.g. SPA shell returns
+   *  200 but the API layer is 500-ing). */
+  deepUnhealthy = false;
+  constructor(opts) {
+    this.port = opts.port;
+    this.healthCheckPath = opts.healthCheckPath ?? "/";
+    this.healthProbe = opts.healthProbe;
+    this.pollIntervalMs = opts.pollIntervalMs ?? 15e3;
+    this.failureThreshold = opts.failureThreshold ?? 3;
+    this.onRecover = opts.onRecover;
+    this.onDeepProbe = opts.onDeepProbe;
+    this.deepProbeEveryNth = opts.deepProbeEveryNth ?? 5;
+  }
+  setRecoveryCallback(cb) {
+    this.onRecover = cb;
+  }
+  setDeepProbe(cb) {
+    this.onDeepProbe = cb;
+  }
+  describeProbe() {
+    if (!this.healthProbe) return `http://localhost:${this.port}${this.healthCheckPath}`;
+    const path = this.healthProbe.path.startsWith("/") ? this.healthProbe.path : `/${this.healthProbe.path}`;
+    const method = (this.healthProbe.method ?? (this.healthProbe.formData || this.healthProbe.body ? "POST" : "GET")).toUpperCase();
+    return `${method} http://localhost:${this.port}${path}`;
+  }
+  start() {
+    if (this.running) return;
+    this.running = true;
+    this.timer = setInterval(() => {
+      void this.probe("scheduled");
+    }, this.pollIntervalMs);
+    if (typeof this.timer.unref === "function") this.timer.unref();
+    console.log(
+      `[AppHealth] Monitor started \u2014 polling ${this.describeProbe()} every ${this.pollIntervalMs / 1e3}s`
+    );
+  }
+  stop() {
+    if (!this.running) return;
+    this.running = false;
+    this.paused = false;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = void 0;
+    }
+    if (this.gate) {
+      this.gate.resolve();
+      this.gate = void 0;
+    }
+  }
+  /**
+   * Temporarily suspend probing and recovery. Use when the orchestrator
+   * is rebuilding/restarting the app — avoids the health monitor racing
+   * with docker compose up --build. If a recovery is already in flight,
+   * waits for it to complete before returning.
+   */
+  async pause() {
+    if (this.paused) return;
+    this.paused = true;
+    if (this.recoveryInFlight) {
+      try {
+        await this.recoveryInFlight;
+      } catch {
+      }
+    }
+    console.log("[AppHealth] Monitor paused (orchestrator owns the app lifecycle)");
+  }
+  /**
+   * Resume probing after the orchestrator finishes its rebuild/restart.
+   * Resets the failure counter so stale failures from the rebuild window
+   * don't immediately trip the unhealthy threshold. Also marks healthy and
+   * opens the gate if needed — the orchestrator already verified the app.
+   */
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.consecutiveFailures = 0;
+    if (!this.healthy) this.markHealthy();
+    console.log("[AppHealth] Monitor resumed");
+  }
+  isHealthy() {
+    return this.healthy;
+  }
+  /**
+   * Resolves immediately if healthy. Otherwise blocks until the gate opens
+   * (recovery succeeds, monitor is stopped, or gate is manually opened).
+   */
+  async waitHealthy(timeoutMs = 12e4) {
+    if (this.healthy) return;
+    if (!this.gate) {
+      let resolve5;
+      const promise = new Promise((r) => {
+        resolve5 = r;
+      });
+      this.gate = { promise, resolve: resolve5 };
+    }
+    const timeout = new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error("waitHealthy timed out \u2014 app recovery did not succeed")),
+        timeoutMs
+      );
+    });
+    await Promise.race([this.gate.promise, timeout]);
+  }
+  /**
+   * Tells the monitor that an external observation suggests the app may be
+   * unhealthy (e.g. Bright reported "target is down" for a registration).
+   * Triggers an immediate probe outside the regular polling cadence.
+   */
+  signalProbableUnhealthy(reason) {
+    if (!this.running || this.paused) return;
+    if (this.probeInFlight) return;
+    void this.probe(`signal: ${reason}`);
+  }
+  /**
+   * On-demand body-aware probe. Used by the orchestrator before each scan
+   * round to fail-fast if the app has degraded into a setup-required /
+   * dev-mode-warning state that the periodic shallow probe wouldn't catch.
+   * If unhealthy, marks the monitor unhealthy and triggers recovery; the
+   * returned promise resolves once recovery completes (or fails).
+   */
+  async verifyDeepHealth() {
+    if (!this.onDeepProbe) return { healthy: true, reason: "no deep probe configured" };
+    if (this.deepProbeInFlight) {
+      await this.waitHealthy();
+      return { healthy: this.healthy, reason: this.lastUnhealthyReason ?? "ok" };
+    }
+    const result = await this.runDeepProbe("on-demand");
+    if (!result.healthy) {
+      await this.waitHealthy();
+    }
+    return result;
+  }
+  async probe(reason) {
+    if (!this.running || this.paused) return;
+    if (this.probeInFlight) return;
+    this.probeInFlight = true;
+    try {
+      const ok = await checkAppHealth(this.port, this.healthProbe ?? this.healthCheckPath);
+      if (ok) {
+        if (this.consecutiveFailures > 0) {
+          console.log(
+            `[AppHealth] Recovered (${reason}) \u2014 clearing ${this.consecutiveFailures} failure(s)`
+          );
+        }
+        this.consecutiveFailures = 0;
+        if (!this.healthy && !this.deepUnhealthy) this.markHealthy();
+      } else {
+        this.consecutiveFailures += 1;
+        if (this.healthy) {
+          console.warn(
+            `[AppHealth] Probe failed (${reason}) \u2014 ${this.consecutiveFailures}/${this.failureThreshold}`
+          );
+          if (this.consecutiveFailures >= this.failureThreshold) {
+            this.lastUnhealthyReason = `app stopped responding to HTTP probes at ${this.describeProbe()}`;
+            this.markUnhealthy();
+            void this.runRecovery();
+          }
+        }
+      }
+      if ((this.healthy || this.deepUnhealthy) && this.onDeepProbe && reason === "scheduled" && ++this.probeCount % this.deepProbeEveryNth === 0) {
+        void this.runDeepProbe("scheduled-deep");
+      }
+    } finally {
+      this.probeInFlight = false;
+    }
+  }
+  async runDeepProbe(reason) {
+    if (!this.onDeepProbe) return { healthy: true, reason: "no deep probe" };
+    if (this.deepProbeInFlight) return { healthy: this.healthy, reason: "already in flight" };
+    this.deepProbeInFlight = true;
+    try {
+      const result = await this.onDeepProbe();
+      if (!result.healthy) {
+        console.warn(`[AppHealth] Deep probe (${reason}) UNHEALTHY \u2014 ${result.reason}`);
+        if (this.healthy) {
+          this.lastUnhealthyReason = `deep health probe flagged the app as unhealthy: ${result.reason}`;
+          this.deepUnhealthy = true;
+          this.markUnhealthy();
+          void this.runRecovery();
+        }
+      } else {
+        console.log(`[AppHealth] Deep probe (${reason}) healthy \u2014 ${result.reason}`);
+        if (this.deepUnhealthy) {
+          this.deepUnhealthy = false;
+          if (!this.healthy) this.markHealthy();
+        }
+      }
+      return result;
+    } catch (err) {
+      console.warn(`[AppHealth] Deep probe (${reason}) errored: ${toErrorMessage(err)} \u2014 ignoring`);
+      return { healthy: true, reason: "deep probe errored, ignoring" };
+    } finally {
+      this.deepProbeInFlight = false;
+    }
+  }
+  markUnhealthy() {
+    this.healthy = false;
+    if (!this.gate) {
+      let resolve5;
+      const promise = new Promise((r) => {
+        resolve5 = r;
+      });
+      this.gate = { promise, resolve: resolve5 };
+    }
+    console.warn(`[AppHealth] App marked UNHEALTHY \u2014 pausing dependent operations`);
+  }
+  markHealthy() {
+    this.healthy = true;
+    const gate = this.gate;
+    this.gate = void 0;
+    if (gate) gate.resolve();
+    console.log(`[AppHealth] App marked HEALTHY \u2014 resuming operations`);
+  }
+  async runRecovery() {
+    if (this.recoveryInFlight) return this.recoveryInFlight;
+    if (this.paused) return { ok: false, detail: "monitor paused \u2014 orchestrator handling restart" };
+    if (!this.onRecover) {
+      console.warn(`[AppHealth] No recovery callback registered \u2014 staying paused`);
+      return { ok: false, detail: "no recovery callback" };
+    }
+    const cb = this.onRecover;
+    const hint = this.lastUnhealthyReason;
+    this.recoveryInFlight = (async () => {
+      try {
+        console.log(`[AppHealth] Triggering recovery${hint ? ` \u2014 hint: ${hint}` : ""}...`);
+        const result = await cb(hint);
+        if (result.ok) {
+          this.consecutiveFailures = 0;
+          this.lastUnhealthyReason = void 0;
+          this.deepUnhealthy = false;
+          await this.probe("post-recovery");
+          if (!this.healthy) this.markHealthy();
+        } else {
+          console.error(`[AppHealth] Recovery did not restore health: ${result.detail}`);
+        }
+        return result;
+      } catch (err) {
+        const msg = toErrorMessage(err);
+        console.error(`[AppHealth] Recovery threw: ${msg}`);
+        return { ok: false, detail: msg };
+      } finally {
+        this.recoveryInFlight = void 0;
+      }
+    })();
+    return this.recoveryInFlight;
+  }
+};
+
+// src/brightstar.ts
+import { existsSync as existsSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
+import { resolve } from "path";
+var BRIGHT_STAR_FILENAME = "BRIGHT_STAR.md";
+var BRIGHT_STAR_VERSION = 1;
+var DATA_BEGIN = "<!-- BRIGHT_STAR_DATA";
+var DATA_END = "BRIGHT_STAR_DATA -->";
+function brightStarPath(repoPath) {
+  return resolve(repoPath, BRIGHT_STAR_FILENAME);
+}
+function readBrightStar(repoPath) {
+  const path = brightStarPath(repoPath);
+  if (!existsSync2(path)) return null;
+  let content;
+  try {
+    content = readFileSync2(path, "utf-8");
+  } catch {
+    return null;
+  }
+  return parseBrightStar(content);
+}
+function parseBrightStar(content) {
+  const begin = content.indexOf(DATA_BEGIN);
+  const end = content.indexOf(DATA_END);
+  if (begin === -1 || end === -1 || end <= begin) return null;
+  const between = content.slice(begin, end);
+  const fenceMatch = between.match(/```json\s*([\s\S]*?)```/);
+  if (!fenceMatch) return null;
+  try {
+    const parsed = JSON.parse(fenceMatch[1].trim());
+    if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.version !== BRIGHT_STAR_VERSION) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function renderBrightStar(star) {
+  const lines = [];
+  lines.push("# \u{1F31F} Bright Star \u2014 Run Memory");
+  lines.push("");
+  lines.push(
+    "This file is auto-generated by Bright Agent. It records what the agent learned while building, authenticating, and scanning this application so future runs can skip rediscovery. Safe to commit. Delete it to force a full fresh discovery."
+  );
+  lines.push("");
+  lines.push(`_Generated: ${star.generatedAt}_`);
+  if (star.repo) lines.push(`_Repository: ${star.repo}_`);
+  lines.push("");
+  if (star.techStack) {
+    const t = star.techStack;
+    lines.push("## Tech Stack");
+    lines.push("");
+    if (t.languages?.length) lines.push(`- **Languages:** ${t.languages.join(", ")}`);
+    if (t.frameworks?.length) lines.push(`- **Frameworks:** ${t.frameworks.join(", ")}`);
+    if (t.databases?.length) lines.push(`- **Databases:** ${t.databases.join(", ")}`);
+    lines.push("");
+  }
+  if (star.startup) {
+    const s = star.startup;
+    lines.push("## Startup");
+    lines.push("");
+    if (s.command) lines.push(`- **Command:** \`${s.command}\``);
+    if (s.port) lines.push(`- **Port:** ${s.port}`);
+    if (typeof s.docker === "boolean") lines.push(`- **Docker:** ${s.docker ? "yes" : "no"}`);
+    if (s.healthCheckPath) lines.push(`- **Health check path:** \`${s.healthCheckPath}\``);
+    if (s.healthCheckSummary) lines.push(`- **Health response:** ${s.healthCheckSummary}`);
+    if (s.prerequisites?.length) {
+      lines.push("- **Prerequisites:**");
+      for (const p of s.prerequisites) lines.push(`  - \`${p}\``);
+    }
+    if (s.postStartCommands?.length) {
+      lines.push("- **Post-start commands:**");
+      for (const c of s.postStartCommands) lines.push(`  - \`${c}\``);
+    }
+    if (s.envVars && Object.keys(s.envVars).length) {
+      lines.push("- **Environment variables:**");
+      for (const [k, v] of Object.entries(s.envVars)) lines.push(`  - \`${k}=${v}\``);
+    }
+    lines.push("");
+  }
+  if (star.setup) {
+    lines.push("## First-Run Setup");
+    lines.push("");
+    lines.push(`- **Completed:** ${star.setup.completed ? "yes" : "no"}`);
+    if (star.setup.credentials && Object.keys(star.setup.credentials).length) {
+      lines.push("- **Seeded credentials:**");
+      for (const [k, v] of Object.entries(star.setup.credentials)) lines.push(`  - ${k}: \`${v}\``);
+    }
+    for (const n of star.setup.notes ?? []) lines.push(`- ${n}`);
+    lines.push("");
+  }
+  if (star.auth) {
+    const a = star.auth;
+    lines.push("## Authentication");
+    lines.push("");
+    lines.push(`- **Has auth:** ${a.hasAuth ? "yes" : "no"}`);
+    if (a.mechanism) lines.push(`- **Mechanism:** ${a.mechanism}`);
+    if (a.authObjectId) lines.push(`- **Auth object ID:** \`${a.authObjectId}\``);
+    if (a.registration) {
+      lines.push(
+        `- **Login:** \`${a.registration.method} ${a.registration.endpoint}\` (${a.registration.contentType})`
+      );
+    }
+    if (a.seedCommands?.length) {
+      lines.push("- **Seed commands:**");
+      for (const c of a.seedCommands) {
+        lines.push(`  - [${c.type}${c.container ? `:${c.container}` : ""}] \`${c.command}\``);
+      }
+    }
+    for (const h of a.hints ?? []) lines.push(`- _hint:_ ${h}`);
+    lines.push("");
+  }
+  if (star.limits) {
+    lines.push("## Rate Limits / Scan Prep");
+    lines.push("");
+    for (const c of star.limits.scanPrepReplayCommands ?? []) {
+      lines.push(`- [${c.container}] \`${c.command}\``);
+    }
+    for (const n of star.limits.notes ?? []) lines.push(`- ${n}`);
+    lines.push("");
+  }
+  if (star.endpointNotes?.length) {
+    lines.push("## Endpoint Extraction Hints");
+    lines.push("");
+    for (const n of star.endpointNotes) lines.push(`- ${n}`);
+    lines.push("");
+  }
+  if (star.hints && Object.keys(star.hints).length) {
+    lines.push("## Hints");
+    lines.push("");
+    for (const [stage, items] of Object.entries(star.hints)) {
+      if (!items?.length) continue;
+      lines.push(`**${stage}**`);
+      for (const it of items) lines.push(`- ${it}`);
+      lines.push("");
+    }
+  }
+  lines.push("---");
+  lines.push("");
+  lines.push(`${DATA_BEGIN} \u2014 do not edit by hand; regenerated each run -->`);
+  lines.push("```json");
+  lines.push(JSON.stringify(star, null, 2));
+  lines.push("```");
+  lines.push(`<!-- ${DATA_END}`);
+  lines.push("");
+  return lines.join("\n");
+}
+function writeBrightStar(repoPath, star) {
+  const path = brightStarPath(repoPath);
+  writeFileSync2(path, renderBrightStar(star), "utf-8");
+  return path;
+}
+async function assembleBrightStar(input) {
+  const star = {
+    version: BRIGHT_STAR_VERSION,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    repo: input.repo
+  };
+  if (input.techStack) {
+    star.techStack = {
+      languages: input.techStack.languages,
+      frameworks: input.techStack.frameworks,
+      databases: input.techStack.databases
+    };
+  }
+  if (input.startup) {
+    const s = input.startup;
+    star.startup = {
+      command: s.command,
+      port: s.port,
+      prerequisites: s.prerequisites,
+      envVars: s.envVars,
+      docker: s.docker,
+      postStartCommands: s.postStartCommands,
+      healthCheckPath: s.healthCheckPath,
+      healthProbe: s.healthProbe,
+      healthCheckSummary: s.healthCheckSummary
+    };
+  }
+  if (input.setup) star.setup = input.setup;
+  if (input.auth) {
+    const a = input.auth;
+    const auth = {
+      hasAuth: a.hasAuth,
+      mechanism: input.authMechanism,
+      authObjectId: a.authObjectId,
+      registration: a.registration,
+      seedCommands: a.seedCommands,
+      directAuthHeaders: a.directAuthHeaders,
+      hints: a.authHints
+    };
+    if (a.authObjectId && input.api) {
+      try {
+        auth.authObjectJson = await getAuthObject(input.api, a.authObjectId);
+      } catch {
+      }
+    }
+    star.auth = auth;
+  }
+  if (input.scanPrepReplayCommands?.length) {
+    star.limits = { scanPrepReplayCommands: input.scanPrepReplayCommands };
+  }
+  if (input.endpointNotes?.length) star.endpointNotes = input.endpointNotes;
+  if (input.hints?.length) {
+    const byStage = {};
+    for (const { stage, text } of input.hints) {
+      (byStage[stage] ??= []).push(text);
+    }
+    star.hints = byStage;
+  }
+  return star;
+}
+function brightStarToStartupConfig(star) {
+  const s = star?.startup;
+  if (!s || !s.command || !s.port) return null;
+  return {
+    command: s.command,
+    port: s.port,
+    prerequisites: s.prerequisites ?? [],
+    envVars: s.envVars ?? {},
+    docker: s.docker ?? false,
+    postStartCommands: s.postStartCommands,
+    healthCheckPath: s.healthCheckPath,
+    healthProbe: s.healthProbe,
+    healthCheckSummary: s.healthCheckSummary
+  };
+}
+function brightStarAuthHints(star) {
+  const a = star?.auth;
+  if (!a || !a.hasAuth) return [];
+  const hints = [];
+  const reg = a.registration;
+  if (reg) {
+    hints.push(
+      `[auth] Prior run used login: ${reg.method} ${reg.endpoint} (${reg.contentType}) with body ${reg.body}. Reuse this flow if it still works.`
+    );
+  }
+  if (a.mechanism) hints.push(`[auth] Prior run detected auth mechanism: ${a.mechanism}.`);
+  for (const h of a.hints ?? []) hints.push(h.startsWith("[") ? h : `[auth] ${h}`);
+  return hints;
+}
+
+// src/phases/analyze.ts
+import { execFileSync as execFileSync2 } from "child_process";
+import { existsSync as existsSync3, readdirSync as readdirSync2, readFileSync as readFileSync3, statSync } from "fs";
+import { extname, relative, resolve as resolve2 } from "path";
+async function detectTechStack(repoPath, serviceRoot) {
+  const base = await detectTechStackFromFiles(repoPath);
+  if (serviceRoot) {
+    const svcPath = resolve2(repoPath, serviceRoot);
+    if (existsSync3(svcPath)) {
+      const svc = await detectTechStackFromFiles(svcPath);
+      const langs = new Set(base.languages);
+      const fws = new Set(base.frameworks);
+      const dbs = new Set(base.databases);
+      for (const l of svc.languages) langs.add(l);
+      for (const f of svc.frameworks) fws.add(f);
+      for (const d of svc.databases) dbs.add(d);
+      base.languages = [...langs];
+      base.frameworks = [...fws];
+      base.databases = [...dbs];
+    }
+  }
+  return base;
+}
+async function detectTechStackFromFiles(repoPath) {
+  const languages = /* @__PURE__ */ new Set();
+  const frameworks = /* @__PURE__ */ new Set();
+  const databases = /* @__PURE__ */ new Set();
+  const has = (rel) => existsSync3(resolve2(repoPath, rel));
+  const readJson = (rel) => {
+    try {
+      return JSON.parse(readFileSync3(resolve2(repoPath, rel), "utf-8"));
+    } catch {
+      return null;
+    }
+  };
+  if (has("package.json")) {
+    const pkg = readJson("package.json");
+    const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
+    languages.add("JavaScript");
+    if (allDeps?.typescript || has("tsconfig.json")) languages.add("TypeScript");
+    if (allDeps?.express) frameworks.add("Express");
+    if (allDeps?.fastify) frameworks.add("Fastify");
+    if (allDeps?.koa) frameworks.add("Koa");
+    if (allDeps?.hapi || allDeps?.["@hapi/hapi"]) frameworks.add("Hapi");
+    if (allDeps?.next) frameworks.add("Next.js");
+    if (allDeps?.nuxt) frameworks.add("Nuxt");
+    if (allDeps?.["@remix-run/node"] || allDeps?.["@remix-run/react"]) frameworks.add("Remix");
+    if (allDeps?.["@nestjs/core"]) frameworks.add("NestJS");
+    if (allDeps?.mongoose || allDeps?.mongodb) databases.add("MongoDB");
+    if (allDeps?.pg || allDeps?.["pg-promise"]) databases.add("PostgreSQL");
+    if (allDeps?.mysql || allDeps?.mysql2) databases.add("MySQL");
+    if (allDeps?.sequelize) databases.add("SQL (Sequelize)");
+    if (allDeps?.knex) databases.add("SQL (Knex)");
+    if (allDeps?.redis || allDeps?.ioredis) databases.add("Redis");
+    if (allDeps?.sqlite3 || allDeps?.["better-sqlite3"]) databases.add("SQLite");
+    if (allDeps?.typeorm) databases.add("SQL (TypeORM)");
+    if (allDeps?.prisma || allDeps?.["@prisma/client"]) databases.add("SQL (Prisma)");
+  }
+  if (has("requirements.txt") || has("pyproject.toml") || has("setup.py") || has("Pipfile")) {
+    languages.add("Python");
+    const readReqs = () => {
+      for (const f of ["requirements.txt", "Pipfile"]) {
+        try {
+          return readFileSync3(resolve2(repoPath, f), "utf-8").toLowerCase();
+        } catch {
+        }
+      }
+      try {
+        return readFileSync3(resolve2(repoPath, "pyproject.toml"), "utf-8").toLowerCase();
+      } catch {
+        return "";
+      }
+    };
+    const reqs = readReqs();
+    if (reqs.includes("django")) frameworks.add("Django");
+    if (reqs.includes("flask")) frameworks.add("Flask");
+    if (reqs.includes("fastapi")) frameworks.add("FastAPI");
+    if (reqs.includes("sqlalchemy")) databases.add("SQL (SQLAlchemy)");
+    if (reqs.includes("psycopg")) databases.add("PostgreSQL");
+    if (reqs.includes("pymongo")) databases.add("MongoDB");
+  }
+  if (has("Gemfile")) {
+    languages.add("Ruby");
+    try {
+      const gemfile = readFileSync3(resolve2(repoPath, "Gemfile"), "utf-8").toLowerCase();
+      if (gemfile.includes("rails")) frameworks.add("Rails");
+      if (gemfile.includes("sinatra")) frameworks.add("Sinatra");
+      if (gemfile.includes("pg")) databases.add("PostgreSQL");
+      if (gemfile.includes("mysql")) databases.add("MySQL");
+      if (gemfile.includes("mongoid")) databases.add("MongoDB");
+    } catch {
+    }
+  }
+  if (has("pom.xml") || has("build.gradle") || has("build.gradle.kts")) {
+    languages.add("Java");
+    if (has("build.gradle.kts")) languages.add("Kotlin");
+    const readBuild = () => {
+      for (const f of ["pom.xml", "build.gradle", "build.gradle.kts"]) {
+        try {
+          return readFileSync3(resolve2(repoPath, f), "utf-8").toLowerCase();
+        } catch {
+        }
+      }
+      return "";
+    };
+    const build = readBuild();
+    if (build.includes("spring")) frameworks.add("Spring");
+    if (build.includes("quarkus")) frameworks.add("Quarkus");
+    if (build.includes("postgresql") || build.includes("postgres")) databases.add("PostgreSQL");
+    if (build.includes("mysql")) databases.add("MySQL");
+    if (build.includes("mongodb") || build.includes("mongo")) databases.add("MongoDB");
+  }
+  if (has("go.mod")) {
+    languages.add("Go");
+    try {
+      const gomod = readFileSync3(resolve2(repoPath, "go.mod"), "utf-8").toLowerCase();
+      if (gomod.includes("gin-gonic")) frameworks.add("Gin");
+      if (gomod.includes("gorilla/mux")) frameworks.add("Gorilla Mux");
+      if (gomod.includes("fiber")) frameworks.add("Fiber");
+      if (gomod.includes("echo")) frameworks.add("Echo");
+    } catch {
+    }
+  }
+  const csprojFiles = await glob("**/*.{csproj,sln,fsproj}", {
+    cwd: repoPath,
+    nodir: true,
+    maxDepth: 3
+  });
+  if (csprojFiles.length > 0) {
+    languages.add("C#");
+    for (const f of csprojFiles.slice(0, 5)) {
+      try {
+        const content = readFileSync3(resolve2(repoPath, f), "utf-8").toLowerCase();
+        if (content.includes("microsoft.aspnetcore") || content.includes("aspnet"))
+          frameworks.add("ASP.NET");
+        if (content.includes("entityframework")) databases.add("SQL (EF Core)");
+        if (content.includes("npgsql")) databases.add("PostgreSQL");
+        if (content.includes("umbraco")) frameworks.add("Umbraco CMS");
+      } catch {
+      }
+    }
+  }
+  if (has("Cargo.toml")) {
+    languages.add("Rust");
+    try {
+      const cargo = readFileSync3(resolve2(repoPath, "Cargo.toml"), "utf-8").toLowerCase();
+      if (cargo.includes("actix")) frameworks.add("Actix");
+      if (cargo.includes("axum")) frameworks.add("Axum");
+      if (cargo.includes("rocket")) frameworks.add("Rocket");
+    } catch {
+    }
+  }
+  if (has("build.sbt")) {
+    languages.add("Scala");
+    if (!languages.has("Java")) languages.add("Java");
+    try {
+      const sbt = readFileSync3(resolve2(repoPath, "build.sbt"), "utf-8").toLowerCase();
+      if (sbt.includes("play") || sbt.includes("playframework")) frameworks.add("Play Framework");
+      if (sbt.includes("akka-http")) frameworks.add("Akka HTTP");
+      if (sbt.includes("http4s")) frameworks.add("http4s");
+      if (sbt.includes("slick")) databases.add("SQL (Slick)");
+      if (sbt.includes("reactivemongo") || sbt.includes("mongo")) databases.add("MongoDB");
+      if (sbt.includes("postgres")) databases.add("PostgreSQL");
+    } catch {
+    }
+  }
+  if (has("mix.exs")) {
+    languages.add("Elixir");
+    try {
+      const mix = readFileSync3(resolve2(repoPath, "mix.exs"), "utf-8").toLowerCase();
+      if (mix.includes("phoenix")) frameworks.add("Phoenix");
+      if (mix.includes("ecto")) databases.add("SQL (Ecto)");
+    } catch {
+    }
+  }
+  if (has("composer.json")) {
+    languages.add("PHP");
+    const pkg = readJson("composer.json");
+    const allDeps = { ...pkg?.require, ...pkg?.["require-dev"] };
+    if (allDeps?.["laravel/framework"]) frameworks.add("Laravel");
+    if (allDeps?.["symfony/framework-bundle"]) frameworks.add("Symfony");
+  }
+  if (has("docker-compose.yml") || has("docker-compose.yaml") || has("compose.yml") || has("compose.yaml")) {
+    for (const f of ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]) {
+      try {
+        const content = readFileSync3(resolve2(repoPath, f), "utf-8").toLowerCase();
+        if (content.includes("postgres")) databases.add("PostgreSQL");
+        if (content.includes("mysql") || content.includes("mariadb")) databases.add("MySQL");
+        if (content.includes("mongo")) databases.add("MongoDB");
+        if (content.includes("redis")) databases.add("Redis");
+      } catch {
+      }
+    }
+  }
+  if (languages.size === 0) {
+    const extMap = {
+      ".py": "Python",
+      ".rb": "Ruby",
+      ".go": "Go",
+      ".rs": "Rust",
+      ".java": "Java",
+      ".scala": "Scala",
+      ".kt": "Kotlin",
+      ".cs": "C#",
+      ".php": "PHP",
+      ".ts": "TypeScript",
+      ".js": "JavaScript"
+    };
+    const srcFiles = await glob("src/**/*", {
+      cwd: repoPath,
+      nodir: true,
+      maxDepth: 3
+    });
+    for (const f of srcFiles.slice(0, 50)) {
+      const ext = extname(f);
+      if (extMap[ext]) languages.add(extMap[ext]);
+    }
+  }
+  return {
+    languages: [...languages],
+    frameworks: [...frameworks],
+    databases: [...databases],
+    serviceRoot: await selectServiceForTesting(repoPath, [...frameworks])
+  };
+}
+var SKIP_PROJECT_PATTERNS = [
+  /apphost/i,
+  /servicedefaults/i,
+  /aspire/i,
+  /\.tests?$/i,
+  /\.test$/i,
+  /\.spec$/i,
+  /\.e2e$/i,
+  /\.benchmark/i,
+  /\.shared$/i,
+  /\.common$/i,
+  /\.contracts$/i,
+  /migrations/i,
+  /\.cli$/i,
+  /\.tools?$/i,
+  /\.worker$/i,
+  /persistence/i,
+  /\.data$/i,
+  /efcore/i,
+  /entityframework/i,
+  /\.abstractions$/i,
+  /\.core$/i,
+  /\.targets$/i,
+  /\.docs?$/i,
+  /staticassets/i
+];
+var PREFER_PROJECT_PATTERNS = [
+  /api$/i,
+  /\.api$/i,
+  /web$/i,
+  /webapp$/i,
+  /(?:^|\.)server$/i,
+  /gateway$/i,
+  /host$/i,
+  /\.web\./i,
+  /\.web$/i,
+  /\.ui$/i
+];
+async function selectServiceForTesting(repoPath, rootFrameworks) {
+  const monorepoIndicators = [
+    "pnpm-workspace.yaml",
+    "lerna.json",
+    "nx.json",
+    "turbo.json",
+    "rush.json"
+  ];
+  const hasWorkspaceConfig = monorepoIndicators.some((f) => existsSync3(resolve2(repoPath, f)));
+  const csprojFiles = await glob("**/*.csproj", {
+    cwd: repoPath,
+    nodir: true,
+    maxDepth: 4,
+    ignore: ["**/node_modules/**", "**/bin/**", "**/obj/**"]
+  });
+  const csprojDirs = new Set(csprojFiles.map((f) => f.replace(/\/[^/]+$/, "")));
+  const isDotnetMultiProject = csprojDirs.size > 3;
+  const pkgJsonFiles = await glob("*/package.json", {
+    cwd: repoPath,
+    nodir: true
+  });
+  const hasRootGemfile = existsSync3(resolve2(repoPath, "Gemfile"));
+  const hasRootGoMod = existsSync3(resolve2(repoPath, "go.mod"));
+  const isJsMonorepo = !hasRootGemfile && !hasRootGoMod && (hasWorkspaceConfig ? pkgJsonFiles.length > 2 : pkgJsonFiles.length > 3);
+  const goMains = await glob("**/main.go", {
+    cwd: repoPath,
+    nodir: true,
+    maxDepth: 4,
+    ignore: ["**/vendor/**", "**/node_modules/**"]
+  });
+  const isGoMulti = goMains.length > 2;
+  if (!isDotnetMultiProject && !isJsMonorepo && !isGoMulti) {
+    return ".";
+  }
+  console.log("[Analyze] Monorepo detected \u2014 selecting best service for testing");
+  const candidates = [];
+  if (isDotnetMultiProject) {
+    for (const csproj of csprojFiles) {
+      const dir = csproj.replace(/\/[^/]+$/, "");
+      const name = csproj.replace(/\.csproj$/, "").replace(/.*\//, "");
+      const candidate = await scoreCandidate(repoPath, dir, name);
+      candidates.push(candidate);
+    }
+  }
+  if (isJsMonorepo) {
+    const allPkgJsons = await glob("{*/,apps/*/,packages/*/,services/*/}package.json", {
+      cwd: repoPath,
+      nodir: true
+    });
+    for (const pkg of allPkgJsons) {
+      const dir = pkg.replace(/\/package\.json$/, "");
+      const name = dir.replace(/.*\//, "");
+      const candidate = await scoreCandidate(repoPath, dir, name);
+      candidates.push(candidate);
+    }
+  }
+  if (isGoMulti) {
+    for (const mainGo of goMains) {
+      const dir = mainGo.replace(/\/main\.go$/, "");
+      const name = dir.replace(/.*\//, "");
+      const candidate = await scoreCandidate(repoPath, dir, name);
+      candidates.push(candidate);
+    }
+  }
+  if (candidates.length === 0) return ".";
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  if (best.score <= 0) {
+    console.log("[Analyze] No viable web service found in monorepo \u2014 using root");
+    return ".";
+  }
+  console.log(
+    `[Analyze] Selected service: ${best.path} (score: ${best.score}) from ${candidates.length} candidates`
+  );
+  if (candidates.length > 1) {
+    const top3 = candidates.slice(0, 3).map((c) => `${c.path}(${c.score})`).join(", ");
+    console.log(`[Analyze] Top candidates: ${top3}`);
+  }
+  return best.path;
+}
+async function scoreCandidate(repoPath, dir, name) {
+  let score = 0;
+  const absDir = resolve2(repoPath, dir);
+  if (SKIP_PROJECT_PATTERNS.some((p) => p.test(name))) {
+    return { path: dir, name, score: -100 };
+  }
+  const hasDockerfile = existsSync3(resolve2(absDir, "Dockerfile")) || existsSync3(resolve2(absDir, "dockerfile"));
+  const hasDockerfileVariant = !hasDockerfile && (() => {
+    try {
+      return readdirSync2(absDir).some((f) => /^Dockerfile\./i.test(f));
+    } catch {
+      return false;
+    }
+  })();
+  if (hasDockerfile || hasDockerfileVariant) {
+    score += 10;
+  }
+  const entryPoints = [
+    "Program.cs",
+    "Startup.cs",
+    "main.go",
+    "app.py",
+    "manage.py",
+    "main.py",
+    "index.ts",
+    "index.js",
+    "server.ts",
+    "server.js",
+    "app.ts",
+    "app.js"
+  ];
+  if (entryPoints.some((ep) => existsSync3(resolve2(absDir, ep)))) {
+    score += 8;
+  }
+  if (PREFER_PROJECT_PATTERNS.some((p) => p.test(name))) {
+    score += 5;
+  }
+  score += await scoreHttpFramework(absDir);
+  const controllers = await glob(
+    "**/{*controller*,*Controller*,routes*,*handler*}.{ts,js,cs,java,go,py,rb,php}",
+    { cwd: absDir, nodir: true, maxDepth: 4, ignore: GLOB_IGNORE }
+  );
+  if (controllers.length > 0) score += 3;
+  const manifests = [
+    "package.json",
+    "go.mod",
+    "Cargo.toml",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "build.sbt",
+    "mix.exs",
+    "composer.json"
+  ];
+  if (manifests.some((m) => existsSync3(resolve2(absDir, m)))) score += 2;
+  return { path: dir, name, score };
+}
+async function scoreHttpFramework(absDir) {
+  try {
+    const pkg = JSON.parse(readFileSync3(resolve2(absDir, "package.json"), "utf-8"));
+    const allDeps = { ...pkg?.dependencies, ...pkg?.devDependencies };
+    const httpPkgs = ["express", "fastify", "koa", "@hapi/hapi", "@nestjs/core", "next", "nuxt"];
+    if (httpPkgs.some((p) => allDeps?.[p])) return 8;
+  } catch {
+  }
+  const csprojFiles = await glob("*.csproj", {
+    cwd: absDir,
+    nodir: true
+  });
+  for (const f of csprojFiles) {
+    try {
+      const content = readFileSync3(resolve2(absDir, f), "utf-8");
+      const lower = content.toLowerCase();
+      const noComments = content.replace(/<!--[\s\S]*?-->/g, "");
+      if (/sdk\s*=\s*"microsoft\.net\.sdk\.web"/i.test(noComments)) {
+        return 8;
+      }
+      const pkgRefs = content.match(/<PackageReference\s[^>]*Include="[^"]*"/gi) || [];
+      const hasAspNet = pkgRefs.some((ref) => /aspnetcore|aspnet|microsoft\.aspnetcore/i.test(ref));
+      if (hasAspNet) {
+        return 8;
+      }
+    } catch {
+    }
+  }
+  for (const f of ["requirements.txt", "pyproject.toml"]) {
+    try {
+      const content = readFileSync3(resolve2(absDir, f), "utf-8").toLowerCase();
+      if (content.includes("django") || content.includes("flask") || content.includes("fastapi")) {
+        return 8;
+      }
+    } catch {
+    }
+  }
+  try {
+    const gomod = readFileSync3(resolve2(absDir, "go.mod"), "utf-8").toLowerCase();
+    if (gomod.includes("gin-gonic") || gomod.includes("gorilla/mux") || gomod.includes("fiber") || gomod.includes("echo") || gomod.includes("net/http")) {
+      return 8;
+    }
+  } catch {
+  }
+  return 0;
+}
+var CONTROLLER_GLOBS = [
+  // JS / TS — structured directories (use ** prefix so nested dirs like backend/ are found)
+  "src/**/*.controller.{ts,js}",
+  "src/**/routes.{ts,js}",
+  "src/**/router.{ts,js}",
+  "src/**/*.routes.{ts,js}",
+  "**/controllers/**/*.{ts,js}",
+  "**/routes/**/*.{ts,js}",
+  "**/routers/**/*.{ts,js}",
+  "**/express-routers/**/*.{ts,js}",
+  "api/**/*.{ts,js}",
+  // Express/Koa/Fastify apps often define routes directly in entry files
+  "{app,server}.{ts,js}",
+  "src/**/{app,server}.{ts,js}",
+  // JS / TS — file-name conventions (kebab-case and camelCase)
+  "**/*-controller.{ts,js}",
+  "**/*-router.{ts,js}",
+  "**/*-routes.{ts,js}",
+  "**/*Controller.{ts,js}",
+  "**/*Router.{ts,js}",
+  "**/*Routes.{ts,js}",
+  // .NET / C#
+  "**/*Controller.cs",
+  "**/*ApiController.cs",
+  "**/Controllers/**/*.cs",
+  // Java / Kotlin
+  "**/*Controller.java",
+  "**/*Controller.kt",
+  "**/controller/**/*.java",
+  "**/controllers/**/*.java",
+  // Python
+  "**/views.py",
+  "**/routes.py",
+  "**/api.py",
+  "**/endpoints.py",
+  "**/server.py",
+  "**/app.py",
+  "**/main.py",
+  "**/*_views.py",
+  "**/*_routes.py",
+  "**/urls.py",
+  "api/**/*.py",
+  // Ruby
+  "app/controllers/**/*.rb",
+  "config/routes.rb",
+  // Go
+  "**/*handler*.go",
+  "**/*router*.go",
+  "**/api/**/*.go",
+  "**/routes/**/*.go",
+  "**/server/**/*.go",
+  // PHP
+  "**/Controller/**/*.php",
+  "**/Controllers/**/*.php",
+  "routes/**/*.php",
+  // Proto (gRPC-Web endpoints exposed over HTTP)
+  "**/*.proto"
+];
+var GLOB_IGNORE = [
+  "**/node_modules/**",
+  "**/vendor/**",
+  "**/bin/**",
+  "**/obj/**",
+  "**/test/**",
+  "**/tests/**",
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/*_test.go",
+  "**/TestData/**",
+  "**/data/**",
+  "**/.data/**",
+  // Frontend framework directories — these contain client-side controllers/routes,
+  // not backend API endpoints
+  "**/frontend/**",
+  "**/client/**",
+  "**/app/assets/**",
+  "**/assets/javascripts/**",
+  "**/plugins/**/assets/**"
+];
+function endpointSearchScope(repoPath, techStack) {
+  const rawServiceRoot = (techStack.serviceRoot || ".").replace(/\\/g, "/").replace(/^\.\/?/, "").replace(/\/+$/, "");
+  if (!rawServiceRoot || rawServiceRoot === ".") {
+    return { root: repoPath, prefix: "" };
+  }
+  const root = resolve2(repoPath, rawServiceRoot);
+  const rel = relative(repoPath, root);
+  if (rel.startsWith("..") || resolve2(repoPath, rel) !== root) {
+    console.warn(
+      `[Analyze] Ignoring unsafe service root for endpoint discovery: ${techStack.serviceRoot}`
+    );
+    return { root: repoPath, prefix: "" };
+  }
+  try {
+    if (statSync(root).isDirectory()) {
+      return { root, prefix: rel.replace(/\\/g, "/") };
+    }
+  } catch {
+  }
+  console.warn(
+    `[Analyze] Service root ${techStack.serviceRoot} was not found; falling back to repository-wide endpoint discovery`
+  );
+  return { root: repoPath, prefix: "" };
+}
+function toRepoRelative(prefix, filePath) {
+  return prefix ? `${prefix}/${filePath}`.replace(/\/+/g, "/") : filePath;
+}
+async function findControllerFiles(searchRoot, pathPrefix = "") {
+  const files = /* @__PURE__ */ new Set();
+  for (const pattern of CONTROLLER_GLOBS) {
+    for (const f of await glob(pattern, {
+      cwd: searchRoot,
+      nodir: true,
+      ignore: GLOB_IGNORE
+    })) {
+      files.add(toRepoRelative(pathPrefix, f));
+    }
+  }
+  return [...files];
+}
+async function extractFsBasedRoutes(searchRoot, techStack, pathPrefix = "") {
+  const endpoints = [];
+  const isNextJs = techStack.frameworks.some((f) => /next/i.test(f));
+  if (isNextJs) {
+    const pagesApiFiles = await glob("pages/api/**/*.{ts,js,tsx,jsx}", {
+      cwd: searchRoot,
+      nodir: true,
+      ignore: GLOB_IGNORE
+    });
+    for (const f of pagesApiFiles) {
+      const route = "/" + f.replace(/^pages\//, "").replace(/\/index\.\w+$/, "").replace(/\.\w+$/, "").replace(/\[\.\.\.(\w+)\]/g, ":$1*").replace(/\[(\w+)\]/g, ":$1");
+      endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
+    }
+    const appApiFiles = await glob("app/api/**/route.{ts,js,tsx,jsx}", {
+      cwd: searchRoot,
+      nodir: true,
+      ignore: GLOB_IGNORE
+    });
+    for (const f of appApiFiles) {
+      const route = "/" + f.replace(/^app\//, "").replace(/\/route\.\w+$/, "").replace(/\[\.\.\.(\w+)\]/g, ":$1*").replace(/\[(\w+)\]/g, ":$1");
+      try {
+        const content = readFileSync3(resolve2(searchRoot, f), "utf-8");
+        const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"].filter(
+          (m) => new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b`, "i").test(content)
+        );
+        for (const method of methods.length > 0 ? methods : ["GET"]) {
+          endpoints.push({ method, path: route, filePath: toRepoRelative(pathPrefix, f) });
+        }
+      } catch {
+        endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
+      }
+    }
+  }
+  const isRemix = techStack.frameworks.some((f) => /remix/i.test(f));
+  if (isRemix) {
+    const remixFiles = await glob("app/routes/**/*.{ts,tsx,js,jsx}", {
+      cwd: searchRoot,
+      nodir: true,
+      ignore: GLOB_IGNORE
+    });
+    for (const f of remixFiles) {
+      const route = "/" + f.replace(/^app\/routes\//, "").replace(/\.\w+$/, "").replace(/_index$/, "").replace(/\$/g, ":").replace(/\./g, "/").replace(/\/_/, "/");
+      if (route && route !== "/") {
+        endpoints.push({ method: "GET", path: route, filePath: toRepoRelative(pathPrefix, f) });
+      }
+    }
+  }
+  return endpoints;
+}
+async function detectRoutePrefixes(searchRoot, pathPrefix = "") {
+  const prefixMap = /* @__PURE__ */ new Map();
+  const entryFiles = await glob(
+    "{index,app,server,main,src/index,src/app,src/server,src/main}.{ts,js}",
+    { cwd: searchRoot, nodir: true }
+  );
+  for (const f of entryFiles) {
+    let content;
+    try {
+      content = readFileSync3(resolve2(searchRoot, f), "utf-8");
+    } catch {
+      continue;
+    }
+    const useRe = /\.use\(\s*["'`](\/[^"'`]*)["'`]\s*,\s*(?:require\(\s*["'`]([^"'`]+)["'`]\s*\)|(\w+))/g;
+    let m;
+    while ((m = useRe.exec(content)) !== null) {
+      const prefix = m[1];
+      const requirePath = m[2];
+      const varName = m[3];
+      if (requirePath) {
+        const normalized = requirePath.replace(/^\.\//, "").replace(/\.\w+$/, "");
+        prefixMap.set(toRepoRelative(pathPrefix, normalized), prefix);
+      }
+      if (varName) {
+        const importRe = new RegExp(
+          `import\\s+${varName}\\s+from\\s+["'\`]([^"'\`]+)["'\`]|const\\s+${varName}\\s*=\\s*require\\(\\s*["'\`]([^"'\`]+)["'\`]\\s*\\)`
+        );
+        const importMatch = content.match(importRe);
+        if (importMatch) {
+          const importPath = (importMatch[1] ?? importMatch[2]).replace(/^\.\//, "").replace(/\.\w+$/, "");
+          prefixMap.set(toRepoRelative(pathPrefix, importPath), prefix);
+        }
+      }
+    }
+  }
+  return prefixMap;
+}
+function findPrefixForFile(filePath, prefixMap) {
+  const normalized = filePath.replace(/\.\w+$/, "");
+  if (prefixMap.has(normalized)) return prefixMap.get(normalized);
+  for (const [key, prefix] of prefixMap) {
+    if (normalized.endsWith(key) || key.endsWith(normalized.split("/").pop())) {
+      return prefix;
+    }
+  }
+  return "";
+}
+function extractEndpointsFromFile(content, filePath) {
+  const endpoints = [];
+  const ext = extname(filePath).toLowerCase();
+  if (ext === ".ts" || ext === ".js") {
+    const jsRouteRe = /\b(?:router|app|server|route)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*["'`]([^"'`]+)["'`]/gi;
+    let m;
+    while ((m = jsRouteRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const looksLikeExpressApp = /\bfrom\s+["']express["']/.test(content) || /\brequire\(\s*["']express["']\s*\)/.test(content) || /\bexpress\s*\(/.test(content);
+    if (looksLikeExpressApp) {
+      const expressInstanceRouteRe = /(?:\b\w+|this\.\w+)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*["'`](\/[^"'`]*)["'`]/gi;
+      while ((m = expressInstanceRouteRe.exec(content)) !== null) {
+        endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+      }
+    }
+    const fastifyRouteRe = /\.route\s*\(\s*\{[^}]*?method\s*:\s*["'`](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)["'`]\s*,[^}]*?url\s*:\s*["'`]([^"'`]+)["'`]/gi;
+    while ((m = fastifyRouteRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const fastifyRouteRevRe = /\.route\s*\(\s*\{[^}]*?url\s*:\s*["'`]([^"'`]+)["'`]\s*,[^}]*?method\s*:\s*["'`](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)["'`]/gi;
+    while ((m = fastifyRouteRevRe.exec(content)) !== null) {
+      endpoints.push({ method: m[2].toUpperCase(), path: m[1], filePath });
+    }
+    const controllerMatch = content.match(/@Controller\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/);
+    const nestPrefix = controllerMatch?.[1] ? controllerMatch[1].startsWith("/") ? controllerMatch[1] : "/" + controllerMatch[1] : "";
+    if (/@Crud\s*\(/.test(content) && nestPrefix) {
+      for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
+        const crudPath = method === "GET" || method === "DELETE" || method === "PUT" || method === "PATCH" ? `${nestPrefix}/:id` : nestPrefix;
+        endpoints.push({ method, path: crudPath, filePath });
+      }
+      endpoints.push({ method: "GET", path: nestPrefix, filePath });
+    }
+    const nestRe = /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)/gi;
+    while ((m = nestRe.exec(content)) !== null) {
+      const subPath = m[2];
+      const fullPath = nestPrefix && subPath ? `${nestPrefix}/${subPath.replace(/^\//, "")}` : nestPrefix + (subPath.startsWith("/") ? subPath : `/${subPath}`);
+      endpoints.push({ method: m[1].toUpperCase(), path: fullPath || "/", filePath });
+    }
+    const nestNoPathRe = /@(Get|Post|Put|Patch|Delete)\s*\(\s*\)/gi;
+    while ((m = nestNoPathRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: nestPrefix || "/", filePath });
+    }
+    const grpcMethodRe = /@GrpcMethod\s*\(\s*["'`](\w+)["'`]\s*,\s*["'`](\w+)["'`]\s*\)/gi;
+    while ((m = grpcMethodRe.exec(content)) !== null) {
+      const service = m[1];
+      const method = m[2];
+      endpoints.push({
+        method: "POST",
+        path: `/grpc/${service}/${method}`,
+        filePath,
+        contentType: "application/grpc-web+proto",
+        headers: { "x-grpc-web": ["1"] }
+      });
+    }
+  }
+  if (ext === ".cs") {
+    const classRouteMatch = content.match(/\[Route\(\s*"([^"]+)"\s*\)\]/);
+    let routePrefix = classRouteMatch?.[1] ?? "";
+    const classNameMatch = content.match(/class\s+(\w+?)(?:Controller)\b/);
+    if (classNameMatch) {
+      routePrefix = routePrefix.replace(/\[controller\]/gi, classNameMatch[1].toLowerCase());
+    }
+    if (routePrefix && !routePrefix.startsWith("/")) routePrefix = "/" + routePrefix;
+    const csMethodRe = /\[(Http(Get|Post|Put|Patch|Delete|Head|Options))(?:\(\s*"([^"]*)")?\s*\)?\]/gi;
+    let m;
+    while ((m = csMethodRe.exec(content)) !== null) {
+      const method = m[2].toUpperCase();
+      const subPath = m[3] ?? "";
+      let fullPath = routePrefix;
+      if (subPath) {
+        fullPath = fullPath ? `${fullPath}/${subPath}` : `/${subPath}`;
+      }
+      if (!fullPath) fullPath = "/";
+      fullPath = fullPath.replace(/\{(\w+)(?::[^}]*)?\}/g, ":$1");
+      endpoints.push({ method, path: fullPath, filePath });
+    }
+  }
+  if (ext === ".java" || ext === ".kt") {
+    const springRe = /@(Get|Post|Put|Patch|Delete)Mapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']/gi;
+    let m;
+    while ((m = springRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const reqMapRe = /@RequestMapping\s*\([^)]*value\s*=\s*"([^"]+)"[^)]*method\s*=\s*RequestMethod\.(\w+)/gi;
+    while ((m = reqMapRe.exec(content)) !== null) {
+      endpoints.push({ method: m[2].toUpperCase(), path: m[1], filePath });
+    }
+  }
+  if (ext === ".py") {
+    const flaskRe = /@\w+\.route\(\s*["']([^"']+)["'](?:\s*,\s*methods\s*=\s*\[([^\]]+)\])?\s*\)/gi;
+    let m;
+    while ((m = flaskRe.exec(content)) !== null) {
+      const path = m[1];
+      const methods = m[2] ? m[2].replace(/["'\s]/g, "").split(",") : ["GET"];
+      for (const method of methods) {
+        endpoints.push({ method: method.toUpperCase(), path, filePath });
+      }
+    }
+    const fastapiRe = /@\w+\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi;
+    while ((m = fastapiRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const djangoRe = /path\(\s*["']([^"']+)["']/gi;
+    while ((m = djangoRe.exec(content)) !== null) {
+      endpoints.push({
+        method: "GET",
+        path: m[1].startsWith("/") ? m[1] : "/" + m[1],
+        filePath
+      });
+    }
+    const djangoRePathRe = /(?:re_path|url)\(\s*r?["'](?:\^)?([^"']+?)(?:\$)?["']/gi;
+    while ((m = djangoRePathRe.exec(content)) !== null) {
+      let p = m[1];
+      p = p.replace(/^\^/, "").replace(/\$$/, "");
+      if (!p.startsWith("/")) p = "/" + p;
+      endpoints.push({ method: "GET", path: p, filePath });
+    }
+  }
+  if (ext === ".go") {
+    const goRe = /\.\s*(Get|Post|Put|Patch|Delete|Head|Options|GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\(\s*"([^"]+)"/gi;
+    let m;
+    while ((m = goRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+    const handleRe = /(?:HandleFunc|Handle)\(\s*"([^"]+)"/gi;
+    while ((m = handleRe.exec(content)) !== null) {
+      if (/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\//i.test(m[1])) {
+        continue;
+      }
+      endpoints.push({ method: "GET", path: m[1], filePath });
+    }
+    const muxMethodRe = /(?:HandleFunc|Handle)\(\s*"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+([^"]+)"/gi;
+    while ((m = muxMethodRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+  }
+  if (ext === ".php") {
+    const phpRe = /Route::(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi;
+    let m;
+    while ((m = phpRe.exec(content)) !== null) {
+      endpoints.push({ method: m[1].toUpperCase(), path: m[2], filePath });
+    }
+  }
+  if (ext === ".rb") {
+    const railsRe = /\b(get|post|put|patch|delete)\s+["']([^"']+)["']/gi;
+    let m;
+    while ((m = railsRe.exec(content)) !== null) {
+      const routePath = m[2];
+      if (routePath.includes("#{")) continue;
+      endpoints.push({ method: m[1].toUpperCase(), path: routePath, filePath });
+    }
+    const lines = content.split("\n");
+    const prefixStack = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const nsMatch = trimmed.match(/^\s*namespace\s+[:"'](\w+)/);
+      if (nsMatch) {
+        prefixStack.push(`/${nsMatch[1]}`);
+        continue;
+      }
+      const scopeMatch = trimmed.match(/^\s*scope\s+["']([^"']+)["']/);
+      if (scopeMatch) {
+        prefixStack.push(scopeMatch[1].startsWith("/") ? scopeMatch[1] : `/${scopeMatch[1]}`);
+        continue;
+      }
+      if (/^\s*end\b/.test(trimmed) && prefixStack.length > 0) {
+        prefixStack.pop();
+        continue;
+      }
+      const resMatch = trimmed.match(/^\s*(resources?)\s+:(\w+)(.*)$/);
+      if (resMatch) {
+        const keyword = resMatch[1];
+        const name = resMatch[2];
+        const rest = resMatch[3];
+        const isSingular = keyword === "resource";
+        const prefix = prefixStack.join("") + `/${name}`;
+        const pluralActions = {
+          index: [{ method: "GET", suffix: "" }],
+          create: [{ method: "POST", suffix: "" }],
+          new: [{ method: "GET", suffix: "/new" }],
+          show: [{ method: "GET", suffix: "/:id" }],
+          edit: [{ method: "GET", suffix: "/:id/edit" }],
+          update: [
+            { method: "PUT", suffix: "/:id" },
+            { method: "PATCH", suffix: "/:id" }
+          ],
+          destroy: [{ method: "DELETE", suffix: "/:id" }]
+        };
+        const singularActions = {
+          create: [{ method: "POST", suffix: "" }],
+          new: [{ method: "GET", suffix: "/new" }],
+          show: [{ method: "GET", suffix: "" }],
+          edit: [{ method: "GET", suffix: "/edit" }],
+          update: [
+            { method: "PUT", suffix: "" },
+            { method: "PATCH", suffix: "" }
+          ],
+          destroy: [{ method: "DELETE", suffix: "" }]
+        };
+        const actionMap = isSingular ? singularActions : pluralActions;
+        const allActions = Object.keys(actionMap);
+        const parseActionList = (raw) => {
+          const r = raw.trim();
+          let m2 = r.match(/^%i\[\s*([^\]]+)\]/);
+          if (m2) return m2[1].split(/\s+/).filter(Boolean);
+          m2 = r.match(/^\[\s*([^\]]+)\]/);
+          if (m2)
+            return m2[1].split(",").map((s) => s.trim().replace(/^:/, "")).filter(Boolean);
+          m2 = r.match(/^:(\w+)/);
+          if (m2) return [m2[1]];
+          return [];
+        };
+        let activeActions = allActions;
+        const onlyMatch = rest.match(/\bonly:\s*(.*)$/);
+        const exceptMatch = rest.match(/\bexcept:\s*(.*)$/);
+        if (onlyMatch) {
+          const allowed = new Set(parseActionList(onlyMatch[1]));
+          if (allowed.size > 0) activeActions = allActions.filter((a) => allowed.has(a));
+        } else if (exceptMatch) {
+          const blocked = new Set(parseActionList(exceptMatch[1]));
+          if (blocked.size > 0) activeActions = allActions.filter((a) => !blocked.has(a));
+        }
+        for (const action of activeActions) {
+          for (const { method, suffix } of actionMap[action] ?? []) {
+            endpoints.push({ method, path: `${prefix}${suffix}`, filePath });
+          }
+        }
+      }
+    }
+  }
+  if (ext === ".proto") {
+    const pkgMatch = content.match(/^package\s+([\w.]+)\s*;/m);
+    const pkg = pkgMatch?.[1] ?? "";
+    const serviceRe = /service\s+(\w+)\s*\{([^}]*)}/gs;
+    let svc;
+    while ((svc = serviceRe.exec(content)) !== null) {
+      const serviceName = svc[1];
+      const serviceBody = svc[2];
+      const rpcRe = /rpc\s+(\w+)\s*\(/g;
+      let rpc;
+      while ((rpc = rpcRe.exec(serviceBody)) !== null) {
+        const prefix = pkg ? `${pkg}.${serviceName}` : serviceName;
+        endpoints.push({
+          method: "POST",
+          path: `/grpc/${prefix}/${rpc[1]}`,
+          filePath,
+          contentType: "application/grpc-web+proto",
+          headers: { "x-grpc-web": ["1"] }
+        });
+      }
+    }
+  }
+  return endpoints;
+}
+function extractParamsFromCode(content, endpoint) {
+  const ext = extname(endpoint.filePath).toLowerCase();
+  if (ext === ".cs") {
+    const queryParams = [];
+    const fromQueryRe = /\[FromQuery(?:\(Name\s*=\s*"(\w+)")?\)?\]\s*\w+\s+(\w+)/g;
+    let m;
+    while ((m = fromQueryRe.exec(content)) !== null) {
+      const name = m[1] ?? m[2];
+      queryParams.push({ name, value: "test" });
+    }
+    return queryParams.length > 0 ? { queryParams } : null;
+  }
+  if (ext === ".ts" || ext === ".js") {
+    const seen = /* @__PURE__ */ new Set();
+    const queryParams = [];
+    const examples = extractApiQueryExamples(content);
+    const seedFor = (name) => examples.get(name) ?? "test";
+    const add = (name) => {
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        queryParams.push({ name, value: seedFor(name) });
+      }
+    };
+    const expressRe = /req\.query\.(\w+)|req\.query\["(\w+)"\]/g;
+    let m;
+    while ((m = expressRe.exec(content)) !== null) {
+      add(m[1] ?? m[2]);
+    }
+    const nestQueryRe = /@Query\(\s*['"`](\w+)['"`]\s*\)/g;
+    while ((m = nestQueryRe.exec(content)) !== null) {
+      add(m[1]);
+    }
+    return queryParams.length > 0 ? { queryParams } : null;
+  }
+  return null;
+}
+function extractApiQueryExamples(content) {
+  const map = /* @__PURE__ */ new Map();
+  const blockRe = /@ApiQuery\(\s*\{([\s\S]*?)\}\s*\)/g;
+  let block;
+  while ((block = blockRe.exec(content)) !== null) {
+    const body = block[1];
+    const nameM = body.match(/name\s*:\s*['"`]([^'"`]+)['"`]/);
+    const exampleM = body.match(/example\s*:\s*['"`]([^'"`]+)['"`]/);
+    if (nameM && exampleM) {
+      map.set(nameM[1], exampleM[1]);
+    }
+  }
+  return map;
+}
+var _unnamedCounter = 0;
+function normalizePathParams(path) {
+  _unnamedCounter = 0;
+  return path.replace(/\(\?P<(\w+)>[^)]*\)/g, (_m, name) => `{${name}}`).replace(/\(<(\w+)>[^)]*\)/g, (_m, name) => `{${name}}`).replace(/<\w+:(\w+)>/g, (_m, name) => `{${name}}`).replace(/<(\w+)>/g, (_m, name) => `{${name}}`).replace(/\([^?][^)]*\)/g, () => `{id${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`).replace(
+    /(?<=\/)\[?\^?[/\\dws.*+]+\]?\+?(?=\/|$)/g,
+    () => `{param${++_unnamedCounter > 1 ? _unnamedCounter : ""}}`
+  ).replace(/[\^$]/g, "").replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+}
+var HTTP_METHOD_PREFIX_RE = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(.+)$/i;
+function normalizeEndpointMethodAndPath(ep) {
+  const path = ep.path.trim();
+  const methodInPath = path.match(HTTP_METHOD_PREFIX_RE);
+  if (methodInPath) {
+    ep.method = methodInPath[1].toUpperCase();
+    ep.path = methodInPath[2].trim() || "/";
+    return;
+  }
+  ep.path = path;
+}
+function extractSnippet(content, anchor, contextLines = 30) {
+  const lines = content.split("\n");
+  const regions = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(anchor)) {
+      const start = Math.max(0, i - 5);
+      const end = Math.min(lines.length - 1, i + contextLines);
+      regions.push([start, end]);
+    }
+  }
+  if (regions.length === 0) {
+    const end = Math.min(lines.length - 1, contextLines * 2);
+    regions.push([0, end]);
+  }
+  const merged = [];
+  for (const [s, e] of regions.sort((a, b) => a[0] - b[0])) {
+    const last = merged[merged.length - 1];
+    if (last && s <= last[1] + 1) {
+      last[1] = Math.max(last[1], e);
+    } else {
+      merged.push([s, e]);
+    }
+  }
+  const parts = [];
+  for (const [s, e] of merged) {
+    if (parts.length > 0) parts.push("...");
+    for (let i = s; i <= e; i++) {
+      parts.push(`${i + 1}: ${lines[i]}`);
+    }
+  }
+  return parts.join("\n");
+}
+var bodyExtractionTools = [
+  {
+    type: "function",
+    function: {
+      name: "read_lines",
+      description: "Read specific line range from a file. Use this to inspect DTO/model classes, request schemas, or other referenced types.",
+      parameters: {
+        type: "object",
+        properties: {
+          file: { type: "string", description: "Relative file path" },
+          start_line: {
+            type: "number",
+            description: "Start line number (1-based)"
+          },
+          end_line: {
+            type: "number",
+            description: "End line number (1-based, inclusive)"
+          }
+        },
+        required: ["file", "start_line", "end_line"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_type",
+      description: "Search for a class, interface, struct, or type definition by name across the codebase. Returns a snippet of the definition.",
+      parameters: {
+        type: "object",
+        properties: {
+          type_name: {
+            type: "string",
+            description: "The class/interface/struct name to find"
+          }
+        },
+        required: ["type_name"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "grep_code",
+      description: "Search for a text pattern across source files using grep. Returns matching lines with file paths and line numbers. Use to find where a DTO is used, how a field is set, or locate related code.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search string (fixed text)" },
+          glob: {
+            type: "string",
+            description: 'Optional glob to restrict search (e.g. "*.cs", "*.ts")'
+          }
+        },
+        required: ["query"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_result",
+      description: "Save your final JSON result. You MUST call this tool with the complete JSON array as the result parameter. Do not return JSON in your text response \u2014 always use this tool.",
+      parameters: {
+        type: "object",
+        properties: {
+          result: {
+            type: "array",
+            description: "The JSON array of endpoint param objects",
+            items: {
+              type: "object",
+              properties: {
+                index: { type: "number", description: "Endpoint index from the list" },
+                body: { type: "string", description: "Request body JSON or empty" },
+                contentType: { type: "string" },
+                queryParams: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      value: { type: "string" }
+                    }
+                  }
+                },
+                pathParams: { type: "object" }
+              }
+            }
+          }
+        },
+        required: ["result"]
+      }
+    }
+  }
+];
+var saveResultTool = bodyExtractionTools[3];
+var PARAM_EXTRACTION_BATCH_SIZE = 5;
+var PARAM_EXTRACTION_MAX_TURNS = 12;
+var PARAM_EXTRACTION_RETRY_TURNS = 3;
+function parseParamExtractionResponse(response) {
+  const trimmed = response.trim();
+  if (!trimmed || !/[[{]/.test(trimmed)) {
+    return void 0;
+  }
+  const json = extractJson(trimmed).trim();
+  if (!json || !/^[[{]/.test(json)) {
+    return void 0;
+  }
+  const parsed = parseJsonLenient(json);
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+  if (parsed && typeof parsed === "object" && Array.isArray(parsed.endpoints)) {
+    return parsed.endpoints;
+  }
+  return parsed && typeof parsed === "object" ? [parsed] : void 0;
+}
+function responseSnippet(response) {
+  const normalized = response.replace(/\s+/g, " ").trim();
+  return normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
+}
+function createBodyExtractionToolHandler(repoPath) {
+  return async (name, args) => {
+    if (name === "read_lines") {
+      const file = String(args.file ?? "");
+      const startLine = Number(args.start_line ?? 1);
+      const endLine = Number(args.end_line ?? startLine + 50);
+      try {
+        const fullPath = resolve2(repoPath, file);
+        const content = readFileSync3(fullPath, "utf-8");
+        const lines = content.split("\n");
+        const s = Math.max(0, startLine - 1);
+        const e = Math.min(lines.length, endLine);
+        return lines.slice(s, e).map((l, i) => `${s + i + 1}: ${l}`).join("\n");
+      } catch {
+        return `Error: could not read ${file}`;
+      }
+    }
+    if (name === "find_type") {
+      const typeName = String(args.type_name ?? "");
+      if (!typeName) return "Error: type_name is required";
+      const exts = ["cs", "ts", "js", "java", "kt", "py"];
+      const pattern = `**/*.{${exts.join(",")}}`;
+      const files = await glob(pattern, {
+        cwd: repoPath,
+        nodir: true,
+        ignore: ["**/node_modules/**", "**/vendor/**", "**/bin/**", "**/obj/**"]
+      });
+      const typeRe = new RegExp(`\\b(?:class|interface|struct|type|record|enum)\\s+${typeName}\\b`);
+      for (const f of files) {
+        try {
+          const content = readFileSync3(resolve2(repoPath, f), "utf-8");
+          const match = typeRe.exec(content);
+          if (match) {
+            const lines = content.split("\n");
+            const lineIdx = content.substring(0, match.index).split("\n").length - 1;
+            const start = Math.max(0, lineIdx - 2);
+            const end = Math.min(lines.length, lineIdx + 40);
+            const snippet = lines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join("\n");
+            return `Found in ${f}:
+${snippet}`;
+          }
+        } catch {
+        }
+      }
+      return `Type "${typeName}" not found in codebase`;
+    }
+    if (name === "grep_code") {
+      const query = String(args.query ?? "");
+      if (!query) return "Error: query is required";
+      const fileGlob = args.glob ? String(args.glob) : void 0;
+      try {
+        const grepArgs = [
+          "-rn",
+          "--binary-files=without-match",
+          "--include",
+          fileGlob ?? "*",
+          "--exclude-dir=node_modules",
+          "--exclude-dir=.git",
+          "--exclude-dir=dist",
+          "--exclude-dir=bin",
+          "--exclude-dir=obj",
+          "--exclude-dir=vendor",
+          "--exclude-dir=data",
+          "--exclude-dir=.data",
+          "-F",
+          "--",
+          query,
+          "."
+        ];
+        const output = execFileSync2("grep", grepArgs, {
+          cwd: repoPath,
+          encoding: "utf-8",
+          maxBuffer: 512 * 1024,
+          timeout: 1e4
+        });
+        const lines = output.trim().split("\n");
+        if (lines.length > 30) {
+          return lines.slice(0, 30).join("\n") + `
+... (${lines.length} matches total)`;
+        }
+        return lines.join("\n");
+      } catch {
+        return "No matches found.";
+      }
+    }
+    if (name === "save_result") {
+      return "Result saved.";
+    }
+    return `Unknown tool: ${name}`;
+  };
+}
+var endpointDiscoveryTools = [
+  bodyExtractionTools[0],
+  // read_lines
+  bodyExtractionTools[2]
+  // grep_code
+];
+async function extractEndpointsViaLlm(llm, repoPath, files, handleTool, model) {
+  const results = [];
+  for (const filePath of files) {
+    const fullPath = resolve2(repoPath, filePath);
+    let content;
+    try {
+      content = readFileSync3(fullPath, "utf-8");
+    } catch {
+      continue;
+    }
+    const lines = content.split("\n");
+    const snippet = lines.slice(0, Math.min(lines.length, 80)).map((l, i) => `${i + 1}: ${l}`).join("\n");
+    const truncated = lines.length > 80 ? ` (showing first 80 of ${lines.length} lines)` : "";
+    console.log(`[Analyze] LLM endpoint discovery: ${filePath}${truncated}`);
+    const messages = [
+      {
+        role: "system",
+        content: `You are an API route analyst. Given source code from a controller/route file, identify all HTTP endpoints it registers or calls.
+
+Look for:
+- Direct route registrations (app.get, router.post, etc.)
+- Helper functions that register routes (registerRoutes, addCrudRoutes, etc.) \u2014 follow them with grep_code if needed
+- Route configuration objects, arrays, or maps
+- Django url() and re_path() patterns in urls.py files
+- Frontend fetch/axios/xhr calls that indicate API endpoints exist
+
+IMPORTANT: Convert path parameters to {param} format. Do NOT return raw regex.
+- Django (?P<sid>\\d+) \u2192 {sid}
+- Express :id \u2192 {id}
+- Flask <int:pk> \u2192 {pk}
+
+IMPORTANT: If URLs are constructed using a variable prefix (e.g. \`API + "/users"\`, \`BASE_URL + path\`), use grep_code to find the value of that variable in the same file or other files. Always return the FULL resolved path (e.g. "/api/users", not just "/users").
+
+You have tools:
+- read_lines: read more of this or other files
+- grep_code: search the codebase for function definitions, route registrations, etc.
+
+Return ONLY a JSON array of endpoints:
+[{"method": "GET", "path": "/api/users"}, {"method": "POST", "path": "/api/users/{id}"}]
+
+If no HTTP endpoints are found, return an empty array: []`
+      },
+      {
+        role: "user",
+        content: `File: ${filePath}${truncated}
+
+\`\`\`
+${snippet}
+\`\`\`
+
+Find all HTTP endpoints registered in this file. If routes are registered via helper functions, use grep_code to find their definitions.`
+      }
+    ];
+    try {
+      const response = await chatWithTools(
+        llm,
+        messages,
+        endpointDiscoveryTools,
+        handleTool,
+        model,
+        5
+      );
+      const parsed = parseJsonLenient(extractJson(response));
+      const eps = Array.isArray(parsed) ? parsed : Array.isArray(parsed.endpoints) ? parsed.endpoints : [];
+      for (const ep of eps) {
+        if (ep.method && ep.path) {
+          results.push({
+            method: String(ep.method).toUpperCase(),
+            path: String(ep.path),
+            filePath
+          });
+        }
+      }
+      if (eps.length > 0) {
+        console.log(`[Analyze] LLM found ${eps.length} endpoint(s) in ${filePath}`);
+      }
+    } catch (err) {
+      console.warn(`[Analyze] LLM fallback failed for ${filePath}: ${err}`);
+    }
+  }
+  return results;
+}
+async function checkForMissedRouteFiles(llm, repoPath, searchRoot, pathPrefix, alreadyScannedFiles, existingEndpoints, model) {
+  const sourceExts = /* @__PURE__ */ new Set([
+    ".ts",
+    ".js",
+    ".py",
+    ".rb",
+    ".go",
+    ".java",
+    ".kt",
+    ".cs",
+    ".php",
+    ".tsx",
+    ".jsx",
+    ".mjs",
+    ".cjs"
+  ]);
+  const ignoreDirs = /* @__PURE__ */ new Set([
+    "node_modules",
+    ".git",
+    "vendor",
+    "dist",
+    "build",
+    "__pycache__",
+    ".next",
+    "coverage",
+    "tmp",
+    ".cache",
+    "venv",
+    "env"
+  ]);
+  const tree = [];
+  function walkDir(dir, prefix, depth) {
+    if (depth > 4 || tree.length >= 200) return;
+    let entries;
+    try {
+      entries = readdirSync2(resolve2(searchRoot, dir));
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort()) {
+      if (entry.startsWith(".") || ignoreDirs.has(entry)) continue;
+      const rel = dir ? `${dir}/${entry}` : entry;
+      const fullPath = resolve2(searchRoot, rel);
+      let isDir = false;
+      try {
+        isDir = statSync(fullPath).isDirectory();
+      } catch {
+        continue;
+      }
+      if (isDir) {
+        tree.push(rel + "/");
+        walkDir(rel, prefix + "  ", depth + 1);
+      } else {
+        const ext = extname(entry).toLowerCase();
+        if (sourceExts.has(ext)) {
+          tree.push(toRepoRelative(pathPrefix, rel));
+        }
+      }
+    }
+  }
+  walkDir("", "", 0);
+  if (tree.length === 0) return [];
+  const scannedSet = new Set(alreadyScannedFiles);
+  const foundRoutes = existingEndpoints.slice(0, 40).map((ep) => `${ep.method} ${ep.path}`).join("\n");
+  const handleTool = createBodyExtractionToolHandler(repoPath);
+  const messages = [
+    {
+      role: "system",
+      content: `You are verifying endpoint discovery completeness. We already found these endpoints:
+
+${foundRoutes || "(none yet)"}
+
+From these files: ${alreadyScannedFiles.slice(0, 30).join(", ")}
+
+Below is the ${pathPrefix ? `selected service (${pathPrefix})` : "project"} file tree. Your job: identify any source files in that tree that likely define HTTP routes/endpoints but were NOT in our scanned list.
+
+Look for files that:
+- Import/use HTTP frameworks (Flask, Express, Gin, Echo, Spring, etc.)
+- Have "route", "endpoint", "handler", "api" in their name or content
+- Are Python/JS/Go/Java/etc. files at the root or in api/ server/ backend/ directories
+
+Use grep_code to check suspicious files for route patterns (e.g. "@app.route", "router.get", "http.HandleFunc", "app.get(", "RequestMapping", etc.)
+
+Then use read_lines to extract the actual endpoints from any files that do define routes.
+
+Return ONLY a JSON array of newly discovered endpoints (NOT ones already listed above):
+[{"method": "GET", "path": "/api/example", "filePath": "relative/path.py"}]
+
+If nothing was missed, return: []`
+    },
+    {
+      role: "user",
+      content: `${pathPrefix ? `Selected service root: ${pathPrefix}
+
+` : ""}Project file tree (${tree.length} source files):
+${tree.join("\n")}
+
+Which of these files might define HTTP endpoints that we haven't scanned yet? Check with grep_code and extract any missed routes.`
+    }
+  ];
+  try {
+    const response = await chatWithTools(
+      llm,
+      messages,
+      endpointDiscoveryTools,
+      handleTool,
+      model,
+      5
+    );
+    const parsed = parseJsonLenient(extractJson(response));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (ep) => ep.method && ep.path && !scannedSet.has(ep.filePath ?? "")
+    ).map((ep) => ({
+      method: ep.method.toUpperCase(),
+      path: ep.path,
+      filePath: ep.filePath ?? "unknown"
+    }));
+  } catch (err) {
+    console.warn(`[Analyze] Completeness check failed: ${err}`);
+    return [];
+  }
+}
+async function discoverEndpoints(llm, repoPath, techStack, model) {
+  const scope = endpointSearchScope(repoPath, techStack);
+  if (scope.prefix) {
+    console.log(`[Analyze] Endpoint discovery scoped to selected service: ${scope.prefix}`);
+  }
+  const controllerFiles = await findControllerFiles(scope.root, scope.prefix);
+  console.log(`[Analyze] Found ${controllerFiles.length} controller files via glob`);
+  const allEndpoints = [];
+  const noMatchFiles = [];
+  for (const filePath of controllerFiles) {
+    const fullPath = resolve2(repoPath, filePath);
+    let content;
+    try {
+      content = readFileSync3(fullPath, "utf-8");
+    } catch {
+      continue;
+    }
+    const eps = extractEndpointsFromFile(content, filePath);
+    if (eps.length > 0) {
+      allEndpoints.push(...eps);
+    } else {
+      noMatchFiles.push(filePath);
+    }
+  }
+  const fsRoutes = await extractFsBasedRoutes(scope.root, techStack, scope.prefix);
+  if (fsRoutes.length > 0) {
+    console.log(`[Analyze] Extracted ${fsRoutes.length} endpoints from file-system routes`);
+    allEndpoints.push(...fsRoutes);
+  }
+  const prefixMap = await detectRoutePrefixes(scope.root, scope.prefix);
+  if (prefixMap.size > 0) {
+    console.log(
+      `[Analyze] Detected ${prefixMap.size} route prefix mount(s): ${[...prefixMap.entries()].map(([k, v]) => `${v} \u2192 ${k}`).join(", ")}`
+    );
+    for (const ep of allEndpoints) {
+      const prefix = findPrefixForFile(ep.filePath, prefixMap);
+      if (prefix && !ep.path.startsWith(prefix)) {
+        ep.path = prefix.replace(/\/$/, "") + (ep.path.startsWith("/") ? ep.path : "/" + ep.path);
+      }
+    }
+  }
+  const llmCandidates = noMatchFiles.filter((f) => !/\bapp\/controllers\/.*\.rb$/.test(f));
+  if (noMatchFiles.length > llmCandidates.length) {
+    console.log(
+      `[Analyze] Skipping ${noMatchFiles.length - llmCandidates.length} Rails controller file(s) \u2014 routes are in config/routes.rb`
+    );
+  }
+  if (llmCandidates.length > 0) {
+    console.log(
+      `[Analyze] ${llmCandidates.length} controller file(s) had no regex matches \u2014 using LLM fallback`
+    );
+    const handleTool2 = createBodyExtractionToolHandler(repoPath);
+    const llmEndpoints = await extractEndpointsViaLlm(
+      llm,
+      repoPath,
+      llmCandidates,
+      handleTool2,
+      model
+    );
+    for (const ep of llmEndpoints) {
+      const prefix = findPrefixForFile(ep.filePath, prefixMap);
+      if (prefix && !ep.path.startsWith(prefix)) {
+        ep.path = prefix.replace(/\/$/, "") + (ep.path.startsWith("/") ? ep.path : "/" + ep.path);
+      }
+    }
+    allEndpoints.push(...llmEndpoints);
+  }
+  const missedEndpoints = await checkForMissedRouteFiles(
+    llm,
+    repoPath,
+    scope.root,
+    scope.prefix,
+    controllerFiles,
+    allEndpoints,
+    model
+  );
+  if (missedEndpoints.length > 0) {
+    console.log(
+      `[Analyze] Completeness check found ${missedEndpoints.length} additional endpoint(s) in files missed by globs`
+    );
+    allEndpoints.push(...missedEndpoints);
+  }
+  for (const ep of allEndpoints) {
+    normalizeEndpointMethodAndPath(ep);
+    ep.path = normalizePathParams(ep.path);
+  }
+  const validMethods = /* @__PURE__ */ new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+  const seen = /* @__PURE__ */ new Set();
+  const unique = allEndpoints.filter((ep) => {
+    const method = ep.method?.toUpperCase();
+    if (!method || !validMethods.has(method) || !ep.path || ep.path === "unknown") return false;
+    const key = `${method} ${ep.path}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  console.log(`[Analyze] Extracted ${unique.length} unique endpoints via regex`);
+  const enriched = [];
+  const needsLlm = [];
+  for (const ep of unique) {
+    const fullPath = resolve2(repoPath, ep.filePath);
+    let content;
+    try {
+      content = readFileSync3(fullPath, "utf-8");
+    } catch {
+      enriched.push(ep);
+      continue;
+    }
+    const params = extractParamsFromCode(content, ep);
+    if (params?.queryParams) {
+      ep.queryParams = params.queryParams;
+    }
+    if (ep.method.toUpperCase() === "DELETE") {
+      enriched.push(ep);
+      continue;
+    }
+    const needsBody = ["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase());
+    const hasPathParams = /[:{}]/.test(ep.path);
+    const hasPlaceholderQuery = (ep.queryParams ?? []).some(
+      (q) => q.value === "test" || q.value === "" || q.value == null
+    );
+    if (needsBody || hasPathParams || hasPlaceholderQuery) {
+      needsLlm.push(ep);
+    } else {
+      enriched.push(ep);
+    }
+  }
+  if (needsLlm.length > 0) {
+    console.log(
+      `[Analyze] Using LLM for param extraction on ${needsLlm.length} endpoints (body + path params)`
+    );
+  }
+  const handleTool = createBodyExtractionToolHandler(repoPath);
+  const byFile = /* @__PURE__ */ new Map();
+  for (const ep of needsLlm) {
+    const key = ep.filePath;
+    if (!byFile.has(key)) byFile.set(key, []);
+    byFile.get(key).push(ep);
+  }
+  let processedCount = 0;
+  const PARAM_CONCURRENCY = 5;
+  const fileEntries = [...byFile.entries()];
+  console.log(
+    `[Analyze] Param extraction: ${fileEntries.length} file(s), concurrency ${PARAM_CONCURRENCY}`
+  );
+  let fileIdx = 0;
+  const workers = Array.from(
+    { length: Math.min(PARAM_CONCURRENCY, fileEntries.length) },
+    async () => {
+      while (fileIdx < fileEntries.length) {
+        const idx = fileIdx++;
+        const [filePath, fileEndpoints] = fileEntries[idx];
+        const fullPath = resolve2(repoPath, filePath);
+        let content;
+        try {
+          content = readFileSync3(fullPath, "utf-8");
+        } catch {
+          enriched.push(...fileEndpoints);
+          processedCount += fileEndpoints.length;
+          continue;
+        }
+        for (let batchStart = 0; batchStart < fileEndpoints.length; batchStart += PARAM_EXTRACTION_BATCH_SIZE) {
+          const batch = fileEndpoints.slice(batchStart, batchStart + PARAM_EXTRACTION_BATCH_SIZE);
+          processedCount += batch.length;
+          console.log(
+            `[Analyze] Param extraction [${processedCount}/${needsLlm.length}]: ${batch.length} endpoint(s) from ${filePath}`
+          );
+          const anchors = new Set(
+            batch.flatMap((ep) => {
+              const parts = ep.path.replace(/^\//, "").split("/");
+              return [parts[0], parts[1]].filter(Boolean);
+            })
+          );
+          let combinedSnippet = "";
+          for (const anchor of anchors) {
+            const snip = extractSnippet(content, anchor);
+            if (snip && !combinedSnippet.includes(snip)) {
+              combinedSnippet += (combinedSnippet ? "\n...\n" : "") + snip;
+            }
+          }
+          if (!combinedSnippet) {
+            combinedSnippet = content.split("\n").slice(0, 120).map((l, i) => `${i + 1}: ${l}`).join("\n");
+          }
+          const totalLines = content.split("\n").length;
+          const endpointList = batch.map(
+            (ep, i) => `[${i}] ${ep.method} ${ep.path}${["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()) ? " (needs body)" : ""}${/[:{}]/.test(ep.path) ? " (has path params)" : ""}`
+          ).join("\n");
+          const messages = [
+            {
+              role: "system",
+              content: `You are an API analyst. Given code snippets and a list of endpoints, determine the parameters for EACH endpoint with realistic sample values.
+
+You have tools to inspect more code:
+- read_lines: read specific line ranges from any file
+- find_type: search for a class/interface/DTO definition by name
+- grep_code: search for text patterns across source files
+
+IMPORTANT: When you have determined all endpoint parameters, you MUST call the save_result tool with the complete JSON array. Do NOT return JSON in your text response \u2014 always use save_result.
+
+The result array should have one entry per endpoint (matching the [index]):
+[{"index": 0, "body": "<json or empty>", "contentType": "application/json", "queryParams": [{"name":"n","value":"v"}], "pathParams": {"paramName": "realisticValue"}}, ...]
+
+For POST/PUT/PATCH endpoints, provide a realistic request body. For endpoints with path params ({id}, :id), provide realistic values in pathParams using the param name without braces (e.g. {"id": "1", "slug": "default"}). Prefer the LOWEST plausible value (1, "default", "me") since higher IDs likely don't exist in a freshly-seeded database.
+
+For gRPC-Web endpoints (content-type: application/grpc-web+proto), the body must be a raw gRPC frame as a string with binary characters using JSON escape sequences. Format: 5-byte header (\\u0000 compressed flag + 4-byte big-endian message length) followed by the protobuf-encoded message. Use the .proto message definitions to construct a realistic payload. Set contentType to "application/grpc-web+proto". Example for a message with a single string field "command" = "pwd" (field 1, wire type 2, length 3): "\\u0000\\u0000\\u0000\\u0000\\u0005\\n\\u0003pwd". The \\n is 0x0a (field tag), \\u0003 is the string length prefix. Always include realistic field values from the proto definitions so the scanner can fuzz them effectively.`
+            },
+            {
+              role: "user",
+              content: `Endpoints from ${filePath} (${totalLines} lines):
+${endpointList}
+
+Relevant code:
+\`\`\`
+${combinedSnippet.slice(0, 6e3)}
+\`\`\`
+
+Look up any referenced DTOs/models. Call save_result with the JSON array of params for each endpoint index.`
+            }
+          ];
+          try {
+            let savedResult;
+            const wrappedHandler = async (name, args) => {
+              if (name === "save_result") {
+                const r = args.result;
+                if (Array.isArray(r)) savedResult = r;
+                return "Result saved.";
+              }
+              return handleTool(name, args);
+            };
+            let response = await chatWithTools(
+              llm,
+              messages,
+              bodyExtractionTools,
+              wrappedHandler,
+              model,
+              PARAM_EXTRACTION_MAX_TURNS
+            );
+            let entries;
+            if (savedResult && savedResult.length > 0) {
+              entries = savedResult;
+            } else {
+              entries = parseParamExtractionResponse(response);
+            }
+            if (!entries) {
+              console.warn(
+                `[Analyze] Param extraction for ${filePath} did not call save_result; retrying focused extraction${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
+              );
+              let retrySavedResult;
+              const retryHandler = async (name, args) => {
+                if (name === "save_result") {
+                  const r = args.result;
+                  if (Array.isArray(r)) retrySavedResult = r;
+                  return "Result saved.";
+                }
+                return handleTool(name, args);
+              };
+              const retryMessages = [
+                ...messages,
+                {
+                  role: "assistant",
+                  content: response.trim() || "I did not save a result."
+                },
+                {
+                  role: "user",
+                  content: `You must now call save_result with one result object for each endpoint index below. Do not inspect more files and do not answer in text.
+
+${endpointList}
+
+Use empty strings/objects for fields you cannot infer confidently, but preserve every endpoint index.`
+                }
+              ];
+              response = await chatWithTools(
+                llm,
+                retryMessages,
+                [saveResultTool],
+                retryHandler,
+                model,
+                PARAM_EXTRACTION_RETRY_TURNS
+              );
+              entries = retrySavedResult && retrySavedResult.length > 0 ? retrySavedResult : parseParamExtractionResponse(response);
+            }
+            if (!entries) {
+              throw new Error(
+                `LLM did not provide parseable param extraction JSON${response.trim() ? ` (response: ${responseSnippet(response)})` : ""}`
+              );
+            }
+            for (const entry of entries) {
+              const idx2 = typeof entry.index === "number" ? entry.index : 0;
+              const ep = batch[idx2] ?? batch[0];
+              if (!ep) continue;
+              let resolvedPath = ep.path;
+              if (entry.pathParams && typeof entry.pathParams === "object") {
+                for (const [param, value] of Object.entries(entry.pathParams)) {
+                  resolvedPath = resolvedPath.replace(`:${param}`, String(value)).replace(`{${param}}`, String(value));
+                }
+              }
+              enriched.push({
+                ...ep,
+                path: resolvedPath,
+                queryParams: Array.isArray(entry.queryParams) && entry.queryParams.length > 0 ? entry.queryParams : ep.queryParams,
+                body: entry.body ? typeof entry.body === "string" ? entry.body : JSON.stringify(entry.body) : void 0,
+                contentType: entry.contentType ? String(entry.contentType) : void 0
+              });
+            }
+            const coveredIndices = new Set(
+              entries.filter((e) => typeof e.index === "number").map((e) => e.index)
+            );
+            for (let i = 0; i < batch.length; i++) {
+              if (!coveredIndices.has(i) && entries.length !== 1) {
+                enriched.push(batch[i]);
+              }
+            }
+            if (entries.length === 1 && typeof entries[0].index !== "number" && batch.length > 1) {
+              for (let i = 1; i < batch.length; i++) {
+                enriched.push(batch[i]);
+              }
+            }
+          } catch (err) {
+            console.warn(`[Analyze] Failed batch param extraction for ${filePath}: ${err}`);
+            enriched.push(...batch);
+          }
+        }
+      }
+    }
+  );
+  await Promise.all(workers);
+  return enriched;
+}
+
+// src/phases/entrypoints.ts
+var CONCURRENCY = 3;
+var MAX_RETRIES = 3;
+var BASE_BACKOFF_MS = 1e3;
+var JITTER_MS = 250;
+var RESOLVE_CONCURRENCY = 5;
+var RESOLVE_TIMEOUT = 8e3;
+function isTransientHttpError(status, body) {
+  if (status >= 500) return true;
+  if (status === 408) return true;
+  if (status === 400 && /target.*(?:is\s+down|accessible|firewall)/i.test(body)) {
+    return true;
+  }
+  return false;
+}
+function isTargetDown400(status, body) {
+  return status === 400 && /target.*(?:is\s+down|accessible|firewall)/i.test(body);
+}
+async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterId, authObjectId, healthMonitor) {
+  const prepared = [];
+  for (const ep of endpoints) {
+    const path = resolvePath(ep.path);
+    if (!isScannablePath(path)) {
+      console.warn(`[Entrypoints] Skipping junk path: ${ep.path} (resolved: ${path})`);
+      continue;
+    }
+    let fullUrl = `${baseUrl}${path}`;
+    try {
+      new URL(fullUrl);
+    } catch {
+      console.warn(`[Entrypoints] Skipping malformed URL: ${fullUrl} (from path "${ep.path}")`);
+      continue;
+    }
+    const method = normalizeMethod(ep.method);
+    if (ep.queryParams && ep.queryParams.length > 0) {
+      const params = new URLSearchParams(
+        ep.queryParams.map((p) => [p.name, p.value])
+      );
+      fullUrl += `?${params.toString()}`;
+    }
+    const request = { method, url: fullUrl };
+    const needsBody = ["POST", "PUT", "PATCH"].includes(method);
+    const contentType = ep.contentType ?? (needsBody ? "application/json" : void 0);
+    if (ep.headers || contentType) {
+      const headers = { ...ep.headers ?? {} };
+      if (contentType && !headers["Content-Type"]) {
+        headers["Content-Type"] = [contentType];
+      }
+      request.headers = headers;
+    }
+    if (needsBody) {
+      const isBinary = contentType && contentType.includes("grpc-web");
+      request.body = isBinary ? ep.body ?? "" : sanitizeBody(ep.body ?? "{}");
+    }
+    const payload = { request, repeaterId };
+    if (authObjectId) {
+      payload.authObjectId = authObjectId;
+    }
+    prepared.push({ ep, method, fullUrl, payload });
+  }
+  console.log(
+    `[Entrypoints] Registering ${prepared.length} endpoints (${CONCURRENCY} concurrent)\u2026`
+  );
+  const apiUrl = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
+  const registered = [];
+  let failedUploads = 0;
+  let rateLimitPauseUntil = 0;
+  async function postOnce(payload) {
+    return fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Api-Key ${api.brightToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(12e4)
+      // 2 min — Bright may do a baseline check via Repeater
+    });
+  }
+  async function processOne(item) {
+    const { ep, method, fullUrl, payload } = item;
+    const now = Date.now();
+    if (rateLimitPauseUntil > now) {
+      await sleep2(rateLimitPauseUntil - now);
+    }
+    if (healthMonitor) {
+      await healthMonitor.waitHealthy();
+    }
+    console.log(
+      `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
+    );
+    await sleep2(Math.floor(Math.random() * JITTER_MS));
+    let attempt = 0;
+    while (true) {
+      try {
+        const res = await postOnce(payload);
+        if (res.status === 429) {
+          console.warn(`[Entrypoints] Rate limited (429) \u2014 pausing 10s`);
+          rateLimitPauseUntil = Date.now() + 1e4;
+          await sleep2(1e4);
+          if (attempt < MAX_RETRIES) {
+            attempt++;
+            continue;
+          }
+          await handleResponse(res, ep, method, fullUrl);
+          return;
+        }
+        if (!res.ok && attempt < MAX_RETRIES) {
+          const probe = res.clone();
+          const body = await probe.text().catch(() => "");
+          if (isTransientHttpError(res.status, body)) {
+            if (healthMonitor && isTargetDown400(res.status, body)) {
+              healthMonitor.signalProbableUnhealthy(`target-down 400 for ${method} ${fullUrl}`);
+              await healthMonitor.waitHealthy();
+            }
+            const backoff = BASE_BACKOFF_MS * 3 ** attempt + Math.floor(Math.random() * JITTER_MS);
+            console.warn(
+              `[Entrypoints] Transient HTTP ${res.status} for ${method} ${fullUrl} \u2014 retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`
+            );
+            await sleep2(backoff);
+            attempt++;
+            continue;
+          }
+        }
+        await handleResponse(res, ep, method, fullUrl);
+        return;
+      } catch (err) {
+        if (attempt < MAX_RETRIES) {
+          const backoff = BASE_BACKOFF_MS * 3 ** attempt + Math.floor(Math.random() * JITTER_MS);
+          console.warn(
+            `[Entrypoints] Network error for ${method} ${fullUrl}: ${toErrorMessage(err)} \u2014 retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`
+          );
+          await sleep2(backoff);
+          attempt++;
+          continue;
+        }
+        console.error(`[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`);
+        return;
+      }
+    }
+  }
+  async function handleResponse(res, ep, method, fullUrl) {
+    if (res.ok) {
+      try {
+        const data = await res.json();
+        const epId = data.id ?? data.entrypointId;
+        if (epId) {
+          registered.push({ endpoint: ep, entrypointId: epId });
+          return;
+        }
+      } catch {
+      }
+      console.warn(
+        `[Entrypoints] OK response for ${method} ${fullUrl} but no entrypoint ID returned`
+      );
+      return;
+    }
+    let errorBody = "";
+    try {
+      errorBody = await res.text();
+    } catch {
+    }
+    if (res.status === 409) {
+      const location2 = res.headers.get("location") ?? "";
+      const existingId = location2.split("/").pop();
+      if (existingId) {
+        registered.push({ endpoint: ep, entrypointId: existingId });
+        console.log(
+          `[Entrypoints] EP already exists for ${method} ${fullUrl} \u2014 reusing ${existingId}`
+        );
+      } else {
+        console.log(
+          `[Entrypoints] EP already exists for ${method} ${fullUrl} \u2014 no location header`
+        );
+      }
+    } else {
+      failedUploads++;
+      console.error(
+        `[Entrypoints] Failed ${method} ${fullUrl}: HTTP ${res.status} \u2014 ${errorBody.slice(0, 300)}`
+      );
+    }
+  }
+  await pMap(prepared, processOne, CONCURRENCY);
+  console.log(
+    `[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints` + (failedUploads > 0 ? ` (${failedUploads} rejected by API)` : "")
+  );
+  return registered;
+}
+async function pMap(items, fn, concurrency) {
+  let idx = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (idx < items.length) {
+      const i = idx++;
+      await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+}
+function sleep2(ms) {
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
+}
+function resolvePath(path) {
+  let resolved = path.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/#\w+/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
+  if (resolved && !resolved.startsWith("/")) {
+    resolved = "/" + resolved;
+  }
+  return resolved;
+}
+var JUNK_URL_PATTERNS = [
+  /[#$]?\{/,
+  // leftover template interpolation
+  /#/,
+  // URL fragment — never sent to server; indicates client-side route or broken interpolation
+  /<%/,
+  // ERB tags
+  /\(\d+\)/,
+  // Rails route constraint like (42)
+  /\[.*\]/,
+  // regex character class in path — route constraint like [0-9]+ or [^/]+
+  /\(\?/,
+  // regex group — (?P<name>...), (?:...), (?1|groups) etc.
+  /\)/,
+  // unmatched paren in path — regex capture group artifact
+  /\s/,
+  // whitespace in path
+  /placeholder/
+  // unresolved interpolation that resolvePath couldn't handle
+];
+function isScannablePath(path) {
+  return !JUNK_URL_PATTERNS.some((re) => re.test(path));
+}
+var ID_SEGMENT_PATTERN = /^(?:\d+|[0-9a-f]{8,}|[0-9a-f-]{36}|[a-z]{1,4}_[a-z0-9]{6,}|[a-z0-9]{20,}|book_\w+|bk_\w+|usr_\w+|evt_\w+|cal_\w+|wh_\w+|org_\w+|team_\w+)$/i;
+function isIdSegment(segment) {
+  return ID_SEGMENT_PATTERN.test(segment);
+}
+function findListParent(path) {
+  const segments = path.split("/").filter(Boolean);
+  for (let i = 0; i < segments.length; i++) {
+    if (isIdSegment(segments[i])) {
+      const listPath = "/" + segments.slice(0, i).join("/");
+      return { listPath, idIndex: i, segments };
+    }
+  }
+  return null;
+}
+function extractIdFromListResponse(body) {
+  try {
+    const parsed = JSON.parse(body);
+    let items = null;
+    if (Array.isArray(parsed)) {
+      items = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      items = parsed.data ?? parsed.items ?? parsed.results ?? parsed.content ?? parsed.entries ?? parsed.records;
+      if (!Array.isArray(items)) {
+        const id = parsed.id ?? parsed._id ?? parsed.uid ?? parsed.slug;
+        if (id) return String(id);
+        items = null;
+      }
+    }
+    if (items && items.length > 0) {
+      const first = items[0];
+      if (first && typeof first === "object") {
+        const id = first.id ?? first._id ?? first.uid ?? first.slug ?? first.bookingId ?? first.eventTypeId;
+        if (id) return String(id);
+      }
+    }
+  } catch {
+  }
+  return null;
+}
+var CANDIDATE_PREFIXES = ["/v2", "/api/v2", "/api/v1", "/api", "/v1"];
+async function detectRoutePrefix(endpoints, baseUrl, authHeaders) {
+  const candidates = endpoints.filter(
+    (ep) => ep.path !== "/" && ep.path !== "/health" && !/^\/(?:api|v\d)\//.test(ep.path)
+  );
+  if (candidates.length === 0) return null;
+  const samplePaths = candidates.map((ep) => ep.path.split("?")[0]).filter((p) => p.split("/").length >= 2).slice(0, 5);
+  if (samplePaths.length === 0) return null;
+  const headers = {
+    Accept: "application/json",
+    ...authHeaders ?? {}
+  };
+  for (const prefix of CANDIDATE_PREFIXES) {
+    let hits = 0;
+    let misses = 0;
+    await pMap(
+      samplePaths.slice(0, 3),
+      async (path) => {
+        try {
+          const directRes = await fetch(`${baseUrl}${path}`, {
+            method: "HEAD",
+            headers,
+            signal: AbortSignal.timeout(5e3)
+          });
+          if (directRes.ok || directRes.status !== 404 && directRes.status !== 405) {
+            misses++;
+            return;
+          }
+          const prefixedRes = await fetch(`${baseUrl}${prefix}${path}`, {
+            method: "HEAD",
+            headers,
+            signal: AbortSignal.timeout(5e3)
+          });
+          if (prefixedRes.ok || prefixedRes.status !== 404 && prefixedRes.status !== 405) {
+            hits++;
+          } else {
+            misses++;
+          }
+        } catch {
+          misses++;
+        }
+      },
+      3
+    );
+    if (hits >= 2 && hits > misses) {
+      return prefix;
+    }
+  }
+  return null;
+}
+async function resolvePathParams(endpoints, baseUrl, authHeaders) {
+  const detectedPrefix = await detectRoutePrefix(endpoints, baseUrl, authHeaders);
+  let prefixedEndpoints = endpoints;
+  if (detectedPrefix) {
+    console.log(
+      `[Entrypoints] Detected missing route prefix: "${detectedPrefix}" \u2014 applying to ${endpoints.length} endpoints`
+    );
+    prefixedEndpoints = endpoints.map((ep) => {
+      if (ep.path.startsWith(detectedPrefix)) return ep;
+      if (/^\/(?:api|v\d)\//.test(ep.path)) return ep;
+      if (ep.path === "/" || ep.path === "/health") return ep;
+      return { ...ep, path: `${detectedPrefix}${ep.path}` };
+    });
+  }
+  const parentMap = /* @__PURE__ */ new Map();
+  const noParent = [];
+  for (const ep of prefixedEndpoints) {
+    const info = findListParent(ep.path);
+    if (!info) {
+      noParent.push(ep);
+      continue;
+    }
+    const key = info.listPath;
+    if (!parentMap.has(key)) {
+      parentMap.set(key, { idIndex: info.idIndex, endpoints: [] });
+    }
+    parentMap.get(key).endpoints.push(ep);
+  }
+  if (parentMap.size === 0) {
+    return prefixedEndpoints;
+  }
+  console.log(
+    `[Entrypoints] Resolving path params: ${parentMap.size} list endpoint(s) to probe for real IDs`
+  );
+  const resolvedIds = /* @__PURE__ */ new Map();
+  const listPaths = [...parentMap.keys()];
+  await pMap(
+    listPaths,
+    async (listPath) => {
+      try {
+        const url = `${baseUrl}${listPath}`;
+        const headers = {
+          Accept: "application/json",
+          ...authHeaders ?? {}
+        };
+        const res = await fetch(url, {
+          headers,
+          signal: AbortSignal.timeout(RESOLVE_TIMEOUT)
+        });
+        if (!res.ok) {
+          return;
+        }
+        const body = await res.text();
+        const realId = extractIdFromListResponse(body);
+        if (realId) {
+          resolvedIds.set(listPath, realId);
+          console.log(`[Entrypoints] \u2713 Resolved ${listPath} \u2192 id="${realId}"`);
+        }
+      } catch {
+      }
+    },
+    RESOLVE_CONCURRENCY
+  );
+  console.log(
+    `[Entrypoints] Resolved ${resolvedIds.size}/${parentMap.size} list parent(s) with real IDs`
+  );
+  const result = [...noParent];
+  for (const [listPath, group] of parentMap) {
+    const realId = resolvedIds.get(listPath);
+    if (!realId) {
+      result.push(...group.endpoints);
+      continue;
+    }
+    for (const ep of group.endpoints) {
+      const segments = ep.path.split("/").filter(Boolean);
+      if (group.idIndex < segments.length && isIdSegment(segments[group.idIndex])) {
+        segments[group.idIndex] = realId;
+      }
+      const newPath = "/" + segments.join("/");
+      result.push({ ...ep, path: newPath });
+    }
+  }
+  const needsTrailingSlash = await detectTrailingSlashNormalization(result, baseUrl, authHeaders);
+  if (needsTrailingSlash) {
+    console.log("[Entrypoints] Detected trailing-slash normalization \u2014 appending / to paths");
+    for (let i = 0; i < result.length; i++) {
+      const p = result[i].path.split("?")[0];
+      if (!p.endsWith("/") && !hasFileExtension(p)) {
+        result[i] = { ...result[i], path: result[i].path + "/" };
+      }
+    }
+  }
+  return result;
+}
+function hasFileExtension(path) {
+  const last = path.split("/").pop() ?? "";
+  return /\.\w{1,5}$/.test(last);
+}
+async function detectTrailingSlashNormalization(endpoints, baseUrl, authHeaders) {
+  const candidates = endpoints.filter(
+    (ep) => ep.method.toUpperCase() === "GET" && !ep.path.split("?")[0].endsWith("/") && !hasFileExtension(ep.path.split("?")[0])
+  ).slice(0, 5);
+  if (candidates.length === 0) return false;
+  let redirectCount = 0;
+  for (const ep of candidates) {
+    try {
+      const res = await fetch(`${baseUrl}${ep.path.split("?")[0]}`, {
+        method: "HEAD",
+        redirect: "manual",
+        headers: { ...authHeaders ?? {} },
+        signal: AbortSignal.timeout(5e3)
+      });
+      if (res.status === 301 || res.status === 308) {
+        const location2 = res.headers.get("location") ?? "";
+        if (location2.endsWith(ep.path.split("?")[0] + "/") || location2 === ep.path.split("?")[0] + "/") {
+          redirectCount++;
+        }
+      }
+    } catch {
+    }
+  }
+  return redirectCount >= 2 && redirectCount >= candidates.length * 0.5;
+}
+async function verifyEntrypointAuth(api, projectId, entrypointId) {
+  try {
+    console.log(`[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`);
+    const url = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Api-Key ${api.brightToken}` }
+    });
+    const raw = await res.text();
+    console.log(`[Entrypoints] getEntrypoint response (HTTP ${res.status}): ${raw.slice(0, 1e3)}`);
+    if (!res.ok) {
+      return { ok: false, detail: `HTTP ${res.status}: ${raw.slice(0, 200)}` };
+    }
+    const data = JSON.parse(raw);
+    const status = data.response?.status ?? data.status;
+    if (status && (status === 401 || status === 403)) {
+      return {
+        ok: false,
+        detail: `Entrypoint returned HTTP ${status} \u2014 auth likely not working`
+      };
+    }
+    return {
+      ok: true,
+      detail: `Entrypoint response: ${JSON.stringify(data.response ?? {}).slice(0, 300)}`
+    };
+  } catch (err) {
+    const msg = toErrorMessage(err);
+    console.warn(`[Entrypoints] Failed to verify entrypoint auth: ${msg}`);
+    return { ok: false, detail: `Could not verify: ${msg}` };
+  }
+}
+async function pruneDeadEntrypoints(api, projectId, entries, opts = {}) {
+  const alive = [];
+  const dead = [];
+  console.log(
+    `[Entrypoints] Checking ${entries.length} entrypoints for 404s (${CONCURRENCY} concurrent)\u2026`
+  );
+  const baseUrl = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
+  await pMap(
+    entries,
+    async (entry) => {
+      try {
+        const res = await fetch(`${baseUrl}/${encodeURIComponent(entry.entrypointId)}`, {
+          headers: { Authorization: `Api-Key ${api.brightToken}` }
+        });
+        if (!res.ok) {
+          alive.push(entry);
+          return;
+        }
+        const data = await res.json();
+        const resp = data.response;
+        const status = resp?.status ?? data.status;
+        const numericStatus = typeof status === "number" ? status : void 0;
+        const shouldPrune = numericStatus === 404 || opts.pruneFailedResponses && numericStatus !== void 0 && numericStatus >= 400;
+        if (shouldPrune) {
+          const req = data.request;
+          const url = req?.url ?? data.url ?? entry.entrypointId;
+          const method = String(req?.method ?? entry.endpoint.method ?? "GET").toUpperCase();
+          const pathFromUrl = url.replace(/^https?:\/\/[^/]+/, "").split("?")[0];
+          const segments = pathFromUrl.split("/").filter(Boolean);
+          const hasIdSegment = segments.some((s) => isIdSegment(s));
+          if (hasIdSegment && numericStatus === 404) {
+            alive.push(entry);
+            return;
+          }
+          console.log(
+            `[Entrypoints] \u2717 Removing failed baseline entrypoint (HTTP ${numericStatus}): ${method} ${url}`
+          );
+          dead.push(entry.entrypointId);
+        } else {
+          alive.push(entry);
+        }
+      } catch {
+        alive.push(entry);
+      }
+    },
+    CONCURRENCY
+  );
+  if (dead.length > 0) {
+    await deleteEntrypoints(api, projectId, dead);
+    console.log(
+      `[Entrypoints] Pruned ${dead.length} dead entrypoint(s), ${alive.length} remaining`
+    );
+  }
+  return alive;
+}
+var DELETE_MAX_RETRIES = 3;
+var DELETE_BACKOFF_MS = 2e3;
+async function deleteEntrypoints(api, projectId, ids) {
+  const BATCH_SIZE = 50;
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE);
+    await deleteEntrypointBatch(api, projectId, batch);
+  }
+}
+async function deleteEntrypointBatch(api, projectId, ids) {
+  const url = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
+  for (let attempt = 0; attempt <= DELETE_MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Api-Key ${api.brightToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ ids })
+      });
+      if (res.ok || res.status === 204) {
+        return;
+      }
+      if (res.status === 429) {
+        if (attempt >= DELETE_MAX_RETRIES) {
+          console.warn(
+            `[Entrypoints] Bulk delete rate-limited after ${DELETE_MAX_RETRIES} retries`
+          );
+          return;
+        }
+        const backoff = DELETE_BACKOFF_MS * 2 ** attempt;
+        console.warn(
+          `[Entrypoints] Rate limited (429) on bulk delete \u2014 retry ${attempt + 1}/${DELETE_MAX_RETRIES} in ${(backoff / 1e3).toFixed(0)}s`
+        );
+        await sleep2(backoff);
+        continue;
+      }
+      console.warn(`[Entrypoints] Bulk delete failed: ${res.status} ${res.statusText}`);
+      return;
+    } catch (err) {
+      console.warn(`[Entrypoints] Bulk delete error: ${err}`);
+      return;
+    }
+  }
+}
+function sanitizeBody(body) {
+  if (typeof body !== "string") {
+    return body ? JSON.stringify(body) : "{}";
+  }
+  if (!body.trim()) return "{}";
+  try {
+    const parsed = JSON.parse(body);
+    return JSON.stringify(parsed);
+  } catch {
+    const repaired = repairJsonBody(body);
+    if (repaired) return repaired;
+    return body.replace(/\n\s*/g, " ").trim();
+  }
+}
+function repairJsonBody(body) {
+  let s = body.replace(/\n\s*/g, " ").trim();
+  s = s.replace(/,\s*([}\]])/g, "$1");
+  try {
+    return JSON.stringify(JSON.parse(s));
+  } catch {
+  }
+  try {
+    const fixed = fixNestedJsonStrings(s);
+    if (fixed !== s) {
+      const parsed = JSON.parse(fixed);
+      return JSON.stringify(parsed);
+    }
+  } catch {
+  }
+  try {
+    const fixed = fixByParseError(s);
+    if (fixed) {
+      const parsed = JSON.parse(fixed);
+      return JSON.stringify(parsed);
+    }
+  } catch {
+  }
+  return null;
+}
+function fixNestedJsonStrings(s) {
+  const result = [];
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] === ":" && s[i + 1] === '"' && (s[i + 2] === "{" || s[i + 2] === "[")) {
+      result.push(":", '"');
+      i += 2;
+      const openBracket = s[i];
+      const closeBracket = openBracket === "{" ? "}" : "]";
+      let depth = 0;
+      const innerStart = i;
+      let j = i;
+      while (j < s.length) {
+        if (s[j] === openBracket) depth++;
+        else if (s[j] === closeBracket) {
+          depth--;
+          if (depth === 0) {
+            if (s[j + 1] === '"') {
+              const inner = s.slice(innerStart, j + 1);
+              result.push(inner.replace(/"/g, '\\"'));
+              result.push('"');
+              i = j + 2;
+              break;
+            }
+          }
+        }
+        j++;
+      }
+      if (depth !== 0 || j >= s.length) {
+        result.push(s[innerStart]);
+        i = innerStart + 1;
+      }
+    } else {
+      result.push(s[i]);
+      i++;
+    }
+  }
+  return result.join("");
+}
+function fixByParseError(s) {
+  let current = s;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      JSON.parse(current);
+      return current;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      const posMatch = msg.match(/at position (\d+)/);
+      if (!posMatch) return null;
+      const pos = parseInt(posMatch[1], 10);
+      if (pos <= 0 || pos >= current.length) return null;
+      let quotePos = -1;
+      for (let k = pos; k >= Math.max(0, pos - 5); k--) {
+        if (current[k] === '"' && current[k - 1] !== "\\") {
+          quotePos = k;
+          break;
+        }
+      }
+      if (quotePos === -1) return null;
+      current = current.slice(0, quotePos) + '\\"' + current.slice(quotePos + 1);
+    }
+  }
+  return null;
+}
+var VALID_HTTP_METHODS = /* @__PURE__ */ new Set([
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "DELETE",
+  "CONNECT",
+  "OPTIONS",
+  "TRACE",
+  "PATCH"
+]);
+function normalizeMethod(method) {
+  const upper = method.toUpperCase();
+  if (VALID_HTTP_METHODS.has(upper)) return upper;
+  if (upper.startsWith("GRAPHQL")) return "POST";
+  console.warn(`[Entrypoints] Unknown method "${method}", defaulting to GET`);
+  return "GET";
+}
+
+// src/phases/findings.ts
+async function fetchFindings(api, scanIds) {
+  const findings = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const scanId of scanIds) {
+    const issues = await fetchScanIssues(api, scanId);
+    for (const issue of issues) {
+      const key = findingKey({
+        name: issue.name,
+        method: issue.method ?? "GET",
+        url: issue.url ?? ""
+      });
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const severity = normalizeSeverity(issue.severity);
+      findings.push({
+        id: issue.id,
+        name: issue.name,
+        severity,
+        url: issue.url ?? "",
+        method: issue.method ?? "GET",
+        details: issue.details ?? "",
+        remedy: issue.remedy ?? "",
+        entrypointId: issue.entryPointId,
+        testTag: extractIssueTestTag(issue),
+        issueId: issue.id
+      });
+    }
+  }
+  return findings;
+}
+async function fetchScanIssues(api, scanId) {
+  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/issues`;
+  console.log(`[Findings] Fetching issues for scan ${scanId}`);
+  const res = await fetch(url, {
+    headers: { Authorization: `Api-Key ${api.brightToken}` }
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`[Findings] Failed to fetch issues for scan ${scanId}: ${res.status} ${body}`);
+    return [];
+  }
+  const data = await res.json();
+  console.log(`[Findings] Scan ${scanId}: ${data.length} issues`);
+  return data;
+}
+function normalizeSeverity(s) {
+  const lower = s.toLowerCase();
+  if (lower === "critical") return "Critical";
+  if (lower === "high") return "High";
+  if (lower === "medium") return "Medium";
+  return "Low";
+}
+function extractIssueTestTag(issue) {
+  if (typeof issue.testTag === "string") return issue.testTag;
+  if (typeof issue.testId === "string") return issue.testId;
+  if (typeof issue.test === "string") return issue.test;
+  if (issue.test && typeof issue.test === "object") {
+    return issue.test.tag ?? issue.test.id;
+  }
+  return void 0;
+}
+
+// src/phases/fix.ts
+import { mkdirSync as mkdirSync2, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "fs";
+import { basename, dirname, resolve as resolve3 } from "path";
+
+// src/prompts/generate-fix.ts
+function taintAnalysisPrompt(techStack, finding) {
+  return [
+    {
+      role: "system",
+      content: `You are a security engineer performing taint analysis on a ${techStack} application. Given a DAST vulnerability finding, trace the data flow from the HTTP input (source) to the vulnerable code (sink). Use the tools to read source files and search the codebase.
+
+Your goal is to identify:
+1. The source: where user input enters the application (request parameter, body field, header)
+2. The propagation: how the tainted data flows through the code (variable assignments, function calls, transformations)
+3. The sink: where the tainted data reaches a dangerous operation (SQL query, HTML output, command execution, file system operation)
+4. The specific file(s) and line(s) that need to be modified to fix the vulnerability`
+    },
+    {
+      role: "user",
+      content: `Analyze this vulnerability and trace the data flow:
+
+Vulnerability: ${finding.name}
+Severity: ${finding.severity}
+URL: ${finding.url}
+Method: ${finding.method}
+Details: ${finding.details}
+Suggested Remedy: ${finding.remedy}
+
+Use the read_file and search_files tools to trace the data flow from the HTTP endpoint to the vulnerable sink. Identify the exact files and code that need to be fixed.`
+    }
+  ];
+}
+
+// src/phases/fix.ts
+async function pMap2(items, fn, concurrency) {
+  const results = new Array(items.length);
+  let idx = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+var INFRA_FILE_PATTERNS = [
+  // Docker / compose files
+  /^Dockerfile/i,
+  /docker-compose\.ya?ml$/i,
+  /^compose\.ya?ml$/i,
+  // Server / deployment configuration
+  /\.conf\.py$/,
+  // e.g. sentry.conf.py
+  /nginx\.conf$/,
+  /apache2?\.conf$/,
+  /httpd\.conf$/,
+  /\.env$/,
+  // environment files
+  /\.env\.\w+$/,
+  // .env.local, .env.production, etc.
+  // CI / build pipeline
+  /^\.github\//,
+  /^\.gitlab-ci/,
+  /^Jenkinsfile/i,
+  /^Makefile$/i,
+  // Kubernetes / infrastructure-as-code
+  /\.ya?ml$.*(?:deploy|service|ingress|configmap|secret)/i,
+  /^k8s\//,
+  /^helm\//,
+  /^terraform\//
+];
+var INFRA_BASENAME_EXACT = /* @__PURE__ */ new Set([
+  "dockerfile",
+  "docker-compose.yml",
+  "docker-compose.yaml",
+  "compose.yml",
+  "compose.yaml",
+  ".env",
+  "makefile",
+  "jenkinsfile"
+]);
+function isInfrastructureFile(filePath) {
+  const normalized = filePath.replace(/\\/g, "/");
+  const base = basename(normalized).toLowerCase();
+  if (INFRA_BASENAME_EXACT.has(base)) return true;
+  for (const pattern of INFRA_FILE_PATTERNS) {
+    if (pattern.test(normalized)) return true;
+  }
+  return false;
+}
+async function generateFixes(llm, repoPath, techStack, findings, previousFixes, model, contextSummary) {
+  const stackStr = formatTechStack(techStack);
+  const handleTool = createToolHandler(repoPath);
+  const fixes = [];
+  const fixTools = [...codebaseTools, editFileTool];
+  const fileGroups = /* @__PURE__ */ new Map();
+  for (const finding of findings) {
+    const groupKey = finding.url ?? finding.name;
+    const group = fileGroups.get(groupKey) ?? [];
+    group.push(finding);
+    fileGroups.set(groupKey, group);
+  }
+  const groups = [...fileGroups.values()];
+  const CONCURRENCY2 = 5;
+  console.log(
+    `[Fix] Processing ${findings.length} findings in ${groups.length} group(s), concurrency ${CONCURRENCY2}`
+  );
+  const generateSingleFix = async (finding) => {
+    console.log(`[Fix] Analyzing: ${finding.name} at ${finding.url}`);
+    const previousAttempt = previousFixes.find(
+      (f) => f.vulnerability.name === finding.name && f.vulnerability.url === finding.url && !f.verified
+    );
+    const taintMessages = taintAnalysisPrompt(stackStr, finding);
+    if (contextSummary && taintMessages[0]?.role === "system" && typeof taintMessages[0].content === "string") {
+      taintMessages[0].content += `
+
+Application context:
+${contextSummary}`;
+    }
+    const taintAnalysis = await chatWithTools(llm, taintMessages, codebaseTools, handleTool, model);
+    const editedFiles = /* @__PURE__ */ new Map();
+    const fixToolHandler = async (name, args) => {
+      if (name === "edit_file") {
+        const filePath = String(args.path ?? "");
+        if (isInfrastructureFile(filePath)) {
+          return `Error: cannot modify infrastructure file ${filePath} \u2014 only application source code can be changed.`;
+        }
+        if (!editedFiles.has(filePath)) {
+          try {
+            editedFiles.set(filePath, readFileSync4(resolve3(repoPath, filePath), "utf-8"));
+          } catch {
+            editedFiles.set(filePath, "");
+          }
+        }
+        const result = handleEditFile(repoPath, args);
+        if (!result.startsWith("Error")) {
+          console.log(`[Fix] Edited ${filePath}`);
+        }
+        return result;
+      }
+      return handleTool(name, args);
+    };
+    let previousContext = "";
+    if (previousAttempt) {
+      previousContext = `
+
+IMPORTANT: A previous fix attempt was made but DID NOT resolve the vulnerability \u2014 the DAST scan still found the same issue. Previous attempt summary: "${previousAttempt.summary}". You must use a DIFFERENT, more thorough approach this time.`;
+    }
+    const fixMessages = [
+      {
+        role: "system",
+        content: `You are a security engineer fixing vulnerabilities in a ${stackStr} application. You have tools to read code and apply edits directly.
+
+Use edit_file to make surgical, targeted fixes. Each edit_file call replaces exactly one occurrence of old_string with new_string.
+
+Guidelines:
+- Use read_file to examine the affected code first if needed
+- Apply minimal, targeted fixes \u2014 only change what's necessary
+- Follow the framework's built-in security features and best practices
+- Validate and sanitize user inputs at the boundary
+- NEVER modify infrastructure files (Dockerfile, docker-compose.yml, .env, etc.)
+- After applying your fix, briefly summarize what you changed${previousContext}${contextSummary ? `
+
+Application context:
+${contextSummary}` : ""}`
+      },
+      {
+        role: "user",
+        content: `Fix this vulnerability by editing the source code:
+
+Vulnerability: ${finding.name}
+Severity: ${finding.severity}
+URL: ${finding.url}
+Method: ${finding.method}
+Details: ${finding.details}
+Remedy: ${finding.remedy}
+
+Taint Analysis:
+${taintAnalysis}
+
+Use edit_file to apply the fix directly. Then summarize what you changed.`
+      }
+    ];
+    try {
+      const summary = await chatWithTools(llm, fixMessages, fixTools, fixToolHandler, model);
+      if (editedFiles.size === 0) {
+        console.warn(`[Fix] No edits applied for ${finding.name}`);
+        return null;
+      }
+      const patchedFiles = [];
+      for (const [filePath] of editedFiles) {
+        try {
+          const content = readFileSync4(resolve3(repoPath, filePath), "utf-8");
+          patchedFiles.push({ path: filePath, content });
+        } catch {
+        }
+      }
+      console.log(`[Fix] Generated fix (${patchedFiles.length} file(s)): ${summary.slice(0, 200)}`);
+      return {
+        vulnerability: finding,
+        files: patchedFiles,
+        summary: summary.slice(0, 500),
+        verified: false
+      };
+    } catch (err) {
+      console.error(`[Fix] Failed to generate fix for ${finding.name}: ${toErrorMessage(err)}`);
+      return null;
+    }
+  };
+  const groupResults = await pMap2(
+    groups,
+    async (group) => {
+      const results = [];
+      for (const finding of group) {
+        const fix = await generateSingleFix(finding);
+        if (fix) results.push(fix);
+      }
+      return results;
+    },
+    CONCURRENCY2
+  );
+  for (const groupFixes of groupResults) {
+    fixes.push(...groupFixes);
+  }
+  return fixes;
+}
+function applyFixes(repoPath, fixes) {
+  for (const fix of fixes) {
+    for (const file of fix.files) {
+      if (isInfrastructureFile(file.path)) {
+        console.warn(
+          `[Fix] BLOCKED infrastructure file modification: ${file.path} \u2014 security fixes must only modify application source code`
+        );
+        continue;
+      }
+      const fullPath = resolve3(repoPath, file.path);
+      mkdirSync2(dirname(fullPath), { recursive: true });
+      writeFileSync3(fullPath, file.content, "utf-8");
+      console.log(`[Fix] Wrote ${file.path}`);
+    }
+  }
+}
+
+// src/phases/harness.ts
+import { execSync as execSync2, spawn as spawn2 } from "child_process";
+import { existsSync as existsSync4, readFileSync as readFileSync5, writeFileSync as writeFileSync4 } from "fs";
+import { resolve as resolve4 } from "path";
+import { createInterface as createInterface2 } from "readline";
+
+// src/prompts/harness.ts
+function identifyHarnessTargetsPrompt(techStack) {
+  return [
+    {
+      role: "system",
+      content: `You are a security engineer performing data-flow analysis on a ${techStack} codebase to identify functions that can be security-tested in **isolation** \u2014 WITHOUT the full application framework running.
+
+## Your goal
+Find **service-layer and utility functions** (NOT controller actions) that:
+1. Accept user-controlled input (directly or indirectly)
+2. Perform a security-sensitive operation (DB query, file I/O, HTTP request, XML parse, shell exec, template render, redirect, deserialization)
+3. Can be called with **minimal** infrastructure \u2014 ideally ZERO framework boot
+
+## CRITICAL: Target the RIGHT level
+The key principle is to find functions CLOSE TO the dangerous operation, not high-level controllers.
+
+### Bootstrapping tiers (prefer lower tiers)
+- **Tier 1 (best)** \u2014 No framework boot required. Just \`require\`/\`import\` the specific file. Pure computation, URL validation, path construction, query string building, XML parsing, template rendering.
+- **Tier 2 (good)** \u2014 Needs DB connection only. Can initialize an ORM connection directly without booting the full framework. Service methods that build/execute queries.
+- **Tier 3 (avoid)** \u2014 Needs full framework boot (all initializers, middleware, caches, config). Controller actions, anything requiring full app context.
+
+### Why this matters
+Controller actions (e.g. SearchController#query) require the ENTIRE framework to boot \u2014 database, Redis, all initializers, config loading, migration checks, etc. This makes harnessing brittle and complex.
+Service/utility methods (e.g. Search.execute(term), FileHelper.download(url)) can often be called by requiring just their file + any direct dependencies \u2014 no framework boot needed.
+
+## How to find targets \u2014 data flow analysis
+1. **Start from routes**: Read routing config to find HTTP endpoints.
+2. **Trace THROUGH controllers**: Don't stop at the controller \u2014 follow the call chain deeper.
+3. **Find the security-critical function**: The service, model, or utility method that ACTUALLY does the dangerous operation with user input.
+4. **Verify it can be required standalone**: Check the file's imports \u2014 does it pull in the entire framework or just specific modules?
+
+## What makes a GOOD target
+- A search service method that takes a query string and builds a SQL query (e.g. \`Search.execute(term)\`, \`UserSearch.new(term).search\`)
+- A URL/file utility that fetches from or validates user-provided URLs (e.g. \`FileHelper.download_url(url)\`, \`UrlHelper.validate(url)\`)
+- A path construction method (e.g. \`Upload.get_path(sha, extension)\`)
+- An XML/JSON parser that processes user content (e.g. \`XmlParser.parse(body)\`)
+- A query builder or scope method (e.g. \`Topic.search_by_title(term)\`)
+- A content sanitizer/renderer (e.g. \`PrettyText.cook(raw_markdown)\`)
+- A method that constructs shell commands from user input
+
+## What makes a BAD target
+- **Controller actions** (e.g. SearchController#query, UploadsController#create) \u2014 require full framework boot
+- Low-level ORM primitives (User.find, Model.save) \u2014 no input-handling context
+- Auth middleware \u2014 can't test meaningfully
+- Functions requiring a dozen services initialized
+- Trivial getters/setters
+
+## Infrastructure classification
+For each function, determine what it needs. Be precise \u2014 "db" means it DIRECTLY uses the database, not that some caller somewhere needs a DB.
+- "none" \u2014 pure computation, no external deps (string parsing, URL construction, XML parsing)
+- "filesystem" \u2014 needs local file access
+- "db" \u2014 directly queries/writes to database
+- "http" \u2014 makes outbound HTTP requests
+
+## Vulnerability mapping
+- DB queries \u2192 sqli
+- HTML/template output \u2192 xss
+- File path construction \u2192 lfi
+- URL fetching \u2192 ssrf, rfi
+- XML parsing \u2192 xxe
+- Shell command building \u2192 osi
+- Redirect URL handling \u2192 unvalidated_redirect
+- Deserialization \u2192 proto_pollution, mass_assignment
+- File upload processing \u2192 file_upload
+
+## Required files
+For each target, list the MINIMAL set of require/import statements needed to call it \u2014 NOT the full framework bootstrap. Read the target file's actual imports to determine this.
+
+## Output format
+Return a JSON array of targets:
+[
+  {
+    "name": "execute",
+    "file": "lib/search.rb",
+    "className": "Search",
+    "params": [{"name": "term", "type": "string", "sample": "test query"}],
+    "deps": ["db"],
+    "vulnTypes": ["sqli"],
+    "httpMethod": "GET",
+    "description": "Executes search with user-provided term, builds SQL query",
+    "requireStatements": ["require_relative 'lib/search'"],
+    "tier": 2
+  }
+]
+
+## Rules
+- Return 5-15 targets, prioritized by: Tier 1 > Tier 2 >> Tier 3, then by security impact
+- **NO controller actions** \u2014 always go at least one level deeper into services/utilities
+- Each target must be a REAL function found in the codebase
+- Include the exact file path
+- Only include functions you've verified exist by reading the source code
+- Include the \`tier\` field (1, 2, or 3) and \`requireStatements\` for each target`
+    },
+    {
+      role: "user",
+      content: "Analyze this codebase for security-critical service/utility functions (NOT controller actions) that can be tested via a lightweight harness. Trace data flow from routes through controllers into the actual service/utility methods. Read the source files to verify each target can be required with minimal framework bootstrapping. Return the JSON array of targets."
+    }
+  ];
+}
+function generateHarnessPrompt(techStack, targets, infraInfo) {
+  const targetList = targets.map((t, i) => {
+    const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    return `${i + 1}. ${t.className}.${t.name}(${t.params.map((p) => p.name).join(", ")}) \u2014 file: ${t.file}
+   Deps: ${t.deps.join(", ")} | Vulns: ${t.vulnTypes.join(", ")} | Method: ${t.httpMethod}
+   Route: /harness/${pathSlug}
+   Params: ${JSON.stringify(t.params)}
+   Desc: ${t.description}
+   Tier: ${t.tier ?? "unknown"} | Requires: ${JSON.stringify(t.requireStatements ?? [])}`;
+  }).join("\n");
+  return [
+    {
+      role: "system",
+      content: `You are a security engineer generating a lightweight HTTP harness server for a ${techStack} project. The harness wraps specific functions so Bright's DAST engine can scan them without the full application running.
+
+## Targets to wrap
+${targetList}
+
+## Infrastructure available
+${infraInfo}
+
+## Key requirements
+
+1. **Minimal bootstrapping**: Each target has a \`tier\` and \`requireStatements\`. Tier 1 = no framework boot (just require the files). Tier 2 = DB connection only (no full framework). Tier 3 = avoid.
+
+2. **Harness HTTP server**: Use a minimal framework (Sinatra for Ruby, Express for Node.js, Flask for Python) \u2014 NOT the app's own framework.
+
+3. **Exact route paths**: Each target has a "Route:" field \u2014 use that EXACT path. The scanner registers these paths, so they must match.
+
+4. **Response content type**: ALL endpoints MUST respond with \`text/plain\` (not text/html). The harness wraps backend functions, not HTML views. Returning HTML causes false-positive XSS/CSS injection findings.
+
+5. **Resilient loading**: The harness MUST NOT crash if a target fails to load. Wrap each require/import in error handling. Skip failed targets, log a warning, and keep serving the ones that loaded.
+
+6. **Error handling**: Catch exceptions in route handlers and return 500 with the error message. Add a \`GET /health\` that returns 200.
+
+7. **Port**: Listen on PORT env var, defaulting to 3001.
+
+## IMPORTANT: Read the actual source files
+Before writing the harness, READ the target source files to understand their real imports, class structure, and how to call them. Don't guess \u2014 verify. The harness will run inside Docker with the project source at /app.
+
+## TypeScript projects
+If the target file paths end in .js and reference a dist/ directory, these are PRE-COMPILED files. Use plain \`require()\` \u2014 do NOT use ts-node, tsx, or any TypeScript transpiler. The harness.js file must be plain JavaScript that Node.js can execute directly.
+
+## Output
+Return the complete harness file inside a single fenced code block with the language tag.
+After the code block, return a JSON object:
+{"startCommand": "ruby harness.rb", "harnessFileName": "harness.rb", "docker": true}
+
+- **startCommand**: the shell command to start the harness server
+- **harnessFileName**: the filename to save the harness code as (e.g. harness.rb, harness.js, harness.py)
+- **docker**: whether it should run inside Docker
+
+For Docker-based projects where the deps are inside a container, the harness should also run inside that container. For native projects, run directly.`
+    },
+    {
+      role: "user",
+      content: "Read the source files for each target function to understand their imports, dependencies, and how to instantiate/call them with MINIMAL bootstrapping. Avoid full framework boot if at all possible. Generate the harness server."
+    }
+  ];
+}
+function identifyInfraPrompt(techStack) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. Given a ${techStack} project, identify the MINIMAL infrastructure services (databases, caches) needed to run backend logic \u2014 NOT the web server itself.
+
+## What to look for
+1. Docker Compose files (compose.yml, docker-compose.yml, etc.) \u2014 find database and cache services
+2. Database config files (database.yml, .env, config/database.py, knexfile, etc.) \u2014 find connection strings
+3. README \u2014 setup instructions for databases
+
+## What to extract
+For each required service:
+- Service name from compose file
+- Docker image and tag used
+- Port mapping
+- Environment variables needed
+- Volume mounts (if any)
+
+## Output format
+Return a JSON object:
+{
+  "composeFile": "docker-compose.yml" | null,
+  "services": [
+    {
+      "name": "postgres",
+      "image": "postgres:15",
+      "ports": ["5432:5432"],
+      "env": {"POSTGRES_PASSWORD": "dev", "POSTGRES_DB": "myapp_dev"},
+      "essential": true
+    }
+  ],
+  "migrationCommand": "bundle exec rails db:create db:migrate" | "npm run migration:up" | null,
+  "envVars": {"DATABASE_URL": "postgres://..."}
+}
+
+## Rules
+- Only include data stores (PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, etc.)
+- Do NOT include web servers, reverse proxies, frontend dev servers, or the app itself
+- Mark services as essential=true if they're needed for basic DB operations, essential=false if optional (e.g. Elasticsearch for search features)
+- If a compose service uses \`build:\` instead of \`image:\`, identify the underlying database software and use the standard Docker Hub image (e.g. postgres:16, redis:7-alpine, mysql:8)
+- Always include port mappings. If the compose file doesn't map ports, use the standard default ports (e.g. 5432:5432 for PostgreSQL, 6379:6379 for Redis, 3306:3306 for MySQL)
+- If no compose file exists but database config references a service, note it
+- Prefer extracting from existing compose files rather than guessing`
+    },
+    {
+      role: "user",
+      content: "Analyze this project's infrastructure requirements. Read compose files, database configs, and environment files. Return the minimal infrastructure needed for running backend logic."
+    }
+  ];
+}
+function harnessDockerfileRepairPrompt(error, currentDockerfile, harnessCode, harnessFileName) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. A harness server (\`${harnessFileName}\`) failed to build inside Docker. Diagnose the error and fix the Dockerfile.
+
+The error may be a missing gem/package, wrong environment variable, missing source files, or permission issue. Read the harness code and project files to understand what's needed.
+
+IMPORTANT: If the error is a **database connection issue** (connection refused, no password supplied) or a **harness code bug** (NameError, NoMethodError, SyntaxError in the harness file), return the current Dockerfile unchanged \u2014 those are handled separately.
+
+Use your tools to read project files as needed, then return the complete fixed Dockerfile inside a fenced code block.`
+    },
+    {
+      role: "user",
+      content: `The harness failed with:
+\`\`\`
+${error}
+\`\`\`
+
+Current Dockerfile:
+\`\`\`dockerfile
+${currentDockerfile}
+\`\`\`
+
+Harness code:
+\`\`\`
+${harnessCode}
+\`\`\`
+
+Read project files as needed, then return the fixed Dockerfile.`
+    }
+  ];
+}
+function standaloneHarnessDockerfilePrompt(techStack, harnessCode, harnessFileName, startCommand, port, targets) {
+  const targetSummary = targets.map(
+    (t) => `- ${t.className}.${t.name} (${t.file}) \u2014 deps: ${t.deps.join(",")} \u2014 tier: ${t.tier ?? "?"}`
+  ).join("\n");
+  const allFiles = [...new Set(targets.map((t) => t.file))];
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer. Create a **self-contained** Dockerfile for a security-scanning harness.
+
+## Approach
+The harness targets low-level service/utility functions that do NOT need the full application framework. Instead of building the entire app, create a lightweight image with:
+1. A stock runtime image (e.g. \`ruby:3.4\`, \`node:20\`, \`python:3.12\`)
+2. ONLY the specific source files the harness needs
+3. ONLY the minimal dependencies those files require
+
+## Tech stack: ${techStack}
+
+## Target functions
+${targetSummary}
+
+## Files the harness code imports/requires
+${allFiles.map((f) => `- ${f}`).join("\n")}
+
+## Harness file: ${harnessFileName}
+## Start command: ${startCommand}
+## Port: ${port}
+
+## What to do
+1. Start FROM a stock runtime image (small \u2014 use slim/alpine variants if available)
+2. Read the harness code and target files to understand their \`require\`/\`import\` statements
+3. Install only the gems/packages the harness and target files actually need (sinatra, pg, activerecord, etc.)
+4. \`COPY . /app\` \u2014 copy the full project source to preserve all transitive require chains. This is safe because we don't run \`bundle install\` or build assets.
+5. COPY the harness file into the image
+6. DO NOT run \`bundle install\`, \`npm install\`, or build frontend assets
+7. For Ruby: set \`ENV RUBYLIB=/app/lib\` so bare \`require 'filename'\` finds project files in lib/
+
+## For Ruby targets specifically:
+- **Set \`ENV BUNDLE_GEMFILE=""\`** to prevent Bundler from interfering
+- **Set \`ENV RUBYLIB=/app/lib\`** so bare \`require 'some_file'\` finds project files in lib/
+- Use \`gem install sinatra activesupport\` (+ other needed gems) directly \u2014 NOT Bundler with the project's Gemfile
+- If targets need ActiveRecord/ActiveSupport, install those gems directly too
+- **Always \`COPY . /app\`** \u2014 tracing individual file dependencies is fragile; just copy the whole project source. The image stays small because we don't run \`bundle install\` or build assets.
+- Set WORKDIR /app
+
+## Important
+- The image stays small because we skip \`bundle install\`/\`npm install\`/asset compilation \u2014 just source files + a few gems
+- For Ruby: always set both \`ENV BUNDLE_GEMFILE=""\` and \`ENV RUBYLIB=/app/lib\`
+- If a target file requires Rails-internal modules, install just the specific gem (e.g. \`gem install activerecord activesupport\`)
+
+Return ONLY the complete Dockerfile inside a fenced code block.`
+    },
+    {
+      role: "user",
+      content: `Here is the harness code:
+
+\`\`\`
+${harnessCode}
+\`\`\`
+
+Read the target files to trace all required files and dependencies, then generate a minimal self-contained Dockerfile.`
+    }
+  ];
+}
+function harnessCodeRepairPrompt(harnessCode, harnessFileName, endpointErrors, targets) {
+  const errorSummary = endpointErrors.map((e) => `${e.method} ${e.path} \u2192 ${e.status}
+  ${e.body}`).join("\n\n");
+  const targetSummary = targets.map(
+    (t) => `- ${t.className}.${t.name} (${t.file}) \u2014 deps: ${t.deps.join(",")} \u2014 tier: ${t.tier ?? "?"}`
+  ).join("\n");
+  return [
+    {
+      role: "system",
+      content: `You are a security engineer fixing a harness server. The harness wraps backend functions for DAST scanning.
+
+## Harness file: ${harnessFileName}
+
+## Target functions
+${targetSummary}
+
+## Errors encountered
+${errorSummary}
+
+## Your task
+Diagnose the root cause of each error by reading the target source files and their dependencies. Fix the harness code.
+
+Key principles:
+- Read the actual source files to understand what each target needs
+- If a dependency is a framework module not needed for the core computation (logging, events, metrics), stub it minimally
+- If a require path is wrong, find the correct one by reading the project structure
+- Do NOT remove endpoints \u2014 fix them
+- The harness runs in Docker at /app with the full project source available
+
+Return the complete fixed harness file inside a single fenced code block with the language tag.`
+    },
+    {
+      role: "user",
+      content: `Current harness code:
+
+\`\`\`
+${harnessCode}
+\`\`\`
+
+Read the source files for the failing targets. Diagnose the root cause of each error and fix the harness code. Return the complete fixed harness file.`
+    }
+  ];
+}
+
+// src/phases/harness.ts
+async function runFunctionHarness(llm, repoPath, techStack, modelSelector) {
+  const stackStr = formatTechStack(techStack);
+  const handleTool = createToolHandler(repoPath);
+  console.log("[Harness] Analyzing infrastructure requirements...");
+  const infraInfo = await identifyInfra(
+    llm,
+    repoPath,
+    stackStr,
+    handleTool,
+    modelSelector.current()
+  );
+  console.log("[Harness] Starting minimal infrastructure...");
+  await startMinimalInfra(repoPath, infraInfo);
+  console.log("[Harness] Identifying critical functions for harness scanning...");
+  let targets = await identifyTargets(llm, repoPath, stackStr, handleTool, modelSelector.current());
+  if (targets.length === 0 && modelSelector.escalate()) {
+    console.log("[Harness] No targets found \u2014 retrying with stronger model...");
+    targets = await identifyTargets(llm, repoPath, stackStr, handleTool, modelSelector.current());
+    modelSelector.reset();
+  }
+  if (targets.length === 0) {
+    throw new Error("No suitable functions found for harness-based scanning");
+  }
+  console.log(`[Harness] Identified ${targets.length} target function(s):`);
+  for (const t of targets) {
+    console.log(
+      `[Harness]   ${t.className}.${t.name} \u2014 tier ${t.tier ?? "?"} \u2014 ${t.vulnTypes.join(", ")} \u2014 deps: ${t.deps.join(", ")}`
+    );
+  }
+  const tier3Count = targets.filter((t) => (t.tier ?? 3) >= 3).length;
+  if (tier3Count > 0) {
+    console.log(
+      `[Harness] Dropping ${tier3Count} tier-3 target(s) (full framework boot not available in harness mode)`
+    );
+    targets = targets.filter((t) => (t.tier ?? 3) < 3);
+  }
+  if (targets.length === 0) {
+    throw new Error(
+      "No tier 1/2 targets found \u2014 all identified functions require full framework boot"
+    );
+  }
+  let proc;
+  let harnessConfig;
+  let activeTargets = targets;
+  let healthyPaths = /* @__PURE__ */ new Set();
+  for (const attempt of ["all", "tier1-only"]) {
+    if (attempt === "tier1-only") {
+      const tier1Only = targets.filter((t) => t.tier === 1);
+      if (tier1Only.length === 0 || tier1Only.length === activeTargets.length) {
+        throw new Error("Harness failed to build or start after all repair attempts");
+      }
+      console.log(
+        `[Harness] Retrying with ${tier1Only.length} tier-1 targets only (no external deps)...`
+      );
+      activeTargets = tier1Only;
+      modelSelector.reset();
+    }
+    console.log("[Harness] Generating harness server...");
+    harnessConfig = await generateHarness(
+      llm,
+      repoPath,
+      stackStr,
+      activeTargets,
+      infraInfo,
+      handleTool,
+      modelSelector.current()
+    );
+    console.log("[Harness] Building and starting harness server...");
+    let harnessResult;
+    try {
+      harnessResult = await startHarness(
+        repoPath,
+        llm,
+        stackStr,
+        harnessConfig,
+        infraInfo,
+        handleTool,
+        modelSelector,
+        activeTargets
+      );
+      proc = harnessResult.process;
+      healthyPaths = harnessResult.healthyPaths;
+      break;
+    } catch (err) {
+      console.warn(`[Harness] Harness failed (${attempt}): ${toErrorMessage(err)}`);
+      if (attempt === "tier1-only") {
+        throw err;
+      }
+    }
+  }
+  const discoveredEndpoints = harnessConfig.endpoints.filter((ep) => healthyPaths.has(ep.path)).map(
+    (ep) => ({
+      method: ep.method,
+      path: ep.path,
+      filePath: ep.target.file,
+      body: ep.sampleBody ?? null,
+      contentType: ep.contentType,
+      // For GET endpoints, expose params as query params so the scanner has injection points
+      queryParams: ep.method === "GET" && ep.target.params.length > 0 ? ep.target.params.map((p) => ({
+        name: p.name,
+        value: formatHarnessQuerySample(p.sample)
+      })) : void 0
+    })
+  );
+  if (discoveredEndpoints.length === 0) {
+    throw new Error("No healthy harness endpoints \u2014 all targets failed to load or returned errors");
+  }
+  console.log(
+    `[Harness] Registering ${discoveredEndpoints.length}/${harnessConfig.endpoints.length} healthy endpoints`
+  );
+  return { process: proc, config: harnessConfig, endpoints: discoveredEndpoints };
+}
+function formatHarnessQuerySample(sample) {
+  if (sample === null || sample === void 0) {
+    return "";
+  }
+  if (typeof sample === "object") {
+    return "";
+  }
+  return String(sample);
+}
+async function identifyInfra(llm, repoPath, stackStr, handleTool, model) {
+  const messages = identifyInfraPrompt(stackStr);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
+  try {
+    const parsed = JSON.parse(extractJson(response));
+    const envVars = parsed.envVars ?? {};
+    const services = parsed.services ?? [];
+    const hasPostgres = services.some((s) => /postgres/i.test(s.name) || /postgres/i.test(s.image));
+    const hasMysql = services.some(
+      (s) => /mysql|mariadb/i.test(s.name) || /mysql|mariadb/i.test(s.image)
+    );
+    const hasRedis = services.some((s) => /redis/i.test(s.name) || /redis/i.test(s.image));
+    if (hasPostgres) {
+      for (const svc of services) {
+        if (/postgres/i.test(svc.name) || /postgres/i.test(svc.image)) {
+          svc.env.POSTGRES_HOST_AUTH_METHOD = "trust";
+          if (svc.env.POSTGRES_PASSWORD && !envVars.PGPASSWORD) {
+            envVars.PGPASSWORD = svc.env.POSTGRES_PASSWORD;
+          }
+        }
+      }
+      for (const key of ["DB_HOST", "DATABASE_HOST", "PGHOST", "DISCOURSE_DB_HOST"]) {
+        if (!envVars[key]) envVars[key] = "localhost";
+      }
+    }
+    if (hasMysql) {
+      for (const svc of services) {
+        if (/mysql|mariadb/i.test(svc.name) || /mysql|mariadb/i.test(svc.image)) {
+          svc.env.MYSQL_ALLOW_EMPTY_PASSWORD = "yes";
+        }
+      }
+      for (const key of ["DB_HOST", "DATABASE_HOST", "MYSQL_HOST"]) {
+        if (!envVars[key]) envVars[key] = "localhost";
+      }
+    }
+    if (hasRedis) {
+      for (const key of ["REDIS_HOST", "DISCOURSE_REDIS_HOST"]) {
+        if (!envVars[key]) envVars[key] = "localhost";
+      }
+    }
+    return {
+      composeFile: parsed.composeFile ?? null,
+      services,
+      migrationCommand: parsed.migrationCommand ?? null,
+      envVars
+    };
+  } catch {
+    console.warn("[Harness] Could not parse infra response, assuming no infra needed");
+    return { composeFile: null, services: [], migrationCommand: null, envVars: {} };
+  }
+}
+async function startMinimalInfra(repoPath, infra) {
+  if (infra.services.length === 0) {
+    console.log("[Harness] No infrastructure services needed");
+    return;
+  }
+  cleanupDocker(repoPath);
+  const essentialServices = infra.services.filter((s) => s.essential);
+  if (essentialServices.length === 0) {
+    console.log("[Harness] No essential infrastructure services");
+    return;
+  }
+  if (infra.composeFile && existsSync4(resolve4(repoPath, infra.composeFile))) {
+    const serviceNames = essentialServices.map((s) => s.name).join(" ");
+    const cmd = `docker compose -f ${infra.composeFile} up -d ${serviceNames}`;
+    console.log(`[Harness] Starting infra: ${cmd}`);
+    try {
+      execSync2(cmd, {
+        cwd: repoPath,
+        stdio: "pipe",
+        timeout: 12e4,
+        env: { ...process.env, ...infra.envVars }
+      });
+    } catch (err) {
+      console.warn(`[Harness] Compose infra start failed: ${toErrorMessage(err)}`);
+      await startServicesStandalone(essentialServices);
+    }
+  } else {
+    await startServicesStandalone(essentialServices);
+  }
+  console.log("[Harness] Waiting for infrastructure to be ready...");
+  await sleep(5e3);
+}
+var DEFAULT_SERVICE_IMAGES = {
+  postgres: { image: "postgres:16", ports: ["5432:5432"] },
+  postgresql: { image: "postgres:16", ports: ["5432:5432"] },
+  db: { image: "postgres:16", ports: ["5432:5432"] },
+  mysql: { image: "mysql:8", ports: ["3306:3306"] },
+  mariadb: { image: "mariadb:11", ports: ["3306:3306"] },
+  redis: { image: "redis:7-alpine", ports: ["6379:6379"] },
+  mongo: { image: "mongo:7", ports: ["27017:27017"] },
+  mongodb: { image: "mongo:7", ports: ["27017:27017"] },
+  elasticsearch: { image: "elasticsearch:8.13.0", ports: ["9200:9200"] }
+};
+async function startServicesStandalone(services) {
+  for (const svc of services) {
+    let image = svc.image;
+    let ports = svc.ports;
+    if (!image || image === "null") {
+      const defaults = DEFAULT_SERVICE_IMAGES[svc.name.toLowerCase()];
+      if (defaults) {
+        image = defaults.image;
+        if (!ports || ports.length === 0) ports = defaults.ports;
+        console.log(`[Harness] Using default image for ${svc.name}: ${image}`);
+      } else {
+        console.warn(`[Harness] Skipping ${svc.name} \u2014 no image specified and no known default`);
+        continue;
+      }
+    }
+    if (!ports || ports.length === 0) {
+      console.warn(`[Harness] Skipping ${svc.name} \u2014 no port mapping`);
+      continue;
+    }
+    const envFlags = Object.entries(svc.env).map(([k, v]) => `-e ${k}=${v}`).join(" ");
+    const portFlags = ports.map((p) => `-p ${p}`).join(" ");
+    const cmd = `docker run -d --name harness_${svc.name} ${portFlags} ${envFlags} ${image}`;
+    console.log(`[Harness] Starting standalone: ${cmd}`);
+    try {
+      execSync2(cmd, { stdio: "pipe", timeout: 6e4 });
+    } catch (err) {
+      console.warn(`[Harness] Failed to start ${svc.name}: ${toErrorMessage(err)}`);
+    }
+  }
+}
+async function identifyTargets(llm, repoPath, stackStr, handleTool, model) {
+  const messages = identifyHarnessTargetsPrompt(stackStr);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 30);
+  try {
+    const parsed = JSON.parse(extractJson(response));
+    if (!Array.isArray(parsed)) {
+      console.warn("[Harness] Expected array of targets, got:", typeof parsed);
+      return [];
+    }
+    const valid = parsed.filter((t) => {
+      if (!t.name || !t.file || !t.className || !t.params || !t.vulnTypes) {
+        console.warn(`[Harness] Skipping invalid target: ${JSON.stringify(t).slice(0, 200)}`);
+        return false;
+      }
+      if (!existsSync4(resolve4(repoPath, String(t.file)))) {
+        console.warn(`[Harness] Skipping target with missing file: ${t.file}`);
+        return false;
+      }
+      return true;
+    });
+    for (const t of valid) {
+      if (t.tier === void 0) {
+        const depSet = new Set(t.deps);
+        if (depSet.size === 0 || depSet.size === 1 && depSet.has("none")) {
+          t.tier = 1;
+        } else {
+          t.tier = 2;
+        }
+        console.log(
+          `[Harness] Auto-inferred tier ${t.tier} for ${t.className}.${t.name} (deps: ${t.deps.join(", ")})`
+        );
+      }
+    }
+    return valid;
+  } catch (err) {
+    console.error(`[Harness] Failed to parse targets: ${toErrorMessage(err)}`);
+    return [];
+  }
+}
+async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTool, model) {
+  const infraDescription = infra.services.length > 0 ? `Services running: ${infra.services.filter((s) => s.essential).map((s) => `${s.name} (${s.image})`).join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}` : "No infrastructure services \u2014 all targets are stateless or use local file system only.";
+  const hasDistDir = existsSync4(`${repoPath}/dist`);
+  const isTypeScript = targets.some((t) => t.file.endsWith(".ts"));
+  let hasCompiledOutput = hasDistDir;
+  if (!hasCompiledOutput && isTypeScript) {
+    try {
+      const tsconfig = readFileSync5(`${repoPath}/tsconfig.json`, "utf-8");
+      hasCompiledOutput = /"outDir"\s*:\s*"\.?\/?(dist|build|out)"/.test(tsconfig);
+    } catch {
+    }
+    if (!hasCompiledOutput) {
+      try {
+        const dockerfile = readFileSync5(`${repoPath}/Dockerfile`, "utf-8");
+        hasCompiledOutput = /npm run build|yarn build|tsc\b|nest build/.test(dockerfile);
+      } catch {
+      }
+    }
+  }
+  if (isTypeScript && hasCompiledOutput) {
+    for (const t of targets) {
+      if (t.file.endsWith(".ts")) {
+        t.file = t.file.replace(/^src\//, "dist/").replace(/\.ts$/, ".js");
+      }
+    }
+    console.log(
+      "[Harness] TypeScript project with compiled output \u2014 remapped target paths from src/*.ts to dist/*.js"
+    );
+  }
+  const messages = generateHarnessPrompt(stackStr, targets, infraDescription);
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
+  const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
+  if (!codeMatch) {
+    throw new Error("LLM did not return a code block for the harness");
+  }
+  const language = codeMatch[1];
+  const harnessCode = codeMatch[2];
+  const jsonMatch = response.match(/```[\s\S]*?```\s*(\{[\s\S]*?\})/);
+  let startCommand = "";
+  let docker = false;
+  let harnessFileName = "";
+  if (jsonMatch) {
+    try {
+      const meta = JSON.parse(jsonMatch[1]);
+      startCommand = meta.startCommand ?? "";
+      docker = meta.docker ?? false;
+      harnessFileName = meta.harnessFileName ?? "";
+    } catch {
+    }
+  }
+  if (!harnessFileName) {
+    const extMap = {
+      ruby: ".rb",
+      javascript: ".js",
+      typescript: ".ts",
+      python: ".py",
+      go: ".go",
+      csharp: ".cs",
+      java: ".java",
+      php: ".php"
+    };
+    const ext = extMap[language] ?? "." + language;
+    harnessFileName = `harness${ext}`;
+  }
+  const harnessPath = resolve4(repoPath, harnessFileName);
+  if (!startCommand) {
+    const cmdMap = {
+      ".rb": `ruby ${harnessFileName}`,
+      ".js": `node ${harnessFileName}`,
+      ".ts": `npx tsx ${harnessFileName}`,
+      ".py": `python ${harnessFileName}`,
+      ".go": `go run ${harnessFileName}`
+    };
+    const ext = harnessFileName.slice(harnessFileName.lastIndexOf("."));
+    startCommand = cmdMap[ext] ?? `node ${harnessFileName}`;
+  }
+  writeFileSync4(harnessPath, harnessCode, "utf-8");
+  console.log(`[Harness] Wrote harness to ${harnessFileName} (${harnessCode.length} bytes)`);
+  const endpoints = targets.map((t) => {
+    const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    const sampleBody = t.httpMethod === "GET" ? void 0 : JSON.stringify(Object.fromEntries(t.params.map((p) => [p.name, p.sample])));
+    return {
+      method: t.httpMethod,
+      path: `/harness/${pathSlug}`,
+      target: t,
+      sampleBody,
+      contentType: t.httpMethod === "GET" ? void 0 : "application/json"
+    };
+  });
+  return {
+    harnessFile: harnessPath,
+    startCommand,
+    port: 3001,
+    docker,
+    endpoints
+  };
+}
+var HARNESS_IMAGE = "bright-harness-local";
+var HARNESS_CONTAINER = "bright-harness-local";
+var MIN_HARNESS_HEALTH_RATIO = 0.75;
+var MIN_HARNESS_HEALTHY_ENDPOINTS = 3;
+async function startHarness(repoPath, llm, techStack, config, infraInfo, handleTool, modelSelector, targets) {
+  const maxTier = Math.max(...targets.map((t) => t.tier ?? 2));
+  console.log(
+    `[Harness] All targets are tier \u2264${maxTier} \u2014 skipping full app build, using stock runtime image`
+  );
+  ensureDockerIgnore(repoPath);
+  const harnessFileName = config.harnessFile.split("/").pop();
+  let harnessCode = readFileSync5(config.harnessFile, "utf-8");
+  const harnessDockerfilePath = resolve4(repoPath, "Dockerfile.harness");
+  console.log("[Harness] Generating Dockerfile.harness via LLM...");
+  const genMessages = standaloneHarnessDockerfilePrompt(
+    techStack,
+    harnessCode,
+    harnessFileName,
+    config.startCommand,
+    config.port,
+    targets.map((t) => ({
+      file: t.file,
+      className: t.className,
+      name: t.name,
+      deps: t.deps,
+      tier: t.tier,
+      requireStatements: t.requireStatements
+    }))
+  );
+  const genResponse = await chatWithTools(
+    llm,
+    genMessages,
+    codebaseTools,
+    handleTool,
+    modelSelector.current(),
+    10
+  );
+  let harnessDockerfileContent = extractCodeBlock(genResponse);
+  if (!harnessDockerfileContent) {
+    console.warn("[Harness] LLM did not return a Dockerfile block, retrying...");
+    modelSelector.escalate();
+    const retryResponse = await chatWithTools(
+      llm,
+      genMessages,
+      codebaseTools,
+      handleTool,
+      modelSelector.current(),
+      10
+    );
+    harnessDockerfileContent = extractCodeBlock(retryResponse);
+    if (!harnessDockerfileContent) {
+      throw new Error("LLM failed to generate Dockerfile.harness after retry");
+    }
+  }
+  writeFileSync4(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
+  console.log(
+    `[Harness] Generated Dockerfile.harness (${harnessDockerfileContent.split("\n").length} lines)`
+  );
+  const MAX_HARNESS_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_HARNESS_ATTEMPTS; attempt++) {
+    console.log(
+      `[Harness] Building harness image (attempt ${attempt + 1}/${MAX_HARNESS_ATTEMPTS})...`
+    );
+    try {
+      execSync2(`docker build -t ${HARNESS_IMAGE} -f Dockerfile.harness .`, {
+        cwd: repoPath,
+        stdio: "pipe",
+        timeout: 12e4
+      });
+    } catch (err) {
+      const errMsg = extractExecError(err);
+      console.warn(`[Harness] Harness image build failed (attempt ${attempt + 1})`);
+      if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
+        await repairHarnessDockerfile(
+          llm,
+          repoPath,
+          errMsg,
+          harnessCode,
+          harnessFileName,
+          handleTool,
+          modelSelector
+        );
+      }
+      continue;
+    }
+    try {
+      execSync2(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
+        stdio: "ignore",
+        timeout: 1e4
+      });
+    } catch {
+    }
+    const envFlags = ["-e", `PORT=${config.port}`];
+    for (const [k, v] of Object.entries(infraInfo.envVars)) {
+      envFlags.push("-e", `${k}=${v}`);
+    }
+    const dockerArgs = [
+      "run",
+      "--rm",
+      "--name",
+      HARNESS_CONTAINER,
+      "--network",
+      "host",
+      ...envFlags,
+      HARNESS_IMAGE
+    ];
+    console.log(`[Harness] Starting container: docker ${dockerArgs.join(" ")}`);
+    const child = spawn2("docker", dockerArgs, {
+      cwd: repoPath,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true
+    });
+    try {
+      await waitForHarnessHealthy(child, config.port);
+      const probeResult = await probeEndpoints(config.port, config.endpoints);
+      const { errors: probeErrors, healthyPaths } = probeResult;
+      const totalEps = config.endpoints.length;
+      if (probeErrors.length > 0) {
+        console.warn(
+          `[Harness] ${probeErrors.length}/${totalEps} endpoints returned errors after probe`
+        );
+      }
+      const targetHealthy = targetHealthyHarnessEndpoints(totalEps);
+      if (healthyPaths.size >= targetHealthy) {
+        if (probeErrors.length > 0) {
+          console.warn(
+            `[Harness] Proceeding with partial coverage: ${healthyPaths.size}/${totalEps} endpoints healthy`
+          );
+        }
+        console.log(`[Harness] ${healthyPaths.size}/${totalEps} endpoints healthy \u2014 proceeding`);
+        return { process: child, healthyPaths };
+      }
+      console.warn(
+        `[Harness] Coverage below target: ${healthyPaths.size}/${totalEps} endpoints healthy; target is ${targetHealthy}`
+      );
+      if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
+        child.kill();
+        await repairHarnessCode(
+          llm,
+          repoPath,
+          config,
+          probeErrors,
+          targets,
+          handleTool,
+          modelSelector
+        );
+        harnessCode = readFileSync5(config.harnessFile, "utf-8");
+        continue;
+      }
+      if (healthyPaths.size > 0) {
+        console.warn(
+          `[Harness] Proceeding after max repair attempts with ${healthyPaths.size}/${totalEps} healthy endpoint(s)`
+        );
+        return { process: child, healthyPaths };
+      }
+      child.kill();
+      throw new Error(`No healthy harness endpoints after ${MAX_HARNESS_ATTEMPTS} attempts`);
+    } catch (err) {
+      child.kill();
+      const errStr = toErrorMessage(err);
+      console.warn(`[Harness] Harness startup failed (attempt ${attempt + 1}): ${errStr}`);
+      if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
+        if (isHarnessCodeError(errStr)) {
+          console.log("[Harness] Error is in harness code, not Dockerfile \u2014 repairing harness...");
+          await repairHarnessCode(
+            llm,
+            repoPath,
+            config,
+            [{ method: "STARTUP", path: "/", status: 0, body: errStr }],
+            targets,
+            handleTool,
+            modelSelector
+          );
+          harnessCode = readFileSync5(config.harnessFile, "utf-8");
+        } else {
+          await repairHarnessDockerfile(
+            llm,
+            repoPath,
+            errStr,
+            harnessCode,
+            harnessFileName,
+            handleTool,
+            modelSelector
+          );
+        }
+      }
+    }
+  }
+  throw new Error("Harness failed to build or start after all repair attempts");
+}
+function targetHealthyHarnessEndpoints(totalEndpoints) {
+  if (totalEndpoints <= 0) {
+    return 1;
+  }
+  return Math.min(
+    totalEndpoints,
+    Math.max(MIN_HARNESS_HEALTHY_ENDPOINTS, Math.ceil(totalEndpoints * MIN_HARNESS_HEALTH_RATIO))
+  );
+}
+function isHarnessCodeError(error) {
+  const codeErrorPatterns = [
+    /NameError.*undefined.*(?:variable|method)/i,
+    /NoMethodError.*undefined method/i,
+    /cannot infer basepath/i,
+    /SyntaxError/i,
+    /undefined method.*for main/i,
+    /undefined local variable.*for main/i,
+    /harness\.\w+:\d+:in/i
+    // stack trace pointing to harness file
+  ];
+  return codeErrorPatterns.some((p) => p.test(error));
+}
+function extractExecError(err) {
+  let errMsg = toErrorMessage(err);
+  if (err && typeof err === "object") {
+    const errObj = err;
+    const stderr = errObj.stderr instanceof Buffer ? errObj.stderr.toString() : "";
+    const stdout = errObj.stdout instanceof Buffer ? errObj.stdout.toString() : "";
+    if (stderr || stdout) {
+      errMsg = [stdout, stderr].filter(Boolean).join("\n").trim();
+    }
+  }
+  return errMsg;
+}
+async function repairHarnessDockerfile(llm, repoPath, error, harnessCode, harnessFileName, handleTool, modelSelector) {
+  const dockerfilePath = resolve4(repoPath, "Dockerfile.harness");
+  let currentDockerfile;
+  try {
+    currentDockerfile = readFileSync5(dockerfilePath, "utf-8");
+  } catch {
+    return;
+  }
+  modelSelector.escalate();
+  const truncatedError = error.length > 3e3 ? error.slice(-3e3) : error;
+  const messages = harnessDockerfileRepairPrompt(
+    truncatedError,
+    currentDockerfile,
+    harnessCode,
+    harnessFileName
+  );
+  try {
+    console.log("[Harness] Asking LLM to repair Dockerfile.harness...");
+    const response = await chatWithTools(
+      llm,
+      messages,
+      codebaseTools,
+      handleTool,
+      modelSelector.current(),
+      40
+    );
+    const fixed = extractCodeBlock(response);
+    if (!fixed) {
+      console.warn("[Harness] LLM did not return a valid Dockerfile.harness repair");
+      return;
+    }
+    const changed = fixed !== currentDockerfile;
+    writeFileSync4(dockerfilePath, fixed, "utf-8");
+    console.log(
+      `[Harness] LLM repaired Dockerfile.harness (${fixed.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
+    );
+  } catch (err) {
+    console.warn(`[Harness] Dockerfile.harness repair failed: ${toErrorMessage(err)}`);
+  }
+}
+async function probeEndpoints(port, endpoints) {
+  const errors = [];
+  const healthyPaths = /* @__PURE__ */ new Set();
+  const baseUrl = `http://localhost:${port}`;
+  for (const ep of endpoints) {
+    try {
+      const sampleValue = (v) => typeof v === "string" ? v : JSON.stringify(v);
+      const url = ep.method === "GET" && ep.target.params.length > 0 ? `${baseUrl}${ep.path}?${new URLSearchParams(
+        ep.target.params.map((p) => [p.name, sampleValue(p.sample)])
+      ).toString()}` : `${baseUrl}${ep.path}`;
+      const opts = {
+        method: ep.method,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
+      };
+      if (ep.method !== "GET" && ep.sampleBody) {
+        opts.headers = { "Content-Type": "application/json" };
+        opts.body = ep.sampleBody;
+      }
+      const res = await fetch(url, opts);
+      if (res.status >= 200 && res.status < 400) {
+        console.log(`[Harness:probe] ${ep.method} ${ep.path} \u2192 ${res.status} OK`);
+        healthyPaths.add(ep.path);
+      } else {
+        const body = await res.text().catch(() => "(could not read body)");
+        const truncated = body.length > 500 ? body.slice(0, 500) + "..." : body;
+        console.warn(`[Harness:probe] ${ep.method} ${ep.path} \u2192 ${res.status}: ${truncated}`);
+        errors.push({ method: ep.method, path: ep.path, status: res.status, body: truncated });
+      }
+    } catch (err) {
+      const msg = toErrorMessage(err);
+      console.warn(`[Harness:probe] ${ep.method} ${ep.path} \u2192 error: ${msg}`);
+      errors.push({ method: ep.method, path: ep.path, status: 0, body: msg });
+    }
+  }
+  return { errors, healthyPaths };
+}
+async function repairHarnessCode(llm, repoPath, config, probeErrors, targets, handleTool, modelSelector) {
+  const harnessCode = readFileSync5(config.harnessFile, "utf-8");
+  const harnessFileName = config.harnessFile.split("/").pop();
+  modelSelector.escalate();
+  const messages = harnessCodeRepairPrompt(harnessCode, harnessFileName, probeErrors, targets);
+  try {
+    console.log("[Harness] Asking LLM to repair harness code based on probe errors...");
+    const response = await chatWithTools(
+      llm,
+      messages,
+      codebaseTools,
+      handleTool,
+      modelSelector.current(),
+      40
+    );
+    const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
+    if (!codeMatch) {
+      console.warn("[Harness] LLM did not return a code block for harness repair");
+      return;
+    }
+    const fixedCode = codeMatch[2];
+    const changed = fixedCode !== harnessCode;
+    writeFileSync4(config.harnessFile, fixedCode, "utf-8");
+    console.log(
+      `[Harness] LLM repaired harness code (${fixedCode.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
+    );
+  } catch (err) {
+    console.warn(`[Harness] Harness code repair failed: ${toErrorMessage(err)}`);
+  }
+}
+async function waitForHarnessHealthy(child, port) {
+  const outputLines = [];
+  if (child.stdout) {
+    const rl = createInterface2({ input: child.stdout });
+    rl.on("line", (line) => {
+      outputLines.push(line);
+      console.log(`[Harness:out] ${line}`);
+    });
+  }
+  if (child.stderr) {
+    const rl = createInterface2({ input: child.stderr });
+    rl.on("line", (line) => {
+      outputLines.push(`ERR: ${line}`);
+      console.error(`[Harness:err] ${line}`);
+    });
+  }
+  const startTime = Date.now();
+  const timeout = 12e4;
+  let ready = false;
+  while (Date.now() - startTime < timeout) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        `Harness process exited with code ${child.exitCode}. Output:
+${outputLines.slice(-20).join("\n")}`
+      );
+    }
+    try {
+      const res = await fetch(`http://localhost:${port}/health`, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_QUICK)
+      });
+      if (res.ok) {
+        ready = true;
+        break;
+      }
+    } catch {
+    }
+    await sleep(2e3);
+  }
+  if (!ready) {
+    child.kill();
+    throw new Error(
+      `Harness did not become healthy within ${timeout / 1e3}s. Output:
+${outputLines.slice(-30).join("\n")}`
+    );
+  }
+  console.log(`[Harness] Server healthy on port ${port}`);
+  return child;
+}
+function cleanupHarnessInfra(repoPath) {
+  try {
+    execSync2(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
+      stdio: "ignore",
+      timeout: 15e3
+    });
+    execSync2("docker rm -f $(docker ps -aq --filter name=harness_) 2>/dev/null || true", {
+      stdio: "ignore",
+      timeout: 15e3
+    });
+  } catch {
+  }
+  cleanupDocker(repoPath);
+}
+
+// src/phases/repeater.ts
+var import_core = __toESM(require_src(), 1);
+var import_repeater = __toESM(require_src3(), 1);
+async function setupRepeater(projectId, api) {
+  const configuration = new import_core.Configuration({
+    hostname: api.brightHostname,
+    projectId,
+    credentials: { token: api.brightToken },
+    logLevel: import_core.LogLevel.NOTICE
+  });
+  const factory = configuration.container.resolve(import_repeater.RepeaterFactory);
+  const repeater = await factory.createRepeater({
+    namePrefix: `engine-${Date.now()}`,
+    disableRandomNameGeneration: true
+  });
+  const repeaterId = repeater.repeaterId;
+  console.log(`[Repeater] Created repeater: ${repeaterId}`);
+  try {
+    await startRepeaterWithTimeout(repeater, 6e4);
+  } catch (err) {
+    await repeater.stop().catch(() => void 0);
+    throw err;
+  }
+  console.log(`[Repeater] Connected: ${repeaterId}`);
+  return {
+    repeaterId,
+    stop: async () => {
+      await repeater.stop();
+    }
+  };
+}
+async function startRepeaterWithTimeout(repeater, timeoutMs) {
+  let timer;
+  try {
+    await Promise.race([
+      repeater.start(),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Timed out waiting for repeater connection")),
+          timeoutMs
+        );
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// src/phases/scan.ts
+var DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
+var PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
+async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, api, scanName, hasPathParams = false, smart = true) {
+  const locations = hasPathParams ? PATH_ATTACK_LOCATIONS : DEFAULT_ATTACK_LOCATIONS;
+  console.log(
+    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests [${testTags.join(", ")}], attack locations: ${locations.join(", ")}, smart: ${smart}`
+  );
+  return runScanViaRest(
+    api,
+    projectId,
+    entrypointIds,
+    repeaterId,
+    testTags,
+    locations,
+    scanName,
+    smart
+  );
+}
+async function runScanViaRest(api, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName, smart = true) {
+  let tests = [...testTags];
+  let eps = [...entrypointIds];
+  let locations = [...attackParamLocations];
+  const maxRetries = 4;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const body = {
+      name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      projectId,
+      module: "dast",
+      discoveryTypes: null,
+      entryPointIds: eps,
+      repeaters: [repeaterId],
+      tests,
+      attackParamLocations: locations,
+      smart,
+      skipStaticParams: true,
+      poolSize: 10,
+      requestsRateLimit: 0,
+      singleTabScanActive: false,
+      exclusions: { requests: [] }
+    };
+    let res;
+    try {
+      res = await fetch(`https://${api.brightHostname}/api/v1/scans`, {
+        method: "POST",
+        headers: {
+          Authorization: `Api-Key ${api.brightToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+    } catch (err) {
+      const msg = toErrorMessage(err);
+      console.warn(`[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`);
+      if (attempt < maxRetries) {
+        await sleep(5e3 * attempt);
+        continue;
+      }
+      throw new Error(`runScan failed after ${maxRetries} attempts: ${msg}`);
+    }
+    if (res.ok) {
+      const data = await res.json();
+      const scanId = data.id ?? data.scanId;
+      if (!scanId) {
+        throw new Error(`runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`);
+      }
+      console.log(`[Scan] Scan started (REST): ${scanId}`);
+      return scanId;
+    }
+    const text = await res.text();
+    if (res.status === 429) {
+      console.warn(`[Scan] Rate limited (attempt ${attempt}/${maxRetries}), backing off...`);
+      if (attempt < maxRetries) {
+        await sleep(1e4 * attempt);
+        continue;
+      }
+      throw new Error(`runScan rate limited after ${maxRetries} attempts`);
+    }
+    if (res.status >= 500) {
+      console.warn(
+        `[Scan] Server error ${res.status} (attempt ${attempt}/${maxRetries}): ${text.slice(0, 200)}`
+      );
+      if (attempt < maxRetries) {
+        await sleep(5e3 * attempt);
+        continue;
+      }
+      throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
+    }
+    if (res.status === 400) {
+      const errorDetails = parseValidationError(text);
+      console.warn(`[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${errorDetails.summary}`);
+      if (attempt >= maxRetries) break;
+      const fixedTests = tryFixScanConfig(text, tests);
+      if (fixedTests) {
+        tests = fixedTests;
+        console.log(`[Scan] Retrying with ${tests.length} tests after removing incompatible ones`);
+        continue;
+      }
+      if (errorDetails.invalidEntrypoints.length > 0) {
+        const invalidSet = new Set(errorDetails.invalidEntrypoints);
+        const filtered = eps.filter((id) => !invalidSet.has(id));
+        if (filtered.length > 0 && filtered.length < eps.length) {
+          console.log(
+            `[Scan] Removed ${eps.length - filtered.length} invalid entrypoint(s), retrying with ${filtered.length}`
+          );
+          eps = filtered;
+          continue;
+        }
+      }
+      if (errorDetails.fieldErrors.length > 0) {
+        const hasLocationErr = errorDetails.fieldErrors.some(
+          (f) => f.includes("attackParam") || f.includes("location")
+        );
+        if (hasLocationErr && locations.length > DEFAULT_ATTACK_LOCATIONS.length) {
+          console.log(`[Scan] Removing path from attack locations and retrying`);
+          locations = [...DEFAULT_ATTACK_LOCATIONS];
+          continue;
+        }
+      }
+      if (eps.length > 5) {
+        const prev = eps.length;
+        eps = eps.slice(0, Math.ceil(prev / 2));
+        console.log(`[Scan] Retrying with ${eps.length} entrypoints (reduced from ${prev})`);
+        continue;
+      }
+      if (eps.length > 1) {
+        console.log(`[Scan] Isolating: trying single entrypoint to check if config is the issue`);
+        eps = [eps[0]];
+        continue;
+      }
+    }
+    throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 800)}`);
+  }
+  throw new Error(
+    `runScan: exhausted retries. Last config: ${eps.length} eps, tests=[${tests.join(",")}]`
+  );
+}
+function parseValidationError(text) {
+  const invalidEntrypoints = [];
+  const fieldErrors = [];
+  let summary = text.slice(0, 600);
+  try {
+    const parsed = JSON.parse(text);
+    const messages = [];
+    if (Array.isArray(parsed.message)) {
+      messages.push(...parsed.message.map(String));
+    } else if (typeof parsed.message === "string") {
+      messages.push(parsed.message);
+    }
+    if (Array.isArray(parsed.errors)) {
+      for (const err of parsed.errors) {
+        const msg = err.message ?? err.constraints ? Object.values(err.constraints ?? {}).join("; ") : JSON.stringify(err);
+        messages.push(String(msg));
+      }
+    }
+    for (const msg of messages) {
+      if (msg.includes("entryPointIds") || msg.includes("entry_point")) {
+        fieldErrors.push(msg);
+        const idMatches = msg.match(/[a-zA-Z0-9]{20,}/g);
+        if (idMatches) invalidEntrypoints.push(...idMatches);
+      } else if (msg !== "One or more validation errors occurred.") {
+        fieldErrors.push(msg);
+      }
+    }
+    summary = messages.join(" | ").slice(0, 600) || summary;
+  } catch {
+    const idMatches = text.match(/entryPointIds[^[]*\[([^\]]+)\]/);
+    if (idMatches) {
+      const ids = idMatches[1].match(/[a-zA-Z0-9]{20,}/g);
+      if (ids) invalidEntrypoints.push(...ids);
+    }
+  }
+  return { summary, invalidEntrypoints, fieldErrors };
+}
+function tryFixScanConfig(errorText, tests) {
+  const lower = errorText.toLowerCase();
+  if (lower.includes("mutually exclusive")) {
+    const exclusiveTests = ["lrrl"];
+    const toRemove = new Set(
+      exclusiveTests.filter((ex) => lower.includes(ex) || tests.includes(ex))
+    );
+    if (toRemove.size > 0) {
+      const filtered = tests.filter((t) => !toRemove.has(t));
+      if (filtered.length < tests.length && filtered.length > 0) {
+        console.log(
+          `[Scan] Removed mutually exclusive test(s), ${tests.length} \u2192 ${filtered.length}`
+        );
+        return filtered;
+      }
+    }
+  }
+  if (lower.includes("multiple auth attack tests") || lower.includes("custom auth objects")) {
+    const filtered = tests.filter((t) => t !== "broken_access_control");
+    if (filtered.length < tests.length && filtered.length > 0) {
+      console.log(`[Scan] Removed multi-auth test(s), ${tests.length} \u2192 ${filtered.length}`);
+      return filtered;
+    }
+  }
+  return null;
+}
+var TERMINAL_STATUSES = /* @__PURE__ */ new Set(["done", "completed", "stopped", "failed", "disrupted"]);
+function isTerminalStatus(status) {
+  return TERMINAL_STATUSES.has(status.toLowerCase());
+}
+function isFailureStatus(status) {
+  const s = status.toLowerCase();
+  return s === "failed" || s === "disrupted" || s === "timeout";
+}
+function isPausedStatus(status) {
+  return status.toLowerCase() === "paused";
+}
+async function waitForScanCompletion(api, scanId, onProgress, healthMonitor) {
+  const pollInterval = 3e4;
+  let pausedByMonitor = false;
+  let unhealthySince;
+  const UNHEALTHY_BAIL_MS = 12e4;
+  await sleep(pollInterval);
+  while (true) {
+    if (healthMonitor) {
+      const healthy = healthMonitor.isHealthy();
+      if (!healthy && !pausedByMonitor) {
+        const ok = await setScanLifecycle(api, scanId, "pause");
+        if (ok) {
+          pausedByMonitor = true;
+          console.log(`[Scan] Paused ${scanId} \u2014 app unhealthy, will resume after recovery`);
+        }
+        if (!unhealthySince) unhealthySince = Date.now();
+      } else if (!healthy && unhealthySince) {
+        const elapsed = Date.now() - unhealthySince;
+        if (elapsed >= UNHEALTHY_BAIL_MS) {
+          console.warn(
+            `[Scan] App unhealthy for ${Math.round(elapsed / 1e3)}s \u2014 bailing out of scan wait for orchestrator to handle`
+          );
+          await setScanLifecycle(api, scanId, "stop");
+          return "disrupted";
+        }
+      } else if (healthy && pausedByMonitor) {
+        const ok = await setScanLifecycle(api, scanId, "resume");
+        if (ok) {
+          pausedByMonitor = false;
+          console.log(`[Scan] Resumed ${scanId} \u2014 app healthy again`);
+        }
+        unhealthySince = void 0;
+      } else if (healthy) {
+        unhealthySince = void 0;
+      }
+    }
+    const scanStatus = await getScanStatusWithRetry(api, scanId);
+    const issues = scanStatus.issuesFound;
+    onProgress?.(scanStatus.status, issues);
+    if (isPausedStatus(scanStatus.status)) {
+      const healthy = healthMonitor?.isHealthy() ?? true;
+      if (healthy) {
+        const ok = await setScanLifecycle(api, scanId, "resume");
+        if (ok) {
+          pausedByMonitor = false;
+          unhealthySince = void 0;
+          console.log(`[Scan] Resumed ${scanId} \u2014 Bright reported paused while app is healthy`);
+        }
+      }
+    }
+    if (isTerminalStatus(scanStatus.status)) {
+      console.log(`[Scan] Completed: ${scanStatus.status} (${issues} issues)`);
+      return scanStatus.status.toLowerCase();
+    }
+    await sleep(pollInterval);
+  }
+}
+async function setScanLifecycle(api, scanId, action) {
+  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/lifecycle`;
+  try {
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Authorization: `Api-Key ${api.brightToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ action })
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.warn(
+        `[Scan] Lifecycle ${action} for ${scanId} failed (${res.status}): ${body.slice(0, 200)}`
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[Scan] Lifecycle ${action} for ${scanId} threw: ${toErrorMessage(err)}`);
+    return false;
+  }
+}
+async function getScanStatusWithRetry(api, scanId) {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await getScanStatusViaRest(api, scanId);
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      console.warn(
+        `[Scan] getScanStatus retry ${attempt}/${maxAttempts} for ${scanId}: ${toErrorMessage(err)}`
+      );
+      await sleep(5e3 * attempt);
+    }
+  }
+  throw new Error("unreachable");
+}
+async function getScanStatusViaRest(api, scanId) {
+  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Api-Key ${api.brightToken}` }
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`getScanStatus failed (${res.status}): ${text.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  const issuesFound = extractIssueCount(data);
+  return {
+    status: data.status ?? "unknown",
+    issuesFound
+  };
+}
+function extractIssueCount(data) {
+  const severityFields = [
+    "numberOfCriticalSeverityIssues",
+    "numberOfHighSeverityIssues",
+    "numberOfMediumSeverityIssues",
+    "numberOfLowSeverityIssues"
+  ];
+  let total = 0;
+  let hasSeverityFields = false;
+  for (const field of severityFields) {
+    if (typeof data[field] === "number") {
+      total += data[field];
+      hasSeverityFields = true;
+    }
+  }
+  if (hasSeverityFields) return total;
+  if (typeof data.issuesLength === "number") return data.issuesLength;
+  if (Array.isArray(data.issuesBySeverity)) {
+    for (const item of data.issuesBySeverity) {
+      if (typeof item === "object" && item !== null && typeof item.number === "number") {
+        total += item.number;
+      }
+    }
+    return total;
+  }
+  return 0;
+}
+
+// src/prompts/scan-prep.ts
+function scanPrepPrompt(baseUrl, techStack, activeIssue) {
+  const activeIssueSection = activeIssue ? `
+## Active blocker from the previous phase
+${activeIssue}
+
+Treat this as a targeted repair. Do NOT perform broad startup/Dockerfile rewrites. Fix the specific rate-limit/security-control blocker, restart or rebuild only what is necessary, then verify with rapid POSTs.
+` : "";
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer preparing a web application for automated DAST (Dynamic Application Security Testing).
+
+The app is running at ${baseUrl} and is functional. However, production-grade security controls will block the scanner from operating. Your job is to find and relax them.
+
+Tech stack: ${techStack}
+${activeIssueSection}
+
+## What to look for
+
+A DAST scanner hammers the app with thousands of requests \u2014 rapid logins, malformed inputs, repeated form submissions. Any protective mechanism that throttles, blocks, or challenges automated traffic needs to be relaxed. Common categories:
+
+1. **Rate limiting** (highest priority) \u2014 per-IP, per-user, per-endpoint, login-specific, API-specific. These cause 429 errors that break auth and block scanning.
+2. **Account lockout** \u2014 failed login thresholds that lock or ban the test account.
+3. **CAPTCHA / bot detection** \u2014 anything that gates form submission on human verification.
+4. **CSRF token lifetime / enforcement** \u2014 very short token expiry can break scanner workflows. If the app has a setting to DISABLE CSRF checking entirely, do so \u2014 the scanner handles CSRF independently via the auth object. Do NOT make CSRF stricter.
+5. **Session timeouts** \u2014 aggressive session expiry forces constant re-authentication.
+6. **IP allowlists / blocklists** \u2014 if the app blocks unknown IPs or requires allowlisting.
+7. **WAF / request filtering** \u2014 embedded request validation that rejects scanner payloads.
+
+There may be others specific to this app \u2014 use your judgment.
+
+## CRITICAL: Use web search to find framework-specific rate limiting
+
+Most frameworks and applications have BUILT-IN rate limiting that is NOT visible in middleware lists or grep results. It is often stored in:
+- Database-backed settings (e.g. Discourse SiteSetting, WordPress wp_options, Django constance)
+- Framework internals that are always active (Rails ActionController::HttpAuthentication, Rack::Utils)
+- Application-level throttle logic embedded in controllers/models
+
+**You MUST use \`search_web\` to search for how the public OSS application or framework handles rate limiting.** Do not rely solely on grepping the codebase \u2014 that will miss built-in framework rate limits.
+
+Example searches to make:
+- "<public OSS app name> disable rate limiting" (only when the app is a recognizable public OSS project)
+- "<public OSS app name> rate limit site settings"
+- "<public OSS app name> max logins per minute configuration"
+- "<framework> built-in rate limiting disable for testing"
+
+Do NOT search for private/local monorepo paths or internal service names such as "apps/monolith rate limit". If the selected app is not a recognizable public OSS product, search by framework/package/error instead and use codebase/runtime inspection for app-specific details.
+
+If your codebase search finds NOTHING related to rate limiting, that is a RED FLAG \u2014 it almost certainly means rate limiting is built into the framework at a level you can't see by grepping. Use \`search_web\` immediately to find out how to disable it.
+
+## How to find them
+
+1. **Search the web FIRST** \u2014 use \`search_web\` to find public OSS/framework guidance such as "<public OSS app/framework name> disable rate limiting for testing" or "<framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits. Never include local repo paths or internal monorepo service names in web queries.
+2. **Query ALL runtime settings inside the container** \u2014 many apps store rate limits in database-backed settings. Run CLI commands inside the container to LIST ALL settings related to rate/limit/throttle/max/login. Cast a WIDE net \u2014 use a broad regex. For example:
+   - Rails/Discourse: \`rails runner "puts SiteSetting.all_settings.select { |s| s[:setting].to_s =~ /rate|limit|max.*per|throttle|lock|login|attempt|spam/ }.map { |s| [s[:setting], s[:value]].join('=') }"\`
+   - Django: \`python manage.py shell -c "from constance import config; ..."\`
+   - WordPress: \`wp option list --search='*rate*' --search='*limit*'\`
+   **IMPORTANT:** Look at EVERY setting returned. Login-specific rate limits (max_logins_per_ip_per_hour, max_logins_per_ip_per_minute, etc.) are the #1 cause of scanner auth failures. You must disable ALL of them, not just the ones with "rate_limit" in the name.
+   **VALUE RULE:** Always set rate limits to very high numbers like 999999. NEVER use 0 (ambiguous \u2014 could mean "disabled" or "zero allowed") and NEVER use small numbers like 1 or 10. Use 999999 to be safe.
+3. **Search the codebase** \u2014 use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
+4. **Inspect configuration files** \u2014 .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
+5. **Check middleware/initializer files** \u2014 look for Rack::Attack, express-rate-limit, django-ratelimit, Spring Security, etc. in middleware configs or initializers.
+
+Be thorough: apps often have MULTIPLE rate limit controls at different layers (middleware, framework, database-backed settings, reverse proxy). Find ALL of them.
+
+## How to apply changes
+
+**Persistence rule:** changes must survive container restarts. Prefer:
+- Editing host-side config files or .env via \`edit_file\`
+- Running database/CLI commands inside the container via \`run_command_in_docker\` (DB-backed settings persist if the volume persists)
+- Setting environment variables in docker-compose.yml via \`edit_file\`
+
+Do NOT edit files inside the container directly \u2014 they're lost on rebuild.
+
+### In-memory rate limiters (express-brute, node-rate-limiter, etc.)
+
+Many apps use IN-MEMORY or code-level rate limiters (guards, decorators, middleware). These CANNOT be disabled via database or config alone \u2014 the state lives in the application process. To disable them:
+
+1. **Patch the source code** \u2014 find the file that registers the rate limiter and either:
+   - Comment out or remove the middleware/guard/decorator registration entirely
+   - Set impossibly high limits (e.g. limit: 999999, ttl: 1, maxRetries: 999999)
+   - Replace the limiter with a pass-through: \`(req, res, next) => next()\`
+   - For decorator-based guards: remove the decorator from the app module or set global options to extremely permissive values
+2. **Restart or rebuild the app after patching**:
+   - If the app runs source code directly from a mounted working tree, \`docker restart <container>\` is enough.
+   - If the source code is copied/built into the Docker image, run a targeted rebuild/recreate of the app service, e.g. \`docker compose up -d --build app\` (or the actual app service name). Do NOT rewrite the Dockerfile unless the rate-limit patch requires it.
+3. **Verify after restart/rebuild** \u2014 the old in-memory state is gone, and the patched code won't re-create limits
+
+**CRITICAL RULE:** If your codebase search finds ANY reference to rate limiting, throttling, or request guards \u2014 you are NOT done until you have:
+(a) Identified where in the code it is applied (module registration, middleware, decorator, etc.)
+(b) Patched it out or set to extremely permissive values
+(c) Rebuilt/restarted the app
+(d) Verified with rapid requests
+
+Do NOT report success or give up if you found rate-limiter code but only fixed DB settings. The code-level limiter will still fire regardless of DB changes.
+
+If you cleared a DB table or changed a config but still get throttled, the rate limiter is almost certainly code-level. Search the codebase for the middleware/guard registration and patch it at the source.
+
+**IMPORTANT:** After making source code changes, you MUST restart or rebuild/recreate the app container for them to take effect. Use \`run_command_on_host\` and wait a few seconds before re-testing.
+
+## How to verify \u2014 MANDATORY
+
+After making changes, you MUST verify they actually work by stress-testing:
+1. If you patched source code, **restart or rebuild/recreate the app first** and wait 5-10 seconds
+2. Re-read the config or re-query the setting to confirm the new value is set
+3. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) \u2014 NOT the login HTML page. Use the same credentials/body each time.
+4. Check BOTH the HTTP status code AND the response body. Rate limiting can manifest as:
+   - HTTP 429 (obvious)
+   - HTTP 400/403 with body containing "too many requests", "throttle", "rate limit", or similar
+   - Any JSON error response with codes like "ThrottlerException", "RateLimitExceeded", etc.
+   ANY of these means rate limiting is still active. You are NOT done.
+5. The verification must hit the real auth processing path. Five POSTs that only return HTTP 404/user-not-found do NOT prove rate limiting is disabled \u2014 they may bypass the limiter. Use a stable existing username/email from setup/seed data when possible, or create a test account first. Acceptable failed-login verification responses are typically 400/401/422 JSON errors with auth-related messages (wrong password, invalid credentials), not 404 and not rate-limit errors.
+6. If you still get rate-limited after your changes, you missed something \u2014 there is likely a code-level guard/middleware. Search the codebase for the registration point (app module, middleware config, route decorator), patch it out, restart/rebuild, and re-test.
+
+**CRITICAL:** Testing GET requests to the login PAGE proves nothing \u2014 rate limits apply to the LOGIN ACTION (POST). Always verify with POST requests to the auth endpoint.
+
+**COMPLETENESS CHECK:** Before reporting success, review everything you found in your search. If you found rate-limit/throttle code references AND DB settings, you must fix BOTH. Do not report success if any discovered rate-limiting mechanism remains unpatched.
+
+Do NOT report success without performing the rapid-request verification.
+
+## Tools available
+- \`search_files\` / \`read_file\` / \`list_files\` \u2014 inspect the codebase
+- \`search_web\` / \`fetch_url\` \u2014 search the internet for public OSS/framework-specific docs (USE THIS for hidden framework/product rate limits; never search local repo paths or internal service names)
+- \`run_command_on_host\` \u2014 run shell commands on the host
+- \`run_command_in_docker\` \u2014 run commands inside a Docker container
+- \`edit_file\` \u2014 edit source/config files on the host
+- \`probe_url\` \u2014 make HTTP requests to the app and see the response
+
+## Output format
+
+When done, respond with ONLY this JSON (no markdown fencing):
+{"completed": true, "changes": ["brief description of each change"], "summary": "one-line summary"}
+
+If you tried but failed:
+{"completed": false, "changes": [], "summary": "what went wrong"}
+
+## Rules
+- **USE \`search_web\` \u2014 if you can't find rate limits via code inspection, search the web for how this public OSS app/framework handles them. Do NOT give up just because grep found nothing, but never search for local repo paths/internal service names.**
+- Don't break the app. If unsure, search the web for docs before making changes.
+- Be thorough \u2014 find ALL rate-limit and throttle settings, not just the first one.
+- **FOUND IT = FIX IT.** If your search found code references to rate limiting, throttling, or request guards, you MUST patch them. Do NOT report failure or skip them because "they're in the code." That's exactly what you're here to fix. Find the registration point, patch it to be permissive (999999 limit or remove entirely), rebuild, verify.
+- Prefer runtime settings (admin API, CLI, DB settings) when they exist, but if the rate limiter is code-level (guards, decorators, middleware with in-memory state), you MUST patch the source code \u2014 DB/config changes alone won't work.
+- If codebase search finds nothing, that means rate limiting is BUILT INTO the framework \u2014 use \`search_web\` to find out how to disable it.
+- NEVER report "no rate limits found" without first: (a) searching the web for "<app name> rate limiting", AND (b) querying runtime/DB settings inside the container.
+- Always verify your changes with rapid requests before reporting success.
+- Do not count HTTP 404-only login POSTs as successful rate-limit verification. They usually mean the request did not reach the real login limiter path.
+- **NEVER make security STRICTER.** Your goal is to RELAX all security controls so the scanner can operate freely. If a setting controls CSRF enforcement, disable it or make it permissive \u2014 do NOT enable stricter checking. The scanner needs to send requests without CSRF tokens, so CSRF validation should be DISABLED or set to its most permissive mode.
+- Think about each change from the scanner's perspective: "Will this make it EASIER or HARDER for the scanner to send requests?" If harder \u2192 don't do it.`
+    },
+    {
+      role: "user",
+      content: "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how the public OSS app/framework handles rate limiting, but never search local repo paths or internal service names. Return the JSON result when done."
+    }
+  ];
+}
+function scanPrepTwoFactorPrompt(baseUrl, techStack) {
+  return [
+    {
+      role: "system",
+      content: `You are a DevOps engineer preparing a web application for automated DAST (Dynamic Application Security Testing).
+
+The app is running at ${baseUrl}. Your ONLY goal in this step is to ensure the test user is NOT blocked by two-factor authentication (2FA/MFA/TOTP) requirements.
+
+Tech stack: ${techStack}
+
+## Problem
+
+Many applications enforce 2FA on users \u2014 especially admin users. When 2FA is enforced:
+- The user may be marked as INACTIVE, PENDING, or similar until they complete 2FA setup
+- Login may succeed but the session is restricted (user can't access protected endpoints)
+- API requests return 401/403 even with a valid session because the user hasn't completed 2FA onboarding
+
+A DAST scanner CANNOT complete 2FA challenges. You must disable or bypass them.
+
+## What to do
+
+1. **Check if the app has 2FA/MFA** \u2014 search for: twoFactor, 2fa, mfa, totp, otp, authenticator, verification in the codebase and DB schema
+2. **Disable 2FA globally or per-user** \u2014 in order of preference:
+   - Environment variables: \`TWO_FACTOR_ENABLED=false\`, \`REQUIRE_2FA=false\`, \`MFA_ENFORCED=false\`, etc. Edit .env or compose.yml.
+   - Database settings: update global settings tables to disable 2FA enforcement
+   - Database user flags: set \`twoFactorEnabled=false\`, \`twoFactorSecret=null\`, clear any \`identityProvider\` requirement
+   - Source code: if 2FA is hardcoded, patch the guard/middleware/check to always pass
+3. **Ensure the test user is fully ACTIVE** \u2014 after disabling 2FA:
+   - Query the users table: the test user's role/status should be ACTIVE (not INACTIVE_ADMIN, not PENDING_2FA, not LOCKED)
+   - If the role is still inactive because of 2FA, UPDATE it directly in the DB
+   - Clear any \`smsLockState\`, \`backupCodes\`, or similar fields that indicate incomplete 2FA setup
+4. **Verify** \u2014 log in as the test user and hit a protected endpoint. It should return real data (200 with JSON), NOT a 401/403 or a redirect to 2FA setup.
+
+## Tools available
+- \`search_files\` / \`read_file\` / \`list_files\` \u2014 inspect the codebase
+- \`search_web\` / \`fetch_url\` \u2014 search the internet for public OSS docs
+- \`run_command_on_host\` \u2014 run shell commands on the host
+- \`run_command_in_docker\` \u2014 run commands inside a Docker container
+- \`edit_file\` \u2014 edit source/config files on the host
+- \`probe_url\` \u2014 make HTTP requests to the app and see the response
+
+## Output format
+
+When done, respond with ONLY this JSON (no markdown fencing):
+{"completed": true, "changes": ["brief description of each change"], "summary": "one-line summary"}
+
+If you checked and 2FA is not relevant to this app (no 2FA code/settings found):
+{"completed": true, "changes": [], "summary": "No 2FA/MFA mechanism found in this application"}
+
+If you tried but failed:
+{"completed": false, "changes": [], "summary": "what went wrong"}
+
+## Rules
+- Focus ONLY on 2FA/MFA. Do not touch rate limits, CSRF, or other security controls \u2014 another stage handles those.
+- After DB changes, restart the app container if the setting is cached at startup.
+- If you patched source code, rebuild/restart the app.
+- Verify the user is active by checking the session/profile endpoint response.`
+    },
+    {
+      role: "user",
+      content: "Check if this application enforces 2FA/MFA on the test user. If it does, disable it and ensure the user is fully active. Return the JSON result when done."
+    }
+  ];
+}
+
+// src/phases/scan-prep.ts
+async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, activeIssue) {
+  console.log(
+    "[ScanPrep] Starting scan preparation phase \u2014 relaxing rate limits and security controls..."
+  );
+  const rateLimitResult = await runScanPrepStage(
+    llm,
+    repoPath,
+    baseUrl,
+    techStack,
+    model,
+    activeIssue,
+    "rate_limit",
+    scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue)
+  );
+  console.log("[ScanPrep] Stage 2 \u2014 checking 2FA/MFA requirements...");
+  const twoFaResult = await runScanPrepStage(
+    llm,
+    repoPath,
+    baseUrl,
+    techStack,
+    model,
+    void 0,
+    "2fa",
+    scanPrepTwoFactorPrompt(baseUrl, formatTechStack(techStack))
+  );
+  const mergedChanges = [...rateLimitResult.changes ?? [], ...twoFaResult.changes ?? []];
+  const mergedCommands = [
+    ...rateLimitResult.replayCommands ?? [],
+    ...twoFaResult.replayCommands ?? []
+  ];
+  if (!rateLimitResult.completed) {
+    return {
+      ...rateLimitResult,
+      changes: mergedChanges,
+      replayCommands: mergedCommands.length > 0 ? mergedCommands : void 0
+    };
+  }
+  const summary = twoFaResult.changes.length > 0 ? `${rateLimitResult.summary}; 2FA: ${twoFaResult.summary}` : rateLimitResult.summary;
+  return {
+    completed: true,
+    changes: mergedChanges,
+    summary,
+    replayCommands: mergedCommands.length > 0 ? mergedCommands : void 0
+  };
+}
+async function runScanPrepStage(llm, repoPath, baseUrl, techStack, model, activeIssue, stageName, messages) {
+  const dockerCommands = [];
+  let editFileCalls = 0;
+  let postProbeCalls = 0;
+  const postProbeStatuses = [];
+  let saw429 = false;
+  const handlerOpts = {
+    label: "ScanPrep",
+    enableShell: true,
+    enableDocker: true,
+    enableEdit: true,
+    enableProbe: true,
+    enableWeb: true,
+    onDocker: (_container, cmd, _result) => {
+      if (/set\(|=\s*\d|=\s*true|=\s*false|update|disable|enable/i.test(cmd)) {
+        dockerCommands.push({ container: _container, command: cmd });
+      }
+    },
+    onEdit: () => {
+      editFileCalls += 1;
+    },
+    onProbe: (args, result) => {
+      const method = String(args.method ?? "GET").toUpperCase();
+      if (method === "POST") {
+        postProbeCalls += 1;
+        const statusMatch = result.match(/HTTP\s+(\d{3})\b/);
+        if (statusMatch?.[1]) {
+          postProbeStatuses.push(Number(statusMatch[1]));
+        }
+      }
+      if (/HTTP\s+429\b/.test(result)) saw429 = true;
+    }
+  };
+  const tools = buildToolDefs(handlerOpts);
+  const handler = createUnifiedToolHandler(repoPath, handlerOpts);
+  const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 50 : 40);
+  try {
+    const json = extractJson(response);
+    const result = JSON.parse(json);
+    if (result.completed) {
+      const changes = result.changes ?? [];
+      const actualMutations = dockerCommands.length + editFileCalls;
+      if (stageName === "2fa") {
+        console.log(
+          `[ScanPrep:2FA] Completed \u2014 ${changes.length} change(s): ${result.summary ?? "done"}`
+        );
+        for (const c of changes) console.log(`[ScanPrep:2FA]   \u2022 ${c}`);
+        return {
+          completed: true,
+          changes,
+          summary: result.summary ?? "Done",
+          replayCommands: dockerCommands
+        };
+      }
+      if (postProbeCalls < 5) {
+        const summary = `Scan-prep reported success after only ${postProbeCalls}/5 required rapid POST verification request(s)`;
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary, failureKind: "verification_missing" };
+      }
+      if (actualMutations === 0 && changes.length === 0) {
+        const summary = "Scan-prep reported success without applying or documenting any rate-limit/security-control change";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary, failureKind: "no_changes" };
+      }
+      if (saw429) {
+        const summary = "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary, failureKind: "rate_limit" };
+      }
+      if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status === 404)) {
+        const summary = "Scan-prep verification only observed HTTP 404 on login POSTs; this does not prove rate limits were relaxed";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary, failureKind: "login_404" };
+      }
+      if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status >= 500)) {
+        const summary = "Scan-prep verification only observed HTTP 5xx on login POSTs; the login path is crashing, not verified as scanner-ready";
+        console.warn(`[ScanPrep] Failed: ${summary}`);
+        return { completed: false, changes: [], summary, failureKind: "login_5xx" };
+      }
+      console.log(`[ScanPrep] Completed \u2014 ${changes.length} change(s): ${result.summary}`);
+      for (const c of changes) {
+        console.log(`[ScanPrep]   \u2022 ${c}`);
+      }
+      return {
+        completed: true,
+        changes,
+        summary: result.summary ?? "Done",
+        replayCommands: dockerCommands
+      };
+    }
+    const failureMessage = result.reason ?? result.summary ?? "unknown";
+    console.warn(`[ScanPrep:${stageName}] Failed: ${failureMessage}`);
+    return { completed: false, changes: [], summary: failureMessage, failureKind: "unknown" };
+  } catch (err) {
+    console.warn(`[ScanPrep:${stageName}] Could not parse response: ${err}`);
+    return {
+      completed: false,
+      changes: [],
+      summary: `Parse error: ${err}`,
+      failureKind: "parse_error"
+    };
+  }
+}
+function replayScanPrep(repoPath, commands) {
+  console.log(`[ScanPrep] Replaying ${commands.length} previously-successful command(s)...`);
+  let applied = 0;
+  let failed = 0;
+  for (const { container, command } of commands) {
+    try {
+      console.log(`[ScanPrep] replay [${container}]: ${command.slice(0, 200)}`);
+      execInDocker(repoPath, container, command, 6e4);
+      applied++;
+    } catch (err) {
+      console.warn(`[ScanPrep] replay failed: ${err}`);
+      failed++;
+    }
+  }
+  console.log(`[ScanPrep] Replay done \u2014 ${applied} applied, ${failed} failed`);
+  return { success: failed === 0, applied, failed };
 }
 
 // src/prompts/setup.ts
@@ -32143,16 +34719,13 @@ async function gatherSetupContext(baseUrl, techStack) {
   for (const query of searchQueries) {
     try {
       console.log(`[Setup] Pre-searching: ${query}`);
-      const res = await fetch(
-        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-        {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
-            Accept: "text/html"
-          },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
-        }
-      );
+      const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+          Accept: "text/html"
+        },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
+      });
       if (res.ok) {
         const html = await res.text();
         const blocks = html.split(/class="result\s/);
@@ -32195,7 +34768,8 @@ ${results.join("\n")}`);
       const forms = extractForms(bodyPreview);
       const redirect = resp.status >= 300 && resp.status < 400 ? ` \u2192 ${resp.headers.get("location") ?? ""}` : "";
       let entry = `**${path}** \u2192 HTTP ${status}${redirect}`;
-      if (apiRoutes.length > 0) entry += `
+      if (apiRoutes.length > 0)
+        entry += `
   API routes found: ${apiRoutes.slice(0, 15).join(", ")}`;
       if (forms.length > 0) entry += `
   Forms: ${forms.join("; ")}`;
@@ -32225,7 +34799,9 @@ function extractApiRoutes(html) {
     const paths = importMapMatch[1].match(/\/[a-z0-9/_-]+\/api\/[a-z0-9/_-]+/gi) ?? [];
     for (const p of paths) routes.add(p);
   }
-  const apiPatterns = html.match(/["'](\/[a-z0-9/_.-]*(?:api|management|admin|auth|security|login|install|setup)[a-z0-9/_.-]*)["']/gi) ?? [];
+  const apiPatterns = html.match(
+    /["'](\/[a-z0-9/_.-]*(?:api|management|admin|auth|security|login|install|setup)[a-z0-9/_.-]*)["']/gi
+  ) ?? [];
   for (const m of apiPatterns) {
     const clean = m.replace(/^["']|["']$/g, "");
     if (clean.length > 3 && clean.length < 150) routes.add(clean);
@@ -32305,8 +34881,15 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
         type: "object",
         properties: {
           url: { type: "string", description: "Full URL to probe" },
-          method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE"], description: "HTTP method. Default: GET" },
-          headers: { type: "string", description: `JSON headers, e.g. '{"Content-Type":"application/json"}'` },
+          method: {
+            type: "string",
+            enum: ["GET", "POST", "PUT", "DELETE"],
+            description: "HTTP method. Default: GET"
+          },
+          headers: {
+            type: "string",
+            description: `JSON headers, e.g. '{"Content-Type":"application/json"}'`
+          },
           body: { type: "string", description: "Request body for POST/PUT" }
         },
         required: ["url"],
@@ -32330,7 +34913,9 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
         return "Evidence rejected: each field must contain real content. Re-run a verification command and paste actual output.";
       }
       collectedEvidence.push({ command, output, reasoning });
-      console.log(`[Setup] Evidence #${collectedEvidence.length} recorded: ${command.slice(0, 120)}`);
+      console.log(
+        `[Setup] Evidence #${collectedEvidence.length} recorded: ${command.slice(0, 120)}`
+      );
       return `Evidence recorded (${collectedEvidence.length} total). You may report more evidence or proceed to the final JSON answer.`;
     }
     return baseHandler(name, args);
@@ -32349,7 +34934,9 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
     const json = extractJson(response);
     const result = JSON.parse(json);
     if (!result.completed && result.infraRepairHint) {
-      console.log(`[Setup] Infrastructure repair requested: ${result.infraRepairHint.slice(0, 200)}`);
+      console.log(
+        `[Setup] Infrastructure repair requested: ${result.infraRepairHint.slice(0, 200)}`
+      );
       return {
         completed: false,
         summary: result.reason ?? result.infraRepairHint,
@@ -32383,13 +34970,22 @@ async function completeFirstRunSetup(llm, repoPath, baseUrl, techStack, startupC
       if (result.alreadySetUp) {
         const stillInSetup = await verifyStillInSetupMode(baseUrl);
         if (stillInSetup) {
-          console.warn("[Setup] LLM claimed app is set up, but installer endpoints still respond \u2014 treating as incomplete");
-          return { completed: false, summary: "LLM claimed already set up but installer endpoints are still active" };
+          console.warn(
+            "[Setup] LLM claimed app is set up, but installer endpoints still respond \u2014 treating as incomplete"
+          );
+          return {
+            completed: false,
+            summary: "LLM claimed already set up but installer endpoints are still active"
+          };
         }
       }
       const summary = result.summary ?? (result.alreadySetUp ? "Already set up" : "Setup completed");
       console.log(`[Setup] First-run setup completed: ${summary}`);
-      const credentials = result.username && result.password ? { username: result.username, password: result.password, email: result.email ?? "bright@test.com" } : void 0;
+      const credentials = result.username && result.password ? {
+        username: result.username,
+        password: result.password,
+        email: result.email ?? "bright@test.com"
+      } : void 0;
       return { completed: true, credentials, summary };
     }
     console.warn(`[Setup] First-run setup failed: ${result.reason ?? "unknown"}`);
@@ -32476,10 +35072,14 @@ async function verifyStillInSetupMode(baseUrl) {
       });
       if (resp.status === 200) {
         const body = await resp.text();
-        if (/(?:install(?:er|ation)|setup.wizard|first.run|finish.installation|create.*admin.*account)/i.test(body)) {
+        if (/(?:install(?:er|ation)|setup.wizard|first.run|finish.installation|create.*admin.*account)/i.test(
+          body
+        )) {
           const url = resp.url.toLowerCase();
           if (/install|setup|wizard/.test(url)) {
-            console.log(`[Setup] App appears to still be in setup mode (redirected to ${resp.url})`);
+            console.log(
+              `[Setup] App appears to still be in setup mode (redirected to ${resp.url})`
+            );
             return true;
           }
         }
@@ -32534,7 +35134,9 @@ async function probeUrlWithCookies(args, cookieJar) {
     const maxLen = 8e3;
     const truncated = respBody.length > maxLen ? respBody.slice(0, maxLen) + `
 ... (truncated, ${respBody.length} bytes total)` : respBody;
-    const headerSummary = Object.entries(respHeaders).filter(([k]) => ["content-type", "location", "set-cookie", "x-csrf-token"].includes(k.toLowerCase())).map(([k, v]) => `${k}: ${v}`).join("\n");
+    const headerSummary = Object.entries(respHeaders).filter(
+      ([k]) => ["content-type", "location", "set-cookie", "x-csrf-token"].includes(k.toLowerCase())
+    ).map(([k, v]) => `${k}: ${v}`).join("\n");
     return `HTTP ${status}
 ${headerSummary}
 
@@ -32546,1145 +35148,186 @@ ${truncated}`;
   }
 }
 
-// src/phases/entrypoints.ts
-var CONCURRENCY = 3;
-var MAX_RETRIES = 3;
-var BASE_BACKOFF_MS = 1e3;
-var JITTER_MS = 250;
-var RESOLVE_CONCURRENCY = 5;
-var RESOLVE_TIMEOUT = 8e3;
-function isTransientHttpError(status, body) {
-  if (status >= 500) return true;
-  if (status === 408) return true;
-  if (status === 400 && /target.*(?:is\s+down|accessible|firewall)/i.test(body)) {
-    return true;
-  }
-  return false;
-}
-function isTargetDown400(status, body) {
-  return status === 400 && /target.*(?:is\s+down|accessible|firewall)/i.test(body);
-}
-async function registerEntrypoints(api, projectId, endpoints, baseUrl, repeaterId, authObjectId, healthMonitor) {
-  const prepared = [];
-  for (const ep of endpoints) {
-    const path = resolvePath(ep.path);
-    if (!isScannablePath(path)) {
-      console.warn(
-        `[Entrypoints] Skipping junk path: ${ep.path} (resolved: ${path})`
-      );
-      continue;
-    }
-    let fullUrl = `${baseUrl}${path}`;
-    try {
-      new URL(fullUrl);
-    } catch {
-      console.warn(
-        `[Entrypoints] Skipping malformed URL: ${fullUrl} (from path "${ep.path}")`
-      );
-      continue;
-    }
-    const method = normalizeMethod(ep.method);
-    if (ep.queryParams && ep.queryParams.length > 0) {
-      const params = new URLSearchParams(
-        ep.queryParams.map((p) => [p.name, p.value])
-      );
-      fullUrl += `?${params.toString()}`;
-    }
-    const request = { method, url: fullUrl };
-    const needsBody = ["POST", "PUT", "PATCH"].includes(method);
-    const contentType = ep.contentType ?? (needsBody ? "application/json" : void 0);
-    if (ep.headers || contentType) {
-      const headers = { ...ep.headers ?? {} };
-      if (contentType && !headers["Content-Type"]) {
-        headers["Content-Type"] = [contentType];
-      }
-      request.headers = headers;
-    }
-    if (needsBody) {
-      const isBinary = contentType && contentType.includes("grpc-web");
-      request.body = isBinary ? ep.body ?? "" : sanitizeBody(ep.body ?? "{}");
-    }
-    const payload = { request, repeaterId };
-    if (authObjectId) {
-      payload.authObjectId = authObjectId;
-    }
-    prepared.push({ ep, method, fullUrl, payload });
-  }
-  console.log(
-    `[Entrypoints] Registering ${prepared.length} endpoints (${CONCURRENCY} concurrent)\u2026`
-  );
-  const apiUrl = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
-  const registered = [];
-  let failedUploads = 0;
-  let rateLimitPauseUntil = 0;
-  async function postOnce(payload) {
-    return fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Api-Key ${api.brightToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(12e4)
-      // 2 min — Bright may do a baseline check via Repeater
-    });
-  }
-  async function processOne(item) {
-    const { ep, method, fullUrl, payload } = item;
-    const now = Date.now();
-    if (rateLimitPauseUntil > now) {
-      await sleep2(rateLimitPauseUntil - now);
-    }
-    if (healthMonitor) {
-      await healthMonitor.waitHealthy();
-    }
-    console.log(
-      `[Entrypoints] Adding ${method} ${fullUrl}` + (authObjectId ? ` [auth: ${authObjectId}]` : " [no auth]")
-    );
-    await sleep2(Math.floor(Math.random() * JITTER_MS));
-    let attempt = 0;
-    while (true) {
-      try {
-        const res = await postOnce(payload);
-        if (res.status === 429) {
-          console.warn(`[Entrypoints] Rate limited (429) \u2014 pausing 10s`);
-          rateLimitPauseUntil = Date.now() + 1e4;
-          await sleep2(1e4);
-          if (attempt < MAX_RETRIES) {
-            attempt++;
-            continue;
-          }
-          await handleResponse(res, ep, method, fullUrl);
-          return;
-        }
-        if (!res.ok && attempt < MAX_RETRIES) {
-          const probe = res.clone();
-          const body = await probe.text().catch(() => "");
-          if (isTransientHttpError(res.status, body)) {
-            if (healthMonitor && isTargetDown400(res.status, body)) {
-              healthMonitor.signalProbableUnhealthy(
-                `target-down 400 for ${method} ${fullUrl}`
-              );
-              await healthMonitor.waitHealthy();
-            }
-            const backoff = BASE_BACKOFF_MS * Math.pow(3, attempt) + Math.floor(Math.random() * JITTER_MS);
-            console.warn(
-              `[Entrypoints] Transient HTTP ${res.status} for ${method} ${fullUrl} \u2014 retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`
-            );
-            await sleep2(backoff);
-            attempt++;
-            continue;
-          }
-        }
-        await handleResponse(res, ep, method, fullUrl);
-        return;
-      } catch (err) {
-        if (attempt < MAX_RETRIES) {
-          const backoff = BASE_BACKOFF_MS * Math.pow(3, attempt) + Math.floor(Math.random() * JITTER_MS);
-          console.warn(
-            `[Entrypoints] Network error for ${method} ${fullUrl}: ${toErrorMessage(err)} \u2014 retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`
-          );
-          await sleep2(backoff);
-          attempt++;
-          continue;
-        }
-        console.error(
-          `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`
-        );
-        return;
-      }
-    }
-  }
-  async function handleResponse(res, ep, method, fullUrl) {
-    if (res.ok) {
-      try {
-        const data = await res.json();
-        const epId = data.id ?? data.entrypointId;
-        if (epId) {
-          registered.push({ endpoint: ep, entrypointId: epId });
-          return;
-        }
-      } catch {
-      }
-      console.warn(
-        `[Entrypoints] OK response for ${method} ${fullUrl} but no entrypoint ID returned`
-      );
-      return;
-    }
-    let errorBody = "";
-    try {
-      errorBody = await res.text();
-    } catch {
-    }
-    if (res.status === 409) {
-      const location2 = res.headers.get("location") ?? "";
-      const existingId = location2.split("/").pop();
-      if (existingId) {
-        registered.push({ endpoint: ep, entrypointId: existingId });
-        console.log(
-          `[Entrypoints] EP already exists for ${method} ${fullUrl} \u2014 reusing ${existingId}`
-        );
-      } else {
-        console.log(
-          `[Entrypoints] EP already exists for ${method} ${fullUrl} \u2014 no location header`
-        );
-      }
-    } else {
-      failedUploads++;
-      console.error(
-        `[Entrypoints] Failed ${method} ${fullUrl}: HTTP ${res.status} \u2014 ${errorBody.slice(0, 300)}`
-      );
-    }
-  }
-  await pMap(prepared, processOne, CONCURRENCY);
-  console.log(
-    `[Entrypoints] Registered ${registered.length}/${endpoints.length} entrypoints` + (failedUploads > 0 ? ` (${failedUploads} rejected by API)` : "")
-  );
-  return registered;
-}
-async function pMap(items, fn, concurrency) {
-  let idx = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    async () => {
-      while (idx < items.length) {
-        const i = idx++;
-        await fn(items[i]);
-      }
-    }
-  );
-  await Promise.all(workers);
-}
-function sleep2(ms) {
-  return new Promise((resolve5) => setTimeout(resolve5, ms));
-}
-function resolvePath(path) {
-  let resolved = path.replace(/:(\w+)/g, "1").replace(/\{(\w+)\}/g, "1").replace(/#\{[^}]*\}/g, "placeholder").replace(/#\w+/g, "placeholder").replace(/\$\{[^}]*\}/g, "placeholder").replace(/<%[=-]?\s*[^%]*%>/g, "placeholder");
-  if (resolved && !resolved.startsWith("/")) {
-    resolved = "/" + resolved;
-  }
-  return resolved;
-}
-var JUNK_URL_PATTERNS = [
-  /[#$]?\{/,
-  // leftover template interpolation
-  /#/,
-  // URL fragment — never sent to server; indicates client-side route or broken interpolation
-  /<%/,
-  // ERB tags
-  /\(\d+\)/,
-  // Rails route constraint like (42)
-  /\[.*\]/,
-  // regex character class in path — route constraint like [0-9]+ or [^/]+
-  /\(\?/,
-  // regex group — (?P<name>...), (?:...), (?1|groups) etc.
-  /\)/,
-  // unmatched paren in path — regex capture group artifact
-  /\s/,
-  // whitespace in path
-  /placeholder/
-  // unresolved interpolation that resolvePath couldn't handle
+// src/phases/swagger.ts
+var SWAGGER_PATHS = [
+  // OpenAPI 3.x
+  "/openapi.json",
+  "/openapi.yaml",
+  "/api/openapi.json",
+  "/v3/api-docs",
+  "/docs/openapi.json",
+  // Swagger 2.x
+  "/swagger.json",
+  "/swagger/v1/swagger.json",
+  "/swagger/v2/swagger.json",
+  "/api-docs",
+  "/api-docs.json",
+  "/v2/api-docs",
+  // FastAPI
+  "/openapi.json",
+  // NestJS / @nestjs/swagger
+  "/api",
+  "/api-json",
+  // .NET
+  "/swagger/v1/swagger.json",
+  // Rails rswag
+  "/api-docs/v1/swagger.json"
 ];
-function isScannablePath(path) {
-  return !JUNK_URL_PATTERNS.some((re) => re.test(path));
-}
-var ID_SEGMENT_PATTERN = /^(?:\d+|[0-9a-f]{8,}|[0-9a-f-]{36}|[a-z]{1,4}_[a-z0-9]{6,}|[a-z0-9]{20,}|book_\w+|bk_\w+|usr_\w+|evt_\w+|cal_\w+|wh_\w+|org_\w+|team_\w+)$/i;
-function isIdSegment(segment) {
-  return ID_SEGMENT_PATTERN.test(segment);
-}
-function findListParent(path) {
-  const segments = path.split("/").filter(Boolean);
-  for (let i = 0; i < segments.length; i++) {
-    if (isIdSegment(segments[i])) {
-      const listPath = "/" + segments.slice(0, i).join("/");
-      return { listPath, idIndex: i, segments };
-    }
-  }
-  return null;
-}
-function extractIdFromListResponse(body) {
-  try {
-    const parsed = JSON.parse(body);
-    let items = null;
-    if (Array.isArray(parsed)) {
-      items = parsed;
-    } else if (parsed && typeof parsed === "object") {
-      items = parsed.data ?? parsed.items ?? parsed.results ?? parsed.content ?? parsed.entries ?? parsed.records;
-      if (!Array.isArray(items)) {
-        const id = parsed.id ?? parsed._id ?? parsed.uid ?? parsed.slug;
-        if (id) return String(id);
-        items = null;
-      }
-    }
-    if (items && items.length > 0) {
-      const first = items[0];
-      if (first && typeof first === "object") {
-        const id = first.id ?? first._id ?? first.uid ?? first.slug ?? first.bookingId ?? first.eventTypeId;
-        if (id) return String(id);
-      }
-    }
-  } catch {
-  }
-  return null;
-}
-var CANDIDATE_PREFIXES = ["/v2", "/api/v2", "/api/v1", "/api", "/v1"];
-async function detectRoutePrefix(endpoints, baseUrl, authHeaders) {
-  const candidates = endpoints.filter(
-    (ep) => ep.path !== "/" && ep.path !== "/health" && !/^\/(?:api|v\d)\//.test(ep.path)
-  );
-  if (candidates.length === 0) return null;
-  const samplePaths = candidates.map((ep) => ep.path.split("?")[0]).filter((p) => p.split("/").length >= 2).slice(0, 5);
-  if (samplePaths.length === 0) return null;
-  const headers = {
-    Accept: "application/json",
-    ...authHeaders ?? {}
-  };
-  for (const prefix of CANDIDATE_PREFIXES) {
-    let hits = 0;
-    let misses = 0;
-    await pMap(
-      samplePaths.slice(0, 3),
-      async (path) => {
-        try {
-          const directRes = await fetch(`${baseUrl}${path}`, {
-            method: "HEAD",
-            headers,
-            signal: AbortSignal.timeout(5e3)
-          });
-          if (directRes.ok || directRes.status !== 404 && directRes.status !== 405) {
-            misses++;
-            return;
-          }
-          const prefixedRes = await fetch(`${baseUrl}${prefix}${path}`, {
-            method: "HEAD",
-            headers,
-            signal: AbortSignal.timeout(5e3)
-          });
-          if (prefixedRes.ok || prefixedRes.status !== 404 && prefixedRes.status !== 405) {
-            hits++;
-          } else {
-            misses++;
-          }
-        } catch {
-          misses++;
-        }
-      },
-      3
-    );
-    if (hits >= 2 && hits > misses) {
-      return prefix;
-    }
-  }
-  return null;
-}
-async function resolvePathParams(endpoints, baseUrl, authHeaders) {
-  const detectedPrefix = await detectRoutePrefix(endpoints, baseUrl, authHeaders);
-  let prefixedEndpoints = endpoints;
-  if (detectedPrefix) {
-    console.log(`[Entrypoints] Detected missing route prefix: "${detectedPrefix}" \u2014 applying to ${endpoints.length} endpoints`);
-    prefixedEndpoints = endpoints.map((ep) => {
-      if (ep.path.startsWith(detectedPrefix)) return ep;
-      if (/^\/(?:api|v\d)\//.test(ep.path)) return ep;
-      if (ep.path === "/" || ep.path === "/health") return ep;
-      return { ...ep, path: `${detectedPrefix}${ep.path}` };
-    });
-  }
-  const parentMap = /* @__PURE__ */ new Map();
-  const noParent = [];
-  for (const ep of prefixedEndpoints) {
-    const info = findListParent(ep.path);
-    if (!info) {
-      noParent.push(ep);
-      continue;
-    }
-    const key = info.listPath;
-    if (!parentMap.has(key)) {
-      parentMap.set(key, { idIndex: info.idIndex, endpoints: [] });
-    }
-    parentMap.get(key).endpoints.push(ep);
-  }
-  if (parentMap.size === 0) {
-    return prefixedEndpoints;
-  }
-  console.log(
-    `[Entrypoints] Resolving path params: ${parentMap.size} list endpoint(s) to probe for real IDs`
-  );
-  const resolvedIds = /* @__PURE__ */ new Map();
-  const listPaths = [...parentMap.keys()];
-  await pMap(
-    listPaths,
-    async (listPath) => {
-      try {
-        const url = `${baseUrl}${listPath}`;
-        const headers = {
-          Accept: "application/json",
-          ...authHeaders ?? {}
-        };
-        const res = await fetch(url, {
-          headers,
-          signal: AbortSignal.timeout(RESOLVE_TIMEOUT)
-        });
-        if (!res.ok) {
-          return;
-        }
-        const body = await res.text();
-        const realId = extractIdFromListResponse(body);
-        if (realId) {
-          resolvedIds.set(listPath, realId);
-          console.log(`[Entrypoints] \u2713 Resolved ${listPath} \u2192 id="${realId}"`);
-        }
-      } catch {
-      }
-    },
-    RESOLVE_CONCURRENCY
-  );
-  console.log(
-    `[Entrypoints] Resolved ${resolvedIds.size}/${parentMap.size} list parent(s) with real IDs`
-  );
-  const result = [...noParent];
-  for (const [listPath, group] of parentMap) {
-    const realId = resolvedIds.get(listPath);
-    if (!realId) {
-      result.push(...group.endpoints);
-      continue;
-    }
-    for (const ep of group.endpoints) {
-      const segments = ep.path.split("/").filter(Boolean);
-      if (group.idIndex < segments.length && isIdSegment(segments[group.idIndex])) {
-        segments[group.idIndex] = realId;
-      }
-      const newPath = "/" + segments.join("/");
-      result.push({ ...ep, path: newPath });
-    }
-  }
-  const needsTrailingSlash = await detectTrailingSlashNormalization(result, baseUrl, authHeaders);
-  if (needsTrailingSlash) {
-    console.log("[Entrypoints] Detected trailing-slash normalization \u2014 appending / to paths");
-    for (let i = 0; i < result.length; i++) {
-      const p = result[i].path.split("?")[0];
-      if (!p.endsWith("/") && !hasFileExtension(p)) {
-        result[i] = { ...result[i], path: result[i].path + "/" };
-      }
-    }
-  }
-  return result;
-}
-function hasFileExtension(path) {
-  const last = path.split("/").pop() ?? "";
-  return /\.\w{1,5}$/.test(last);
-}
-async function detectTrailingSlashNormalization(endpoints, baseUrl, authHeaders) {
-  const candidates = endpoints.filter(
-    (ep) => ep.method.toUpperCase() === "GET" && !ep.path.split("?")[0].endsWith("/") && !hasFileExtension(ep.path.split("?")[0])
-  ).slice(0, 5);
-  if (candidates.length === 0) return false;
-  let redirectCount = 0;
-  for (const ep of candidates) {
-    try {
-      const res = await fetch(`${baseUrl}${ep.path.split("?")[0]}`, {
-        method: "HEAD",
-        redirect: "manual",
-        headers: { ...authHeaders ?? {} },
-        signal: AbortSignal.timeout(5e3)
-      });
-      if (res.status === 301 || res.status === 308) {
-        const location2 = res.headers.get("location") ?? "";
-        if (location2.endsWith(ep.path.split("?")[0] + "/") || location2 === ep.path.split("?")[0] + "/") {
-          redirectCount++;
-        }
-      }
-    } catch {
-    }
-  }
-  return redirectCount >= 2 && redirectCount >= candidates.length * 0.5;
-}
-async function verifyEntrypointAuth(api, projectId, entrypointId) {
-  try {
-    console.log(
-      `[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`
-    );
-    const url = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Api-Key ${api.brightToken}` }
-    });
-    const raw = await res.text();
-    console.log(`[Entrypoints] getEntrypoint response (HTTP ${res.status}): ${raw.slice(0, 1e3)}`);
-    if (!res.ok) {
-      return { ok: false, detail: `HTTP ${res.status}: ${raw.slice(0, 200)}` };
-    }
-    const data = JSON.parse(raw);
-    const status = data.response?.status ?? data.status;
-    if (status && (status === 401 || status === 403)) {
-      return {
-        ok: false,
-        detail: `Entrypoint returned HTTP ${status} \u2014 auth likely not working`
-      };
-    }
-    return {
-      ok: true,
-      detail: `Entrypoint response: ${JSON.stringify(data.response ?? {}).slice(0, 300)}`
-    };
-  } catch (err) {
-    const msg = toErrorMessage(err);
-    console.warn(`[Entrypoints] Failed to verify entrypoint auth: ${msg}`);
-    return { ok: false, detail: `Could not verify: ${msg}` };
-  }
-}
-async function pruneDeadEntrypoints(api, projectId, entries, opts = {}) {
-  const alive = [];
-  const dead = [];
-  console.log(
-    `[Entrypoints] Checking ${entries.length} entrypoints for 404s (${CONCURRENCY} concurrent)\u2026`
-  );
-  const baseUrl = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
-  await pMap(
-    entries,
-    async (entry) => {
-      try {
-        const res = await fetch(
-          `${baseUrl}/${encodeURIComponent(entry.entrypointId)}`,
-          { headers: { Authorization: `Api-Key ${api.brightToken}` } }
-        );
-        if (!res.ok) {
-          alive.push(entry);
-          return;
-        }
-        const data = await res.json();
-        const resp = data.response;
-        const status = resp?.status ?? data.status;
-        const numericStatus = typeof status === "number" ? status : void 0;
-        const shouldPrune = numericStatus === 404 || opts.pruneFailedResponses && numericStatus !== void 0 && numericStatus >= 400;
-        if (shouldPrune) {
-          const req = data.request;
-          const url = req?.url ?? data.url ?? entry.entrypointId;
-          const method = String(
-            req?.method ?? entry.endpoint.method ?? "GET"
-          ).toUpperCase();
-          const pathFromUrl = url.replace(/^https?:\/\/[^/]+/, "").split("?")[0];
-          const segments = pathFromUrl.split("/").filter(Boolean);
-          const hasIdSegment = segments.some((s) => isIdSegment(s));
-          if (hasIdSegment && numericStatus === 404) {
-            alive.push(entry);
-            return;
-          }
-          console.log(
-            `[Entrypoints] \u2717 Removing failed baseline entrypoint (HTTP ${numericStatus}): ${method} ${url}`
-          );
-          dead.push(entry.entrypointId);
-        } else {
-          alive.push(entry);
-        }
-      } catch {
-        alive.push(entry);
-      }
-    },
-    CONCURRENCY
-  );
-  if (dead.length > 0) {
-    await deleteEntrypoints(api, projectId, dead);
-    console.log(
-      `[Entrypoints] Pruned ${dead.length} dead entrypoint(s), ${alive.length} remaining`
-    );
-  }
-  return alive;
-}
-var DELETE_MAX_RETRIES = 3;
-var DELETE_BACKOFF_MS = 2e3;
-async function deleteEntrypoints(api, projectId, ids) {
-  const BATCH_SIZE = 50;
-  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
-    const batch = ids.slice(i, i + BATCH_SIZE);
-    await deleteEntrypointBatch(api, projectId, batch);
-  }
-}
-async function deleteEntrypointBatch(api, projectId, ids) {
-  const url = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points`;
-  for (let attempt = 0; attempt <= DELETE_MAX_RETRIES; attempt++) {
+var UNIQUE_SWAGGER_PATHS = [...new Set(SWAGGER_PATHS)];
+async function probeSwaggerSpec(baseUrl) {
+  for (const path of UNIQUE_SWAGGER_PATHS) {
+    const url = `${baseUrl.replace(/\/$/, "")}${path}`;
     try {
       const res = await fetch(url, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Api-Key ${api.brightToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ ids })
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_SHORT),
+        headers: { Accept: "application/json" }
       });
-      if (res.ok || res.status === 204) {
-        return;
+      if (!res.ok) continue;
+      const text = await res.text();
+      if (!text.startsWith("{") && !text.startsWith("[")) continue;
+      const spec = JSON.parse(text);
+      if (spec.openapi || spec.swagger || spec.paths) {
+        console.log(`[Swagger] Found OpenAPI spec at ${url}`);
+        return { found: true, specUrl: url, spec };
       }
-      if (res.status === 429) {
-        if (attempt >= DELETE_MAX_RETRIES) {
-          console.warn(
-            `[Entrypoints] Bulk delete rate-limited after ${DELETE_MAX_RETRIES} retries`
-          );
-          return;
-        }
-        const backoff = DELETE_BACKOFF_MS * Math.pow(2, attempt);
-        console.warn(
-          `[Entrypoints] Rate limited (429) on bulk delete \u2014 retry ${attempt + 1}/${DELETE_MAX_RETRIES} in ${(backoff / 1e3).toFixed(0)}s`
-        );
-        await sleep2(backoff);
+    } catch {
+    }
+  }
+  return { found: false };
+}
+function parseOpenApiToEndpoints(spec) {
+  const endpoints = [];
+  const paths = spec.paths;
+  if (!paths) return endpoints;
+  let basePath = "";
+  if (spec.servers && Array.isArray(spec.servers) && spec.servers.length > 0) {
+    const serverUrl = spec.servers[0]?.url ?? "";
+    try {
+      basePath = new URL(serverUrl).pathname.replace(/\/$/, "");
+    } catch {
+      basePath = serverUrl.replace(/\/$/, "");
+    }
+  } else if (typeof spec.basePath === "string") {
+    basePath = spec.basePath.replace(/\/$/, "");
+  }
+  for (const [pathTemplate, methods] of Object.entries(paths)) {
+    if (!methods || typeof methods !== "object") continue;
+    for (const [method, operation] of Object.entries(methods)) {
+      const httpMethod = method.toUpperCase();
+      if (!["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].includes(httpMethod)) {
         continue;
       }
-      console.warn(
-        `[Entrypoints] Bulk delete failed: ${res.status} ${res.statusText}`
-      );
-      return;
-    } catch (err) {
-      console.warn(`[Entrypoints] Bulk delete error: ${err}`);
-      return;
-    }
-  }
-}
-function sanitizeBody(body) {
-  if (typeof body !== "string") {
-    return body ? JSON.stringify(body) : "{}";
-  }
-  if (!body.trim()) return "{}";
-  try {
-    const parsed = JSON.parse(body);
-    return JSON.stringify(parsed);
-  } catch {
-    const repaired = repairJsonBody(body);
-    if (repaired) return repaired;
-    return body.replace(/\n\s*/g, " ").trim();
-  }
-}
-function repairJsonBody(body) {
-  let s = body.replace(/\n\s*/g, " ").trim();
-  s = s.replace(/,\s*([}\]])/g, "$1");
-  try {
-    return JSON.stringify(JSON.parse(s));
-  } catch {
-  }
-  try {
-    const fixed = fixNestedJsonStrings(s);
-    if (fixed !== s) {
-      const parsed = JSON.parse(fixed);
-      return JSON.stringify(parsed);
-    }
-  } catch {
-  }
-  try {
-    const fixed = fixByParseError(s);
-    if (fixed) {
-      const parsed = JSON.parse(fixed);
-      return JSON.stringify(parsed);
-    }
-  } catch {
-  }
-  return null;
-}
-function fixNestedJsonStrings(s) {
-  const result = [];
-  let i = 0;
-  while (i < s.length) {
-    if (s[i] === ":" && s[i + 1] === '"' && (s[i + 2] === "{" || s[i + 2] === "[")) {
-      result.push(":", '"');
-      i += 2;
-      const openBracket = s[i];
-      const closeBracket = openBracket === "{" ? "}" : "]";
-      let depth = 0;
-      let innerStart = i;
-      let j = i;
-      while (j < s.length) {
-        if (s[j] === openBracket) depth++;
-        else if (s[j] === closeBracket) {
-          depth--;
-          if (depth === 0) {
-            if (s[j + 1] === '"') {
-              const inner = s.slice(innerStart, j + 1);
-              result.push(inner.replace(/"/g, '\\"'));
-              result.push('"');
-              i = j + 2;
-              break;
-            }
+      const op = operation;
+      const normalizedPath = (basePath + pathTemplate).replace(/\{(\w+)\}/g, ":$1");
+      const queryParams = [];
+      const pathParams = {};
+      for (const param of op.parameters ?? []) {
+        const sampleValue = String(
+          param.example ?? param.schema?.example ?? param.schema?.default ?? sampleForType(param.schema?.type)
+        );
+        if (param.in === "query") {
+          queryParams.push({ name: param.name, value: sampleValue });
+        } else if (param.in === "path") {
+          pathParams[param.name] = sampleValue;
+        }
+      }
+      let resolvedPath = normalizedPath;
+      for (const [name, value] of Object.entries(pathParams)) {
+        resolvedPath = resolvedPath.replace(`:${name}`, value);
+      }
+      let body;
+      let contentType;
+      if (op.requestBody?.content) {
+        const jsonContent = op.requestBody.content["application/json"];
+        if (jsonContent?.schema) {
+          contentType = "application/json";
+          body = JSON.stringify(generateSampleFromSchema(jsonContent.schema));
+        } else {
+          const [ct, def] = Object.entries(op.requestBody.content)[0] ?? [];
+          if (ct && def?.schema) {
+            contentType = ct;
+            body = JSON.stringify(generateSampleFromSchema(def.schema));
           }
         }
-        j++;
       }
-      if (depth !== 0 || j >= s.length) {
-        result.push(s[innerStart]);
-        i = innerStart + 1;
-      }
-    } else {
-      result.push(s[i]);
-      i++;
+      endpoints.push({
+        method: httpMethod,
+        path: resolvedPath,
+        filePath: "openapi-spec",
+        queryParams: queryParams.length > 0 ? queryParams : void 0,
+        body,
+        contentType
+      });
     }
   }
-  return result.join("");
+  return endpoints;
 }
-function fixByParseError(s) {
-  let current = s;
-  for (let attempt = 0; attempt < 20; attempt++) {
-    try {
-      JSON.parse(current);
-      return current;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      const posMatch = msg.match(/at position (\d+)/);
-      if (!posMatch) return null;
-      const pos = parseInt(posMatch[1], 10);
-      if (pos <= 0 || pos >= current.length) return null;
-      let quotePos = -1;
-      for (let k = pos; k >= Math.max(0, pos - 5); k--) {
-        if (current[k] === '"' && current[k - 1] !== "\\") {
-          quotePos = k;
-          break;
-        }
-      }
-      if (quotePos === -1) return null;
-      current = current.slice(0, quotePos) + '\\"' + current.slice(quotePos + 1);
-    }
-  }
-  return null;
-}
-var VALID_HTTP_METHODS = /* @__PURE__ */ new Set([
-  "GET",
-  "HEAD",
-  "POST",
-  "PUT",
-  "DELETE",
-  "CONNECT",
-  "OPTIONS",
-  "TRACE",
-  "PATCH"
-]);
-function normalizeMethod(method) {
-  const upper = method.toUpperCase();
-  if (VALID_HTTP_METHODS.has(upper)) return upper;
-  if (upper.startsWith("GRAPHQL")) return "POST";
-  console.warn(`[Entrypoints] Unknown method "${method}", defaulting to GET`);
-  return "GET";
-}
-
-// src/phases/repeater.ts
-var import_core = __toESM(require_src(), 1);
-var import_repeater = __toESM(require_src3(), 1);
-async function setupRepeater(projectId, api) {
-  const configuration = new import_core.Configuration({
-    hostname: api.brightHostname,
-    projectId,
-    credentials: { token: api.brightToken },
-    logLevel: import_core.LogLevel.NOTICE
-  });
-  const factory = configuration.container.resolve(import_repeater.RepeaterFactory);
-  const repeater = await factory.createRepeater({
-    namePrefix: `engine-${Date.now()}`,
-    disableRandomNameGeneration: true
-  });
-  const repeaterId = repeater.repeaterId;
-  console.log(`[Repeater] Created repeater: ${repeaterId}`);
-  try {
-    await startRepeaterWithTimeout(repeater, 6e4);
-  } catch (err) {
-    await repeater.stop().catch(() => void 0);
-    throw err;
-  }
-  console.log(`[Repeater] Connected: ${repeaterId}`);
-  return {
-    repeaterId,
-    stop: async () => {
-      await repeater.stop();
-    }
-  };
-}
-async function startRepeaterWithTimeout(repeater, timeoutMs) {
-  let timer;
-  try {
-    await Promise.race([
-      repeater.start(),
-      new Promise((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error("Timed out waiting for repeater connection")),
-          timeoutMs
-        );
-      })
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
+function sampleForType(type) {
+  switch (type) {
+    case "integer":
+      return 1;
+    case "number":
+      return 1;
+    case "boolean":
+      return true;
+    case "array":
+      return "[]";
+    default:
+      return "example";
   }
 }
-
-// src/prompts/scan-prep.ts
-function scanPrepPrompt(baseUrl, techStack, activeIssue) {
-  const activeIssueSection = activeIssue ? `
-## Active blocker from the previous phase
-${activeIssue}
-
-Treat this as a targeted repair. Do NOT perform broad startup/Dockerfile rewrites. Fix the specific rate-limit/security-control blocker, restart or rebuild only what is necessary, then verify with rapid POSTs.
-` : "";
-  return [
-    {
-      role: "system",
-      content: `You are a DevOps engineer preparing a web application for automated DAST (Dynamic Application Security Testing).
-
-The app is running at ${baseUrl} and is functional. However, production-grade security controls will block the scanner from operating. Your job is to find and relax them.
-
-Tech stack: ${techStack}
-${activeIssueSection}
-
-## What to look for
-
-A DAST scanner hammers the app with thousands of requests \u2014 rapid logins, malformed inputs, repeated form submissions. Any protective mechanism that throttles, blocks, or challenges automated traffic needs to be relaxed. Common categories:
-
-1. **Rate limiting** (highest priority) \u2014 per-IP, per-user, per-endpoint, login-specific, API-specific. These cause 429 errors that break auth and block scanning.
-2. **Account lockout** \u2014 failed login thresholds that lock or ban the test account.
-3. **CAPTCHA / bot detection** \u2014 anything that gates form submission on human verification.
-4. **CSRF token lifetime / enforcement** \u2014 very short token expiry can break scanner workflows. If the app has a setting to DISABLE CSRF checking entirely, do so \u2014 the scanner handles CSRF independently via the auth object. Do NOT make CSRF stricter.
-5. **Session timeouts** \u2014 aggressive session expiry forces constant re-authentication.
-6. **IP allowlists / blocklists** \u2014 if the app blocks unknown IPs or requires allowlisting.
-7. **WAF / request filtering** \u2014 embedded request validation that rejects scanner payloads.
-
-There may be others specific to this app \u2014 use your judgment.
-
-## CRITICAL: Use web search to find framework-specific rate limiting
-
-Most frameworks and applications have BUILT-IN rate limiting that is NOT visible in middleware lists or grep results. It is often stored in:
-- Database-backed settings (e.g. Discourse SiteSetting, WordPress wp_options, Django constance)
-- Framework internals that are always active (Rails ActionController::HttpAuthentication, Rack::Utils)
-- Application-level throttle logic embedded in controllers/models
-
-**You MUST use \`search_web\` to search for how the public OSS application or framework handles rate limiting.** Do not rely solely on grepping the codebase \u2014 that will miss built-in framework rate limits.
-
-Example searches to make:
-- "<public OSS app name> disable rate limiting" (only when the app is a recognizable public OSS project)
-- "<public OSS app name> rate limit site settings"
-- "<public OSS app name> max logins per minute configuration"
-- "<framework> built-in rate limiting disable for testing"
-
-Do NOT search for private/local monorepo paths or internal service names such as "apps/monolith rate limit". If the selected app is not a recognizable public OSS product, search by framework/package/error instead and use codebase/runtime inspection for app-specific details.
-
-If your codebase search finds NOTHING related to rate limiting, that is a RED FLAG \u2014 it almost certainly means rate limiting is built into the framework at a level you can't see by grepping. Use \`search_web\` immediately to find out how to disable it.
-
-## How to find them
-
-1. **Search the web FIRST** \u2014 use \`search_web\` to find public OSS/framework guidance such as "<public OSS app/framework name> disable rate limiting for testing" or "<framework name> rate limit configuration". This is the fastest way to learn HOW this specific stack handles rate limits. Never include local repo paths or internal monorepo service names in web queries.
-2. **Query ALL runtime settings inside the container** \u2014 many apps store rate limits in database-backed settings. Run CLI commands inside the container to LIST ALL settings related to rate/limit/throttle/max/login. Cast a WIDE net \u2014 use a broad regex. For example:
-   - Rails/Discourse: \`rails runner "puts SiteSetting.all_settings.select { |s| s[:setting].to_s =~ /rate|limit|max.*per|throttle|lock|login|attempt|spam/ }.map { |s| [s[:setting], s[:value]].join('=') }"\`
-   - Django: \`python manage.py shell -c "from constance import config; ..."\`
-   - WordPress: \`wp option list --search='*rate*' --search='*limit*'\`
-   **IMPORTANT:** Look at EVERY setting returned. Login-specific rate limits (max_logins_per_ip_per_hour, max_logins_per_ip_per_minute, etc.) are the #1 cause of scanner auth failures. You must disable ALL of them, not just the ones with "rate_limit" in the name.
-   **VALUE RULE:** Always set rate limits to very high numbers like 999999. NEVER use 0 (ambiguous \u2014 could mean "disabled" or "zero allowed") and NEVER use small numbers like 1 or 10. Use 999999 to be safe.
-3. **Search the codebase** \u2014 use \`search_files\` and \`read_file\` to look for keywords like: rate, limit, throttle, lockout, captcha, recaptcha, block, ban, cooldown, retry, max_attempts, max_logins, max_reqs, timeout, session_timeout, etc.
-4. **Inspect configuration files** \u2014 .env, docker-compose.yml, config files. Look for environment variables or settings related to security controls.
-5. **Check middleware/initializer files** \u2014 look for Rack::Attack, express-rate-limit, django-ratelimit, Spring Security, etc. in middleware configs or initializers.
-
-Be thorough: apps often have MULTIPLE rate limit controls at different layers (middleware, framework, database-backed settings, reverse proxy). Find ALL of them.
-
-## How to apply changes
-
-**Persistence rule:** changes must survive container restarts. Prefer:
-- Editing host-side config files or .env via \`edit_file\`
-- Running database/CLI commands inside the container via \`run_command_in_docker\` (DB-backed settings persist if the volume persists)
-- Setting environment variables in docker-compose.yml via \`edit_file\`
-
-Do NOT edit files inside the container directly \u2014 they're lost on rebuild.
-
-### In-memory rate limiters (express-brute, node-rate-limiter, etc.)
-
-Many apps use IN-MEMORY or code-level rate limiters (guards, decorators, middleware). These CANNOT be disabled via database or config alone \u2014 the state lives in the application process. To disable them:
-
-1. **Patch the source code** \u2014 find the file that registers the rate limiter and either:
-   - Comment out or remove the middleware/guard/decorator registration entirely
-   - Set impossibly high limits (e.g. limit: 999999, ttl: 1, maxRetries: 999999)
-   - Replace the limiter with a pass-through: \`(req, res, next) => next()\`
-   - For decorator-based guards: remove the decorator from the app module or set global options to extremely permissive values
-2. **Restart or rebuild the app after patching**:
-   - If the app runs source code directly from a mounted working tree, \`docker restart <container>\` is enough.
-   - If the source code is copied/built into the Docker image, run a targeted rebuild/recreate of the app service, e.g. \`docker compose up -d --build app\` (or the actual app service name). Do NOT rewrite the Dockerfile unless the rate-limit patch requires it.
-3. **Verify after restart/rebuild** \u2014 the old in-memory state is gone, and the patched code won't re-create limits
-
-**CRITICAL RULE:** If your codebase search finds ANY reference to rate limiting, throttling, or request guards \u2014 you are NOT done until you have:
-(a) Identified where in the code it is applied (module registration, middleware, decorator, etc.)
-(b) Patched it out or set to extremely permissive values
-(c) Rebuilt/restarted the app
-(d) Verified with rapid requests
-
-Do NOT report success or give up if you found rate-limiter code but only fixed DB settings. The code-level limiter will still fire regardless of DB changes.
-
-If you cleared a DB table or changed a config but still get throttled, the rate limiter is almost certainly code-level. Search the codebase for the middleware/guard registration and patch it at the source.
-
-**IMPORTANT:** After making source code changes, you MUST restart or rebuild/recreate the app container for them to take effect. Use \`run_command_on_host\` and wait a few seconds before re-testing.
-
-## How to verify \u2014 MANDATORY
-
-After making changes, you MUST verify they actually work by stress-testing:
-1. If you patched source code, **restart or rebuild/recreate the app first** and wait 5-10 seconds
-2. Re-read the config or re-query the setting to confirm the new value is set
-3. Use \`probe_url\` to make 5+ rapid POST requests to the actual LOGIN/AUTH endpoint (e.g. POST /session, POST /api/login, POST /auth/sign_in) \u2014 NOT the login HTML page. Use the same credentials/body each time.
-4. Check BOTH the HTTP status code AND the response body. Rate limiting can manifest as:
-   - HTTP 429 (obvious)
-   - HTTP 400/403 with body containing "too many requests", "throttle", "rate limit", or similar
-   - Any JSON error response with codes like "ThrottlerException", "RateLimitExceeded", etc.
-   ANY of these means rate limiting is still active. You are NOT done.
-5. The verification must hit the real auth processing path. Five POSTs that only return HTTP 404/user-not-found do NOT prove rate limiting is disabled \u2014 they may bypass the limiter. Use a stable existing username/email from setup/seed data when possible, or create a test account first. Acceptable failed-login verification responses are typically 400/401/422 JSON errors with auth-related messages (wrong password, invalid credentials), not 404 and not rate-limit errors.
-6. If you still get rate-limited after your changes, you missed something \u2014 there is likely a code-level guard/middleware. Search the codebase for the registration point (app module, middleware config, route decorator), patch it out, restart/rebuild, and re-test.
-
-**CRITICAL:** Testing GET requests to the login PAGE proves nothing \u2014 rate limits apply to the LOGIN ACTION (POST). Always verify with POST requests to the auth endpoint.
-
-**COMPLETENESS CHECK:** Before reporting success, review everything you found in your search. If you found rate-limit/throttle code references AND DB settings, you must fix BOTH. Do not report success if any discovered rate-limiting mechanism remains unpatched.
-
-Do NOT report success without performing the rapid-request verification.
-
-## Tools available
-- \`search_files\` / \`read_file\` / \`list_files\` \u2014 inspect the codebase
-- \`search_web\` / \`fetch_url\` \u2014 search the internet for public OSS/framework-specific docs (USE THIS for hidden framework/product rate limits; never search local repo paths or internal service names)
-- \`run_command_on_host\` \u2014 run shell commands on the host
-- \`run_command_in_docker\` \u2014 run commands inside a Docker container
-- \`edit_file\` \u2014 edit source/config files on the host
-- \`probe_url\` \u2014 make HTTP requests to the app and see the response
-
-## Output format
-
-When done, respond with ONLY this JSON (no markdown fencing):
-{"completed": true, "changes": ["brief description of each change"], "summary": "one-line summary"}
-
-If you tried but failed:
-{"completed": false, "changes": [], "summary": "what went wrong"}
-
-## Rules
-- **USE \`search_web\` \u2014 if you can't find rate limits via code inspection, search the web for how this public OSS app/framework handles them. Do NOT give up just because grep found nothing, but never search for local repo paths/internal service names.**
-- Don't break the app. If unsure, search the web for docs before making changes.
-- Be thorough \u2014 find ALL rate-limit and throttle settings, not just the first one.
-- **FOUND IT = FIX IT.** If your search found code references to rate limiting, throttling, or request guards, you MUST patch them. Do NOT report failure or skip them because "they're in the code." That's exactly what you're here to fix. Find the registration point, patch it to be permissive (999999 limit or remove entirely), rebuild, verify.
-- Prefer runtime settings (admin API, CLI, DB settings) when they exist, but if the rate limiter is code-level (guards, decorators, middleware with in-memory state), you MUST patch the source code \u2014 DB/config changes alone won't work.
-- If codebase search finds nothing, that means rate limiting is BUILT INTO the framework \u2014 use \`search_web\` to find out how to disable it.
-- NEVER report "no rate limits found" without first: (a) searching the web for "<app name> rate limiting", AND (b) querying runtime/DB settings inside the container.
-- Always verify your changes with rapid requests before reporting success.
-- Do not count HTTP 404-only login POSTs as successful rate-limit verification. They usually mean the request did not reach the real login limiter path.
-- **NEVER make security STRICTER.** Your goal is to RELAX all security controls so the scanner can operate freely. If a setting controls CSRF enforcement, disable it or make it permissive \u2014 do NOT enable stricter checking. The scanner needs to send requests without CSRF tokens, so CSRF validation should be DISABLED or set to its most permissive mode.
-- Think about each change from the scanner's perspective: "Will this make it EASIER or HARDER for the scanner to send requests?" If harder \u2192 don't do it.`
-    },
-    {
-      role: "user",
-      content: "Prepare this application for DAST scanning by finding and relaxing rate limits and security controls. Use search_web to look up how the public OSS app/framework handles rate limiting, but never search local repo paths or internal service names. Return the JSON result when done."
+function generateSampleFromSchema(schema, depth = 0) {
+  if (depth > 5) return {};
+  if (schema.$ref) return {};
+  if (schema.example !== void 0) return schema.example;
+  const type = schema.type;
+  if (type === "object" || schema.properties) {
+    const props = schema.properties;
+    if (!props) return {};
+    const result = {};
+    for (const [key, propSchema] of Object.entries(props)) {
+      result[key] = generateSampleFromSchema(propSchema, depth + 1);
     }
-  ];
-}
-function scanPrepTwoFactorPrompt(baseUrl, techStack) {
-  return [
-    {
-      role: "system",
-      content: `You are a DevOps engineer preparing a web application for automated DAST (Dynamic Application Security Testing).
-
-The app is running at ${baseUrl}. Your ONLY goal in this step is to ensure the test user is NOT blocked by two-factor authentication (2FA/MFA/TOTP) requirements.
-
-Tech stack: ${techStack}
-
-## Problem
-
-Many applications enforce 2FA on users \u2014 especially admin users. When 2FA is enforced:
-- The user may be marked as INACTIVE, PENDING, or similar until they complete 2FA setup
-- Login may succeed but the session is restricted (user can't access protected endpoints)
-- API requests return 401/403 even with a valid session because the user hasn't completed 2FA onboarding
-
-A DAST scanner CANNOT complete 2FA challenges. You must disable or bypass them.
-
-## What to do
-
-1. **Check if the app has 2FA/MFA** \u2014 search for: twoFactor, 2fa, mfa, totp, otp, authenticator, verification in the codebase and DB schema
-2. **Disable 2FA globally or per-user** \u2014 in order of preference:
-   - Environment variables: \`TWO_FACTOR_ENABLED=false\`, \`REQUIRE_2FA=false\`, \`MFA_ENFORCED=false\`, etc. Edit .env or compose.yml.
-   - Database settings: update global settings tables to disable 2FA enforcement
-   - Database user flags: set \`twoFactorEnabled=false\`, \`twoFactorSecret=null\`, clear any \`identityProvider\` requirement
-   - Source code: if 2FA is hardcoded, patch the guard/middleware/check to always pass
-3. **Ensure the test user is fully ACTIVE** \u2014 after disabling 2FA:
-   - Query the users table: the test user's role/status should be ACTIVE (not INACTIVE_ADMIN, not PENDING_2FA, not LOCKED)
-   - If the role is still inactive because of 2FA, UPDATE it directly in the DB
-   - Clear any \`smsLockState\`, \`backupCodes\`, or similar fields that indicate incomplete 2FA setup
-4. **Verify** \u2014 log in as the test user and hit a protected endpoint. It should return real data (200 with JSON), NOT a 401/403 or a redirect to 2FA setup.
-
-## Tools available
-- \`search_files\` / \`read_file\` / \`list_files\` \u2014 inspect the codebase
-- \`search_web\` / \`fetch_url\` \u2014 search the internet for public OSS docs
-- \`run_command_on_host\` \u2014 run shell commands on the host
-- \`run_command_in_docker\` \u2014 run commands inside a Docker container
-- \`edit_file\` \u2014 edit source/config files on the host
-- \`probe_url\` \u2014 make HTTP requests to the app and see the response
-
-## Output format
-
-When done, respond with ONLY this JSON (no markdown fencing):
-{"completed": true, "changes": ["brief description of each change"], "summary": "one-line summary"}
-
-If you checked and 2FA is not relevant to this app (no 2FA code/settings found):
-{"completed": true, "changes": [], "summary": "No 2FA/MFA mechanism found in this application"}
-
-If you tried but failed:
-{"completed": false, "changes": [], "summary": "what went wrong"}
-
-## Rules
-- Focus ONLY on 2FA/MFA. Do not touch rate limits, CSRF, or other security controls \u2014 another stage handles those.
-- After DB changes, restart the app container if the setting is cached at startup.
-- If you patched source code, rebuild/restart the app.
-- Verify the user is active by checking the session/profile endpoint response.`
-    },
-    {
-      role: "user",
-      content: "Check if this application enforces 2FA/MFA on the test user. If it does, disable it and ensure the user is fully active. Return the JSON result when done."
-    }
-  ];
-}
-
-// src/phases/scan-prep.ts
-async function prepareScanEnvironment(llm, repoPath, baseUrl, techStack, model, activeIssue) {
-  console.log("[ScanPrep] Starting scan preparation phase \u2014 relaxing rate limits and security controls...");
-  const rateLimitResult = await runScanPrepStage(
-    llm,
-    repoPath,
-    baseUrl,
-    techStack,
-    model,
-    activeIssue,
-    "rate_limit",
-    scanPrepPrompt(baseUrl, formatTechStack(techStack), activeIssue)
-  );
-  console.log("[ScanPrep] Stage 2 \u2014 checking 2FA/MFA requirements...");
-  const twoFaResult = await runScanPrepStage(
-    llm,
-    repoPath,
-    baseUrl,
-    techStack,
-    model,
-    void 0,
-    "2fa",
-    scanPrepTwoFactorPrompt(baseUrl, formatTechStack(techStack))
-  );
-  const mergedChanges = [
-    ...rateLimitResult.changes ?? [],
-    ...twoFaResult.changes ?? []
-  ];
-  const mergedCommands = [
-    ...rateLimitResult.replayCommands ?? [],
-    ...twoFaResult.replayCommands ?? []
-  ];
-  if (!rateLimitResult.completed) {
-    return {
-      ...rateLimitResult,
-      changes: mergedChanges,
-      replayCommands: mergedCommands.length > 0 ? mergedCommands : void 0
-    };
+    return result;
   }
-  const summary = twoFaResult.changes.length > 0 ? `${rateLimitResult.summary}; 2FA: ${twoFaResult.summary}` : rateLimitResult.summary;
-  return {
-    completed: true,
-    changes: mergedChanges,
-    summary,
-    replayCommands: mergedCommands.length > 0 ? mergedCommands : void 0
-  };
-}
-async function runScanPrepStage(llm, repoPath, baseUrl, techStack, model, activeIssue, stageName, messages) {
-  const dockerCommands = [];
-  let editFileCalls = 0;
-  let postProbeCalls = 0;
-  const postProbeStatuses = [];
-  let saw429 = false;
-  const handlerOpts = {
-    label: "ScanPrep",
-    enableShell: true,
-    enableDocker: true,
-    enableEdit: true,
-    enableProbe: true,
-    enableWeb: true,
-    onDocker: (_container, cmd, _result) => {
-      if (/set\(|=\s*\d|=\s*true|=\s*false|update|disable|enable/i.test(cmd)) {
-        dockerCommands.push({ container: _container, command: cmd });
-      }
-    },
-    onEdit: () => {
-      editFileCalls += 1;
-    },
-    onProbe: (args, result) => {
-      const method = String(args.method ?? "GET").toUpperCase();
-      if (method === "POST") {
-        postProbeCalls += 1;
-        const statusMatch = result.match(/HTTP\s+(\d{3})\b/);
-        if (statusMatch?.[1]) {
-          postProbeStatuses.push(Number(statusMatch[1]));
-        }
-      }
-      if (/HTTP\s+429\b/.test(result)) saw429 = true;
-    }
-  };
-  const tools = buildToolDefs(handlerOpts);
-  const handler = createUnifiedToolHandler(repoPath, handlerOpts);
-  const response = await chatWithTools(llm, messages, tools, handler, model, activeIssue ? 50 : 40);
-  try {
-    const json = extractJson(response);
-    const result = JSON.parse(json);
-    if (result.completed) {
-      const changes = result.changes ?? [];
-      const actualMutations = dockerCommands.length + editFileCalls;
-      if (stageName === "2fa") {
-        console.log(`[ScanPrep:2FA] Completed \u2014 ${changes.length} change(s): ${result.summary ?? "done"}`);
-        for (const c of changes) console.log(`[ScanPrep:2FA]   \u2022 ${c}`);
-        return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
-      }
-      if (postProbeCalls < 5) {
-        const summary = `Scan-prep reported success after only ${postProbeCalls}/5 required rapid POST verification request(s)`;
-        console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary, failureKind: "verification_missing" };
-      }
-      if (actualMutations === 0 && changes.length === 0) {
-        const summary = "Scan-prep reported success without applying or documenting any rate-limit/security-control change";
-        console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary, failureKind: "no_changes" };
-      }
-      if (saw429) {
-        const summary = "Scan-prep verification still observed HTTP 429; rate limits were not fully relaxed";
-        console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary, failureKind: "rate_limit" };
-      }
-      if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status === 404)) {
-        const summary = "Scan-prep verification only observed HTTP 404 on login POSTs; this does not prove rate limits were relaxed";
-        console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary, failureKind: "login_404" };
-      }
-      if (postProbeStatuses.length >= 5 && postProbeStatuses.every((status) => status >= 500)) {
-        const summary = "Scan-prep verification only observed HTTP 5xx on login POSTs; the login path is crashing, not verified as scanner-ready";
-        console.warn(`[ScanPrep] Failed: ${summary}`);
-        return { completed: false, changes: [], summary, failureKind: "login_5xx" };
-      }
-      console.log(`[ScanPrep] Completed \u2014 ${changes.length} change(s): ${result.summary}`);
-      for (const c of changes) {
-        console.log(`[ScanPrep]   \u2022 ${c}`);
-      }
-      return { completed: true, changes, summary: result.summary ?? "Done", replayCommands: dockerCommands };
-    }
-    const failureMessage = result.reason ?? result.summary ?? "unknown";
-    console.warn(`[ScanPrep:${stageName}] Failed: ${failureMessage}`);
-    return { completed: false, changes: [], summary: failureMessage, failureKind: "unknown" };
-  } catch (err) {
-    console.warn(`[ScanPrep:${stageName}] Could not parse response: ${err}`);
-    return { completed: false, changes: [], summary: `Parse error: ${err}`, failureKind: "parse_error" };
+  if (type === "array") {
+    const items = schema.items;
+    if (items) return [generateSampleFromSchema(items, depth + 1)];
+    return [];
   }
+  if (type === "string") {
+    if (schema.enum && Array.isArray(schema.enum)) return schema.enum[0];
+    if (schema.format === "email") return "user@example.com";
+    if (schema.format === "date") return "2024-01-15";
+    if (schema.format === "date-time") return "2024-01-15T10:30:00Z";
+    if (schema.format === "uuid") return "550e8400-e29b-41d4-a716-446655440000";
+    if (schema.format === "uri") return "https://example.com";
+    return "string";
+  }
+  if (type === "integer") return schema.example ?? 1;
+  if (type === "number") return schema.example ?? 1;
+  if (type === "boolean") return schema.example ?? true;
+  return "example";
 }
-function replayScanPrep(repoPath, commands) {
-  console.log(`[ScanPrep] Replaying ${commands.length} previously-successful command(s)...`);
-  let applied = 0;
-  let failed = 0;
-  for (const { container, command } of commands) {
-    try {
-      console.log(`[ScanPrep] replay [${container}]: ${command.slice(0, 200)}`);
-      execInDocker(repoPath, container, command, 6e4);
-      applied++;
-    } catch (err) {
-      console.warn(`[ScanPrep] replay failed: ${err}`);
-      failed++;
+async function discoverEndpointsViaSwagger(baseUrl) {
+  console.log("[Swagger] Probing for existing OpenAPI/Swagger spec...");
+  const probe = await probeSwaggerSpec(baseUrl);
+  if (probe.found && probe.spec) {
+    const endpoints = parseOpenApiToEndpoints(probe.spec);
+    if (endpoints.length > 0) {
+      console.log(
+        `[Swagger] Parsed ${endpoints.length} endpoints from existing spec at ${probe.specUrl}`
+      );
+      return { endpoints, source: "existing-spec" };
     }
   }
-  console.log(`[ScanPrep] Replay done \u2014 ${applied} applied, ${failed} failed`);
-  return { success: failed === 0, applied, failed };
+  console.log("[Swagger] No existing spec found");
+  return { endpoints: [], source: "none" };
 }
 
 // src/phases/test-selection.ts
 var MULTI_AUTH_TESTS = /* @__PURE__ */ new Set(["broken_access_control"]);
-var EXCLUDED_TESTS = /* @__PURE__ */ new Set([
-  "lrrl",
-  "header_security",
-  "cookie_security"
-]);
+var EXCLUDED_TESTS = /* @__PURE__ */ new Set(["lrrl", "header_security", "cookie_security"]);
 var UNIVERSAL_TESTS = /* @__PURE__ */ new Set([
   "secret_tokens",
   "full_path_disclosure",
@@ -33718,13 +35361,25 @@ function hasInputs(ep) {
   return !!(ep.body || ep.queryParams?.length || /[:{}]/.test(ep.path) || ["POST", "PUT", "PATCH"].includes(ep.method.toUpperCase()));
 }
 var PATH_RULES = [
-  { pattern: /\/(login|signin|auth|session|token|oauth|saml)/i, tests: ["brute_force_login", "csrf", "broken_saml_auth", "jwt"] },
+  {
+    pattern: /\/(login|signin|auth|session|token|oauth|saml)/i,
+    tests: ["brute_force_login", "csrf", "broken_saml_auth", "jwt"]
+  },
   { pattern: /\/(upload|attach|import|file)/i, tests: ["file_upload"] },
   { pattern: /\/(redirect|callback|return|next)/i, tests: ["unvalidated_redirect", "ssrf"] },
   { pattern: /\/(search|query|filter|find|lookup)/i, tests: ["sqli", "xss", "nosql"] },
-  { pattern: /\/(admin|manage|settings|config|system)/i, tests: ["directory_listing", "common_files"] },
-  { pattern: /\/(user|profile|account|member)/i, tests: ["id_enumeration", "bopla", "excessive_data_exposure"] },
-  { pattern: /\/(api|rest|graphql|v\d)/i, tests: ["id_enumeration", "bopla", "excessive_data_exposure", "improper_asset_management"] },
+  {
+    pattern: /\/(admin|manage|settings|config|system)/i,
+    tests: ["directory_listing", "common_files"]
+  },
+  {
+    pattern: /\/(user|profile|account|member)/i,
+    tests: ["id_enumeration", "bopla", "excessive_data_exposure"]
+  },
+  {
+    pattern: /\/(api|rest|graphql|v\d)/i,
+    tests: ["id_enumeration", "bopla", "excessive_data_exposure", "improper_asset_management"]
+  },
   { pattern: /graphql/i, tests: ["graphql_introspection"] },
   { pattern: /\/(email|mail|contact|notify|message)/i, tests: ["email_injection"] },
   { pattern: /\/(template|render|preview|report)/i, tests: ["ssti", "xss", "stored_xss"] },
@@ -33734,15 +35389,26 @@ var PATH_RULES = [
   { pattern: /\/(command|exec|run|shell|ping|process)/i, tests: ["osi"] },
   { pattern: /\/(include|load|read|download|path|file)/i, tests: ["lfi", "rfi"] },
   { pattern: /\/(date|time|schedule|booking|reservation)/i, tests: ["date_manipulation"] },
-  { pattern: /\/(price|quantity|amount|total|cart|order|checkout)/i, tests: ["business_constraint_bypass"] },
-  { pattern: /\/(ai|llm|chat|prompt|generate|completion|rag)/i, tests: ["prompt_injection", "insecure_output_handling"] },
-  { pattern: /\/(s3|bucket|storage|blob|cloud)/i, tests: ["amazon_s3_takeover", "open_cloud_storage"] },
+  {
+    pattern: /\/(price|quantity|amount|total|cart|order|checkout)/i,
+    tests: ["business_constraint_bypass"]
+  },
+  {
+    pattern: /\/(ai|llm|chat|prompt|generate|completion|rag)/i,
+    tests: ["prompt_injection", "insecure_output_handling"]
+  },
+  {
+    pattern: /\/(s3|bucket|storage|blob|cloud)/i,
+    tests: ["amazon_s3_takeover", "open_cloud_storage"]
+  },
   { pattern: /wordpress|wp-/i, tests: ["wordpress", "default_login_location"] }
 ];
 function techStackTests(tech) {
   const include = /* @__PURE__ */ new Set();
   const exclude = /* @__PURE__ */ new Set();
-  const all = [...tech.languages, ...tech.frameworks, ...tech.databases].map((s) => s.toLowerCase());
+  const all = [...tech.languages, ...tech.frameworks, ...tech.databases].map(
+    (s) => s.toLowerCase()
+  );
   const joined = all.join(" ");
   if (all.some((d) => /postgres|mysql|mariadb|sqlite|mssql|oracle|sql/i.test(d))) {
     include.add("sqli");
@@ -33753,7 +35419,9 @@ function techStackTests(tech) {
   if (!all.some((d) => /mongo|couch|dynamo|firestore|nosql/i.test(d))) {
     exclude.add("nosql");
   }
-  if (/jinja|django|twig|blade|thymeleaf|freemarker|mustache|handlebars|ejs|pug|nunjucks|erb|slim|haml/i.test(joined)) {
+  if (/jinja|django|twig|blade|thymeleaf|freemarker|mustache|handlebars|ejs|pug|nunjucks|erb|slim|haml/i.test(
+    joined
+  )) {
     include.add("ssti");
   }
   if (all.some((l) => /javascript|typescript|node|express|next|nuxt|react|angular|vue/i.test(l))) {
@@ -33956,8 +35624,7 @@ Return a JSON object with ONLY the entries you changed.`
   for (let i = 0; i < endpoints.length; i++) {
     if (i >= entrypointIds.length) break;
     const key = [...perEndpoint[i]].sort().join(",");
-    if (!groupMap.has(key))
-      groupMap.set(key, { epIds: [], hasPathParams: false });
+    if (!groupMap.has(key)) groupMap.set(key, { epIds: [], hasPathParams: false });
     const g = groupMap.get(key);
     g.epIds.push(entrypointIds[i]);
     if (PATH_PARAM_RE.test(endpoints[i].path)) g.hasPathParams = true;
@@ -33973,10 +35640,7 @@ Return a JSON object with ONLY the entries you changed.`
     });
   }
   const MAX_TOTAL_SCANS = 10;
-  const MAX_ENTRYPOINTS_PER_GROUP = Math.max(
-    100,
-    Math.ceil(endpoints.length / MAX_TOTAL_SCANS)
-  );
+  const MAX_ENTRYPOINTS_PER_GROUP = Math.max(100, Math.ceil(endpoints.length / MAX_TOTAL_SCANS));
   let working = consolidateGroups(groups, MAX_TOTAL_SCANS);
   working = splitLargeGroups(working, MAX_ENTRYPOINTS_PER_GROUP);
   if (working.length > MAX_TOTAL_SCANS) {
@@ -34012,9 +35676,7 @@ function splitLargeGroups(groups, maxEps) {
 }
 function consolidateGroups(groups, maxGroups) {
   if (groups.length <= maxGroups) return groups;
-  const sorted = [...groups].sort(
-    (a, b) => a.entrypointIds.length - b.entrypointIds.length
-  );
+  const sorted = [...groups].sort((a, b) => a.entrypointIds.length - b.entrypointIds.length);
   while (sorted.length > maxGroups) {
     const a = sorted.shift();
     const b = sorted.shift();
@@ -34033,1827 +35695,8 @@ function consolidateGroups(groups, maxGroups) {
   return sorted;
 }
 
-// src/phases/scan.ts
-var DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
-var PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
-async function runSecurityScan(projectId, entrypointIds, repeaterId, testTags, api, scanName, hasPathParams = false, smart = true) {
-  const locations = hasPathParams ? PATH_ATTACK_LOCATIONS : DEFAULT_ATTACK_LOCATIONS;
-  console.log(
-    `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests [${testTags.join(", ")}], attack locations: ${locations.join(", ")}, smart: ${smart}`
-  );
-  return runScanViaRest(
-    api,
-    projectId,
-    entrypointIds,
-    repeaterId,
-    testTags,
-    locations,
-    scanName,
-    smart
-  );
-}
-async function runScanViaRest(api, projectId, entrypointIds, repeaterId, testTags, attackParamLocations, scanName, smart = true) {
-  let tests = [...testTags];
-  let eps = [...entrypointIds];
-  let locations = [...attackParamLocations];
-  const maxRetries = 4;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const body = {
-      name: scanName ?? `Engine Scan ${(/* @__PURE__ */ new Date()).toISOString()}`,
-      projectId,
-      module: "dast",
-      discoveryTypes: null,
-      entryPointIds: eps,
-      repeaters: [repeaterId],
-      tests,
-      attackParamLocations: locations,
-      smart,
-      skipStaticParams: true,
-      poolSize: 10,
-      requestsRateLimit: 0,
-      singleTabScanActive: false,
-      exclusions: { requests: [] }
-    };
-    let res;
-    try {
-      res = await fetch(`https://${api.brightHostname}/api/v1/scans`, {
-        method: "POST",
-        headers: {
-          Authorization: `Api-Key ${api.brightToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      });
-    } catch (err) {
-      const msg = toErrorMessage(err);
-      console.warn(
-        `[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`
-      );
-      if (attempt < maxRetries) {
-        await sleep(5e3 * attempt);
-        continue;
-      }
-      throw new Error(`runScan failed after ${maxRetries} attempts: ${msg}`);
-    }
-    if (res.ok) {
-      const data = await res.json();
-      const scanId = data.id ?? data.scanId;
-      if (!scanId) {
-        throw new Error(
-          `runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`
-        );
-      }
-      console.log(`[Scan] Scan started (REST): ${scanId}`);
-      return scanId;
-    }
-    const text = await res.text();
-    if (res.status === 429) {
-      console.warn(
-        `[Scan] Rate limited (attempt ${attempt}/${maxRetries}), backing off...`
-      );
-      if (attempt < maxRetries) {
-        await sleep(1e4 * attempt);
-        continue;
-      }
-      throw new Error(`runScan rate limited after ${maxRetries} attempts`);
-    }
-    if (res.status >= 500) {
-      console.warn(
-        `[Scan] Server error ${res.status} (attempt ${attempt}/${maxRetries}): ${text.slice(0, 200)}`
-      );
-      if (attempt < maxRetries) {
-        await sleep(5e3 * attempt);
-        continue;
-      }
-      throw new Error(
-        `runScan REST failed (${res.status}): ${text.slice(0, 500)}`
-      );
-    }
-    if (res.status === 400) {
-      const errorDetails = parseValidationError(text);
-      console.warn(
-        `[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${errorDetails.summary}`
-      );
-      if (attempt >= maxRetries) break;
-      const fixedTests = tryFixScanConfig(text, tests);
-      if (fixedTests) {
-        tests = fixedTests;
-        console.log(
-          `[Scan] Retrying with ${tests.length} tests after removing incompatible ones`
-        );
-        continue;
-      }
-      if (errorDetails.invalidEntrypoints.length > 0) {
-        const invalidSet = new Set(errorDetails.invalidEntrypoints);
-        const filtered = eps.filter((id) => !invalidSet.has(id));
-        if (filtered.length > 0 && filtered.length < eps.length) {
-          console.log(
-            `[Scan] Removed ${eps.length - filtered.length} invalid entrypoint(s), retrying with ${filtered.length}`
-          );
-          eps = filtered;
-          continue;
-        }
-      }
-      if (errorDetails.fieldErrors.length > 0) {
-        const hasLocationErr = errorDetails.fieldErrors.some(
-          (f) => f.includes("attackParam") || f.includes("location")
-        );
-        if (hasLocationErr && locations.length > DEFAULT_ATTACK_LOCATIONS.length) {
-          console.log(`[Scan] Removing path from attack locations and retrying`);
-          locations = [...DEFAULT_ATTACK_LOCATIONS];
-          continue;
-        }
-      }
-      if (eps.length > 5) {
-        const prev = eps.length;
-        eps = eps.slice(0, Math.ceil(prev / 2));
-        console.log(
-          `[Scan] Retrying with ${eps.length} entrypoints (reduced from ${prev})`
-        );
-        continue;
-      }
-      if (eps.length > 1) {
-        console.log(`[Scan] Isolating: trying single entrypoint to check if config is the issue`);
-        eps = [eps[0]];
-        continue;
-      }
-    }
-    throw new Error(
-      `runScan REST failed (${res.status}): ${text.slice(0, 800)}`
-    );
-  }
-  throw new Error(
-    `runScan: exhausted retries. Last config: ${eps.length} eps, tests=[${tests.join(",")}]`
-  );
-}
-function parseValidationError(text) {
-  const invalidEntrypoints = [];
-  const fieldErrors = [];
-  let summary = text.slice(0, 600);
-  try {
-    const parsed = JSON.parse(text);
-    const messages = [];
-    if (Array.isArray(parsed.message)) {
-      messages.push(...parsed.message.map(String));
-    } else if (typeof parsed.message === "string") {
-      messages.push(parsed.message);
-    }
-    if (Array.isArray(parsed.errors)) {
-      for (const err of parsed.errors) {
-        const msg = err.message ?? err.constraints ? Object.values(err.constraints ?? {}).join("; ") : JSON.stringify(err);
-        messages.push(String(msg));
-      }
-    }
-    for (const msg of messages) {
-      if (msg.includes("entryPointIds") || msg.includes("entry_point")) {
-        fieldErrors.push(msg);
-        const idMatches = msg.match(/[a-zA-Z0-9]{20,}/g);
-        if (idMatches) invalidEntrypoints.push(...idMatches);
-      } else if (msg !== "One or more validation errors occurred.") {
-        fieldErrors.push(msg);
-      }
-    }
-    summary = messages.join(" | ").slice(0, 600) || summary;
-  } catch {
-    const idMatches = text.match(/entryPointIds[^[]*\[([^\]]+)\]/);
-    if (idMatches) {
-      const ids = idMatches[1].match(/[a-zA-Z0-9]{20,}/g);
-      if (ids) invalidEntrypoints.push(...ids);
-    }
-  }
-  return { summary, invalidEntrypoints, fieldErrors };
-}
-function tryFixScanConfig(errorText, tests) {
-  const lower = errorText.toLowerCase();
-  if (lower.includes("mutually exclusive")) {
-    const exclusiveTests = ["lrrl"];
-    const toRemove = new Set(
-      exclusiveTests.filter((ex) => lower.includes(ex) || tests.includes(ex))
-    );
-    if (toRemove.size > 0) {
-      const filtered = tests.filter((t) => !toRemove.has(t));
-      if (filtered.length < tests.length && filtered.length > 0) {
-        console.log(
-          `[Scan] Removed mutually exclusive test(s), ${tests.length} \u2192 ${filtered.length}`
-        );
-        return filtered;
-      }
-    }
-  }
-  if (lower.includes("multiple auth attack tests") || lower.includes("custom auth objects")) {
-    const filtered = tests.filter((t) => t !== "broken_access_control");
-    if (filtered.length < tests.length && filtered.length > 0) {
-      console.log(
-        `[Scan] Removed multi-auth test(s), ${tests.length} \u2192 ${filtered.length}`
-      );
-      return filtered;
-    }
-  }
-  return null;
-}
-var TERMINAL_STATUSES = /* @__PURE__ */ new Set([
-  "done",
-  "completed",
-  "stopped",
-  "failed",
-  "disrupted"
-]);
-function isTerminalStatus(status) {
-  return TERMINAL_STATUSES.has(status.toLowerCase());
-}
-function isFailureStatus(status) {
-  const s = status.toLowerCase();
-  return s === "failed" || s === "disrupted" || s === "timeout";
-}
-function isPausedStatus(status) {
-  return status.toLowerCase() === "paused";
-}
-async function waitForScanCompletion(api, scanId, onProgress, healthMonitor) {
-  const pollInterval = 3e4;
-  let pausedByMonitor = false;
-  let unhealthySince;
-  const UNHEALTHY_BAIL_MS = 12e4;
-  await sleep(pollInterval);
-  while (true) {
-    if (healthMonitor) {
-      const healthy = healthMonitor.isHealthy();
-      if (!healthy && !pausedByMonitor) {
-        const ok = await setScanLifecycle(api, scanId, "pause");
-        if (ok) {
-          pausedByMonitor = true;
-          console.log(
-            `[Scan] Paused ${scanId} \u2014 app unhealthy, will resume after recovery`
-          );
-        }
-        if (!unhealthySince) unhealthySince = Date.now();
-      } else if (!healthy && unhealthySince) {
-        const elapsed = Date.now() - unhealthySince;
-        if (elapsed >= UNHEALTHY_BAIL_MS) {
-          console.warn(
-            `[Scan] App unhealthy for ${Math.round(elapsed / 1e3)}s \u2014 bailing out of scan wait for orchestrator to handle`
-          );
-          await setScanLifecycle(api, scanId, "stop");
-          return "disrupted";
-        }
-      } else if (healthy && pausedByMonitor) {
-        const ok = await setScanLifecycle(api, scanId, "resume");
-        if (ok) {
-          pausedByMonitor = false;
-          console.log(`[Scan] Resumed ${scanId} \u2014 app healthy again`);
-        }
-        unhealthySince = void 0;
-      } else if (healthy) {
-        unhealthySince = void 0;
-      }
-    }
-    const scanStatus = await getScanStatusWithRetry(
-      api,
-      scanId
-    );
-    const issues = scanStatus.issuesFound;
-    onProgress?.(scanStatus.status, issues);
-    if (isPausedStatus(scanStatus.status)) {
-      const healthy = healthMonitor?.isHealthy() ?? true;
-      if (healthy) {
-        const ok = await setScanLifecycle(api, scanId, "resume");
-        if (ok) {
-          pausedByMonitor = false;
-          unhealthySince = void 0;
-          console.log(
-            `[Scan] Resumed ${scanId} \u2014 Bright reported paused while app is healthy`
-          );
-        }
-      }
-    }
-    if (isTerminalStatus(scanStatus.status)) {
-      console.log(`[Scan] Completed: ${scanStatus.status} (${issues} issues)`);
-      return scanStatus.status.toLowerCase();
-    }
-    await sleep(pollInterval);
-  }
-}
-async function setScanLifecycle(api, scanId, action) {
-  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/lifecycle`;
-  try {
-    const res = await fetch(url, {
-      method: "PUT",
-      headers: {
-        Authorization: `Api-Key ${api.brightToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ action })
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.warn(
-        `[Scan] Lifecycle ${action} for ${scanId} failed (${res.status}): ${body.slice(0, 200)}`
-      );
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.warn(
-      `[Scan] Lifecycle ${action} for ${scanId} threw: ${toErrorMessage(err)}`
-    );
-    return false;
-  }
-}
-async function getScanStatusWithRetry(api, scanId) {
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await getScanStatusViaRest(api, scanId);
-    } catch (err) {
-      if (attempt === maxAttempts) throw err;
-      console.warn(
-        `[Scan] getScanStatus retry ${attempt}/${maxAttempts} for ${scanId}: ${toErrorMessage(err)}`
-      );
-      await sleep(5e3 * attempt);
-    }
-  }
-  throw new Error("unreachable");
-}
-async function getScanStatusViaRest(api, scanId) {
-  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Api-Key ${api.brightToken}` }
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(
-      `getScanStatus failed (${res.status}): ${text.slice(0, 300)}`
-    );
-  }
-  const data = await res.json();
-  const issuesFound = extractIssueCount(data);
-  return {
-    status: data.status ?? "unknown",
-    issuesFound
-  };
-}
-function extractIssueCount(data) {
-  const severityFields = [
-    "numberOfCriticalSeverityIssues",
-    "numberOfHighSeverityIssues",
-    "numberOfMediumSeverityIssues",
-    "numberOfLowSeverityIssues"
-  ];
-  let total = 0;
-  let hasSeverityFields = false;
-  for (const field of severityFields) {
-    if (typeof data[field] === "number") {
-      total += data[field];
-      hasSeverityFields = true;
-    }
-  }
-  if (hasSeverityFields) return total;
-  if (typeof data.issuesLength === "number") return data.issuesLength;
-  if (Array.isArray(data.issuesBySeverity)) {
-    for (const item of data.issuesBySeverity) {
-      if (typeof item === "object" && item !== null && typeof item.number === "number") {
-        total += item.number;
-      }
-    }
-    return total;
-  }
-  return 0;
-}
-
-// src/phases/findings.ts
-async function fetchFindings(api, scanIds) {
-  const findings = [];
-  const seen = /* @__PURE__ */ new Set();
-  for (const scanId of scanIds) {
-    const issues = await fetchScanIssues(api, scanId);
-    for (const issue of issues) {
-      const key = findingKey({ name: issue.name, method: issue.method ?? "GET", url: issue.url ?? "" });
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const severity = normalizeSeverity(issue.severity);
-      findings.push({
-        id: issue.id,
-        name: issue.name,
-        severity,
-        url: issue.url ?? "",
-        method: issue.method ?? "GET",
-        details: issue.details ?? "",
-        remedy: issue.remedy ?? "",
-        entrypointId: issue.entryPointId,
-        testTag: extractIssueTestTag(issue),
-        issueId: issue.id
-      });
-    }
-  }
-  return findings;
-}
-async function fetchScanIssues(api, scanId) {
-  const url = `https://${api.brightHostname}/api/v1/scans/${encodeURIComponent(scanId)}/issues`;
-  console.log(`[Findings] Fetching issues for scan ${scanId}`);
-  const res = await fetch(url, {
-    headers: { Authorization: `Api-Key ${api.brightToken}` }
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error(
-      `[Findings] Failed to fetch issues for scan ${scanId}: ${res.status} ${body}`
-    );
-    return [];
-  }
-  const data = await res.json();
-  console.log(`[Findings] Scan ${scanId}: ${data.length} issues`);
-  return data;
-}
-function normalizeSeverity(s) {
-  const lower = s.toLowerCase();
-  if (lower === "critical") return "Critical";
-  if (lower === "high") return "High";
-  if (lower === "medium") return "Medium";
-  return "Low";
-}
-function extractIssueTestTag(issue) {
-  if (typeof issue.testTag === "string") return issue.testTag;
-  if (typeof issue.testId === "string") return issue.testId;
-  if (typeof issue.test === "string") return issue.test;
-  if (issue.test && typeof issue.test === "object") {
-    return issue.test.tag ?? issue.test.id;
-  }
-  return void 0;
-}
-
-// src/phases/fix.ts
-import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync3 } from "fs";
-import { resolve as resolve2, dirname, basename } from "path";
-
-// src/prompts/generate-fix.ts
-function taintAnalysisPrompt(techStack, finding) {
-  return [
-    {
-      role: "system",
-      content: `You are a security engineer performing taint analysis on a ${techStack} application. Given a DAST vulnerability finding, trace the data flow from the HTTP input (source) to the vulnerable code (sink). Use the tools to read source files and search the codebase.
-
-Your goal is to identify:
-1. The source: where user input enters the application (request parameter, body field, header)
-2. The propagation: how the tainted data flows through the code (variable assignments, function calls, transformations)
-3. The sink: where the tainted data reaches a dangerous operation (SQL query, HTML output, command execution, file system operation)
-4. The specific file(s) and line(s) that need to be modified to fix the vulnerability`
-    },
-    {
-      role: "user",
-      content: `Analyze this vulnerability and trace the data flow:
-
-Vulnerability: ${finding.name}
-Severity: ${finding.severity}
-URL: ${finding.url}
-Method: ${finding.method}
-Details: ${finding.details}
-Suggested Remedy: ${finding.remedy}
-
-Use the read_file and search_files tools to trace the data flow from the HTTP endpoint to the vulnerable sink. Identify the exact files and code that need to be fixed.`
-    }
-  ];
-}
-
-// src/phases/fix.ts
-async function pMap2(items, fn, concurrency) {
-  const results = new Array(items.length);
-  let idx = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    async () => {
-      while (idx < items.length) {
-        const i = idx++;
-        results[i] = await fn(items[i]);
-      }
-    }
-  );
-  await Promise.all(workers);
-  return results;
-}
-var INFRA_FILE_PATTERNS = [
-  // Docker / compose files
-  /^Dockerfile/i,
-  /docker-compose\.ya?ml$/i,
-  /^compose\.ya?ml$/i,
-  // Server / deployment configuration
-  /\.conf\.py$/,
-  // e.g. sentry.conf.py
-  /nginx\.conf$/,
-  /apache2?\.conf$/,
-  /httpd\.conf$/,
-  /\.env$/,
-  // environment files
-  /\.env\.\w+$/,
-  // .env.local, .env.production, etc.
-  // CI / build pipeline
-  /^\.github\//,
-  /^\.gitlab-ci/,
-  /^Jenkinsfile/i,
-  /^Makefile$/i,
-  // Kubernetes / infrastructure-as-code
-  /\.ya?ml$.*(?:deploy|service|ingress|configmap|secret)/i,
-  /^k8s\//,
-  /^helm\//,
-  /^terraform\//
-];
-var INFRA_BASENAME_EXACT = /* @__PURE__ */ new Set([
-  "dockerfile",
-  "docker-compose.yml",
-  "docker-compose.yaml",
-  "compose.yml",
-  "compose.yaml",
-  ".env",
-  "makefile",
-  "jenkinsfile"
-]);
-function isInfrastructureFile(filePath) {
-  const normalized = filePath.replace(/\\/g, "/");
-  const base = basename(normalized).toLowerCase();
-  if (INFRA_BASENAME_EXACT.has(base)) return true;
-  for (const pattern of INFRA_FILE_PATTERNS) {
-    if (pattern.test(normalized)) return true;
-  }
-  return false;
-}
-async function generateFixes(llm, repoPath, techStack, findings, previousFixes, model, contextSummary) {
-  const stackStr = formatTechStack(techStack);
-  const handleTool = createToolHandler(repoPath);
-  const fixes = [];
-  const fixTools = [...codebaseTools, editFileTool];
-  const fileGroups = /* @__PURE__ */ new Map();
-  for (const finding of findings) {
-    const groupKey = finding.url ?? finding.name;
-    const group = fileGroups.get(groupKey) ?? [];
-    group.push(finding);
-    fileGroups.set(groupKey, group);
-  }
-  const groups = [...fileGroups.values()];
-  const CONCURRENCY2 = 5;
-  console.log(
-    `[Fix] Processing ${findings.length} findings in ${groups.length} group(s), concurrency ${CONCURRENCY2}`
-  );
-  const generateSingleFix = async (finding) => {
-    console.log(`[Fix] Analyzing: ${finding.name} at ${finding.url}`);
-    const previousAttempt = previousFixes.find(
-      (f) => f.vulnerability.name === finding.name && f.vulnerability.url === finding.url && !f.verified
-    );
-    const taintMessages = taintAnalysisPrompt(stackStr, finding);
-    if (contextSummary && taintMessages[0]?.role === "system" && typeof taintMessages[0].content === "string") {
-      taintMessages[0].content += `
-
-Application context:
-${contextSummary}`;
-    }
-    const taintAnalysis = await chatWithTools(
-      llm,
-      taintMessages,
-      codebaseTools,
-      handleTool,
-      model
-    );
-    const editedFiles = /* @__PURE__ */ new Map();
-    const fixToolHandler = async (name, args) => {
-      if (name === "edit_file") {
-        const filePath = String(args.path ?? "");
-        if (isInfrastructureFile(filePath)) {
-          return `Error: cannot modify infrastructure file ${filePath} \u2014 only application source code can be changed.`;
-        }
-        if (!editedFiles.has(filePath)) {
-          try {
-            editedFiles.set(filePath, readFileSync3(resolve2(repoPath, filePath), "utf-8"));
-          } catch {
-            editedFiles.set(filePath, "");
-          }
-        }
-        const result = handleEditFile(repoPath, args);
-        if (!result.startsWith("Error")) {
-          console.log(`[Fix] Edited ${filePath}`);
-        }
-        return result;
-      }
-      return handleTool(name, args);
-    };
-    let previousContext = "";
-    if (previousAttempt) {
-      previousContext = `
-
-IMPORTANT: A previous fix attempt was made but DID NOT resolve the vulnerability \u2014 the DAST scan still found the same issue. Previous attempt summary: "${previousAttempt.summary}". You must use a DIFFERENT, more thorough approach this time.`;
-    }
-    const fixMessages = [
-      {
-        role: "system",
-        content: `You are a security engineer fixing vulnerabilities in a ${stackStr} application. You have tools to read code and apply edits directly.
-
-Use edit_file to make surgical, targeted fixes. Each edit_file call replaces exactly one occurrence of old_string with new_string.
-
-Guidelines:
-- Use read_file to examine the affected code first if needed
-- Apply minimal, targeted fixes \u2014 only change what's necessary
-- Follow the framework's built-in security features and best practices
-- Validate and sanitize user inputs at the boundary
-- NEVER modify infrastructure files (Dockerfile, docker-compose.yml, .env, etc.)
-- After applying your fix, briefly summarize what you changed${previousContext}${contextSummary ? `
-
-Application context:
-${contextSummary}` : ""}`
-      },
-      {
-        role: "user",
-        content: `Fix this vulnerability by editing the source code:
-
-Vulnerability: ${finding.name}
-Severity: ${finding.severity}
-URL: ${finding.url}
-Method: ${finding.method}
-Details: ${finding.details}
-Remedy: ${finding.remedy}
-
-Taint Analysis:
-${taintAnalysis}
-
-Use edit_file to apply the fix directly. Then summarize what you changed.`
-      }
-    ];
-    try {
-      const summary = await chatWithTools(
-        llm,
-        fixMessages,
-        fixTools,
-        fixToolHandler,
-        model
-      );
-      if (editedFiles.size === 0) {
-        console.warn(`[Fix] No edits applied for ${finding.name}`);
-        return null;
-      }
-      const patchedFiles = [];
-      for (const [filePath] of editedFiles) {
-        try {
-          const content = readFileSync3(resolve2(repoPath, filePath), "utf-8");
-          patchedFiles.push({ path: filePath, content });
-        } catch {
-        }
-      }
-      console.log(`[Fix] Generated fix (${patchedFiles.length} file(s)): ${summary.slice(0, 200)}`);
-      return {
-        vulnerability: finding,
-        files: patchedFiles,
-        summary: summary.slice(0, 500),
-        verified: false
-      };
-    } catch (err) {
-      console.error(
-        `[Fix] Failed to generate fix for ${finding.name}: ${toErrorMessage(err)}`
-      );
-      return null;
-    }
-  };
-  const groupResults = await pMap2(
-    groups,
-    async (group) => {
-      const results = [];
-      for (const finding of group) {
-        const fix = await generateSingleFix(finding);
-        if (fix) results.push(fix);
-      }
-      return results;
-    },
-    CONCURRENCY2
-  );
-  for (const groupFixes of groupResults) {
-    fixes.push(...groupFixes);
-  }
-  return fixes;
-}
-function applyFixes(repoPath, fixes) {
-  for (const fix of fixes) {
-    for (const file of fix.files) {
-      if (isInfrastructureFile(file.path)) {
-        console.warn(
-          `[Fix] BLOCKED infrastructure file modification: ${file.path} \u2014 security fixes must only modify application source code`
-        );
-        continue;
-      }
-      const fullPath = resolve2(repoPath, file.path);
-      mkdirSync3(dirname(fullPath), { recursive: true });
-      writeFileSync2(fullPath, file.content, "utf-8");
-      console.log(`[Fix] Wrote ${file.path}`);
-    }
-  }
-}
-
-// src/phases/harness.ts
-import { execSync as execSync2, spawn as spawn2 } from "child_process";
-import { writeFileSync as writeFileSync3, existsSync as existsSync4, readFileSync as readFileSync4 } from "fs";
-import { resolve as resolve3 } from "path";
-import { createInterface as createInterface2 } from "readline";
-
-// src/prompts/harness.ts
-function identifyHarnessTargetsPrompt(techStack) {
-  return [
-    {
-      role: "system",
-      content: `You are a security engineer performing data-flow analysis on a ${techStack} codebase to identify functions that can be security-tested in **isolation** \u2014 WITHOUT the full application framework running.
-
-## Your goal
-Find **service-layer and utility functions** (NOT controller actions) that:
-1. Accept user-controlled input (directly or indirectly)
-2. Perform a security-sensitive operation (DB query, file I/O, HTTP request, XML parse, shell exec, template render, redirect, deserialization)
-3. Can be called with **minimal** infrastructure \u2014 ideally ZERO framework boot
-
-## CRITICAL: Target the RIGHT level
-The key principle is to find functions CLOSE TO the dangerous operation, not high-level controllers.
-
-### Bootstrapping tiers (prefer lower tiers)
-- **Tier 1 (best)** \u2014 No framework boot required. Just \`require\`/\`import\` the specific file. Pure computation, URL validation, path construction, query string building, XML parsing, template rendering.
-- **Tier 2 (good)** \u2014 Needs DB connection only. Can initialize an ORM connection directly without booting the full framework. Service methods that build/execute queries.
-- **Tier 3 (avoid)** \u2014 Needs full framework boot (all initializers, middleware, caches, config). Controller actions, anything requiring full app context.
-
-### Why this matters
-Controller actions (e.g. SearchController#query) require the ENTIRE framework to boot \u2014 database, Redis, all initializers, config loading, migration checks, etc. This makes harnessing brittle and complex.
-Service/utility methods (e.g. Search.execute(term), FileHelper.download(url)) can often be called by requiring just their file + any direct dependencies \u2014 no framework boot needed.
-
-## How to find targets \u2014 data flow analysis
-1. **Start from routes**: Read routing config to find HTTP endpoints.
-2. **Trace THROUGH controllers**: Don't stop at the controller \u2014 follow the call chain deeper.
-3. **Find the security-critical function**: The service, model, or utility method that ACTUALLY does the dangerous operation with user input.
-4. **Verify it can be required standalone**: Check the file's imports \u2014 does it pull in the entire framework or just specific modules?
-
-## What makes a GOOD target
-- A search service method that takes a query string and builds a SQL query (e.g. \`Search.execute(term)\`, \`UserSearch.new(term).search\`)
-- A URL/file utility that fetches from or validates user-provided URLs (e.g. \`FileHelper.download_url(url)\`, \`UrlHelper.validate(url)\`)
-- A path construction method (e.g. \`Upload.get_path(sha, extension)\`)
-- An XML/JSON parser that processes user content (e.g. \`XmlParser.parse(body)\`)
-- A query builder or scope method (e.g. \`Topic.search_by_title(term)\`)
-- A content sanitizer/renderer (e.g. \`PrettyText.cook(raw_markdown)\`)
-- A method that constructs shell commands from user input
-
-## What makes a BAD target
-- **Controller actions** (e.g. SearchController#query, UploadsController#create) \u2014 require full framework boot
-- Low-level ORM primitives (User.find, Model.save) \u2014 no input-handling context
-- Auth middleware \u2014 can't test meaningfully
-- Functions requiring a dozen services initialized
-- Trivial getters/setters
-
-## Infrastructure classification
-For each function, determine what it needs. Be precise \u2014 "db" means it DIRECTLY uses the database, not that some caller somewhere needs a DB.
-- "none" \u2014 pure computation, no external deps (string parsing, URL construction, XML parsing)
-- "filesystem" \u2014 needs local file access
-- "db" \u2014 directly queries/writes to database
-- "http" \u2014 makes outbound HTTP requests
-
-## Vulnerability mapping
-- DB queries \u2192 sqli
-- HTML/template output \u2192 xss
-- File path construction \u2192 lfi
-- URL fetching \u2192 ssrf, rfi
-- XML parsing \u2192 xxe
-- Shell command building \u2192 osi
-- Redirect URL handling \u2192 unvalidated_redirect
-- Deserialization \u2192 proto_pollution, mass_assignment
-- File upload processing \u2192 file_upload
-
-## Required files
-For each target, list the MINIMAL set of require/import statements needed to call it \u2014 NOT the full framework bootstrap. Read the target file's actual imports to determine this.
-
-## Output format
-Return a JSON array of targets:
-[
-  {
-    "name": "execute",
-    "file": "lib/search.rb",
-    "className": "Search",
-    "params": [{"name": "term", "type": "string", "sample": "test query"}],
-    "deps": ["db"],
-    "vulnTypes": ["sqli"],
-    "httpMethod": "GET",
-    "description": "Executes search with user-provided term, builds SQL query",
-    "requireStatements": ["require_relative 'lib/search'"],
-    "tier": 2
-  }
-]
-
-## Rules
-- Return 5-15 targets, prioritized by: Tier 1 > Tier 2 >> Tier 3, then by security impact
-- **NO controller actions** \u2014 always go at least one level deeper into services/utilities
-- Each target must be a REAL function found in the codebase
-- Include the exact file path
-- Only include functions you've verified exist by reading the source code
-- Include the \`tier\` field (1, 2, or 3) and \`requireStatements\` for each target`
-    },
-    {
-      role: "user",
-      content: "Analyze this codebase for security-critical service/utility functions (NOT controller actions) that can be tested via a lightweight harness. Trace data flow from routes through controllers into the actual service/utility methods. Read the source files to verify each target can be required with minimal framework bootstrapping. Return the JSON array of targets."
-    }
-  ];
-}
-function generateHarnessPrompt(techStack, targets, infraInfo) {
-  const targetList = targets.map(
-    (t, i) => {
-      const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-      return `${i + 1}. ${t.className}.${t.name}(${t.params.map((p) => p.name).join(", ")}) \u2014 file: ${t.file}
-   Deps: ${t.deps.join(", ")} | Vulns: ${t.vulnTypes.join(", ")} | Method: ${t.httpMethod}
-   Route: /harness/${pathSlug}
-   Params: ${JSON.stringify(t.params)}
-   Desc: ${t.description}
-   Tier: ${t.tier ?? "unknown"} | Requires: ${JSON.stringify(t.requireStatements ?? [])}`;
-    }
-  ).join("\n");
-  return [
-    {
-      role: "system",
-      content: `You are a security engineer generating a lightweight HTTP harness server for a ${techStack} project. The harness wraps specific functions so Bright's DAST engine can scan them without the full application running.
-
-## Targets to wrap
-${targetList}
-
-## Infrastructure available
-${infraInfo}
-
-## Key requirements
-
-1. **Minimal bootstrapping**: Each target has a \`tier\` and \`requireStatements\`. Tier 1 = no framework boot (just require the files). Tier 2 = DB connection only (no full framework). Tier 3 = avoid.
-
-2. **Harness HTTP server**: Use a minimal framework (Sinatra for Ruby, Express for Node.js, Flask for Python) \u2014 NOT the app's own framework.
-
-3. **Exact route paths**: Each target has a "Route:" field \u2014 use that EXACT path. The scanner registers these paths, so they must match.
-
-4. **Response content type**: ALL endpoints MUST respond with \`text/plain\` (not text/html). The harness wraps backend functions, not HTML views. Returning HTML causes false-positive XSS/CSS injection findings.
-
-5. **Resilient loading**: The harness MUST NOT crash if a target fails to load. Wrap each require/import in error handling. Skip failed targets, log a warning, and keep serving the ones that loaded.
-
-6. **Error handling**: Catch exceptions in route handlers and return 500 with the error message. Add a \`GET /health\` that returns 200.
-
-7. **Port**: Listen on PORT env var, defaulting to 3001.
-
-## IMPORTANT: Read the actual source files
-Before writing the harness, READ the target source files to understand their real imports, class structure, and how to call them. Don't guess \u2014 verify. The harness will run inside Docker with the project source at /app.
-
-## TypeScript projects
-If the target file paths end in .js and reference a dist/ directory, these are PRE-COMPILED files. Use plain \`require()\` \u2014 do NOT use ts-node, tsx, or any TypeScript transpiler. The harness.js file must be plain JavaScript that Node.js can execute directly.
-
-## Output
-Return the complete harness file inside a single fenced code block with the language tag.
-After the code block, return a JSON object:
-{"startCommand": "ruby harness.rb", "harnessFileName": "harness.rb", "docker": true}
-
-- **startCommand**: the shell command to start the harness server
-- **harnessFileName**: the filename to save the harness code as (e.g. harness.rb, harness.js, harness.py)
-- **docker**: whether it should run inside Docker
-
-For Docker-based projects where the deps are inside a container, the harness should also run inside that container. For native projects, run directly.`
-    },
-    {
-      role: "user",
-      content: "Read the source files for each target function to understand their imports, dependencies, and how to instantiate/call them with MINIMAL bootstrapping. Avoid full framework boot if at all possible. Generate the harness server."
-    }
-  ];
-}
-function identifyInfraPrompt(techStack) {
-  return [
-    {
-      role: "system",
-      content: `You are a DevOps engineer. Given a ${techStack} project, identify the MINIMAL infrastructure services (databases, caches) needed to run backend logic \u2014 NOT the web server itself.
-
-## What to look for
-1. Docker Compose files (compose.yml, docker-compose.yml, etc.) \u2014 find database and cache services
-2. Database config files (database.yml, .env, config/database.py, knexfile, etc.) \u2014 find connection strings
-3. README \u2014 setup instructions for databases
-
-## What to extract
-For each required service:
-- Service name from compose file
-- Docker image and tag used
-- Port mapping
-- Environment variables needed
-- Volume mounts (if any)
-
-## Output format
-Return a JSON object:
-{
-  "composeFile": "docker-compose.yml" | null,
-  "services": [
-    {
-      "name": "postgres",
-      "image": "postgres:15",
-      "ports": ["5432:5432"],
-      "env": {"POSTGRES_PASSWORD": "dev", "POSTGRES_DB": "myapp_dev"},
-      "essential": true
-    }
-  ],
-  "migrationCommand": "bundle exec rails db:create db:migrate" | "npm run migration:up" | null,
-  "envVars": {"DATABASE_URL": "postgres://..."}
-}
-
-## Rules
-- Only include data stores (PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, etc.)
-- Do NOT include web servers, reverse proxies, frontend dev servers, or the app itself
-- Mark services as essential=true if they're needed for basic DB operations, essential=false if optional (e.g. Elasticsearch for search features)
-- If a compose service uses \`build:\` instead of \`image:\`, identify the underlying database software and use the standard Docker Hub image (e.g. postgres:16, redis:7-alpine, mysql:8)
-- Always include port mappings. If the compose file doesn't map ports, use the standard default ports (e.g. 5432:5432 for PostgreSQL, 6379:6379 for Redis, 3306:3306 for MySQL)
-- If no compose file exists but database config references a service, note it
-- Prefer extracting from existing compose files rather than guessing`
-    },
-    {
-      role: "user",
-      content: "Analyze this project's infrastructure requirements. Read compose files, database configs, and environment files. Return the minimal infrastructure needed for running backend logic."
-    }
-  ];
-}
-function harnessDockerfileRepairPrompt(error, currentDockerfile, harnessCode, harnessFileName) {
-  return [
-    {
-      role: "system",
-      content: `You are a DevOps engineer. A harness server (\`${harnessFileName}\`) failed to build inside Docker. Diagnose the error and fix the Dockerfile.
-
-The error may be a missing gem/package, wrong environment variable, missing source files, or permission issue. Read the harness code and project files to understand what's needed.
-
-IMPORTANT: If the error is a **database connection issue** (connection refused, no password supplied) or a **harness code bug** (NameError, NoMethodError, SyntaxError in the harness file), return the current Dockerfile unchanged \u2014 those are handled separately.
-
-Use your tools to read project files as needed, then return the complete fixed Dockerfile inside a fenced code block.`
-    },
-    {
-      role: "user",
-      content: `The harness failed with:
-\`\`\`
-${error}
-\`\`\`
-
-Current Dockerfile:
-\`\`\`dockerfile
-${currentDockerfile}
-\`\`\`
-
-Harness code:
-\`\`\`
-${harnessCode}
-\`\`\`
-
-Read project files as needed, then return the fixed Dockerfile.`
-    }
-  ];
-}
-function standaloneHarnessDockerfilePrompt(techStack, harnessCode, harnessFileName, startCommand, port, targets) {
-  const targetSummary = targets.map((t) => `- ${t.className}.${t.name} (${t.file}) \u2014 deps: ${t.deps.join(",")} \u2014 tier: ${t.tier ?? "?"}`).join("\n");
-  const allFiles = [...new Set(targets.map((t) => t.file))];
-  return [
-    {
-      role: "system",
-      content: `You are a DevOps engineer. Create a **self-contained** Dockerfile for a security-scanning harness.
-
-## Approach
-The harness targets low-level service/utility functions that do NOT need the full application framework. Instead of building the entire app, create a lightweight image with:
-1. A stock runtime image (e.g. \`ruby:3.4\`, \`node:20\`, \`python:3.12\`)
-2. ONLY the specific source files the harness needs
-3. ONLY the minimal dependencies those files require
-
-## Tech stack: ${techStack}
-
-## Target functions
-${targetSummary}
-
-## Files the harness code imports/requires
-${allFiles.map((f) => `- ${f}`).join("\n")}
-
-## Harness file: ${harnessFileName}
-## Start command: ${startCommand}
-## Port: ${port}
-
-## What to do
-1. Start FROM a stock runtime image (small \u2014 use slim/alpine variants if available)
-2. Read the harness code and target files to understand their \`require\`/\`import\` statements
-3. Install only the gems/packages the harness and target files actually need (sinatra, pg, activerecord, etc.)
-4. \`COPY . /app\` \u2014 copy the full project source to preserve all transitive require chains. This is safe because we don't run \`bundle install\` or build assets.
-5. COPY the harness file into the image
-6. DO NOT run \`bundle install\`, \`npm install\`, or build frontend assets
-7. For Ruby: set \`ENV RUBYLIB=/app/lib\` so bare \`require 'filename'\` finds project files in lib/
-
-## For Ruby targets specifically:
-- **Set \`ENV BUNDLE_GEMFILE=""\`** to prevent Bundler from interfering
-- **Set \`ENV RUBYLIB=/app/lib\`** so bare \`require 'some_file'\` finds project files in lib/
-- Use \`gem install sinatra activesupport\` (+ other needed gems) directly \u2014 NOT Bundler with the project's Gemfile
-- If targets need ActiveRecord/ActiveSupport, install those gems directly too
-- **Always \`COPY . /app\`** \u2014 tracing individual file dependencies is fragile; just copy the whole project source. The image stays small because we don't run \`bundle install\` or build assets.
-- Set WORKDIR /app
-
-## Important
-- The image stays small because we skip \`bundle install\`/\`npm install\`/asset compilation \u2014 just source files + a few gems
-- For Ruby: always set both \`ENV BUNDLE_GEMFILE=""\` and \`ENV RUBYLIB=/app/lib\`
-- If a target file requires Rails-internal modules, install just the specific gem (e.g. \`gem install activerecord activesupport\`)
-
-Return ONLY the complete Dockerfile inside a fenced code block.`
-    },
-    {
-      role: "user",
-      content: `Here is the harness code:
-
-\`\`\`
-${harnessCode}
-\`\`\`
-
-Read the target files to trace all required files and dependencies, then generate a minimal self-contained Dockerfile.`
-    }
-  ];
-}
-function harnessCodeRepairPrompt(harnessCode, harnessFileName, endpointErrors, targets) {
-  const errorSummary = endpointErrors.map((e) => `${e.method} ${e.path} \u2192 ${e.status}
-  ${e.body}`).join("\n\n");
-  const targetSummary = targets.map((t) => `- ${t.className}.${t.name} (${t.file}) \u2014 deps: ${t.deps.join(",")} \u2014 tier: ${t.tier ?? "?"}`).join("\n");
-  return [
-    {
-      role: "system",
-      content: `You are a security engineer fixing a harness server. The harness wraps backend functions for DAST scanning.
-
-## Harness file: ${harnessFileName}
-
-## Target functions
-${targetSummary}
-
-## Errors encountered
-${errorSummary}
-
-## Your task
-Diagnose the root cause of each error by reading the target source files and their dependencies. Fix the harness code.
-
-Key principles:
-- Read the actual source files to understand what each target needs
-- If a dependency is a framework module not needed for the core computation (logging, events, metrics), stub it minimally
-- If a require path is wrong, find the correct one by reading the project structure
-- Do NOT remove endpoints \u2014 fix them
-- The harness runs in Docker at /app with the full project source available
-
-Return the complete fixed harness file inside a single fenced code block with the language tag.`
-    },
-    {
-      role: "user",
-      content: `Current harness code:
-
-\`\`\`
-${harnessCode}
-\`\`\`
-
-Read the source files for the failing targets. Diagnose the root cause of each error and fix the harness code. Return the complete fixed harness file.`
-    }
-  ];
-}
-
-// src/phases/harness.ts
-async function runFunctionHarness(llm, repoPath, techStack, modelSelector) {
-  const stackStr = formatTechStack(techStack);
-  const handleTool = createToolHandler(repoPath);
-  console.log("[Harness] Analyzing infrastructure requirements...");
-  const infraInfo = await identifyInfra(llm, repoPath, stackStr, handleTool, modelSelector.current());
-  console.log("[Harness] Starting minimal infrastructure...");
-  await startMinimalInfra(repoPath, infraInfo);
-  console.log("[Harness] Identifying critical functions for harness scanning...");
-  let targets = await identifyTargets(llm, repoPath, stackStr, handleTool, modelSelector.current());
-  if (targets.length === 0 && modelSelector.escalate()) {
-    console.log("[Harness] No targets found \u2014 retrying with stronger model...");
-    targets = await identifyTargets(llm, repoPath, stackStr, handleTool, modelSelector.current());
-    modelSelector.reset();
-  }
-  if (targets.length === 0) {
-    throw new Error("No suitable functions found for harness-based scanning");
-  }
-  console.log(`[Harness] Identified ${targets.length} target function(s):`);
-  for (const t of targets) {
-    console.log(`[Harness]   ${t.className}.${t.name} \u2014 tier ${t.tier ?? "?"} \u2014 ${t.vulnTypes.join(", ")} \u2014 deps: ${t.deps.join(", ")}`);
-  }
-  const tier3Count = targets.filter((t) => (t.tier ?? 3) >= 3).length;
-  if (tier3Count > 0) {
-    console.log(`[Harness] Dropping ${tier3Count} tier-3 target(s) (full framework boot not available in harness mode)`);
-    targets = targets.filter((t) => (t.tier ?? 3) < 3);
-  }
-  if (targets.length === 0) {
-    throw new Error("No tier 1/2 targets found \u2014 all identified functions require full framework boot");
-  }
-  let proc;
-  let harnessConfig;
-  let activeTargets = targets;
-  let healthyPaths = /* @__PURE__ */ new Set();
-  for (const attempt of ["all", "tier1-only"]) {
-    if (attempt === "tier1-only") {
-      const tier1Only = targets.filter((t) => t.tier === 1);
-      if (tier1Only.length === 0 || tier1Only.length === activeTargets.length) {
-        throw new Error("Harness failed to build or start after all repair attempts");
-      }
-      console.log(`[Harness] Retrying with ${tier1Only.length} tier-1 targets only (no external deps)...`);
-      activeTargets = tier1Only;
-      modelSelector.reset();
-    }
-    console.log("[Harness] Generating harness server...");
-    harnessConfig = await generateHarness(
-      llm,
-      repoPath,
-      stackStr,
-      activeTargets,
-      infraInfo,
-      handleTool,
-      modelSelector.current()
-    );
-    console.log("[Harness] Building and starting harness server...");
-    let harnessResult;
-    try {
-      harnessResult = await startHarness(
-        repoPath,
-        llm,
-        stackStr,
-        harnessConfig,
-        infraInfo,
-        handleTool,
-        modelSelector,
-        activeTargets
-      );
-      proc = harnessResult.process;
-      healthyPaths = harnessResult.healthyPaths;
-      break;
-    } catch (err) {
-      console.warn(`[Harness] Harness failed (${attempt}): ${toErrorMessage(err)}`);
-      if (attempt === "tier1-only") {
-        throw err;
-      }
-    }
-  }
-  const discoveredEndpoints = harnessConfig.endpoints.filter((ep) => healthyPaths.has(ep.path)).map(
-    (ep) => ({
-      method: ep.method,
-      path: ep.path,
-      filePath: ep.target.file,
-      body: ep.sampleBody ?? null,
-      contentType: ep.contentType,
-      // For GET endpoints, expose params as query params so the scanner has injection points
-      queryParams: ep.method === "GET" && ep.target.params.length > 0 ? ep.target.params.map((p) => ({
-        name: p.name,
-        value: formatHarnessQuerySample(p.sample)
-      })) : void 0
-    })
-  );
-  if (discoveredEndpoints.length === 0) {
-    throw new Error("No healthy harness endpoints \u2014 all targets failed to load or returned errors");
-  }
-  console.log(`[Harness] Registering ${discoveredEndpoints.length}/${harnessConfig.endpoints.length} healthy endpoints`);
-  return { process: proc, config: harnessConfig, endpoints: discoveredEndpoints };
-}
-function formatHarnessQuerySample(sample) {
-  if (sample === null || sample === void 0) {
-    return "";
-  }
-  if (typeof sample === "object") {
-    return "";
-  }
-  return String(sample);
-}
-async function identifyInfra(llm, repoPath, stackStr, handleTool, model) {
-  const messages = identifyInfraPrompt(stackStr);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
-  try {
-    const parsed = JSON.parse(extractJson(response));
-    const envVars = parsed.envVars ?? {};
-    const services = parsed.services ?? [];
-    const hasPostgres = services.some((s) => /postgres/i.test(s.name) || /postgres/i.test(s.image));
-    const hasMysql = services.some((s) => /mysql|mariadb/i.test(s.name) || /mysql|mariadb/i.test(s.image));
-    const hasRedis = services.some((s) => /redis/i.test(s.name) || /redis/i.test(s.image));
-    if (hasPostgres) {
-      for (const svc of services) {
-        if (/postgres/i.test(svc.name) || /postgres/i.test(svc.image)) {
-          svc.env.POSTGRES_HOST_AUTH_METHOD = "trust";
-          if (svc.env.POSTGRES_PASSWORD && !envVars.PGPASSWORD) {
-            envVars.PGPASSWORD = svc.env.POSTGRES_PASSWORD;
-          }
-        }
-      }
-      for (const key of ["DB_HOST", "DATABASE_HOST", "PGHOST", "DISCOURSE_DB_HOST"]) {
-        if (!envVars[key]) envVars[key] = "localhost";
-      }
-    }
-    if (hasMysql) {
-      for (const svc of services) {
-        if (/mysql|mariadb/i.test(svc.name) || /mysql|mariadb/i.test(svc.image)) {
-          svc.env.MYSQL_ALLOW_EMPTY_PASSWORD = "yes";
-        }
-      }
-      for (const key of ["DB_HOST", "DATABASE_HOST", "MYSQL_HOST"]) {
-        if (!envVars[key]) envVars[key] = "localhost";
-      }
-    }
-    if (hasRedis) {
-      for (const key of ["REDIS_HOST", "DISCOURSE_REDIS_HOST"]) {
-        if (!envVars[key]) envVars[key] = "localhost";
-      }
-    }
-    return {
-      composeFile: parsed.composeFile ?? null,
-      services,
-      migrationCommand: parsed.migrationCommand ?? null,
-      envVars
-    };
-  } catch {
-    console.warn("[Harness] Could not parse infra response, assuming no infra needed");
-    return { composeFile: null, services: [], migrationCommand: null, envVars: {} };
-  }
-}
-async function startMinimalInfra(repoPath, infra) {
-  if (infra.services.length === 0) {
-    console.log("[Harness] No infrastructure services needed");
-    return;
-  }
-  cleanupDocker(repoPath);
-  const essentialServices = infra.services.filter((s) => s.essential);
-  if (essentialServices.length === 0) {
-    console.log("[Harness] No essential infrastructure services");
-    return;
-  }
-  if (infra.composeFile && existsSync4(resolve3(repoPath, infra.composeFile))) {
-    const serviceNames = essentialServices.map((s) => s.name).join(" ");
-    const cmd = `docker compose -f ${infra.composeFile} up -d ${serviceNames}`;
-    console.log(`[Harness] Starting infra: ${cmd}`);
-    try {
-      execSync2(cmd, {
-        cwd: repoPath,
-        stdio: "pipe",
-        timeout: 12e4,
-        env: { ...process.env, ...infra.envVars }
-      });
-    } catch (err) {
-      console.warn(`[Harness] Compose infra start failed: ${toErrorMessage(err)}`);
-      await startServicesStandalone(essentialServices);
-    }
-  } else {
-    await startServicesStandalone(essentialServices);
-  }
-  console.log("[Harness] Waiting for infrastructure to be ready...");
-  await sleep(5e3);
-}
-var DEFAULT_SERVICE_IMAGES = {
-  postgres: { image: "postgres:16", ports: ["5432:5432"] },
-  postgresql: { image: "postgres:16", ports: ["5432:5432"] },
-  db: { image: "postgres:16", ports: ["5432:5432"] },
-  mysql: { image: "mysql:8", ports: ["3306:3306"] },
-  mariadb: { image: "mariadb:11", ports: ["3306:3306"] },
-  redis: { image: "redis:7-alpine", ports: ["6379:6379"] },
-  mongo: { image: "mongo:7", ports: ["27017:27017"] },
-  mongodb: { image: "mongo:7", ports: ["27017:27017"] },
-  elasticsearch: { image: "elasticsearch:8.13.0", ports: ["9200:9200"] }
-};
-async function startServicesStandalone(services) {
-  for (const svc of services) {
-    let image = svc.image;
-    let ports = svc.ports;
-    if (!image || image === "null") {
-      const defaults = DEFAULT_SERVICE_IMAGES[svc.name.toLowerCase()];
-      if (defaults) {
-        image = defaults.image;
-        if (!ports || ports.length === 0) ports = defaults.ports;
-        console.log(`[Harness] Using default image for ${svc.name}: ${image}`);
-      } else {
-        console.warn(`[Harness] Skipping ${svc.name} \u2014 no image specified and no known default`);
-        continue;
-      }
-    }
-    if (!ports || ports.length === 0) {
-      console.warn(`[Harness] Skipping ${svc.name} \u2014 no port mapping`);
-      continue;
-    }
-    const envFlags = Object.entries(svc.env).map(([k, v]) => `-e ${k}=${v}`).join(" ");
-    const portFlags = ports.map((p) => `-p ${p}`).join(" ");
-    const cmd = `docker run -d --name harness_${svc.name} ${portFlags} ${envFlags} ${image}`;
-    console.log(`[Harness] Starting standalone: ${cmd}`);
-    try {
-      execSync2(cmd, { stdio: "pipe", timeout: 6e4 });
-    } catch (err) {
-      console.warn(`[Harness] Failed to start ${svc.name}: ${toErrorMessage(err)}`);
-    }
-  }
-}
-async function identifyTargets(llm, repoPath, stackStr, handleTool, model) {
-  const messages = identifyHarnessTargetsPrompt(stackStr);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 30);
-  try {
-    const parsed = JSON.parse(extractJson(response));
-    if (!Array.isArray(parsed)) {
-      console.warn("[Harness] Expected array of targets, got:", typeof parsed);
-      return [];
-    }
-    const valid = parsed.filter((t) => {
-      if (!t.name || !t.file || !t.className || !t.params || !t.vulnTypes) {
-        console.warn(`[Harness] Skipping invalid target: ${JSON.stringify(t).slice(0, 200)}`);
-        return false;
-      }
-      if (!existsSync4(resolve3(repoPath, String(t.file)))) {
-        console.warn(`[Harness] Skipping target with missing file: ${t.file}`);
-        return false;
-      }
-      return true;
-    });
-    for (const t of valid) {
-      if (t.tier === void 0) {
-        const depSet = new Set(t.deps);
-        if (depSet.size === 0 || depSet.size === 1 && depSet.has("none")) {
-          t.tier = 1;
-        } else {
-          t.tier = 2;
-        }
-        console.log(`[Harness] Auto-inferred tier ${t.tier} for ${t.className}.${t.name} (deps: ${t.deps.join(", ")})`);
-      }
-    }
-    return valid;
-  } catch (err) {
-    console.error(`[Harness] Failed to parse targets: ${toErrorMessage(err)}`);
-    return [];
-  }
-}
-async function generateHarness(llm, repoPath, stackStr, targets, infra, handleTool, model) {
-  const infraDescription = infra.services.length > 0 ? `Services running: ${infra.services.filter((s) => s.essential).map((s) => `${s.name} (${s.image})`).join(", ")}. Env vars: ${JSON.stringify(infra.envVars)}` : "No infrastructure services \u2014 all targets are stateless or use local file system only.";
-  const hasDistDir = existsSync4(`${repoPath}/dist`);
-  const isTypeScript = targets.some((t) => t.file.endsWith(".ts"));
-  let hasCompiledOutput = hasDistDir;
-  if (!hasCompiledOutput && isTypeScript) {
-    try {
-      const tsconfig = readFileSync4(`${repoPath}/tsconfig.json`, "utf-8");
-      hasCompiledOutput = /"outDir"\s*:\s*"\.?\/?(dist|build|out)"/.test(tsconfig);
-    } catch {
-    }
-    if (!hasCompiledOutput) {
-      try {
-        const dockerfile = readFileSync4(`${repoPath}/Dockerfile`, "utf-8");
-        hasCompiledOutput = /npm run build|yarn build|tsc\b|nest build/.test(dockerfile);
-      } catch {
-      }
-    }
-  }
-  if (isTypeScript && hasCompiledOutput) {
-    for (const t of targets) {
-      if (t.file.endsWith(".ts")) {
-        t.file = t.file.replace(/^src\//, "dist/").replace(/\.ts$/, ".js");
-      }
-    }
-    console.log("[Harness] TypeScript project with compiled output \u2014 remapped target paths from src/*.ts to dist/*.js");
-  }
-  const messages = generateHarnessPrompt(stackStr, targets, infraDescription);
-  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model, 40);
-  const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
-  if (!codeMatch) {
-    throw new Error("LLM did not return a code block for the harness");
-  }
-  const language = codeMatch[1];
-  const harnessCode = codeMatch[2];
-  const jsonMatch = response.match(/```[\s\S]*?```\s*(\{[\s\S]*?\})/);
-  let startCommand = "";
-  let docker = false;
-  let harnessFileName = "";
-  if (jsonMatch) {
-    try {
-      const meta = JSON.parse(jsonMatch[1]);
-      startCommand = meta.startCommand ?? "";
-      docker = meta.docker ?? false;
-      harnessFileName = meta.harnessFileName ?? "";
-    } catch {
-    }
-  }
-  if (!harnessFileName) {
-    const extMap = {
-      ruby: ".rb",
-      javascript: ".js",
-      typescript: ".ts",
-      python: ".py",
-      go: ".go",
-      csharp: ".cs",
-      java: ".java",
-      php: ".php"
-    };
-    const ext = extMap[language] ?? "." + language;
-    harnessFileName = `harness${ext}`;
-  }
-  const harnessPath = resolve3(repoPath, harnessFileName);
-  if (!startCommand) {
-    const cmdMap = {
-      ".rb": `ruby ${harnessFileName}`,
-      ".js": `node ${harnessFileName}`,
-      ".ts": `npx tsx ${harnessFileName}`,
-      ".py": `python ${harnessFileName}`,
-      ".go": `go run ${harnessFileName}`
-    };
-    const ext = harnessFileName.slice(harnessFileName.lastIndexOf("."));
-    startCommand = cmdMap[ext] ?? `node ${harnessFileName}`;
-  }
-  writeFileSync3(harnessPath, harnessCode, "utf-8");
-  console.log(`[Harness] Wrote harness to ${harnessFileName} (${harnessCode.length} bytes)`);
-  const endpoints = targets.map((t) => {
-    const pathSlug = `${t.className}-${t.name}`.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    const sampleBody = t.httpMethod === "GET" ? void 0 : JSON.stringify(
-      Object.fromEntries(t.params.map((p) => [p.name, p.sample]))
-    );
-    return {
-      method: t.httpMethod,
-      path: `/harness/${pathSlug}`,
-      target: t,
-      sampleBody,
-      contentType: t.httpMethod === "GET" ? void 0 : "application/json"
-    };
-  });
-  return {
-    harnessFile: harnessPath,
-    startCommand,
-    port: 3001,
-    docker,
-    endpoints
-  };
-}
-var HARNESS_IMAGE = "bright-harness-local";
-var HARNESS_CONTAINER = "bright-harness-local";
-var MIN_HARNESS_HEALTH_RATIO = 0.75;
-var MIN_HARNESS_HEALTHY_ENDPOINTS = 3;
-async function startHarness(repoPath, llm, techStack, config, infraInfo, handleTool, modelSelector, targets) {
-  const maxTier = Math.max(...targets.map((t) => t.tier ?? 2));
-  console.log(`[Harness] All targets are tier \u2264${maxTier} \u2014 skipping full app build, using stock runtime image`);
-  ensureDockerIgnore(repoPath);
-  const harnessFileName = config.harnessFile.split("/").pop();
-  let harnessCode = readFileSync4(config.harnessFile, "utf-8");
-  const harnessDockerfilePath = resolve3(repoPath, "Dockerfile.harness");
-  console.log("[Harness] Generating Dockerfile.harness via LLM...");
-  const genMessages = standaloneHarnessDockerfilePrompt(
-    techStack,
-    harnessCode,
-    harnessFileName,
-    config.startCommand,
-    config.port,
-    targets.map((t) => ({
-      file: t.file,
-      className: t.className,
-      name: t.name,
-      deps: t.deps,
-      tier: t.tier,
-      requireStatements: t.requireStatements
-    }))
-  );
-  const genResponse = await chatWithTools(
-    llm,
-    genMessages,
-    codebaseTools,
-    handleTool,
-    modelSelector.current(),
-    10
-  );
-  let harnessDockerfileContent = extractCodeBlock(genResponse);
-  if (!harnessDockerfileContent) {
-    console.warn("[Harness] LLM did not return a Dockerfile block, retrying...");
-    modelSelector.escalate();
-    const retryResponse = await chatWithTools(
-      llm,
-      genMessages,
-      codebaseTools,
-      handleTool,
-      modelSelector.current(),
-      10
-    );
-    harnessDockerfileContent = extractCodeBlock(retryResponse);
-    if (!harnessDockerfileContent) {
-      throw new Error("LLM failed to generate Dockerfile.harness after retry");
-    }
-  }
-  writeFileSync3(harnessDockerfilePath, harnessDockerfileContent, "utf-8");
-  console.log(`[Harness] Generated Dockerfile.harness (${harnessDockerfileContent.split("\n").length} lines)`);
-  const MAX_HARNESS_ATTEMPTS = 5;
-  for (let attempt = 0; attempt < MAX_HARNESS_ATTEMPTS; attempt++) {
-    console.log(`[Harness] Building harness image (attempt ${attempt + 1}/${MAX_HARNESS_ATTEMPTS})...`);
-    try {
-      execSync2(`docker build -t ${HARNESS_IMAGE} -f Dockerfile.harness .`, {
-        cwd: repoPath,
-        stdio: "pipe",
-        timeout: 12e4
-      });
-    } catch (err) {
-      const errMsg = extractExecError(err);
-      console.warn(`[Harness] Harness image build failed (attempt ${attempt + 1})`);
-      if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
-        await repairHarnessDockerfile(
-          llm,
-          repoPath,
-          errMsg,
-          harnessCode,
-          harnessFileName,
-          handleTool,
-          modelSelector
-        );
-      }
-      continue;
-    }
-    try {
-      execSync2(`docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`, {
-        stdio: "ignore",
-        timeout: 1e4
-      });
-    } catch {
-    }
-    const envFlags = ["-e", `PORT=${config.port}`];
-    for (const [k, v] of Object.entries(infraInfo.envVars)) {
-      envFlags.push("-e", `${k}=${v}`);
-    }
-    const dockerArgs = [
-      "run",
-      "--rm",
-      "--name",
-      HARNESS_CONTAINER,
-      "--network",
-      "host",
-      ...envFlags,
-      HARNESS_IMAGE
-    ];
-    console.log(`[Harness] Starting container: docker ${dockerArgs.join(" ")}`);
-    const child = spawn2("docker", dockerArgs, {
-      cwd: repoPath,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: true
-    });
-    try {
-      await waitForHarnessHealthy(child, config.port);
-      const probeResult = await probeEndpoints(config.port, config.endpoints);
-      const { errors: probeErrors, healthyPaths } = probeResult;
-      const totalEps = config.endpoints.length;
-      if (probeErrors.length > 0) {
-        console.warn(
-          `[Harness] ${probeErrors.length}/${totalEps} endpoints returned errors after probe`
-        );
-      }
-      const targetHealthy = targetHealthyHarnessEndpoints(totalEps);
-      if (healthyPaths.size >= targetHealthy) {
-        if (probeErrors.length > 0) {
-          console.warn(
-            `[Harness] Proceeding with partial coverage: ${healthyPaths.size}/${totalEps} endpoints healthy`
-          );
-        }
-        console.log(
-          `[Harness] ${healthyPaths.size}/${totalEps} endpoints healthy \u2014 proceeding`
-        );
-        return { process: child, healthyPaths };
-      }
-      console.warn(
-        `[Harness] Coverage below target: ${healthyPaths.size}/${totalEps} endpoints healthy; target is ${targetHealthy}`
-      );
-      if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
-        child.kill();
-        await repairHarnessCode(
-          llm,
-          repoPath,
-          config,
-          probeErrors,
-          targets,
-          handleTool,
-          modelSelector
-        );
-        harnessCode = readFileSync4(config.harnessFile, "utf-8");
-        continue;
-      }
-      if (healthyPaths.size > 0) {
-        console.warn(
-          `[Harness] Proceeding after max repair attempts with ${healthyPaths.size}/${totalEps} healthy endpoint(s)`
-        );
-        return { process: child, healthyPaths };
-      }
-      child.kill();
-      throw new Error(
-        `No healthy harness endpoints after ${MAX_HARNESS_ATTEMPTS} attempts`
-      );
-    } catch (err) {
-      child.kill();
-      const errStr = toErrorMessage(err);
-      console.warn(`[Harness] Harness startup failed (attempt ${attempt + 1}): ${errStr}`);
-      if (attempt < MAX_HARNESS_ATTEMPTS - 1) {
-        if (isHarnessCodeError(errStr)) {
-          console.log("[Harness] Error is in harness code, not Dockerfile \u2014 repairing harness...");
-          await repairHarnessCode(
-            llm,
-            repoPath,
-            config,
-            [{ method: "STARTUP", path: "/", status: 0, body: errStr }],
-            targets,
-            handleTool,
-            modelSelector
-          );
-          harnessCode = readFileSync4(config.harnessFile, "utf-8");
-        } else {
-          await repairHarnessDockerfile(
-            llm,
-            repoPath,
-            errStr,
-            harnessCode,
-            harnessFileName,
-            handleTool,
-            modelSelector
-          );
-        }
-      }
-    }
-  }
-  throw new Error("Harness failed to build or start after all repair attempts");
-}
-function targetHealthyHarnessEndpoints(totalEndpoints) {
-  if (totalEndpoints <= 0) {
-    return 1;
-  }
-  return Math.min(
-    totalEndpoints,
-    Math.max(
-      MIN_HARNESS_HEALTHY_ENDPOINTS,
-      Math.ceil(totalEndpoints * MIN_HARNESS_HEALTH_RATIO)
-    )
-  );
-}
-function isHarnessCodeError(error) {
-  const codeErrorPatterns = [
-    /NameError.*undefined.*(?:variable|method)/i,
-    /NoMethodError.*undefined method/i,
-    /cannot infer basepath/i,
-    /SyntaxError/i,
-    /undefined method.*for main/i,
-    /undefined local variable.*for main/i,
-    /harness\.\w+:\d+:in/i
-    // stack trace pointing to harness file
-  ];
-  return codeErrorPatterns.some((p) => p.test(error));
-}
-function extractExecError(err) {
-  let errMsg = toErrorMessage(err);
-  if (err && typeof err === "object") {
-    const errObj = err;
-    const stderr = errObj.stderr instanceof Buffer ? errObj.stderr.toString() : "";
-    const stdout = errObj.stdout instanceof Buffer ? errObj.stdout.toString() : "";
-    if (stderr || stdout) {
-      errMsg = [stdout, stderr].filter(Boolean).join("\n").trim();
-    }
-  }
-  return errMsg;
-}
-async function repairHarnessDockerfile(llm, repoPath, error, harnessCode, harnessFileName, handleTool, modelSelector) {
-  const dockerfilePath = resolve3(repoPath, "Dockerfile.harness");
-  let currentDockerfile;
-  try {
-    currentDockerfile = readFileSync4(dockerfilePath, "utf-8");
-  } catch {
-    return;
-  }
-  modelSelector.escalate();
-  const truncatedError = error.length > 3e3 ? error.slice(-3e3) : error;
-  const messages = harnessDockerfileRepairPrompt(
-    truncatedError,
-    currentDockerfile,
-    harnessCode,
-    harnessFileName
-  );
-  try {
-    console.log("[Harness] Asking LLM to repair Dockerfile.harness...");
-    const response = await chatWithTools(
-      llm,
-      messages,
-      codebaseTools,
-      handleTool,
-      modelSelector.current(),
-      40
-    );
-    const fixed = extractCodeBlock(response);
-    if (!fixed) {
-      console.warn("[Harness] LLM did not return a valid Dockerfile.harness repair");
-      return;
-    }
-    const changed = fixed !== currentDockerfile;
-    writeFileSync3(dockerfilePath, fixed, "utf-8");
-    console.log(
-      `[Harness] LLM repaired Dockerfile.harness (${fixed.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
-    );
-  } catch (err) {
-    console.warn(`[Harness] Dockerfile.harness repair failed: ${toErrorMessage(err)}`);
-  }
-}
-async function probeEndpoints(port, endpoints) {
-  const errors = [];
-  const healthyPaths = /* @__PURE__ */ new Set();
-  const baseUrl = `http://localhost:${port}`;
-  for (const ep of endpoints) {
-    try {
-      const sampleValue = (v) => typeof v === "string" ? v : JSON.stringify(v);
-      const url = ep.method === "GET" && ep.target.params.length > 0 ? `${baseUrl}${ep.path}?${new URLSearchParams(
-        ep.target.params.map((p) => [p.name, sampleValue(p.sample)])
-      ).toString()}` : `${baseUrl}${ep.path}`;
-      const opts = {
-        method: ep.method,
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_DEFAULT)
-      };
-      if (ep.method !== "GET" && ep.sampleBody) {
-        opts.headers = { "Content-Type": "application/json" };
-        opts.body = ep.sampleBody;
-      }
-      const res = await fetch(url, opts);
-      if (res.status >= 200 && res.status < 400) {
-        console.log(`[Harness:probe] ${ep.method} ${ep.path} \u2192 ${res.status} OK`);
-        healthyPaths.add(ep.path);
-      } else {
-        const body = await res.text().catch(() => "(could not read body)");
-        const truncated = body.length > 500 ? body.slice(0, 500) + "..." : body;
-        console.warn(`[Harness:probe] ${ep.method} ${ep.path} \u2192 ${res.status}: ${truncated}`);
-        errors.push({ method: ep.method, path: ep.path, status: res.status, body: truncated });
-      }
-    } catch (err) {
-      const msg = toErrorMessage(err);
-      console.warn(`[Harness:probe] ${ep.method} ${ep.path} \u2192 error: ${msg}`);
-      errors.push({ method: ep.method, path: ep.path, status: 0, body: msg });
-    }
-  }
-  return { errors, healthyPaths };
-}
-async function repairHarnessCode(llm, repoPath, config, probeErrors, targets, handleTool, modelSelector) {
-  const harnessCode = readFileSync4(config.harnessFile, "utf-8");
-  const harnessFileName = config.harnessFile.split("/").pop();
-  modelSelector.escalate();
-  const messages = harnessCodeRepairPrompt(harnessCode, harnessFileName, probeErrors, targets);
-  try {
-    console.log("[Harness] Asking LLM to repair harness code based on probe errors...");
-    const response = await chatWithTools(
-      llm,
-      messages,
-      codebaseTools,
-      handleTool,
-      modelSelector.current(),
-      40
-    );
-    const codeMatch = response.match(/```(\w+)\s*\n([\s\S]*?)```/);
-    if (!codeMatch) {
-      console.warn("[Harness] LLM did not return a code block for harness repair");
-      return;
-    }
-    const fixedCode = codeMatch[2];
-    const changed = fixedCode !== harnessCode;
-    writeFileSync3(config.harnessFile, fixedCode, "utf-8");
-    console.log(
-      `[Harness] LLM repaired harness code (${fixedCode.split("\n").length} lines, ${changed ? "content changed" : "WARNING: no changes"})`
-    );
-  } catch (err) {
-    console.warn(`[Harness] Harness code repair failed: ${toErrorMessage(err)}`);
-  }
-}
-async function waitForHarnessHealthy(child, port) {
-  const outputLines = [];
-  if (child.stdout) {
-    const rl = createInterface2({ input: child.stdout });
-    rl.on("line", (line) => {
-      outputLines.push(line);
-      console.log(`[Harness:out] ${line}`);
-    });
-  }
-  if (child.stderr) {
-    const rl = createInterface2({ input: child.stderr });
-    rl.on("line", (line) => {
-      outputLines.push(`ERR: ${line}`);
-      console.error(`[Harness:err] ${line}`);
-    });
-  }
-  const startTime = Date.now();
-  const timeout = 12e4;
-  let ready = false;
-  while (Date.now() - startTime < timeout) {
-    if (child.exitCode !== null) {
-      throw new Error(
-        `Harness process exited with code ${child.exitCode}. Output:
-${outputLines.slice(-20).join("\n")}`
-      );
-    }
-    try {
-      const res = await fetch(`http://localhost:${port}/health`, {
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_QUICK)
-      });
-      if (res.ok) {
-        ready = true;
-        break;
-      }
-    } catch {
-    }
-    await sleep(2e3);
-  }
-  if (!ready) {
-    child.kill();
-    throw new Error(
-      `Harness did not become healthy within ${timeout / 1e3}s. Output:
-${outputLines.slice(-30).join("\n")}`
-    );
-  }
-  console.log(`[Harness] Server healthy on port ${port}`);
-  return child;
-}
-function cleanupHarnessInfra(repoPath) {
-  try {
-    execSync2(
-      `docker rm -f ${HARNESS_CONTAINER} 2>/dev/null || true`,
-      { stdio: "ignore", timeout: 15e3 }
-    );
-    execSync2(
-      "docker rm -f $(docker ps -aq --filter name=harness_) 2>/dev/null || true",
-      { stdio: "ignore", timeout: 15e3 }
-    );
-  } catch {
-  }
-  cleanupDocker(repoPath);
-}
-
 // src/phases/validation.ts
-import { readFileSync as readFileSync5 } from "fs";
+import { readFileSync as readFileSync6 } from "fs";
 import { basename as basename2 } from "path";
 var CODEQL_TO_BRIGHT = {
   // SQL injection
@@ -35926,7 +35769,7 @@ var CODEQL_TO_BRIGHT = {
   "js/remote-file-inclusion": "rfi"
 };
 function parseSarif(sarifPath) {
-  const raw = readFileSync5(sarifPath, "utf-8");
+  const raw = readFileSync6(sarifPath, "utf-8");
   const sarif = JSON.parse(raw);
   const findings = [];
   for (const run of sarif.runs ?? []) {
@@ -36018,7 +35861,7 @@ Return ONLY a JSON object mapping each rule id to a catalog tag or null, e.g.:
   }
   if (!map || typeof map !== "object") return;
   for (const f of findings) {
-    if (Object.prototype.hasOwnProperty.call(map, f.ruleId)) {
+    if (Object.hasOwn(map, f.ruleId)) {
       const tag = map[f.ruleId];
       f.brightTest = tag && validTags.has(tag) ? tag : null;
     }
@@ -36044,9 +35887,7 @@ async function mapFindingsToEndpoints(llm, findings, registered, model, repoPath
   const mapped = [];
   const needsTrace = [];
   for (const finding of mappable) {
-    const direct = registered.filter(
-      (r) => filesMatch(finding.file, r.endpoint.filePath)
-    );
+    const direct = registered.filter((r) => filesMatch(finding.file, r.endpoint.filePath));
     if (direct.length > 0) {
       mapped.push({ finding, entrypointIds: direct.map((r) => r.entrypointId) });
     } else {
@@ -36104,7 +35945,10 @@ When done, respond with ONLY a JSON object:
 or, if it is genuinely dead/unreachable code:
 { "endpointIndices": [], "reachable": false }`;
   const messages = [
-    { role: "system", content: "You are a precise security data-flow analyst. Trace call graphs using the tools, then respond with JSON only." },
+    {
+      role: "system",
+      content: "You are a precise security data-flow analyst. Trace call graphs using the tools, then respond with JSON only."
+    },
     { role: "user", content: prompt }
   ];
   let raw;
@@ -36150,7 +35994,9 @@ async function runValidationScans(api, projectId, repeaterId, registered, allFin
         // smart scan — the zero-findings issue was param extraction, not smart
       );
       scanIds.push(scanId);
-      console.log(`[Validation] Launched scan for test "${test}" over ${ids.length} endpoint(s): ${scanId}`);
+      console.log(
+        `[Validation] Launched scan for test "${test}" over ${ids.length} endpoint(s): ${scanId}`
+      );
     } catch (err) {
       console.error(`[Validation] Failed to launch scan for test "${test}": ${err}`);
     }
@@ -36179,7 +36025,9 @@ async function matchVerdictsWithAI(llm, scanned, brightFindings, catalog, model)
 Each SARIF finding below was scanned by a DAST tool. Decide which DAST finding (if any) CONFIRMS each SARIF finding \u2014 i.e. it is the same vulnerability class AND plausibly the same endpoint/sink. A SARIF finding is confirmed when DAST independently reproduced that vulnerability at the corresponding endpoint.
 
 SARIF FINDINGS (scanned):
-${scanned.map((f, i) => `[${i}] rule=${f.ruleId} class=${f.brightTest} name="${f.name}" at ${f.file}:${f.startLine}`).join("\n")}
+${scanned.map(
+    (f, i) => `[${i}] rule=${f.ruleId} class=${f.brightTest} name="${f.name}" at ${f.file}:${f.startLine}`
+  ).join("\n")}
 
 DAST FINDINGS produced by the scanner:
 ${brightFindings.map((b, i) => `[${i}] name="${b.name}" ${b.method} ${b.url} severity=${b.severity}`).join("\n")}
@@ -36268,7 +36116,9 @@ function formatValidationReport(results) {
   lines.push("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
   for (const r of results) {
     const mark = r.verdict === "validated" ? "\u2713" : r.verdict === "not-validated" ? "\u2717" : "\u2013";
-    lines.push(`[Validation] ${mark} [${r.verdict}] ${r.finding.ruleId} @ ${r.finding.file}:${r.finding.startLine}`);
+    lines.push(
+      `[Validation] ${mark} [${r.verdict}] ${r.finding.ruleId} @ ${r.finding.file}:${r.finding.startLine}`
+    );
     lines.push(`[Validation]     ${r.detail}`);
   }
   lines.push("\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550");
@@ -36284,527 +36134,643 @@ function toValidationSummaryRows(results) {
   }));
 }
 
-// src/app-health.ts
-var AppHealthMonitor = class {
-  port;
-  healthCheckPath;
-  healthProbe;
-  pollIntervalMs;
-  failureThreshold;
-  deepProbeEveryNth;
-  onRecover;
-  onDeepProbe;
-  timer;
-  running = false;
-  paused = false;
-  healthy = true;
-  consecutiveFailures = 0;
-  probeCount = 0;
-  probeInFlight = false;
-  deepProbeInFlight = false;
-  recoveryInFlight;
-  gate;
-  lastUnhealthyReason;
-  /** When true, only a successful deep probe or recovery can clear the unhealthy state.
-   *  Prevents the shallow (status-only) probe from re-marking healthy while the
-   *  body-aware deep probe has identified a degraded state (e.g. SPA shell returns
-   *  200 but the API layer is 500-ing). */
-  deepUnhealthy = false;
-  constructor(opts) {
-    this.port = opts.port;
-    this.healthCheckPath = opts.healthCheckPath ?? "/";
-    this.healthProbe = opts.healthProbe;
-    this.pollIntervalMs = opts.pollIntervalMs ?? 15e3;
-    this.failureThreshold = opts.failureThreshold ?? 3;
-    this.onRecover = opts.onRecover;
-    this.onDeepProbe = opts.onDeepProbe;
-    this.deepProbeEveryNth = opts.deepProbeEveryNth ?? 5;
+// src/platform.ts
+import { execFileSync as execFileSync3 } from "child_process";
+import { existsSync as existsSync5, mkdirSync as mkdirSync3 } from "fs";
+
+// src/scm/azure-devops.ts
+var API_VERSION = "7.1-preview.1";
+var AzureDevOpsProvider = class {
+  platformName = "Azure DevOps";
+  info;
+  apiBase;
+  /** Whether the original URL included an explicit project segment. */
+  hasExplicitProject;
+  constructor(info) {
+    this.info = info;
+    this.hasExplicitProject = info.project !== info.repository;
+    const { organization, project, repository } = info;
+    this.apiBase = `https://dev.azure.com/${organization}/${project}/_apis/git/repositories/${repository}`;
   }
-  setRecoveryCallback(cb) {
-    this.onRecover = cb;
+  buildCloneUrl(token) {
+    const { organization, project, repository } = this.info;
+    const path = this.hasExplicitProject ? `${organization}/${project}/_git/${repository}` : `${organization}/_git/${repository}`;
+    return token ? `https://x-pat:${token}@dev.azure.com/${path}` : `https://dev.azure.com/${path}`;
   }
-  setDeepProbe(cb) {
-    this.onDeepProbe = cb;
+  repoSlug() {
+    const { organization, project, repository } = this.info;
+    return `${organization}/${project}/${repository}`;
   }
-  describeProbe() {
-    if (!this.healthProbe) return `http://localhost:${this.port}${this.healthCheckPath}`;
-    const path = this.healthProbe.path.startsWith("/") ? this.healthProbe.path : `/${this.healthProbe.path}`;
-    const method = (this.healthProbe.method ?? (this.healthProbe.formData || this.healthProbe.body ? "POST" : "GET")).toUpperCase();
-    return `${method} http://localhost:${this.port}${path}`;
+  authHeaders(token) {
+    const basic = Buffer.from(`:${token}`).toString("base64");
+    return {
+      Authorization: `Basic ${basic}`,
+      "Content-Type": "application/json"
+    };
   }
-  start() {
-    if (this.running) return;
-    this.running = true;
-    this.timer = setInterval(() => {
-      void this.probe("scheduled");
-    }, this.pollIntervalMs);
-    if (typeof this.timer.unref === "function") this.timer.unref();
-    console.log(
-      `[AppHealth] Monitor started \u2014 polling ${this.describeProbe()} every ${this.pollIntervalMs / 1e3}s`
-    );
-  }
-  stop() {
-    if (!this.running) return;
-    this.running = false;
-    this.paused = false;
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = void 0;
-    }
-    if (this.gate) {
-      this.gate.resolve();
-      this.gate = void 0;
-    }
-  }
-  /**
-   * Temporarily suspend probing and recovery. Use when the orchestrator
-   * is rebuilding/restarting the app — avoids the health monitor racing
-   * with docker compose up --build. If a recovery is already in flight,
-   * waits for it to complete before returning.
-   */
-  async pause() {
-    if (this.paused) return;
-    this.paused = true;
-    if (this.recoveryInFlight) {
-      try {
-        await this.recoveryInFlight;
-      } catch {
-      }
-    }
-    console.log("[AppHealth] Monitor paused (orchestrator owns the app lifecycle)");
-  }
-  /**
-   * Resume probing after the orchestrator finishes its rebuild/restart.
-   * Resets the failure counter so stale failures from the rebuild window
-   * don't immediately trip the unhealthy threshold. Also marks healthy and
-   * opens the gate if needed — the orchestrator already verified the app.
-   */
-  resume() {
-    if (!this.paused) return;
-    this.paused = false;
-    this.consecutiveFailures = 0;
-    if (!this.healthy) this.markHealthy();
-    console.log("[AppHealth] Monitor resumed");
-  }
-  isHealthy() {
-    return this.healthy;
-  }
-  /**
-   * Resolves immediately if healthy. Otherwise blocks until the gate opens
-   * (recovery succeeds, monitor is stopped, or gate is manually opened).
-   */
-  async waitHealthy(timeoutMs = 12e4) {
-    if (this.healthy) return;
-    if (!this.gate) {
-      let resolve5;
-      const promise = new Promise((r) => {
-        resolve5 = r;
-      });
-      this.gate = { promise, resolve: resolve5 };
-    }
-    const timeout = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("waitHealthy timed out \u2014 app recovery did not succeed")), timeoutMs);
-    });
-    await Promise.race([this.gate.promise, timeout]);
-  }
-  /**
-   * Tells the monitor that an external observation suggests the app may be
-   * unhealthy (e.g. Bright reported "target is down" for a registration).
-   * Triggers an immediate probe outside the regular polling cadence.
-   */
-  signalProbableUnhealthy(reason) {
-    if (!this.running || this.paused) return;
-    if (this.probeInFlight) return;
-    void this.probe(`signal: ${reason}`);
-  }
-  /**
-   * On-demand body-aware probe. Used by the orchestrator before each scan
-   * round to fail-fast if the app has degraded into a setup-required /
-   * dev-mode-warning state that the periodic shallow probe wouldn't catch.
-   * If unhealthy, marks the monitor unhealthy and triggers recovery; the
-   * returned promise resolves once recovery completes (or fails).
-   */
-  async verifyDeepHealth() {
-    if (!this.onDeepProbe) return { healthy: true, reason: "no deep probe configured" };
-    if (this.deepProbeInFlight) {
-      await this.waitHealthy();
-      return { healthy: this.healthy, reason: this.lastUnhealthyReason ?? "ok" };
-    }
-    const result = await this.runDeepProbe("on-demand");
-    if (!result.healthy) {
-      await this.waitHealthy();
-    }
-    return result;
-  }
-  async probe(reason) {
-    if (!this.running || this.paused) return;
-    if (this.probeInFlight) return;
-    this.probeInFlight = true;
-    try {
-      const ok = await checkAppHealth(this.port, this.healthProbe ?? this.healthCheckPath);
-      if (ok) {
-        if (this.consecutiveFailures > 0) {
-          console.log(
-            `[AppHealth] Recovered (${reason}) \u2014 clearing ${this.consecutiveFailures} failure(s)`
-          );
-        }
-        this.consecutiveFailures = 0;
-        if (!this.healthy && !this.deepUnhealthy) this.markHealthy();
-      } else {
-        this.consecutiveFailures += 1;
-        if (this.healthy) {
-          console.warn(
-            `[AppHealth] Probe failed (${reason}) \u2014 ${this.consecutiveFailures}/${this.failureThreshold}`
-          );
-          if (this.consecutiveFailures >= this.failureThreshold) {
-            this.lastUnhealthyReason = `app stopped responding to HTTP probes at ${this.describeProbe()}`;
-            this.markUnhealthy();
-            void this.runRecovery();
-          }
-        }
-      }
-      if ((this.healthy || this.deepUnhealthy) && this.onDeepProbe && reason === "scheduled" && ++this.probeCount % this.deepProbeEveryNth === 0) {
-        void this.runDeepProbe("scheduled-deep");
-      }
-    } finally {
-      this.probeInFlight = false;
-    }
-  }
-  async runDeepProbe(reason) {
-    if (!this.onDeepProbe) return { healthy: true, reason: "no deep probe" };
-    if (this.deepProbeInFlight) return { healthy: this.healthy, reason: "already in flight" };
-    this.deepProbeInFlight = true;
-    try {
-      const result = await this.onDeepProbe();
-      if (!result.healthy) {
-        console.warn(
-          `[AppHealth] Deep probe (${reason}) UNHEALTHY \u2014 ${result.reason}`
-        );
-        if (this.healthy) {
-          this.lastUnhealthyReason = `deep health probe flagged the app as unhealthy: ${result.reason}`;
-          this.deepUnhealthy = true;
-          this.markUnhealthy();
-          void this.runRecovery();
-        }
-      } else {
-        console.log(`[AppHealth] Deep probe (${reason}) healthy \u2014 ${result.reason}`);
-        if (this.deepUnhealthy) {
-          this.deepUnhealthy = false;
-          if (!this.healthy) this.markHealthy();
-        }
-      }
-      return result;
-    } catch (err) {
-      console.warn(
-        `[AppHealth] Deep probe (${reason}) errored: ${toErrorMessage(err)} \u2014 ignoring`
+  async validateAccess(token) {
+    if (!token) {
+      throw new Error(
+        `Missing REPO_ACCESS_TOKEN \u2014 an Azure DevOps Personal Access Token is required to clone and push to ${this.repoSlug()}.`
       );
-      return { healthy: true, reason: "deep probe errored, ignoring" };
-    } finally {
-      this.deepProbeInFlight = false;
+    }
+    const res = await fetch(`${this.apiBase}?api-version=${API_VERSION}`, {
+      headers: this.authHeaders(token)
+    });
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `REPO_ACCESS_TOKEN is invalid or lacks access to ${this.repoSlug()} (HTTP ${res.status}). Ensure the PAT has "Code (Read & Write)" scope.`
+      );
+    }
+    if (res.status === 404) {
+      throw new Error(
+        `Repository ${this.repoSlug()} not found (HTTP 404). Check that REPOSITORY_URL is correct and the token has access to this repository.`
+      );
+    }
+    if (!res.ok) {
+      throw new Error(
+        `Failed to validate repository access for ${this.repoSlug()} (HTTP ${res.status}).`
+      );
     }
   }
-  markUnhealthy() {
-    this.healthy = false;
-    if (!this.gate) {
-      let resolve5;
-      const promise = new Promise((r) => {
-        resolve5 = r;
+  async getDefaultBranch(token) {
+    try {
+      const res = await fetch(`${this.apiBase}?api-version=${API_VERSION}`, {
+        headers: this.authHeaders(token)
       });
-      this.gate = { promise, resolve: resolve5 };
-    }
-    console.warn(
-      `[AppHealth] App marked UNHEALTHY \u2014 pausing dependent operations`
-    );
-  }
-  markHealthy() {
-    this.healthy = true;
-    const gate = this.gate;
-    this.gate = void 0;
-    if (gate) gate.resolve();
-    console.log(`[AppHealth] App marked HEALTHY \u2014 resuming operations`);
-  }
-  async runRecovery() {
-    if (this.recoveryInFlight) return this.recoveryInFlight;
-    if (this.paused) return { ok: false, detail: "monitor paused \u2014 orchestrator handling restart" };
-    if (!this.onRecover) {
-      console.warn(`[AppHealth] No recovery callback registered \u2014 staying paused`);
-      return { ok: false, detail: "no recovery callback" };
-    }
-    const cb = this.onRecover;
-    const hint = this.lastUnhealthyReason;
-    this.recoveryInFlight = (async () => {
-      try {
-        console.log(
-          `[AppHealth] Triggering recovery${hint ? ` \u2014 hint: ${hint}` : ""}...`
-        );
-        const result = await cb(hint);
-        if (result.ok) {
-          this.consecutiveFailures = 0;
-          this.lastUnhealthyReason = void 0;
-          this.deepUnhealthy = false;
-          await this.probe("post-recovery");
-          if (!this.healthy) this.markHealthy();
-        } else {
-          console.error(
-            `[AppHealth] Recovery did not restore health: ${result.detail}`
-          );
-        }
-        return result;
-      } catch (err) {
-        const msg = toErrorMessage(err);
-        console.error(`[AppHealth] Recovery threw: ${msg}`);
-        return { ok: false, detail: msg };
-      } finally {
-        this.recoveryInFlight = void 0;
+      if (res.ok) {
+        const data = await res.json();
+        return data.defaultBranch.replace(/^refs\/heads\//, "");
       }
-    })();
-    return this.recoveryInFlight;
+    } catch {
+    }
+    return "main";
+  }
+  async findPullRequest(token, branch) {
+    const url = `${this.apiBase}/pullrequests?searchCriteria.sourceRefName=refs/heads/${branch}&searchCriteria.status=active&$top=1&api-version=${API_VERSION}`;
+    try {
+      const res = await fetch(url, { headers: this.authHeaders(token) });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.value.length > 0 ? data.value[0].pullRequestId : null;
+    } catch {
+      return null;
+    }
+  }
+  async createPullRequest(token, head, base, title, body) {
+    const url = `${this.apiBase}/pullrequests?api-version=${API_VERSION}`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: this.authHeaders(token),
+        body: JSON.stringify({
+          sourceRefName: `refs/heads/${head}`,
+          targetRefName: `refs/heads/${base}`,
+          title,
+          description: body
+        })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn(`[AzureDevOps] Failed to create PR: ${res.status} ${text}`);
+        return null;
+      }
+      const pr = await res.json();
+      return pr.pullRequestId;
+    } catch (err) {
+      console.warn(`[AzureDevOps] Error creating PR: ${err}`);
+      return null;
+    }
+  }
+  async updatePullRequestBody(token, prId, body) {
+    const url = `${this.apiBase}/pullrequests/${prId}?api-version=${API_VERSION}`;
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: this.authHeaders(token),
+      body: JSON.stringify({ description: body })
+    });
+    if (!res.ok) {
+      console.warn(
+        `[AzureDevOps] Failed to update PR description: ${res.status} ${res.statusText}`
+      );
+    }
   }
 };
 
-// src/brightstar.ts
-import { readFileSync as readFileSync6, existsSync as existsSync5, writeFileSync as writeFileSync4 } from "fs";
-import { resolve as resolve4 } from "path";
-var BRIGHT_STAR_FILENAME = "BRIGHT_STAR.md";
-var BRIGHT_STAR_VERSION = 1;
-var DATA_BEGIN = "<!-- BRIGHT_STAR_DATA";
-var DATA_END = "BRIGHT_STAR_DATA -->";
-function brightStarPath(repoPath) {
-  return resolve4(repoPath, BRIGHT_STAR_FILENAME);
-}
-function readBrightStar(repoPath) {
-  const path = brightStarPath(repoPath);
-  if (!existsSync5(path)) return null;
-  let content;
-  try {
-    content = readFileSync6(path, "utf-8");
-  } catch {
-    return null;
+// src/scm/github.ts
+var GitHubProvider = class {
+  platformName = "GitHub";
+  info;
+  apiBase;
+  constructor(info) {
+    this.info = info;
+    const host = new URL(info.url).host;
+    this.apiBase = host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`;
   }
-  return parseBrightStar(content);
-}
-function parseBrightStar(content) {
-  const begin = content.indexOf(DATA_BEGIN);
-  const end = content.indexOf(DATA_END);
-  if (begin === -1 || end === -1 || end <= begin) return null;
-  const between = content.slice(begin, end);
-  const fenceMatch = between.match(/```json\s*([\s\S]*?)```/);
-  if (!fenceMatch) return null;
-  try {
-    const parsed = JSON.parse(fenceMatch[1].trim());
-    if (!parsed || typeof parsed !== "object") return null;
-    if (parsed.version !== BRIGHT_STAR_VERSION) {
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
+  buildCloneUrl(token) {
+    const host = new URL(this.info.url).host;
+    const slug = this.repoSlug();
+    return token ? `https://x-access-token:${token}@${host}/${slug}.git` : `https://${host}/${slug}.git`;
   }
-}
-function renderBrightStar(star) {
-  const lines = [];
-  lines.push("# \u{1F31F} Bright Star \u2014 Run Memory");
-  lines.push("");
-  lines.push(
-    "This file is auto-generated by Bright Agent. It records what the agent learned while building, authenticating, and scanning this application so future runs can skip rediscovery. Safe to commit. Delete it to force a full fresh discovery."
-  );
-  lines.push("");
-  lines.push(`_Generated: ${star.generatedAt}_`);
-  if (star.repo) lines.push(`_Repository: ${star.repo}_`);
-  lines.push("");
-  if (star.techStack) {
-    const t = star.techStack;
-    lines.push("## Tech Stack");
-    lines.push("");
-    if (t.languages?.length) lines.push(`- **Languages:** ${t.languages.join(", ")}`);
-    if (t.frameworks?.length) lines.push(`- **Frameworks:** ${t.frameworks.join(", ")}`);
-    if (t.databases?.length) lines.push(`- **Databases:** ${t.databases.join(", ")}`);
-    lines.push("");
+  repoSlug() {
+    return `${this.info.owner}/${this.info.repo}`;
   }
-  if (star.startup) {
-    const s = star.startup;
-    lines.push("## Startup");
-    lines.push("");
-    if (s.command) lines.push(`- **Command:** \`${s.command}\``);
-    if (s.port) lines.push(`- **Port:** ${s.port}`);
-    if (typeof s.docker === "boolean") lines.push(`- **Docker:** ${s.docker ? "yes" : "no"}`);
-    if (s.healthCheckPath) lines.push(`- **Health check path:** \`${s.healthCheckPath}\``);
-    if (s.healthCheckSummary) lines.push(`- **Health response:** ${s.healthCheckSummary}`);
-    if (s.prerequisites?.length) {
-      lines.push("- **Prerequisites:**");
-      for (const p of s.prerequisites) lines.push(`  - \`${p}\``);
-    }
-    if (s.postStartCommands?.length) {
-      lines.push("- **Post-start commands:**");
-      for (const c of s.postStartCommands) lines.push(`  - \`${c}\``);
-    }
-    if (s.envVars && Object.keys(s.envVars).length) {
-      lines.push("- **Environment variables:**");
-      for (const [k, v] of Object.entries(s.envVars)) lines.push(`  - \`${k}=${v}\``);
-    }
-    lines.push("");
-  }
-  if (star.setup) {
-    lines.push("## First-Run Setup");
-    lines.push("");
-    lines.push(`- **Completed:** ${star.setup.completed ? "yes" : "no"}`);
-    if (star.setup.credentials && Object.keys(star.setup.credentials).length) {
-      lines.push("- **Seeded credentials:**");
-      for (const [k, v] of Object.entries(star.setup.credentials)) lines.push(`  - ${k}: \`${v}\``);
-    }
-    for (const n of star.setup.notes ?? []) lines.push(`- ${n}`);
-    lines.push("");
-  }
-  if (star.auth) {
-    const a = star.auth;
-    lines.push("## Authentication");
-    lines.push("");
-    lines.push(`- **Has auth:** ${a.hasAuth ? "yes" : "no"}`);
-    if (a.mechanism) lines.push(`- **Mechanism:** ${a.mechanism}`);
-    if (a.authObjectId) lines.push(`- **Auth object ID:** \`${a.authObjectId}\``);
-    if (a.registration) {
-      lines.push(
-        `- **Login:** \`${a.registration.method} ${a.registration.endpoint}\` (${a.registration.contentType})`
+  async validateAccess(token) {
+    if (!token) {
+      throw new Error(
+        `Missing REPO_ACCESS_TOKEN \u2014 a GitHub Personal Access Token is required to clone and push to ${this.repoSlug()}.`
       );
     }
-    if (a.seedCommands?.length) {
-      lines.push("- **Seed commands:**");
-      for (const c of a.seedCommands) {
-        lines.push(`  - [${c.type}${c.container ? `:${c.container}` : ""}] \`${c.command}\``);
+    const { owner, repo } = this.info;
+    const res = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json"
       }
+    });
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        `REPO_ACCESS_TOKEN is invalid or lacks access to ${this.repoSlug()} (HTTP ${res.status}). Ensure the token has "repo" scope.`
+      );
     }
-    for (const h of a.hints ?? []) lines.push(`- _hint:_ ${h}`);
-    lines.push("");
-  }
-  if (star.limits) {
-    lines.push("## Rate Limits / Scan Prep");
-    lines.push("");
-    for (const c of star.limits.scanPrepReplayCommands ?? []) {
-      lines.push(`- [${c.container}] \`${c.command}\``);
+    if (res.status === 404) {
+      throw new Error(
+        `Repository ${this.repoSlug()} not found (HTTP 404). Check that REPOSITORY_URL is correct and the token has access to this repository.`
+      );
     }
-    for (const n of star.limits.notes ?? []) lines.push(`- ${n}`);
-    lines.push("");
-  }
-  if (star.endpointNotes?.length) {
-    lines.push("## Endpoint Extraction Hints");
-    lines.push("");
-    for (const n of star.endpointNotes) lines.push(`- ${n}`);
-    lines.push("");
-  }
-  if (star.hints && Object.keys(star.hints).length) {
-    lines.push("## Hints");
-    lines.push("");
-    for (const [stage, items] of Object.entries(star.hints)) {
-      if (!items?.length) continue;
-      lines.push(`**${stage}**`);
-      for (const it of items) lines.push(`- ${it}`);
-      lines.push("");
+    if (!res.ok) {
+      throw new Error(
+        `Failed to validate repository access for ${this.repoSlug()} (HTTP ${res.status}).`
+      );
     }
   }
-  lines.push("---");
-  lines.push("");
-  lines.push(`${DATA_BEGIN} \u2014 do not edit by hand; regenerated each run -->`);
-  lines.push("```json");
-  lines.push(JSON.stringify(star, null, 2));
-  lines.push("```");
-  lines.push(`<!-- ${DATA_END}`);
-  lines.push("");
-  return lines.join("\n");
-}
-function writeBrightStar(repoPath, star) {
-  const path = brightStarPath(repoPath);
-  writeFileSync4(path, renderBrightStar(star), "utf-8");
-  return path;
-}
-async function assembleBrightStar(input) {
-  const star = {
-    version: BRIGHT_STAR_VERSION,
-    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    repo: input.repo
-  };
-  if (input.techStack) {
-    star.techStack = {
-      languages: input.techStack.languages,
-      frameworks: input.techStack.frameworks,
-      databases: input.techStack.databases
-    };
-  }
-  if (input.startup) {
-    const s = input.startup;
-    star.startup = {
-      command: s.command,
-      port: s.port,
-      prerequisites: s.prerequisites,
-      envVars: s.envVars,
-      docker: s.docker,
-      postStartCommands: s.postStartCommands,
-      healthCheckPath: s.healthCheckPath,
-      healthProbe: s.healthProbe,
-      healthCheckSummary: s.healthCheckSummary
-    };
-  }
-  if (input.setup) star.setup = input.setup;
-  if (input.auth) {
-    const a = input.auth;
-    const auth = {
-      hasAuth: a.hasAuth,
-      mechanism: input.authMechanism,
-      authObjectId: a.authObjectId,
-      registration: a.registration,
-      seedCommands: a.seedCommands,
-      directAuthHeaders: a.directAuthHeaders,
-      hints: a.authHints
-    };
-    if (a.authObjectId && input.api) {
-      try {
-        auth.authObjectJson = await getAuthObject(input.api, a.authObjectId);
-      } catch {
+  async getDefaultBranch(token) {
+    const { owner, repo } = this.info;
+    try {
+      const res = await fetch(`${this.apiBase}/repos/${owner}/${repo}`, {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github+json"
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.default_branch;
       }
+    } catch {
     }
-    star.auth = auth;
+    return "main";
   }
-  if (input.scanPrepReplayCommands?.length) {
-    star.limits = { scanPrepReplayCommands: input.scanPrepReplayCommands };
-  }
-  if (input.endpointNotes?.length) star.endpointNotes = input.endpointNotes;
-  if (input.hints?.length) {
-    const byStage = {};
-    for (const { stage, text } of input.hints) {
-      (byStage[stage] ??= []).push(text);
+  async findPullRequest(token, branch) {
+    const { owner, repo } = this.info;
+    const url = `${this.apiBase}/repos/${owner}/${repo}/pulls?head=${owner}:${branch}&state=open&per_page=1`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github+json"
+        }
+      });
+      if (!res.ok) return null;
+      const pulls = await res.json();
+      return pulls.length > 0 ? pulls[0].number : null;
+    } catch {
+      return null;
     }
-    star.hints = byStage;
   }
-  return star;
-}
-function brightStarToStartupConfig(star) {
-  const s = star?.startup;
-  if (!s || !s.command || !s.port) return null;
-  return {
-    command: s.command,
-    port: s.port,
-    prerequisites: s.prerequisites ?? [],
-    envVars: s.envVars ?? {},
-    docker: s.docker ?? false,
-    postStartCommands: s.postStartCommands,
-    healthCheckPath: s.healthCheckPath,
-    healthProbe: s.healthProbe,
-    healthCheckSummary: s.healthCheckSummary
-  };
-}
-function brightStarAuthHints(star) {
-  const a = star?.auth;
-  if (!a || !a.hasAuth) return [];
-  const hints = [];
-  const reg = a.registration;
-  if (reg) {
-    hints.push(
-      `[auth] Prior run used login: ${reg.method} ${reg.endpoint} (${reg.contentType}) with body ${reg.body}. Reuse this flow if it still works.`
+  async createPullRequest(token, head, base, title, body) {
+    const { owner, repo } = this.info;
+    const url = `${this.apiBase}/repos/${owner}/${repo}/pulls`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ title, body, head, base })
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.warn(`[GitHub] Failed to create PR: ${res.status} ${text}`);
+        return null;
+      }
+      const pr = await res.json();
+      return pr.number;
+    } catch (err) {
+      console.warn(`[GitHub] Error creating PR: ${err}`);
+      return null;
+    }
+  }
+  async updatePullRequestBody(token, prId, body) {
+    const { owner, repo } = this.info;
+    const url = `${this.apiBase}/repos/${owner}/${repo}/pulls/${prId}`;
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ body })
+    });
+    if (!res.ok) {
+      console.warn(`[GitHub] Failed to update PR description: ${res.status} ${res.statusText}`);
+    }
+  }
+};
+
+// src/scm/detect.ts
+function parseRepositoryUrl(raw) {
+  const cleaned = raw.replace(/\/+$/, "").replace(/\.git$/, "");
+  let url;
+  try {
+    url = new URL(cleaned);
+  } catch {
+    throw new Error(
+      `Invalid REPOSITORY_URL: "${raw}" \u2014 expected a full URL (e.g. https://github.com/owner/repo or https://dev.azure.com/org/_git/repo)`
     );
   }
-  if (a.mechanism) hints.push(`[auth] Prior run detected auth mechanism: ${a.mechanism}.`);
-  for (const h of a.hints ?? []) hints.push(h.startsWith("[") ? h : `[auth] ${h}`);
-  return hints;
+  if (url.host === "dev.azure.com") {
+    return parseAzureDevOpsUrl(url, raw);
+  }
+  return parseGitHubUrl(url, raw);
 }
+function parseAzureDevOpsUrl(url, raw) {
+  const segments = url.pathname.split("/").filter(Boolean);
+  const gitIdx = segments.indexOf("_git");
+  if (gitIdx < 0 || gitIdx + 1 >= segments.length) {
+    throw new Error(`Invalid Azure DevOps URL: "${raw}" \u2014 expected /_git/<repo> in the path`);
+  }
+  const organization = segments[0];
+  const repository = segments[gitIdx + 1];
+  const project = gitIdx > 1 ? segments[1] : repository;
+  return {
+    platform: "azure-devops",
+    url: raw,
+    organization,
+    project,
+    repository
+  };
+}
+function parseGitHubUrl(url, raw) {
+  const segments = url.pathname.split("/").filter(Boolean);
+  if (segments.length < 2) {
+    throw new Error(`Invalid GitHub URL: "${raw}" \u2014 expected /owner/repo in the path`);
+  }
+  return {
+    platform: "github",
+    url: raw,
+    owner: segments[0],
+    repo: segments[1]
+  };
+}
+function createScmProvider(info) {
+  switch (info.platform) {
+    case "github":
+      return new GitHubProvider(info);
+    case "azure-devops":
+      return new AzureDevOpsProvider(info);
+    default:
+      throw new Error(`Unsupported SCM platform: ${info.platform}`);
+  }
+}
+function detectScmProvider(repositoryUrl) {
+  const info = parseRepositoryUrl(repositoryUrl);
+  const provider = createScmProvider(info);
+  return { info, provider };
+}
+
+// src/platform.ts
+function cloneRepository(opts) {
+  const cloneUrl = opts.provider.buildCloneUrl(opts.gitToken);
+  const slug = opts.provider.repoSlug();
+  const dest = `/tmp/workspace/${slug}`;
+  if (existsSync5(dest)) {
+    execFileSync3("rm", ["-rf", dest]);
+  }
+  mkdirSync3(dest, { recursive: true });
+  execFileSync3("git", ["clone", "--depth", "2", cloneUrl, dest], {
+    stdio: "pipe",
+    timeout: 12e4
+  });
+  try {
+    execFileSync3("git", ["checkout", opts.branchName], {
+      cwd: dest,
+      stdio: "pipe"
+    });
+  } catch {
+    execFileSync3("git", ["checkout", "-b", opts.branchName], {
+      cwd: dest,
+      stdio: "pipe"
+    });
+  }
+  execFileSync3("git", ["config", "user.name", opts.commitLogin || "BrightSec"], {
+    cwd: dest,
+    stdio: "pipe"
+  });
+  execFileSync3("git", ["config", "user.email", opts.commitEmail || "bot@brightsec.com"], {
+    cwd: dest,
+    stdio: "pipe"
+  });
+  return dest;
+}
+function gitCommitAndPush(repoPath, message) {
+  execFileSync3("git", ["add", "-A"], { cwd: repoPath, stdio: "pipe" });
+  try {
+    execFileSync3("git", ["diff", "--cached", "--quiet"], {
+      cwd: repoPath,
+      stdio: "pipe"
+    });
+    return;
+  } catch {
+  }
+  execFileSync3("git", ["commit", "-m", message], {
+    cwd: repoPath,
+    stdio: "pipe"
+  });
+  execFileSync3("git", ["push"], { cwd: repoPath, stdio: "pipe" });
+}
+function gitFinalizeChanges(repoPath, message) {
+  try {
+    gitCommitAndPush(repoPath, message);
+  } catch {
+    console.log("[Git] No uncommitted changes to finalize, or push failed.");
+  }
+}
+var DefaultPlatform = class {
+  job;
+  gitToken;
+  provider;
+  prNumber;
+  // undefined = not looked up yet
+  constructor(job, provider, gitToken) {
+    this.job = job;
+    this.gitToken = gitToken;
+    this.provider = provider;
+  }
+  /**
+   * Push the branch and create a PR so progress updates have somewhere to go.
+   * Call this after cloneRepository() and before the orchestrator starts.
+   */
+  async initPr(repoPath) {
+    if (!this.gitToken) return;
+    try {
+      execFileSync3(
+        "git",
+        ["commit", "--allow-empty", "-m", "chore: initialize Bright security scan"],
+        {
+          cwd: repoPath,
+          stdio: "pipe"
+        }
+      );
+      execFileSync3("git", ["push", "-u", "origin", this.job.branchName], {
+        cwd: repoPath,
+        stdio: "pipe"
+      });
+      console.log(`[Platform] Pushed branch ${this.job.branchName}`);
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes("Authentication failed") || msg.includes("Invalid username or token") || msg.includes("could not read Username")) {
+        throw new Error(
+          `[Platform] Git authentication failed \u2014 check your REPO_ACCESS_TOKEN. The scan cannot push results without valid credentials.`
+        );
+      }
+      console.warn(`[Platform] Failed to push branch: ${err}`);
+      return;
+    }
+    this.prNumber = await this.provider.findPullRequest(this.gitToken, this.job.branchName);
+    if (!this.prNumber) {
+      const baseBranch = await this.provider.getDefaultBranch(this.gitToken);
+      this.prNumber = await this.provider.createPullRequest(
+        this.gitToken,
+        this.job.branchName,
+        baseBranch,
+        `\u{1F6E1}\uFE0F Bright Security Scan`,
+        `## \u{1F6E1}\uFE0F Bright Security Scan
+
+\u{1F504} **Initializing...**`
+      );
+    }
+    if (this.prNumber) {
+      console.log(`[Platform] PR #${this.prNumber} ready for progress updates`);
+    } else {
+      console.warn(`[Platform] Could not create PR \u2014 progress will only appear in logs`);
+    }
+  }
+  async fetchJobDetails() {
+    return this.job;
+  }
+  async reportPhase(_phase, description, _turn) {
+    console.log(`[Phase] ${description}`);
+  }
+  async reportDetail(_phase, toolName, detail, _turn) {
+    console.log(`[Detail] ${toolName}: ${detail}`);
+  }
+  async reportError(message) {
+    console.error(`[Platform] ${message}`);
+  }
+  async reportPrDescription(description) {
+    if (!this.gitToken || !this.prNumber) return;
+    await this.provider.updatePullRequestBody(this.gitToken, this.prNumber, description);
+  }
+};
+async function createPlatform(gitToken) {
+  const repositoryUrl = process.env.REPOSITORY_URL;
+  if (!repositoryUrl) {
+    throw new Error("Missing REPOSITORY_URL environment variable");
+  }
+  const { provider } = detectScmProvider(repositoryUrl);
+  const job = {
+    repository: provider.repoSlug(),
+    branchName: process.env.BRANCH ?? `bright-scan-${Date.now()}`,
+    commitLogin: process.env.GIT_AUTHOR_NAME ?? "BrightSec",
+    commitEmail: process.env.GIT_AUTHOR_EMAIL ?? "bot@brightsec.com"
+  };
+  const platform = new DefaultPlatform(job, provider, gitToken);
+  console.log(`[Platform] Initialized (${provider.platformName} \u2014 ${provider.repoSlug()})`);
+  return { platform, job };
+}
+
+// src/progress.ts
+function condenseDetail(detail) {
+  const trimmed = detail.trim();
+  if (trimmed.length <= 180) return trimmed;
+  const sentenceEnd = trimmed.search(/\.\s/);
+  if (sentenceEnd > 40 && sentenceEnd < 180) {
+    return trimmed.slice(0, sentenceEnd + 1);
+  }
+  return trimmed.slice(0, 177).trimEnd() + "\u2026";
+}
+var ProgressReporter = class {
+  turn = 0;
+  steps = [];
+  platform;
+  findingsSummary = [];
+  validationSummary = [];
+  scanTarget;
+  /** Called the first time each distinct phase starts (not on resume/loop re-entry). */
+  onPhaseChange;
+  seenPhases = /* @__PURE__ */ new Set();
+  lastProgressLine;
+  constructor(platform, onPhaseChange) {
+    this.platform = platform;
+    this.onPhaseChange = onPhaseChange;
+  }
+  async phaseStart(phase, description) {
+    TokenTracker.global().startPhase(phase);
+    if (!this.seenPhases.has(phase)) {
+      this.seenPhases.add(phase);
+      this.onPhaseChange?.(phase);
+    }
+    if (description && description !== this.lastProgressLine) {
+      this.lastProgressLine = description;
+      progress(description);
+    }
+    for (const step of this.steps) {
+      if (step.status === "working") step.status = "done";
+    }
+    const existingIdx = this.steps.findIndex((s) => s.phase === phase);
+    if (existingIdx >= 0) {
+      const existing = this.steps[existingIdx];
+      existing.status = "working";
+      existing.title = description;
+      existing.attempts += 1;
+      existing.details = [];
+      existing.keyedDetails.clear();
+      this.steps.splice(existingIdx, 1);
+      this.steps.push(existing);
+    } else {
+      this.steps.push({
+        phase,
+        title: description,
+        status: "working",
+        details: [],
+        keyedDetails: /* @__PURE__ */ new Map(),
+        attempts: 1
+      });
+    }
+    await this.platform.reportPhase(phase, description, this.turn++);
+    await this.updatePrDescription();
+  }
+  async phaseDetail(phase, toolName, detail) {
+    const target = this.steps.findLast((s) => s.phase === phase) ?? this.steps.findLast((s) => s.status === "working");
+    if (target) {
+      target.details.push(detail);
+    }
+    await this.platform.reportDetail(phase, toolName, detail, this.turn);
+    await this.updatePrDescription();
+  }
+  /**
+   * Update a keyed detail in-place. If a detail with the same key exists,
+   * it is replaced rather than appended. Use this for poll-style updates
+   * (e.g. scan status) that would otherwise flood the PR description.
+   */
+  async phaseUpdateDetail(phase, key, detail) {
+    const current = this.steps.findLast((s) => s.status === "working");
+    if (current) {
+      current.keyedDetails.set(key, detail);
+    }
+    await this.updatePrDescription();
+  }
+  async phaseError(phase, error) {
+    for (const step of this.steps) {
+      if (step.status === "working") step.status = "done";
+    }
+    await this.platform.reportError(`Error in ${phase}: ${error}`);
+    await this.updatePrDescription();
+  }
+  /**
+   * Set the final findings summary table. Call this before the final "done"
+   * phase so the table appears at the bottom of the PR.
+   */
+  setFindingsSummary(findings) {
+    this.findingsSummary = findings;
+  }
+  /**
+   * Set the CodeQL → DAST validation summary table (validation run mode).
+   * Call before the final "done" phase so it renders at the bottom of the PR.
+   */
+  setValidationSummary(rows) {
+    this.validationSummary = rows;
+  }
+  async setScanTarget(app, url) {
+    this.scanTarget = { app, url };
+    await this.updatePrDescription();
+  }
+  async updatePrDescription() {
+    const lines = [];
+    if (this.scanTarget) {
+      lines.push(
+        `**Scan target:** \`${this.scanTarget.app}\`${this.scanTarget.url ? ` at ${this.scanTarget.url}` : ""}`
+      );
+      lines.push("");
+    }
+    for (const s of this.steps) {
+      const icon = s.status === "done" ? "\u2705" : s.status === "working" ? "\u{1F504}" : "\u2B1C";
+      const suffix = s.attempts > 1 ? `  _(${s.attempts} attempts)_` : "";
+      lines.push(`${icon} **${s.title}**${suffix}`);
+      if (s.status === "working") {
+        for (const d of s.details) {
+          lines.push(`   - ${d}`);
+        }
+        for (const d of s.keyedDetails.values()) {
+          lines.push(`   - ${d}`);
+        }
+      } else if (s.status === "done") {
+        const last = s.details[s.details.length - 1];
+        if (last) {
+          lines.push(`   - ${condenseDetail(last)}`);
+        }
+      }
+    }
+    if (this.findingsSummary.length > 0) {
+      lines.push("");
+      lines.push("### Findings");
+      lines.push("");
+      lines.push("| Severity | Vulnerability | Endpoint | Status |");
+      lines.push("|----------|--------------|----------|--------|");
+      for (const f of this.findingsSummary) {
+        const icon = f.status === "Fixed" ? "\u2705" : "\u{1F534}";
+        lines.push(
+          `| ${f.severity} | ${f.name} | \`${f.method} ${f.url}\` | ${icon} ${f.status} |`
+        );
+      }
+    }
+    if (this.validationSummary.length > 0) {
+      const validated = this.validationSummary.filter((r) => r.verdict === "validated").length;
+      const notValidated = this.validationSummary.filter(
+        (r) => r.verdict === "not-validated"
+      ).length;
+      const na = this.validationSummary.filter((r) => r.verdict === "n/a").length;
+      lines.push("");
+      lines.push("### CodeQL \u2192 DAST Validation");
+      lines.push("");
+      lines.push(
+        `**${validated}** validated \xB7 **${notValidated}** not validated \xB7 **${na}** N/A \u2014 of **${this.validationSummary.length}** CodeQL finding(s)`
+      );
+      lines.push("");
+      lines.push("| Severity | CodeQL Finding | Rule | Location | DAST Verdict |");
+      lines.push("|----------|----------------|------|----------|--------------|");
+      const verdictRank = { validated: 0, "not-validated": 1, "n/a": 2 };
+      const sevRank = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+      const sorted = [...this.validationSummary].sort((a, b) => {
+        const va = verdictRank[a.verdict] ?? 3;
+        const vb = verdictRank[b.verdict] ?? 3;
+        if (va !== vb) return va - vb;
+        return (sevRank[a.severity] ?? 4) - (sevRank[b.severity] ?? 4);
+      });
+      for (const r of sorted) {
+        const icon = r.verdict === "validated" ? "\u2705 Validated" : r.verdict === "not-validated" ? "\u26A0\uFE0F Not validated" : "\u2796 N/A";
+        lines.push(`| ${r.severity} | ${r.name} | \`${r.rule}\` | \`${r.location}\` | ${icon} |`);
+      }
+    }
+    await this.platform.reportPrDescription(`## \u{1F6E1}\uFE0F Bright Security Scan
+
+${lines.join("\n")}`);
+  }
+};
 
 // src/orchestrator.ts
 var MAX_ITERATIONS = 5;
@@ -36850,7 +36816,9 @@ var FINDING_TEST_RULES = [
 function addHint(hints, hint) {
   const compact = hint.replace(/\s+/g, " ").trim().slice(0, 900);
   if (!compact) return;
-  if (hints.some((existing) => existing === compact || existing.includes(compact) || compact.includes(existing))) {
+  if (hints.some(
+    (existing) => existing === compact || existing.includes(compact) || compact.includes(existing)
+  )) {
     return;
   }
   hints.push(compact);
@@ -37010,9 +36978,20 @@ async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig
     criticModel
   );
   if (!setupResult.completed && setupResult.infraRepairHint) {
-    console.log(`[Engine] First-run setup needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
-    await progress2.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
-    return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
+    console.log(
+      `[Engine] First-run setup needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`
+    );
+    await progress2.phaseDetail(
+      "first_run_setup",
+      "failed",
+      `Setup blocked: ${setupResult.summary}`
+    );
+    return {
+      ran: true,
+      completed: false,
+      summary: setupResult.summary,
+      infraRepairHint: setupResult.infraRepairHint
+    };
   }
   if (!setupResult.completed && modelSelector.escalate()) {
     console.log(`[Engine] First-run setup failed (${context}) \u2014 retrying with escalated model`);
@@ -37027,16 +37006,36 @@ async function runSetupIfNeeded(llm, repoPath, baseUrl, techStack, startupConfig
       criticModel
     );
     if (!setupResult.completed && setupResult.infraRepairHint) {
-      console.log(`[Engine] Escalated setup also needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`);
-      await progress2.phaseDetail("first_run_setup", "failed", `Setup blocked: ${setupResult.summary}`);
-      return { ran: true, completed: false, summary: setupResult.summary, infraRepairHint: setupResult.infraRepairHint };
+      console.log(
+        `[Engine] Escalated setup also needs infra repair (${context}): ${setupResult.infraRepairHint.slice(0, 200)}`
+      );
+      await progress2.phaseDetail(
+        "first_run_setup",
+        "failed",
+        `Setup blocked: ${setupResult.summary}`
+      );
+      return {
+        ran: true,
+        completed: false,
+        summary: setupResult.summary,
+        infraRepairHint: setupResult.infraRepairHint
+      };
     }
   }
   if (setupResult.completed) {
-    await progress2.phaseDetail("first_run_setup", "done", `Setup completed: ${setupResult.summary}`);
+    await progress2.phaseDetail(
+      "first_run_setup",
+      "done",
+      `Setup completed: ${setupResult.summary}`
+    );
     console.log(`[Engine] First-run setup completed (${context}): ${setupResult.summary}`);
     modelSelector.reset();
-    return { ran: true, completed: true, credentials: setupResult.credentials, summary: setupResult.summary };
+    return {
+      ran: true,
+      completed: true,
+      credentials: setupResult.credentials,
+      summary: setupResult.summary
+    };
   }
   console.warn(`[Engine] First-run setup failed (${context}): ${setupResult.summary}`);
   await progress2.phaseDetail("first_run_setup", "failed", `Setup failed: ${setupResult.summary}`);
@@ -37066,13 +37065,8 @@ async function runOrchestrator(ctx) {
   const activeScanIds = [];
   const pausedForThrottle = [];
   try {
-    await progress2.phaseStart(
-      "startup",
-      "Detecting tech stack and starting the application"
-    );
-    const techStack = await detectTechStack(
-      repoPath
-    );
+    await progress2.phaseStart("startup", "Detecting tech stack and starting the application");
+    const techStack = await detectTechStack(repoPath);
     await progress2.phaseDetail(
       "startup",
       "tech_stack",
@@ -37080,7 +37074,9 @@ async function runOrchestrator(ctx) {
     );
     loadedBrightStar = readBrightStar(repoPath);
     if (loadedBrightStar) {
-      console.log("[BrightStar] Found BRIGHT_STAR.md \u2014 pre-prepping pipeline from prior run memory");
+      console.log(
+        "[BrightStar] Found BRIGHT_STAR.md \u2014 pre-prepping pipeline from prior run memory"
+      );
       await progress2.phaseDetail(
         "startup",
         "brightstar",
@@ -37108,7 +37104,15 @@ async function runOrchestrator(ctx) {
         "ready",
         `Harness running with ${harnessResult.endpoints.length} endpoint(s) on port ${harnessResult.config.port}`
       );
-      return await runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+      return await runScanLoop(
+        ctx,
+        progress2,
+        techStack,
+        harnessResult,
+        allScanIds,
+        allFindings,
+        fixedKeys
+      );
     }
     if (!canBuildFromSource(repoPath)) {
       await progress2.phaseStart(
@@ -37132,7 +37136,7 @@ async function runOrchestrator(ctx) {
       const composeFile = findComposeFile(repoPath);
       if (composeFile) {
         try {
-          const { stripNonEssentialServices } = await import("./partial-boot-ZT6TQE5J.js");
+          const { stripNonEssentialServices } = await import("./partial-boot-6NFGES3G.js");
           const { strippedFile, removed } = stripNonEssentialServices(repoPath, composeFile);
           if (removed.length > 0) {
             console.log(`[Engine] Attempting partial boot without: ${removed.join(", ")}`);
@@ -37153,7 +37157,9 @@ async function runOrchestrator(ctx) {
               techStack,
               void 0,
               config.modelSelector,
-              [`[partial-boot] Non-essential services stripped: ${removed.join(", ")}. The app may 500 on routes that need these services \u2014 that's acceptable for DAST scanning.`]
+              [
+                `[partial-boot] Non-essential services stripped: ${removed.join(", ")}. The app may 500 on routes that need these services \u2014 that's acceptable for DAST scanning.`
+              ]
             );
             console.log("[Engine] Partial boot succeeded \u2014 proceeding with available routes");
             startup = partialStartup;
@@ -37182,7 +37188,15 @@ async function runOrchestrator(ctx) {
             "harness_ready",
             `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`
           );
-          return await runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+          return await runScanLoop(
+            ctx,
+            progress2,
+            techStack,
+            harnessResult,
+            allScanIds,
+            allFindings,
+            fixedKeys
+          );
         } catch (harnessErr) {
           console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
           throw startupErr;
@@ -37204,7 +37218,10 @@ async function runOrchestrator(ctx) {
       port: startupConfig.port,
       healthCheckPath: startupConfig.healthCheckPath,
       healthProbe: startupConfig.healthProbe,
-      onDeepProbe: () => startupConfig.healthProbe ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" }) : deepHealthCheck(
+      onDeepProbe: () => startupConfig.healthProbe ? Promise.resolve({
+        healthy: true,
+        reason: "custom startup health probe configured; skipping GET-only deep probe"
+      }) : deepHealthCheck(
         startupConfig.port,
         startupConfig.healthCheckPath ?? "/",
         llm,
@@ -37223,11 +37240,18 @@ async function runOrchestrator(ctx) {
           `[Recovery] Rate-limit related (attempt ${rateLimitRecoveryAttempts}/${MAX_RATE_LIMIT_RECOVERIES})${hint ? ` \u2014 ${hint.slice(0, 120)}` : ""}`
         );
         if (rateLimitRecoveryAttempts > MAX_RATE_LIMIT_RECOVERIES) {
-          console.warn("[Recovery] Max rate-limit recovery attempts reached \u2014 giving up (code-level fix needed)");
-          return { ok: false, detail: "rate-limit recovery exhausted \u2014 code-level throttle guard not removable by restart/replay" };
+          console.warn(
+            "[Recovery] Max rate-limit recovery attempts reached \u2014 giving up (code-level fix needed)"
+          );
+          return {
+            ok: false,
+            detail: "rate-limit recovery exhausted \u2014 code-level throttle guard not removable by restart/replay"
+          };
         }
         if (scanPrepReplayCommands.length > 0) {
-          console.log(`[Recovery] Replaying ${scanPrepReplayCommands.length} scan-prep command(s) before restart...`);
+          console.log(
+            `[Recovery] Replaying ${scanPrepReplayCommands.length} scan-prep command(s) before restart...`
+          );
           const { applied, failed } = replayScanPrep(repoPath, scanPrepReplayCommands);
           if (failed > 0) {
             console.warn(`[Recovery] Replay partial: ${applied} applied, ${failed} failed`);
@@ -37247,7 +37271,9 @@ async function runOrchestrator(ctx) {
             if (repairResult.completed && repairResult.replayCommands?.length) {
               scanPrepReplayCommands = [...scanPrepReplayCommands, ...repairResult.replayCommands];
             }
-            console.log(`[Recovery] LLM scan-prep repair: ${repairResult.completed ? "succeeded" : "failed"} \u2014 ${repairResult.summary}`);
+            console.log(
+              `[Recovery] LLM scan-prep repair: ${repairResult.completed ? "succeeded" : "failed"} \u2014 ${repairResult.summary}`
+            );
           } catch (repairErr) {
             console.warn(`[Recovery] LLM scan-prep repair threw: ${toErrorMessage(repairErr)}`);
           }
@@ -37255,7 +37281,10 @@ async function runOrchestrator(ctx) {
         const qr2 = await quickRestartCompose(repoPath, startupConfig);
         if (qr2.ok) {
           deepProbeCache.clear();
-          return { ok: true, detail: `rate-limit recovery (attempt ${rateLimitRecoveryAttempts}): replay + restart succeeded` };
+          return {
+            ok: true,
+            detail: `rate-limit recovery (attempt ${rateLimitRecoveryAttempts}): replay + restart succeeded`
+          };
         }
         return { ok: false, detail: qr2.diagnostics ?? "restart after rate-limit repair failed" };
       }
@@ -37272,13 +37301,14 @@ async function runOrchestrator(ctx) {
         }
         pausedForThrottle.push(...toPause);
       }
-      console.log(
-        `[Recovery] Quick compose restart${hint ? ` \u2014 hint: ${hint}` : ""}`
-      );
+      console.log(`[Recovery] Quick compose restart${hint ? ` \u2014 hint: ${hint}` : ""}`);
       const qr = await quickRestartCompose(repoPath, startupConfig);
       if (qr.ok) {
         deepProbeCache.clear();
-        return { ok: true, detail: `quick compose restart succeeded${shouldThrottle ? ` (throttled to ${activeScanIds.length - pausedForThrottle.length} concurrent scans)` : ""}` };
+        return {
+          ok: true,
+          detail: `quick compose restart succeeded${shouldThrottle ? ` (throttled to ${activeScanIds.length - pausedForThrottle.length} concurrent scans)` : ""}`
+        };
       }
       console.warn(
         `[Recovery] Quick restart failed \u2014 staying unhealthy for orchestrator to handle`
@@ -37289,10 +37319,7 @@ async function runOrchestrator(ctx) {
       return { ok: false, detail: qr.diagnostics ?? "quick restart failed" };
     });
     healthMonitor.start();
-    await progress2.phaseStart(
-      "setup",
-      "Setting up Bright security scanner and Repeater"
-    );
+    await progress2.phaseStart("setup", "Setting up Bright security scanner and Repeater");
     const projectId = config.brightProjectId;
     if (!projectId) {
       throw new Error(
@@ -37300,15 +37327,8 @@ async function runOrchestrator(ctx) {
       );
     }
     console.log(`[Setup] Using Bright project: ${projectId}`);
-    repeater = await setupRepeater(
-      projectId,
-      config
-    );
-    await progress2.phaseDetail(
-      "setup",
-      "repeater",
-      "Repeater connected"
-    );
+    repeater = await setupRepeater(projectId, config);
+    await progress2.phaseDetail("setup", "repeater", "Repeater connected");
     let setupCredentials;
     let setupCompleted = false;
     const MAX_SETUP_BOUNCEBACKS = 3;
@@ -37330,7 +37350,9 @@ async function runOrchestrator(ctx) {
         break;
       }
       if (!r.infraRepairHint || setupBounce >= MAX_SETUP_BOUNCEBACKS) break;
-      console.log(`[Engine] Setup infra bounce-back ${setupBounce + 1}/${MAX_SETUP_BOUNCEBACKS} \u2014 repairing infrastructure`);
+      console.log(
+        `[Engine] Setup infra bounce-back ${setupBounce + 1}/${MAX_SETUP_BOUNCEBACKS} \u2014 repairing infrastructure`
+      );
       console.log(`[Engine] Hint: ${r.infraRepairHint.slice(0, 200)}`);
       await progress2.phaseDetail(
         "first_run_setup",
@@ -37363,7 +37385,10 @@ async function runOrchestrator(ctx) {
           port: startupConfig.port,
           healthCheckPath: startupConfig.healthCheckPath,
           healthProbe: startupConfig.healthProbe,
-          onDeepProbe: () => startupConfig.healthProbe ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" }) : deepHealthCheck(
+          onDeepProbe: () => startupConfig.healthProbe ? Promise.resolve({
+            healthy: true,
+            reason: "custom startup health probe configured; skipping GET-only deep probe"
+          }) : deepHealthCheck(
             startupConfig.port,
             startupConfig.healthCheckPath ?? "/",
             llm,
@@ -37378,7 +37403,9 @@ async function runOrchestrator(ctx) {
           const isRateLimitIssue = isAuthRateLimitHint(hint);
           if (isRateLimitIssue && scanPrepReplayCommands.length > 0) {
             rateLimitRecoveryAttempts++;
-            console.log(`[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) \u2014 replaying scan-prep commands...`);
+            console.log(
+              `[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) \u2014 replaying scan-prep commands...`
+            );
             replayScanPrep(repoPath, scanPrepReplayCommands);
           }
           const qr = await quickRestartCompose(repoPath, startupConfig);
@@ -37417,7 +37444,9 @@ async function runOrchestrator(ctx) {
         config.modelSelector.current()
       );
       if (prepResult.failureKind === "verification_missing") {
-        console.warn("[Engine] Scan prep skipped mandatory POST verification \u2014 retrying targeted verification pass");
+        console.warn(
+          "[Engine] Scan prep skipped mandatory POST verification \u2014 retrying targeted verification pass"
+        );
         await progress2.phaseDetail("scan_prep", "verification_retry", prepResult.summary);
         prepResult = await prepareScanEnvironment(
           llm,
@@ -37445,7 +37474,9 @@ async function runOrchestrator(ctx) {
         await progress2.phaseDetail("scan_prep", "done", "No changes needed");
         addHint(authHints, "[scan-prep] Completed: no rate-limit/security-control changes needed.");
       } else if (prepResult.failureKind === "login_5xx" && config.runMode === "dynamic") {
-        console.warn(`[Engine] Scan prep found a crashing login endpoint \u2014 running durable source repair before auth`);
+        console.warn(
+          `[Engine] Scan prep found a crashing login endpoint \u2014 running durable source repair before auth`
+        );
         await progress2.phaseDetail("scan_prep", "login_repair", prepResult.summary);
         addHint(authHints, `[scan-prep] ${prepResult.summary}`);
         const repairHints = [
@@ -37471,7 +37502,10 @@ async function runOrchestrator(ctx) {
           port: startupConfig.port,
           healthCheckPath: startupConfig.healthCheckPath,
           healthProbe: startupConfig.healthProbe,
-          onDeepProbe: () => startupConfig.healthProbe ? Promise.resolve({ healthy: true, reason: "custom startup health probe configured; skipping GET-only deep probe" }) : deepHealthCheck(
+          onDeepProbe: () => startupConfig.healthProbe ? Promise.resolve({
+            healthy: true,
+            reason: "custom startup health probe configured; skipping GET-only deep probe"
+          }) : deepHealthCheck(
             startupConfig.port,
             startupConfig.healthCheckPath ?? "/",
             llm,
@@ -37486,7 +37520,9 @@ async function runOrchestrator(ctx) {
           const isRateLimitIssue = isAuthRateLimitHint(hint);
           if (isRateLimitIssue && scanPrepReplayCommands.length > 0) {
             rateLimitRecoveryAttempts++;
-            console.log(`[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) \u2014 replaying scan-prep commands...`);
+            console.log(
+              `[Recovery] Rate-limit recovery (attempt ${rateLimitRecoveryAttempts}) \u2014 replaying scan-prep commands...`
+            );
             replayScanPrep(repoPath, scanPrepReplayCommands);
           }
           const qr = await quickRestartCompose(repoPath, startupConfig);
@@ -37498,7 +37534,9 @@ async function runOrchestrator(ctx) {
         });
         healthMonitor.start();
       } else {
-        console.warn(`[Engine] Scan prep failed (${prepResult.failureKind ?? "unknown"}): ${prepResult.summary} \u2014 retrying with escalated model`);
+        console.warn(
+          `[Engine] Scan prep failed (${prepResult.failureKind ?? "unknown"}): ${prepResult.summary} \u2014 retrying with escalated model`
+        );
         await progress2.phaseDetail("scan_prep", "retry", prepResult.summary);
         config.modelSelector.escalate();
         const retryResult = await prepareScanEnvironment(
@@ -37519,7 +37557,9 @@ async function runOrchestrator(ctx) {
             addHint(authHints, `[scan-prep] ${change}`);
           }
         } else {
-          console.warn(`[Engine] Scan prep retry also failed: ${retryResult.summary} \u2014 continuing anyway`);
+          console.warn(
+            `[Engine] Scan prep retry also failed: ${retryResult.summary} \u2014 continuing anyway`
+          );
           await progress2.phaseDetail("scan_prep", "warning", retryResult.summary);
           addHint(authHints, `[scan-prep-warning] ${retryResult.summary}`);
         }
@@ -37578,7 +37618,9 @@ This user should work for authentication. Skip user registration/seeding and go 
       if (!authResult.authFailed || !authResult.infraRepairHint) break;
       bouncedBack = true;
       config.modelSelector.escalate();
-      console.log(`[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} \u2014 repairing infrastructure`);
+      console.log(
+        `[Engine] Auth infra bounce-back ${bounce}/${MAX_INFRA_BOUNCEBACKS} \u2014 repairing infrastructure`
+      );
       console.log(`[Engine] Hint: ${authResult.infraRepairHint.slice(0, 200)}`);
       await progress2.phaseDetail(
         "auth",
@@ -37587,7 +37629,9 @@ This user should work for authentication. Skip user registration/seeding and go 
       );
       try {
         if (isAuthRateLimitHint(authResult.infraRepairHint)) {
-          console.log("[Engine] Auth failure is rate-limit related \u2014 running targeted scan-prep repair instead of full startup rebuild");
+          console.log(
+            "[Engine] Auth failure is rate-limit related \u2014 running targeted scan-prep repair instead of full startup rebuild"
+          );
           await healthMonitor?.pause();
           const rateLimitRepair = await prepareScanEnvironment(
             llm,
@@ -37607,14 +37651,18 @@ This user should work for authentication. Skip user registration/seeding and go 
               ];
             }
           } else {
-            console.warn(`[Engine] Targeted rate-limit repair did not complete: ${rateLimitRepair.summary}`);
+            console.warn(
+              `[Engine] Targeted rate-limit repair did not complete: ${rateLimitRepair.summary}`
+            );
             await progress2.phaseDetail("auth", "rate_limit_repair_failed", rateLimitRepair.summary);
             addHint(authHints, `[auth-rate-limit-repair-failed] ${rateLimitRepair.summary}`);
           }
           if (startupConfig.docker) {
             const qr = await quickRestartCompose(repoPath, startupConfig, 9e4);
             if (!qr.ok) {
-              console.warn(`[Engine] Quick restart after rate-limit repair failed: ${qr.diagnostics ?? "unknown"}`);
+              console.warn(
+                `[Engine] Quick restart after rate-limit repair failed: ${qr.diagnostics ?? "unknown"}`
+              );
             }
           }
           const retryAuthResult2 = await detectAndConfigureAuth(
@@ -37633,7 +37681,9 @@ This user should work for authentication. Skip user registration/seeding and go 
           Object.assign(authResult, retryAuthResult2);
           authRegistration = authResult.registration;
           if (retryAuthResult2.authObjectId) {
-            console.log(`[Engine] Auth rate-limit repair ${bounce} succeeded: ${retryAuthResult2.authObjectId}`);
+            console.log(
+              `[Engine] Auth rate-limit repair ${bounce} succeeded: ${retryAuthResult2.authObjectId}`
+            );
             await progress2.phaseDetail(
               "auth",
               "auth_done",
@@ -37642,10 +37692,14 @@ This user should work for authentication. Skip user registration/seeding and go 
             break;
           }
           if (retryAuthResult2.infraRepairHint) {
-            console.warn(`[Engine] Auth still needs repair: ${retryAuthResult2.infraRepairHint.slice(0, 120)}`);
+            console.warn(
+              `[Engine] Auth still needs repair: ${retryAuthResult2.infraRepairHint.slice(0, 120)}`
+            );
             continue;
           }
-          console.error("[Engine] Auth still failed after targeted rate-limit repair (not infra-related)");
+          console.error(
+            "[Engine] Auth still failed after targeted rate-limit repair (not infra-related)"
+          );
           break;
         }
         const injected = injectEnvVarsFromHint(repoPath, authResult.infraRepairHint);
@@ -37656,7 +37710,9 @@ This user should work for authentication. Skip user registration/seeding and go 
         const appStillHealthy = await checkAppHealth(startupConfig.port, healthProbe);
         const hintIsSpecific = isSpecificInfraHint(authResult.infraRepairHint, injected.length);
         if (appStillHealthy && !hintIsSpecific) {
-          console.warn(`[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} \u2192 OK) and the hint is not evidence-backed. Skipping infrastructure teardown \u2014 problem is auth config, not infra.`);
+          console.warn(
+            `[Engine] Auth requested INFRA_REPAIR but app is healthy (GET ${typeof healthProbe === "string" ? healthProbe : healthProbe.path} \u2192 OK) and the hint is not evidence-backed. Skipping infrastructure teardown \u2014 problem is auth config, not infra.`
+          );
           await progress2.phaseDetail(
             "auth",
             "infra_repair_skipped",
@@ -37682,14 +37738,18 @@ This user should work for authentication. Skip user registration/seeding and go 
               authHints
             );
           } catch (retryErr) {
-            console.error(`[Engine] Auth retry after non-infra skip threw: ${toErrorMessage(retryErr)}`);
+            console.error(
+              `[Engine] Auth retry after non-infra skip threw: ${toErrorMessage(retryErr)}`
+            );
             break;
           }
           mergeHints(authHints, retryAuthResult2.authHints);
           Object.assign(authResult, retryAuthResult2);
           authRegistration = authResult.registration;
           if (retryAuthResult2.authObjectId) {
-            console.log(`[Engine] Auth recovered after non-infra retry on bounce ${bounce}: ${retryAuthResult2.authObjectId}`);
+            console.log(
+              `[Engine] Auth recovered after non-infra retry on bounce ${bounce}: ${retryAuthResult2.authObjectId}`
+            );
             await progress2.phaseDetail(
               "auth",
               "auth_done",
@@ -37772,7 +37832,9 @@ This user should work for authentication. Skip user registration/seeding and go 
             );
           }
         } catch (setupErr) {
-          console.warn(`[Engine] Setup re-run after bounce-back failed: ${toErrorMessage(setupErr)}`);
+          console.warn(
+            `[Engine] Setup re-run after bounce-back failed: ${toErrorMessage(setupErr)}`
+          );
         }
         const retryAuthResult = await detectAndConfigureAuth(
           llm,
@@ -37790,15 +37852,15 @@ This user should work for authentication. Skip user registration/seeding and go 
         Object.assign(authResult, retryAuthResult);
         authRegistration = authResult.registration;
         if (retryAuthResult.authObjectId) {
-          console.log(`[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`);
-          await progress2.phaseDetail(
-            "auth",
-            "auth_done",
-            "Auth configured (after infra repair)"
+          console.log(
+            `[Engine] Auth bounce-back ${bounce} succeeded: ${retryAuthResult.authObjectId}`
           );
+          await progress2.phaseDetail("auth", "auth_done", "Auth configured (after infra repair)");
           break;
         } else if (retryAuthResult.infraRepairHint) {
-          console.warn(`[Engine] Auth needs another infra repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`);
+          console.warn(
+            `[Engine] Auth needs another infra repair: ${retryAuthResult.infraRepairHint.slice(0, 120)}`
+          );
         } else {
           console.error("[Engine] Auth still failed after infra repair (not infra-related)");
           break;
@@ -37810,13 +37872,17 @@ This user should work for authentication. Skip user registration/seeding and go 
     }
     if (authResult.authFailed) {
       if (config.runMode === "dynamic") {
-        console.error("[Engine] Auth configuration failed \u2014 aborting (dynamic mode requires working auth)");
+        console.error(
+          "[Engine] Auth configuration failed \u2014 aborting (dynamic mode requires working auth)"
+        );
         await progress2.phaseDetail(
           "auth",
           "auth_failed",
           "Auth configuration failed \u2014 cannot scan without authentication in dynamic mode"
         );
-        throw new Error("Auth configuration failed: the application requires authentication but we could not configure it. Aborting.");
+        throw new Error(
+          "Auth configuration failed: the application requires authentication but we could not configure it. Aborting."
+        );
       } else {
         console.warn("[Engine] Auth configuration failed \u2014 falling back to function harness mode");
         await progress2.phaseDetail(
@@ -37833,7 +37899,15 @@ This user should work for authentication. Skip user registration/seeding and go 
             "harness_ready",
             `Function harness running with ${harnessResult.endpoints.length} endpoint(s)`
           );
-          return await runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds, allFindings, fixedKeys);
+          return await runScanLoop(
+            ctx,
+            progress2,
+            techStack,
+            harnessResult,
+            allScanIds,
+            allFindings,
+            fixedKeys
+          );
         } catch (harnessErr) {
           console.error(`[Engine] Function harness also failed: ${toErrorMessage(harnessErr)}`);
           await progress2.phaseStart(
@@ -37854,7 +37928,9 @@ This user should work for authentication. Skip user registration/seeding and go 
           const { applied, failed } = replayScanPrep(repoPath, scanPrepReplayCommands);
           console.log(`[ScanPrep] Post-bounce replay: ${applied} applied, ${failed} failed`);
         } else {
-          console.log("[Engine] Re-running scan-prep after bounce-back (no replay commands, using LLM)...");
+          console.log(
+            "[Engine] Re-running scan-prep after bounce-back (no replay commands, using LLM)..."
+          );
           const rePrepResult = await prepareScanEnvironment(
             llm,
             repoPath,
@@ -37863,13 +37939,17 @@ This user should work for authentication. Skip user registration/seeding and go 
             config.modelSelector.current()
           );
           if (rePrepResult.completed && rePrepResult.changes.length > 0) {
-            console.log(`[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`);
+            console.log(
+              `[ScanPrep] Post-bounce re-run: ${rePrepResult.changes.length} change(s) applied`
+            );
           } else {
             console.log("[ScanPrep] Post-bounce re-run: no changes needed");
           }
         }
       } catch (rePrepErr) {
-        console.warn(`[Engine] Post-bounce scan-prep error: ${toErrorMessage(rePrepErr)} \u2014 continuing anyway`);
+        console.warn(
+          `[Engine] Post-bounce scan-prep error: ${toErrorMessage(rePrepErr)} \u2014 continuing anyway`
+        );
       } finally {
         healthMonitor?.resume();
       }
@@ -37877,10 +37957,7 @@ This user should work for authentication. Skip user registration/seeding and go 
     const swaggerResult = await discoverEndpointsViaSwagger(baseUrl);
     let swaggerEndpoints = [];
     if (swaggerResult.source === "existing-spec" && swaggerResult.endpoints.length > 0) {
-      await progress2.phaseStart(
-        "swagger",
-        "Probing for OpenAPI/Swagger spec"
-      );
+      await progress2.phaseStart("swagger", "Probing for OpenAPI/Swagger spec");
       swaggerEndpoints = swaggerResult.endpoints;
       console.log(
         `[Swagger] Parsed ${swaggerEndpoints.length} endpoints from existing OpenAPI spec`
@@ -37893,10 +37970,7 @@ This user should work for authentication. Skip user registration/seeding and go 
     } else {
       console.log("[Swagger] No spec found \u2014 will rely on static analysis");
     }
-    await progress2.phaseStart(
-      "analyze",
-      "Analyzing source code for endpoints and parameters"
-    );
+    await progress2.phaseStart("analyze", "Analyzing source code for endpoints and parameters");
     let staticEndpoints = await discoverEndpoints(
       llm,
       repoPath,
@@ -37912,9 +37986,7 @@ This user should work for authentication. Skip user registration/seeding and go 
         config.modelSelector.current()
       );
     }
-    console.log(
-      `[Analyze] Discovered ${staticEndpoints.length} endpoints via static analysis`
-    );
+    console.log(`[Analyze] Discovered ${staticEndpoints.length} endpoints via static analysis`);
     let endpoints;
     if (swaggerEndpoints.length > 0) {
       endpoints = mergeSwaggerAndStaticEndpoints(swaggerEndpoints, staticEndpoints);
@@ -37933,36 +38005,29 @@ This user should work for authentication. Skip user registration/seeding and go 
       `${endpoints.length} endpoints (${swaggerEndpoints.length > 0 ? `${swaggerEndpoints.length} from spec + ${staticEndpoints.length} from code` : "static analysis"})`
     );
     if (endpoints.length === 0) {
-      await progress2.phaseStart(
-        "done",
-        "No HTTP endpoints found. Nothing to scan."
-      );
+      await progress2.phaseStart("done", "No HTTP endpoints found. Nothing to scan.");
       return;
     }
-    const contextSummary = buildContextSummary(techStack, startupConfig, endpoints, swaggerEndpoints.length);
-    await progress2.phaseStart(
-      "entrypoints",
-      "Registering API endpoints for scanning"
+    const contextSummary = buildContextSummary(
+      techStack,
+      startupConfig,
+      endpoints,
+      swaggerEndpoints.length
     );
+    await progress2.phaseStart("entrypoints", "Registering API endpoints for scanning");
     const safeEndpoints = endpoints.filter((ep) => {
       const method = ep.method.toUpperCase();
       const pathLower = ep.path.toLowerCase();
       if (method === "DELETE") {
-        console.log(
-          `[Entrypoints] Skipping destructive endpoint: ${ep.method} ${ep.path}`
-        );
+        console.log(`[Entrypoints] Skipping destructive endpoint: ${ep.method} ${ep.path}`);
         return false;
       }
       if ((method === "PUT" || method === "PATCH") && isUserMutationPath(pathLower)) {
-        console.log(
-          `[Entrypoints] Skipping user-mutation endpoint: ${ep.method} ${ep.path}`
-        );
+        console.log(`[Entrypoints] Skipping user-mutation endpoint: ${ep.method} ${ep.path}`);
         return false;
       }
       if (ep.body && hasCredentialFields(ep.body)) {
-        console.log(
-          `[Entrypoints] Skipping credential-mutating endpoint: ${ep.method} ${ep.path}`
-        );
+        console.log(`[Entrypoints] Skipping credential-mutating endpoint: ${ep.method} ${ep.path}`);
         return false;
       }
       return true;
@@ -37972,7 +38037,11 @@ This user should work for authentication. Skip user registration/seeding and go 
         `[Entrypoints] Excluded ${endpoints.length - safeEndpoints.length} risky endpoint(s)`
       );
     }
-    const resolvedEndpoints = await resolvePathParams(safeEndpoints, baseUrl, authResult.directAuthHeaders);
+    const resolvedEndpoints = await resolvePathParams(
+      safeEndpoints,
+      baseUrl,
+      authResult.directAuthHeaders
+    );
     let registered = await registerEntrypoints(
       config,
       projectId,
@@ -37991,27 +38060,15 @@ This user should work for authentication. Skip user registration/seeding and go 
       console.log(
         `[Entrypoints] Verifying auth on ${registered.length} registered entrypoint(s)...`
       );
-      const check = await verifyEntrypointAuth(
-        config,
-        projectId,
-        registered[0].entrypointId
-      );
+      const check = await verifyEntrypointAuth(config, projectId, registered[0].entrypointId);
       if (check.ok) {
-        console.log(
-          `[Entrypoints] \u2713 Auth verification passed \u2014 ${check.detail}`
-        );
+        console.log(`[Entrypoints] \u2713 Auth verification passed \u2014 ${check.detail}`);
       } else {
-        console.warn(
-          `[Entrypoints] \u2717 Auth verification failed \u2014 ${check.detail}`
-        );
+        console.warn(`[Entrypoints] \u2717 Auth verification failed \u2014 ${check.detail}`);
       }
     }
     if (registered.length > 0) {
-      registered = await pruneDeadEntrypoints(
-        config,
-        projectId,
-        registered
-      );
+      registered = await pruneDeadEntrypoints(config, projectId, registered);
       await progress2.phaseDetail(
         "entrypoints",
         "pruned",
@@ -38034,19 +38091,10 @@ This user should work for authentication. Skip user registration/seeding and go 
     runMemory.setupCredentials = setupCredentials;
     runMemory.scanPrepReplayCommands = scanPrepReplayCommands;
     if (config.runMode === "validation") {
-      await runValidationFlow(
-        ctx,
-        progress2,
-        projectId,
-        repeater.repeaterId,
-        registered
-      );
+      await runValidationFlow(ctx, progress2, projectId, repeater.repeaterId, registered);
       return;
     }
-    await progress2.phaseStart(
-      "test_selection",
-      "Selecting relevant security tests per endpoint"
-    );
+    await progress2.phaseStart("test_selection", "Selecting relevant security tests per endpoint");
     const scanGroups = await selectTestsPerEndpoint(
       llm,
       config,
@@ -38078,7 +38126,18 @@ This user should work for authentication. Skip user registration/seeding and go 
         );
         if (!authOk) {
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
+            const restart = await restartApp(
+              appProcess,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              void 0,
+              healthMonitor,
+              authResult.seedCommands
+            );
             appProcess = restart.process;
             const retryOk = await verifyAndRepairAuth(
               llm,
@@ -38112,13 +38171,27 @@ This user should work for authentication. Skip user registration/seeding and go 
           }
         }
       }
-      const appAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
+      const appAlive = await checkAppHealth(
+        startupConfig.port,
+        startupConfig.healthProbe ?? startupConfig.healthCheckPath
+      );
       if (!appAlive) {
         console.warn(
           `[Scan] App is unreachable on port ${startupConfig.port} \u2014 restarting before scan`
         );
         try {
-          const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
+          const restart = await restartApp(
+            appProcess,
+            llm,
+            repoPath,
+            techStack,
+            startupConfig,
+            config.modelSelector,
+            authResult.registration,
+            void 0,
+            healthMonitor,
+            authResult.seedCommands
+          );
           appProcess = restart.process;
           console.log("[Scan] App restarted successfully");
         } catch (err) {
@@ -38145,14 +38218,10 @@ This user should work for authentication. Skip user registration/seeding and go 
       try {
         const deep = await healthMonitor.verifyDeepHealth();
         if (!deep.healthy) {
-          console.warn(
-            `[Scan] Deep health check still unhealthy after recovery: ${deep.reason}`
-          );
+          console.warn(`[Scan] Deep health check still unhealthy after recovery: ${deep.reason}`);
         }
       } catch (err) {
-        console.warn(
-          `[Scan] Deep health check errored (continuing): ${toErrorMessage(err)}`
-        );
+        console.warn(`[Scan] Deep health check errored (continuing): ${toErrorMessage(err)}`);
       }
       const scanIds = [];
       if (useTargetedValidation) {
@@ -38163,7 +38232,9 @@ This user should work for authentication. Skip user registration/seeding and go 
       for (const [gi, group] of roundScanGroups.entries()) {
         if (gi > 0) {
           const jitterMs = useTargetedValidation ? 5e3 + Math.floor(Math.random() * 5e3) : 3e4 + Math.floor(Math.random() * 3e4);
-          console.log(`[Scan] Waiting ${Math.round(jitterMs / 1e3)}s before launching ${useTargetedValidation ? "validation scan" : "group"} ${gi + 1}...`);
+          console.log(
+            `[Scan] Waiting ${Math.round(jitterMs / 1e3)}s before launching ${useTargetedValidation ? "validation scan" : "group"} ${gi + 1}...`
+          );
           await sleep(jitterMs);
         }
         try {
@@ -38185,23 +38256,16 @@ This user should work for authentication. Skip user registration/seeding and go 
             `${useTargetedValidation ? "Validation" : "Group"} ${gi + 1}: ${group.entrypointIds.length} endpoints \xB7 tests: ${group.tests.join(", ")}`
           );
         } catch (err) {
-          console.error(
-            `[Scan] Failed to start scan for group ${gi + 1}: ${err}`
-          );
+          console.error(`[Scan] Failed to start scan for group ${gi + 1}: ${err}`);
         }
       }
       if (scanIds.length === 0) {
-        await progress2.phaseStart(
-          "scan_error",
-          "All scan launches failed. Check Bright API logs."
-        );
+        await progress2.phaseStart("scan_error", "All scan launches failed. Check Bright API logs.");
         break;
       }
       const scanResults = await Promise.allSettled(
         scanIds.map(async (scanId, si) => {
-          console.log(
-            `[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`
-          );
+          console.log(`[Scan] Waiting for scan ${si + 1}/${scanIds.length}: ${scanId}`);
           const finalStatus = await waitForScanCompletion(
             config,
             scanId,
@@ -38220,14 +38284,10 @@ This user should work for authentication. Skip user registration/seeding and go 
       for (const [si, result] of scanResults.entries()) {
         const sid = scanIds[si];
         if (result.status === "rejected") {
-          console.error(
-            `[Scan] Error waiting for scan ${sid}: ${result.reason}`
-          );
+          console.error(`[Scan] Error waiting for scan ${sid}: ${result.reason}`);
           failedScanDetails.push(`${sid} (wait error)`);
         } else if (isFailureStatus(result.value)) {
-          console.error(
-            `[Scan] Scan ${sid} ended with status: ${result.value}`
-          );
+          console.error(`[Scan] Scan ${sid} ended with status: ${result.value}`);
           failedScanDetails.push(`${sid} (${result.value})`);
         } else {
           succeededScanIds.push(sid);
@@ -38237,7 +38297,9 @@ This user should work for authentication. Skip user registration/seeding and go 
       const failedCount = failedScanDetails.length;
       activeScanIds.length = 0;
       if (pausedForThrottle.length > 0) {
-        console.log(`[Scan] Resuming ${pausedForThrottle.length} throttled scan(s) now that the first batch completed`);
+        console.log(
+          `[Scan] Resuming ${pausedForThrottle.length} throttled scan(s) now that the first batch completed`
+        );
         for (const sid of pausedForThrottle) {
           await setScanLifecycle(config, sid, "resume").catch(() => {
           });
@@ -38247,17 +38309,29 @@ This user should work for authentication. Skip user registration/seeding and go 
         healthFlapCount = 0;
       }
       if (failedCount > 0 && succeededScanIds.length === 0) {
-        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
+        const stillAlive = await checkAppHealth(
+          startupConfig.port,
+          startupConfig.healthProbe ?? startupConfig.healthCheckPath
+        );
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart and retry"
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
-            appProcess = restart.process;
-            console.log(
-              "[Scan] App restarted \u2014 will retry scans on next iteration"
+            const restart = await restartApp(
+              appProcess,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              void 0,
+              healthMonitor,
+              authResult.seedCommands
             );
+            appProcess = restart.process;
+            console.log("[Scan] App restarted \u2014 will retry scans on next iteration");
             await progress2.phaseDetail(
               "scan",
               "app_restart",
@@ -38265,9 +38339,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             );
             continue;
           } catch (restartErr) {
-            console.error(
-              `[Scan] Failed to restart app after crash: ${restartErr}`
-            );
+            console.error(`[Scan] Failed to restart app after crash: ${restartErr}`);
             await progress2.phaseStart(
               "scan_error",
               `Application crashed during round ${iteration + 1} and could not be restarted.`
@@ -38290,13 +38362,27 @@ This user should work for authentication. Skip user registration/seeding and go 
           "partial_failure",
           `Round ${iteration + 1}: ${failedCount}/${totalScans} scan(s) failed \u2014 continuing with findings from ${succeededScanIds.length} successful scan(s).`
         );
-        const stillAlive = await checkAppHealth(startupConfig.port, startupConfig.healthProbe ?? startupConfig.healthCheckPath);
+        const stillAlive = await checkAppHealth(
+          startupConfig.port,
+          startupConfig.healthProbe ?? startupConfig.healthCheckPath
+        );
         if (!stillAlive) {
           console.warn(
             "[Scan] App appears to have crashed during scanning \u2014 attempting restart before processing findings"
           );
           try {
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
+            const restart = await restartApp(
+              appProcess,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              void 0,
+              healthMonitor,
+              authResult.seedCommands
+            );
             appProcess = restart.process;
             console.log("[Scan] App restarted");
           } catch (restartErr) {
@@ -38306,10 +38392,7 @@ This user should work for authentication. Skip user registration/seeding and go 
           }
         }
       }
-      const findings = await fetchFindings(
-        config,
-        succeededScanIds
-      );
+      const findings = await fetchFindings(config, succeededScanIds);
       const sevSummary = buildSeveritySummary(findings);
       let roundFixedCount = 0;
       if (iteration > 0) {
@@ -38404,9 +38487,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             contextSummary
           );
         } catch (err) {
-          console.error(
-            `[Fix] Failed to generate fix for ${finding.name}: ${err}`
-          );
+          console.error(`[Fix] Failed to generate fix for ${finding.name}: ${err}`);
           skippedCount++;
           continue;
         }
@@ -38422,11 +38503,13 @@ This user should work for authentication. Skip user registration/seeding and go 
           (f) => f.files.some((fp) => AUTH_FILE_PATTERN.test(fp.path))
         );
         if (touchedAuthFile && authResult.hasAuth && authResult.authObjectId && startupConfig.docker) {
-          console.log(`[Fix] Fix touches auth-related file(s) \u2014 smoke-testing auth before commit...`);
+          console.log(
+            `[Fix] Fix touches auth-related file(s) \u2014 smoke-testing auth before commit...`
+          );
           try {
             const qr = await quickRestartCompose(repoPath, startupConfig, 6e4);
             if (qr.ok) {
-              const { testAuthObject: testAuthObject2 } = await import("./auth-2CEKWBYL.js");
+              const { testAuthObject: testAuthObject2 } = await import("./auth-R5634QUM.js");
               const authCheck = await testAuthObject2(config, authResult.authObjectId);
               if (!authCheck.passed) {
                 console.warn(
@@ -38443,14 +38526,13 @@ This user should work for authentication. Skip user registration/seeding and go 
               console.log(`[Fix] Auth smoke-test passed \u2014 safe to commit`);
             }
           } catch (authCheckErr) {
-            console.warn(`[Fix] Auth smoke-test error: ${toErrorMessage(authCheckErr)} \u2014 proceeding with commit`);
+            console.warn(
+              `[Fix] Auth smoke-test error: ${toErrorMessage(authCheckErr)} \u2014 proceeding with commit`
+            );
           }
         }
         try {
-          gitCommitAndPush(
-            repoPath,
-            `fix: ${finding.severity.toLowerCase()} \u2014 ${finding.name}`
-          );
+          gitCommitAndPush(repoPath, `fix: ${finding.severity.toLowerCase()} \u2014 ${finding.name}`);
           fixCommitCount.value++;
           console.log(`[Fix] Committed fix for ${finding.name}`);
         } catch (err) {
@@ -38466,11 +38548,11 @@ This user should work for authentication. Skip user registration/seeding and go 
             const composeFileMatch = startupConfig.command.match(/-f\s+(\S+)/);
             const composeFile = composeFileMatch?.[1] ?? "compose.yml";
             try {
-              execFileSync4(
-                "docker",
-                ["compose", "-f", composeFile, "up", "-d", "--build"],
-                { cwd: repoPath, stdio: "pipe", timeout: 3e5 }
-              );
+              execFileSync4("docker", ["compose", "-f", composeFile, "up", "-d", "--build"], {
+                cwd: repoPath,
+                stdio: "pipe",
+                timeout: 3e5
+              });
               const probe = startupConfig.healthProbe ?? startupConfig.healthCheckPath ?? "/";
               if (await checkAppHealth(startupConfig.port, probe)) {
                 console.log("[Fix] App healthy after incremental rebuild");
@@ -38481,8 +38563,21 @@ This user should work for authentication. Skip user registration/seeding and go 
             }
           }
           if (!healthy) {
-            console.log("[Fix] Incremental rebuild failed \u2014 falling back to full startApplicationWithRetries");
-            const restart = await restartApp(appProcess, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
+            console.log(
+              "[Fix] Incremental rebuild failed \u2014 falling back to full startApplicationWithRetries"
+            );
+            const restart = await restartApp(
+              appProcess,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              void 0,
+              healthMonitor,
+              authResult.seedCommands
+            );
             appProcess = restart.process;
             healthy = true;
           }
@@ -38503,20 +38598,39 @@ This user should work for authentication. Skip user registration/seeding and go 
             config.modelSelector
           );
           if (healthy) {
-            const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
+            const restart = await restartApp(
+              void 0,
+              llm,
+              repoPath,
+              techStack,
+              startupConfig,
+              config.modelSelector,
+              authResult.registration,
+              void 0,
+              healthMonitor,
+              authResult.seedCommands
+            );
             appProcess = restart.process;
           } else {
-            console.log(
-              `[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`
-            );
+            console.log(`[Fix] Reverting all ${fixCommitCount.value} fix commits from this round`);
             try {
-              execFileSync4(
-                "git",
-                ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`],
-                { cwd: repoPath, stdio: "pipe" }
-              );
+              execFileSync4("git", ["revert", "--no-edit", `HEAD~${fixCommitCount.value}..HEAD`], {
+                cwd: repoPath,
+                stdio: "pipe"
+              });
               execFileSync4("git", ["push"], { cwd: repoPath, stdio: "pipe" });
-              const restart = await restartApp(void 0, llm, repoPath, techStack, startupConfig, config.modelSelector, authResult.registration, void 0, healthMonitor, authResult.seedCommands);
+              const restart = await restartApp(
+                void 0,
+                llm,
+                repoPath,
+                techStack,
+                startupConfig,
+                config.modelSelector,
+                authResult.registration,
+                void 0,
+                healthMonitor,
+                authResult.seedCommands
+              );
               appProcess = restart.process;
             } catch {
               console.error("[Fix] Could not recover \u2014 aborting fix round");
@@ -38534,9 +38648,7 @@ This user should work for authentication. Skip user registration/seeding and go 
             config.modelSelector.current()
           );
           if (!authOk) {
-            console.warn(
-              "[Fix] Auth broken after fixes \u2014 will attempt repair on next round"
-            );
+            console.warn("[Fix] Auth broken after fixes \u2014 will attempt repair on next round");
           }
         }
       }
@@ -38576,15 +38688,9 @@ This user should work for authentication. Skip user registration/seeding and go 
     if (healthMonitor) healthMonitor.stop();
     await killProcess(appProcess);
     await repeater?.stop();
-    await stopRunningScans(
-      config,
-      allScanIds
-    );
+    await stopRunningScans(config, allScanIds);
     if (repeater?.repeaterId) {
-      await deleteRepeater(
-        config,
-        repeater.repeaterId
-      );
+      await deleteRepeater(config, repeater.repeaterId);
     }
     if (harnessResult) {
       cleanupHarnessInfra(repoPath);
@@ -38593,10 +38699,7 @@ This user should work for authentication. Skip user registration/seeding and go 
 }
 async function runValidationFlow(ctx, progress2, projectId, repeaterId, registered) {
   const { llm, config } = ctx;
-  await progress2.phaseStart(
-    "validation",
-    "Validating CodeQL findings against live DAST scans"
-  );
+  await progress2.phaseStart("validation", "Validating CodeQL findings against live DAST scans");
   if (!config.sarifPath) {
     await progress2.phaseStart("done", "Validation mode requires SARIF_PATH.");
     return;
@@ -38608,7 +38711,9 @@ async function runValidationFlow(ctx, progress2, projectId, repeaterId, register
     catalog = await listTests(config);
     await resolveBrightTests(llm, sarifFindings, catalog, config.modelSelector.current());
   } catch (err) {
-    console.warn(`[Validation] Test-catalog mapping failed, using static map: ${toErrorMessage(err)}`);
+    console.warn(
+      `[Validation] Test-catalog mapping failed, using static map: ${toErrorMessage(err)}`
+    );
   }
   const mappableCount = sarifFindings.filter((f) => f.brightTest !== null).length;
   console.log(
@@ -38632,10 +38737,7 @@ async function runValidationFlow(ctx, progress2, projectId, repeaterId, register
     `Mapped ${mapped.length} finding(s) to endpoints`
   );
   const hasPathParams = registered.some((r) => /[{:]/.test(r.endpoint.path));
-  await progress2.phaseStart(
-    "scan",
-    "Running targeted DAST scans for mapped findings"
-  );
+  await progress2.phaseStart("scan", "Running targeted DAST scans for mapped findings");
   const results = await runValidationScans(
     config,
     projectId,
@@ -38665,10 +38767,7 @@ async function runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds,
   }
   const baseUrl = `http://localhost:${harnessResult.config.port}`;
   await progress2.phaseStart("setup", "Setting up Bright Repeater for harness scan");
-  const repeater = await setupRepeater(
-    projectId,
-    config
-  );
+  const repeater = await setupRepeater(projectId, config);
   await progress2.phaseDetail("setup", "repeater", "Repeater connected");
   try {
     await progress2.phaseStart("entrypoints", "Registering harness endpoints");
@@ -38716,7 +38815,9 @@ async function runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds,
     for (const [gi, group] of scanGroups.entries()) {
       if (gi > 0) {
         const jitterMs = 3e4 + Math.floor(Math.random() * 3e4);
-        console.log(`[Scan] Waiting ${Math.round(jitterMs / 1e3)}s before launching harness group ${gi + 1}...`);
+        console.log(
+          `[Scan] Waiting ${Math.round(jitterMs / 1e3)}s before launching harness group ${gi + 1}...`
+        );
         await sleep(jitterMs);
       }
       try {
@@ -38747,13 +38848,9 @@ async function runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds,
     const scanResults = await Promise.allSettled(
       scanIds.map(async (scanId, si) => {
         console.log(`[Scan] Waiting for harness scan ${si + 1}/${scanIds.length}: ${scanId}`);
-        return await waitForScanCompletion(
-          config,
-          scanId,
-          (status, issues) => {
-            console.log(`[Scan] Harness scan ${si + 1}: ${status} \u2014 ${issues} issue(s)`);
-          }
-        );
+        return await waitForScanCompletion(config, scanId, (status, issues) => {
+          console.log(`[Scan] Harness scan ${si + 1}: ${status} \u2014 ${issues} issue(s)`);
+        });
       })
     );
     const succeededScanIds = [];
@@ -38781,16 +38878,10 @@ async function runScanLoop(ctx, progress2, techStack, harnessResult, allScanIds,
       );
     }
     if (succeededScanIds.length === 0) {
-      await progress2.phaseStart(
-        "scan_error",
-        `All ${scanIds.length} harness scan(s) failed.`
-      );
+      await progress2.phaseStart("scan_error", `All ${scanIds.length} harness scan(s) failed.`);
       return;
     }
-    const findings = await fetchFindings(
-      config,
-      succeededScanIds
-    );
+    const findings = await fetchFindings(config, succeededScanIds);
     const sevSummary = buildSeveritySummary(findings);
     await progress2.phaseDetail(
       "scan",
@@ -38911,7 +39002,9 @@ function killProcess(proc) {
 }
 function isAuthRateLimitHint(hint) {
   if (!hint) return false;
-  return /\b(?:429|too\s*many\s*requests|rate[-\s]?limit|rate\s*limiting|throttle|throttling|brute|lockout|login attempt)\b/i.test(hint);
+  return /\b(?:429|too\s*many\s*requests|rate[-\s]?limit|rate\s*limiting|throttle|throttling|brute|lockout|login attempt)\b/i.test(
+    hint
+  );
 }
 async function stopRunningScans(api, scanIds) {
   if (scanIds.length === 0) return;
@@ -38941,9 +39034,7 @@ async function stopRunningScans(api, scanIds) {
       if (stopRes.ok) {
         console.log(`[Cleanup] Scan ${scanId} stopped`);
       } else {
-        console.warn(
-          `[Cleanup] Failed to stop scan ${scanId}: ${stopRes.status}`
-        );
+        console.warn(`[Cleanup] Failed to stop scan ${scanId}: ${stopRes.status}`);
       }
     })
   );
@@ -38965,9 +39056,7 @@ async function deleteRepeater(api, repeaterId) {
     if (res.ok || res.status === 204) {
       console.log("[Cleanup] Repeater deleted");
     } else {
-      console.warn(
-        `[Cleanup] Failed to delete repeater: ${res.status} ${res.statusText}`
-      );
+      console.warn(`[Cleanup] Failed to delete repeater: ${res.status} ${res.statusText}`);
     }
   } catch (err) {
     console.error(`[Cleanup] Failed to delete repeater: ${err}`);
@@ -38975,17 +39064,12 @@ async function deleteRepeater(api, repeaterId) {
 }
 var MAX_AUTH_REPAIR_ATTEMPTS = 3;
 async function verifyAndRepairAuth(llm, repoPath, techStack, authObjectId, api, allFixes, model) {
-  const testResult = await testAuthObject(
-    api,
-    authObjectId
-  );
+  const testResult = await testAuthObject(api, authObjectId);
   if (testResult.passed) {
     console.log("[Auth] Pre-scan auth verification passed");
     return true;
   }
-  console.warn(
-    `[Auth] Pre-scan auth verification FAILED: ${testResult.summary}`
-  );
+  console.warn(`[Auth] Pre-scan auth verification FAILED: ${testResult.summary}`);
   const handleTool = createToolHandler(repoPath);
   const stackStr = formatTechStack(techStack);
   const recentFixes = allFixes.slice(-10).map(
@@ -39047,13 +39131,7 @@ Respond with a JSON array of corrected files:
 If no code change is needed (e.g. the issue is transient), respond with an empty array: \`[]\``
         }
       ];
-      const response = await chatWithTools(
-        llm,
-        messages,
-        codebaseTools,
-        handleTool,
-        model
-      );
+      const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
       const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
       const parsed = JSON.parse(jsonStr);
       const files = Array.isArray(parsed) ? parsed : [];
@@ -39080,25 +39158,17 @@ If no code change is needed (e.g. the issue is transient), respond with an empty
           }
         ]);
         try {
-          gitCommitAndPush(
-            repoPath,
-            `fix: repair broken authentication (attempt ${attempt})`
-          );
+          gitCommitAndPush(repoPath, `fix: repair broken authentication (attempt ${attempt})`);
         } catch {
         }
         await new Promise((r) => setTimeout(r, 3e3));
       }
-      const retest = await testAuthObject(
-        api,
-        authObjectId
-      );
+      const retest = await testAuthObject(api, authObjectId);
       if (retest.passed) {
         console.log(`[Auth] Auth repaired on attempt ${attempt}`);
         return true;
       }
-      console.warn(
-        `[Auth] Auth still failing after repair attempt ${attempt}: ${retest.summary}`
-      );
+      console.warn(`[Auth] Auth still failing after repair attempt ${attempt}: ${retest.summary}`);
     } catch (err) {
       console.error(`[Auth] Auth repair attempt ${attempt} failed: ${err}`);
     }
@@ -39122,10 +39192,7 @@ async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfi
         applyFixes(repoPath, repairFixes);
         allFixes.push(...repairFixes);
         try {
-          gitCommitAndPush(
-            repoPath,
-            `fix: repair broken fix (attempt ${repair + 1})`
-          );
+          gitCommitAndPush(repoPath, `fix: repair broken fix (attempt ${repair + 1})`);
         } catch {
         }
       }
@@ -39194,9 +39261,7 @@ async function bisectAndRevertBrokenFixes(llm, repoPath, techStack, startupConfi
       console.log(`[Fix] App recovered after reverting ${i + 1} commit(s)`);
       return true;
     } catch {
-      console.log(
-        `[Fix] Still broken after reverting ${i + 1} commit(s), continuing bisect...`
-      );
+      console.log(`[Fix] Still broken after reverting ${i + 1} commit(s), continuing bisect...`);
     }
   }
   return false;
@@ -39212,19 +39277,18 @@ async function diagnoseAndRepairBrokenFix(llm, repoPath, techStack, containerLog
   let gitStatus = "";
   try {
     const commitCount = appliedFixes.length;
-    gitDiff = execFileSync4(
-      "git",
-      ["diff", `HEAD~${commitCount}`, "--stat", "--patch"],
-      { cwd: repoPath, encoding: "utf-8", maxBuffer: 50 * 1024 }
-    ).slice(0, 6e3);
+    gitDiff = execFileSync4("git", ["diff", `HEAD~${commitCount}`, "--stat", "--patch"], {
+      cwd: repoPath,
+      encoding: "utf-8",
+      maxBuffer: 50 * 1024
+    }).slice(0, 6e3);
   } catch {
   }
   try {
-    gitStatus = execFileSync4(
-      "git",
-      ["status", "--short"],
-      { cwd: repoPath, encoding: "utf-8" }
-    ).slice(0, 2e3);
+    gitStatus = execFileSync4("git", ["status", "--short"], {
+      cwd: repoPath,
+      encoding: "utf-8"
+    }).slice(0, 2e3);
   } catch {
   }
   const messages = [
@@ -39281,13 +39345,7 @@ Respond with a JSON array of file fixes:
 \`\`\``
     }
   ];
-  const response = await chatWithTools(
-    llm,
-    messages,
-    codebaseTools,
-    handleTool,
-    model
-  );
+  const response = await chatWithTools(llm, messages, codebaseTools, handleTool, model);
   try {
     const jsonStr = response.match(/```(?:json)?\s*\n?([\s\S]*?)```/)?.[1] ?? response;
     const parsed = JSON.parse(jsonStr);
@@ -39411,11 +39469,7 @@ async function main() {
   console.log(`[Engine] Cloned to: ${repoPath}`);
   await platform.initPr(repoPath);
   const inferenceToken = process.env.OPENAI_API_KEY ?? process.env.INFERENCE_TOKEN ?? "";
-  const llm = createInferenceClient(
-    config.inferenceUrl,
-    inferenceToken,
-    config.inferenceProvider
-  );
+  const llm = createInferenceClient(config.inferenceUrl, inferenceToken, config.inferenceProvider);
   await validateModelTiers(llm, config.modelSelector, config.inferenceProvider);
   const ctx = {
     repoPath,
@@ -39429,9 +39483,7 @@ async function main() {
     const msg = toErrorMessage(err);
     console.error(`[Engine] Orchestrator failed: ${msg}`);
     const logPath2 = logger.logFilePath();
-    logger.error(
-      `Security scan did not complete${logPath2 ? ` \u2014 details in ${logPath2}` : ""}.`
-    );
+    logger.error(`Security scan did not complete${logPath2 ? ` \u2014 details in ${logPath2}` : ""}.`);
     await platform.reportError(`Security scan failed: ${msg}`);
   }
   gitFinalizeChanges(repoPath, "fix: Bright security scan remediations");

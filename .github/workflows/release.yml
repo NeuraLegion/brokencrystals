@@ -28,12 +28,12 @@ jobs:
             name: bright-agent-darwin-arm64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # 1. Build & verify the JS bundle with Node (typecheck + tests + tsup).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - name: Typecheck, test, bundle
@@ -60,7 +60,7 @@ jobs:
 
       # 3. Attach the binary (+ checksum) to the release for this tag.
       - name: Attach to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             ${{ matrix.name }}

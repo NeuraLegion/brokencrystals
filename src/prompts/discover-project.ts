@@ -5,9 +5,7 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat/completio
  * The LLM explores the codebase to identify infrastructure requirements
  * BEFORE Dockerfile/compose generation, saving infra-repair iterations.
  */
-export function discoverProjectPrompt(
-  techStack: string,
-): ChatCompletionMessageParam[] {
+export function discoverProjectPrompt(techStack: string): ChatCompletionMessageParam[] {
   return [
     {
       role: "system",

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { extractParamsFromCode } from "../phases/analyze.js";
 import type { DiscoveredEndpoint } from "../types.js";
 
@@ -25,13 +25,17 @@ describe("extractParamsFromCode — NestJS @Query", () => {
     const code = `
       foo(@Query("a") a, @Query(\`b\`) b) {}
     `;
-    const names = extractParamsFromCode(code, ep("c.ts"))?.queryParams?.map((q) => q.name).sort();
+    const names = extractParamsFromCode(code, ep("c.ts"))
+      ?.queryParams?.map((q) => q.name)
+      .sort();
     expect(names).toEqual(["a", "b"]);
   });
 
   it("still extracts Express-style req.query params", () => {
     const code = `app.get('/x', (req, res) => { const p = req.query.path; const t = req.query["type"]; });`;
-    const names = extractParamsFromCode(code, ep("routes.js"))?.queryParams?.map((q) => q.name).sort();
+    const names = extractParamsFromCode(code, ep("routes.js"))
+      ?.queryParams?.map((q) => q.name)
+      .sort();
     expect(names).toEqual(["path", "type"]);
   });
 
@@ -40,7 +44,9 @@ describe("extractParamsFromCode — NestJS @Query", () => {
       const p = req.query.path;
       @Query('path') @Query('extra')
     `;
-    const names = extractParamsFromCode(code, ep("m.ts"))?.queryParams?.map((q) => q.name).sort();
+    const names = extractParamsFromCode(code, ep("m.ts"))
+      ?.queryParams?.map((q) => q.name)
+      .sort();
     expect(names).toEqual(["extra", "path"]);
   });
 

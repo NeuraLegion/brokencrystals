@@ -1,16 +1,11 @@
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import type OpenAI from "openai";
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { resolve, dirname, basename } from "path";
-import type { TechStack, Finding, SecurityFix } from "../types.js";
+import { basename, dirname, resolve } from "path";
 import { chatWithTools } from "../inference.js";
-import {
-  codebaseTools,
-  createToolHandler,
-  editFileTool,
-  handleEditFile,
-} from "../tools.js";
-import { formatTechStack, toErrorMessage } from "../utils.js";
 import { taintAnalysisPrompt } from "../prompts/generate-fix.js";
+import { codebaseTools, createToolHandler, editFileTool, handleEditFile } from "../tools.js";
+import type { Finding, SecurityFix, TechStack } from "../types.js";
+import { formatTechStack, toErrorMessage } from "../utils.js";
 
 // Concurrency-limited Promise.all with results
 async function pMap<T, R>(
@@ -20,15 +15,12 @@ async function pMap<T, R>(
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let idx = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    async () => {
-      while (idx < items.length) {
-        const i = idx++;
-        results[i] = await fn(items[i]);
-      }
-    },
-  );
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (idx < items.length) {
+      const i = idx++;
+      results[i] = await fn(items[i]);
+    }
+  });
   await Promise.all(workers);
   return results;
 }
@@ -44,12 +36,12 @@ const INFRA_FILE_PATTERNS: RegExp[] = [
   /docker-compose\.ya?ml$/i,
   /^compose\.ya?ml$/i,
   // Server / deployment configuration
-  /\.conf\.py$/,           // e.g. sentry.conf.py
+  /\.conf\.py$/, // e.g. sentry.conf.py
   /nginx\.conf$/,
   /apache2?\.conf$/,
   /httpd\.conf$/,
-  /\.env$/,                // environment files
-  /\.env\.\w+$/,           // .env.local, .env.production, etc.
+  /\.env$/, // environment files
+  /\.env\.\w+$/, // .env.local, .env.production, etc.
   // CI / build pipeline
   /^\.github\//,
   /^\.gitlab-ci/,
@@ -130,23 +122,19 @@ export async function generateFixes(
 
     const previousAttempt = previousFixes.find(
       (f) =>
-        f.vulnerability.name === finding.name &&
-        f.vulnerability.url === finding.url &&
-        !f.verified,
+        f.vulnerability.name === finding.name && f.vulnerability.url === finding.url && !f.verified,
     );
 
     // Step 1: Taint analysis
     const taintMessages = taintAnalysisPrompt(stackStr, finding);
-    if (contextSummary && taintMessages[0]?.role === "system" && typeof taintMessages[0].content === "string") {
+    if (
+      contextSummary &&
+      taintMessages[0]?.role === "system" &&
+      typeof taintMessages[0].content === "string"
+    ) {
       taintMessages[0].content += `\n\nApplication context:\n${contextSummary}`;
     }
-    const taintAnalysis = await chatWithTools(
-      llm,
-      taintMessages,
-      codebaseTools,
-      handleTool,
-      model,
-    );
+    const taintAnalysis = await chatWithTools(llm, taintMessages, codebaseTools, handleTool, model);
 
     // Step 2: Generate and apply fix using edit_file tool calls
     const editedFiles = new Map<string, string>();
@@ -212,13 +200,7 @@ Use edit_file to apply the fix directly. Then summarize what you changed.`,
     ];
 
     try {
-      const summary = await chatWithTools(
-        llm,
-        fixMessages,
-        fixTools,
-        fixToolHandler,
-        model,
-      );
+      const summary = await chatWithTools(llm, fixMessages, fixTools, fixToolHandler, model);
 
       if (editedFiles.size === 0) {
         console.warn(`[Fix] No edits applied for ${finding.name}`);
@@ -230,7 +212,9 @@ Use edit_file to apply the fix directly. Then summarize what you changed.`,
         try {
           const content = readFileSync(resolve(repoPath, filePath), "utf-8");
           patchedFiles.push({ path: filePath, content });
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
 
       console.log(`[Fix] Generated fix (${patchedFiles.length} file(s)): ${summary.slice(0, 200)}`);
@@ -241,9 +225,7 @@ Use edit_file to apply the fix directly. Then summarize what you changed.`,
         verified: false,
       };
     } catch (err) {
-      console.error(
-        `[Fix] Failed to generate fix for ${finding.name}: ${toErrorMessage(err)}`,
-      );
+      console.error(`[Fix] Failed to generate fix for ${finding.name}: ${toErrorMessage(err)}`);
       return null;
     }
   };
@@ -277,7 +259,7 @@ export function applyFixes(repoPath: string, fixes: SecurityFix[]): void {
       if (isInfrastructureFile(file.path)) {
         console.warn(
           `[Fix] BLOCKED infrastructure file modification: ${file.path} — ` +
-          `security fixes must only modify application source code`,
+            `security fixes must only modify application source code`,
         );
         continue;
       }

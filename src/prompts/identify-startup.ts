@@ -1,9 +1,7 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
 import { HintStore } from "../hints.js";
 
-export function identifyStartupPrompt(
-  techStack: string,
-): ChatCompletionMessageParam[] {
+export function identifyStartupPrompt(techStack: string): ChatCompletionMessageParam[] {
   return [
     {
       role: "system",
@@ -118,13 +116,15 @@ export function retryStartupPrompt(
   allPreviousAttempts?: Array<{ config: string; error: string }>,
   hints?: string[],
 ): ChatCompletionMessageParam[] {
-  const historySection = allPreviousAttempts && allPreviousAttempts.length > 1
-    ? `\n\nFull attempt history:\n${allPreviousAttempts.map((a, i) => `Attempt ${i + 1}: ${a.config}\nError: ${a.error.slice(-500)}`).join("\n\n")}`
-    : "";
+  const historySection =
+    allPreviousAttempts && allPreviousAttempts.length > 1
+      ? `\n\nFull attempt history:\n${allPreviousAttempts.map((a, i) => `Attempt ${i + 1}: ${a.config}\nError: ${a.error.slice(-500)}`).join("\n\n")}`
+      : "";
 
-  const hintsSection = hints && hints.length > 0
-    ? `\n\n${HintStore.fromLegacyArray(hints).format(undefined, "## Hints discovered by previous repair attempts") || ""}\nUse these hints — they save investigation time and reflect facts already verified in this run.`
-    : "";
+  const hintsSection =
+    hints && hints.length > 0
+      ? `\n\n${HintStore.fromLegacyArray(hints).format(undefined, "## Hints discovered by previous repair attempts") || ""}\nUse these hints — they save investigation time and reflect facts already verified in this run.`
+      : "";
 
   return [
     {

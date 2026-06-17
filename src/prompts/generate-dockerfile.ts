@@ -24,9 +24,9 @@ const FRAMEWORK_HINTS: Array<{ keywords: string[]; hint: string }> = [
 
 function getFrameworkHints(techStack: string): string {
   const lower = techStack.toLowerCase();
-  const hints = FRAMEWORK_HINTS
-    .filter((fh) => fh.keywords.some((kw) => lower.includes(kw)))
-    .map((fh) => fh.hint);
+  const hints = FRAMEWORK_HINTS.filter((fh) => fh.keywords.some((kw) => lower.includes(kw))).map(
+    (fh) => fh.hint,
+  );
   return hints.length > 0
     ? `\n\nFramework-specific guidance for this stack:\n${hints.join("\n")}`
     : "";
@@ -38,7 +38,9 @@ function getDiscoveryContext(discovery?: ProjectDiscovery): string {
   const parts: string[] = ["\n\n## Project Discovery (pre-analyzed infrastructure requirements)"];
 
   if (discovery.services.length > 0) {
-    parts.push("Companion services this app needs (will be in Docker Compose, accessible by service name):");
+    parts.push(
+      "Companion services this app needs (will be in Docker Compose, accessible by service name):",
+    );
     for (const s of discovery.services) {
       parts.push(`- **${s.name}** (${s.image}): ${s.reason}`);
     }
@@ -49,7 +51,9 @@ function getDiscoveryContext(discovery?: ProjectDiscovery): string {
     for (const note of discovery.configNotes) {
       parts.push(`- ${note}`);
     }
-    parts.push("\nIf any config files need patching for Docker networking, apply those changes IN the Dockerfile (e.g. RUN sed, or COPY a patched version) so the container works out of the box with the companion services.");
+    parts.push(
+      "\nIf any config files need patching for Docker networking, apply those changes IN the Dockerfile (e.g. RUN sed, or COPY a patched version) so the container works out of the box with the companion services.",
+    );
   }
 
   if (discovery.buildNotes.length > 0) {
@@ -92,11 +96,11 @@ Principles:
 - **PRECOMPILE ASSETS** for frameworks that need it. Rails: \`bundle exec rake assets:precompile\`. Next.js: \`npm run build\`. Django: \`python manage.py collectstatic --noinput\`. This is essential for production-like behavior — without it, pages load slowly or not at all.
 - Use "COPY . ." for source code instead of cherry-picking individual directories — you will miss required files.
 - **PARALLELIZE DEPENDENCY INSTALLATION.** Large projects have many native extensions that compile slowly. Always enable parallel builds:
-  - Ruby/Bundler: \`bundle config set --local jobs \$(nproc)\` before \`bundle install\`
+  - Ruby/Bundler: \`bundle config set --local jobs $(nproc)\` before \`bundle install\`
   - Python/pip: pip parallelizes by default, but add \`--compile\` for bytecode
   - Node/npm: \`npm ci\` (already parallel); pnpm is parallel by default
-  - Rust/Cargo: set \`ENV CARGO_BUILD_JOBS=\$(nproc)\`
-  - C/Make-based extensions: \`ENV MAKEFLAGS="-j\$(nproc)"\` speeds up native gem/wheel compilation
+  - Rust/Cargo: set \`ENV CARGO_BUILD_JOBS=$(nproc)\`
+  - C/Make-based extensions: \`ENV MAKEFLAGS="-j$(nproc)"\` speeds up native gem/wheel compilation
   For Ruby projects with many native extensions (nokogiri, cppjieba_rb, tokenizers, tiktoken_ruby), this can cut build time from 15+ minutes to under 5 minutes.
 - Copy dependency manifests FIRST and install dependencies for layer caching, then COPY the rest.
 - Install git if any build step might need it.

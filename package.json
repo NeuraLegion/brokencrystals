@@ -11,6 +11,10 @@
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "lint": "biome lint src",
+    "format": "biome format --write src",
+    "check": "biome check src",
+    "check:fix": "biome check --write src",
     "build:bin": "npm run build && bun build --compile --minify dist/index.js --outfile bright-agent"
   },
   "dependencies": {
@@ -21,6 +25,7 @@
     "tree-kill": "^1.2.2"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.0",
     "@types/node": "^22.0.0",
     "tsup": "^8.4.0",
     "tsx": "^4.19.0",

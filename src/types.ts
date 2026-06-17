@@ -1,7 +1,6 @@
 import type OpenAI from "openai";
+import type { InferenceProvider, ModelSelector } from "./inference.js";
 import type { Platform } from "./platform.js";
-
-import type { ModelSelector, InferenceProvider } from "./inference.js";
 
 // ---------------------------------------------------------------------------
 // Bright API context — avoids threading brightToken + brightHostname everywhere

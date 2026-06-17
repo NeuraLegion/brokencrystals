@@ -14,9 +14,10 @@ export function firstRunSetupPrompt(
   healthCheckSummary: string,
   postStartSetupHints: string[],
 ): ChatCompletionMessageParam[] {
-  const hintsBlock = postStartSetupHints.length > 0
-    ? HintStore.fromLegacyArray(postStartSetupHints).format(undefined, "## Discovery hints") || ""
-    : "";
+  const hintsBlock =
+    postStartSetupHints.length > 0
+      ? HintStore.fromLegacyArray(postStartSetupHints).format(undefined, "## Discovery hints") || ""
+      : "";
 
   return [
     {

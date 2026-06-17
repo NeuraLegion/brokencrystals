@@ -1,6 +1,6 @@
-import { sleep, toErrorMessage } from "../utils.js";
-import type { BrightApiContext } from "../types.js";
 import type { AppHealthMonitor } from "../app-health.js";
+import type { BrightApiContext } from "../types.js";
+import { sleep, toErrorMessage } from "../utils.js";
 
 const DEFAULT_ATTACK_LOCATIONS = ["body", "query", "fragment"];
 const PATH_ATTACK_LOCATIONS = ["body", "query", "fragment", "path"];
@@ -15,9 +15,7 @@ export async function runSecurityScan(
   hasPathParams = false,
   smart = true,
 ): Promise<string> {
-  const locations = hasPathParams
-    ? PATH_ATTACK_LOCATIONS
-    : DEFAULT_ATTACK_LOCATIONS;
+  const locations = hasPathParams ? PATH_ATTACK_LOCATIONS : DEFAULT_ATTACK_LOCATIONS;
   console.log(
     `[Scan] Starting scan with ${entrypointIds.length} entrypoints, ${testTags.length} tests [${testTags.join(", ")}], attack locations: ${locations.join(", ")}, smart: ${smart}`,
   );
@@ -80,9 +78,7 @@ async function runScanViaRest(
     } catch (err) {
       // TCP/network error — retry
       const msg = toErrorMessage(err);
-      console.warn(
-        `[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`,
-      );
+      console.warn(`[Scan] Network error on attempt ${attempt}/${maxRetries}: ${msg}`);
       if (attempt < maxRetries) {
         await sleep(5_000 * attempt);
         continue;
@@ -94,9 +90,7 @@ async function runScanViaRest(
       const data = (await res.json()) as Record<string, unknown>;
       const scanId = (data.id ?? data.scanId) as string | undefined;
       if (!scanId) {
-        throw new Error(
-          `runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`,
-        );
+        throw new Error(`runScan REST returned no scanId: ${JSON.stringify(data).slice(0, 500)}`);
       }
       console.log(`[Scan] Scan started (REST): ${scanId}`);
       return scanId;
@@ -106,9 +100,7 @@ async function runScanViaRest(
 
     // Rate limit — back off and retry
     if (res.status === 429) {
-      console.warn(
-        `[Scan] Rate limited (attempt ${attempt}/${maxRetries}), backing off...`,
-      );
+      console.warn(`[Scan] Rate limited (attempt ${attempt}/${maxRetries}), backing off...`);
       if (attempt < maxRetries) {
         await sleep(10_000 * attempt);
         continue;
@@ -125,17 +117,13 @@ async function runScanViaRest(
         await sleep(5_000 * attempt);
         continue;
       }
-      throw new Error(
-        `runScan REST failed (${res.status}): ${text.slice(0, 500)}`,
-      );
+      throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 500)}`);
     }
 
     // 400 validation error — try to auto-fix
     if (res.status === 400) {
       const errorDetails = parseValidationError(text);
-      console.warn(
-        `[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${errorDetails.summary}`,
-      );
+      console.warn(`[Scan] 400 error (attempt ${attempt}/${maxRetries}): ${errorDetails.summary}`);
 
       if (attempt >= maxRetries) break;
 
@@ -143,9 +131,7 @@ async function runScanViaRest(
       const fixedTests = tryFixScanConfig(text, tests);
       if (fixedTests) {
         tests = fixedTests;
-        console.log(
-          `[Scan] Retrying with ${tests.length} tests after removing incompatible ones`,
-        );
+        console.log(`[Scan] Retrying with ${tests.length} tests after removing incompatible ones`);
         continue;
       }
 
@@ -178,9 +164,7 @@ async function runScanViaRest(
       if (eps.length > 5) {
         const prev = eps.length;
         eps = eps.slice(0, Math.ceil(prev / 2));
-        console.log(
-          `[Scan] Retrying with ${eps.length} entrypoints (reduced from ${prev})`,
-        );
+        console.log(`[Scan] Retrying with ${eps.length} entrypoints (reduced from ${prev})`);
         continue;
       }
 
@@ -192,9 +176,7 @@ async function runScanViaRest(
       }
     }
 
-    throw new Error(
-      `runScan REST failed (${res.status}): ${text.slice(0, 800)}`,
-    );
+    throw new Error(`runScan REST failed (${res.status}): ${text.slice(0, 800)}`);
   }
 
   throw new Error(
@@ -230,9 +212,10 @@ export function parseValidationError(text: string): ValidationErrorInfo {
     }
     if (Array.isArray(parsed.errors)) {
       for (const err of parsed.errors) {
-        const msg = err.message ?? err.constraints
-          ? Object.values(err.constraints ?? {}).join("; ")
-          : JSON.stringify(err);
+        const msg =
+          (err.message ?? err.constraints)
+            ? Object.values(err.constraints ?? {}).join("; ")
+            : JSON.stringify(err);
         messages.push(String(msg));
       }
     }
@@ -289,15 +272,10 @@ export function tryFixScanConfig(errorText: string, tests: string[]): string[] |
   }
 
   // "multiple auth attack tests" — remove broken_access_control
-  if (
-    lower.includes("multiple auth attack tests") ||
-    lower.includes("custom auth objects")
-  ) {
+  if (lower.includes("multiple auth attack tests") || lower.includes("custom auth objects")) {
     const filtered = tests.filter((t) => t !== "broken_access_control");
     if (filtered.length < tests.length && filtered.length > 0) {
-      console.log(
-        `[Scan] Removed multi-auth test(s), ${tests.length} → ${filtered.length}`,
-      );
+      console.log(`[Scan] Removed multi-auth test(s), ${tests.length} → ${filtered.length}`);
       return filtered;
     }
   }
@@ -305,13 +283,7 @@ export function tryFixScanConfig(errorText: string, tests: string[]): string[] |
   return null;
 }
 
-const TERMINAL_STATUSES = new Set([
-  "done",
-  "completed",
-  "stopped",
-  "failed",
-  "disrupted",
-]);
+const TERMINAL_STATUSES = new Set(["done", "completed", "stopped", "failed", "disrupted"]);
 
 function isTerminalStatus(status: string): boolean {
   return TERMINAL_STATUSES.has(status.toLowerCase());
@@ -355,9 +327,7 @@ export async function waitForScanCompletion(
         const ok = await setScanLifecycle(api, scanId, "pause");
         if (ok) {
           pausedByMonitor = true;
-          console.log(
-            `[Scan] Paused ${scanId} — app unhealthy, will resume after recovery`,
-          );
+          console.log(`[Scan] Paused ${scanId} — app unhealthy, will resume after recovery`);
         }
         if (!unhealthySince) unhealthySince = Date.now();
       } else if (!healthy && unhealthySince) {
@@ -383,10 +353,7 @@ export async function waitForScanCompletion(
       }
     }
 
-    const scanStatus = await getScanStatusWithRetry(
-      api,
-      scanId,
-    );
+    const scanStatus = await getScanStatusWithRetry(api, scanId);
     const issues = scanStatus.issuesFound;
 
     onProgress?.(scanStatus.status, issues);
@@ -402,9 +369,7 @@ export async function waitForScanCompletion(
         if (ok) {
           pausedByMonitor = false;
           unhealthySince = undefined;
-          console.log(
-            `[Scan] Resumed ${scanId} — Bright reported paused while app is healthy`,
-          );
+          console.log(`[Scan] Resumed ${scanId} — Bright reported paused while app is healthy`);
         }
       }
     }
@@ -450,9 +415,7 @@ export async function setScanLifecycle(
     }
     return true;
   } catch (err) {
-    console.warn(
-      `[Scan] Lifecycle ${action} for ${scanId} threw: ${toErrorMessage(err)}`,
-    );
+    console.warn(`[Scan] Lifecycle ${action} for ${scanId} threw: ${toErrorMessage(err)}`);
     return false;
   }
 }
@@ -487,9 +450,7 @@ async function getScanStatusViaRest(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(
-      `getScanStatus failed (${res.status}): ${text.slice(0, 300)}`,
-    );
+    throw new Error(`getScanStatus failed (${res.status}): ${text.slice(0, 300)}`);
   }
 
   const data = (await res.json()) as Record<string, unknown>;
@@ -537,11 +498,7 @@ function extractIssueCount(data: Record<string, unknown>): number {
   // Deprecated: issuesBySeverity is an array of { type, number, issuesByStatus }
   if (Array.isArray(data.issuesBySeverity)) {
     for (const item of data.issuesBySeverity) {
-      if (
-        typeof item === "object" &&
-        item !== null &&
-        typeof item.number === "number"
-      ) {
+      if (typeof item === "object" && item !== null && typeof item.number === "number") {
         total += item.number;
       }
     }

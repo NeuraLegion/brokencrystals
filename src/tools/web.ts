@@ -1,8 +1,8 @@
 import { writeFileSync } from "fs";
-import { resolve } from "path";
 import type { ChatCompletionTool } from "openai/resources/chat/completions.mjs";
+import { resolve } from "path";
 import type { ToolHandler } from "../inference.js";
-import { toErrorMessage, FETCH_TIMEOUT_LONG } from "../utils.js";
+import { FETCH_TIMEOUT_LONG, toErrorMessage } from "../utils.js";
 
 /**
  * Strip HTML to plain text — removes scripts/styles, converts block
@@ -39,16 +39,13 @@ function htmlToText(html: string): string {
  */
 async function searchWeb(query: string): Promise<string> {
   try {
-    const res = await fetch(
-      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
-          Accept: "text/html",
-        },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG),
+    const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+        Accept: "text/html",
       },
-    );
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_LONG),
+    });
     if (!res.ok) return `Search failed (HTTP ${res.status})`;
     const html = await res.text();
 
@@ -176,7 +173,9 @@ export const webSearchTools: ChatCompletionTool[] = [searchWebTool, fetchUrlTool
 
 function looksLikeInternalCodeSearch(query: string): boolean {
   return (
-    /(?:^|\s|["'`])(?:\.\/)?(?:apps|packages|services|libs|modules)\/[A-Za-z0-9._/-]+/i.test(query) ||
+    /(?:^|\s|["'`])(?:\.\/)?(?:apps|packages|services|libs|modules)\/[A-Za-z0-9._/-]+/i.test(
+      query,
+    ) ||
     /(?:^|\s|["'`])(?:\/tmp\/|\/home\/|\/workspace\/|\/workspaces\/|\/app\/)[^\s"'`]+/i.test(query)
   );
 }

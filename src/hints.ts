@@ -68,7 +68,8 @@ export const STAGE_DESCRIPTIONS: Record<Stage, string> = {
   fix: "Vulnerability remediation patches.",
   discovery: "Cross-cutting facts about the app/stack — tech stack, services, ports.",
   credentials: "Test user / API key / OAuth client credentials reusable across phases.",
-  infra: "Infrastructure repair instructions — env vars to set, packages to install, image to swap.",
+  infra:
+    "Infrastructure repair instructions — env vars to set, packages to install, image to swap.",
 };
 
 const HINT_MAX_LENGTH = 900;

@@ -1,27 +1,27 @@
 // Barrel re-export — all tools are implemented in tools/ sub-modules.
 export { codebaseTools, createToolHandler } from "./tools/codebase.js";
-export { probeUrlTool, probeUrl, handleProbeUrl } from "./tools/probe.js";
-export { webSearchTools, createWebSearchHandler } from "./tools/web.js";
 export {
-  verifyDockerImageTool,
-  dockerfileTools,
   createDockerfileToolHandler,
-  verifyDockerImage,
-  validateDockerfileImages,
+  dockerfileTools,
   fixDockerfileImages,
+  validateDockerfileImages,
+  verifyDockerImage,
+  verifyDockerImageTool,
 } from "./tools/docker.js";
 export {
+  createInfraToolHandler,
   editFileTool,
-  runCommandOnHostTool,
-  runCommandInDockerTool,
-  infraTools,
   execInDocker,
   handleEditFile,
-  createInfraToolHandler,
+  infraTools,
+  runCommandInDockerTool,
+  runCommandOnHostTool,
 } from "./tools/infra.js";
+export { handleProbeUrl, probeUrl, probeUrlTool } from "./tools/probe.js";
 export {
-  createUnifiedToolHandler,
   buildToolDefs,
-  waitTool,
+  createUnifiedToolHandler,
   type UnifiedToolHandlerOptions,
+  waitTool,
 } from "./tools/unified.js";
+export { createWebSearchHandler, webSearchTools } from "./tools/web.js";

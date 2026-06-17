@@ -1,5 +1,5 @@
+import { DEFAULT_MODEL, detectProvider, ModelSelector } from "./inference.js";
 import type { EngineConfig, RunMode } from "./types.js";
-import { ModelSelector, DEFAULT_MODEL, detectProvider } from "./inference.js";
 
 export function loadConfig(): EngineConfig {
   const brightToken = requireEnv("BRIGHT_TOKEN");
@@ -25,8 +25,7 @@ export function loadConfig(): EngineConfig {
   const gitToken = process.env.REPO_ACCESS_TOKEN ?? "";
 
   // Inference provider detection
-  const inferenceUrl =
-    process.env.INFERENCE_URL ?? "https://api.openai.com/v1";
+  const inferenceUrl = process.env.INFERENCE_URL ?? "https://api.openai.com/v1";
   const inferenceProvider = detectProvider(inferenceUrl);
 
   console.log(`[Config] AI model(s): ${modelSelector}`);

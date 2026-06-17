@@ -59,12 +59,12 @@ function stripNonEssentialServices(repoPath, composeFile) {
   const services = [];
   let i = servicesLineIdx + 1;
   while (i < lines.length) {
-    const svcMatch = lines[i].match(/^  (\w[\w-]*):\s*$/);
+    const svcMatch = lines[i].match(/^ {2}(\w[\w-]*):\s*$/);
     if (svcMatch) {
       const name = svcMatch[1];
       const startLine = i;
       i++;
-      while (i < lines.length && !/^  \w[\w-]*:\s*$/.test(lines[i]) && !/^\w/.test(lines[i])) {
+      while (i < lines.length && !/^ {2}\w[\w-]*:\s*$/.test(lines[i]) && !/^\w/.test(lines[i])) {
         i++;
       }
       const section = lines.slice(startLine, i).join("\n");
@@ -102,14 +102,8 @@ function stripNonEssentialServices(repoPath, composeFile) {
   }
   let result = stripped.join("\n");
   for (const name of toRemove) {
-    result = result.replace(
-      new RegExp(`^\\s+- ${name}\\s*$`, "gm"),
-      ""
-    );
-    result = result.replace(
-      new RegExp(`^\\s+${name}:\\s*\\n(\\s+condition:.*\\n)?`, "gm"),
-      ""
-    );
+    result = result.replace(new RegExp(`^\\s+- ${name}\\s*$`, "gm"), "");
+    result = result.replace(new RegExp(`^\\s+${name}:\\s*\\n(\\s+condition:.*\\n)?`, "gm"), "");
   }
   result = result.replace(/^\s+depends_on:\s*\n(?=\s+\w|\s*$)/gm, "");
   const strippedPath = composeFile.replace(/\.ya?ml$/, ".partial.yml");
@@ -123,4 +117,4 @@ function stripNonEssentialServices(repoPath, composeFile) {
 export {
   stripNonEssentialServices
 };
-//# sourceMappingURL=partial-boot-ZT6TQE5J.js.map
+//# sourceMappingURL=partial-boot-6NFGES3G.js.map

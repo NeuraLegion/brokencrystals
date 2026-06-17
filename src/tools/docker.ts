@@ -25,10 +25,7 @@ export const verifyDockerImageTool: ChatCompletionTool = {
 };
 
 /** Codebase tools + Docker image verification — for Dockerfile generation/repair */
-export const dockerfileTools: ChatCompletionTool[] = [
-  ...codebaseTools,
-  verifyDockerImageTool,
-];
+export const dockerfileTools: ChatCompletionTool[] = [...codebaseTools, verifyDockerImageTool];
 
 /**
  * Parse a Docker image reference into registry, repo, and tag.
@@ -43,10 +40,7 @@ function parseImageRef(imageRef: string): {
   let registry: string | null = null;
   let repoParts: string[];
 
-  if (
-    segments.length > 1 &&
-    (segments[0].includes(".") || segments[0].includes(":"))
-  ) {
+  if (segments.length > 1 && (segments[0].includes(".") || segments[0].includes(":"))) {
     registry = segments[0];
     repoParts = segments.slice(1);
   } else {
@@ -117,16 +111,16 @@ async function verifyOciImage(imagePart: string, tag: string): Promise<boolean> 
   }
 }
 
-export function createDockerfileToolHandler(
-  repoPath: string,
-): ToolHandler {
+export function createDockerfileToolHandler(repoPath: string): ToolHandler {
   const baseHandler = createToolHandler(repoPath);
   return async (name: string, args: Record<string, unknown>) => {
     if (name === "verify_docker_image") {
       const image = String(args.image ?? "");
       if (!image) return "Error: image parameter is required";
       const exists = await verifyDockerImage(image);
-      return exists ? `✓ Image "${image}" exists on Docker Hub` : `✗ Image "${image}" NOT FOUND on Docker Hub. Try a different tag.`;
+      return exists
+        ? `✓ Image "${image}" exists on Docker Hub`
+        : `✗ Image "${image}" NOT FOUND on Docker Hub. Try a different tag.`;
     }
     return baseHandler(name, args);
   };
@@ -136,18 +130,32 @@ export function createDockerfileToolHandler(
  * Validate all FROM lines in a Dockerfile against Docker Hub.
  * Returns list of images that don't exist.
  */
-export async function validateDockerfileImages(
-  dockerfile: string,
-): Promise<string[]> {
-  const fromRe = /^FROM\s+(\S+)/gmi;
+export async function validateDockerfileImages(dockerfile: string): Promise<string[]> {
+  const fromRe = /^FROM\s+(\S+)/gim;
   const images = new Set<string>();
   let m;
   while ((m = fromRe.exec(dockerfile)) !== null) {
     const img = m[1];
     if (img.startsWith("$") || img === "scratch") continue;
     if (!img.includes("/") && !img.includes(":") && img === img.toLowerCase()) {
-      const officialPrefixes = ["node", "python", "golang", "ruby", "rust", "openjdk", "eclipse-temurin", "amazoncorretto", "maven", "gradle", "php", "nginx", "alpine", "ubuntu", "debian"];
-      if (!officialPrefixes.some(p => img.startsWith(p))) continue;
+      const officialPrefixes = [
+        "node",
+        "python",
+        "golang",
+        "ruby",
+        "rust",
+        "openjdk",
+        "eclipse-temurin",
+        "amazoncorretto",
+        "maven",
+        "gradle",
+        "php",
+        "nginx",
+        "alpine",
+        "ubuntu",
+        "debian",
+      ];
+      if (!officialPrefixes.some((p) => img.startsWith(p))) continue;
     }
     images.add(img);
   }
@@ -207,9 +215,7 @@ async function findAlternativeImage(badRef: string): Promise<string | null> {
  * Validate all FROM images in a Dockerfile. For any that don't exist on Docker
  * Hub, attempt to find a working alternative tag and replace inline.
  */
-export async function fixDockerfileImages(
-  dockerfile: string,
-): Promise<string> {
+export async function fixDockerfileImages(dockerfile: string): Promise<string> {
   const missing = await validateDockerfileImages(dockerfile);
   if (missing.length === 0) return dockerfile;
 

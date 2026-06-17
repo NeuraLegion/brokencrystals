@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  extractJson,
-  isDangerousCommand,
-  findingKey,
   buildSeveritySummary,
   extractCodeBlock,
+  extractJson,
+  findingKey,
+  isDangerousCommand,
   toErrorMessage,
 } from "../utils.js";
 
@@ -20,7 +20,7 @@ describe("extractJson", () => {
   });
 
   it("extracts JSON array", () => {
-    const text = 'Results: [1, 2, 3] end';
+    const text = "Results: [1, 2, 3] end";
     expect(extractJson(text)).toBe("[1, 2, 3]");
   });
 

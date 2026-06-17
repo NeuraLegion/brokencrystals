@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { HintStore, parseLegacyHint, ALL_STAGES, isStage } from "../hints.js";
+import { describe, expect, it } from "vitest";
+import { ALL_STAGES, HintStore, isStage, parseLegacyHint } from "../hints.js";
 
 describe("HintStore", () => {
   it("adds and reads back hints under a stage", () => {

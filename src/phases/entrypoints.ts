@@ -1,5 +1,5 @@
-import type { DiscoveredEndpoint, BrightApiContext } from "../types.js";
 import type { AppHealthMonitor } from "../app-health.js";
+import type { BrightApiContext, DiscoveredEndpoint } from "../types.js";
 import { toErrorMessage } from "../utils.js";
 
 const CONCURRENCY = 3;
@@ -12,10 +12,7 @@ const RESOLVE_TIMEOUT = 8_000;
 function isTransientHttpError(status: number, body: string): boolean {
   if (status >= 500) return true;
   if (status === 408) return true;
-  if (
-    status === 400 &&
-    /target.*(?:is\s+down|accessible|firewall)/i.test(body)
-  ) {
+  if (status === 400 && /target.*(?:is\s+down|accessible|firewall)/i.test(body)) {
     return true;
   }
   return false;
@@ -30,10 +27,7 @@ function isTransientHttpError(status: number, body: string): boolean {
  * for a real recovery if the target is actually wedged.
  */
 function isTargetDown400(status: number, body: string): boolean {
-  return (
-    status === 400 &&
-    /target.*(?:is\s+down|accessible|firewall)/i.test(body)
-  );
+  return status === 400 && /target.*(?:is\s+down|accessible|firewall)/i.test(body);
 }
 
 export interface RegisteredEntrypoint {
@@ -61,9 +55,7 @@ export async function registerEntrypoints(
   for (const ep of endpoints) {
     const path = resolvePath(ep.path);
     if (!isScannablePath(path)) {
-      console.warn(
-        `[Entrypoints] Skipping junk path: ${ep.path} (resolved: ${path})`,
-      );
+      console.warn(`[Entrypoints] Skipping junk path: ${ep.path} (resolved: ${path})`);
       continue;
     }
 
@@ -71,9 +63,7 @@ export async function registerEntrypoints(
     try {
       new URL(fullUrl);
     } catch {
-      console.warn(
-        `[Entrypoints] Skipping malformed URL: ${fullUrl} (from path "${ep.path}")`,
-      );
+      console.warn(`[Entrypoints] Skipping malformed URL: ${fullUrl} (from path "${ep.path}")`);
       continue;
     }
 
@@ -88,8 +78,7 @@ export async function registerEntrypoints(
 
     const request: Record<string, unknown> = { method, url: fullUrl };
     const needsBody = ["POST", "PUT", "PATCH"].includes(method);
-    const contentType =
-      ep.contentType ?? (needsBody ? "application/json" : undefined);
+    const contentType = ep.contentType ?? (needsBody ? "application/json" : undefined);
 
     if (ep.headers || contentType) {
       const headers: Record<string, string[]> = { ...(ep.headers ?? {}) };
@@ -187,16 +176,12 @@ export async function registerEntrypoints(
             // will mark the app unhealthy and our next iteration's
             // waitHealthy() will block until recovery completes.
             if (healthMonitor && isTargetDown400(res.status, body)) {
-              healthMonitor.signalProbableUnhealthy(
-                `target-down 400 for ${method} ${fullUrl}`,
-              );
+              healthMonitor.signalProbableUnhealthy(`target-down 400 for ${method} ${fullUrl}`);
               // Block before retrying so we don't pile more failed probes
               // onto a wedged target.
               await healthMonitor.waitHealthy();
             }
-            const backoff =
-              BASE_BACKOFF_MS * Math.pow(3, attempt) +
-              Math.floor(Math.random() * JITTER_MS);
+            const backoff = BASE_BACKOFF_MS * 3 ** attempt + Math.floor(Math.random() * JITTER_MS);
             console.warn(
               `[Entrypoints] Transient HTTP ${res.status} for ${method} ${fullUrl} — retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`,
             );
@@ -210,9 +195,7 @@ export async function registerEntrypoints(
         return;
       } catch (err) {
         if (attempt < MAX_RETRIES) {
-          const backoff =
-            BASE_BACKOFF_MS * Math.pow(3, attempt) +
-            Math.floor(Math.random() * JITTER_MS);
+          const backoff = BASE_BACKOFF_MS * 3 ** attempt + Math.floor(Math.random() * JITTER_MS);
           console.warn(
             `[Entrypoints] Network error for ${method} ${fullUrl}: ${toErrorMessage(err)} — retry ${attempt + 1}/${MAX_RETRIES} in ${backoff}ms`,
           );
@@ -220,9 +203,7 @@ export async function registerEntrypoints(
           attempt++;
           continue;
         }
-        console.error(
-          `[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`,
-        );
+        console.error(`[Entrypoints] Failed ${method} ${fullUrl}: ${toErrorMessage(err)}`);
         return;
       }
     }
@@ -303,15 +284,12 @@ async function pMap<T>(
   concurrency: number,
 ): Promise<void> {
   let idx = 0;
-  const workers = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    async () => {
-      while (idx < items.length) {
-        const i = idx++;
-        await fn(items[i]);
-      }
-    },
-  );
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (idx < items.length) {
+      const i = idx++;
+      await fn(items[i]);
+    }
+  });
   await Promise.all(workers);
 }
 
@@ -367,7 +345,8 @@ function isScannablePath(path: string): boolean {
 // ---------------------------------------------------------------------------
 
 /** Pattern matching segments that look like resource IDs (hallucinated by the LLM) */
-const ID_SEGMENT_PATTERN = /^(?:\d+|[0-9a-f]{8,}|[0-9a-f-]{36}|[a-z]{1,4}_[a-z0-9]{6,}|[a-z0-9]{20,}|book_\w+|bk_\w+|usr_\w+|evt_\w+|cal_\w+|wh_\w+|org_\w+|team_\w+)$/i;
+const ID_SEGMENT_PATTERN =
+  /^(?:\d+|[0-9a-f]{8,}|[0-9a-f-]{36}|[a-z]{1,4}_[a-z0-9]{6,}|[a-z0-9]{20,}|book_\w+|bk_\w+|usr_\w+|evt_\w+|cal_\w+|wh_\w+|org_\w+|team_\w+)$/i;
 
 /**
  * Detect whether a path segment is likely a resource ID (numeric, UUID, prefixed slug, etc.)
@@ -381,7 +360,9 @@ function isIdSegment(segment: string): boolean {
  * /v2/bookings (the first ancestor where the next segment is an ID).
  * Returns { listPath, idIndex } or null if no ID segment found.
  */
-function findListParent(path: string): { listPath: string; idIndex: number; segments: string[] } | null {
+function findListParent(
+  path: string,
+): { listPath: string; idIndex: number; segments: string[] } | null {
   const segments = path.split("/").filter(Boolean);
   for (let i = 0; i < segments.length; i++) {
     if (isIdSegment(segments[i])) {
@@ -405,7 +386,13 @@ function extractIdFromListResponse(body: string): string | null {
       items = parsed;
     } else if (parsed && typeof parsed === "object") {
       // Common wrapper patterns
-      items = parsed.data ?? parsed.items ?? parsed.results ?? parsed.content ?? parsed.entries ?? parsed.records;
+      items =
+        parsed.data ??
+        parsed.items ??
+        parsed.results ??
+        parsed.content ??
+        parsed.entries ??
+        parsed.records;
       if (!Array.isArray(items)) {
         // Maybe the response itself is a single object with an id
         const id = parsed.id ?? parsed._id ?? parsed.uid ?? parsed.slug;
@@ -417,7 +404,8 @@ function extractIdFromListResponse(body: string): string | null {
     if (items && items.length > 0) {
       const first = items[0] as Record<string, unknown>;
       if (first && typeof first === "object") {
-        const id = first.id ?? first._id ?? first.uid ?? first.slug ?? first.bookingId ?? first.eventTypeId;
+        const id =
+          first.id ?? first._id ?? first.uid ?? first.slug ?? first.bookingId ?? first.eventTypeId;
         if (id) return String(id);
       }
     }
@@ -524,7 +512,9 @@ export async function resolvePathParams(
   const detectedPrefix = await detectRoutePrefix(endpoints, baseUrl, authHeaders);
   let prefixedEndpoints = endpoints;
   if (detectedPrefix) {
-    console.log(`[Entrypoints] Detected missing route prefix: "${detectedPrefix}" — applying to ${endpoints.length} endpoints`);
+    console.log(
+      `[Entrypoints] Detected missing route prefix: "${detectedPrefix}" — applying to ${endpoints.length} endpoints`,
+    );
     prefixedEndpoints = endpoints.map((ep) => {
       // Don't double-prefix paths that already have it
       if (ep.path.startsWith(detectedPrefix)) return ep;
@@ -651,10 +641,11 @@ async function detectTrailingSlashNormalization(
 ): Promise<boolean> {
   // Sample a few GET endpoints that don't already have trailing slashes
   const candidates = endpoints
-    .filter((ep) =>
-      ep.method.toUpperCase() === "GET" &&
-      !ep.path.split("?")[0].endsWith("/") &&
-      !hasFileExtension(ep.path.split("?")[0]),
+    .filter(
+      (ep) =>
+        ep.method.toUpperCase() === "GET" &&
+        !ep.path.split("?")[0].endsWith("/") &&
+        !hasFileExtension(ep.path.split("?")[0]),
     )
     .slice(0, 5);
 
@@ -672,11 +663,16 @@ async function detectTrailingSlashNormalization(
       if (res.status === 301 || res.status === 308) {
         const location = res.headers.get("location") ?? "";
         // Check that the redirect target is just the same path + trailing slash
-        if (location.endsWith(ep.path.split("?")[0] + "/") || location === ep.path.split("?")[0] + "/") {
+        if (
+          location.endsWith(ep.path.split("?")[0] + "/") ||
+          location === ep.path.split("?")[0] + "/"
+        ) {
           redirectCount++;
         }
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // If majority of sampled endpoints redirect with trailing slash, apply globally
@@ -693,9 +689,7 @@ export async function verifyEntrypointAuth(
   entrypointId: string,
 ): Promise<{ ok: boolean; detail: string }> {
   try {
-    console.log(
-      `[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`,
-    );
+    console.log(`[Entrypoints] Verifying auth on entrypoint ${entrypointId}...`);
     const url = `https://${api.brightHostname}/api/v2/projects/${encodeURIComponent(projectId)}/entry-points/${encodeURIComponent(entrypointId)}`;
     const res = await fetch(url, {
       headers: { Authorization: `Api-Key ${api.brightToken}` },
@@ -752,10 +746,9 @@ export async function pruneDeadEntrypoints(
     entries,
     async (entry) => {
       try {
-        const res = await fetch(
-          `${baseUrl}/${encodeURIComponent(entry.entrypointId)}`,
-          { headers: { Authorization: `Api-Key ${api.brightToken}` } },
-        );
+        const res = await fetch(`${baseUrl}/${encodeURIComponent(entry.entrypointId)}`, {
+          headers: { Authorization: `Api-Key ${api.brightToken}` },
+        });
         if (!res.ok) {
           alive.push(entry);
           return;
@@ -767,16 +760,12 @@ export async function pruneDeadEntrypoints(
         const numericStatus = typeof status === "number" ? status : undefined;
         const shouldPrune =
           numericStatus === 404 ||
-          (opts.pruneFailedResponses &&
-            numericStatus !== undefined &&
-            numericStatus >= 400);
+          (opts.pruneFailedResponses && numericStatus !== undefined && numericStatus >= 400);
 
         if (shouldPrune) {
           const req = data.request as Record<string, unknown> | undefined;
           const url = (req?.url ?? data.url ?? entry.entrypointId) as string;
-          const method = String(
-            req?.method ?? entry.endpoint.method ?? "GET",
-          ).toUpperCase();
+          const method = String(req?.method ?? entry.endpoint.method ?? "GET").toUpperCase();
 
           // Don't prune endpoints whose path contains ID-like segments
           // (hallucinated placeholders or resolved IDs). These are expected
@@ -867,7 +856,7 @@ async function deleteEntrypointBatch(
           );
           return;
         }
-        const backoff = DELETE_BACKOFF_MS * Math.pow(2, attempt);
+        const backoff = DELETE_BACKOFF_MS * 2 ** attempt;
         console.warn(
           `[Entrypoints] Rate limited (429) on bulk delete — retry ${attempt + 1}/${DELETE_MAX_RETRIES} in ${(backoff / 1000).toFixed(0)}s`,
         );
@@ -875,9 +864,7 @@ async function deleteEntrypointBatch(
         continue;
       }
 
-      console.warn(
-        `[Entrypoints] Bulk delete failed: ${res.status} ${res.statusText}`,
-      );
+      console.warn(`[Entrypoints] Bulk delete failed: ${res.status} ${res.statusText}`);
       return;
     } catch (err) {
       console.warn(`[Entrypoints] Bulk delete error: ${err}`);
@@ -980,7 +967,7 @@ function fixNestedJsonStrings(s: string): string {
       const openBracket = s[i];
       const closeBracket = openBracket === "{" ? "}" : "]";
       let depth = 0;
-      let innerStart = i;
+      const innerStart = i;
       let j = i;
 
       // Walk to find where the nested JSON value ends

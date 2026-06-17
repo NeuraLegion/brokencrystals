@@ -50,9 +50,7 @@ async function brightGet<T>(
   }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(
-      `Bright API ${path} returned HTTP ${res.status}: ${body.slice(0, 500)}`,
-    );
+    throw new Error(`Bright API ${path} returned HTTP ${res.status}: ${body.slice(0, 500)}`);
   }
   return (await res.json()) as T;
 }
@@ -86,14 +84,8 @@ export async function listAuthObjects(
   return unwrapList<BrightAuth>(data);
 }
 
-export async function getAuthObject(
-  api: BrightApiContext,
-  authObjectId: string,
-): Promise<unknown> {
-  return brightGet<unknown>(
-    api,
-    `/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`,
-  );
+export async function getAuthObject(api: BrightApiContext, authObjectId: string): Promise<unknown> {
+  return brightGet<unknown>(api, `/api/v3/auth-objects/${encodeURIComponent(authObjectId)}`);
 }
 
 /**
