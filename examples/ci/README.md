@@ -1,10 +1,10 @@
 # CI Integration Examples
 
 Drop-in pipeline templates for running **Bright Agent** in your own CI. Each
-example downloads the prebuilt binary from
-[Releases](https://github.com/NeuraLegion/bright-agent-dist/releases),
-verifies its checksum, and runs a scan against your repository. The agent opens
-a pull request with verified fixes.
+example checks out your repository, downloads the prebuilt binary from
+[Releases](https://github.com/NeuraLegion/bright-agent-dist/releases) (verifying
+its checksum), and scans the checked-out tree. The agent opens a pull request
+with verified fixes.
 
 | Platform                       | File                                                                             |
 | ------------------------------ | -------------------------------------------------------------------------------- |
@@ -23,14 +23,24 @@ to a PR.
 
 ## How it works
 
-Bright Agent clones `REPOSITORY_URL` itself, builds and starts the app, scans
-the live endpoints, generates fixes, and opens a PR — so the CI job only needs
-to **download the binary and run it** with the right environment variables.
+The CI job **checks out your repository** (e.g. `actions/checkout`), downloads
+the binary, and runs it against that working copy — Bright Agent operates on the
+checked-out tree (it does not clone). It detects the tech stack, builds and
+starts the app, scans the live endpoints, commits fixes, and opens a PR.
+
+The repository identity (for the PR) is taken from `REPOSITORY_URL` if set,
+otherwise derived from the checkout's `origin` remote — so on most CI you don't
+need to set it.
+
+> **Keep the binary out of the checkout.** The agent commits with `git add -A`,
+> so download the binary (and any CodeQL SARIF) to a directory **outside** the
+> repository — the examples use the runner's temp dir — or it gets committed
+> into the fix PR.
 
 ## Runner prerequisites
 
 - **Docker** and **Docker Compose** — to build and run the target app and its services
-- **Git** — to clone the repo and push the fix branch
+- **Git** — to check out the repo and push the fix branch
 - **curl** + **sha256sum** — to fetch and verify the binary
 
 GitHub-hosted `ubuntu-latest` and the CircleCI `ubuntu-2404` machine image
@@ -46,10 +56,11 @@ Store these in your CI's secret manager — never commit them.
 | Variable            | Purpose                                                        |
 | ------------------- | -------------------------------------------------------------- |
 | `BRIGHT_TOKEN`      | Bright API token from https://app.brightsec.com                |
-| `REPO_ACCESS_TOKEN` | Token that can clone, push branches, and open PRs on the repo  |
+| `REPO_ACCESS_TOKEN` | Token that can push branches and open PRs on the repo          |
 | `INFERENCE_TOKEN`   | API token for your OpenAI-compatible inference endpoint        |
 | `INFERENCE_URL`     | That endpoint's base URL (OpenAI, GitHub Models, Ollama, a Bedrock-compatible gateway, …). Not secret — store as a CI variable |
-| `REPOSITORY_URL`    | The repository to scan (https form)                            |
+| `LOCAL_REPO_PATH`   | Path to the checked-out repo to scan. Defaults to the current directory (the examples set it to the workspace) |
+| `REPOSITORY_URL`    | Optional — repo identity for the PR. Derived from the checkout's `origin` remote if omitted |
 
 Bring your own inference provider — anything exposing an OpenAI-compatible API.
 If you use OpenAI directly, you may set `OPENAI_API_KEY` instead of `INFERENCE_TOKEN`.

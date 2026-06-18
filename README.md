@@ -8,7 +8,7 @@ An agentic DAST solution by [Bright Security](https://www.brightsec.com/) that a
 
 ## What It Does
 
-Bright Agent clones your repository, understands your tech stack, starts your application, runs dynamic security scans against live endpoints, and generates verified code fixes — all without human intervention. When fixes break the app, it detects, repairs, or reverts automatically.
+Bright Agent runs against a checkout of your repository, understands your tech stack, starts your application, runs dynamic security scans against live endpoints, and generates verified code fixes — all without human intervention. When fixes break the app, it detects, repairs, or reverts automatically.
 
 - Works with **any AI provider** — OpenAI, GitHub Models, Ollama, or any OpenAI-compatible API
 - Works with **any major SCM** — GitHub, Azure DevOps (GitLab coming soon)
@@ -48,9 +48,10 @@ If full startup or auth fails, the agent falls back to **function harness mode**
 
 | Variable            | Required | Description                                                                      |
 | ------------------- | -------- | -------------------------------------------------------------------------------- |
-| `REPOSITORY_URL`    | **Yes**  | Full URL of the target repository. Auto-detects platform (GitHub / Azure DevOps) |
-| `REPO_ACCESS_TOKEN` | **Yes**  | Personal access token for git clone, push, and PR operations                     |
+| `LOCAL_REPO_PATH`   | No       | Path to the checked-out repository to scan. Defaults to the current directory. Bright Agent runs against this working copy — it does not clone |
+| `REPO_ACCESS_TOKEN` | **Yes**  | Personal access token for push and PR operations                                 |
 | `BRIGHT_TOKEN`      | **Yes**  | API key from [app.brightsec.com](https://app.brightsec.com)                      |
+| `REPOSITORY_URL`    | No       | Repository identity for PRs (platform auto-detected). Derived from the checkout's `origin` remote if omitted |
 
 Supported `REPOSITORY_URL` formats:
 - **GitHub**: `https://github.com/owner/repo`
@@ -117,7 +118,7 @@ Bright Agent drives your local toolchain to build and run the target app, so the
 following must be installed and available on `PATH`:
 
 - **Docker** and **Docker Compose** — used to build and run the target application and its companion services
-- **Git** — used to clone the target repository and commit/push fixes
+- **Git** — used to check out the target repository and commit/push fixes
 
 These are **not** bundled in the prebuilt binary. A working network connection to your
 Bright host and your AI provider is also required.
@@ -135,13 +136,14 @@ Download the binary for your platform from the
 shasum -a 256 -c bright-agent-linux-x64.sha256
 chmod +x bright-agent-linux-x64
 
-# Run
-REPOSITORY_URL="https://github.com/owner/target-repo" \
+# Run from inside a checkout of the repo you want to scan
+# (LOCAL_REPO_PATH defaults to the current directory):
+cd /path/to/your/repo-checkout
 REPO_ACCESS_TOKEN="your-github-or-azure-pat" \
 BRIGHT_TOKEN="your-bright-api-token" \
 INFERENCE_URL="https://api.openai.com/v1" \
 INFERENCE_TOKEN="your-inference-token" \
-./bright-agent-linux-x64
+/path/to/bright-agent-linux-x64
 ```
 
 > macOS binaries are not yet code-signed; you may need to clear the Gatekeeper
@@ -154,8 +156,8 @@ INFERENCE_TOKEN="your-inference-token" \
 npm install
 npm run build
 
-# 2. Run
-REPOSITORY_URL="https://github.com/owner/target-repo" \
+# 2. Run against a checkout of the target repo
+LOCAL_REPO_PATH="/path/to/your/repo-checkout" \
 REPO_ACCESS_TOKEN="your-github-or-azure-pat" \
 BRIGHT_TOKEN="your-bright-api-token" \
 INFERENCE_URL="https://api.openai.com/v1" \

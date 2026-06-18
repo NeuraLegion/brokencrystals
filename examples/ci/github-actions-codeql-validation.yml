@@ -39,8 +39,11 @@ jobs:
       CODEQL_LANGUAGE: javascript
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
 
-      # 1. Static analysis with CodeQL → SARIF file on disk
+      # 1. Static analysis with CodeQL → SARIF file. Write it OUTSIDE the
+      #    checkout ($RUNNER_TEMP) so it isn't swept into the fix commit.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -51,16 +54,17 @@ jobs:
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
 
-      - name: Analyze (write SARIF to ./sarif-results)
+      - name: Analyze (write SARIF to $RUNNER_TEMP/sarif)
         uses: github/codeql-action/analyze@v3
         with:
-          output: sarif-results
+          output: ${{ runner.temp }}/sarif
           # We only need the SARIF file locally. Set to `always` to also publish
           # results to the repo's Security tab (requires security-events: write).
           upload: never
 
-      # 2. Fetch the Bright Agent binary
+      # 2. Fetch the Bright Agent binary (outside the checkout).
       - name: Download & verify Bright Agent
+        working-directory: ${{ runner.temp }}
         run: |
           base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
           curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
@@ -68,10 +72,10 @@ jobs:
           sha256sum -c "${ASSET}.sha256"
           chmod +x "${ASSET}"
 
-      # 3. Validate the CodeQL findings against a live DAST scan
+      # 3. Validate the CodeQL findings against a live DAST scan.
       - name: Run Bright Agent (validation)
         env:
-          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+          LOCAL_REPO_PATH: ${{ github.workspace }}
           REPO_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
           # Your own OpenAI-compatible inference endpoint + token:
@@ -79,8 +83,8 @@ jobs:
           INFERENCE_TOKEN: ${{ secrets.INFERENCE_TOKEN }}
           RUN_MODE: validation
           # CodeQL writes "<language>.sarif" into the output dir above:
-          SARIF_PATH: ${{ github.workspace }}/sarif-results/${{ env.CODEQL_LANGUAGE }}.sarif
-        run: ./${ASSET}
+          SARIF_PATH: ${{ runner.temp }}/sarif/${{ env.CODEQL_LANGUAGE }}.sarif
+        run: "${{ runner.temp }}/${{ env.ASSET }}"
 
 # NOTE: PRs/pushes made with GITHUB_TOKEN don't trigger your other workflows.
 # Use a PAT (REPO_ACCESS_TOKEN secret) if you need the summary PR to run CI.

@@ -14,7 +14,7 @@
 # Required environment variables — set them as Project Environment Variables
 # (Project Settings → Environment Variables) or via a Context:
 #     BRIGHT_TOKEN        Bright API token from https://app.brightsec.com
-#     REPO_ACCESS_TOKEN   PAT that can clone, push branches, and open PRs
+#     REPO_ACCESS_TOKEN   PAT that can push branches and open PRs
 #     INFERENCE_TOKEN     API token for your OpenAI-compatible inference endpoint
 
 version: 2.1
@@ -27,24 +27,24 @@ jobs:
       # Pin to a released tag — see https://github.com/NeuraLegion/bright-agent-dist/releases
       BRIGHT_AGENT_VERSION: v0.1.0
       ASSET: bright-agent-linux-x64
-      # The repository to scan (https form). Adjust to your repo:
-      REPOSITORY_URL: https://github.com/your-org/your-repo
       # Your OpenAI-compatible inference endpoint (the token is a project secret):
       INFERENCE_URL: https://api.openai.com/v1
     steps:
+      - checkout # clones YOUR repo into the working directory
       - run:
-          name: Download & verify Bright Agent
+          name: Download & verify Bright Agent (outside the checkout)
           command: |
             base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
-            curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
-            curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
-            sha256sum -c "${ASSET}.sha256"
-            chmod +x "${ASSET}"
+            curl -fsSL -o "/tmp/${ASSET}" "${base}/${ASSET}"
+            curl -fsSL -o "/tmp/${ASSET}.sha256" "${base}/${ASSET}.sha256"
+            ( cd /tmp && sha256sum -c "${ASSET}.sha256" )
+            chmod +x "/tmp/${ASSET}"
       - run:
           name: Run Bright Agent
-          # BRIGHT_TOKEN, REPO_ACCESS_TOKEN, INFERENCE_TOKEN are injected from
-          # the project's environment variables / context.
-          command: ./${ASSET}
+          # Runs against the checked-out tree (cwd); REPOSITORY_URL is derived
+          # from its 'origin' remote. BRIGHT_TOKEN, REPO_ACCESS_TOKEN and
+          # INFERENCE_TOKEN come from project env vars / context.
+          command: LOCAL_REPO_PATH="$(pwd)" "/tmp/${ASSET}"
 
 workflows:
   nightly-dast:

@@ -3,8 +3,7 @@ import { loadConfig } from "./config.js";
 import { createInferenceClient, validateModelTiers } from "./inference.js";
 import { logger } from "./logger.js";
 import { runOrchestrator } from "./orchestrator.js";
-import { cloneRepository, createPlatform, gitFinalizeChanges } from "./platform.js";
-import { detectScmProvider } from "./scm/index.js";
+import { createPlatform, gitFinalizeChanges, resolveRepoPath, setupLocalRepo } from "./platform.js";
 import type { OrchestratorContext } from "./types.js";
 import { toErrorMessage } from "./utils.js";
 
@@ -35,16 +34,15 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // 2. Initialize platform (auto-detects GitHub / Azure DevOps from REPOSITORY_URL)
-  const { platform, job } = await createPlatform(config.gitToken);
-  console.log(`[Engine] Repository: ${job.repository}`);
+  // 2. Resolve the local checkout to scan (no cloning — run against a working copy)
+  const repoPath = resolveRepoPath();
+  console.log(`[Engine] Working tree: ${repoPath}`);
+
+  // 3. Initialize platform — SCM identity from REPOSITORY_URL or the checkout's origin
+  const { platform, job, provider } = await createPlatform(config.gitToken, repoPath);
   logger.progress(`Target repository: ${job.repository}`);
 
-  // 3. Clone the repository
-  const repositoryUrl = process.env.REPOSITORY_URL!;
-  const { provider } = detectScmProvider(repositoryUrl);
-
-  // 3a. Preflight: validate token grants repo access (fail fast before clone)
+  // 3a. Preflight: validate token grants repo access (fail fast)
   try {
     await provider.validateAccess(config.gitToken);
     console.log(`[Engine] Repository access verified (${provider.platformName})`);
@@ -54,16 +52,17 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const repoPath = cloneRepository({
+  // 3b. Prepare the checkout: scan branch, commit author, tokenized push URL
+  setupLocalRepo({
+    repoPath,
     provider,
     gitToken: config.gitToken,
     branchName: job.branchName,
     commitLogin: job.commitLogin,
     commitEmail: job.commitEmail,
   });
-  console.log(`[Engine] Cloned to: ${repoPath}`);
 
-  // 3b. Push branch and create PR for progress updates
+  // 3c. Push branch and create PR for progress updates
   await platform.initPr(repoPath);
 
   // 4. Initialize inference client (OpenAI-compatible)

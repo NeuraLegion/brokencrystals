@@ -1,8 +1,8 @@
 // Bright Agent — Jenkins declarative pipeline example
 //
-// Copy this to `Jenkinsfile` in YOUR application repo (or point a Pipeline job
-// at it). It downloads the Bright Agent binary and runs an autonomous DAST
-// scan + fix pass, opening a pull request with verified fixes.
+// Copy this to `Jenkinsfile` in YOUR application repo (Pipeline-from-SCM or a
+// Multibranch job). It checks out your repo, runs Bright Agent against that
+// working copy, and opens a pull request with verified fixes.
 //
 // Node prerequisites: the executing agent/node must have Docker, Docker
 // Compose, Git, and curl available on PATH, and permission to run Docker.
@@ -10,7 +10,7 @@
 // Required Jenkins credentials (Manage Jenkins → Credentials), each as
 // "Secret text":
 //     bright-token        -> BRIGHT_TOKEN
-//     repo-access-token   -> REPO_ACCESS_TOKEN   (clone/push/PR)
+//     repo-access-token   -> REPO_ACCESS_TOKEN   (push/PR)
 //     inference-token     -> INFERENCE_TOKEN     (your OpenAI-compatible endpoint)
 
 pipeline {
@@ -20,9 +20,6 @@ pipeline {
     // Pin to a released tag — see https://github.com/NeuraLegion/bright-agent-dist/releases
     BRIGHT_AGENT_VERSION = 'v0.1.0'
     ASSET                = 'bright-agent-linux-x64'
-
-    // The repository to scan (https form). Adjust to your repo:
-    REPOSITORY_URL       = 'https://github.com/your-org/your-repo'
     // Your OpenAI-compatible inference endpoint (token is a credential below):
     INFERENCE_URL        = 'https://api.openai.com/v1'
 
@@ -41,22 +38,31 @@ pipeline {
   }
 
   stages {
+    stage('Checkout') {
+      // Checks out YOUR repo into the workspace (Pipeline-from-SCM).
+      steps { checkout scm }
+    }
+
     stage('Download & verify Bright Agent') {
+      // Download OUTSIDE the workspace ($WORKSPACE_TMP) so the binary is never
+      // swept into the fix commit (the agent commits with `git add -A`).
       steps {
         sh '''
           set -eu
           base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
-          curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
-          curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
-          sha256sum -c "${ASSET}.sha256"
-          chmod +x "${ASSET}"
+          curl -fsSL -o "${WORKSPACE_TMP}/${ASSET}" "${base}/${ASSET}"
+          curl -fsSL -o "${WORKSPACE_TMP}/${ASSET}.sha256" "${base}/${ASSET}.sha256"
+          ( cd "${WORKSPACE_TMP}" && sha256sum -c "${ASSET}.sha256" )
+          chmod +x "${WORKSPACE_TMP}/${ASSET}"
         '''
       }
     }
 
     stage('Run Bright Agent') {
+      // Runs against the checked-out workspace; REPOSITORY_URL is derived from
+      // its 'origin' remote.
       steps {
-        sh './${ASSET}'
+        sh 'LOCAL_REPO_PATH="${WORKSPACE}" "${WORKSPACE_TMP}/${ASSET}"'
       }
     }
   }

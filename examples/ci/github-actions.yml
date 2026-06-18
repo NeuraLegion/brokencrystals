@@ -1,8 +1,9 @@
 # Bright Agent — GitHub Actions example
 #
 # Copy this to `.github/workflows/bright-agent.yml` in YOUR application repo.
-# It downloads the Bright Agent binary and runs an autonomous DAST scan + fix
-# pass, opening a pull request with verified fixes.
+# It checks out your repo, runs Bright Agent against that working copy, and
+# opens a pull request with verified fixes. (Bright Agent no longer clones —
+# it operates on the checked-out tree.)
 #
 # Scans are resource-intensive, so this runs on-demand and on a nightly
 # schedule — not on every push.
@@ -10,16 +11,13 @@
 # Runner prerequisites: Docker, Docker Compose, Git (all present on
 # GitHub-hosted `ubuntu-latest`; self-hosted runners must provide them).
 #
-# Required repository secrets
-#   (Settings → Secrets and variables → Actions → New repository secret):
+# Required repository secrets:
 #     BRIGHT_TOKEN      Bright API token from https://app.brightsec.com
 #     INFERENCE_TOKEN   API token for your OpenAI-compatible inference endpoint
 #   and one repository variable:
-#     INFERENCE_URL     that endpoint's base URL (OpenAI, GitHub Models, Ollama,
-#                       a Bedrock-compatible gateway, …)
+#     INFERENCE_URL     that endpoint's base URL (OpenAI, GitHub Models, Ollama, …)
 #
-# Repo access uses the built-in GITHUB_TOKEN (see the `permissions:` block) —
-# no personal access token required.
+# Repo access uses the built-in GITHUB_TOKEN (see the `permissions:` block).
 
 name: Bright Agent (DAST)
 
@@ -28,8 +26,6 @@ on:
   schedule:
     - cron: "0 3 * * *" # nightly at 03:00 UTC
 
-# The agent clones, pushes the fix branch, and opens/updates the PR using
-# GITHUB_TOKEN, so grant it write scope here.
 permissions:
   contents: write
   pull-requests: write
@@ -43,7 +39,15 @@ jobs:
       # Runner platform/arch: linux-x64 | linux-arm64 | darwin-x64 | darwin-arm64
       ASSET: bright-agent-linux-x64
     steps:
+      # Check out the repo to scan. fetch-depth: 2 gives a parent commit for diffs.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      # Download the binary OUTSIDE the checkout ($RUNNER_TEMP) so it is never
+      # swept into the fix commit (the agent commits with `git add -A`).
       - name: Download & verify Bright Agent
+        working-directory: ${{ runner.temp }}
         run: |
           base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
           curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
@@ -53,9 +57,9 @@ jobs:
 
       - name: Run Bright Agent
         env:
-          # Scan the repository this workflow runs in:
-          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
-          # Built-in token — can clone, push, and open PRs given the permissions above.
+          # Run against the checked-out tree. REPOSITORY_URL is derived from the
+          # checkout's `origin` remote (set REPOSITORY_URL to override).
+          LOCAL_REPO_PATH: ${{ github.workspace }}
           REPO_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
           # Your own OpenAI-compatible inference endpoint + token:
@@ -66,7 +70,7 @@ jobs:
           # RUN_MODE: full
           # BRIGHT_HOSTNAME: app.brightsec.com
           # BRIGHT_DEBUG: "1"
-        run: ./${ASSET}
+        run: "${{ runner.temp }}/${{ env.ASSET }}"
 
 # NOTE: PRs and pushes made with GITHUB_TOKEN do not trigger your other
 # workflows (GitHub's anti-recursion rule). If you need the fix PR to run your

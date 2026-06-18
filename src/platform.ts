@@ -31,56 +31,122 @@ export interface Platform {
 // ---------------------------------------------------------------------------
 
 import { execFileSync } from "child_process";
-import { existsSync, mkdirSync } from "fs";
+import { resolve } from "path";
 import { detectScmProvider } from "./scm/detect.js";
 import type { ScmProvider } from "./scm/types.js";
 
-export function cloneRepository(opts: {
+/**
+ * Convert an SSH/scp-style git remote into an https URL that the repository-URL
+ * parser understands. Pass-through for URLs that are already http(s).
+ *
+ *   git@github.com:owner/repo.git        -> https://github.com/owner/repo
+ *   ssh://git@github.com/owner/repo.git  -> https://github.com/owner/repo
+ *   https://github.com/owner/repo.git    -> https://github.com/owner/repo
+ */
+export function normalizeRemoteUrl(raw: string): string {
+  const url = raw.trim();
+  // scp-style: user@host:path
+  const scp = /^[\w.+-]+@([^:/]+):(.+)$/.exec(url);
+  if (scp) {
+    return `https://${scp[1]}/${scp[2].replace(/\.git$/, "")}`;
+  }
+  if (url.startsWith("ssh://")) {
+    try {
+      const u = new URL(url);
+      return `https://${u.host}${u.pathname}`.replace(/\.git$/, "");
+    } catch {
+      /* fall through */
+    }
+  }
+  return url.replace(/\.git$/, "");
+}
+
+/**
+ * Resolve the local checkout to operate on. Defaults to the current working
+ * directory; override with LOCAL_REPO_PATH. The agent runs against this working
+ * copy directly — it does NOT clone.
+ */
+export function resolveRepoPath(): string {
+  const repoPath = resolve(process.env.LOCAL_REPO_PATH ?? process.cwd());
+  try {
+    execFileSync("git", ["-C", repoPath, "rev-parse", "--is-inside-work-tree"], {
+      stdio: "pipe",
+    });
+  } catch {
+    throw new Error(
+      `"${repoPath}" is not a git working tree. Check out the target repository ` +
+        `before running Bright Agent (e.g. actions/checkout in CI), then run from ` +
+        `inside it or set LOCAL_REPO_PATH.`,
+    );
+  }
+  return repoPath;
+}
+
+/** Read the checkout's `origin` remote URL, normalized to https. */
+export function deriveRepositoryUrl(repoPath: string): string {
+  let origin = "";
+  try {
+    origin = execFileSync("git", ["-C", repoPath, "remote", "get-url", "origin"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    /* handled below */
+  }
+  if (!origin) {
+    throw new Error(
+      `Could not determine the repository URL from "${repoPath}". Set REPOSITORY_URL, ` +
+        `or run inside a checkout that has an 'origin' remote.`,
+    );
+  }
+  return normalizeRemoteUrl(origin);
+}
+
+/**
+ * Prepare the local checkout for a scan run: create (or switch to) the scan
+ * branch on top of the checked-out ref, set the commit author, and route pushes
+ * through the access token so the fix branch and PR can be published.
+ */
+export function setupLocalRepo(opts: {
+  repoPath: string;
   provider: ScmProvider;
   gitToken: string;
   branchName: string;
   commitLogin: string;
   commitEmail: string;
-}): string {
-  const cloneUrl = opts.provider.buildCloneUrl(opts.gitToken);
-  const slug = opts.provider.repoSlug();
-  const dest = `/tmp/workspace/${slug}`;
+}): void {
+  const { repoPath, branchName } = opts;
 
-  if (existsSync(dest)) {
-    execFileSync("rm", ["-rf", dest]);
-  }
-  mkdirSync(dest, { recursive: true });
-
-  // Clone with depth 2 so we have a parent commit for diffs
-  execFileSync("git", ["clone", "--depth", "2", cloneUrl, dest], {
-    stdio: "pipe",
-    timeout: 120_000,
-  });
-
-  // Try to check out the branch, create it if it doesn't exist
+  // Create (or switch to) the scan branch on top of the current ref.
   try {
-    execFileSync("git", ["checkout", opts.branchName], {
-      cwd: dest,
-      stdio: "pipe",
-    });
+    execFileSync("git", ["-C", repoPath, "checkout", branchName], { stdio: "pipe" });
   } catch {
-    execFileSync("git", ["checkout", "-b", opts.branchName], {
-      cwd: dest,
-      stdio: "pipe",
-    });
+    execFileSync("git", ["-C", repoPath, "checkout", "-b", branchName], { stdio: "pipe" });
   }
 
-  // Configure git author
-  execFileSync("git", ["config", "user.name", opts.commitLogin || "BrightSec"], {
-    cwd: dest,
+  // Commit author for the fix commits.
+  execFileSync("git", ["-C", repoPath, "config", "user.name", opts.commitLogin || "BrightSec"], {
     stdio: "pipe",
   });
-  execFileSync("git", ["config", "user.email", opts.commitEmail || "bot@brightsec.com"], {
-    cwd: dest,
-    stdio: "pipe",
-  });
+  execFileSync(
+    "git",
+    ["-C", repoPath, "config", "user.email", opts.commitEmail || "bot@brightsec.com"],
+    { stdio: "pipe" },
+  );
 
-  return dest;
+  // Route pushes through the token so publishing works regardless of how the
+  // checkout was authenticated. Leaves the fetch URL untouched.
+  if (opts.gitToken) {
+    try {
+      const pushUrl = opts.provider.buildCloneUrl(opts.gitToken);
+      execFileSync("git", ["-C", repoPath, "remote", "set-url", "--push", "origin", pushUrl], {
+        stdio: "pipe",
+      });
+    } catch {
+      // No 'origin' or unusual setup — fall back to the checkout's own auth.
+    }
+  }
 }
 
 export function gitCommitAndPush(repoPath: string, message: string): void {
@@ -132,7 +198,7 @@ export class DefaultPlatform implements Platform {
 
   /**
    * Push the branch and create a PR so progress updates have somewhere to go.
-   * Call this after cloneRepository() and before the orchestrator starts.
+   * Call this after setupLocalRepo() and before the orchestrator starts.
    */
   async initPr(repoPath: string): Promise<void> {
     if (!this.gitToken) return;
@@ -218,17 +284,18 @@ export class DefaultPlatform implements Platform {
 }
 
 /**
- * Create the platform. Reads job details from environment variables.
- * Auto-detects SCM platform (GitHub / Azure DevOps) from REPOSITORY_URL.
+ * Create the platform for a local checkout. The SCM identity comes from
+ * REPOSITORY_URL if set, otherwise from the checkout's `origin` remote.
  */
-export async function createPlatform(gitToken?: string): Promise<{
+export async function createPlatform(
+  gitToken: string | undefined,
+  repoPath: string,
+): Promise<{
   platform: Platform;
   job: JobDetails;
+  provider: ScmProvider;
 }> {
-  const repositoryUrl = process.env.REPOSITORY_URL;
-  if (!repositoryUrl) {
-    throw new Error("Missing REPOSITORY_URL environment variable");
-  }
+  const repositoryUrl = process.env.REPOSITORY_URL ?? deriveRepositoryUrl(repoPath);
 
   const { provider } = detectScmProvider(repositoryUrl);
 
@@ -241,5 +308,5 @@ export async function createPlatform(gitToken?: string): Promise<{
 
   const platform = new DefaultPlatform(job, provider, gitToken);
   console.log(`[Platform] Initialized (${provider.platformName} — ${provider.repoSlug()})`);
-  return { platform, job };
+  return { platform, job, provider };
 }
