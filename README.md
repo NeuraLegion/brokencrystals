@@ -127,7 +127,7 @@ Bright host and your AI provider is also required.
 ### Option A — Prebuilt binary (recommended)
 
 Download the binary for your platform from the
-[latest release](https://github.com/NeuraLegion/bright-agent/releases/latest)
+[latest release](https://github.com/NeuraLegion/bright-agent-dist/releases/latest)
 (`linux`/`darwin`, `x64`/`arm64`), verify it, and run:
 
 ```bash
@@ -139,7 +139,8 @@ chmod +x bright-agent-linux-x64
 REPOSITORY_URL="https://github.com/owner/target-repo" \
 REPO_ACCESS_TOKEN="your-github-or-azure-pat" \
 BRIGHT_TOKEN="your-bright-api-token" \
-OPENAI_API_KEY="your-openai-key" \
+INFERENCE_URL="https://api.openai.com/v1" \
+INFERENCE_TOKEN="your-inference-token" \
 ./bright-agent-linux-x64
 ```
 
@@ -157,7 +158,8 @@ npm run build
 REPOSITORY_URL="https://github.com/owner/target-repo" \
 REPO_ACCESS_TOKEN="your-github-or-azure-pat" \
 BRIGHT_TOKEN="your-bright-api-token" \
-OPENAI_API_KEY="your-openai-key" \
+INFERENCE_URL="https://api.openai.com/v1" \
+INFERENCE_TOKEN="your-inference-token" \
 node dist/index.js
 ```
 

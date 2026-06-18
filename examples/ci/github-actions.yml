@@ -12,8 +12,11 @@
 #
 # Required repository secrets
 #   (Settings → Secrets and variables → Actions → New repository secret):
-#     BRIGHT_TOKEN     Bright API token from https://app.brightsec.com
-#     OPENAI_API_KEY   AI provider key (or swap for INFERENCE_TOKEN)
+#     BRIGHT_TOKEN      Bright API token from https://app.brightsec.com
+#     INFERENCE_TOKEN   API token for your OpenAI-compatible inference endpoint
+#   and one repository variable:
+#     INFERENCE_URL     that endpoint's base URL (OpenAI, GitHub Models, Ollama,
+#                       a Bedrock-compatible gateway, …)
 #
 # Repo access uses the built-in GITHUB_TOKEN (see the `permissions:` block) —
 # no personal access token required.
@@ -35,14 +38,14 @@ jobs:
   bright-agent:
     runs-on: ubuntu-latest
     env:
-      # Pin to a released tag — see https://github.com/NeuraLegion/bright-agent/releases
+      # Pin to a released tag — see https://github.com/NeuraLegion/bright-agent-dist/releases
       BRIGHT_AGENT_VERSION: v0.1.0
       # Runner platform/arch: linux-x64 | linux-arm64 | darwin-x64 | darwin-arm64
       ASSET: bright-agent-linux-x64
     steps:
       - name: Download & verify Bright Agent
         run: |
-          base="https://github.com/NeuraLegion/bright-agent/releases/download/${BRIGHT_AGENT_VERSION}"
+          base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
           curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
           curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
           sha256sum -c "${ASSET}.sha256"
@@ -55,8 +58,10 @@ jobs:
           # Built-in token — can clone, push, and open PRs given the permissions above.
           REPO_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # Optional (see the main README "Configuration"):
+          # Your own OpenAI-compatible inference endpoint + token:
+          INFERENCE_URL: ${{ vars.INFERENCE_URL }}
+          INFERENCE_TOKEN: ${{ secrets.INFERENCE_TOKEN }}
+          # Optional:
           # AI_MODEL: gpt-5.4-mini
           # RUN_MODE: full
           # BRIGHT_HOSTNAME: app.brightsec.com

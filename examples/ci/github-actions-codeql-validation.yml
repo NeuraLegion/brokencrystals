@@ -1,0 +1,86 @@
+# Bright Agent — CodeQL SARIF validation example (GitHub Actions)
+#
+# Copy this to `.github/workflows/bright-agent-validation.yml` in YOUR repo.
+#
+# This flow runs CodeQL static analysis, then has Bright Agent VALIDATE those
+# findings against a live DAST scan (RUN_MODE=validation). Instead of fixing,
+# it confirms which CodeQL findings are actually exploitable on the running app
+# and posts a CodeQL → DAST summary to a pull request. No fix loop runs.
+#
+# Runner prerequisites: Docker, Docker Compose, Git (present on ubuntu-latest).
+#
+# Required repository secrets:
+#     BRIGHT_TOKEN      Bright API token from https://app.brightsec.com
+#     INFERENCE_TOKEN   API token for your OpenAI-compatible inference endpoint
+#   and one repository variable:
+#     INFERENCE_URL     that endpoint's base URL (OpenAI, GitHub Models, Ollama, …)
+#
+# Repo access uses the built-in GITHUB_TOKEN (see the `permissions:` block).
+
+name: Bright Agent — CodeQL Validation
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 4 * * *" # nightly at 04:00 UTC
+
+permissions:
+  contents: write # Bright pushes a branch and posts the validation summary PR
+  pull-requests: write
+  security-events: write # only needed if you set `upload: always` below
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      BRIGHT_AGENT_VERSION: v0.1.0
+      ASSET: bright-agent-linux-x64
+      # CodeQL language to analyze: javascript | python | java | go | csharp | ruby | cpp | ...
+      CODEQL_LANGUAGE: javascript
+    steps:
+      - uses: actions/checkout@v5
+
+      # 1. Static analysis with CodeQL → SARIF file on disk
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ env.CODEQL_LANGUAGE }}
+
+      # Compiled languages (java, go, csharp, cpp) need a build. Autobuild covers
+      # most projects; replace with your own build steps if it can't.
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze (write SARIF to ./sarif-results)
+        uses: github/codeql-action/analyze@v3
+        with:
+          output: sarif-results
+          # We only need the SARIF file locally. Set to `always` to also publish
+          # results to the repo's Security tab (requires security-events: write).
+          upload: never
+
+      # 2. Fetch the Bright Agent binary
+      - name: Download & verify Bright Agent
+        run: |
+          base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
+          curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
+          curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
+          sha256sum -c "${ASSET}.sha256"
+          chmod +x "${ASSET}"
+
+      # 3. Validate the CodeQL findings against a live DAST scan
+      - name: Run Bright Agent (validation)
+        env:
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+          REPO_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+          # Your own OpenAI-compatible inference endpoint + token:
+          INFERENCE_URL: ${{ vars.INFERENCE_URL }}
+          INFERENCE_TOKEN: ${{ secrets.INFERENCE_TOKEN }}
+          RUN_MODE: validation
+          # CodeQL writes "<language>.sarif" into the output dir above:
+          SARIF_PATH: ${{ github.workspace }}/sarif-results/${{ env.CODEQL_LANGUAGE }}.sarif
+        run: ./${ASSET}
+
+# NOTE: PRs/pushes made with GITHUB_TOKEN don't trigger your other workflows.
+# Use a PAT (REPO_ACCESS_TOKEN secret) if you need the summary PR to run CI.

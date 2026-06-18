@@ -11,23 +11,25 @@
 // "Secret text":
 //     bright-token        -> BRIGHT_TOKEN
 //     repo-access-token   -> REPO_ACCESS_TOKEN   (clone/push/PR)
-//     openai-api-key      -> OPENAI_API_KEY      (or INFERENCE_TOKEN)
+//     inference-token     -> INFERENCE_TOKEN     (your OpenAI-compatible endpoint)
 
 pipeline {
   agent any
 
   environment {
-    // Pin to a released tag — see https://github.com/NeuraLegion/bright-agent/releases
+    // Pin to a released tag — see https://github.com/NeuraLegion/bright-agent-dist/releases
     BRIGHT_AGENT_VERSION = 'v0.1.0'
     ASSET                = 'bright-agent-linux-x64'
 
     // The repository to scan (https form). Adjust to your repo:
     REPOSITORY_URL       = 'https://github.com/your-org/your-repo'
+    // Your OpenAI-compatible inference endpoint (token is a credential below):
+    INFERENCE_URL        = 'https://api.openai.com/v1'
 
     // Secret text credentials are bound directly to these env vars:
     BRIGHT_TOKEN         = credentials('bright-token')
     REPO_ACCESS_TOKEN    = credentials('repo-access-token')
-    OPENAI_API_KEY       = credentials('openai-api-key')
+    INFERENCE_TOKEN      = credentials('inference-token')
   }
 
   options {
@@ -43,7 +45,7 @@ pipeline {
       steps {
         sh '''
           set -eu
-          base="https://github.com/NeuraLegion/bright-agent/releases/download/${BRIGHT_AGENT_VERSION}"
+          base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
           curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
           curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
           sha256sum -c "${ASSET}.sha256"
