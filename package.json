@@ -1,6 +1,6 @@
 {
   "name": "bright-security-engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Copilot coding agent engine for Bright DAST security scanning and auto-remediation",
   "private": true,
   "type": "module",
