@@ -81,7 +81,10 @@ Pick the asset matching the runner OS/arch:
 - `bright-agent-linux-arm64`
 - `bright-agent-darwin-x64`, `bright-agent-darwin-arm64` (macOS runners)
 
-Always **pin `BRIGHT_AGENT_VERSION`** to a released tag for reproducible runs.
+The examples pull the **latest** release (`releases/latest/download/...`). For
+reproducible runs, pin a specific version by swapping `latest/download` for
+`download/<tag>` (e.g. `.../releases/download/v0.1.1`) — see the comment in each
+example's download step.
 
 ## Scheduling
 

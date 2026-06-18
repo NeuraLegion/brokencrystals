@@ -33,7 +33,6 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     env:
-      BRIGHT_AGENT_VERSION: v0.1.0
       ASSET: bright-agent-linux-x64
       # CodeQL language to analyze: javascript | python | java | go | csharp | ruby | cpp | ...
       CODEQL_LANGUAGE: javascript
@@ -66,7 +65,9 @@ jobs:
       - name: Download & verify Bright Agent
         working-directory: ${{ runner.temp }}
         run: |
-          base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
+          # Latest release. To pin a version, replace 'latest/download' with
+          # 'download/<tag>', e.g. .../releases/download/v0.1.1
+          base="https://github.com/NeuraLegion/bright-agent-dist/releases/latest/download"
           curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
           curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
           sha256sum -c "${ASSET}.sha256"

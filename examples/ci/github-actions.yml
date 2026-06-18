@@ -34,8 +34,6 @@ jobs:
   bright-agent:
     runs-on: ubuntu-latest
     env:
-      # Pin to a released tag — see https://github.com/NeuraLegion/bright-agent-dist/releases
-      BRIGHT_AGENT_VERSION: v0.1.0
       # Runner platform/arch: linux-x64 | linux-arm64 | darwin-x64 | darwin-arm64
       ASSET: bright-agent-linux-x64
     steps:
@@ -49,7 +47,9 @@ jobs:
       - name: Download & verify Bright Agent
         working-directory: ${{ runner.temp }}
         run: |
-          base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
+          # Latest release. To pin a version, replace 'latest/download' with
+          # 'download/<tag>', e.g. .../releases/download/v0.1.1
+          base="https://github.com/NeuraLegion/bright-agent-dist/releases/latest/download"
           curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
           curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
           sha256sum -c "${ASSET}.sha256"

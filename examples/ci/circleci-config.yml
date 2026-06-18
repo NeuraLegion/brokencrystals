@@ -24,8 +24,6 @@ jobs:
     machine:
       image: ubuntu-2404:current # includes Docker, Docker Compose, and git
     environment:
-      # Pin to a released tag — see https://github.com/NeuraLegion/bright-agent-dist/releases
-      BRIGHT_AGENT_VERSION: v0.1.0
       ASSET: bright-agent-linux-x64
       # Your OpenAI-compatible inference endpoint (the token is a project secret):
       INFERENCE_URL: https://api.openai.com/v1
@@ -34,7 +32,9 @@ jobs:
       - run:
           name: Download & verify Bright Agent (outside the checkout)
           command: |
-            base="https://github.com/NeuraLegion/bright-agent-dist/releases/download/${BRIGHT_AGENT_VERSION}"
+            # Latest release. To pin a version, replace 'latest/download' with
+            # 'download/<tag>', e.g. .../releases/download/v0.1.1
+            base="https://github.com/NeuraLegion/bright-agent-dist/releases/latest/download"
             curl -fsSL -o "/tmp/${ASSET}" "${base}/${ASSET}"
             curl -fsSL -o "/tmp/${ASSET}.sha256" "${base}/${ASSET}.sha256"
             ( cd /tmp && sha256sum -c "${ASSET}.sha256" )
