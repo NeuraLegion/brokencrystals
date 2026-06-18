@@ -46,6 +46,12 @@ project env vars/contexts, Jenkins credentials) — never commit them.
 | `OPENAI_API_KEY`    | AI provider key (or use `INFERENCE_TOKEN` for GitHub Models, etc.) |
 | `REPOSITORY_URL`    | The repository to scan (https form)                            |
 
+> **GitHub Actions:** you can skip the `REPO_ACCESS_TOKEN` PAT and use the
+> built-in `GITHUB_TOKEN` instead — set `REPO_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}`
+> and grant `contents: write` + `pull-requests: write` (see the example).
+> Caveat: PRs opened with `GITHUB_TOKEN` won't trigger your other workflows, so
+> use a PAT if you need the fix PR to run your CI.
+
 The binary **redacts these from all log output**, including its log file. See
 the main [Configuration](../../README.md#configuration) section for the full
 list of variables (`AI_MODEL`, `RUN_MODE`, `BRIGHT_HOSTNAME`, `BRIGHT_DEBUG`, …).

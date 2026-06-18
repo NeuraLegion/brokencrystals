@@ -12,9 +12,11 @@
 #
 # Required repository secrets
 #   (Settings → Secrets and variables → Actions → New repository secret):
-#     BRIGHT_TOKEN        Bright API token from https://app.brightsec.com
-#     REPO_ACCESS_TOKEN   PAT that can clone, push branches, and open PRs
-#     OPENAI_API_KEY      AI provider key (or swap for INFERENCE_TOKEN)
+#     BRIGHT_TOKEN     Bright API token from https://app.brightsec.com
+#     OPENAI_API_KEY   AI provider key (or swap for INFERENCE_TOKEN)
+#
+# Repo access uses the built-in GITHUB_TOKEN (see the `permissions:` block) —
+# no personal access token required.
 
 name: Bright Agent (DAST)
 
@@ -23,10 +25,11 @@ on:
   schedule:
     - cron: "0 3 * * *" # nightly at 03:00 UTC
 
-# The agent authenticates with its own REPO_ACCESS_TOKEN, so the workflow's
-# GITHUB_TOKEN needs no write scope.
+# The agent clones, pushes the fix branch, and opens/updates the PR using
+# GITHUB_TOKEN, so grant it write scope here.
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   bright-agent:
@@ -49,7 +52,8 @@ jobs:
         env:
           # Scan the repository this workflow runs in:
           REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
-          REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          # Built-in token — can clone, push, and open PRs given the permissions above.
+          REPO_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           # Optional (see the main README "Configuration"):
@@ -58,3 +62,8 @@ jobs:
           # BRIGHT_HOSTNAME: app.brightsec.com
           # BRIGHT_DEBUG: "1"
         run: ./${ASSET}
+
+# NOTE: PRs and pushes made with GITHUB_TOKEN do not trigger your other
+# workflows (GitHub's anti-recursion rule). If you need the fix PR to run your
+# repo's CI checks, create a PAT secret and use it instead, e.g.:
+#     REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
