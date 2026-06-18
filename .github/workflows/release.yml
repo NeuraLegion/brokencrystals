@@ -8,7 +8,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write # needed to create/update the release
+  contents: read # checkout only; releases are published to the public dist repo via AUTO_DEPLOY_KEY
 
 jobs:
   build:
@@ -58,12 +58,20 @@ jobs:
           chmod +x ${{ matrix.name }}
           sha256sum ${{ matrix.name }} > ${{ matrix.name }}.sha256
 
-      # 3. Attach the binary (+ checksum) to the release for this tag.
-      - name: Attach to release
+      # 3. Publish the binary (+ checksum) to the PUBLIC distribution repo so
+      #    customers can download it (the private repo's releases aren't public).
+      - name: Publish to bright-agent-dist
         uses: softprops/action-gh-release@v3
         with:
+          repository: NeuraLegion/bright-agent-dist
+          token: ${{ secrets.AUTO_DEPLOY_KEY }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: >-
+            Bright Agent ${{ github.ref_name }} — prebuilt binaries for
+            linux/darwin × x64/arm64. Verify each download against its matching
+            `.sha256` file.
           files: |
             ${{ matrix.name }}
             ${{ matrix.name }}.sha256
           fail_on_unmatched_files: true
-          generate_release_notes: true
