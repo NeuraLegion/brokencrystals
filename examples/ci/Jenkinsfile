@@ -1,0 +1,61 @@
+// Bright Agent — Jenkins declarative pipeline example
+//
+// Copy this to `Jenkinsfile` in YOUR application repo (or point a Pipeline job
+// at it). It downloads the Bright Agent binary and runs an autonomous DAST
+// scan + fix pass, opening a pull request with verified fixes.
+//
+// Node prerequisites: the executing agent/node must have Docker, Docker
+// Compose, Git, and curl available on PATH, and permission to run Docker.
+//
+// Required Jenkins credentials (Manage Jenkins → Credentials), each as
+// "Secret text":
+//     bright-token        -> BRIGHT_TOKEN
+//     repo-access-token   -> REPO_ACCESS_TOKEN   (clone/push/PR)
+//     openai-api-key      -> OPENAI_API_KEY      (or INFERENCE_TOKEN)
+
+pipeline {
+  agent any
+
+  environment {
+    // Pin to a released tag — see https://github.com/NeuraLegion/bright-agent/releases
+    BRIGHT_AGENT_VERSION = 'v0.1.0'
+    ASSET                = 'bright-agent-linux-x64'
+
+    // The repository to scan (https form). Adjust to your repo:
+    REPOSITORY_URL       = 'https://github.com/your-org/your-repo'
+
+    // Secret text credentials are bound directly to these env vars:
+    BRIGHT_TOKEN         = credentials('bright-token')
+    REPO_ACCESS_TOKEN    = credentials('repo-access-token')
+    OPENAI_API_KEY       = credentials('openai-api-key')
+  }
+
+  options {
+    timeout(time: 2, unit: 'HOURS')
+  }
+
+  triggers {
+    cron('H 3 * * *') // nightly, ~03:00
+  }
+
+  stages {
+    stage('Download & verify Bright Agent') {
+      steps {
+        sh '''
+          set -eu
+          base="https://github.com/NeuraLegion/bright-agent/releases/download/${BRIGHT_AGENT_VERSION}"
+          curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
+          curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
+          sha256sum -c "${ASSET}.sha256"
+          chmod +x "${ASSET}"
+        '''
+      }
+    }
+
+    stage('Run Bright Agent') {
+      steps {
+        sh './${ASSET}'
+      }
+    }
+  }
+}

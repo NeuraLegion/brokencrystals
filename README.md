@@ -212,6 +212,17 @@ Bright Agent keeps the console **quiet and clean** by default:
 - **`BRIGHT_DEBUG=1`:** mirrors the full diagnostic log to the console in addition to
   the file — useful for live debugging.
 
+## CI Integration
+
+Run Bright Agent in your own pipeline using the prebuilt binary. Ready-to-copy
+templates for GitHub Actions, CircleCI, and Jenkins live in
+[`examples/ci/`](./examples/ci/) — each downloads a version-pinned release,
+verifies its checksum, and scans your repository on a nightly/manual schedule.
+
+Runners need **Docker**, **Docker Compose**, and **Git** available; see
+[`examples/ci/README.md`](./examples/ci/README.md) for required secrets and
+platform notes.
+
 ## License
 
 MIT

@@ -1,0 +1,57 @@
+# Bright Agent — CircleCI example
+#
+# Copy this to `.circleci/config.yml` in YOUR application repo.
+#
+# IMPORTANT: use the `machine` executor (a full Linux VM). The agent runs
+# `docker compose` to build and start your application, then scans it on
+# localhost — this needs real Docker access. The `docker` executor with
+# `setup_remote_docker` runs Docker on a separate host and cannot reach the
+# app on localhost, so it will not work here.
+#
+# Runner prerequisites: Docker, Docker Compose, Git (all present on the
+# CircleCI machine image below).
+#
+# Required environment variables — set them as Project Environment Variables
+# (Project Settings → Environment Variables) or via a Context:
+#     BRIGHT_TOKEN        Bright API token from https://app.brightsec.com
+#     REPO_ACCESS_TOKEN   PAT that can clone, push branches, and open PRs
+#     OPENAI_API_KEY      AI provider key (or swap for INFERENCE_TOKEN)
+
+version: 2.1
+
+jobs:
+  bright-agent:
+    machine:
+      image: ubuntu-2404:current # includes Docker, Docker Compose, and git
+    environment:
+      # Pin to a released tag — see https://github.com/NeuraLegion/bright-agent/releases
+      BRIGHT_AGENT_VERSION: v0.1.0
+      ASSET: bright-agent-linux-x64
+      # The repository to scan (https form). Adjust to your repo:
+      REPOSITORY_URL: https://github.com/your-org/your-repo
+    steps:
+      - run:
+          name: Download & verify Bright Agent
+          command: |
+            base="https://github.com/NeuraLegion/bright-agent/releases/download/${BRIGHT_AGENT_VERSION}"
+            curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
+            curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
+            sha256sum -c "${ASSET}.sha256"
+            chmod +x "${ASSET}"
+      - run:
+          name: Run Bright Agent
+          # BRIGHT_TOKEN, REPO_ACCESS_TOKEN, OPENAI_API_KEY are injected from
+          # the project's environment variables / context.
+          command: ./${ASSET}
+
+workflows:
+  nightly-dast:
+    triggers:
+      - schedule:
+          cron: "0 3 * * *" # nightly at 03:00 UTC
+          filters:
+            branches:
+              only:
+                - main
+    jobs:
+      - bright-agent

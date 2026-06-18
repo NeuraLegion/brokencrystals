@@ -1,0 +1,60 @@
+# Bright Agent — GitHub Actions example
+#
+# Copy this to `.github/workflows/bright-agent.yml` in YOUR application repo.
+# It downloads the Bright Agent binary and runs an autonomous DAST scan + fix
+# pass, opening a pull request with verified fixes.
+#
+# Scans are resource-intensive, so this runs on-demand and on a nightly
+# schedule — not on every push.
+#
+# Runner prerequisites: Docker, Docker Compose, Git (all present on
+# GitHub-hosted `ubuntu-latest`; self-hosted runners must provide them).
+#
+# Required repository secrets
+#   (Settings → Secrets and variables → Actions → New repository secret):
+#     BRIGHT_TOKEN        Bright API token from https://app.brightsec.com
+#     REPO_ACCESS_TOKEN   PAT that can clone, push branches, and open PRs
+#     OPENAI_API_KEY      AI provider key (or swap for INFERENCE_TOKEN)
+
+name: Bright Agent (DAST)
+
+on:
+  workflow_dispatch: {} # manual trigger
+  schedule:
+    - cron: "0 3 * * *" # nightly at 03:00 UTC
+
+# The agent authenticates with its own REPO_ACCESS_TOKEN, so the workflow's
+# GITHUB_TOKEN needs no write scope.
+permissions:
+  contents: read
+
+jobs:
+  bright-agent:
+    runs-on: ubuntu-latest
+    env:
+      # Pin to a released tag — see https://github.com/NeuraLegion/bright-agent/releases
+      BRIGHT_AGENT_VERSION: v0.1.0
+      # Runner platform/arch: linux-x64 | linux-arm64 | darwin-x64 | darwin-arm64
+      ASSET: bright-agent-linux-x64
+    steps:
+      - name: Download & verify Bright Agent
+        run: |
+          base="https://github.com/NeuraLegion/bright-agent/releases/download/${BRIGHT_AGENT_VERSION}"
+          curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
+          curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
+          sha256sum -c "${ASSET}.sha256"
+          chmod +x "${ASSET}"
+
+      - name: Run Bright Agent
+        env:
+          # Scan the repository this workflow runs in:
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+          REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Optional (see the main README "Configuration"):
+          # AI_MODEL: gpt-5.4-mini
+          # RUN_MODE: full
+          # BRIGHT_HOSTNAME: app.brightsec.com
+          # BRIGHT_DEBUG: "1"
+        run: ./${ASSET}
