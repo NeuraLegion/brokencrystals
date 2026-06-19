@@ -6,6 +6,7 @@ import {
   isRenderToolInput,
   isSearchUsersToolInput,
   isExcerptTextToolInput,
+  isGetTestimonialsToolInput,
   isSpawnToolInput,
   isUpdateUserToolInput,
   McpTool
@@ -19,6 +20,7 @@ export type McpToolName =
   | 'spawn_process'
   | 'get_metadata'
   | 'search_users'
+  | 'get_testimonials'
   | 'update_user'
   | 'excerpt_text';
 
@@ -194,6 +196,24 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     validate: (args: unknown) => isSearchUsersToolInput(args),
     invalidArgsMessage:
       'Invalid arguments: search_users requires a non-empty "name" string parameter'
+  },
+
+  get_testimonials: {
+    definition: {
+      name: 'get_testimonials',
+      description:
+        'Proxy to /api/testimonials. Returns a JSON array of all testimonials.',
+      accessLevel: 'public',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    },
+    validate: (args: unknown) => isGetTestimonialsToolInput(args),
+    invalidArgsMessage:
+      'Invalid arguments: get_testimonials expects an optional object parameter',
+    normalize: (args: unknown) => args ?? {}
   },
 
   update_user: {

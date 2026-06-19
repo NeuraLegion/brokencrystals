@@ -319,6 +319,9 @@ describe('/api', () => {
           expect.arrayContaining([
             expect.objectContaining({
               name: 'excerpt_text'
+            }),
+            expect.objectContaining({
+              name: 'get_testimonials'
             })
           ])
         );
@@ -649,6 +652,33 @@ describe('/api', () => {
       });
     });
 
+    describe('get_testimonials', () => {
+      it('should return all testimonials via MCP tool call', async () => {
+        const mcpSession = await initializeMcpSession();
+        const response = await postMcp(
+          {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+              name: 'get_testimonials',
+              arguments: {}
+            },
+            id: 14
+          },
+          {
+            'Mcp-Session-Id': mcpSession.sessionId
+          }
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.data?.error).toBeUndefined();
+
+        const text = response.data?.result?.content?.[0]?.text;
+        expect(typeof text).toBe('string');
+        expect(Array.isArray(JSON.parse(text))).toBe(true);
+      });
+    });
+
     describe('update_user', () => {
       it('should return allowed top-level fields plus __proto__ fields', async () => {
         const mcpSession = await initializeMcpSession();
@@ -660,7 +690,7 @@ describe('/api', () => {
           jsonrpc: '2.0',
           method: 'tools/call',
           params: { name: 'update_user', arguments: { payload: polluted } },
-          id: 13
+          id: 15
         });
         const response = await postMcp(body, {
           'Content-Type': 'application/json',
@@ -690,7 +720,7 @@ describe('/api', () => {
                 text: inputText
               }
             },
-            id: 14
+            id: 16
           },
           {
             'Mcp-Session-Id': mcpSession.sessionId
@@ -716,7 +746,7 @@ describe('/api', () => {
             params: {
               uri: remoteFixtureServer.payloadUrl
             },
-            id: 15
+            id: 17
           },
           {
             'Mcp-Session-Id': mcpSession.sessionId

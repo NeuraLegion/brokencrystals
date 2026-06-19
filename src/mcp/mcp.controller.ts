@@ -239,6 +239,18 @@ export class McpController {
           id: 11
         }
       },
+      call_get_testimonials: {
+        summary: 'Call get_testimonials',
+        value: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'get_testimonials',
+            arguments: {}
+          },
+          id: 12
+        }
+      },
       call_update_user: {
         summary: 'Call update_user',
         value: {
@@ -256,7 +268,7 @@ export class McpController {
               }
             }
           },
-          id: 12
+          id: 13
         }
       },
       call_excerpt_text: {
@@ -270,7 +282,7 @@ export class McpController {
               text: 'Q4 earnings rose 12% year-over-year, driven by strong cloud demand.'
             }
           },
-          id: 13
+          id: 14
         }
       }
     }

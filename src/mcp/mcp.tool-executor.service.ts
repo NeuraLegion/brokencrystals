@@ -74,6 +74,8 @@ export class McpToolExecutorService extends McpProxySupport {
           args as SearchUsersToolInput,
           context.authorizationHeader
         );
+      case 'get_testimonials':
+        return this.executeGetTestimonialsTool(context.authorizationHeader);
       case 'update_user':
         return this.executeUpdateUserTool(args as UpdateUserToolInput);
       case 'excerpt_text':
@@ -377,6 +379,41 @@ export class McpToolExecutorService extends McpProxySupport {
 
       if (response.status !== 200) {
         return this.proxyError('search_users', response);
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(response.data, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
+        isError: true
+      };
+    }
+  }
+
+  private async executeGetTestimonialsTool(
+    authorizationHeader?: string
+  ): Promise<McpToolResult> {
+    try {
+      this.logger.debug('Proxy testimonials list via /api/testimonials');
+
+      const response = await axios.get(this.endpoint('/api/testimonials'), {
+        headers: {
+          ...this.buildProxyHeaders(authorizationHeader),
+          accept: 'application/json'
+        },
+        responseType: 'json',
+        validateStatus: () => true
+      });
+
+      if (response.status !== 200) {
+        return this.proxyError('get_testimonials', response);
       }
 
       return {
