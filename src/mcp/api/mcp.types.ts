@@ -280,11 +280,15 @@ export function isSearchUsersToolInput(
 export function isGetTestimonialsToolInput(
   args: unknown
 ): args is GetTestimonialsToolInput {
-  return (
-    args === undefined ||
-    args === null ||
-    (typeof args === 'object' && !Array.isArray(args))
-  );
+  if (args === undefined || args === null) {
+    return true;
+  }
+
+  if (typeof args !== 'object' || Array.isArray(args)) {
+    return false;
+  }
+
+  return Object.keys(args).length === 0;
 }
 
 export function isUpdateUserToolInput(

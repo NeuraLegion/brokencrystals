@@ -212,8 +212,8 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
     },
     validate: (args: unknown) => isGetTestimonialsToolInput(args),
     invalidArgsMessage:
-      'Invalid arguments: get_testimonials expects an optional object parameter',
-    normalize: (args: unknown) => args ?? {}
+      'Invalid arguments: get_testimonials accepts no arguments',
+    normalize: () => ({})
   },
 
   update_user: {
