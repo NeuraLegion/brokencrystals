@@ -1,0 +1,120 @@
+=== brokencrystals-db-1 ===
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+=== brokencrystals-grpcwebproxy-1 ===
+time="2026-07-01T11:56:25Z" level=info msg="[core] parsed scheme: \"\"" system=system
+time="2026-07-01T11:56:25Z" level=info msg="[core] scheme \"\" not registered, fallback to default scheme" system=system
+time="2026-07-01T11:56:25Z" level=info msg="[core] ccResolverWrapper: sending update to cc: {[{nodejs:5000  <nil> 0 <nil>}] <nil> <nil>}" system=system
+time="2026-07-01T11:56:25Z" level=info msg="[core] ClientConn switching balancer to \"pick_first\"" system=system
+time="2026-07-01T11:56:25Z" level=info msg="[core] Channel switches to new LB policy \"pick_first\"" system=system
+time="2026-07-01T11:56:25Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:25Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:25Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-07-01T11:56:25Z" level=info msg="listening for http on: [::]:8081"
+time="2026-07-01T11:56:25Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-07-01T11:56:25Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:25Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:26Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:26Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-07-01T11:56:26Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:26Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-07-01T11:56:26Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:26Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:28Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:28Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-07-01T11:56:28Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:28Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-07-01T11:56:28Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:28Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:31Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:31Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-07-01T11:56:31Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:31Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-07-01T11:56:31Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:31Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:35Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:35Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-07-01T11:56:35Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:35Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-07-01T11:56:35Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:35Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:41Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:41Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-07-01T11:56:41Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:41Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-07-01T11:56:41Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:41Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:50Z" level=info msg="[core] Subchannel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:50Z" level=info msg="[core] Subchannel picks a new address \"nodejs:5000\" to connect" system=system
+time="2026-07-01T11:56:50Z" level=info msg="[core] Channel Connectivity change to CONNECTING" system=system
+time="2026-07-01T11:56:50Z" level=warning msg="[core] grpc: addrConn.createTransport failed to connect to {nodejs:5000 nodejs:5000 <nil> 0 <nil>}. Err: connection error: desc = \"transport: Error while dialing dial tcp 172.18.0.8:5000: connect: connection refused\". Reconnecting..." system=system
+time="2026-07-01T11:56:50Z" level=info msg="[core] Subchannel Connectivity change to TRANSIENT_FAILURE" system=system
+time="2026-07-01T11:56:50Z" level=info msg="[core] Channel Connectivity change to TRANSIENT_FAILURE" system=system
+
+=== brokencrystals-keycloak-1 ===
+Updating the configuration and installing your custom providers, if any. Please wait.
+2026-07-01 11:56:31,400 INFO  [io.qua.hib.orm.dep.HibernateOrmProcessor] (build-17) A legacy persistence.xml file is present in the classpath. This file will be used to configure JPA/Hibernate ORM persistence units, and any configuration of the Hibernate ORM extension will be ignored. To ignore persistence.xml files instead, set the configuration property 'quarkus.hibernate-orm.persistence-xml.ignore' to 'true'.
+2026-07-01 11:56:37,274 INFO  [io.qua.dep.QuarkusAugmentor] (main) Quarkus augmentation completed in 9516ms
+Running the server in development mode. DO NOT use this configuration in production.
+2026-07-01 11:56:38,465 ERROR [org.keycloak.quarkus.runtime.configuration.mappers.PropertyMappers] (main) Hostname v1 options [hostname-strict-https] are still in use, please review your configuration
+2026-07-01 11:56:41,634 INFO  [org.keycloak.quarkus.runtime.storage.infinispan.CacheManagerFactory] (ForkJoinPool.commonPool-worker-1) Starting Infinispan embedded cache manager
+2026-07-01 11:56:41,875 INFO  [org.infinispan.CONTAINER] (ForkJoinPool.commonPool-worker-1) Virtual threads support enabled
+2026-07-01 11:56:42,074 INFO  [org.infinispan.CONTAINER] (ForkJoinPool.commonPool-worker-1) ISPN000556: Starting user marshaller 'org.infinispan.commons.marshall.ImmutableProtoStreamMarshaller'
+2026-07-01 11:56:42,468 INFO  [org.infinispan.transaction.lookup.JBossStandaloneJTAManagerLookup] (ForkJoinPool.commonPool-worker-1) ISPN000107: Retrieving transaction manager Transaction: unknown
+2026-07-01 11:56:42,775 INFO  [org.keycloak.broker.provider.AbstractIdentityProviderMapper] (main) Registering class org.keycloak.broker.provider.mappersync.ConfigSyncEventListener
+2026-07-01 11:56:42,792 INFO  [org.keycloak.connections.infinispan.DefaultInfinispanConnectionProviderFactory] (main) Node name: node_376784, Site name: null
+2026-07-01 11:56:43,770 INFO  [org.keycloak.exportimport.singlefile.SingleFileImportProvider] (main) Full importing from file /opt/keycloak/bin/../data/import/realm-export.json
+2026-07-01 11:56:44,156 INFO  [org.keycloak.exportimport.util.ImportUtils] (main) Realm 'brokencrystals' already exists. Import skipped
+2026-07-01 11:56:44,158 INFO  [org.keycloak.exportimport.dir.DirImportProvider] (main) Importing from directory /opt/keycloak/bin/../data/import
+2026-07-01 11:56:44,160 INFO  [org.keycloak.services] (main) KC-SERVICES0030: Full model import requested. Strategy: IGNORE_EXISTING
+2026-07-01 11:56:44,161 INFO  [org.keycloak.services] (main) KC-SERVICES0032: Import finished successfully
+2026-07-01 11:56:44,176 WARN  [io.agroal.pool] (main) Datasource '<default>': JDBC resources leaked: 3 ResultSet(s) and 0 Statement(s)
+2026-07-01 11:56:44,430 INFO  [io.quarkus] (main) Keycloak 26.1.2 on JVM (powered by Quarkus 3.15.3) started in 6.974s. Listening on: http://0.0.0.0:8080. Management interface listening on http://0.0.0.0:9000.
+2026-07-01 11:56:44,430 INFO  [io.quarkus] (main) Profile dev activated. 
+2026-07-01 11:56:44,430 INFO  [io.quarkus] (main) Installed features: [agroal, cdi, hibernate-orm, jdbc-postgresql, keycloak, narayana-jta, opentelemetry, reactive-routes, rest, rest-jackson, smallrye-context-propagation, smallrye-health, vertx]
+
+=== brokencrystals-keycloak-db-1 ===
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+=== brokencrystals-mailcatcher-1 ===
+Starting MailCatcher v0.10.0
+==> smtp://0.0.0.0:1025
+==> http://0.0.0.0:1080
+
+=== brokencrystals-nodejs-1 ===
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+
+> broken-crystals@0.0.1 start:prod
+> node dist/main.js
+
+=== brokencrystals-ollama-1 ===
+[GIN] 2026/07/01 - 11:56:30 | 200 |      36.909µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/07/01 - 11:56:30 | 200 |     883.284µs |       127.0.0.1 | GET      "/api/tags"
+[GIN] 2026/07/01 - 11:57:00 | 200 |      19.707µs |       127.0.0.1 | HEAD     "/"
+[GIN] 2026/07/01 - 11:57:00 | 200 |     279.363µs |       127.0.0.1 | GET      "/api/tags"

@@ -11,6 +11,7 @@ services:
       POSTGRES_DB: ${DATABASE_SCHEMA}
       POSTGRES_USER: ${DATABASE_USER}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_HOST_AUTH_METHOD: md5
     ports:
       - '5432:5432'
     volumes:
@@ -18,8 +19,13 @@ services:
       - '.data/nodejs:/var/lib/postgresql/data/'
 
   nodejs:
-    image: 'brightsec/brokencrystals'
+    # image: brightsec/brokencrystals  # replaced — must build from source
+    build:
+      context: .
     restart: always
+    ports:
+      - '3000:3000'
+      - '5000:5000'
     healthcheck:
       interval: 5s
       retries: 10
@@ -28,11 +34,17 @@ services:
       timeout: 30s
     environment:
       NODE_ENV: production
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_SCHEMA: ${DATABASE_SCHEMA}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
       CHAT_API_TOKEN: ${CHAT_API_TOKEN}
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+      URL: ${URL}
     deploy:
       restart_policy:
         condition: on-failure

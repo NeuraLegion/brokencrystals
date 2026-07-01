@@ -22,6 +22,7 @@ import { fastifyStatic, ListRender } from '@fastify/static';
 import { join, dirname } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
+import { existsSync } from 'fs';
 
 const renderDirList: ListRender = (dirs, files) => {
   const currDir = dirname((dirs[0] || files[0]).href);
@@ -85,7 +86,9 @@ async function bootstrap() {
     trustProxy: true,
     onProtoPoisoning: 'ignore',
     https:
-      process.env.NODE_ENV === 'production'
+      process.env.NODE_ENV === 'production' &&
+      existsSync('/etc/letsencrypt/live/brokencrystals.com/fullchain.pem') &&
+      existsSync('/etc/letsencrypt/live/brokencrystals.com/privkey.pem')
         ? {
             cert: readFileSync(
               '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem'
@@ -266,22 +269,11 @@ async function bootstrap() {
   await app.listen(3000, '0.0.0.0');
 }
 
-if (cluster.isPrimary && process.env.NODE_ENV === 'production') {
-  console.log(`Primary ${process.pid} is running`);
-
-  const numCPUs = os.cpus().length;
-  for (let i = 0; i < numCPUs; i++) {
-    cluster.fork();
-  }
-
-  cluster.on('exit', (worker, code, signal) => {
-    console.log(
-      `Worker ${worker.process.pid} died with code ${code} and signal ${signal}`
-    );
-    console.log('Starting a new worker');
-    cluster.fork();
+bootstrap()
+  .then(() => {
+    console.log(`Process ${process.pid} started`);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
   });
-} else {
-  bootstrap();
-  console.log(`Worker ${process.pid} started`);
-}
