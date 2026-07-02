@@ -549,7 +549,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
         {
           "codeclimate": "CODECLIMATE_REPO_TOKEN=62864c476ade6ab9d10d0ce0901ae2c211924852a28c5f960ae5165c1fdfec73",
           "facebook": "EAACEdEose0cBAHyDF5HI5o2auPWv3lPP3zNYuWWpjMrSaIhtSvX73lsLOcas5k8GhC5HgOXnbF3rXRTczOpsbNb54CQL8LcQEMhZAWAJzI0AzmL23hZByFAia5avB6Q4Xv4u2QVoAdH0mcJhYTFRpyJKIAyDKUEBzz0GgZDZD",
-          "google_b64": "QUl6YhT6QXlEQnbTr2dSdEI1W7yL2mFCX3c4PPP5NlpkWE65NkZV",
+          "google_b64": "QUl6YVN5RGFHbVdLYTRKc1haLUhqR3c3SVNMbl8zbmFtQkdld1Fl",
           "google_oauth": "188968487735-c7hh7k87juef6vv84697sinju2bet7gn.apps.googleusercontent.com",
           "google_oauth_token": "ya29.a0TgU6SMDItdQQ9J7j3FVgJuByTTevl0FThTEkBs4pA4-9tFREyf2cfcL-_JU6Trg1O0NWwQKie4uGTrs35kmKlxohWgcAl8cg9DTxRx-UXFS-S1VYPLVtQLGYyNTfGp054Ad3ej73-FIHz3RZY43lcKSorbZEY4BI",
           "heroku": "herokudev.staging.endosome.975138 pid=48751 request_id=0e9a8698-a4d2-4925-a1a5-113234af5f60",
