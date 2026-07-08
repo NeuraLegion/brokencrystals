@@ -359,10 +359,12 @@ export class McpController {
   @Delete()
   @HttpCode(204)
   @ApiOperation({
-    summary: 'Terminate an MCP session by Mcp-Session-Id'
+    summary: 'Schedule an MCP session for invalidation by Mcp-Session-Id',
+    description:
+      'Schedules the session identified by Mcp-Session-Id to be invalidated 5 minutes after this request. The session remains usable during that window.'
   })
   @ApiNoContentResponse({
-    description: 'Session terminated'
+    description: 'Session scheduled for invalidation in 5 minutes'
   })
   async terminateMcpSession(
     @Req() req: FastifyRequest,
@@ -375,8 +377,8 @@ export class McpController {
       );
     }
 
-    const terminated = this.mcpSessionService.terminateSession(sessionId);
-    if (!terminated) {
+    const scheduled = this.mcpSessionService.scheduleTermination(sessionId);
+    if (!scheduled) {
       throw new NotFoundException(
         'MCP session not found: call initialize to create a new session'
       );
