@@ -1,4 +1,4 @@
-import { HttpException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, Logger } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from './users/users.service';
@@ -10,6 +10,11 @@ import { UserDto } from './users/api/UserDto';
 @Injectable()
 export class AppService {
   private readonly logger = new Logger(AppService.name);
+  private readonly allowedCommands: Record<string, { exec: string; args: string[] }> = {
+    pwd: { exec: '/bin/pwd', args: [] },
+    uptime: { exec: '/usr/bin/uptime', args: [] },
+    id: { exec: '/usr/bin/id', args: [] }
+  };
 
   constructor(
     private readonly configService: ConfigService,
@@ -17,12 +22,19 @@ export class AppService {
   ) {}
 
   async launchCommand(command: string): Promise<string> {
-    this.logger.debug(`launch ${command} command`);
+    const normalizedCommand = command?.trim();
+    const selectedCommand =
+      normalizedCommand && this.allowedCommands[normalizedCommand];
+
+    if (!selectedCommand) {
+      throw new BadRequestException('Unsupported command');
+    }
+
+    this.logger.debug(`launch ${normalizedCommand} command`);
 
     return new Promise((res, rej) => {
       try {
-        const [exec, ...args] = command.split(' ');
-        const ps = spawn(exec, args);
+        const ps = spawn(selectedCommand.exec, selectedCommand.args);
 
         ps.stdout.on('data', (data: Buffer) => {
           this.logger.debug(`stdout: ${data}`);

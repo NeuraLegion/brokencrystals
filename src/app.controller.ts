@@ -247,7 +247,7 @@ export class AppController {
   async getCommandResultGrpc(data: {
     command: string;
   }): Promise<{ output: string }> {
-    const output = await this.appService.launchCommand(data.command);
+    const output = await this.appService.launchCommand(data?.command);
     return { output };
   }
 
