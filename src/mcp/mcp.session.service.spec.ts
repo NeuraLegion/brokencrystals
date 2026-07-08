@@ -95,4 +95,117 @@ describe('McpSessionService', () => {
 
     expect(service.touchSession(session.sessionId)).toBe(session);
   });
+
+  describe('delayed invalidation via scheduleTermination', () => {
+    const DELAY_MS = 5 * 60 * 1000;
+
+    const createServiceWithConfig = (config: {
+      algorithm?: string;
+      ttlMs?: string;
+    }) =>
+      new McpSessionService({
+        get: jest.fn((key: string) => {
+          if (key === 'MCP_SESSION_ID_ALGORITHM') {
+            return config.algorithm;
+          }
+          if (key === 'MCP_SESSION_TTL_MS') {
+            return config.ttlMs;
+          }
+          return undefined;
+        })
+      } as unknown as ConfigService);
+
+    const initGuest = (service: McpSessionService) =>
+      service.initializeSession({ authenticated: false, role: 'guest' });
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    });
+
+    it('returns false when scheduling termination for an unknown session', () => {
+      const service = createServiceWithConfig({
+        algorithm: 'prefixed-sequential'
+      });
+
+      expect(service.scheduleTermination('does-not-exist')).toBe(false);
+    });
+
+    it('is idempotent and does not reschedule when called repeatedly', () => {
+      const service = createServiceWithConfig({
+        algorithm: 'prefixed-sequential'
+      });
+      const session = initGuest(service);
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+
+      expect(service.scheduleTermination(session.sessionId)).toBe(true);
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+
+      // A second call partway through the window must not arm a new timer.
+      jest.advanceTimersByTime(DELAY_MS / 2);
+      expect(service.scheduleTermination(session.sessionId)).toBe(true);
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+
+      // The original schedule still fires DELAY_MS after the first call.
+      jest.advanceTimersByTime(DELAY_MS / 2);
+      expect(service.touchSession(session.sessionId)).toBeUndefined();
+    });
+
+    it('keeps the session usable before the delay and removes it afterwards', () => {
+      const service = createServiceWithConfig({
+        algorithm: 'prefixed-sequential'
+      });
+      const session = initGuest(service);
+
+      expect(service.scheduleTermination(session.sessionId)).toBe(true);
+
+      // Just before the delay elapses the session is still valid.
+      jest.advanceTimersByTime(DELAY_MS - 1);
+      expect(service.touchSession(session.sessionId)).toBeDefined();
+
+      // Once the delay elapses the scheduled timer removes the session.
+      jest.advanceTimersByTime(1);
+      expect(service.touchSession(session.sessionId)).toBeUndefined();
+    });
+
+    it('clears the pending timer on terminateSession so a reused id survives', () => {
+      const service = createServiceWithConfig({ algorithm: 'static' });
+      const session = initGuest(service);
+      const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
+      expect(service.scheduleTermination(session.sessionId)).toBe(true);
+      expect(service.terminateSession(session.sessionId)).toBe(true);
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+
+      // The 'static' algorithm reuses the same id; the new session must not be
+      // wiped by the timer that was armed for the terminated session.
+      const reused = initGuest(service);
+      expect(reused.sessionId).toBe(session.sessionId);
+
+      jest.advanceTimersByTime(DELAY_MS);
+      expect(service.touchSession(reused.sessionId)).toBeDefined();
+    });
+
+    it('clears the pending timer when a session expires via TTL', () => {
+      const service = createServiceWithConfig({
+        algorithm: 'static',
+        ttlMs: '1000'
+      });
+      const session = initGuest(service);
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+      const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+
+      expect(service.scheduleTermination(session.sessionId)).toBe(true);
+      const timerHandle = setTimeoutSpy.mock.results[0].value;
+
+      // Advance beyond the TTL (1s) but not the 5-minute deletion delay.
+      jest.advanceTimersByTime(2000);
+      expect(service.touchSession(session.sessionId)).toBeUndefined();
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(timerHandle);
+    });
+  });
 });
