@@ -1240,6 +1240,9 @@ Full configuration & usage examples can be found in our [demo project](https://g
   - **Prototype Pollution via update_user** - The `update_user` tool returns top-level `name`/`email`/`username`/`phone` fields plus everything inside attacker-controlled `__proto__` payload fields.
   - **Text Relay via excerpt_text** - The `excerpt_text` tool returns user-supplied text truncated to at most 1000 symbols.
   - **OS Command Injection via spawn_process** - The `spawn_process` executes arbitrary operating system commands through MCP (same vulnerability class as `/api/spawn`) and streams progress over event-stream.
+  - **Predictable Session ID** - The MCP session id generation algorithm is chosen randomly each time the server starts (from `prefixed-sequential`, `static`, `unix-second-with-counter`, `uuid-v1`, and `fixed-mask-low-variety`). Several of these produce guessable, low-entropy session ids (e.g. `mcp-session-static`, `mcp-session-1`), allowing an attacker to predict or enumerate valid `Mcp-Session-Id` values.
+  - **Lack of Session ID Invalidation** - When a `DELETE /api/mcp` request is sent, the session is not terminated immediately but only 5 minutes after the request is sent. The session remains fully usable during that window, so a compromised or leaked session id stays valid well after the client believes it was revoked.
+  - **MCP Session ID as Authentication** - The MCP server accepts requests bearing a valid `Mcp-Session-Id` header without re-verifying that the request also carries the original authentication context that created the session. Once the session id is known — through interception, log exposure, or client-side leakage — it functions as a self-sufficient bearer credential: any party holding it can replay MCP calls with no password, token, or cookie of their own. Rather than acting as a reference to a session that must still be authenticated on every call, the `Mcp-Session-Id` is the authentication.
   - **Authentication and Session Management** - The `/api/mcp` endpoint supports optional authentication and per-client session tracking:
 
     - MCP sessions are independent from the regular API authentication/authorization flow.
@@ -1249,7 +1252,7 @@ Full configuration & usage examples can be found in our [demo project](https://g
     - Every non-initialize MCP request must send the same `Mcp-Session-Id` received from `initialize`.
     - Missing `Mcp-Session-Id` on non-initialize requests returns HTTP `400`.
     - Unknown/expired/terminated `Mcp-Session-Id` returns HTTP `404`.
-    - Clients can explicitly terminate sessions with `DELETE /api/mcp` + `Mcp-Session-Id`.
+    - Clients can schedule session termination with `DELETE /api/mcp` + `Mcp-Session-Id`; the session is invalidated 5 minutes after the request, not immediately.
     - `MCP_SESSION_TTL_MS` (default: `1800000`)
     - `initialize` works in both unauthenticated and authenticated flows.
     - If `Authorization: Bearer <jwt>` is provided to `initialize`, the MCP session is marked authenticated.
