@@ -18,6 +18,9 @@ services:
       - '.data/nodejs:/var/lib/postgresql/data/'
 
   nodejs:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: 'brightsec/brokencrystals'
     restart: always
     healthcheck:
@@ -28,6 +31,7 @@ services:
       timeout: 30s
     environment:
       NODE_ENV: production
+      DISABLE_HTTPS: 'true'
       GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
       CHAT_API_URL: ${CHAT_API_URL}
       CHAT_API_MODEL: ${CHAT_API_MODEL}
@@ -36,13 +40,12 @@ services:
     deploy:
       restart_policy:
         condition: on-failure
-      resources:
-        limits:
-          cpus: 3.5
     logging:
       options:
         max-file: '5'
         max-size: '10m'
+    ports:
+      - '3000:3000'
     depends_on:
       - db
       - mailcatcher

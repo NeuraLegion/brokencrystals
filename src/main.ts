@@ -85,7 +85,8 @@ async function bootstrap() {
     trustProxy: true,
     onProtoPoisoning: 'ignore',
     https:
-      process.env.NODE_ENV === 'production'
+      process.env.NODE_ENV === 'production' &&
+      process.env.DISABLE_HTTPS !== 'true'
         ? {
             cert: readFileSync(
               '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem'
