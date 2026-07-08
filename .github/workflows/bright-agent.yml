@@ -141,11 +141,16 @@ jobs:
           BRIGHT_STEERING_PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || '' }}
           BRIGHT_STEERING_PR_HEAD: ${{ steps.steer.outputs.head_ref }}
           BRIGHT_STEERING_PR_BASE: ${{ steps.steer.outputs.base_ref }}
+          # --- Detailed stats & diagnostics ---
+          BRIGHT_DEBUG: "1"
+          BRIGHT_DUMP_TURNS: "1"
+          BRIGHT_DUMP_DIR: ${{ runner.temp }}/bright-dumps
           # Optional:
           # AI_MODEL: gpt-5.4-mini
           # SCAN_SCOPE: full      # force a full-repo scan even on a PR
-          # BRIGHT_DEBUG: "1"
         run: "${{ runner.temp }}/${{ env.ASSET }}"
+
+      # --- Artifact uploads (always run, even on failure) ---
 
       - name: Upload Bright Agent logs
         if: always()
@@ -153,6 +158,14 @@ jobs:
         with:
           name: bright-agent-logs
           path: ~/.bright-agent/logs/
+          if-no-files-found: ignore
+
+      - name: Upload LLM turn dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bright-agent-turn-dumps
+          path: ${{ runner.temp }}/bright-dumps/
           if-no-files-found: ignore
 
 # NOTE: commits/PRs/comments made with GITHUB_TOKEN do not trigger your other
