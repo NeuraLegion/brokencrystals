@@ -99,7 +99,13 @@ async function bootstrap() {
   });
 
   server.setDefaultRoute((req, res) => {
-    if (req.url && /^\/(?:\.|.*\/\.)/.test(req.url)) {
+    const requestPath = req.url?.split('?')[0];
+
+    if (
+      requestPath &&
+      (/^\/(?:\.git|\.hg|\.svn)(?:\/|$)/i.test(requestPath) ||
+        /^\/(?:\.|.*\/\.)/.test(requestPath))
+    ) {
       res.statusCode = 404;
       return res.end('Not Found');
     }
@@ -134,7 +140,13 @@ async function bootstrap() {
   });
 
   server.addHook('onRequest', (req, res, done) => {
-    if (req.url && /^\/(?:\.|.*\/\.)/.test(req.url)) {
+    const requestPath = req.url?.split('?')[0];
+
+    if (
+      requestPath &&
+      (/^\/(?:\.git|\.hg|\.svn)(?:\/|$)/i.test(requestPath) ||
+        /^\/(?:\.|.*\/\.)/.test(requestPath))
+    ) {
       res.code(404).send('Not Found');
       return;
     }
