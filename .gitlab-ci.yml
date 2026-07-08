@@ -30,7 +30,7 @@ bright-agent:
   tags: [docker]
   variables:
     ASSET: bright-agent-linux-x64
-    GIT_DEPTH: "0"
+    GIT_DEPTH: '0'
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "schedule"
