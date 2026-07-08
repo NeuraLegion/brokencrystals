@@ -99,6 +99,11 @@ async function bootstrap() {
   });
 
   server.setDefaultRoute((req, res) => {
+    if (req.url && /^\/(?:\.|.*\/\.)/.test(req.url)) {
+      res.statusCode = 404;
+      return res.end('Not Found');
+    }
+
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
       return res.end(
@@ -126,6 +131,14 @@ async function bootstrap() {
         res.end(data);
       }
     );
+  });
+
+  server.addHook('onRequest', (req, res, done) => {
+    if (req.url && /^\/(?:\.|.*\/\.)/.test(req.url)) {
+      res.code(404).send('Not Found');
+      return;
+    }
+    done();
   });
 
   await server.register(fastifyStatic, {
