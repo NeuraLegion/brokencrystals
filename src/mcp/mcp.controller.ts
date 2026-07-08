@@ -366,7 +366,7 @@ export class McpController {
   @ApiNoContentResponse({
     description: 'Session scheduled for invalidation in 5 minutes'
   })
-  async terminateMcpSession(
+  async scheduleMcpSessionTermination(
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) res: FastifyReply
   ): Promise<void> {
