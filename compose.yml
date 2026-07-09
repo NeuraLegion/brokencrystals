@@ -33,6 +33,7 @@ services:
       CHAT_API_MODEL: ${CHAT_API_MODEL}
       CHAT_API_TOKEN: ${CHAT_API_TOKEN}
       CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+      NODE_TLS_REJECT_UNAUTHORIZED: '0'
     deploy:
       restart_policy:
         condition: on-failure
