@@ -148,7 +148,17 @@ async function bootstrap() {
 
   server.addHook('onRequest', (req, reply, done) => {
     const url = req.url || '';
-    const path = url.split('?')[0];
+    const rawPath = url.split('?')[0];
+    // Decode the path before inspecting it so that percent-encoded
+    // dot-segments (e.g. `/%2eenv`, `/%2e%2e/.env`) cannot bypass the
+    // dot-file/blocked-filename checks below.
+    let path = rawPath;
+    try {
+      path = decodeURIComponent(rawPath);
+    } catch {
+      // Malformed percent-encoding — fall back to the raw path, it will
+      // still be checked as-is.
+    }
     const filename = path.substring(path.lastIndexOf('/') + 1);
     const isDotFile = path
       .split('/')
@@ -158,7 +168,9 @@ async function bootstrap() {
     );
     if (
       (isDotFile && !isAllowedVcsRoute) ||
-      BLOCKED_STATIC_FILENAMES.has(filename)
+      BLOCKED_STATIC_FILENAMES.has(filename) ||
+      filename === '.env' ||
+      filename.startsWith('.env.')
     ) {
       reply.code(404).send({
         success: false,
