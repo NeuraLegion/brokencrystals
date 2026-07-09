@@ -97,6 +97,14 @@ async function bootstrap() {
         : null
   });
 
+  server.addHook('onRequest', (req, reply, done) => {
+    if (req.url && /^\/\.(git|svn|hg)(\/|$)/i.test(req.url)) {
+      reply.code(404).send('Not Found');
+      return;
+    }
+    done();
+  });
+
   server.setDefaultRoute((req, res) => {
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
@@ -133,7 +141,7 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: true
+    serveDotFiles: false
   });
 
   await server.register(fastifyStatic, {
@@ -146,7 +154,7 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: true
+    serveDotFiles: false
   });
 
   await server.register(fastifyHttpProxy, {
