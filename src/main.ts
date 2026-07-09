@@ -136,11 +136,30 @@ async function bootstrap() {
     'nginx.conf'
   ]);
 
+  // The `/client/vcs/*` directories (git/svn/hg) are intentionally exposed
+  // under dot-prefixed routes (e.g. `/.git`) as part of this benchmark's
+  // "exposed VCS metadata" vulnerability scenario, so those specific
+  // prefixes must remain reachable. Every other dot-file/dot-directory
+  // (e.g. `.htaccess`, `.env`, `.git` outside of the dedicated route) must
+  // never be served.
+  const ALLOWED_DOT_PREFIXES = readdirSync(
+    join(__dirname, '..', 'client', 'vcs')
+  ).map((dir) => `/.${dir}`);
+
   server.addHook('onRequest', (req, reply, done) => {
     const url = req.url || '';
     const path = url.split('?')[0];
     const filename = path.substring(path.lastIndexOf('/') + 1);
-    if (BLOCKED_STATIC_FILENAMES.has(filename)) {
+    const isDotFile = path
+      .split('/')
+      .some((segment) => segment.length > 0 && segment.startsWith('.'));
+    const isAllowedVcsRoute = ALLOWED_DOT_PREFIXES.some(
+      (prefix) => path === prefix || path.startsWith(`${prefix}/`)
+    );
+    if (
+      (isDotFile && !isAllowedVcsRoute) ||
+      BLOCKED_STATIC_FILENAMES.has(filename)
+    ) {
       reply.code(404).send({
         success: false,
         error: {
@@ -159,7 +178,7 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: false
+    dotfiles: 'deny'
   });
 
   for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
@@ -173,7 +192,7 @@ async function bootstrap() {
         format: 'html',
         render: renderDirList
       },
-      serveDotFiles: false
+      dotfiles: 'allow'
     });
   }
 
@@ -187,7 +206,7 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: false
+    dotfiles: 'deny'
   });
 
   await server.register(fastifyHttpProxy, {
