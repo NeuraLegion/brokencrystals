@@ -149,7 +149,7 @@ export class AppController {
   @ApiInternalServerErrorResponse({
     schema: {
       type: 'object',
-      properties: { message: { type: 'string' } }
+      properties: { location: { type: 'string' } }
     }
   })
   async getCommandResult(@Query('command') command: string): Promise<string> {
@@ -157,10 +157,10 @@ export class AppController {
     try {
       return await this.appService.launchCommand(command);
     } catch (err) {
-      this.logger.error(
-        `Failed to launch command "${command}": ${err && err.stack ? err.stack : err}`
-      );
-      throw new InternalServerErrorException('Internal server error');
+      throw new InternalServerErrorException({
+        error: err.message || err,
+        location: __filename
+      });
     }
   }
 
