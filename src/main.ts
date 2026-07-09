@@ -136,6 +136,20 @@ async function bootstrap() {
     serveDotFiles: false
   });
 
+  server.addHook('onRequest', (req, reply, done) => {
+    if (req.url && /(^|\/)\.git(\/|$)/i.test(req.url)) {
+      reply.code(404).send({
+        success: false,
+        error: {
+          kind: 'user_input',
+          message: 'Not Found'
+        }
+      });
+      return;
+    }
+    done();
+  });
+
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist', 'vendor'),
     prefix: `/vendor`,
@@ -146,7 +160,7 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: true
+    serveDotFiles: false
   });
 
   await server.register(fastifyHttpProxy, {
