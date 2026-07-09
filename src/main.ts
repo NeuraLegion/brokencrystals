@@ -144,12 +144,17 @@ async function bootstrap() {
   // the server rather than silently exposing VCS internals such as
   // /.git/HEAD or /.git/config.
   const clientDistDir = join(__dirname, '..', 'client', 'dist');
+  const clientDistVendorDir = join(clientDistDir, 'vendor');
   const FORBIDDEN_VCS_DIRS = ['.git', '.hg', '.svn'];
   for (const vcsDir of FORBIDDEN_VCS_DIRS) {
-    if (existsSync(join(clientDistDir, vcsDir))) {
+    if (
+      existsSync(join(clientDistDir, vcsDir)) ||
+      existsSync(join(clientDistVendorDir, vcsDir))
+    ) {
       throw new Error(
         `Refusing to start: found forbidden VCS directory "${vcsDir}" ` +
-          `inside the publicly served "${clientDistDir}" directory. ` +
+          `inside the publicly served "${clientDistDir}" (or its "vendor" ` +
+          'sub-directory). ' +
           'Remove it before starting the server.'
       );
     }
@@ -157,16 +162,28 @@ async function bootstrap() {
 
   server.addHook('onRequest', (req, reply, done) => {
     const url = req.url || '';
-    const rawPath = url.split('?')[0];
-    // Decode the path before inspecting it so that percent-encoded
-    // dot-segments (e.g. `/%2eenv`, `/%2e%2e/.env`) cannot bypass the
-    // dot-file/blocked-filename checks below.
+    // Normalize backslashes to forward slashes so that path-segment
+    // splitting cannot be bypassed on filesystems/proxies that treat
+    // `\` as a separator.
+    const rawPath = url.split('?')[0].replace(/\\/g, '/');
+    // Repeatedly decode the path before inspecting it so that both
+    // single- and double-percent-encoded dot-segments (e.g. `/%2eenv`,
+    // `/%252e%252e/.env`) cannot bypass the dot-file/blocked-filename
+    // checks below. Bound the number of iterations to avoid any
+    // possibility of an infinite loop on pathological input.
     let path = rawPath;
-    try {
-      path = decodeURIComponent(rawPath);
-    } catch {
-      // Malformed percent-encoding — fall back to the raw path, it will
-      // still be checked as-is.
+    for (let i = 0; i < 5; i++) {
+      let decoded = path;
+      try {
+        decoded = decodeURIComponent(path);
+      } catch {
+        // Malformed percent-encoding — stop decoding, check as-is.
+        break;
+      }
+      if (decoded === path) {
+        break;
+      }
+      path = decoded;
     }
     const filename = path.substring(path.lastIndexOf('/') + 1);
     const isDotFile = path
@@ -175,8 +192,8 @@ async function bootstrap() {
     if (
       isDotFile ||
       BLOCKED_STATIC_FILENAMES.has(filename) ||
-      filename === '.env' ||
-      filename.startsWith('.env.')
+      filename.toLowerCase() === '.env' ||
+      filename.toLowerCase().startsWith('.env.')
     ) {
       reply.code(404).send({
         success: false,
