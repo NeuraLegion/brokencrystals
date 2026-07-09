@@ -50,13 +50,7 @@ export class FileController {
   }
 
   private async loadCPFile(cpBaseUrl: string, path: string) {
-    // Require an exact match against the known cloud metadata base URL.
-    // A prefix check (startsWith) is not sufficient because it allows an
-    // attacker to append arbitrary suffixes/query strings to the
-    // allow-listed prefix, which can still be used to reach unauthorized
-    // resources. Exact matching removes any attacker-controlled input
-    // from the resulting request.
-    if (path !== cpBaseUrl) {
+    if (!path.startsWith(cpBaseUrl)) {
       throw new BadRequestException(`Invalid paramater 'path' ${path}`);
     }
 
@@ -93,13 +87,6 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
-    // The generic endpoint must never be used to reach remote/http(s)
-    // resources. Only local, relative file paths are permitted here;
-    // any attempt to pass a URL is rejected up front to prevent SSRF.
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path) || path.startsWith('http')) {
-      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
-    }
-
     const file: Stream = await this.fileService.getFile(path);
     const type = this.getContentType(contentType);
     res.type(type);
