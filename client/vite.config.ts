@@ -22,43 +22,30 @@ function stripSensitiveDotFiles() {
     name: 'strip-sensitive-dot-files',
     closeBundle() {
       const outDir = join(__dirname, 'dist');
-      removeSensitiveFilesRecursively(outDir);
+      let entries: string[] = [];
+      try {
+        entries = readdirSync(outDir);
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        // Remove any hidden/dot-file (e.g. .env, .env.local, .htaccess, .git*)
+        // as well as any known sensitive non-dot files (e.g. config.js,
+        // config.json, nginx.conf) that Vite may have copied verbatim from
+        // the public directory.
+        if (entry.startsWith('.') || SENSITIVE_FILENAMES.has(entry)) {
+          const fullPath = join(outDir, entry);
+          try {
+            if (statSync(fullPath).isFile()) {
+              rmSync(fullPath, { force: true });
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
     }
   };
-}
-
-// Recursively walk the build output and remove any hidden/dot-file
-// (e.g. .env, .env.local, .htaccess, .git*) as well as any known
-// sensitive non-dot files (e.g. config.js, config.json, nginx.conf),
-// no matter how deeply nested, so a sensitive file placed anywhere
-// under `client/public` can never reach the publicly served bundle.
-function removeSensitiveFilesRecursively(dir: string) {
-  let entries: string[] = [];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const fullPath = join(dir, entry);
-    let stats;
-    try {
-      stats = statSync(fullPath);
-    } catch {
-      continue;
-    }
-    const isSensitive =
-      entry.startsWith('.') || SENSITIVE_FILENAMES.has(entry);
-    if (stats.isDirectory()) {
-      if (isSensitive) {
-        rmSync(fullPath, { recursive: true, force: true });
-      } else {
-        removeSensitiveFilesRecursively(fullPath);
-      }
-    } else if (stats.isFile() && isSensitive) {
-      rmSync(fullPath, { force: true });
-    }
-  }
 }
 
 // https://vitejs.dev/config/
