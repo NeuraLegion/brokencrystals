@@ -11,6 +11,21 @@ import { UserDto } from './users/api/UserDto';
 export class AppService {
   private readonly logger = new Logger(AppService.name);
 
+  // Strict allow-list of executables that may be invoked via launchCommand.
+  // The user-supplied "command" is only ever used to pick one of these keys;
+  // it is never used to build the executable path or shell string directly.
+  private static readonly ALLOWED_COMMANDS: Record<string, string> = {
+    ls: 'ls',
+    pwd: 'pwd',
+    whoami: 'whoami',
+    date: 'date',
+    echo: 'echo'
+  };
+
+  // Arguments must only contain safe characters - no shell metacharacters,
+  // no path traversal, no quoting/escaping tricks.
+  private static readonly SAFE_ARG_PATTERN = /^[A-Za-z0-9_.\-/]*$/;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly userService: UsersService
@@ -19,10 +34,28 @@ export class AppService {
   async launchCommand(command: string): Promise<string> {
     this.logger.debug(`launch ${command} command`);
 
+    if (typeof command !== 'string' || command.trim().length === 0) {
+      return Promise.reject('Invalid command');
+    }
+
+    const parts = command.trim().split(/\s+/);
+    const [requestedExec, ...args] = parts;
+
+    const exec = AppService.ALLOWED_COMMANDS[requestedExec];
+
+    if (!exec) {
+      return Promise.reject(
+        `Command "${requestedExec}" is not allowed`
+      );
+    }
+
+    if (!args.every((arg) => AppService.SAFE_ARG_PATTERN.test(arg))) {
+      return Promise.reject('Invalid characters in command arguments');
+    }
+
     return new Promise((res, rej) => {
       try {
-        const [exec, ...args] = command.split(' ');
-        const ps = spawn(exec, args);
+        const ps = spawn(exec, args, { shell: false });
 
         ps.stdout.on('data', (data: Buffer) => {
           this.logger.debug(`stdout: ${data}`);
