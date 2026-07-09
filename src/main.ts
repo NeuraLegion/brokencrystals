@@ -100,7 +100,18 @@ async function bootstrap() {
   const BLOCKED_PATH_PATTERN = /(^|\/)\.(svn|git|hg)(\/|$)/i;
 
   server.addHook('onRequest', (req, reply, done) => {
-    if (req.url && BLOCKED_PATH_PATTERN.test(req.url)) {
+    let decodedUrl = req.url || '';
+    try {
+      // Guard against encoded path segments (e.g. %2e%68%67) bypassing the check
+      decodedUrl = decodeURIComponent(decodedUrl);
+    } catch {
+      // If decoding fails, fall back to the raw URL for matching
+    }
+
+    if (
+      BLOCKED_PATH_PATTERN.test(req.url || '') ||
+      BLOCKED_PATH_PATTERN.test(decodedUrl)
+    ) {
       reply.code(404).send('Not Found');
       return;
     }

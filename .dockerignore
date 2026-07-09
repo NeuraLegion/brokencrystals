@@ -1,2 +1,5 @@
 .git
+.hg
+.svn
+client/vcs
 node_modules
