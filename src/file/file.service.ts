@@ -10,6 +10,19 @@ export class FileService {
   private readonly logger = new Logger(FileService.name);
   private cloudProviders = new CloudProvidersMetaData();
 
+  // Only these exact, hardcoded cloud metadata base URLs may ever be
+  // forwarded to the CloudProvidersMetaData helper. Any other value
+  // (including attacker-supplied URLs) is rejected before it can reach
+  // the outbound HTTP call, preventing SSRF.
+  private static readonly ALLOWED_CLOUD_PROVIDER_URLS: ReadonlySet<string> =
+    new Set([
+      CloudProvidersMetaData.GOOGLE,
+      CloudProvidersMetaData.AZURE,
+      CloudProvidersMetaData.AWS,
+      CloudProvidersMetaData.DIGITAL_OCEAN,
+      CloudProvidersMetaData.DIGITAL_OCEAN_JSON
+    ]);
+
   async getFile(file: string): Promise<Readable> {
     this.logger.log(`Reading file: ${file}`);
 
@@ -18,6 +31,12 @@ export class FileService {
 
       return fs.createReadStream(file);
     } else if (file.startsWith('http')) {
+      if (!FileService.ALLOWED_CLOUD_PROVIDER_URLS.has(file)) {
+        throw new Error(
+          `Requests to arbitrary URLs are not permitted: '${file}'`
+        );
+      }
+
       const content = await this.cloudProviders.get(file);
 
       if (content) {

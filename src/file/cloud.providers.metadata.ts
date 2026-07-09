@@ -261,11 +261,11 @@ export class CloudProvidersMetaData {
     } else if (providerUrl.startsWith(CloudProvidersMetaData.AZURE)) {
       return this.providers.get(CloudProvidersMetaData.AZURE);
     } else {
-      const { data } = await axios(providerUrl, {
-        timeout: 5000,
-        responseType: 'text'
-      });
-      return data;
+      // Arbitrary/unknown URLs are never fetched. This eliminates the
+      // SSRF sink that previously allowed outbound requests to
+      // attacker-controlled destinations (including cloud metadata
+      // services and internal/link-local addresses).
+      throw new Error(`Unsupported or unrecognized provider URL: ${providerUrl}`);
     }
   }
 }
