@@ -56,9 +56,11 @@ export class ProductsService {
       const query = `
         select *
         from product
-        where name ilike '%${name}%';
+        where name ilike ?;
       `;
-      const rows = await this.em.getConnection().execute<Product[]>(query);
+      const rows = await this.em
+        .getConnection()
+        .execute<Product[]>(query, [`%${name}%`]);
 
       return rows.map((row: Product) => this.em.map(Product, row));
     } catch (err) {
@@ -71,10 +73,17 @@ export class ProductsService {
     }
   }
 
-  async updateProduct(query: string): Promise<void> {
+  async incrementProductViews(productName: string): Promise<void> {
     try {
-      this.logger.debug(`Updating products table with query "${query}"`);
-      await this.em.getConnection().execute(query);
+      this.logger.debug(
+        `Incrementing views count for product "${productName}"`
+      );
+      await this.em
+        .getConnection()
+        .execute(
+          'UPDATE product SET views_count = views_count + 1 WHERE name = ?',
+          [productName]
+        );
       return;
     } catch (err) {
       this.logger.warn(`Failed to execute query. Error: ${err.message}`);
