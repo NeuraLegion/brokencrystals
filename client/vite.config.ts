@@ -1,11 +1,48 @@
+++ Update File: client/vite.config.ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
+import { readdirSync, rmSync, statSync } from 'fs';
+import { join } from 'path';
+
+// Vite's `publicDir` copy step blindly copies every file (including
+// dot-files such as .env) from the public directory into the build
+// output. To avoid ever shipping sensitive/hidden env-style files to
+// the publicly served `dist` directory, strip them out after the
+// build/copy step completes.
+function stripSensitiveDotFiles() {
+  return {
+    name: 'strip-sensitive-dot-files',
+    closeBundle() {
+      const outDir = join(__dirname, 'dist');
+      let entries: string[] = [];
+      try {
+        entries = readdirSync(outDir);
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        // Remove any hidden/dot-file (e.g. .env, .env.local, .htaccess, .git*)
+        // that Vite may have copied verbatim from the public directory.
+        if (entry.startsWith('.')) {
+          const fullPath = join(outDir, entry);
+          try {
+            if (statSync(fullPath).isFile()) {
+              rmSync(fullPath, { force: true });
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
   base: '/',
   publicDir: './public',
-  plugins: [react()],
+  plugins: [react(), stripSensitiveDotFiles()],
   server: {
     port: 3001,
     proxy: {
