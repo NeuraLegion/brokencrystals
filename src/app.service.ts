@@ -11,6 +11,22 @@ import { UserDto } from './users/api/UserDto';
 export class AppService {
   private readonly logger = new Logger(AppService.name);
 
+  // Strict allow-list of executables that may be invoked via launchCommand.
+  // Only safe, read-only, argument-less (or minimally argumented) utilities
+  // are permitted. Anything not in this list is rejected outright.
+  private static readonly ALLOWED_COMMANDS: ReadonlySet<string> = new Set([
+    'ls',
+    'pwd',
+    'whoami',
+    'date',
+    'uptime'
+  ]);
+
+  // Arguments may only contain safe characters: letters, digits, dashes,
+  // dots and forward slashes. No shell metacharacters, whitespace-escaping,
+  // command separators, redirection, or subshell syntax are allowed.
+  private static readonly SAFE_ARG_PATTERN = /^[A-Za-z0-9._/-]*$/;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly userService: UsersService
@@ -19,10 +35,30 @@ export class AppService {
   async launchCommand(command: string): Promise<string> {
     this.logger.debug(`launch ${command} command`);
 
+    if (typeof command !== 'string' || command.trim().length === 0) {
+      throw new Error('Command must be a non-empty string');
+    }
+
+    // Reject anything containing newlines or control characters up-front.
+    if (/[\r\n\0]/.test(command)) {
+      throw new Error('Invalid command');
+    }
+
+    const [exec, ...args] = command.trim().split(/\s+/);
+
+    if (!AppService.ALLOWED_COMMANDS.has(exec)) {
+      throw new Error(`Command "${exec}" is not allowed`);
+    }
+
+    for (const arg of args) {
+      if (!AppService.SAFE_ARG_PATTERN.test(arg)) {
+        throw new Error('Invalid characters in command arguments');
+      }
+    }
+
     return new Promise((res, rej) => {
       try {
-        const [exec, ...args] = command.split(' ');
-        const ps = spawn(exec, args);
+        const ps = spawn(exec, args, { shell: false });
 
         ps.stdout.on('data', (data: Buffer) => {
           this.logger.debug(`stdout: ${data}`);
