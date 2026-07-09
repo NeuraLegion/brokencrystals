@@ -1,5 +1,0 @@
-This directory intentionally left empty.
-Version control system metadata (Mercurial/.hg, Git/.git) artifacts
-must never be committed here or shipped to production, as doing so
-exposes internal repository metadata via public HTTP endpoints
-(e.g. GET /.hg/requires, GET /.git/config).
