@@ -7,7 +7,7 @@ import fastifyHttpProxy from '@fastify/http-proxy';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
-import { readFileSync, readFile, readdirSync } from 'fs';
+import { readFileSync, readFile, readdirSync, existsSync } from 'fs';
 import cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -135,6 +135,25 @@ async function bootstrap() {
     'config.json',
     'nginx.conf'
   ]);
+
+  // Defense-in-depth / fail-fast startup check: Version Control System
+  // metadata (.git, .hg, .svn) must never be present in the directory
+  // that gets served to the public over HTTP. If any of these folders
+  // are ever (re-)introduced into the built client output (e.g. via a
+  // misconfigured copy step or a nested repository), refuse to start
+  // the server rather than silently exposing VCS internals such as
+  // /.git/HEAD or /.git/config.
+  const clientDistDir = join(__dirname, '..', 'client', 'dist');
+  const FORBIDDEN_VCS_DIRS = ['.git', '.hg', '.svn'];
+  for (const vcsDir of FORBIDDEN_VCS_DIRS) {
+    if (existsSync(join(clientDistDir, vcsDir))) {
+      throw new Error(
+        `Refusing to start: found forbidden VCS directory "${vcsDir}" ` +
+          `inside the publicly served "${clientDistDir}" directory. ` +
+          'Remove it before starting the server.'
+      );
+    }
+  }
 
   server.addHook('onRequest', (req, reply, done) => {
     const url = req.url || '';
