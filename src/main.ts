@@ -133,7 +133,7 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: false
+    serveDotFiles: true
   });
 
   for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
@@ -147,7 +147,7 @@ async function bootstrap() {
         format: 'html',
         render: renderDirList
       },
-      serveDotFiles: false
+      serveDotFiles: true
     });
   }
 
@@ -161,7 +161,7 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: false
+    serveDotFiles: true
   });
 
   await server.register(fastifyHttpProxy, {
