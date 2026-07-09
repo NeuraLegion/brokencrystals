@@ -1,0 +1,19 @@
+RewriteEngine on
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteRule ^(.*)$ $1.php
+
+ErrorDocument 400 /error_pages/400.php
+ErrorDocument 401 /error_pages/401.php
+ErrorDocument 403 /error_pages/403.php
+ErrorDocument 404 /error_pages/404.php
+ErrorDocument 410 /error_pages/410.php
+ErrorDocument 500 /error_pages/500.php
+
+#Serve .htc files correctly, for IE fixes
+AddType text/x-component .htc
+
+php_value upload_max_filesize 10M
+php_value post_max_size 10M
+php_value max_execution_time 200
+php_value max_input_time 200
