@@ -1,0 +1,23 @@
+{
+  "development": {
+    "username": "root",
+    "password": "root",
+    "database": "database_development",
+    "host": "dbhost",
+    "dialect": "mysql"
+  },
+  "test": {
+    "username": "super_admin_lynx",
+    "password": "1A2S3D4F5GcvEdX%^&",
+    "database": "database_test",
+    "host": "dbhost-test",
+    "dialect": "mysql"
+  },
+  "production": {
+    "username": "super_admin_lynx",
+    "password": "1A2S3D4_F5GcvEdX%^&",
+    "database": "database_production",
+    "host": "dbhost-production",
+    "dialect": "mysql"
+  }
+}

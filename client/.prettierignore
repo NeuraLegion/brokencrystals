@@ -1,6 +1,7 @@
 /node_modules
 /dist
 /cypress/downloads
+/public/config.js
 /public/assets
 /public/vendor
 /vcs

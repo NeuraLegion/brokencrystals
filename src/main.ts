@@ -127,32 +127,6 @@ async function bootstrap() {
     );
   });
 
-  // Filenames that should never be served, even though they are not
-  // dot-files (defense in depth in case they ever end up in the client
-  // build output again).
-  const BLOCKED_STATIC_FILENAMES = new Set([
-    'config.js',
-    'config.json',
-    'nginx.conf'
-  ]);
-
-  server.addHook('onRequest', (req, reply, done) => {
-    const url = req.url || '';
-    const path = url.split('?')[0];
-    const filename = path.substring(path.lastIndexOf('/') + 1);
-    if (BLOCKED_STATIC_FILENAMES.has(filename)) {
-      reply.code(404).send({
-        success: false,
-        error: {
-          kind: 'user_input',
-          message: 'Not Found'
-        }
-      });
-      return;
-    }
-    done();
-  });
-
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist'),
     prefix: `/`,
