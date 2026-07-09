@@ -1,0 +1,167 @@
+services:
+  db:
+    image: 'postgres:17-alpine'
+    restart: always
+    healthcheck:
+      interval: 10s
+      retries: 10
+      test: ['CMD-SHELL', 'pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}']
+      timeout: 45s
+    environment:
+      POSTGRES_DB: ${DATABASE_SCHEMA}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    ports:
+      - '5432:5432'
+    volumes:
+      - './pg.sql:/docker-entrypoint-initdb.d/pg.sql'
+      - '.data/nodejs:/var/lib/postgresql/data/'
+
+  nodejs:
+    image: 'brightsec/brokencrystals'
+    restart: always
+    healthcheck:
+      interval: 5s
+      retries: 10
+      test:
+        ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/api/config']
+      timeout: 30s
+    environment:
+      NODE_ENV: production
+      GRPC_WEB_PROXY_URL: ${GRPC_WEB_PROXY_URL}
+      CHAT_API_URL: ${CHAT_API_URL}
+      CHAT_API_MODEL: ${CHAT_API_MODEL}
+      CHAT_API_TOKEN: ${CHAT_API_TOKEN}
+      CHAT_API_MAX_TOKENS: ${CHAT_API_MAX_TOKENS}
+    deploy:
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: 3.5
+    logging:
+      options:
+        max-file: '5'
+        max-size: '10m'
+    depends_on:
+      - db
+      - mailcatcher
+      - keycloak
+      - ollama
+
+  watchtower:
+    image: 'containrrr/watchtower'
+    healthcheck:
+      test: ['CMD', '/watchtower', '--health-check']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: always
+    logging:
+      options:
+        max-file: '5'
+        max-size: '10m'
+    volumes:
+      - '/var/run/docker.sock:/var/run/docker.sock'
+    command: --interval 300 --debug
+
+  grpcwebproxy:
+    image: webis/grpcwebproxy:0.14.0
+    command:
+      - grpcwebproxy
+      - '--backend_addr=nodejs:5000'
+      - '--run_tls_server=false'
+      - '--run_http_server=true'
+      - '--server_http_debug_port=8081'
+      - '--allow_all_origins'
+    ports:
+      - '8081:8081'
+    depends_on:
+      - nodejs
+
+  keycloak-db:
+    image: 'postgres:17-alpine'
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    healthcheck:
+      interval: 10s
+      retries: 10
+      test: ['CMD-SHELL', 'pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}']
+      timeout: 45s
+    restart: on-failure
+    volumes:
+      - '.data/keycloak:/var/lib/postgresql/data/'
+
+  keycloak:
+    image: 'quay.io/keycloak/keycloak:26.1.2'
+    volumes:
+      - './keycloak/imports/realm-export.json:/opt/keycloak/data/import/realm-export.json'
+    command: start-dev --import-realm
+    ports:
+      - '8080:8080'
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: password
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: Pa55w0rd
+      KC_HEALTH_ENABLED: true
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "exec 3<>/dev/tcp/127.0.0.1/9000;echo -e \"GET /health/ready HTTP/1.1\r\nhost: 127.0.0.1:9000\r\nConnection: close\r\n\r\n\" >&3;grep \"HTTP/1.1 200 OK\" <&3"
+        ]
+      timeout: 10s
+      interval: 30s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      - keycloak-db
+
+  mailcatcher:
+    image: 'sj26/mailcatcher'
+    healthcheck:
+      interval: 10s
+      retries: 10
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:1080']
+      timeout: 45s
+    restart: always
+    ports:
+      - '1080:1080'
+      - '1025:1025'
+    logging:
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  ollama:
+    image: 'brightsec/brokencrystals-ollama:smollm135m'
+    restart: always
+    healthcheck:
+      interval: 30s
+      retries: 5
+      test: ['CMD', 'ollama', 'list']
+      timeout: 10s
+      start_period: 60s
+    ports:
+      - '11434:11434'
+    deploy:
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: 2.0
+    logging:
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+volumes:
+  letsencrypt:
