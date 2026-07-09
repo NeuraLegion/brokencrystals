@@ -32,6 +32,7 @@ import {
   SWAGGER_DESC_READ_FILE_ON_SERVER,
   SWAGGER_DESC_SAVE_RAW_CONTENT
 } from './file.controller.swagger.desc';
+import { CloudProvidersMetaData } from './cloud.providers.metadata';
 
 @Controller('/api/file')
 @ApiTags('Files controller')
@@ -46,6 +47,22 @@ export class FileController {
     } else {
       return 'application/octet-stream';
     }
+  }
+
+  private async loadCPFile(cpBaseUrl: string, path: string) {
+    // Require an exact match against the known cloud metadata base URL.
+    // A prefix check (startsWith) is not sufficient because it allows an
+    // attacker to append arbitrary suffixes/query strings to the
+    // allow-listed prefix, which can still be used to reach unauthorized
+    // resources. Exact matching removes any attacker-controlled input
+    // from the resulting request.
+    if (path !== cpBaseUrl) {
+      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
+    }
+
+    const file: Stream = await this.fileService.getFile(path);
+
+    return file;
   }
 
   @Get()
@@ -84,6 +101,158 @@ export class FileController {
     }
 
     const file: Stream = await this.fileService.getFile(path);
+    const type = this.getContentType(contentType);
+    res.type(type);
+
+    return file;
+  }
+
+  @Get('/google')
+  @ApiQuery({
+    name: 'path',
+    example: 'config/products/crystals/amethyst.jpg',
+    required: true
+  })
+  @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
+  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
+  @ApiOkResponse({
+    description: 'File read successfully'
+  })
+  @ApiInternalServerErrorResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' }
+      }
+    }
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_READ_FILE
+  })
+  async loadGoogleFile(
+    @Query('path') path: string,
+    @Query('type') contentType: string,
+    @Res({ passthrough: true }) res: FastifyReply
+  ) {
+    const file: Stream = await this.loadCPFile(
+      CloudProvidersMetaData.GOOGLE,
+      path
+    );
+    const type = this.getContentType(contentType);
+    res.type(type);
+
+    return file;
+  }
+
+  @Get('/aws')
+  @ApiQuery({
+    name: 'path',
+    example: 'config/products/crystals/amethyst.jpg',
+    required: true
+  })
+  @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
+  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
+  @ApiOkResponse({
+    description: 'File read successfully'
+  })
+  @ApiInternalServerErrorResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' }
+      }
+    }
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_READ_FILE
+  })
+  async loadAwsFile(
+    @Query('path') path: string,
+    @Query('type') contentType: string,
+    @Res({ passthrough: true }) res: FastifyReply
+  ) {
+    const file: Stream = await this.loadCPFile(
+      CloudProvidersMetaData.AWS,
+      path
+    );
+    const type = this.getContentType(contentType);
+    res.type(type);
+
+    return file;
+  }
+
+  @Get('/azure')
+  @ApiQuery({
+    name: 'path',
+    example: 'config/products/crystals/amethyst.jpg',
+    required: true
+  })
+  @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
+  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
+  @ApiOkResponse({
+    description: 'File read successfully'
+  })
+  @ApiInternalServerErrorResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' }
+      }
+    }
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_READ_FILE
+  })
+  async loadAzureFile(
+    @Query('path') path: string,
+    @Query('type') contentType: string,
+    @Res({ passthrough: true }) res: FastifyReply
+  ) {
+    const file: Stream = await this.loadCPFile(
+      CloudProvidersMetaData.AZURE,
+      path
+    );
+    const type = this.getContentType(contentType);
+    res.type(type);
+
+    return file;
+  }
+
+  @Get('/digital_ocean')
+  @ApiQuery({
+    name: 'path',
+    example: 'config/products/crystals/amethyst.jpg',
+    required: true
+  })
+  @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
+  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
+  @ApiOkResponse({
+    description: 'File read successfully'
+  })
+  @ApiInternalServerErrorResponse({
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string' },
+        location: { type: 'string' }
+      }
+    }
+  })
+  @ApiOperation({
+    description: SWAGGER_DESC_READ_FILE
+  })
+  async loadDigitalOceanFile(
+    @Query('path') path: string,
+    @Query('type') contentType: string,
+    @Res({ passthrough: true }) res: FastifyReply
+  ) {
+    const file: Stream = await this.loadCPFile(
+      CloudProvidersMetaData.DIGITAL_OCEAN,
+      path
+    );
     const type = this.getContentType(contentType);
     res.type(type);
 
