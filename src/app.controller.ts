@@ -195,7 +195,7 @@ export class AppController {
   @ApiInternalServerErrorResponse({
     schema: {
       type: 'object',
-      properties: { message: { type: 'string' } }
+      properties: { location: { type: 'string' } }
     }
   })
   async processNumbers(
@@ -234,10 +234,11 @@ export class AppController {
         .send(JSON.stringify(result));
     } catch (err: unknown) {
       if (!response.sent && !response.raw.writableEnded) {
-        this.logger.error(
-          `processNumbers failed: ${err instanceof Error ? err.stack : String(err)}`
-        );
-        throw new InternalServerErrorException('Internal server error');
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        throw new InternalServerErrorException({
+          error: errorMessage,
+          location: __filename
+        });
       }
     }
   }
