@@ -10,8 +10,6 @@ export const API_DESC_LAUNCH_COMMAND = `Launches system command on server`;
 
 export const API_DESC_PROCESS_NUMBERS_REQUEST = `Processes crystal numbers provided by the client using a required processing_expression`;
 
-export const API_DESC_CONFIG_SERVER = `Returns server configuration to the client`;
-
-export const SWAGGER_DESC_SECRETS = `Returns server secrets. Shhhh 🤫`;
+export const API_DESC_CONFIG_SERVER = `Returns non-sensitive server configuration to authenticated clients`;
 
 export const SWAGGER_DESC_NESTED_JSON = `Returns a nested JSON response with configurable depth`;
