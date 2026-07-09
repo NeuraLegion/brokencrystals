@@ -97,6 +97,16 @@ async function bootstrap() {
         : null
   });
 
+  const BLOCKED_PATH_PATTERN = /(^|\/)\.(svn|git|hg)(\/|$)/i;
+
+  server.addHook('onRequest', (req, reply, done) => {
+    if (req.url && BLOCKED_PATH_PATTERN.test(req.url)) {
+      reply.code(404).send('Not Found');
+      return;
+    }
+    done();
+  });
+
   server.setDefaultRoute((req, res) => {
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
@@ -146,7 +156,7 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: true
+    serveDotFiles: false
   });
 
   await server.register(fastifyHttpProxy, {
