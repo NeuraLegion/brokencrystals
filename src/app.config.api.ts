@@ -2,11 +2,11 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class AppConfig {
   @ApiProperty()
-  awsBucket: string;
+  dbHost: string;
 
   @ApiProperty()
-  sql: string;
+  dbPort: string;
 
   @ApiProperty()
-  googlemaps: string;
+  dbSchema: string;
 }
