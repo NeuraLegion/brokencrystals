@@ -146,7 +146,24 @@ async function bootstrap() {
       format: 'html',
       render: renderDirList
     },
-    serveDotFiles: true
+    serveDotFiles: false
+  });
+
+  // Block access to VCS metadata (e.g. Mercurial .hg, Git .git, SVN .svn)
+  // that must never be reachable over HTTP, regardless of static file
+  // serving configuration.
+  server.addHook('onRequest', (req, reply, done) => {
+    if (/^\/(\.hg|\.git|\.svn|\.bzr|_darcs)(\/|$)/i.test(req.url || '')) {
+      reply.code(404).send({
+        success: false,
+        error: {
+          kind: 'user_input',
+          message: 'Not Found'
+        }
+      });
+      return;
+    }
+    done();
   });
 
   await server.register(fastifyHttpProxy, {
