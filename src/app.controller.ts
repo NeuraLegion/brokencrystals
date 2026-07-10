@@ -247,8 +247,15 @@ export class AppController {
   async getCommandResultGrpc(data: {
     command: string;
   }): Promise<{ output: string }> {
-    const output = await this.appService.launchCommand(data.command);
-    return { output };
+    try {
+      const output = await this.appService.launchCommand(data.command);
+      return { output };
+    } catch (err) {
+      throw new InternalServerErrorException({
+        error: err.message || err,
+        location: __filename
+      });
+    }
   }
 
   @Get('/config')

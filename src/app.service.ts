@@ -7,6 +7,16 @@ import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 import { AppConfig } from './app.config.api';
 import { UserDto } from './users/api/UserDto';
 
+// Strict allow-list of binaries that are permitted to be executed via the
+// "launch command" demo feature. Only these executables may be run, and
+// only with arguments that pass the safe-argument validation below.
+const ALLOWED_COMMANDS: ReadonlySet<string> = new Set(['ls', 'pwd', 'whoami', 'date', 'echo']);
+
+// Only allow simple alphanumeric arguments (plus a few harmless punctuation
+// characters commonly used in flags/paths). Anything else -- including shell
+// metacharacters such as ; | & $ ( ) ` > < and newlines -- is rejected.
+const SAFE_ARG_REGEX = /^[a-zA-Z0-9_.\-/]*$/;
+
 @Injectable()
 export class AppService {
   private readonly logger = new Logger(AppService.name);
@@ -19,10 +29,24 @@ export class AppService {
   async launchCommand(command: string): Promise<string> {
     this.logger.debug(`launch ${command} command`);
 
+    if (typeof command !== 'string' || command.trim().length === 0) {
+      throw new Error('Invalid command');
+    }
+
+    const parts = command.trim().split(/\s+/).filter(Boolean);
+    const [exec, ...args] = parts;
+
+    if (!exec || !ALLOWED_COMMANDS.has(exec)) {
+      throw new Error('Command is not allowed');
+    }
+
+    if (!args.every((arg) => SAFE_ARG_REGEX.test(arg))) {
+      throw new Error('Command arguments contain invalid characters');
+    }
+
     return new Promise((res, rej) => {
       try {
-        const [exec, ...args] = command.split(' ');
-        const ps = spawn(exec, args);
+        const ps = spawn(exec, args, { shell: false });
 
         ps.stdout.on('data', (data: Buffer) => {
           this.logger.debug(`stdout: ${data}`);
