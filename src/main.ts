@@ -127,6 +127,25 @@ async function bootstrap() {
     );
   });
 
+  // Block access to VCS metadata (e.g. Mercurial .hg, Git .git, SVN .svn)
+  // that must never be reachable over HTTP, regardless of static file
+  // serving configuration. This hook is registered BEFORE the static
+  // file plugins so that it is inherited by their encapsulated contexts
+  // and actually applies to requests they would otherwise serve.
+  server.addHook('onRequest', (req, reply, done) => {
+    if (/^\/(\.hg|\.git|\.svn|\.bzr|_darcs)(\/|$)/i.test(req.url || '')) {
+      reply.code(404).send({
+        success: false,
+        error: {
+          kind: 'user_input',
+          message: 'Not Found'
+        }
+      });
+      return;
+    }
+    done();
+  });
+
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist'),
     prefix: `/`,
@@ -147,23 +166,6 @@ async function bootstrap() {
       render: renderDirList
     },
     serveDotFiles: false
-  });
-
-  // Block access to VCS metadata (e.g. Mercurial .hg, Git .git, SVN .svn)
-  // that must never be reachable over HTTP, regardless of static file
-  // serving configuration.
-  server.addHook('onRequest', (req, reply, done) => {
-    if (/^\/(\.hg|\.git|\.svn|\.bzr|_darcs)(\/|$)/i.test(req.url || '')) {
-      reply.code(404).send({
-        success: false,
-        error: {
-          kind: 'user_input',
-          message: 'Not Found'
-        }
-      });
-      return;
-    }
-    done();
   });
 
   await server.register(fastifyHttpProxy, {
