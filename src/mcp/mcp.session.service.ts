@@ -5,14 +5,14 @@ import { McpSessionRole } from './mcp.auth.service';
 
 export type McpSessionIdAlgorithm =
   | 'prefixed-sequential'
-  | 'static'
+  | 'unix-millisecond-with-counter'
   | 'unix-second-with-counter'
   | 'uuid-v1'
   | 'fixed-mask-low-variety';
 
 export const MCP_SESSION_ID_ALGORITHMS: McpSessionIdAlgorithm[] = [
   'prefixed-sequential',
-  'static',
+  'unix-millisecond-with-counter',
   'unix-second-with-counter',
   'uuid-v1',
   'fixed-mask-low-variety'
@@ -221,8 +221,8 @@ export class McpSessionService {
     switch (algorithm) {
       case 'prefixed-sequential':
         return this.prefixedSequentialGenerator();
-      case 'static':
-        return this.staticGenerator();
+      case 'unix-millisecond-with-counter':
+        return this.unixMillisecondWithCounterGenerator();
       case 'unix-second-with-counter':
         return this.unixSecondWithCounterGenerator();
       case 'uuid-v1':
@@ -240,10 +240,12 @@ export class McpSessionService {
     };
   }
 
-  private staticGenerator(): McpSessionIdGenerator {
+  private unixMillisecondWithCounterGenerator(): McpSessionIdGenerator {
+    const timestamp = Date.now();
+    let counter = 0;
     return {
-      algorithm: 'static',
-      next: () => 'mcp-session-static'
+      algorithm: 'unix-millisecond-with-counter',
+      next: () => `ms-ts-${timestamp}-seq-${++counter}x`
     };
   }
 

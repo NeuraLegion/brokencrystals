@@ -29,9 +29,14 @@ describe('McpSessionService', () => {
         expect(sessionIds).toEqual(['mcp-session-1', 'mcp-session-2'])
     ],
     [
-      'static',
-      (sessionIds) =>
-        expect(sessionIds).toEqual(['mcp-session-static', 'mcp-session-static'])
+      'unix-millisecond-with-counter',
+      (sessionIds) => {
+        expect(sessionIds[0]).toMatch(/^ms-ts-\d{13}-seq-1x$/);
+        expect(sessionIds[1]).toMatch(/^ms-ts-\d{13}-seq-2x$/);
+        expect(sessionIds[0].split('-seq-')[0]).toBe(
+          sessionIds[1].split('-seq-')[0]
+        );
+      }
     ],
     [
       'unix-second-with-counter',
@@ -172,8 +177,10 @@ describe('McpSessionService', () => {
       expect(service.touchSession(session.sessionId)).toBeUndefined();
     });
 
-    it('clears the pending timer on terminateSession so a reused id survives', () => {
-      const service = createServiceWithConfig({ algorithm: 'static' });
+    it('clears the pending timer on terminateSession so a later session survives', () => {
+      const service = createServiceWithConfig({
+        algorithm: 'unix-millisecond-with-counter'
+      });
       const session = initGuest(service);
       const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
 
@@ -181,18 +188,17 @@ describe('McpSessionService', () => {
       expect(service.terminateSession(session.sessionId)).toBe(true);
       expect(clearTimeoutSpy).toHaveBeenCalled();
 
-      // The 'static' algorithm reuses the same id; the new session must not be
-      // wiped by the timer that was armed for the terminated session.
-      const reused = initGuest(service);
-      expect(reused.sessionId).toBe(session.sessionId);
+      // The new session must not be wiped by the timer that was armed for the
+      // terminated session.
+      const next = initGuest(service);
 
       jest.advanceTimersByTime(DELAY_MS);
-      expect(service.touchSession(reused.sessionId)).toBeDefined();
+      expect(service.touchSession(next.sessionId)).toBeDefined();
     });
 
     it('clears the pending timer when a session expires via TTL', () => {
       const service = createServiceWithConfig({
-        algorithm: 'static',
+        algorithm: 'unix-millisecond-with-counter',
         ttlMs: '1000'
       });
       const session = initGuest(service);
