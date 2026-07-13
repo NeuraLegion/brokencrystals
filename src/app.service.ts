@@ -12,13 +12,14 @@ import { OrmModuleConfigProperties } from './orm/orm.module.config.properties';
 import { AppConfig } from './app.config.api';
 import { UserDto } from './users/api/UserDto';
 
-// Allowlist of safe executables to prevent OS command injection
-const ALLOWED_COMMANDS: ReadonlySet<string> = new Set([
-  'ls',
-  'echo',
-  'date',
-  'whoami',
-  'uptime'
+// Static mapping of allowed command names to their safe, fixed invocations.
+// No user-controlled arguments are ever passed to the subprocess.
+const ALLOWED_COMMANDS: ReadonlyMap<string, readonly string[]> = new Map([
+  ['ls', ['ls']],
+  ['echo', ['echo', 'hello']],
+  ['date', ['date']],
+  ['whoami', ['whoami']],
+  ['uptime', ['uptime']]
 ]);
 
 @Injectable()
@@ -33,23 +34,18 @@ export class AppService {
   async launchCommand(command: string): Promise<string> {
     this.logger.debug(`launch ${command} command`);
 
-    const [exec, ...args] = command.trim().split(/\s+/);
+    // Only use the first token as the command name; ignore any arguments
+    const cmdName = command.trim().split(/\s+/)[0];
+    const fixedArgs = ALLOWED_COMMANDS.get(cmdName);
 
-    if (!ALLOWED_COMMANDS.has(exec)) {
+    if (!fixedArgs) {
       throw new BadRequestException(
-        `Command '${exec}' is not allowed. Permitted commands: ${[...ALLOWED_COMMANDS].join(', ')}`
+        `Command '${cmdName}' is not allowed. Permitted: ${[...ALLOWED_COMMANDS.keys()].join(', ')}`
       );
     }
 
-    // Reject any args that look like shell metacharacters or path traversal
-    const dangerousArgPattern = /[;&|`$><\\(){}!]/;
-    for (const arg of args) {
-      if (dangerousArgPattern.test(arg)) {
-        throw new BadRequestException(
-          `Argument contains disallowed characters.`
-        );
-      }
-    }
+    // Run the statically defined command+args — no user input reaches spawn
+    const [exec, ...args] = fixedArgs;
 
     return new Promise((res, rej) => {
       try {

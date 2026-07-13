@@ -34,7 +34,6 @@ import {
   ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
-import * as dotT from 'dot';
 import { FastifyReply } from 'fastify';
 import { parseXml } from 'libxmljs';
 import { AppConfig } from './app.config.api';
@@ -76,18 +75,17 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      // Security fix: escape user-controlled input before compiling to prevent SSTI.
-      // Escape doT.js interpolation delimiters and any JS-executable characters.
-      const sanitized = text
-        .replace(/\{\{/g, '&#123;&#123;')
-        .replace(/\}\}/g, '&#125;&#125;')
-        .replace(/\{#/g, '&#123;#')
-        .replace(/\{%/g, '&#123;%')
-        .replace(/\{!/g, '&#123;!')
-        .replace(/\{[?^]/g, (m) => '&#123;' + m[1]);
-      const res = dotT.compile(sanitized)();
-      this.logger.debug(`Rendered template: ${res}`);
-      return res;
+      // Security fix: HTML-escape user input and return as plain text — do NOT
+      // compile it as a template. User-controlled content must never reach
+      // dotT.compile() to prevent SSTI, and must be escaped to prevent XSS.
+      const escaped = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+      this.logger.debug(`Render request received (length=${text.length})`);
+      return escaped;
     }
   }
 
