@@ -53,12 +53,15 @@ export class ProductsService {
   async searchByName(name: string): Promise<Product[]> {
     this.logger.debug(`Search products by name containing "${name}"`);
     try {
+      // Security fix: use parameterized query to prevent SQL injection
       const query = `
         select *
         from product
-        where name ilike '%${name}%';
+        where name ilike $1;
       `;
-      const rows = await this.em.getConnection().execute<Product[]>(query);
+      const rows = await this.em
+        .getConnection()
+        .execute<Product[]>(query, [`%${name}%`]);
 
       return rows.map((row: Product) => this.em.map(Product, row));
     } catch (err) {

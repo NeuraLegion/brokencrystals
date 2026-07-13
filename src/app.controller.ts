@@ -76,7 +76,16 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
+      // Security fix: escape user-controlled input before compiling to prevent SSTI.
+      // Escape doT.js interpolation delimiters and any JS-executable characters.
+      const sanitized = text
+        .replace(/\{\{/g, '&#123;&#123;')
+        .replace(/\}\}/g, '&#125;&#125;')
+        .replace(/\{#/g, '&#123;#')
+        .replace(/\{%/g, '&#123;%')
+        .replace(/\{!/g, '&#123;!')
+        .replace(/\{[?^]/g, (m) => '&#123;' + m[1]);
+      const res = dotT.compile(sanitized)();
       this.logger.debug(`Rendered template: ${res}`);
       return res;
     }
@@ -118,10 +127,13 @@ export class AppController {
   })
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
+    // Security fix: disable external entity and DTD processing to prevent XXE
     const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
-      recover: true
+      noent: false,
+      dtdvalid: false,
+      dtdload: false,
+      nonet: true,
+      recover: false
     });
     this.logger.debug(xmlDoc);
     this.logger.debug(xmlDoc.getDtd());
