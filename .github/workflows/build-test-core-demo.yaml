@@ -60,7 +60,6 @@ jobs:
       - name: Setup KDT
         run: |
           curl -sSL https://cli.kondukto.io | sh
-          cp kdt-linux-amd64 kdt
 
       - name: Test KDT Auth
         run: |
