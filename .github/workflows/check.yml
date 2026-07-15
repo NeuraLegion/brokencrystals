@@ -1,20 +1,7 @@
 name: "Nest Back-End CI checks"
 
 on:
-  pull_request:
-    branches:
-      - '**'
-
-  push:
-    branches:
-      - stable
-      - unstable
-
-    paths:
-      - '*'
-      - 'src/**'
-      - 'test/**'
-      - '.github/workflows/check.yml'
+  workflow_dispatch:
 
 env:
   HUSKY: 0

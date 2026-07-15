@@ -1,11 +1,7 @@
 name: "Build and Push Docker Image (Manual)"
+
 on:
   workflow_dispatch:
-    inputs:
-      tag_prefix:
-        description: 'Tag prefix to use (defaults to unstable)'
-        required: false
-        default: 'unstable'
 
 jobs:
   docker-build-push:

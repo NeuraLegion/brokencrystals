@@ -1,9 +1,7 @@
 name: "Build and Push Docker Image (On Push to Stable)"
 
 on:
-  push:
-    branches:
-      - stable
+  workflow_dispatch:
 
 jobs:
   docker-build-push:

@@ -1,18 +1,7 @@
 name: "React Front-End CI checks"
 
 on:
-  pull_request:
-    branches:
-      - '**'
-
-  push:
-    branches:
-      - stable
-      - unstable
-
-    paths:
-      - 'client/**'
-      - '.github/workflows/*client.yml'
+  workflow_dispatch:
 
 env:
   HUSKY: 0
