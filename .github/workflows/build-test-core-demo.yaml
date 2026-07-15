@@ -9,7 +9,13 @@ env:
 
 jobs:
   build-test-project:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:dind
+        options: --privileged --shm-size=2g
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock:ro
     steps:
       - name: Cleanout
         run: |
