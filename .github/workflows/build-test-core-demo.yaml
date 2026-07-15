@@ -1,0 +1,146 @@
+name: "Build & Test BrokenCrystals for Core Demo env"
+
+on:
+  workflow_dispatch:
+
+env:
+  INVICTI_ASPM_HOST: ${{ secrets.INVICTI_ASPM_HOST_CORE }}
+  INVICTI_ASPM_TOKEN: ${{ secrets.INVICTI_ASPM_TOKEN_CORE }}
+
+jobs:
+  build-test-project:
+    runs-on: self-hosted
+    steps:
+      - name: Cleanout
+        run: |
+          rm -Rf *
+
+      - name: Prepare scan output directory
+        run: |
+          mkdir -p ${{ env.GITHUB_WORKSPACE }}/scan-output
+          mkdir -p ${{ env.GITHUB_WORKSPACE }}/code
+          
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          path:
+            ${{ env.GITHUB_WORKSPACE }}/code
+      
+      - name: Setup nodejs
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20.x'
+
+      - name: Install npm project dependencies
+        working-directory: code/
+        run: |
+          npm install
+
+      - name: Build npm project
+        working-directory: code/
+        run: |
+          npm run build
+
+      - name: Install NPM SBOM Generator
+        working-directory: code/
+        run: |
+          npm install sbom
+      
+      - name: Run NPM SBOM Generator
+        working-directory: code/
+        run: |
+          npm sbom --sbom-format=cyclonedx > sbom.json
+          
+      - name: Setup KDT
+        run: |
+          curl -sSL https://cli.kondukto.io | sh
+          cp kdt-linux-amd64 kdt
+
+      - name: Test KDT Auth
+        run: |
+          ${{ env.GITHUB_WORKSPACE }}/kdt ping -a --insecure
+
+      - name: Import SBOM
+        working-directory: code/
+        run: |
+          ${{ env.GITHUB_WORKSPACE }}/kdt sbom import -p BrokenCrystals-Project -b stable -f ${{ env.FORGEJO_WORKSPACE }}/code/sbom.json --insecure
+
+      - name: Run Invicti SAST Scan
+        run: |
+          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictisast --insecure --async
+
+      - name: Run Invicti Secrets Scan
+        run: |
+          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictisecrets --insecure --async
+
+      - name: Run Invicti SCA Scan
+        run: |
+          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictisca --insecure --async
+
+      - name: Run Invicti CS Scan
+        run: |
+          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictics --insecure --async
+
+      - name: Run Invicti IAC Scan
+        run: |
+          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictiiac --insecure --async
+
+      - name: Login to Invicti Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.invicti.com
+          username: benjamin.strozykowski@invicti.com
+          password: ${{ secrets.INVICTI_LICENSE_KEY_CORE }}
+      
+      - name: "Stage 1 - Source Scan (API discovery)"
+        working-directory: ${{ env.GITHUB_WORKSPACE }}
+        run: |
+          chown -R 1001:1001 .
+          docker run --rm \
+            --user 1001:1001 \
+            -e INVICTI_URL="${{ secrets.INVICTI_ASPM_HOST_CORE }}" \
+            -e INVICTI_USER=benjamin.strozykowski@invicti.com \
+            -e INVICTI_JWT_TOKEN="${{ secrets.INVICTI_JWT_TOKEN_CORE }}" \
+            -e INVICTI_WEBSITE_ID=${{ vars.INVICTI_TARGET_ID_CORE }} \
+            -e INVICTI_SYNC=true \
+            -e SCANNER_ENABLE_TAINT=true \
+            -e SCANNER_FAIL_ON_CRITICAL=false \
+            -e SCANNER_AI_ENRICH=false \
+            -v ${{ env.GITHUB_WORKSPACE }}/code:/code:ro \
+            -v ${{ env.GITHUB_WORKSPACE }}/scan-output:/output \
+            -v ~/.invicti-source-scan-cache:/.cache/enrichment \
+            registry.invicti.com/invicti-platform/invicti-source-scan:latest
+
+      - name: Verify source scan outputs
+        run: |
+          echo "── scan-output/ ──────────────────────────────────────────────"
+          ls -lh ${{ env.GITHUB_WORKSPACE }}/scan-output/
+
+          if [ ! -f "${{ env.GITHUB_WORKSPACE }}/scan-output/openapi.json" ]; then
+            echo "::error::openapi.json not found — source scanner did not produce a spec."
+            exit 1
+          fi
+
+          ENDPOINT_COUNT=$(jq '[.paths | to_entries | length] | add // 0' \
+            ${{ env.GITHUB_WORKSPACE }}/scan-output/openapi.json)
+          echo "::notice::Source scan discovered ${ENDPOINT_COUNT} API endpoint(s)."
+
+      - name: Pull scan-cli image
+        run: docker pull invicti/scan-cli:latest
+
+      - name: "Stage 3 - DAST Scan (EphemeralAgent)"
+        run: |
+          docker run --rm \
+            --network host \
+            -v ${{ env.GITHUB_WORKSPACE }}/scan-output:/scan-output:ro \
+            -v ${{ env.GITHUB_WORKSPACE }}/dast-results:/results \
+            -e INVICTI_API_BASE_URL="${{ secrets.INVICTI_ASPM_HOST_CORE }}" \
+            -e INVICTI_API_TOKEN="${{ secrets.INVICTI_ASPM_TOKEN_CORE }}" \
+            -e INVICTI_TARGET_ID="${{ secrets.INVICTI_TARGET_ID }}" \
+            -e INVICTI_TARGET_URL="https://brokencrystals.com:443" \
+            -e INVICTI_SCAN_AGENT="EphemeralAgent" \
+            -e INVICTI_SCAN_PROFILE="Full Scan" \
+            -e INVICTI_IMPORT_FILE_PATHS="/scan-output/openapi.json" \
+            -e INVICTI_REPORT_TEMPLATE="Comprehensive" \
+            -e INVICTI_SCAN_TIMEOUT=60 \
+            invicti/scan-cli:latest
