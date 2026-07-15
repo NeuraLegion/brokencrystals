@@ -72,23 +72,23 @@ jobs:
 
       - name: Run Invicti SAST Scan
         run: |
-          kdt scan -p BrokenCrystals-Project -b stable -t invictisast --insecure
+          kdt -v scan -p BrokenCrystals-Project -b stable -t invictisast --insecure
 
       - name: Run Invicti Secrets Scan
         run: |
-          kdt scan -p BrokenCrystals-Project -b stable -t invictisecrets --insecure
+          kdt -v scan -p BrokenCrystals-Project -b stable -t invictisecrets --insecure
 
       - name: Run Invicti SCA Scan
         run: |
-          kdt scan -p BrokenCrystals-Project -b stable -t invictisca --insecure
+          kdt -v scan -p BrokenCrystals-Project -b stable -t invictisca --insecure
 
       - name: Run Invicti CS Scan
         run: |
-          kdt scan -p BrokenCrystals-Project -b stable -t invictics --insecure
+          kdt -v scan -p BrokenCrystals-Project -b stable -t invictics --insecure
 
       - name: Run Invicti IAC Scan
         run: |
-          kdt scan -p BrokenCrystals-Project -b stable -t invictiiac --insecure
+          kdt -v scan -p BrokenCrystals-Project -b stable -t invictiiac --insecure
 
       - name: Login to Invicti Registry
         uses: docker/login-action@v3
