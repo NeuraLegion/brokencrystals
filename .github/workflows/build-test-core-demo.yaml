@@ -23,14 +23,14 @@ jobs:
 
       - name: Prepare scan output directory
         run: |
-          mkdir -p ${{ env.GITHUB_WORKSPACE }}/scan-output
-          mkdir -p ${{ env.GITHUB_WORKSPACE }}/code
+          mkdir -p ${{ github.workspace }}/scan-output
+          mkdir -p ${{ github.workspace }}/code
           
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           path:
-            ${{ env.GITHUB_WORKSPACE }}/code
+            ${{ github.workspace }}/code
       
       - name: Setup nodejs
         uses: actions/setup-node@v6
@@ -64,32 +64,32 @@ jobs:
 
       - name: Test KDT Auth
         run: |
-          ${{ env.GITHUB_WORKSPACE }}/kdt ping -a --insecure
+          ${{ github.workspace }}/kdt ping -a --insecure
 
       - name: Import SBOM
         working-directory: code/
         run: |
-          ${{ env.GITHUB_WORKSPACE }}/kdt sbom import -p BrokenCrystals-Project -b stable -f ${{ env.FORGEJO_WORKSPACE }}/code/sbom.json --insecure
+          ${{ github.workspace }}/kdt sbom import -p BrokenCrystals-Project -b stable -f ${{ github.workspace }}/code/sbom.json --insecure
 
       - name: Run Invicti SAST Scan
         run: |
-          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictisast --insecure --async
+          ${{ github.workspace }}/kdt scan -p BrokenCrystals-Project -b stable -t invictisast --insecure --async
 
       - name: Run Invicti Secrets Scan
         run: |
-          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictisecrets --insecure --async
+          ${{ github.workspace }}/kdt scan -p BrokenCrystals-Project -b stable -t invictisecrets --insecure --async
 
       - name: Run Invicti SCA Scan
         run: |
-          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictisca --insecure --async
+          ${{ github.workspace }}/kdt scan -p BrokenCrystals-Project -b stable -t invictisca --insecure --async
 
       - name: Run Invicti CS Scan
         run: |
-          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictics --insecure --async
+          ${{ github.workspace }}/kdt scan -p BrokenCrystals-Project -b stable -t invictics --insecure --async
 
       - name: Run Invicti IAC Scan
         run: |
-          ${{ env.GITHUB_WORKSPACE }}/kdt scan -p BrokenCrystals-Project -b stable -t invictiiac --insecure --async
+          ${{ github.workspace }}/kdt scan -p BrokenCrystals-Project -b stable -t invictiiac --insecure --async
 
       - name: Login to Invicti Registry
         uses: docker/login-action@v3
@@ -99,7 +99,7 @@ jobs:
           password: ${{ secrets.INVICTI_LICENSE_KEY_CORE }}
       
       - name: "Stage 1 - Source Scan (API discovery)"
-        working-directory: ${{ env.GITHUB_WORKSPACE }}
+        working-directory: ${{ github.workspace }}
         run: |
           chown -R 1001:1001 .
           docker run --rm \
@@ -112,23 +112,23 @@ jobs:
             -e SCANNER_ENABLE_TAINT=true \
             -e SCANNER_FAIL_ON_CRITICAL=false \
             -e SCANNER_AI_ENRICH=false \
-            -v ${{ env.GITHUB_WORKSPACE }}/code:/code:ro \
-            -v ${{ env.GITHUB_WORKSPACE }}/scan-output:/output \
+            -v ${{ github.workspace }}/code:/code:ro \
+            -v ${{ github.workspace }}/scan-output:/output \
             -v ~/.invicti-source-scan-cache:/.cache/enrichment \
             registry.invicti.com/invicti-platform/invicti-source-scan:latest
 
       - name: Verify source scan outputs
         run: |
           echo "── scan-output/ ──────────────────────────────────────────────"
-          ls -lh ${{ env.GITHUB_WORKSPACE }}/scan-output/
+          ls -lh ${{ github.workspace }}/scan-output/
 
-          if [ ! -f "${{ env.GITHUB_WORKSPACE }}/scan-output/openapi.json" ]; then
+          if [ ! -f "${{ github.workspace }}/scan-output/openapi.json" ]; then
             echo "::error::openapi.json not found — source scanner did not produce a spec."
             exit 1
           fi
 
           ENDPOINT_COUNT=$(jq '[.paths | to_entries | length] | add // 0' \
-            ${{ env.GITHUB_WORKSPACE }}/scan-output/openapi.json)
+            ${{ github.workspace }}/scan-output/openapi.json)
           echo "::notice::Source scan discovered ${ENDPOINT_COUNT} API endpoint(s)."
 
       - name: Pull scan-cli image
@@ -138,8 +138,8 @@ jobs:
         run: |
           docker run --rm \
             --network host \
-            -v ${{ env.GITHUB_WORKSPACE }}/scan-output:/scan-output:ro \
-            -v ${{ env.GITHUB_WORKSPACE }}/dast-results:/results \
+            -v ${{ github.workspace }}/scan-output:/scan-output:ro \
+            -v ${{ github.workspace }}/dast-results:/results \
             -e INVICTI_API_BASE_URL="${{ secrets.INVICTI_ASPM_HOST_CORE }}" \
             -e INVICTI_API_TOKEN="${{ secrets.INVICTI_ASPM_TOKEN_CORE }}" \
             -e INVICTI_TARGET_ID="${{ secrets.INVICTI_TARGET_ID }}" \
