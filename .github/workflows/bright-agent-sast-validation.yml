@@ -1,0 +1,217 @@
+# Bright Agent — SAST + STAR SAST validation for Broken Crystals
+#
+# Runs static analysis (CodeQL SAST) over this repo, then has Bright Agent
+# VALIDATE those static findings against a live STAR/DAST scan
+# (RUN_MODE=validation). Instead of committing fixes, it confirms which CodeQL
+# findings are actually reachable/exploitable on the running app and posts a
+# CodeQL → DAST validation summary. No fix loop runs.
+#
+# This complements the DAST workflow (bright-agent.yml): that one scans + fixes,
+# this one proves out static findings dynamically.
+#
+# The workflow only runs when you explicitly ask for it:
+#
+#   • issue_comment     → a repo OWNER / MEMBER / COLLABORATOR comments
+#                         `/bright-validate` (lowercase) on a PR; runs CodeQL +
+#                         STAR validation against that PR's head branch.
+#   • workflow_dispatch → manual run, launched by hand on a chosen branch.
+#
+# Runner prerequisites: Docker, Docker Compose, Git, curl, sha256sum (all on
+# GitHub-hosted `ubuntu-latest`).
+#
+# Required repository secrets:
+#     BRIGHT_TOKEN      Bright API token from https://app.brightsec.com
+#     INFERENCE_TOKEN   API token for your OpenAI-compatible inference endpoint
+#   and one repository variable:
+#     INFERENCE_URL     that endpoint's base URL (OpenAI, GitHub Models, Ollama, …)
+#
+# Repo access uses the built-in GITHUB_TOKEN (see `permissions:`).
+#
+# IMPORTANT for the comment trigger: GitHub only triggers `issue_comment`
+# workflows from the file on your repo's DEFAULT branch — so this workflow must
+# be merged to the default branch for `/bright-validate` replies to work.
+
+name: Bright Agent (SAST Validation)
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch: {}
+
+# contents: write      → push the validation summary branch
+# pull-requests: write → open/update the PR + summary comment + reactions
+# statuses: write      → set the commit status
+# security-events: write → only needed if you flip CodeQL `upload` to `always`
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+  security-events: write
+
+# One run per PR (its /bright-validate replies); else per ref (manual dispatch).
+concurrency:
+  group: bright-sast-validation-${{ github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sast-validation:
+    # Trigger gates:
+    #  • issue_comment: a lowercase `/bright-validate` comment from a repo
+    #                   OWNER / MEMBER / COLLABORATOR on a PR.
+    #  • workflow_dispatch: always (manual run on a chosen branch).
+    if: >-
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        contains(github.event.comment.body, '/bright-validate') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      # Runner platform/arch: linux-x64 | linux-arm64 | darwin-x64 | darwin-arm64
+      ASSET: bright-agent-linux-x64
+      # CodeQL language to analyze. Broken Crystals is a NestJS (TypeScript) app.
+      # CodeQL writes "<language>.sarif" into the output dir below.
+      CODEQL_LANGUAGE: javascript
+    steps:
+      # For a `/bright-validate` comment: resolve the PR over the API and REFUSE
+      # fork PRs BEFORE any checkout. issue_comment runs in the base-repo context
+      # with secrets in scope, so checking out and running a fork's head would
+      # leak them. Outputs the head/base refs the run binds to.
+      - name: Resolve steering PR (refuse forks)
+        id: steer
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            const sameRepo =
+              pr.head.repo &&
+              pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`;
+            if (!sameRepo) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body:
+                  "🔒 `/bright-validate` is not available on fork PRs for " +
+                  "security reasons (it would run untrusted code with repository " +
+                  "secrets). Push the branch to this repository to use it.",
+              });
+              core.setFailed("SAST validation disabled on fork PRs.");
+              return;
+            }
+            core.setOutput("head_ref", pr.head.ref);
+            core.setOutput("base_ref", pr.base.ref);
+
+      # Check out the tree to analyze. /bright-validate comment → the PR head
+      # branch; manual dispatch → the chosen ref.
+      - uses: actions/checkout@v5
+        with:
+          ref: >-
+            ${{ (github.event_name == 'issue_comment' && steps.steer.outputs.head_ref)
+              || github.ref }}
+          fetch-depth: 2
+
+      # 1. Static analysis (SAST) with CodeQL → SARIF file. Write it OUTSIDE the
+      #    checkout ($RUNNER_TEMP) so it's never swept into a commit.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ env.CODEQL_LANGUAGE }}
+
+      # javascript/typescript needs no build. If you switch CODEQL_LANGUAGE to a
+      # compiled language (java, go, csharp, cpp), autobuild covers most projects.
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze (write SARIF to $RUNNER_TEMP/sarif)
+        uses: github/codeql-action/analyze@v3
+        with:
+          output: ${{ runner.temp }}/sarif
+          # We only need the SARIF locally for validation. Set to `always` to
+          # also publish results to the repo's Security tab (needs
+          # security-events: write, already granted above).
+          upload: never
+
+      # 2. Fetch the Bright Agent binary (outside the checkout).
+      - name: Download & verify Bright Agent
+        working-directory: ${{ runner.temp }}
+        run: |
+          # Latest release. To pin a version, replace 'latest/download' with
+          # 'download/<tag>', e.g. .../releases/download/v0.1.1
+          base="https://github.com/NeuraLegion/bright-agent-dist/releases/latest/download"
+          curl -fsSL -o "${ASSET}" "${base}/${ASSET}"
+          curl -fsSL -o "${ASSET}.sha256" "${base}/${ASSET}.sha256"
+          sha256sum -c "${ASSET}.sha256"
+          chmod +x "${ASSET}"
+
+      - name: Show all available env variables
+        run: env | sort
+
+      # 3. Validate the CodeQL (SAST) findings against a live STAR/DAST scan.
+      - name: Run Bright Agent (SAST validation)
+        env:
+          # Run against the checked-out tree. REPOSITORY_URL is derived from the
+          # checkout's `origin` remote (set REPOSITORY_URL to override).
+          LOCAL_REPO_PATH: ${{ github.workspace }}
+          REPO_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRIGHT_TOKEN: ${{ secrets.BRIGHT_TOKEN }}
+          INFERENCE_URL: ${{ vars.INFERENCE_URL }}
+          INFERENCE_TOKEN: ${{ secrets.INFERENCE_TOKEN }}
+          BRIGHT_PROJECT_ID: ${{ vars.BRIGHT_PROJECT_ID }}
+          # Validation mode: map CodeQL findings → DAST tests, scan, and report
+          # which are dynamically confirmed. No fix loop runs.
+          RUN_MODE: validation
+          # CodeQL writes "<language>.sarif" into the output dir above.
+          SARIF_PATH: ${{ runner.temp }}/sarif/${{ env.CODEQL_LANGUAGE }}.sarif
+          # Steering inputs — populated only for a `/bright-validate` comment;
+          # empty for a manual dispatch.
+          BRIGHT_STEERING_COMMENT: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
+          BRIGHT_STEERING_COMMENT_ID: ${{ github.event_name == 'issue_comment' && github.event.comment.id || '' }}
+          BRIGHT_STEERING_AUTHOR: ${{ github.event_name == 'issue_comment' && github.event.comment.user.login || '' }}
+          BRIGHT_STEERING_AUTHOR_ASSOCIATION: ${{ github.event_name == 'issue_comment' && github.event.comment.author_association || '' }}
+          BRIGHT_STEERING_PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || '' }}
+          BRIGHT_STEERING_PR_HEAD: ${{ steps.steer.outputs.head_ref }}
+          BRIGHT_STEERING_PR_BASE: ${{ steps.steer.outputs.base_ref }}
+          # --- Detailed stats & diagnostics ---
+          BRIGHT_DEBUG: "1"
+          BRIGHT_DUMP_TURNS: "1"
+          BRIGHT_DUMP_DIR: ${{ runner.temp }}/bright-dumps
+          # Optional:
+          # AI_MODEL: gpt-5.4-mini
+        run: "${{ runner.temp }}/${{ env.ASSET }}"
+
+      # --- Artifact uploads (always run, even on failure) ---
+
+      - name: Upload Bright Agent logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bright-agent-sast-logs
+          path: ~/.bright-agent/logs/
+          if-no-files-found: ignore
+
+      - name: Upload LLM turn dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bright-agent-sast-turn-dumps
+          path: ${{ runner.temp }}/bright-dumps/
+          if-no-files-found: ignore
+
+      - name: Upload CodeQL SARIF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bright-agent-sast-sarif
+          path: ${{ runner.temp }}/sarif/
+          if-no-files-found: ignore
+
+# NOTE: commits/PRs/comments made with GITHUB_TOKEN do not trigger your other
+# workflows (GitHub's anti-recursion rule). To have the validation summary PR
+# re-run your repo's CI, use a PAT instead:
+#     REPO_ACCESS_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
