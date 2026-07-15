@@ -1,12 +1,10 @@
 name: "Build & Test BrokenCrystals for Core Demo env"
-
 on:
   workflow_dispatch:
-
+  pull_request:
 env:
   INVICTI_ASPM_HOST: ${{ secrets.INVICTI_ASPM_HOST_CORE }}
   INVICTI_ASPM_TOKEN: ${{ secrets.INVICTI_ASPM_TOKEN_CORE }}
-
 jobs:
   build-test-project:
     runs-on: ubuntu-latest
@@ -20,75 +18,83 @@ jobs:
       - name: Cleanout
         run: |
           rm -Rf *
-
       - name: Prepare scan output directory
         run: |
           mkdir -p ${{ github.workspace }}/scan-output
           mkdir -p ${{ github.workspace }}/code
-          
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          path:
-            ${{ github.workspace }}/code
-      
+          path: ${{ github.workspace }}/code
+          ref: ${{ github.head_ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Fetch base branch for PR merge (pull_request only)
+        if: github.event_name == 'pull_request'
+        working-directory: code/
+        run: |
+          git fetch origin ${{ github.base_ref }}:${{ github.base_ref }}
+
+      - name: Set scan branch and PR flags
+        id: scanvars
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "branch=${{ github.head_ref }}" >> $GITHUB_OUTPUT
+            echo "extra_flags=--merge-target ${{ github.base_ref }} --pr-number ${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "branch=stable" >> $GITHUB_OUTPUT
+            echo "extra_flags=" >> $GITHUB_OUTPUT
+          fi
+
       - name: Setup nodejs
         uses: actions/setup-node@v6
         with:
           node-version: '20.x'
-
       - name: Install npm project dependencies
         working-directory: code/
         run: |
           npm install
-
       - name: Build npm project
         working-directory: code/
         run: |
           npm run build
-
       - name: Install NPM SBOM Generator
         working-directory: code/
         run: |
           npm install sbom
-      
+
       - name: Run NPM SBOM Generator
         working-directory: code/
         run: |
           npm sbom --sbom-format=cyclonedx > sbom.json
-          
+
       - name: Setup KDT
         run: |
           curl -sSL https://cli.kondukto.io | sh
-
       - name: Test KDT Auth
         run: |
           kdt ping -a --insecure
-
       - name: Import SBOM
         working-directory: code/
         run: |
-          kdt sbom import -p BrokenCrystals-Project -b stable -f ${{ github.workspace }}/code/sbom.json --insecure
-
+          kdt sbom import -p BrokenCrystals-Project -b ${{ steps.scanvars.outputs.branch }} -f ${{ github.workspace }}/code/sbom.json --insecure
       - name: Run Invicti SAST Scan
+        working-directory: code/
         run: |
-          kdt -v scan -p BrokenCrystals-Project -b stable -t invictisast --insecure
-
+          kdt -v scan -p BrokenCrystals-Project -b ${{ steps.scanvars.outputs.branch }} -t invictisast ${{ steps.scanvars.outputs.extra_flags }} --insecure
       - name: Run Invicti Secrets Scan
+        working-directory: code/
         run: |
-          kdt -v scan -p BrokenCrystals-Project -b stable -t invictisecrets --insecure
-
+          kdt -v scan -p BrokenCrystals-Project -b ${{ steps.scanvars.outputs.branch }} -t invictisecrets ${{ steps.scanvars.outputs.extra_flags }} --insecure
       - name: Run Invicti SCA Scan
+        working-directory: code/
         run: |
-          kdt -v scan -p BrokenCrystals-Project -b stable -t invictisca --insecure
-
+          kdt -v scan -p BrokenCrystals-Project -b ${{ steps.scanvars.outputs.branch }} -t invictisca ${{ steps.scanvars.outputs.extra_flags }} --insecure
       - name: Run Invicti CS Scan
+        working-directory: code/
         run: |
-          kdt -v scan -p BrokenCrystals-Project -b stable -t invictics --insecure
-
-      - name: Run Invicti IAC Scan
-        run: |
-          kdt -v scan -p BrokenCrystals-Project -b stable -t invictiiac --insecure
+          kdt -v scan -p BrokenCrystals-Project -b ${{ steps.scanvars.outputs.branch }} -t invictics ${{ steps.scanvars.outputs.extra_flags }} --insecure
 
       - name: Login to Invicti Registry
         uses: docker/login-action@v3
