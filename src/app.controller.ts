@@ -83,7 +83,7 @@ export class AppController {
   }
 
   @Get('goto')
-  @ApiQuery({ name: 'url', example: 'https://google.com', required: true })
+  @ApiQuery({ name: 'url', example: '/docs', required: true })
   @ApiOperation({
     description: API_DESC_REDIRECT_REQUEST
   })
@@ -92,6 +92,10 @@ export class AppController {
   })
   @Redirect()
   async redirect(@Query('url') url: string) {
+    if (typeof url !== 'string' || !url.startsWith('/') || url.startsWith('//')) {
+      throw new HttpException('Invalid redirect target', HttpStatus.BAD_REQUEST);
+    }
+
     return { url };
   }
 
