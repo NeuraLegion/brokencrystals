@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiExcludeController,
@@ -13,6 +13,7 @@ import { SafeFilesService, SafeFileResponse } from './safe-files.service';
 @ApiExcludeController()
 export class SafeFilesController {
   constructor(private readonly service: SafeFilesService) {}
+
   @Post()
   @ApiOperation({ description: 'Store a new file URL if its host is allowed' })
   @ApiOkResponse({
@@ -35,6 +36,14 @@ export class SafeFilesController {
     @Body('name') name: string,
     @Body('url') url: string
   ): Promise<SafeFileResponse> {
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      throw new BadRequestException('Name is required');
+    }
+
+    if (typeof url !== 'string' || url.trim().length === 0) {
+      throw new BadRequestException('URL is required');
+    }
+
     return this.service.add(name, url);
   }
 }
