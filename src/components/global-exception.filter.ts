@@ -9,6 +9,13 @@ import {
 import { BaseExceptionFilter } from '@nestjs/core';
 import { GqlContextType } from '@nestjs/graphql';
 
+const GENERIC_HTTP_ERROR_MESSAGES: Record<number, string> = {
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  403: 'Forbidden',
+  404: 'Not Found'
+};
+
 @Catch()
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
@@ -49,7 +56,10 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
   private getResponseBody(status: number) {
     return {
       statusCode: status,
-      ...this.getSanitizedResponse(status)
+      error:
+        status >= 500
+          ? 'Internal Server Error'
+          : (GENERIC_HTTP_ERROR_MESSAGES[status] ?? 'Request failed')
     };
   }
 
@@ -85,10 +95,9 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       })
     );
 
-    const unprocessableException = new InternalServerErrorException({
-      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-      error: 'Internal Server Error'
-    });
+    const unprocessableException = new InternalServerErrorException(
+      this.getResponseBody(HttpStatus.INTERNAL_SERVER_ERROR)
+    );
 
     if (gql) {
       throw unprocessableException;
@@ -112,29 +121,5 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     } catch {
       return HttpStatus.INTERNAL_SERVER_ERROR;
     }
-  }
-
-  private getSanitizedResponse(status: number) {
-    if (status >= 500) {
-      return { error: 'Internal Server Error' };
-    }
-
-    if (status === 401) {
-      return { error: 'Unauthorized' };
-    }
-
-    if (status === 403) {
-      return { error: 'Forbidden' };
-    }
-
-    if (status === 404) {
-      return { error: 'Not Found' };
-    }
-
-    if (status === 400) {
-      return { error: 'Bad Request' };
-    }
-
-    return { error: 'Request failed' };
   }
 }

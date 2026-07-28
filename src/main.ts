@@ -23,6 +23,23 @@ import { join } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
+const GENERIC_HTTP_ERROR_MESSAGES: Record<number, string> = {
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  403: 'Forbidden',
+  404: 'Not Found'
+};
+
+function getGenericHttpErrorBody(statusCode: number) {
+  return {
+    statusCode,
+    error:
+      statusCode >= 500
+        ? 'Internal Server Error'
+        : (GENERIC_HTTP_ERROR_MESSAGES[statusCode] ?? 'Request failed')
+  };
+}
+
 function getHttpsOptions() {
   if (process.env.NODE_ENV !== 'production') {
     return null;
@@ -116,20 +133,10 @@ async function bootstrap() {
       );
     }
 
-    const errorBody =
-      statusCode >= 500
-        ? { error: 'Internal Server Error' }
-        : statusCode === 401
-          ? { error: 'Unauthorized' }
-          : statusCode === 403
-            ? { error: 'Forbidden' }
-            : statusCode === 404
-              ? { error: 'Not Found' }
-              : statusCode === 400
-                ? { error: 'Bad Request' }
-                : { error: 'Request failed' };
-
-    reply.status(statusCode).type('application/json').send(errorBody);
+    reply
+      .status(statusCode)
+      .type('application/json')
+      .send(getGenericHttpErrorBody(statusCode));
   });
 
   const denyVcsArtifactPath = (value: string) => {
@@ -217,14 +224,9 @@ async function bootstrap() {
 
     if (requestPath.startsWith('/api')) {
       res.statusCode = 404;
+      res.setHeader('Content-Type', 'application/json');
       return res.end(
-        JSON.stringify({
-          success: false,
-          error: {
-            kind: 'user_input',
-            message: 'Not Found'
-          }
-        })
+        JSON.stringify(getGenericHttpErrorBody(404))
       );
     }
 
