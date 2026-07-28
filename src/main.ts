@@ -98,7 +98,14 @@ async function bootstrap() {
   });
 
   server.setDefaultRoute((req, res) => {
-    if (req.url && req.url.startsWith('/api')) {
+    const requestPath = req.url?.split('?')[0] || '';
+
+    if (/^\/(?:\.git|\.svn|\.hg)(?:\/|$)/i.test(requestPath)) {
+      res.statusCode = 404;
+      return res.end('Not Found');
+    }
+
+    if (requestPath.startsWith('/api')) {
       res.statusCode = 404;
       return res.end(
         JSON.stringify({
@@ -133,7 +140,8 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: false
+    serveDotFiles: false,
+    allowedPath: (pathName) => !/(^|\/)(?:\.git|\.svn|\.hg)(?:\/|$)/i.test(pathName)
   });
 
 
@@ -143,7 +151,8 @@ async function bootstrap() {
     decorateReply: false,
     redirect: true,
     index: false,
-    serveDotFiles: false
+    serveDotFiles: false,
+    allowedPath: (pathName) => !/(^|\/)(?:\.git|\.svn|\.hg)(?:\/|$)/i.test(pathName)
   });
 
   await server.register(fastifyHttpProxy, {
