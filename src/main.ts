@@ -115,13 +115,18 @@ async function bootstrap() {
       .filter(Boolean)
       .map((segment) => segment.trim().toLowerCase());
 
-    return pathSegments.some(
-      (segment) =>
+    return pathSegments.some((segment) => {
+      const normalizedSegment = segment.startsWith('.')
+        ? segment.slice(1)
+        : segment;
+
+      return (
         segment.startsWith('.') ||
-        segment === 'git' ||
-        segment === 'svn' ||
-        segment === 'hg'
-    );
+        normalizedSegment === 'git' ||
+        normalizedSegment === 'svn' ||
+        normalizedSegment === 'hg'
+      );
+    });
   };
 
   server.setDefaultRoute((req, res) => {
