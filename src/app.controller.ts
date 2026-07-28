@@ -157,10 +157,14 @@ export class AppController {
     }
   })
   async getCommandResult(@Query('command') command: string): Promise<string> {
-    this.logger.debug(`launch ${command} command`);
+    const normalizedCommand = typeof command === 'string' ? command.trim() : '';
+    this.logger.debug(`launch ${normalizedCommand} command`);
     try {
-      return await this.appService.launchCommand(command);
+      return await this.appService.launchCommand(normalizedCommand);
     } catch (err) {
+      if (err instanceof HttpException) {
+        throw err;
+      }
       throw new InternalServerErrorException({
         error: err.message || err,
         location: __filename
@@ -251,7 +255,9 @@ export class AppController {
   async getCommandResultGrpc(data: {
     command: string;
   }): Promise<{ output: string }> {
-    const output = await this.appService.launchCommand(data.command);
+    const normalizedCommand =
+      typeof data?.command === 'string' ? data.command.trim() : '';
+    const output = await this.appService.launchCommand(normalizedCommand);
     return { output };
   }
 
