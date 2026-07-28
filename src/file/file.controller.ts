@@ -38,6 +38,19 @@ export class FileController {
 
   constructor(private fileService: FileService) {}
 
+  private isBlockedPathInput(filePath: string): boolean {
+    if (typeof filePath !== 'string') {
+      return true;
+    }
+
+    const normalizedPath = filePath.trim();
+    return (
+      normalizedPath === '' ||
+      /^[a-z][a-z0-9+.-]*:/i.test(normalizedPath) ||
+      normalizedPath.startsWith('//')
+    );
+  }
+
   private getContentType(contentType: string) {
     if (contentType) {
       return contentType;
@@ -74,6 +87,11 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
+    if (this.isBlockedPathInput(path)) {
+      this.logger.warn(`Blocked invalid file request path: ${path}`);
+      throw new BadRequestException('only local product file paths are allowed');
+    }
+
     const file: Stream = await this.fileService.getFile(path);
     const type = this.getContentType(contentType);
     res.type(type);
@@ -144,13 +162,7 @@ export class FileController {
     @Res({ passthrough: true }) res: FastifyReply
   ) {
     try {
-      if (typeof file !== 'string' || file.trim() === '') {
-        this.logger.warn('Blocked empty file request');
-        res.status(HttpStatus.BAD_REQUEST);
-        return;
-      }
-
-      if (/^[a-z][a-z0-9+.-]*:/i.test(file.trim()) || file.trim().startsWith('//')) {
+      if (this.isBlockedPathInput(file)) {
         this.logger.warn(`Blocked non-local file request: ${file}`);
         res.status(HttpStatus.BAD_REQUEST);
         return;
