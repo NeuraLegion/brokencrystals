@@ -7,7 +7,7 @@ import fastifyHttpProxy from '@fastify/http-proxy';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
-import { readFileSync, readFile, readdirSync } from 'fs';
+import { readFileSync, readFile, readdirSync, statSync } from 'fs';
 import cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -130,6 +130,45 @@ async function bootstrap() {
     });
   };
 
+  const staticClientRoots = [
+    join(__dirname, '..', 'client', 'dist'),
+    join(__dirname, '..', 'client', 'dist', 'vendor')
+  ];
+
+  const vcsArtifactRoots = [
+    join(__dirname, '..', 'client', 'vcs'),
+    join(__dirname, '..', 'client', '.svn'),
+    join(__dirname, '..', 'client', '.git'),
+    join(__dirname, '..', 'client', '.hg'),
+    join(__dirname, '..', '.svn'),
+    join(__dirname, '..', '.git'),
+    join(__dirname, '..', '.hg')
+  ];
+
+  for (const artifactRoot of vcsArtifactRoots) {
+    try {
+      if (statSync(artifactRoot).isDirectory()) {
+        server.log.warn(`VCS artifact directory present and excluded: ${artifactRoot}`);
+      }
+    } catch {
+      // Directory does not exist; nothing to do.
+    }
+  };
+
+  const isAllowedStaticPath = (pathName: string) => {
+    if (denyVcsArtifactPath(pathName)) {
+      return false;
+    }
+
+    return staticClientRoots.every((rootPath) => {
+      try {
+        return !statSync(join(rootPath, '.svn')).isDirectory();
+      } catch {
+        return true;
+      }
+    });
+  };
+
   server.setDefaultRoute((req, res) => {
     const requestPath = req.url?.split('?')[0] || '';
 
@@ -174,7 +213,7 @@ async function bootstrap() {
     redirect: false,
     wildcard: false,
     serveDotFiles: false,
-    allowedPath: (pathName) => !denyVcsArtifactPath(pathName)
+    allowedPath: (pathName) => isAllowedStaticPath(pathName)
   });
 
 
@@ -185,7 +224,7 @@ async function bootstrap() {
     redirect: true,
     index: false,
     serveDotFiles: false,
-    allowedPath: (pathName) => !denyVcsArtifactPath(pathName)
+    allowedPath: (pathName) => isAllowedStaticPath(pathName)
   });
 
   await server.register(fastifyHttpProxy, {
