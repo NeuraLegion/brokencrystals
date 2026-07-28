@@ -8,7 +8,9 @@ import {
   Logger,
   Put,
   Query,
-  Res
+  Res,
+  UsePipes,
+  ValidationPipe
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import {
@@ -46,8 +48,11 @@ export class FileController {
     const normalizedPath = filePath.trim();
     return (
       normalizedPath === '' ||
+      normalizedPath.includes('\0') ||
       /^[a-z][a-z0-9+.-]*:/i.test(normalizedPath) ||
-      normalizedPath.startsWith('//')
+      normalizedPath.startsWith('//') ||
+      path.isAbsolute(normalizedPath) ||
+      !normalizedPath.startsWith('config/products/')
     );
   }
 
@@ -74,6 +79,13 @@ export class FileController {
   }
 
   @Get()
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true
+    })
+  )
   @ApiQuery({
     name: 'path',
     example: 'config/products/crystals/amethyst.jpg',
