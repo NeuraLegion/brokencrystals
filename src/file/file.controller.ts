@@ -206,6 +206,11 @@ export class FileController {
 
   @GrpcMethod('FileService', 'ReadFile')
   async readFileGrpc(data: { path: string }): Promise<{ content: string }> {
+    if (this.isBlockedPathInput(data?.path)) {
+      this.logger.warn(`Blocked invalid gRPC file request path: ${data?.path}`);
+      throw new BadRequestException('only local product file paths are allowed');
+    }
+
     const stream = await this.fileService.getFile(data.path);
     const chunks = [];
     for await (const chunk of stream) {
