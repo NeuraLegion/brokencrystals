@@ -13,12 +13,12 @@ export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
 
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
-    const [header] = this.parse(token);
 
     try {
+      const [header] = this.parse(token);
       const url = header.x5u;
-      if (!url || url !== this.x5uUrl) {
-        throw new Error('Invalid x5u');
+      if (typeof url !== 'string' || !url.length || url !== this.x5uUrl) {
+        throw new UnauthorizedException({ error: 'Unauthorized' });
       }
 
       this.log.debug(`Loading key from configured x5u url`);
@@ -26,7 +26,7 @@ export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
       const x509 = await jose.importX509(crtPayload, 'RS256');
 
       return await jose.jwtVerify(token, x509);
-    } catch (err) {
+    } catch {
       this.log.warn('X5U token validation failed');
       throw new UnauthorizedException({ error: 'Unauthorized' });
     }

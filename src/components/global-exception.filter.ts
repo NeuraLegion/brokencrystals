@@ -13,6 +13,13 @@ import { GqlContextType } from '@nestjs/graphql';
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
 
+  private getResponseBody(status: number) {
+    return {
+      statusCode: status,
+      ...this.getSanitizedResponse(status)
+    };
+  }
+
   public catch(exception: unknown, host: ArgumentsHost) {
     const gql = host.getType<GqlContextType>() === 'graphql';
 
@@ -21,7 +28,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       this.logger.warn(`HTTP exception intercepted: status=${status}`);
 
       const sanitizedException = new HttpException(
-        this.getSanitizedResponse(status),
+        this.getResponseBody(status),
         status
       );
 
@@ -35,6 +42,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     this.logger.error('Unhandled exception intercepted', exception as Error);
 
     const unprocessableException = new InternalServerErrorException({
+      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       error: 'Internal Server Error'
     });
 

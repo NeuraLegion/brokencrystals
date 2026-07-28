@@ -105,6 +105,34 @@ async function bootstrap() {
     https: getHttpsOptions()
   });
 
+  server.setErrorHandler((error, request, reply) => {
+    const rawStatusCode =
+      typeof error?.statusCode === 'number' ? error.statusCode : 500;
+    const statusCode =
+      rawStatusCode >= 400 && rawStatusCode < 600 ? rawStatusCode : 500;
+
+    if (statusCode >= 500) {
+      request.log.error(error);
+    } else {
+      request.log.warn({ err: error, statusCode }, 'Request error intercepted');
+    }
+
+    const errorBody =
+      statusCode >= 500
+        ? { error: 'Internal Server Error' }
+        : statusCode === 401
+          ? { error: 'Unauthorized' }
+          : statusCode === 403
+            ? { error: 'Forbidden' }
+            : statusCode === 404
+              ? { error: 'Not Found' }
+              : statusCode === 400
+                ? { error: 'Bad Request' }
+                : { error: 'Request failed' };
+
+    reply.status(statusCode).type('application/json').send(errorBody);
+  });
+
   const denyVcsArtifactPath = (value: string) => {
     let decodedValue = value;
 
