@@ -130,11 +130,6 @@ async function bootstrap() {
     });
   };
 
-  const staticClientRoots = [
-    join(__dirname, '..', 'client', 'dist'),
-    join(__dirname, '..', 'client', 'dist', 'vendor')
-  ];
-
   const vcsArtifactRoots = [
     join(__dirname, '..', 'client', 'vcs'),
     join(__dirname, '..', 'client', '.svn'),
