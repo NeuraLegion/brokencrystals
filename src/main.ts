@@ -121,11 +121,14 @@ async function bootstrap() {
 
   server.setErrorHandler((error, request, reply) => {
     const requestPath = request.raw.url?.split('?')[0] ?? request.url;
+    const isJwtValidationRoute = /^\/api\/auth\/jwt\/[^/]+\/validate$/.test(
+      requestPath
+    );
 
-    if (requestPath === '/api/auth/jwt/x5c/validate') {
+    if (isJwtValidationRoute) {
       request.log.warn(
         { err: sanitizeErrorForLogging(error), statusCode: 401 },
-        'X5C validation error intercepted'
+        'JWT validation error intercepted'
       );
 
       reply
