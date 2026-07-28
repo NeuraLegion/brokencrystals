@@ -114,6 +114,7 @@ async function bootstrap() {
       .split('/')
       .filter(Boolean)
       .map((segment) => segment.trim().toLowerCase());
+    const deniedSecretFilePattern = /^\.(env($|\..+)|htaccess|npmrc|yarnrc|pnpmrc|ssh|aws|dockerenv)|.+\.(pem|key|crt|p12|pfx)$/;
 
     return pathSegments.some((segment) => {
       const normalizedSegment = segment.startsWith('.')
@@ -122,6 +123,7 @@ async function bootstrap() {
 
       return (
         segment.startsWith('.') ||
+        deniedSecretFilePattern.test(segment) ||
         normalizedSegment === 'git' ||
         normalizedSegment === 'svn' ||
         normalizedSegment === 'hg' ||
