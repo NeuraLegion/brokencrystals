@@ -7,7 +7,7 @@ import fastifyHttpProxy from '@fastify/http-proxy';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
-import { readFileSync, readFile, readdirSync, statSync } from 'fs';
+import { readFileSync, readFile, statSync } from 'fs';
 import cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -156,17 +156,7 @@ async function bootstrap() {
   };
 
   const isAllowedStaticPath = (pathName: string) => {
-    if (denyVcsArtifactPath(pathName)) {
-      return false;
-    }
-
-    return staticClientRoots.every((rootPath) => {
-      try {
-        return !statSync(join(rootPath, '.svn')).isDirectory();
-      } catch {
-        return true;
-      }
-    });
+    return !denyVcsArtifactPath(pathName);
   };
 
   server.setDefaultRoute((req, res) => {
