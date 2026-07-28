@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtHeader } from './jwt.header';
 
 export abstract class JwtTokenProcessor {
@@ -13,19 +13,25 @@ export abstract class JwtTokenProcessor {
   protected parse(token: string): [header: JwtHeader, payload: unknown] {
     this.log.debug('Call parse');
 
-    const parts = token.split('.');
-    if (parts.length != 3 || !parts[0]) {
-      throw new Error('Failed to parse jwt token header');
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3 || !parts[0] || !parts[1]) {
+        throw new Error('Invalid JWT structure');
+      }
+
+      const headerStr = Buffer.from(parts[0], 'base64').toString('utf8');
+      const header: JwtHeader = JSON.parse(headerStr);
+
+      const payloadStr = Buffer.from(parts[1], 'base64').toString('utf8');
+      const payload = JSON.parse(payloadStr);
+
+      return [header, payload];
+    } catch (err) {
+      this.log.warn(`Failed to parse JWT token: ${err instanceof Error ? err.message : 'unknown error'}`);
+      throw new UnauthorizedException({
+        error: 'Unauthorized'
+      });
     }
-    const headerStr = Buffer.from(parts[0], 'base64').toString('ascii');
-    this.log.debug(`Jwt token header is ${headerStr}`);
-    const header: JwtHeader = JSON.parse(headerStr);
-
-    const payloadStr = Buffer.from(parts[1], 'base64').toString('ascii');
-    this.log.debug(`Jwt token (None alg) payload is ${payloadStr}`);
-    const payload = JSON.parse(payloadStr);
-
-    return [header, payload];
   }
 
   protected parseCRTChain(chainText: string): string {
