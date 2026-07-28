@@ -110,9 +110,17 @@ async function bootstrap() {
       .split('?')[0]
       .replace(/\\/g, '/')
       .replace(/\/+/g, '/');
+    const pathSegments = normalizedPath
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => segment.trim().toLowerCase());
 
-    return /(?:^|\/)(?:\.[^/]+|\.git|git|\.svn|svn|\.hg|hg)(?:\/|$)/i.test(
-      normalizedPath
+    return pathSegments.some(
+      (segment) =>
+        segment.startsWith('.') ||
+        segment === 'git' ||
+        segment === 'svn' ||
+        segment === 'hg'
     );
   };
 
