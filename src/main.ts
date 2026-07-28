@@ -97,10 +97,15 @@ async function bootstrap() {
         : null
   });
 
+  const denyVcsArtifactPath = (value: string) => {
+    const normalizedPath = value.split('?')[0].replace(/\\/g, '/');
+    return /(?:^|\/)(?:\.git|\.svn|\.hg)(?:\/|$)/i.test(normalizedPath);
+  };
+
   server.setDefaultRoute((req, res) => {
     const requestPath = req.url?.split('?')[0] || '';
 
-    if (/^\/(?:\.git|\.svn|\.hg)(?:\/|$)/i.test(requestPath)) {
+    if (denyVcsArtifactPath(requestPath)) {
       res.statusCode = 404;
       return res.end('Not Found');
     }
@@ -141,7 +146,7 @@ async function bootstrap() {
     redirect: false,
     wildcard: false,
     serveDotFiles: false,
-    allowedPath: (pathName) => !/(^|\/)(?:\.git|\.svn|\.hg)(?:\/|$)/i.test(pathName)
+    allowedPath: (pathName) => !denyVcsArtifactPath(pathName)
   });
 
 
@@ -152,7 +157,7 @@ async function bootstrap() {
     redirect: true,
     index: false,
     serveDotFiles: false,
-    allowedPath: (pathName) => !/(^|\/)(?:\.git|\.svn|\.hg)(?:\/|$)/i.test(pathName)
+    allowedPath: (pathName) => !denyVcsArtifactPath(pathName)
   });
 
   await server.register(fastifyHttpProxy, {
