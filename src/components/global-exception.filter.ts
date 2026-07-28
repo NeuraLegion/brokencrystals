@@ -16,6 +16,12 @@ const GENERIC_HTTP_ERROR_MESSAGES: Record<number, string> = {
   404: 'Not Found'
 };
 
+type ErrorResponseBody = {
+  statusCode: number;
+  error: string;
+  message?: string;
+};
+
 @Catch()
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
@@ -59,6 +65,27 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     };
   }
 
+  private getSanitizedHttpExceptionBody(
+    exception: HttpException,
+    status: number
+  ): ErrorResponseBody {
+    const genericBody = this.getResponseBody(status);
+    const response = exception.getResponse();
+
+    if (!response || typeof response !== 'object' || Array.isArray(response)) {
+      return genericBody;
+    }
+
+    const responseBody = response as Record<string, unknown>;
+
+    return {
+      ...genericBody,
+      ...(typeof responseBody.message === 'string'
+        ? { message: this.sanitizeText(responseBody.message) }
+        : {})
+    };
+  }
+
   public catch(exception: unknown, host: ArgumentsHost) {
     const gql = host.getType<GqlContextType>() === 'graphql';
 
@@ -73,7 +100,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       );
 
       const sanitizedException = new HttpException(
-        this.getResponseBody(status),
+        this.getSanitizedHttpExceptionBody(exception, status),
         status
       );
 

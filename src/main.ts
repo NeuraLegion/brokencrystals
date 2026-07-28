@@ -40,6 +40,33 @@ function getGenericHttpErrorBody(statusCode: number) {
   };
 }
 
+function sanitizeText(value: string) {
+  return value
+    .replace(/([A-Za-z]:\\[^\r\n\t"' )\]}]+|(?:\/[^\r\n\t"' )\]}]+)+)/g, '[redacted-path]')
+    .replace(/file:\/\/[^\r\n\t"' )\]}]+/gi, '[redacted-file-uri]')
+    .replace(/\b(?:[A-Za-z]:)?(?:\\|\/)(?:[^\r\n\t"' )\]}]+(?:\\|\/))*[^\r\n\t"' )\]}]*/g, '[redacted-path]');
+}
+
+function getSanitizedHttpExceptionBody(
+  statusCode: number,
+  response: unknown
+) {
+  const genericBody = getGenericHttpErrorBody(statusCode);
+
+  if (!response || typeof response !== 'object' || Array.isArray(response)) {
+    return genericBody;
+  }
+
+  const responseBody = response as Record<string, unknown>;
+
+  return {
+    ...genericBody,
+    ...(typeof responseBody.message === 'string'
+      ? { message: sanitizeText(responseBody.message) }
+      : {})
+  };
+}
+
 function getHttpsOptions() {
   if (process.env.NODE_ENV !== 'production') {
     return null;
@@ -60,12 +87,6 @@ function getHttpsOptions() {
 
 
 async function bootstrap() {
-  const sanitizeText = (value: string) =>
-    value
-      .replace(/([A-Za-z]:\\[^\r\n\t"' )\]}]+|(?:\/[^\r\n\t"' )\]}]+)+)/g, '[redacted-path]')
-      .replace(/file:\/\/[^\r\n\t"' )\]}]+/gi, '[redacted-file-uri]')
-      .replace(/\b(?:[A-Za-z]:)?(?:\\|\/)(?:[^\r\n\t"' )\]}]+(?:\\|\/))*[^\r\n\t"' )\]}]*/g, '[redacted-path]');
-
   const sanitizeErrorForLogging = (error: unknown) => {
     const statusCode =
       typeof (error as { statusCode?: unknown })?.statusCode === 'number'
@@ -116,6 +137,15 @@ async function bootstrap() {
       typeof error?.statusCode === 'number' ? error.statusCode : 500;
     const statusCode =
       rawStatusCode >= 400 && rawStatusCode < 600 ? rawStatusCode : 500;
+    const responseBody =
+      statusCode >= 500
+        ? getGenericHttpErrorBody(statusCode)
+        : getSanitizedHttpExceptionBody(
+            statusCode,
+            typeof (error as { response?: unknown })?.response !== 'undefined'
+              ? (error as { response?: unknown }).response
+              : undefined
+          );
 
     if (statusCode >= 500) {
       request.log.error(
@@ -132,7 +162,7 @@ async function bootstrap() {
     reply
       .status(statusCode)
       .type('application/json')
-      .send(getGenericHttpErrorBody(statusCode));
+      .send(responseBody);
   });
 
   const denyVcsArtifactPath = (value: string) => {

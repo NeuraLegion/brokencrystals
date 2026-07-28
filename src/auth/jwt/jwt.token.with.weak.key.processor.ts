@@ -14,7 +14,6 @@ export class JwtTokenWithWeakKeyProcessor extends JwtTokenProcessor {
       return decode(token, this.key, false);
     } catch (error) {
       this.log.warn('Failed to decode weak-key JWT token');
-      this.log.debug(String(error));
       throw new UnauthorizedException({ error: 'Unauthorized' });
     }
   }
