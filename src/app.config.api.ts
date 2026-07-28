@@ -6,7 +6,4 @@ export class AppConfig {
 
   @ApiProperty()
   mapsConfigured: boolean;
-
-  @ApiProperty()
-  storageConfigured: boolean;
 }

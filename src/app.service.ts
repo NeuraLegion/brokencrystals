@@ -87,9 +87,6 @@ export class AppService {
       databaseConfigured: Boolean(dbSchema && dbHost && dbPort && dbUser && dbPwd),
       mapsConfigured: Boolean(
         this.configService.get<string>(AppModuleConfigProperties.ENV_GOOGLE_MAPS)
-      ),
-      storageConfigured: Boolean(
-        this.configService.get<string>(AppModuleConfigProperties.ENV_AWS_BUCKET)
       )
     };
   }
