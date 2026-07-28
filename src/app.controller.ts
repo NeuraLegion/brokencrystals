@@ -153,7 +153,7 @@ export class AppController {
   @ApiInternalServerErrorResponse({
     schema: {
       type: 'object',
-      properties: { location: { type: 'string' } }
+      properties: { error: { type: 'string', example: 'Internal Server Error' } }
     }
   })
   async getCommandResult(@Query('command') command: string): Promise<string> {
@@ -165,9 +165,12 @@ export class AppController {
       if (err instanceof HttpException) {
         throw err;
       }
+      this.logger.error(
+        'Spawn endpoint failed',
+        err instanceof Error ? err.stack : String(err)
+      );
       throw new InternalServerErrorException({
-        error: err.message || err,
-        location: __filename
+        error: 'Internal Server Error'
       });
     }
   }
@@ -203,7 +206,7 @@ export class AppController {
   @ApiInternalServerErrorResponse({
     schema: {
       type: 'object',
-      properties: { location: { type: 'string' } }
+      properties: { error: { type: 'string', example: 'Internal Server Error' } }
     }
   })
   async processNumbers(
@@ -242,10 +245,12 @@ export class AppController {
         .send(JSON.stringify(result));
     } catch (err: unknown) {
       if (!response.sent && !response.raw.writableEnded) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          'Process numbers endpoint failed',
+          err instanceof Error ? err.stack : String(err)
+        );
         throw new InternalServerErrorException({
-          error: errorMessage,
-          location: __filename
+          error: 'Internal Server Error'
         });
       }
     }
