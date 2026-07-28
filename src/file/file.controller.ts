@@ -317,6 +317,12 @@ export class FileController {
     @Res({ passthrough: true }) res: FastifyReply
   ) {
     try {
+      if (/^https?:\/\//i.test(file)) {
+        this.logger.warn(`Blocked remote file request: ${file}`);
+        res.status(HttpStatus.BAD_REQUEST);
+        return;
+      }
+
       const stream = await this.fileService.getFile(file);
       res.type('application/octet-stream');
 

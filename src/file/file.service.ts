@@ -13,18 +13,14 @@ export class FileService {
   async getFile(file: string): Promise<Readable> {
     this.logger.log(`Reading file: ${file}`);
 
+    if (/^https?:\/\//i.test(file)) {
+      throw new Error('remote file URLs are not allowed');
+    }
+
     if (file.startsWith('/')) {
       await fs.promises.access(file, R_OK);
 
       return fs.createReadStream(file);
-    } else if (file.startsWith('http')) {
-      const content = await this.cloudProviders.get(file);
-
-      if (content) {
-        return Readable.from(content);
-      } else {
-        throw new Error(`no such file or directory, access '${file}'`);
-      }
     } else {
       file = path.resolve(process.cwd(), file);
 
