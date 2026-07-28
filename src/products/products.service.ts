@@ -58,9 +58,11 @@ export class ProductsService {
       const query = `
         select *
         from product
-        where name ilike '%${name}%';
+        where name ilike ?;
       `;
-      const rows = await this.em.getConnection().execute<Product[]>(query);
+      const rows = await this.em
+        .getConnection()
+        .execute<Product[]>(query, [`%${name}%`]);
 
       return rows.map((row: Product) => this.em.map(Product, row));
     } catch (err) {
