@@ -123,6 +123,7 @@ async function bootstrap() {
     const requestPath = request.raw.url?.split('?')[0] ?? request.url;
     const normalizedPath = requestPath.replace(/\/+$/u, '') || '/';
     const isJwtValidationRoute =
+      normalizedPath === '/api/auth/jwt/jku/validate' ||
       normalizedPath === '/api/auth/jwt/jwk/validate' ||
       normalizedPath === '/api/auth/jwt/x5c/validate' ||
       normalizedPath === '/api/auth/jwt/none/validate' ||
