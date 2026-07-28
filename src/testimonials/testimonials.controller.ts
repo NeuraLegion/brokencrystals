@@ -1,8 +1,8 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
-  Header,
   Logger,
   Post,
   Query,
@@ -93,7 +93,11 @@ export class TestimonialsController {
   @ApiOkResponse({
     type: Number
   })
-  async getCount(): Promise<number> {
+  async getCount(@Query() query: Record<string, unknown>): Promise<number> {
+    if (Object.keys(query).length > 0) {
+      throw new BadRequestException('Query parameters are not supported for this endpoint');
+    }
+
     this.logger.debug('Get count of testimonials.');
     return await this.testimonialsService.count();
   }
