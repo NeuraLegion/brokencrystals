@@ -412,8 +412,7 @@ export class AuthController {
     schema: {
       type: 'object',
       properties: {
-        error: { type: 'string' },
-        location: { type: 'string' }
+        error: { type: 'string' }
       }
     }
   })
