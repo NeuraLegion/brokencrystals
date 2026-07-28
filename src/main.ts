@@ -127,7 +127,8 @@ async function bootstrap() {
       normalizedPath === '/api/auth/jwt/jwk/validate' ||
       normalizedPath === '/api/auth/jwt/x5c/validate' ||
       normalizedPath === '/api/auth/jwt/none/validate' ||
-      normalizedPath === '/api/auth/jwt/embedded-jwk/validate';
+      normalizedPath === '/api/auth/jwt/embedded-jwk/validate' ||
+      normalizedPath === '/api/auth/jwt/kid-sql/validate';
 
     if (isJwtValidationRoute) {
       request.log.warn(
