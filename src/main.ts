@@ -151,7 +151,14 @@ async function bootstrap() {
   };
 
   const isAllowedStaticPath = (pathName: string) => {
-    return !denyVcsArtifactPath(pathName);
+    if (denyVcsArtifactPath(pathName)) {
+      return false;
+    }
+
+    const normalizedPath = pathName.split('?')[0].toLowerCase();
+    const deniedStaticPaths = new Set(['/config.js']);
+
+    return !deniedStaticPaths.has(normalizedPath);
   };
 
   server.setDefaultRoute((req, res) => {
