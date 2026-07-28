@@ -156,9 +156,14 @@ async function bootstrap() {
     }
 
     const normalizedPath = pathName.split('?')[0].toLowerCase();
-    const deniedStaticPaths = new Set(['/config.js', '/nginx.conf']);
+    const deniedStaticPaths = new Set(['/config.js', '/nginx.conf', '/.htaccess']);
+    const pathSegments = normalizedPath.split('/').filter(Boolean);
 
     if (deniedStaticPaths.has(normalizedPath)) {
+      return false;
+    }
+
+    if (pathSegments.some((segment) => segment.startsWith('.'))) {
       return false;
     }
 
