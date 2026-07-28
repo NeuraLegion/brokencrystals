@@ -77,11 +77,15 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     }
 
     const responseBody = response as Record<string, unknown>;
+    const responseError =
+      typeof responseBody.error === 'string'
+        ? this.sanitizeText(responseBody.error)
+        : undefined;
 
     return {
       ...genericBody,
-      ...(typeof responseBody.message === 'string'
-        ? { message: this.sanitizeText(responseBody.message) }
+      ...(responseError && responseError === genericBody.error
+        ? { error: responseError }
         : {})
     };
   }

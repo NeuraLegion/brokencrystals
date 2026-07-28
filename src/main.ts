@@ -58,11 +58,15 @@ function getSanitizedHttpExceptionBody(
   }
 
   const responseBody = response as Record<string, unknown>;
+  const responseError =
+    typeof responseBody.error === 'string'
+      ? sanitizeText(responseBody.error)
+      : undefined;
 
   return {
     ...genericBody,
-    ...(typeof responseBody.message === 'string'
-      ? { message: sanitizeText(responseBody.message) }
+    ...(responseError && responseError === genericBody.error
+      ? { error: responseError }
       : {})
   };
 }
