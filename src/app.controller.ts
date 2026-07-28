@@ -76,10 +76,11 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
-      this.logger.debug(`Rendered template: ${res}`);
-      return res;
+      this.logger.debug(`Received render text: ${text}`);
+      return text;
     }
+
+    throw new HttpException('Invalid body', HttpStatus.BAD_REQUEST);
   }
 
   @Get('goto')
