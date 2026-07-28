@@ -98,12 +98,22 @@ async function bootstrap() {
   });
 
   const denyVcsArtifactPath = (value: string) => {
-    const normalizedPath = decodeURIComponent(value)
+    let decodedValue = value;
+
+    try {
+      decodedValue = decodeURIComponent(value);
+    } catch {
+      decodedValue = value;
+    }
+
+    const normalizedPath = decodedValue
       .split('?')[0]
       .replace(/\\/g, '/')
       .replace(/\/+/g, '/');
 
-    return /(?:^|\/)(?:\.[^/]+|\.git|\.svn|\.hg)(?:\/|$)/i.test(normalizedPath);
+    return /(?:^|\/)(?:\.[^/]+|\.git|git|\.svn|svn|\.hg|hg)(?:\/|$)/i.test(
+      normalizedPath
+    );
   };
 
   server.setDefaultRoute((req, res) => {
