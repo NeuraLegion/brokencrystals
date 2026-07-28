@@ -2,6 +2,7 @@ import {
   ArgumentsHost,
   Catch,
   HttpException,
+  HttpStatus,
   InternalServerErrorException,
   Logger
 } from '@nestjs/common';
@@ -16,13 +17,12 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const gql = host.getType<GqlContextType>() === 'graphql';
 
     if (exception instanceof HttpException) {
-      this.logger.warn(
-        `HTTP exception intercepted: status=${exception.getStatus()} message=${exception.message}`
-      );
+      const status = this.getSafeStatus(exception);
+      this.logger.warn(`HTTP exception intercepted: status=${status}`);
 
       const sanitizedException = new HttpException(
-        this.getSanitizedResponse(exception),
-        exception.getStatus()
+        this.getSanitizedResponse(status),
+        status
       );
 
       if (gql) {
@@ -34,10 +34,9 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
 
     this.logger.error('Unhandled exception intercepted', exception as Error);
 
-    const unprocessableException = new InternalServerErrorException(
-      { error: 'Internal Server Error' },
-      'An internal error has occurred, and the API was unable to service your request.'
-    );
+    const unprocessableException = new InternalServerErrorException({
+      error: 'Internal Server Error'
+    });
 
     if (gql) {
       throw unprocessableException;
@@ -54,9 +53,16 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     );
   }
 
-  private getSanitizedResponse(exception: HttpException) {
-    const status = exception.getStatus();
+  private getSafeStatus(exception: HttpException): number {
+    try {
+      const status = exception.getStatus();
+      return Number.isInteger(status) ? status : HttpStatus.INTERNAL_SERVER_ERROR;
+    } catch {
+      return HttpStatus.INTERNAL_SERVER_ERROR;
+    }
+  }
 
+  private getSanitizedResponse(status: number) {
     if (status >= 500) {
       return { error: 'Internal Server Error' };
     }

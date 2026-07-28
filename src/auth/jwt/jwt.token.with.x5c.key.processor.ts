@@ -14,14 +14,27 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
       const [header] = this.parse(token);
       const keys = header.x5c;
 
-      if (!Array.isArray(keys) || !keys.length || typeof keys[0] !== 'string') {
+      if (!Array.isArray(keys) || !keys.length) {
         throw new UnauthorizedException({
           error: 'Unauthorized'
         });
       }
 
-      const keyLike = await jose.importPKCS8(keys[0], 'RS256');
-      this.log.debug(`Taking keys from ${JSON.stringify(keys)}`);
+      const signingKey = keys[0];
+
+      if (
+        typeof signingKey !== 'string' ||
+        !signingKey.length ||
+        signingKey.length > 10000 ||
+        !this.isPemFormattedPrivateKey(signingKey)
+      ) {
+        throw new UnauthorizedException({
+          error: 'Unauthorized'
+        });
+      }
+
+      const keyLike = await jose.importPKCS8(signingKey, 'RS256');
+      this.log.debug('Using x5c key from token header');
       return await jose.jwtVerify(token, keyLike);
     } catch {
       throw new UnauthorizedException({
@@ -40,5 +53,14 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
         x5c: [this.key]
       })
       .sign(pkcs8);
+  }
+
+  private isPemFormattedPrivateKey(key: string): boolean {
+    const trimmedKey = key.trim();
+
+    return (
+      trimmedKey.startsWith('-----BEGIN PRIVATE KEY-----') &&
+      trimmedKey.endsWith('-----END PRIVATE KEY-----')
+    );
   }
 }
