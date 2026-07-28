@@ -69,25 +69,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     exception: HttpException,
     status: number
   ): ErrorResponseBody {
-    const genericBody = this.getResponseBody(status);
-    const response = exception.getResponse();
-
-    if (!response || typeof response !== 'object' || Array.isArray(response)) {
-      return genericBody;
-    }
-
-    const responseBody = response as Record<string, unknown>;
-    const responseError =
-      typeof responseBody.error === 'string'
-        ? this.sanitizeText(responseBody.error)
-        : undefined;
-
-    return {
-      ...genericBody,
-      ...(responseError && responseError === genericBody.error
-        ? { error: responseError }
-        : {})
-    };
+    return this.getResponseBody(status);
   }
 
   public catch(exception: unknown, host: ArgumentsHost) {

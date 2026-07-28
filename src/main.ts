@@ -51,24 +51,7 @@ function getSanitizedHttpExceptionBody(
   statusCode: number,
   response: unknown
 ) {
-  const genericBody = getGenericHttpErrorBody(statusCode);
-
-  if (!response || typeof response !== 'object' || Array.isArray(response)) {
-    return genericBody;
-  }
-
-  const responseBody = response as Record<string, unknown>;
-  const responseError =
-    typeof responseBody.error === 'string'
-      ? sanitizeText(responseBody.error)
-      : undefined;
-
-  return {
-    ...genericBody,
-    ...(responseError && responseError === genericBody.error
-      ? { error: responseError }
-      : {})
-  };
+  return getGenericHttpErrorBody(statusCode);
 }
 
 function getHttpsOptions() {
@@ -137,6 +120,21 @@ async function bootstrap() {
   });
 
   server.setErrorHandler((error, request, reply) => {
+    const requestPath = request.raw.url?.split('?')[0] ?? request.url;
+
+    if (requestPath === '/api/auth/jwt/x5c/validate') {
+      request.log.warn(
+        { err: sanitizeErrorForLogging(error), statusCode: 401 },
+        'X5C validation error intercepted'
+      );
+
+      reply
+        .status(401)
+        .type('application/json')
+        .send(getGenericHttpErrorBody(401));
+      return;
+    }
+
     const rawStatusCode =
       typeof error?.statusCode === 'number' ? error.statusCode : 500;
     const statusCode =

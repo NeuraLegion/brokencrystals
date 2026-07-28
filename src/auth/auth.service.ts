@@ -34,37 +34,45 @@ export enum JwtProcessorType {
 export class AuthService {
   private processors: Map<JwtProcessorType, JwtTokenProcessor>;
 
+  private readConfiguredFile(configKey: string): string {
+    const path = this.configService.get<string>(configKey);
+
+    if (!path) {
+      throw new Error('Authentication configuration is invalid');
+    }
+
+    try {
+      return fs.readFileSync(path, 'utf8');
+    } catch {
+      throw new Error('Authentication configuration could not be initialized');
+    }
+  }
+
+  private readConfiguredJson(configKey: string): unknown {
+    try {
+      return JSON.parse(this.readConfiguredFile(configKey));
+    } catch {
+      throw new Error('Authentication configuration could not be initialized');
+    }
+  }
+
   constructor(
     private readonly configService: ConfigService,
     private readonly em: EntityManager,
     private readonly httpClient: HttpClientService,
     private readonly keyCloakService: KeyCloakService
   ) {
-    const privateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
+    const privateKey = this.readConfiguredFile(
+      AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
     );
-    const publicKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
-      ),
-      'utf8'
+    const publicKey = this.readConfiguredFile(
+      AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
     );
-    const jwkPrivateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
+    const jwkPrivateKey = this.readConfiguredFile(
+      AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
     );
-    const jwkPublicJson = JSON.parse(
-      fs.readFileSync(
-        this.configService.get<string>(
-          AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
-        ),
-        'utf8'
-      )
+    const jwkPublicJson = this.readConfiguredJson(
+      AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
     );
     const jkuUrl = this.configService.get<string>(
       AuthModuleConfigProperties.ENV_JKU_URL
