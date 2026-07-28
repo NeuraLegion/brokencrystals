@@ -13,21 +13,40 @@ export class FileService {
   async getFile(file: string): Promise<Readable> {
     this.logger.log(`Reading file: ${file}`);
 
-    if (/^https?:\/\//i.test(file)) {
-      throw new Error('remote file URLs are not allowed');
+    if (typeof file !== 'string' || file.trim() === '') {
+      throw new Error('file path is required');
     }
 
-    if (file.startsWith('/')) {
-      await fs.promises.access(file, R_OK);
+    const normalizedInput = file.trim();
 
-      return fs.createReadStream(file);
-    } else {
-      file = path.resolve(process.cwd(), file);
-
-      await fs.promises.access(file, R_OK);
-
-      return fs.createReadStream(file);
+    if (/^[a-z][a-z0-9+.-]*:/i.test(normalizedInput)) {
+      throw new Error('remote or non-file URI schemes are not allowed');
     }
+
+    if (normalizedInput.startsWith('//')) {
+      throw new Error('network paths are not allowed');
+    }
+
+    if (path.isAbsolute(normalizedInput)) {
+      throw new Error('absolute file paths are not allowed');
+    }
+
+    const basePath = process.cwd();
+    const resolvedPath = path.resolve(basePath, normalizedInput);
+    const relativePath = path.relative(basePath, resolvedPath);
+
+    if (
+      relativePath === '' ||
+      relativePath === '.' ||
+      relativePath.startsWith('..') ||
+      path.isAbsolute(relativePath)
+    ) {
+      throw new Error('file path is outside the allowed directory');
+    }
+
+    await fs.promises.access(resolvedPath, R_OK);
+
+    return fs.createReadStream(resolvedPath);
   }
 
   async deleteFile(file: string): Promise<boolean> {

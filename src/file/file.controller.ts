@@ -317,8 +317,14 @@ export class FileController {
     @Res({ passthrough: true }) res: FastifyReply
   ) {
     try {
-      if (/^https?:\/\//i.test(file)) {
-        this.logger.warn(`Blocked remote file request: ${file}`);
+      if (typeof file !== 'string' || file.trim() === '') {
+        this.logger.warn('Blocked empty file request');
+        res.status(HttpStatus.BAD_REQUEST);
+        return;
+      }
+
+      if (/^[a-z][a-z0-9+.-]*:/i.test(file.trim()) || file.trim().startsWith('//')) {
+        this.logger.warn(`Blocked non-local file request: ${file}`);
         res.status(HttpStatus.BAD_REQUEST);
         return;
       }
