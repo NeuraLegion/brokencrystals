@@ -19,7 +19,7 @@ import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
 import { fastifyStatic } from '@fastify/static';
-import { join } from 'path';
+import { basename, join } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
@@ -43,6 +43,32 @@ function getHttpsOptions() {
 
 
 async function bootstrap() {
+  const sanitizeErrorForLogging = (error: unknown) => {
+    const statusCode =
+      typeof (error as { statusCode?: unknown })?.statusCode === 'number'
+        ? ((error as { statusCode?: number }).statusCode as number)
+        : undefined;
+    const code =
+      typeof (error as { code?: unknown })?.code === 'string'
+        ? ((error as { code?: string }).code as string)
+        : undefined;
+    const name =
+      typeof (error as { name?: unknown })?.name === 'string'
+        ? ((error as { name?: string }).name as string)
+        : 'Error';
+    const message =
+      typeof (error as { message?: unknown })?.message === 'string'
+        ? ((error as { message?: string }).message as string)
+        : 'Unexpected failure';
+
+    return {
+      name: basename(name),
+      code,
+      statusCode,
+      message: message.replace(/([A-Za-z]:\\[^\s]+|\/[^\s]*)/g, '[redacted-path]')
+    };
+  };
+
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
 
@@ -54,7 +80,10 @@ async function bootstrap() {
     trustProxy: true,
     onProtoPoisoning: 'ignore',
     frameworkErrors: (error, request, reply) => {
-      request.log.error(error);
+      request.log.error(
+        { err: sanitizeErrorForLogging(error) },
+        'Framework error intercepted'
+      );
       reply
         .status(500)
         .type('application/json')
@@ -70,9 +99,15 @@ async function bootstrap() {
       rawStatusCode >= 400 && rawStatusCode < 600 ? rawStatusCode : 500;
 
     if (statusCode >= 500) {
-      request.log.error(error);
+      request.log.error(
+        { err: sanitizeErrorForLogging(error), statusCode },
+        'Request error intercepted'
+      );
     } else {
-      request.log.warn({ err: error, statusCode }, 'Request error intercepted');
+      request.log.warn(
+        { err: sanitizeErrorForLogging(error), statusCode },
+        'Request error intercepted'
+      );
     }
 
     const errorBody =
