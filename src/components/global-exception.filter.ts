@@ -40,16 +40,12 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
       typeof (exception as { name?: unknown })?.name === 'string'
         ? ((exception as { name?: string }).name as string)
         : 'Error';
-    const message =
-      typeof (exception as { message?: unknown })?.message === 'string'
-        ? ((exception as { message?: string }).message as string)
-        : 'Unexpected failure';
 
     return {
       name: this.sanitizeText(name),
       code,
       statusCode,
-      message: this.sanitizeText(message)
+      message: 'Unexpected failure'
     };
   }
 

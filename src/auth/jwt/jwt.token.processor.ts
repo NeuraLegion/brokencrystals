@@ -26,8 +26,8 @@ export abstract class JwtTokenProcessor {
       const payload = JSON.parse(payloadStr);
 
       return [header, payload];
-    } catch (err) {
-      this.log.warn(`Failed to parse JWT token: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } catch {
+      this.log.warn('Failed to parse JWT token');
       throw new UnauthorizedException({
         error: 'Unauthorized'
       });

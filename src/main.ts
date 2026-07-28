@@ -79,16 +79,12 @@ async function bootstrap() {
       typeof (error as { name?: unknown })?.name === 'string'
         ? ((error as { name?: string }).name as string)
         : 'Error';
-    const message =
-      typeof (error as { message?: unknown })?.message === 'string'
-        ? ((error as { message?: string }).message as string)
-        : 'Unexpected failure';
 
     return {
       name: sanitizeText(name),
       code,
       statusCode,
-      message: sanitizeText(message)
+      message: 'Unexpected failure'
     };
   };
 
