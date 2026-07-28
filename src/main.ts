@@ -106,7 +106,7 @@ async function bootstrap() {
       reply
         .status(500)
         .type('application/json')
-        .send({ error: 'Internal Server Error' });
+        .send(getGenericHttpErrorBody(500));
     },
     https: getHttpsOptions()
   });
@@ -296,9 +296,8 @@ async function bootstrap() {
 
   const httpAdapter = app.getHttpAdapter();
 
-  app
-    .useGlobalInterceptors(new HeadersConfiguratorInterceptor())
-    .useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
+  app.useGlobalInterceptors(new HeadersConfiguratorInterceptor());
+  app.useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
 
   const options = new DocumentBuilder()
     .setTitle('Broken Crystals')
