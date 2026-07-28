@@ -9,10 +9,12 @@ import { R_OK } from 'constants';
 export class FileService {
   private readonly logger = new Logger(FileService.name);
   private cloudProviders = new CloudProvidersMetaData();
+  private readonly allowedRawFileBasePath = path.resolve(
+    process.cwd(),
+    'config/products'
+  );
 
-  async getFile(file: string): Promise<Readable> {
-    this.logger.log(`Reading file: ${file}`);
-
+  private resolveAllowedRawFilePath(file: string): string {
     if (typeof file !== 'string' || file.trim() === '') {
       throw new Error('file path is required');
     }
@@ -31,9 +33,30 @@ export class FileService {
       throw new Error('absolute file paths are not allowed');
     }
 
-    const basePath = process.cwd();
-    const resolvedPath = path.resolve(basePath, normalizedInput);
-    const relativePath = path.relative(basePath, resolvedPath);
+    const normalizedRelativePath = path.posix.normalize(normalizedInput.replace(/\\/g, '/'));
+
+    if (
+      normalizedRelativePath === '' ||
+      normalizedRelativePath === '.' ||
+      normalizedRelativePath.startsWith('..') ||
+      normalizedRelativePath.includes('../') ||
+      path.posix.isAbsolute(normalizedRelativePath)
+    ) {
+      throw new Error('file path is outside the allowed directory');
+    }
+
+    const allowedPrefix = 'config/products/';
+    if (!normalizedRelativePath.startsWith(allowedPrefix)) {
+      throw new Error('file path is not in an allowed location');
+    }
+
+    const relativeAllowedPath = normalizedRelativePath.slice(allowedPrefix.length);
+    if (relativeAllowedPath === '' || relativeAllowedPath.includes('..')) {
+      throw new Error('file path is outside the allowed directory');
+    }
+
+    const resolvedPath = path.resolve(this.allowedRawFileBasePath, relativeAllowedPath);
+    const relativePath = path.relative(this.allowedRawFileBasePath, resolvedPath);
 
     if (
       relativePath === '' ||
@@ -44,6 +67,13 @@ export class FileService {
       throw new Error('file path is outside the allowed directory');
     }
 
+    return resolvedPath;
+  }
+
+  async getFile(file: string): Promise<Readable> {
+    this.logger.log(`Reading file: ${file}`);
+
+    const resolvedPath = this.resolveAllowedRawFilePath(file);
     await fs.promises.access(resolvedPath, R_OK);
 
     return fs.createReadStream(resolvedPath);

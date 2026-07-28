@@ -20,8 +20,6 @@ import {
   ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
-import { W_OK } from 'constants';
-import * as fs from 'fs';
 import * as path from 'path';
 import { Stream } from 'stream';
 import { FileService } from './file.service';
@@ -285,16 +283,8 @@ export class FileController {
     @Query('path') file: string,
     @Body() raw: string
   ): Promise<string> {
-    try {
-      if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
-        await fs.promises.access(path.dirname(file), W_OK);
-        await fs.promises.writeFile(file, raw);
-        return `File uploaded successfully at ${file}`;
-      }
-    } catch (err) {
-      this.logger.error(err.message);
-      throw err.message;
-    }
+    this.logger.warn(`Blocked raw file upload attempt for path: ${file}`);
+    throw new BadRequestException('raw file uploads by path are not allowed');
   }
 
   @Get('raw')
