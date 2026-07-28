@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException
+} from '@nestjs/common';
 import { Readable } from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,21 +21,21 @@ export class FileService {
 
   private resolveAllowedRawFilePath(file: string): string {
     if (typeof file !== 'string' || file.trim() === '') {
-      throw new Error('file path is required');
+      throw new BadRequestException('Invalid file path');
     }
 
     const normalizedInput = file.trim();
 
     if (/^[a-z][a-z0-9+.-]*:/i.test(normalizedInput)) {
-      throw new Error('remote or non-file URI schemes are not allowed');
+      throw new BadRequestException('Invalid file path');
     }
 
     if (normalizedInput.startsWith('//')) {
-      throw new Error('network paths are not allowed');
+      throw new BadRequestException('Invalid file path');
     }
 
     if (path.isAbsolute(normalizedInput)) {
-      throw new Error('absolute file paths are not allowed');
+      throw new BadRequestException('Invalid file path');
     }
 
     const normalizedRelativePath = path.posix.normalize(normalizedInput.replace(/\\/g, '/'));
@@ -42,17 +47,17 @@ export class FileService {
       normalizedRelativePath.includes('../') ||
       path.posix.isAbsolute(normalizedRelativePath)
     ) {
-      throw new Error('file path is outside the allowed directory');
+      throw new BadRequestException('Invalid file path');
     }
 
     const allowedPrefix = 'config/products/';
     if (!normalizedRelativePath.startsWith(allowedPrefix)) {
-      throw new Error('file path is not in an allowed location');
+      throw new BadRequestException('Invalid file path');
     }
 
     const relativeAllowedPath = normalizedRelativePath.slice(allowedPrefix.length);
     if (relativeAllowedPath === '' || relativeAllowedPath.includes('..')) {
-      throw new Error('file path is outside the allowed directory');
+      throw new BadRequestException('Invalid file path');
     }
 
     const resolvedPath = path.resolve(this.allowedRawFileBasePath, relativeAllowedPath);
@@ -64,7 +69,7 @@ export class FileService {
       relativePath.startsWith('..') ||
       path.isAbsolute(relativePath)
     ) {
-      throw new Error('file path is outside the allowed directory');
+      throw new BadRequestException('Invalid file path');
     }
 
     return resolvedPath;
@@ -74,7 +79,12 @@ export class FileService {
     this.logger.log(`Reading file: ${file}`);
 
     const resolvedPath = this.resolveAllowedRawFilePath(file);
-    await fs.promises.access(resolvedPath, R_OK);
+
+    try {
+      await fs.promises.access(resolvedPath, R_OK);
+    } catch {
+      throw new NotFoundException('File not found');
+    }
 
     return fs.createReadStream(resolvedPath);
   }
