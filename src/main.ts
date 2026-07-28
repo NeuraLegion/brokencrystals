@@ -23,6 +23,24 @@ import { join, dirname } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
+function getHttpsOptions() {
+  if (process.env.NODE_ENV !== 'production') {
+    return null;
+  }
+
+  const certPath = process.env.TLS_CERT_PATH || '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem';
+  const keyPath = process.env.TLS_KEY_PATH || '/etc/letsencrypt/live/brokencrystals.com/privkey.pem';
+
+  try {
+    return {
+      cert: readFileSync(certPath),
+      key: readFileSync(keyPath)
+    };
+  } catch {
+    throw new Error('TLS configuration could not be initialized');
+  }
+}
+
 const renderDirList: ListRender = (dirs, files) => {
   const currDir = dirname((dirs[0] || files[0]).href);
   const parentDir = dirname(currDir);
@@ -84,17 +102,7 @@ async function bootstrap() {
         : false,
     trustProxy: true,
     onProtoPoisoning: 'ignore',
-    https:
-      process.env.NODE_ENV === 'production'
-        ? {
-            cert: readFileSync(
-              '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem'
-            ),
-            key: readFileSync(
-              '/etc/letsencrypt/live/brokencrystals.com/privkey.pem'
-            )
-          }
-        : null
+    https: getHttpsOptions()
   });
 
   const denyVcsArtifactPath = (value: string) => {

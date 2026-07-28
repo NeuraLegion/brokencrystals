@@ -18,7 +18,7 @@ export class JwtTokenWithHMACKeysProcessor extends JwtTokenProcessor {
 
       return decode(token, this.privateKey, false, 'HS256');
     } catch (err) {
-      this.log.warn(`Failed to validate HMAC JWT: ${err instanceof Error ? err.message : 'unknown error'}`);
+      this.log.warn('Failed to validate HMAC JWT');
       throw err;
     }
   }
