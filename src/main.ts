@@ -124,7 +124,8 @@ async function bootstrap() {
         segment.startsWith('.') ||
         normalizedSegment === 'git' ||
         normalizedSegment === 'svn' ||
-        normalizedSegment === 'hg'
+        normalizedSegment === 'hg' ||
+        normalizedSegment === 'vcs'
       );
     });
   };
