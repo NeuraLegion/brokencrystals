@@ -215,35 +215,35 @@ export class AppController {
     payload: { numbers: number[]; processing_expression: string },
     @Res() res: FastifyReply
   ): Promise<void> {
-    const numbers = Array.isArray(payload?.numbers) ? payload.numbers : [];
-    const processNumbersExpression =
-      typeof payload?.processing_expression === 'string' &&
-      payload.processing_expression.trim().length > 0
-        ? payload.processing_expression
-        : 'numbers.reduce((acc, num) => acc + num, 0)';
+    const numbers = Array.isArray(payload?.numbers)
+      ? payload.numbers.filter(
+          (value): value is number =>
+            typeof value === 'number' && Number.isFinite(value)
+        )
+      : [];
+    const requestedOperation =
+      typeof payload?.processing_expression === 'string'
+        ? payload.processing_expression.trim().toLowerCase()
+        : 'sum';
 
-    // expose both names used by exploiter payloads
     const response = res;
 
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
     try {
-      const result = eval(processNumbersExpression);
+      const operations: Record<string, () => number> = {
+        sum: () => numbers.reduce((acc, num) => acc + num, 0),
+        avg: () => (numbers.length > 0 ? numbers.reduce((acc, num) => acc + num, 0) / numbers.length : 0),
+        min: () => (numbers.length > 0 ? Math.min(...numbers) : 0),
+        max: () => (numbers.length > 0 ? Math.max(...numbers) : 0)
+      };
 
-      // SSJI payload may already end the response
-      if (response.sent || response.raw.writableEnded) {
-        return;
+      const operation = operations[requestedOperation] ?? operations.sum;
+      const result = operation();
+
+      if (!response.sent && !response.raw.writableEnded) {
+        response.status(200).type('application/json').send(JSON.stringify(result));
       }
-
-      if (typeof result === 'string') {
-        response.status(200).type('text/plain').send(result);
-        return;
-      }
-
-      response
-        .status(200)
-        .type('application/json')
-        .send(JSON.stringify(result));
     } catch (err: unknown) {
       if (!response.sent && !response.raw.writableEnded) {
         this.logger.error(
