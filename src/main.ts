@@ -121,9 +121,12 @@ async function bootstrap() {
 
   server.setErrorHandler((error, request, reply) => {
     const requestPath = request.raw.url?.split('?')[0] ?? request.url;
-    const isJwtValidationRoute = /^\/api\/auth\/jwt\/[^/]+\/validate$/.test(
-      requestPath
-    );
+    const normalizedPath = requestPath.replace(/\/+$/u, '') || '/';
+    const isJwtValidationRoute =
+      normalizedPath === '/api/auth/jwt/jwk/validate' ||
+      normalizedPath === '/api/auth/jwt/x5c/validate' ||
+      normalizedPath === '/api/auth/jwt/none/validate' ||
+      normalizedPath === '/api/auth/jwt/embedded-jwk/validate';
 
     if (isJwtValidationRoute) {
       request.log.warn(
@@ -132,9 +135,9 @@ async function bootstrap() {
       );
 
       reply
-        .status(401)
-        .type('application/json')
-        .send(getGenericHttpErrorBody(401));
+        .code(401)
+        .header('content-type', 'application/json; charset=utf-8')
+        .send(JSON.stringify(getGenericHttpErrorBody(401)));
       return;
     }
 
