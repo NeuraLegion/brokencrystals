@@ -53,6 +53,13 @@ async function bootstrap() {
         : false,
     trustProxy: true,
     onProtoPoisoning: 'ignore',
+    frameworkErrors: (error, request, reply) => {
+      request.log.error(error);
+      reply
+        .status(500)
+        .type('application/json')
+        .send({ error: 'Internal Server Error' });
+    },
     https: getHttpsOptions()
   });
 
