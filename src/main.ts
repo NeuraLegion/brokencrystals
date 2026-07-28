@@ -143,11 +143,7 @@ async function bootstrap() {
     decorateReply: false,
     redirect: true,
     index: false,
-    list: {
-      format: 'html',
-      render: renderDirList
-    },
-    serveDotFiles: true
+    serveDotFiles: false
   });
 
   await server.register(fastifyHttpProxy, {
