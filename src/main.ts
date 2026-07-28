@@ -156,9 +156,13 @@ async function bootstrap() {
     }
 
     const normalizedPath = pathName.split('?')[0].toLowerCase();
-    const deniedStaticPaths = new Set(['/config.js']);
+    const deniedStaticPaths = new Set(['/config.js', '/nginx.conf']);
 
-    return !deniedStaticPaths.has(normalizedPath);
+    if (deniedStaticPaths.has(normalizedPath)) {
+      return false;
+    }
+
+    return !normalizedPath.endsWith('.conf');
   };
 
   server.setDefaultRoute((req, res) => {
