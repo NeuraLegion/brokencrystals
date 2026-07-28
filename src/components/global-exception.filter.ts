@@ -8,11 +8,17 @@ import {
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { GqlContextType } from '@nestjs/graphql';
-import { basename } from 'path';
 
 @Catch()
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
+
+  private sanitizeText(value: string) {
+    return value
+      .replace(/([A-Za-z]:\\[^\r\n\t"' )\]}]+|(?:\/[^\r\n\t"' )\]}]+)+)/g, '[redacted-path]')
+      .replace(/file:\/\/[^\r\n\t"' )\]}]+/gi, '[redacted-file-uri]')
+      .replace(/\b(?:[A-Za-z]:)?(?:\\|\/)(?:[^\r\n\t"' )\]}]+(?:\\|\/))*[^\r\n\t"' )\]}]*/g, '[redacted-path]');
+  }
 
   private sanitizeErrorForLogging(exception: unknown) {
     const statusCode =
@@ -33,10 +39,10 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
         : 'Unexpected failure';
 
     return {
-      name: basename(name),
+      name: this.sanitizeText(name),
       code,
       statusCode,
-      message: message.replace(/([A-Za-z]:\\[^\s]+|\/[^\s]*)/g, '[redacted-path]')
+      message: this.sanitizeText(message)
     };
   }
 

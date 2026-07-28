@@ -19,7 +19,7 @@ import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
 import { fastifyStatic } from '@fastify/static';
-import { basename, join } from 'path';
+import { join } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
@@ -43,6 +43,12 @@ function getHttpsOptions() {
 
 
 async function bootstrap() {
+  const sanitizeText = (value: string) =>
+    value
+      .replace(/([A-Za-z]:\\[^\r\n\t"' )\]}]+|(?:\/[^\r\n\t"' )\]}]+)+)/g, '[redacted-path]')
+      .replace(/file:\/\/[^\r\n\t"' )\]}]+/gi, '[redacted-file-uri]')
+      .replace(/\b(?:[A-Za-z]:)?(?:\\|\/)(?:[^\r\n\t"' )\]}]+(?:\\|\/))*[^\r\n\t"' )\]}]*/g, '[redacted-path]');
+
   const sanitizeErrorForLogging = (error: unknown) => {
     const statusCode =
       typeof (error as { statusCode?: unknown })?.statusCode === 'number'
@@ -62,10 +68,10 @@ async function bootstrap() {
         : 'Unexpected failure';
 
     return {
-      name: basename(name),
+      name: sanitizeText(name),
       code,
       statusCode,
-      message: message.replace(/([A-Za-z]:\\[^\s]+|\/[^\s]*)/g, '[redacted-path]')
+      message: sanitizeText(message)
     };
   };
 
