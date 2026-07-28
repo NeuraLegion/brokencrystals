@@ -87,7 +87,6 @@ export class TestimonialsController {
   }
 
   @Get('count')
-  @Header('content-type', 'text/html')
   @ApiOperation({
     description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
   })
@@ -103,7 +102,7 @@ export class TestimonialsController {
   async testimonialsCountGrpc(data: {
     query: string;
   }): Promise<{ count: number }> {
-    const count = await this.testimonialsService.count(data.query);
+    const count = await this.testimonialsService.count();
     return { count };
   }
 }
