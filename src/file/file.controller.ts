@@ -52,11 +52,25 @@ export class FileController {
   }
 
   private getContentType(contentType: string) {
-    if (contentType) {
-      return contentType;
-    } else {
+    const allowedContentTypes = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/octet-stream'
+    ]);
+
+    if (typeof contentType !== 'string') {
       return 'application/octet-stream';
     }
+
+    const normalizedContentType = contentType.trim().toLowerCase();
+    if (!allowedContentTypes.has(normalizedContentType)) {
+      return 'application/octet-stream';
+    }
+
+    return normalizedContentType;
   }
 
   @Get()
