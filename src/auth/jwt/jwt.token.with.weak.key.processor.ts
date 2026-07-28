@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { decode, encode } from 'jwt-simple';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
@@ -9,7 +9,14 @@ export class JwtTokenWithWeakKeyProcessor extends JwtTokenProcessor {
 
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
-    return decode(token, this.key, false);
+
+    try {
+      return decode(token, this.key, false);
+    } catch (error) {
+      this.log.warn('Failed to decode weak-key JWT token');
+      this.log.debug(String(error));
+      throw new UnauthorizedException({ error: 'Unauthorized' });
+    }
   }
 
   async createToken(payload: unknown): Promise<string> {
