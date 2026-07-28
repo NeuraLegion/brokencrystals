@@ -215,6 +215,9 @@ export class AppController {
     payload: { numbers: number[]; processing_expression: string },
     @Res() res: FastifyReply
   ): Promise<void> {
+    'use strict';
+
+    const response = res;
     const numbers = Array.isArray(payload?.numbers)
       ? payload.numbers.filter(
           (value): value is number =>
@@ -224,22 +227,26 @@ export class AppController {
     const requestedOperation =
       typeof payload?.processing_expression === 'string'
         ? payload.processing_expression.trim().toLowerCase()
-        : 'sum';
+        : '';
 
-    const response = res;
+    const operations: Record<string, () => number> = {
+      sum: () => numbers.reduce((acc, num) => acc + num, 0),
+      avg: () =>
+        numbers.length > 0
+          ? numbers.reduce((acc, num) => acc + num, 0) / numbers.length
+          : 0,
+      min: () => (numbers.length > 0 ? Math.min(...numbers) : 0),
+      max: () => (numbers.length > 0 ? Math.max(...numbers) : 0)
+    };
+
+    if (!(requestedOperation in operations)) {
+      throw new HttpException('Invalid processing operation', HttpStatus.BAD_REQUEST);
+    }
 
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
     try {
-      const operations: Record<string, () => number> = {
-        sum: () => numbers.reduce((acc, num) => acc + num, 0),
-        avg: () => (numbers.length > 0 ? numbers.reduce((acc, num) => acc + num, 0) / numbers.length : 0),
-        min: () => (numbers.length > 0 ? Math.min(...numbers) : 0),
-        max: () => (numbers.length > 0 ? Math.max(...numbers) : 0)
-      };
-
-      const operation = operations[requestedOperation] ?? operations.sum;
-      const result = operation();
+      const result = operations[requestedOperation]();
 
       if (!response.sent && !response.raw.writableEnded) {
         response.status(200).type('application/json').send(JSON.stringify(result));
