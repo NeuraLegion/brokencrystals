@@ -366,7 +366,8 @@ export class FileController {
     @Res({ passthrough: true }) res: FastifyReply
   ) {
     try {
-      const stream = await this.fileService.getFile(file);
+      const safePath = this.validateLocalFilePath(file);
+      const stream = await this.fileService.getFile(safePath);
       res.type('application/octet-stream');
 
       return stream;
@@ -378,7 +379,8 @@ export class FileController {
 
   @GrpcMethod('FileService', 'ReadFile')
   async readFileGrpc(data: { path: string }): Promise<{ content: string }> {
-    const stream = await this.fileService.getFile(data.path);
+    const safePath = this.validateLocalFilePath(data.path);
+    const stream = await this.fileService.getFile(safePath);
     const chunks = [];
     for await (const chunk of stream) {
       chunks.push(Buffer.from(chunk));
