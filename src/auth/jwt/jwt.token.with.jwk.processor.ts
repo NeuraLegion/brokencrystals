@@ -12,23 +12,29 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
 
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
-    const [header, payload] = this.parse(token);
 
-    if (!header.jwk) {
-      throw new Error('Unsupported token. JWK is not set');
+    try {
+      const [header, payload] = this.parse(token);
+
+      if (!header.jwk) {
+        throw new Error('Invalid JWT token');
+      }
+
+      if (!header.jwk.kty) {
+        return payload;
+      }
+      const keyLike = await jose.importJWK(header.jwk);
+
+      const res = await jose.jwtVerify(token, keyLike);
+
+      if (res) {
+        return payload;
+      }
+    } catch {
+      throw new Error('Invalid JWT token');
     }
 
-    if (!header.jwk.kty) {
-      return payload;
-    }
-    const keyLike = await jose.importJWK(header.jwk);
-
-    const res = await jose.jwtVerify(token, keyLike);
-
-    if (res) {
-      return payload;
-    }
-    throw new Error('Could not validate token');
+    throw new Error('Invalid JWT token');
   }
 
   async createToken(payload: jose.JWTPayload): Promise<string> {
