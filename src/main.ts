@@ -140,7 +140,12 @@ async function bootstrap() {
     wildcard: false,
     serveDotFiles: false,
     setHeaders(res, pathName) {
-      if (pathName.endsWith('/config.js') || pathName.endsWith('config.js')) {
+      if (
+        pathName.endsWith('/config.js') ||
+        pathName.endsWith('config.js') ||
+        pathName.endsWith('/nginx.conf') ||
+        pathName.endsWith('nginx.conf')
+      ) {
         res.statusCode = 404;
       }
     }
