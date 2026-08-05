@@ -133,7 +133,14 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: false
+    serveDotFiles: false,
+    setHeaders(res, path) {
+      if (path.endsWith('/config.js')) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end('Not Found');
+      }
+    }
   });
 
   server.route({
