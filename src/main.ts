@@ -138,7 +138,12 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: false
+    serveDotFiles: false,
+    setHeaders(res, pathName) {
+      if (pathName.endsWith('/config.js') || pathName.endsWith('config.js')) {
+        res.statusCode = 404;
+      }
+    }
   });
 
   await server.register(fastifyStatic, {
