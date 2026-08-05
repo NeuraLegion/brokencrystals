@@ -104,20 +104,20 @@ export class McpSessionService {
    * Schedules a session for invalidation a fixed delay (5 minutes) after a
    * DELETE request is received. The session stays valid during that window.
    *
-   * Returns true if the session exists and a termination is now scheduled,
-   * false if the session is unknown. Calling this repeatedly for the same
-   * session is idempotent: the existing schedule is preserved.
+   * Calling this repeatedly for the same session is idempotent: the existing
+   * schedule is preserved. Unknown session ids are ignored so callers can
+   * respond uniformly without exposing session existence.
    */
   scheduleTermination(
     sessionId: string,
     delayMs: number = McpSessionService.DELETE_INVALIDATION_DELAY_MS
-  ): boolean {
+  ): void {
     if (!this.sessions.has(sessionId)) {
-      return false;
+      return;
     }
 
     if (this.pendingTerminations.has(sessionId)) {
-      return true;
+      return;
     }
 
     const timer = setTimeout(() => {
@@ -132,7 +132,6 @@ export class McpSessionService {
 
     timer.unref?.();
     this.pendingTerminations.set(sessionId, timer);
-    return true;
   }
 
   terminateSession(sessionId: string): boolean {

@@ -1,11 +1,9 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
   HttpCode,
   Logger,
-  NotFoundException,
   Post,
   Req,
   Res
@@ -371,17 +369,9 @@ export class McpController {
     @Res({ passthrough: true }) res: FastifyReply
   ): Promise<void> {
     const sessionId = this.extractMcpSessionId(req);
-    if (!sessionId) {
-      throw new BadRequestException(
-        'MCP session id missing: send Mcp-Session-Id header'
-      );
-    }
 
-    const scheduled = this.mcpSessionService.scheduleTermination(sessionId);
-    if (!scheduled) {
-      throw new NotFoundException(
-        'MCP session not found: call initialize to create a new session'
-      );
+    if (sessionId) {
+      this.mcpSessionService.scheduleTermination(sessionId);
     }
 
     res.status(204);
