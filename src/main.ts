@@ -136,6 +136,14 @@ async function bootstrap() {
     serveDotFiles: false
   });
 
+  server.setNotFoundHandler((req, res) => {
+    if (req.raw.url?.startsWith('/.git')) {
+      res.statusCode = 404;
+      return res.end('Not Found');
+    }
+    res.callNotFound();
+  });
+
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist', 'vendor'),
     prefix: `/vendor`,
