@@ -3,6 +3,9 @@ import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable, Logger } from '@nestjs/common';
 import { Product } from '../model/product.entity';
 
+const ALLOWED_SORT_FIELDS = new Set(['views_count', 'name', 'category']);
+const ALLOWED_SORT_DIRECTIONS = new Set(['asc', 'desc']);
+
 @Injectable()
 export class RecommendationsService {
   private readonly logger = new Logger(RecommendationsService.name);
@@ -30,15 +33,22 @@ export class RecommendationsService {
       return [];
     }
 
+    const safeSort = ALLOWED_SORT_FIELDS.has(sort) ? sort : 'views_count';
+    const safeDirection = ALLOWED_SORT_DIRECTIONS.has(direction.toLowerCase())
+      ? direction.toLowerCase()
+      : 'desc';
+
     const query = `
       select *
       from product
-      where category = '${product.category}'
-        and name <> '${product.name}'
-      order by ${sort} ${direction}
-      limit ${limit};
+      where category = ?
+        and name <> ?
+      order by ${safeSort} ${safeDirection}
+      limit ?;
     `;
-    const rows = await this.em.getConnection().execute<Product[]>(query);
+    const rows = await this.em
+      .getConnection()
+      .execute<Product[]>(query, [product.category, product.name, limit]);
 
     return rows.map((row: Product) => this.em.map(Product, row));
   }
