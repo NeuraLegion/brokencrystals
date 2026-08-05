@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ClassSerializerInterceptor,
   Controller,
@@ -130,10 +131,14 @@ export class AppController {
   })
   @Header('content-type', 'text/xml')
   async xml(@Body() xml: string): Promise<string> {
-    const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
-      recover: true
+    const input = decodeURIComponent(xml);
+
+    if (/<!DOCTYPE/i.test(input) || /<!ENTITY/i.test(input)) {
+      throw new BadRequestException('DTD/entity declarations are not allowed');
+    }
+
+    const xmlDoc = parseXml(input, {
+      recover: false
     });
     this.logger.debug(xmlDoc);
     this.logger.debug(xmlDoc.getDtd());
