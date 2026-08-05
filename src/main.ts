@@ -97,7 +97,12 @@ async function bootstrap() {
         : null
   });
 
-  server.setDefaultRoute((req, res) => {
+  server.setNotFoundHandler((req, res) => {
+    if (req.url && /^\/(?:\.git|\.svn|\.hg)(?:\/|$)/.test(req.url)) {
+      res.statusCode = 404;
+      return res.end('Not Found');
+    }
+
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
       return res.end(
