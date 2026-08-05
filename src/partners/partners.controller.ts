@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Header,
@@ -125,10 +126,23 @@ export class PartnersController {
     type: String
   })
   async searchPartners(@Query('keyword') keyword: string): Promise<string> {
-    this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
+    const normalizedKeyword = keyword?.trim();
+
+    if (
+      !normalizedKeyword ||
+      normalizedKeyword.length > 100 ||
+      !/^[\p{L}\p{N} .'-]+$/u.test(normalizedKeyword)
+    ) {
+      throw new BadRequestException('Invalid search keyword');
+    }
+
+    this.logger.debug(
+      `Searching partner names by the keyword "${normalizedKeyword}"`
+    );
 
     try {
-      const xpath = `//partners/partner/name[contains(., '${keyword}')]`;
+      const escapedKeyword = normalizedKeyword.replace(/'/g, "''");
+      const xpath = `//partners/partner/name[contains(., '${escapedKeyword}')]`;
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
       const errStr = err.toString();
