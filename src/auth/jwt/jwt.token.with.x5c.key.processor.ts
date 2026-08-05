@@ -16,14 +16,22 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
       throw new UnauthorizedException({ error: 'Unauthorized' });
     }
 
+    const candidateKey = keys[0].trim();
+    const hasPemMarkers =
+      candidateKey.includes('-----BEGIN PRIVATE KEY-----') &&
+      candidateKey.includes('-----END PRIVATE KEY-----');
+
+    if (!hasPemMarkers) {
+      this.log.warn('Rejected malformed X5C JWT key material');
+      throw new UnauthorizedException({ error: 'Unauthorized' });
+    }
+
     try {
-      const keyLike = await jose.importPKCS8(keys[0], 'RS256');
-      this.log.debug(`Taking keys from ${JSON.stringify(keys)}`);
+      const keyLike = await jose.importPKCS8(candidateKey, 'RS256');
+      this.log.debug('Validating X5C JWT with provided key material');
       return await jose.jwtVerify(token, keyLike);
-    } catch (error) {
-      this.log.warn(
-        `Failed to validate X5C JWT: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+    } catch {
+      this.log.warn('Failed to validate X5C JWT');
       throw new UnauthorizedException({ error: 'Unauthorized' });
     }
   }
