@@ -125,10 +125,14 @@ async function bootstrap() {
   });
 
   server.addHook('onRequest', (req, res, done) => {
+    const requestPath = req.raw.url?.split('?')[0]?.toLowerCase();
+
     if (
-      req.raw.url?.startsWith('/.git') ||
-      req.raw.url?.startsWith('/.svn') ||
-      req.raw.url?.startsWith('/.hg')
+      requestPath?.startsWith('/.git') ||
+      requestPath?.startsWith('/.svn') ||
+      requestPath?.startsWith('/.hg') ||
+      requestPath === '/nginx.conf' ||
+      requestPath?.endsWith('.conf')
     ) {
       res.statusCode = 404;
       return res.end('Not Found');
