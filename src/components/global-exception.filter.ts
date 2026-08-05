@@ -1,9 +1,14 @@
 import {
   ArgumentsHost,
+  BadRequestException,
   Catch,
+  ForbiddenException,
   HttpException,
+  HttpStatus,
   InternalServerErrorException,
-  Logger
+  Logger,
+  NotFoundException,
+  UnauthorizedException
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { GqlContextType } from '@nestjs/graphql';
@@ -15,15 +20,22 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
   private sanitizeHttpException(exception: HttpException): HttpException {
     const status = exception.getStatus();
 
-    if (status === 401) {
-      return new HttpException({ error: 'Unauthorized' }, status);
-    }
+    switch (status) {
+      case HttpStatus.BAD_REQUEST:
+        return new BadRequestException({ error: 'Bad request' });
+      case HttpStatus.UNAUTHORIZED:
+        return new UnauthorizedException({ error: 'Unauthorized' });
+      case HttpStatus.FORBIDDEN:
+        return new ForbiddenException({ error: 'Forbidden' });
+      case HttpStatus.NOT_FOUND:
+        return new NotFoundException({ error: 'Not found' });
+      default:
+        if (status >= 500) {
+          return new InternalServerErrorException({ error: 'Internal server error' });
+        }
 
-    if (status >= 500) {
-      return new InternalServerErrorException({ error: 'Internal server error' });
+        return new HttpException({ error: 'Request failed' }, status);
     }
-
-    return new HttpException({ error: exception.message }, status);
   }
 
   public catch(exception: unknown, host: ArgumentsHost) {
