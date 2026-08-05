@@ -157,10 +157,7 @@ async function bootstrap() {
     decorateReply: false,
     redirect: true,
     index: false,
-    list: {
-      format: 'html',
-      render: renderDirList
-    },
+    list: false,
     serveDotFiles: false
   });
 
