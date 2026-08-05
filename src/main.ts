@@ -198,7 +198,10 @@ async function bootstrap() {
   const httpAdapter = app.getHttpAdapter();
 
   server.setErrorHandler((error, request, reply) => {
-    request.log.error(error);
+    request.log.error({
+      message: 'Unhandled request error',
+      statusCode: error?.statusCode
+    });
 
     if (error?.statusCode === 401) {
       void reply.status(401).send({

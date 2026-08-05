@@ -45,7 +45,7 @@ export class AuthGuard implements CanActivate {
       return true;
     } catch (error) {
       this.logger.debug('Failed to validate token');
-      this.logger.verbose(error instanceof Error ? error.message : 'Unknown auth error');
+      this.logger.verbose('Token validation failed');
       throw new UnauthorizedException({
         error: 'Unauthorized'
       });

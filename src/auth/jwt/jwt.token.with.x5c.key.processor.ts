@@ -28,7 +28,7 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
 
       const certificate = this.normalizeX5CCertificate(keys[0]);
       const keyLike = await jose.importX509(certificate, 'RS256');
-      this.log.debug(`Taking keys from ${JSON.stringify(keys)}`);
+      this.log.debug('Validated X5C certificate header for token verification');
       return await jose.jwtVerify(token, keyLike);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
