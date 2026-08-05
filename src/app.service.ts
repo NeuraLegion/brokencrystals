@@ -47,9 +47,7 @@ export class AppService {
 
   getConfig(): AppConfig {
     return {
-      awsBucket: this.configService.get<string>(
-        AppModuleConfigProperties.ENV_AWS_BUCKET
-      ),
+      awsBucket: '***',
       googlemaps: this.configService.get<string>(
         AppModuleConfigProperties.ENV_GOOGLE_MAPS
       )
