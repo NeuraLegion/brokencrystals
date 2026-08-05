@@ -551,24 +551,24 @@ export class McpController {
   ): SessionValidationResult {
     const sessionId = this.extractMcpSessionId(req);
     if (!sessionId) {
-      res.status(400);
+      res.status(401);
       return {
         error: this.rpcError(
           request,
           -32002,
-          'MCP session id missing: send Mcp-Session-Id returned by initialize'
+          'Unauthorized: invalid or expired MCP session'
         )
       };
     }
 
     const session = this.mcpSessionService.touchSession(sessionId);
     if (!session) {
-      res.status(404);
+      res.status(401);
       return {
         error: this.rpcError(
           request,
           -32002,
-          'MCP session not found: call initialize again'
+          'Unauthorized: invalid or expired MCP session'
         )
       };
     }

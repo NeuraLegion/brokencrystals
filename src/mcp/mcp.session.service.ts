@@ -1,21 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomInt } from 'crypto';
+import { randomUUID } from 'crypto';
 import { McpSessionRole } from './mcp.auth.service';
 
-export type McpSessionIdAlgorithm =
-  | 'prefixed-sequential'
-  | 'unix-millisecond-with-counter'
-  | 'unix-second-with-counter'
-  | 'uuid-v1'
-  | 'fixed-mask-low-variety';
+export type McpSessionIdAlgorithm = 'random-uuid';
 
 export const MCP_SESSION_ID_ALGORITHMS: McpSessionIdAlgorithm[] = [
-  'prefixed-sequential',
-  'unix-millisecond-with-counter',
-  'unix-second-with-counter',
-  'uuid-v1',
-  'fixed-mask-low-variety'
+  'random-uuid'
 ];
 
 export interface McpSessionState {
@@ -202,13 +193,11 @@ export class McpSessionService {
       }
 
       this.log.warn(
-        `Invalid MCP_SESSION_ID_ALGORITHM="${configured}", choosing randomly`
+        `Invalid MCP_SESSION_ID_ALGORITHM="${configured}", defaulting to random-uuid`
       );
     }
 
-    return MCP_SESSION_ID_ALGORITHMS[
-      randomInt(MCP_SESSION_ID_ALGORITHMS.length)
-    ];
+    return 'random-uuid';
   }
 
   private isSessionIdAlgorithm(value: string): value is McpSessionIdAlgorithm {
@@ -219,88 +208,15 @@ export class McpSessionService {
     algorithm: McpSessionIdAlgorithm
   ): McpSessionIdGenerator {
     switch (algorithm) {
-      case 'prefixed-sequential':
-        return this.prefixedSequentialGenerator();
-      case 'unix-millisecond-with-counter':
-        return this.unixMillisecondWithCounterGenerator();
-      case 'unix-second-with-counter':
-        return this.unixSecondWithCounterGenerator();
-      case 'uuid-v1':
-        return this.uuidV1Generator();
-      case 'fixed-mask-low-variety':
-        return this.fixedMaskLowVarietyGenerator();
+      case 'random-uuid':
+        return this.randomUuidGenerator();
     }
   }
 
-  private prefixedSequentialGenerator(): McpSessionIdGenerator {
-    let counter = 0;
+  private randomUuidGenerator(): McpSessionIdGenerator {
     return {
-      algorithm: 'prefixed-sequential',
-      next: () => `mcp-session-${++counter}`
+      algorithm: 'random-uuid',
+      next: () => randomUUID()
     };
-  }
-
-  private unixMillisecondWithCounterGenerator(): McpSessionIdGenerator {
-    const timestamp = Date.now();
-    let counter = 0;
-    return {
-      algorithm: 'unix-millisecond-with-counter',
-      next: () => `ms-ts-${timestamp}-seq-${++counter}x`
-    };
-  }
-
-  private unixSecondWithCounterGenerator(): McpSessionIdGenerator {
-    const timestamp = Math.floor(Date.now() / 1000);
-    let counter = 0;
-    return {
-      algorithm: 'unix-second-with-counter',
-      next: () => `sec-ts-${timestamp}-seq-${++counter}x`
-    };
-  }
-
-  private uuidV1Generator(): McpSessionIdGenerator {
-    let counter = 0;
-    return {
-      algorithm: 'uuid-v1',
-      next: () => this.uuidV1SessionId(++counter)
-    };
-  }
-
-  private fixedMaskLowVarietyGenerator(): McpSessionIdGenerator {
-    const alphabet = ['A', 'B', 'C', 'D'];
-    let counter = 0;
-
-    return {
-      algorithm: 'fixed-mask-low-variety',
-      next: () => {
-        const index = counter++;
-        const first =
-          alphabet[Math.floor(index / alphabet.length) % alphabet.length];
-        const second = alphabet[index % alphabet.length];
-
-        return `mask-fixed-${first}${second}-tail-fixed`;
-      }
-    };
-  }
-
-  private uuidV1SessionId(counter: number): string {
-    const nowMs = Date.now();
-    const clockSeq = counter & 0x3fff;
-    const clockSeqHiAndReserved = 0x80 | ((clockSeq >> 8) & 0x3f);
-    const clockSeqLow = clockSeq & 0xff;
-    const timeHiAndVersion =
-      0x1000 | ((Math.floor(nowMs / 0x1000000000000) + counter) & 0x0fff);
-
-    return (
-      `${this.hex(nowMs + counter, 8)}-` +
-      `${this.hex(Math.floor(nowMs / 0x100000000), 4)}-` +
-      `${this.hex(timeHiAndVersion, 4)}-` +
-      `${this.hex(clockSeqHiAndReserved, 2)}${this.hex(clockSeqLow, 2)}-` +
-      '010203040506'
-    );
-  }
-
-  private hex(value: number, width: number): string {
-    return Math.trunc(value).toString(16).padStart(width, '0').slice(-width);
   }
 }
