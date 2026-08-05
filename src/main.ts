@@ -112,6 +112,18 @@ async function bootstrap() {
         : null
   });
 
+  server.setErrorHandler((error, _req, reply) => {
+    if (error.statusCode && error.statusCode < 500) {
+      return reply.status(error.statusCode).send({
+        error: error.statusCode === 404 ? 'Not found' : 'Request failed'
+      });
+    }
+
+    return reply.status(500).send({
+      error: 'Internal server error'
+    });
+  });
+
   server.addHook('onRequest', (req, res, done) => {
     if (
       req.raw.url?.startsWith('/.git') ||
