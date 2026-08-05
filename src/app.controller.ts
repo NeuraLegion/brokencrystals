@@ -120,17 +120,22 @@ export class AppController {
   @ApiCreatedResponse({
     description: 'XML passed successfully'
   })
-  @Header('content-type', 'text/xml')
+  @Header('content-type', 'text/plain; charset=utf-8')
   async xml(@Body() xml: string): Promise<string> {
-    const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
-      recover: true
+    const decodedXml = decodeURIComponent(xml);
+    const xmlDoc = parseXml(decodedXml, {
+      noent: false,
+      dtdvalid: false,
+      recover: false
     });
-    this.logger.debug(xmlDoc);
-    this.logger.debug(xmlDoc.getDtd());
+    this.logger.debug(`Parsed metadata root: ${xmlDoc.root()?.name() ?? 'unknown'}`);
 
-    return xmlDoc.toString(true);
+    return decodedXml
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   @Options()
