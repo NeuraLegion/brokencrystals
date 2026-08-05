@@ -60,6 +60,9 @@ import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
 @ApiTags('App controller')
 export class AppController {
   private readonly logger = new Logger(AppController.name);
+  private readonly renderTemplates: Record<string, string> = {
+    plain: 'Rendered template: {{=it.text}}'
+  };
 
   constructor(private readonly appService: AppService) {}
 
@@ -76,7 +79,8 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
+      const template = this.renderTemplates.plain;
+      const res = dotT.compile(template)({ text });
       this.logger.debug(`Rendered template: ${res}`);
       return res;
     }
