@@ -1,5 +1,5 @@
 import { EntityManager } from '@mikro-orm/core';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import { KeyCloakService } from '../keycloak/keycloak.service';
@@ -32,6 +32,7 @@ export enum JwtProcessorType {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private processors: Map<JwtProcessorType, JwtTokenProcessor>;
 
   constructor(
@@ -40,32 +41,48 @@ export class AuthService {
     private readonly httpClient: HttpClientService,
     private readonly keyCloakService: KeyCloakService
   ) {
-    const privateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
-    );
-    const publicKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
-      ),
-      'utf8'
-    );
-    const jwkPrivateKey = fs.readFileSync(
-      this.configService.get<string>(
-        AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
-      ),
-      'utf8'
-    );
-    const jwkPublicJson = JSON.parse(
-      fs.readFileSync(
+    let privateKey: string;
+    let publicKey: string;
+    let jwkPrivateKey: string;
+    let jwkPublicJson: Record<string, unknown>;
+
+    try {
+      privateKey = fs.readFileSync(
         this.configService.get<string>(
-          AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
+          AuthModuleConfigProperties.ENV_JWT_PRIVATE_KEY_LOCATION
         ),
         'utf8'
-      )
-    );
+      );
+      publicKey = fs.readFileSync(
+        this.configService.get<string>(
+          AuthModuleConfigProperties.ENV_JWT_PUBLIC_KEY_LOCATION
+        ),
+        'utf8'
+      );
+      jwkPrivateKey = fs.readFileSync(
+        this.configService.get<string>(
+          AuthModuleConfigProperties.ENV_JWK_PRIVATE_KEY_LOCATION
+        ),
+        'utf8'
+      );
+      jwkPublicJson = JSON.parse(
+        fs.readFileSync(
+          this.configService.get<string>(
+            AuthModuleConfigProperties.ENV_JWK_PUBLIC_JSON
+          ),
+          'utf8'
+        )
+      );
+    } catch (err) {
+      this.logger.error(
+        err instanceof Error
+          ? err.message
+          : 'Failed to initialize authentication keys',
+        err instanceof Error ? err.stack : undefined
+      );
+      throw new Error('Failed to initialize authentication keys');
+    }
+
     const jkuUrl = this.configService.get<string>(
       AuthModuleConfigProperties.ENV_JKU_URL
     );

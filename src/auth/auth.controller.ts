@@ -683,8 +683,12 @@ export class AuthController {
         });
       }
 
+      this.logger.error(
+        err instanceof Error ? err.message : 'Unexpected OIDC login error',
+        err instanceof Error ? err.stack : undefined
+      );
       throw new InternalServerErrorException({
-        error: err.message
+        error: 'Internal server error'
       });
     }
   }
@@ -695,8 +699,12 @@ export class AuthController {
     try {
       user = await this.usersService.findByEmail(req.user);
     } catch (err) {
+      this.logger.error(
+        err instanceof Error ? err.message : 'Unexpected basic login error',
+        err instanceof Error ? err.stack : undefined
+      );
       throw new InternalServerErrorException({
-        error: err.message
+        error: 'Internal server error'
       });
     }
 
