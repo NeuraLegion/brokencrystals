@@ -20,53 +20,68 @@ import * as https from 'https';
 import fastify from 'fastify';
 import { fastifyStatic, ListRender } from '@fastify/static';
 import { join, dirname } from 'path';
+
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
 const renderDirList: ListRender = (dirs, files) => {
-  const currDir = dirname((dirs[0] || files[0]).href);
+  const currentEntry = dirs[0] || files[0];
+  const currDir = currentEntry ? dirname(currentEntry.href) : '/';
   const parentDir = dirname(currDir);
+  const safeCurrDir = escapeHtml(currDir);
+  const safeParentDir = escapeHtml(parentDir);
   return `
-    <head><title>Index of ${currDir}/</title></head>
+    <head><title>Index of ${safeCurrDir}/</title></head>
     <html><body>
-      <h1>Index of ${currDir}/</h1>
+      <h1>Index of ${safeCurrDir}/</h1>
       <hr>
       <table style="width: max(450px, 50%);">
         <tr>
           <td>
-            <a href="${parentDir}">../</a>
+            <a href="${safeParentDir}">../</a>
           </td>
           <td></td><td></td>
         </tr>
-        ${dirs.map(
-          (dir) =>
-            `<tr>
-              <td>
-                <a href="${dir.href}">${dir.name}</a>
-              </td>
-              <td>
-                ${dir.stats.ctime.toLocaleString()}
-              </td>
-              <td>
-                -
-              </td>
-            </tr>`
-        )}
+        ${dirs
+          .map(
+            (dir) =>
+              `<tr>
+                <td>
+                  <a href="${escapeHtml(dir.href)}">${escapeHtml(dir.name)}</a>
+                </td>
+                <td>
+                  ${escapeHtml(dir.stats.ctime.toLocaleString())}
+                </td>
+                <td>
+                  -
+                </td>
+              </tr>`
+          )
+          .join('')}
         <br/>
-        ${files.map(
-          (file) =>
-            `<tr>
-              <td>
-                <a href="${file.href}">${file.name}</a>
-              </td>
-              <td>
-                ${file.stats.ctime.toLocaleString()}
-              </td>
-              <td>
-                ${file.stats.size}
-              </td>
-            </tr>`
-        )}
+        ${files
+          .map(
+            (file) =>
+              `<tr>
+                <td>
+                  <a href="${escapeHtml(file.href)}">${escapeHtml(file.name)}</a>
+                </td>
+                <td>
+                  ${escapeHtml(file.stats.ctime.toLocaleString())}
+                </td>
+                <td>
+                  ${file.stats.size}
+                </td>
+              </tr>`
+          )
+          .join('')}
       </table>
       <hr>
     </body></html>
