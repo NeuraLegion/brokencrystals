@@ -215,20 +215,34 @@ export class AppController {
     payload: { numbers: number[]; processing_expression: string },
     @Res() res: FastifyReply
   ): Promise<void> {
-    const numbers = Array.isArray(payload?.numbers) ? payload.numbers : [];
+    const numbers = Array.isArray(payload?.numbers)
+      ? payload.numbers.filter((num): num is number => typeof num === 'number' && Number.isFinite(num))
+      : [];
+
     const processNumbersExpression =
       typeof payload?.processing_expression === 'string' &&
       payload.processing_expression.trim().length > 0
-        ? payload.processing_expression
-        : 'numbers.reduce((acc, num) => acc + num, 0)';
+        ? payload.processing_expression.trim()
+        : 'sum';
 
-    // expose both names used by exploiter payloads
+    const allowedOperations = new Map<string, (values: number[]) => number>([
+      ['sum', values => values.reduce((acc, num) => acc + num, 0)],
+      ['average', values => (values.length > 0 ? values.reduce((acc, num) => acc + num, 0) / values.length : 0)],
+      ['max', values => (values.length > 0 ? Math.max(...values) : 0)],
+      ['min', values => (values.length > 0 ? Math.min(...values) : 0)]
+    ]);
+
     const response = res;
 
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
     try {
-      const result = eval(processNumbersExpression);
+      const operation = allowedOperations.get(processNumbersExpression);
+      if (!operation) {
+        throw new Error('Unsupported processing_expression');
+      }
+
+      const result = operation(numbers);
 
       // SSJI payload may already end the response
       if (response.sent || response.raw.writableEnded) {
