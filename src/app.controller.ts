@@ -129,9 +129,24 @@ export class AppController {
   @ApiCreatedResponse({
     description: 'XML passed successfully'
   })
-  @Header('content-type', 'text/xml')
+  @Header('content-type', 'application/json; charset=utf-8')
   async xml(@Body() xml: string): Promise<string> {
-    const input = decodeURIComponent(xml);
+    if (typeof xml !== 'string' && !Buffer.isBuffer(xml)) {
+      throw new BadRequestException('XML payload must be a string');
+    }
+
+    const rawInput = xml.toString();
+    let input: string;
+
+    try {
+      input = decodeURIComponent(rawInput);
+    } catch {
+      input = rawInput;
+    }
+
+    if (input.trim().length === 0) {
+      throw new BadRequestException('XML payload must not be empty');
+    }
 
     if (/<!DOCTYPE/i.test(input) || /<!ENTITY/i.test(input)) {
       throw new BadRequestException('DTD/entity declarations are not allowed');
@@ -143,7 +158,10 @@ export class AppController {
     this.logger.debug(xmlDoc);
     this.logger.debug(xmlDoc.getDtd());
 
-    return xmlDoc.toString(true);
+    return JSON.stringify({
+      message: 'XML passed successfully',
+      root: xmlDoc.root()?.name() ?? null
+    });
   }
 
   @Options()
