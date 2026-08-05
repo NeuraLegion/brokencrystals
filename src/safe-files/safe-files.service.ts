@@ -12,6 +12,12 @@ const ALLOWED_SAFE_FILE_HOSTS = new Set([
   'www.example.com'
 ]);
 
+const ALLOWED_SAFE_FILE_PATHS = new Set([
+  '/',
+  '/safe-files',
+  '/safe-files/'
+]);
+
 @Injectable()
 export class SafeFilesService {
   async add(name: string, url: string): Promise<SafeFileResponse> {
@@ -34,6 +40,14 @@ export class SafeFilesService {
     }
 
     if (!ALLOWED_SAFE_FILE_HOSTS.has(parsedUrl.hostname)) {
+      throw new Error('Untrusted host');
+    }
+
+    if (!ALLOWED_SAFE_FILE_PATHS.has(parsedUrl.pathname)) {
+      throw new Error('Untrusted host');
+    }
+
+    if (parsedUrl.search || parsedUrl.hash || parsedUrl.username || parsedUrl.password) {
       throw new Error('Untrusted host');
     }
 
