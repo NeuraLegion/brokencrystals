@@ -78,31 +78,9 @@ export class FileController {
   }
 
   private async loadCPFile(cpBaseUrl: string, resource: string) {
-    if (typeof resource !== 'string' || resource.trim().length === 0) {
-      throw new BadRequestException(`Invalid paramater 'path' ${resource}`);
-    }
-
-    const normalizedResource = resource.trim();
-    if (
-      normalizedResource.includes('://') ||
-      normalizedResource.includes('..') ||
-      normalizedResource.startsWith('/') ||
-      normalizedResource.includes('?') ||
-      normalizedResource.includes('#')
-    ) {
-      throw new BadRequestException(`Invalid paramater 'path' ${resource}`);
-    }
-
-    const allowedResources = new Set(['instance', 'project', 'oslogin']);
-    if (!allowedResources.has(normalizedResource)) {
-      throw new BadRequestException(`Invalid paramater 'path' ${resource}`);
-    }
-
-    const file: Stream = await this.fileService.getFile(
-      `${cpBaseUrl}${normalizedResource}`
+    throw new BadRequestException(
+      'Cloud metadata file access is not supported'
     );
-
-    return file;
   }
 
   @Get()
