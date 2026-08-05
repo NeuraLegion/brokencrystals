@@ -44,7 +44,13 @@ export class HttpClientService {
 
   async loadPlain(url: string): Promise<string> {
     try {
-      const resp = await axios.get<ArrayBuffer>(url, {
+      const parsedUrl = new URL(url);
+
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        throw new Error('Unsupported URL protocol');
+      }
+
+      const resp = await axios.get<ArrayBuffer>(parsedUrl.toString(), {
         responseType: 'arraybuffer'
       });
 
@@ -54,11 +60,11 @@ export class HttpClientService {
 
       const buffer = Buffer.from(resp.data);
       const text = buffer.toString();
-      this.log.debug(`Loaded plain response from ${url}`);
+      this.log.debug(`Loaded plain response from remote endpoint`);
       return text;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      this.log.warn(`Failed to load plain response from ${url}: ${message}`);
+      this.log.warn(`Failed to load plain response from remote endpoint: ${message}`);
       throw new Error('Failed to load remote resource');
     }
   }
