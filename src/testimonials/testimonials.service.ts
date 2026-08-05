@@ -54,7 +54,7 @@ export class TestimonialsService {
     return t;
   }
 
-  async count(query: string): Promise<number> {
+  async count(): Promise<number> {
     try {
       this.logger.debug(`Count testimonials requested`);
 
