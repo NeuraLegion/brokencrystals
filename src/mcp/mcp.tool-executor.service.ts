@@ -365,6 +365,18 @@ export class McpToolExecutorService extends McpProxySupport {
     try {
       this.logger.debug('Proxy users search via /api/users/search/:name');
 
+      if (!authorizationHeader) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Unauthorized: search_users requires an authenticated MCP session'
+            }
+          ],
+          isError: true
+        };
+      }
+
       const response = await axios.get(
         this.endpoint(`/api/users/search/${encodeURIComponent(input.name)}`),
         {

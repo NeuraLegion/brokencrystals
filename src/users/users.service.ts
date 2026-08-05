@@ -109,7 +109,7 @@ export class UsersService {
     this.log.debug(`Called findByEmail ${email}`);
     const user = await this.usersRepository.findOne({ email });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Could not find user');
     }
     return user;
   }
@@ -118,7 +118,7 @@ export class UsersService {
     this.log.debug(`Called findById ${id}`);
     const user = await this.usersRepository.findOne({ id });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Could not find user');
     }
     return user;
   }
