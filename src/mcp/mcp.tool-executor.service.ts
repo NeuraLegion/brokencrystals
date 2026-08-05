@@ -377,30 +377,16 @@ export class McpToolExecutorService extends McpProxySupport {
         };
       }
 
-      const response = await axios.get(
-        this.endpoint(`/api/users/search/${encodeURIComponent(input.name)}`),
-        {
-          headers: {
-            ...this.buildProxyHeaders(authorizationHeader),
-            accept: 'application/json'
-          },
-          responseType: 'json',
-          validateStatus: () => true
-        }
-      );
-
-      if (response.status !== 200) {
-        return this.proxyError('search_users', response);
-      }
-
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(response.data, null, 2)
+            text: 'Forbidden: search_users is restricted to administrators'
           }
-        ]
+        ],
+        isError: true
       };
+
     } catch (error) {
       return {
         content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],

@@ -181,7 +181,7 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
       name: 'search_users',
       description:
         'Proxy to /api/users/search/:name. Returns a JSON array of matching users.',
-      accessLevel: 'authenticated',
+      accessLevel: 'admin',
       inputSchema: {
         type: 'object',
         properties: {

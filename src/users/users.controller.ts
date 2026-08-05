@@ -177,6 +177,8 @@ export class UsersController {
   }
 
   @Get('/search/:name')
+  @UseGuards(AuthGuard, AdminGuard)
+  @JwtType(JwtProcessorType.RSA)
   @ApiQuery({ name: 'name', example: 'john', required: true })
   @SerializeOptions({ groups: [FULL_USER_INFO] })
   @ApiOperation({
@@ -185,6 +187,12 @@ export class UsersController {
   @ApiOkResponse({
     type: UserDto,
     description: SWAGGER_DESC_FIND_USERS
+  })
+  @ApiForbiddenResponse({
+    description: 'Returns when user is not authenticated'
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Returns when user has no admin rights'
   })
   async searchByName(@Param('name') name: string): Promise<UserDto[]> {
     try {
