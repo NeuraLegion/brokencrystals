@@ -25,7 +25,7 @@ import { TestimonialDto } from './api/TestimonialDto';
 import {
   API_DESC_CREATE_TESTIMONIAL,
   API_DESC_GET_TESTIMONIALS,
-  API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
+  API_DESC_GET_TESTIMONIALS_COUNT
 } from './testimonials.controller.api.desc';
 import { TestimonialsService } from './testimonials.service';
 
@@ -88,7 +88,7 @@ export class TestimonialsController {
 
   @Get('count')
   @ApiOperation({
-    description: API_DESC_GET_TESTIMONIALS_ON_SQL_QUERY
+    description: API_DESC_GET_TESTIMONIALS_COUNT
   })
   @ApiOkResponse({
     type: String
