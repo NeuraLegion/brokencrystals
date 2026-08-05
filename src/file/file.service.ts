@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Readable } from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -8,15 +8,14 @@ import { R_OK } from 'constants';
 @Injectable()
 export class FileService {
   private readonly logger = new Logger(FileService.name);
+  private readonly allowedFileBaseDir = path.resolve(process.cwd(), 'config');
   private cloudProviders = new CloudProvidersMetaData();
 
   async getFile(file: string): Promise<Readable> {
     this.logger.log(`Reading file: ${file}`);
 
     if (file.startsWith('/')) {
-      await fs.promises.access(file, R_OK);
-
-      return fs.createReadStream(file);
+      throw new NotFoundException('File not found');
     } else if (file.startsWith('http')) {
       const providerUrls = new Set([
         `${CloudProvidersMetaData.GOOGLE}instance`,
@@ -24,7 +23,7 @@ export class FileService {
         `${CloudProvidersMetaData.GOOGLE}oslogin`
       ]);
       if (!providerUrls.has(file)) {
-        throw new Error('unsupported provider url');
+        throw new NotFoundException('File not found');
       }
 
       const content = await this.cloudProviders.get(file);
@@ -32,14 +31,26 @@ export class FileService {
       if (content) {
         return Readable.from(content);
       } else {
-        throw new Error(`no such file or directory, access '${file}'`);
+        throw new NotFoundException('File not found');
       }
     } else {
-      file = path.resolve(process.cwd(), file);
+      const normalizedFile = file.replace(/\\/g, '/');
+      const resolvedFile = path.resolve(this.allowedFileBaseDir, normalizedFile);
 
-      await fs.promises.access(file, R_OK);
+      if (
+        resolvedFile !== this.allowedFileBaseDir &&
+        !resolvedFile.startsWith(`${this.allowedFileBaseDir}${path.sep}`)
+      ) {
+        throw new NotFoundException('File not found');
+      }
 
-      return fs.createReadStream(file);
+      try {
+        await fs.promises.access(resolvedFile, R_OK);
+      } catch {
+        throw new NotFoundException('File not found');
+      }
+
+      return fs.createReadStream(resolvedFile);
     }
   }
 

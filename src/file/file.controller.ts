@@ -38,6 +38,7 @@ import { CloudProvidersMetaData } from './cloud.providers.metadata';
 @ApiTags('Files controller')
 export class FileController {
   private readonly logger = new Logger(FileController.name);
+  private readonly allowedFileBaseDir = path.resolve(process.cwd(), 'config');
 
   constructor(private fileService: FileService) {}
 
@@ -47,6 +48,33 @@ export class FileController {
     } else {
       return 'application/octet-stream';
     }
+  }
+
+  private validateLocalFilePath(filePath: string): string {
+    if (typeof filePath !== 'string' || filePath.trim().length === 0) {
+      throw new BadRequestException("Invalid parameter 'path'");
+    }
+
+    const normalizedPath = filePath.trim().replace(/\\/g, '/');
+    if (
+      normalizedPath.startsWith('/') ||
+      normalizedPath.includes('..') ||
+      normalizedPath.includes('://') ||
+      normalizedPath.includes('?') ||
+      normalizedPath.includes('#')
+    ) {
+      throw new BadRequestException("Invalid parameter 'path'");
+    }
+
+    const resolvedPath = path.resolve(this.allowedFileBaseDir, normalizedPath);
+    if (
+      resolvedPath !== this.allowedFileBaseDir &&
+      !resolvedPath.startsWith(`${this.allowedFileBaseDir}${path.sep}`)
+    ) {
+      throw new BadRequestException("Invalid parameter 'path'");
+    }
+
+    return path.relative(process.cwd(), resolvedPath);
   }
 
   private async loadCPFile(cpBaseUrl: string, resource: string) {
@@ -105,7 +133,8 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
-    const file: Stream = await this.fileService.getFile(path);
+    const safePath = this.validateLocalFilePath(path);
+    const file: Stream = await this.fileService.getFile(safePath);
     const type = this.getContentType(contentType);
     res.type(type);
 
