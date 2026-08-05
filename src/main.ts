@@ -155,6 +155,19 @@ async function bootstrap() {
     }
   });
 
+  server.addHook('onRequest', (req, res, done) => {
+    const pathname = req.raw.url?.split('?')[0] || '';
+    if (
+      pathname.startsWith('/.git') ||
+      pathname.startsWith('/.svn') ||
+      pathname.startsWith('/.hg')
+    ) {
+      res.statusCode = 404;
+      return res.end('Not Found');
+    }
+    done();
+  });
+
   server.route({
     method: 'GET',
     url: '/.env',
