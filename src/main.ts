@@ -7,7 +7,7 @@ import fastifyHttpProxy from '@fastify/http-proxy';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
-import { readFileSync, readFile, readdirSync } from 'fs';
+import { readFileSync, readFile } from 'fs';
 import cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -135,24 +135,6 @@ async function bootstrap() {
     wildcard: false,
     serveDotFiles: false
   });
-
-  for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
-    if (dir === 'svn') {
-      continue;
-    }
-    await server.register(fastifyStatic, {
-      root: join(__dirname, '..', 'client', 'vcs', dir),
-      prefix: `/.${dir}`,
-      decorateReply: false,
-      redirect: true,
-      index: false,
-      list: {
-        format: 'html',
-        render: renderDirList
-      },
-      serveDotFiles: false
-    });
-  }
 
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist', 'vendor'),
