@@ -3,6 +3,15 @@ import { InjectRepository } from '@mikro-orm/nestjs';
 import { Injectable, Logger } from '@nestjs/common';
 import { Product } from '../model/product.entity';
 
+export enum RecommendationsSort {
+  VIEWS_COUNT = 'views_count'
+}
+
+export enum RecommendationsDirection {
+  ASC = 'asc',
+  DESC = 'desc'
+}
+
 @Injectable()
 export class RecommendationsService {
   private readonly logger = new Logger(RecommendationsService.name);
@@ -16,8 +25,8 @@ export class RecommendationsService {
   async findRelated(
     productName: string,
     limit: number,
-    sort: string,
-    direction: string
+    sort: RecommendationsSort,
+    direction: RecommendationsDirection
   ): Promise<Product[]> {
     this.logger.debug(
       `Finding recommendations for "${productName}" sorted by "${sort}" in "${direction}" order`
@@ -30,15 +39,28 @@ export class RecommendationsService {
       return [];
     }
 
+    const sortColumnMap: Record<RecommendationsSort, string> = {
+      [RecommendationsSort.VIEWS_COUNT]: 'views_count'
+    };
+    const directionKeywordMap: Record<RecommendationsDirection, 'asc' | 'desc'> = {
+      [RecommendationsDirection.ASC]: 'asc',
+      [RecommendationsDirection.DESC]: 'desc'
+    };
+
+    const safeSort = sortColumnMap[sort];
+    const safeDirection = directionKeywordMap[direction];
+
     const query = `
       select *
       from product
-      where category = '${product.category}'
-        and name <> '${product.name}'
-      order by ${sort} ${direction}
-      limit ${limit};
+      where category = ?
+        and name <> ?
+      order by ${safeSort} ${safeDirection}
+      limit ?;
     `;
-    const rows = await this.em.getConnection().execute<Product[]>(query);
+    const rows = await this.em
+      .getConnection()
+      .execute<Product[]>(query, [product.category, product.name, limit]);
 
     return rows.map((row: Product) => this.em.map(Product, row));
   }

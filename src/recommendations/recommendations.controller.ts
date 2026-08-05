@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Logger,
+  ParseEnumPipe,
   Query
 } from '@nestjs/common';
 import {
@@ -14,7 +15,11 @@ import {
 import { ProductDto } from '../products/api/ProductDto';
 import { Product } from '../model/product.entity';
 import { API_DESC_GET_RELATED_RECOMMENDATIONS } from './recommendations.controller.api.desc';
-import { RecommendationsService } from './recommendations.service';
+import {
+  RecommendationsDirection,
+  RecommendationsService,
+  RecommendationsSort
+} from './recommendations.service';
 
 @Controller('/api/recommendations')
 @ApiTags('Recommendations controller')
@@ -56,8 +61,13 @@ export class RecommendationsController {
   async getRelatedProducts(
     @Query('product') productName: string,
     @Query('limit') limitParam: string,
-    @Query('sort') sort = 'views_count',
-    @Query('direction') direction = 'desc'
+    @Query('sort', new ParseEnumPipe(RecommendationsSort, { optional: true }))
+    sort: RecommendationsSort = RecommendationsSort.VIEWS_COUNT,
+    @Query(
+      'direction',
+      new ParseEnumPipe(RecommendationsDirection, { optional: true })
+    )
+    direction: RecommendationsDirection = RecommendationsDirection.DESC
   ): Promise<ProductDto[]> {
     this.logger.debug(`Get recommendations for product "${productName}"`);
 
