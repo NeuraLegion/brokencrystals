@@ -96,6 +96,14 @@ export class AppController {
   })
   @Redirect()
   async redirect(@Query('url') url: string) {
+    if (typeof url !== 'string' || url.length === 0) {
+      throw new HttpException('Invalid redirect target', HttpStatus.BAD_REQUEST);
+    }
+
+    if (!url.startsWith('/')) {
+      throw new HttpException('Invalid redirect target', HttpStatus.BAD_REQUEST);
+    }
+
     return { url };
   }
 
