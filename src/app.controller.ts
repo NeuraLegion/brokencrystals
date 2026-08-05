@@ -153,7 +153,7 @@ export class AppController {
   @ApiInternalServerErrorResponse({
     schema: {
       type: 'object',
-      properties: { location: { type: 'string' } }
+      properties: { error: { type: 'string' } }
     }
   })
   async getCommandResult(@Query('command') command: string): Promise<string> {
@@ -161,9 +161,10 @@ export class AppController {
     try {
       return await this.appService.launchCommand(command);
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.logger.error(errorMessage, err instanceof Error ? err.stack : undefined);
       throw new InternalServerErrorException({
-        error: err.message || err,
-        location: __filename
+        error: 'Internal server error'
       });
     }
   }
@@ -199,7 +200,7 @@ export class AppController {
   @ApiInternalServerErrorResponse({
     schema: {
       type: 'object',
-      properties: { location: { type: 'string' } }
+      properties: { error: { type: 'string' } }
     }
   })
   async processNumbers(
@@ -256,9 +257,9 @@ export class AppController {
         }
 
         const errorMessage = err instanceof Error ? err.message : String(err);
+        this.logger.error(errorMessage, err instanceof Error ? err.stack : undefined);
         throw new InternalServerErrorException({
-          error: errorMessage,
-          location: __filename
+          error: 'Internal server error'
         });
       }
     }
