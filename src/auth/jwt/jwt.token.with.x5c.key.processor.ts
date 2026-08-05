@@ -3,6 +3,9 @@ import * as jose from 'jose';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
+  private static readonly MAX_X5C_CERTIFICATE_LENGTH = 8192;
+  private static readonly X5C_ALLOWED_CHARACTERS = /^[A-Za-z0-9+/=\r\n\s-]+$/;
+
   constructor(private key: string) {
     super(new Logger(JwtTokenWithX5CKeyProcessor.name));
   }
@@ -23,7 +26,8 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
         throw new UnauthorizedException('Invalid token');
       }
 
-      const keyLike = await jose.importX509(keys[0].trim(), 'RS256');
+      const certificate = this.normalizeX5CCertificate(keys[0]);
+      const keyLike = await jose.importX509(certificate, 'RS256');
       this.log.debug(`Taking keys from ${JSON.stringify(keys)}`);
       return await jose.jwtVerify(token, keyLike);
     } catch (error) {
@@ -46,5 +50,52 @@ export class JwtTokenWithX5CKeyProcessor extends JwtTokenProcessor {
         x5c: [this.key]
       })
       .sign(pkcs8);
+  }
+
+  private normalizeX5CCertificate(certificate: string): string {
+    const trimmedCertificate = certificate.trim();
+
+    if (
+      !trimmedCertificate.length ||
+      trimmedCertificate.length >
+        JwtTokenWithX5CKeyProcessor.MAX_X5C_CERTIFICATE_LENGTH ||
+      !JwtTokenWithX5CKeyProcessor.X5C_ALLOWED_CHARACTERS.test(
+        trimmedCertificate
+      )
+    ) {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    if (
+      trimmedCertificate.includes('-----BEGIN CERTIFICATE-----') ||
+      trimmedCertificate.includes('-----END CERTIFICATE-----')
+    ) {
+      if (
+        !trimmedCertificate.startsWith('-----BEGIN CERTIFICATE-----') ||
+        !trimmedCertificate.endsWith('-----END CERTIFICATE-----')
+      ) {
+        throw new UnauthorizedException('Invalid token');
+      }
+
+      return trimmedCertificate;
+    }
+
+    const normalizedBody = trimmedCertificate.replace(/\s+/g, '');
+
+    if (
+      !normalizedBody.length ||
+      normalizedBody.length % 4 !== 0 ||
+      /[^A-Za-z0-9+/=]/.test(normalizedBody)
+    ) {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    const wrappedBody = normalizedBody.match(/.{1,64}/g)?.join('\n');
+
+    if (!wrappedBody) {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    return `-----BEGIN CERTIFICATE-----\n${wrappedBody}\n-----END CERTIFICATE-----`;
   }
 }

@@ -197,6 +197,14 @@ async function bootstrap() {
 
   const httpAdapter = app.getHttpAdapter();
 
+  server.setErrorHandler((error, request, reply) => {
+    request.log.error(error);
+
+    void reply.status(500).send({
+      error: 'An internal error has occurred.'
+    });
+  });
+
   app
     .useGlobalInterceptors(new HeadersConfiguratorInterceptor())
     .useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
