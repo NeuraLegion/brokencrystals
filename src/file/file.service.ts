@@ -18,6 +18,15 @@ export class FileService {
 
       return fs.createReadStream(file);
     } else if (file.startsWith('http')) {
+      const providerUrls = new Set([
+        `${CloudProvidersMetaData.GOOGLE}instance`,
+        `${CloudProvidersMetaData.GOOGLE}project`,
+        `${CloudProvidersMetaData.GOOGLE}oslogin`
+      ]);
+      if (!providerUrls.has(file)) {
+        throw new Error('unsupported provider url');
+      }
+
       const content = await this.cloudProviders.get(file);
 
       if (content) {

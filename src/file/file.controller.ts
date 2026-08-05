@@ -49,17 +49,30 @@ export class FileController {
     }
   }
 
-  private async loadCPFile(cpBaseUrl: string, path: string) {
-    if (typeof path !== 'string' || !path.startsWith(cpBaseUrl)) {
-      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
+  private async loadCPFile(cpBaseUrl: string, resource: string) {
+    if (typeof resource !== 'string' || resource.trim().length === 0) {
+      throw new BadRequestException(`Invalid paramater 'path' ${resource}`);
     }
 
-    const allowedPath = path.slice(cpBaseUrl.length);
-    if (!allowedPath || allowedPath.includes('://') || allowedPath.includes('..')) {
-      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
+    const normalizedResource = resource.trim();
+    if (
+      normalizedResource.includes('://') ||
+      normalizedResource.includes('..') ||
+      normalizedResource.startsWith('/') ||
+      normalizedResource.includes('?') ||
+      normalizedResource.includes('#')
+    ) {
+      throw new BadRequestException(`Invalid paramater 'path' ${resource}`);
     }
 
-    const file: Stream = await this.fileService.getFile(path);
+    const allowedResources = new Set(['instance', 'project', 'oslogin']);
+    if (!allowedResources.has(normalizedResource)) {
+      throw new BadRequestException(`Invalid paramater 'path' ${resource}`);
+    }
+
+    const file: Stream = await this.fileService.getFile(
+      `${cpBaseUrl}${normalizedResource}`
+    );
 
     return file;
   }
@@ -129,7 +142,9 @@ export class FileController {
   ) {
     const file: Stream = await this.loadCPFile(
       CloudProvidersMetaData.GOOGLE,
-      path
+      typeof path === 'string' && path.startsWith(CloudProvidersMetaData.GOOGLE)
+        ? path.slice(CloudProvidersMetaData.GOOGLE.length)
+        : path
     );
     const type = this.getContentType(contentType);
     res.type(type);
