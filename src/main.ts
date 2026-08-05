@@ -136,6 +136,21 @@ async function bootstrap() {
     serveDotFiles: false
   });
 
+  server.route({
+    method: 'GET',
+    url: '/.env',
+    handler: async (_req, res) => {
+      res.statusCode = 404;
+      return res.send({
+        success: false,
+        error: {
+          kind: 'user_input',
+          message: 'Not Found'
+        }
+      });
+    }
+  });
+
   server.setNotFoundHandler((req, res) => {
     if (req.raw.url?.startsWith('/.git')) {
       res.statusCode = 404;
