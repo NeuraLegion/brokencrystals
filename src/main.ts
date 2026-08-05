@@ -159,7 +159,11 @@ async function bootstrap() {
   });
 
   server.setNotFoundHandler((req, res) => {
-    if (req.raw.url?.startsWith('/.git')) {
+    if (
+      req.raw.url?.startsWith('/.git') ||
+      req.raw.url?.startsWith('/.svn') ||
+      req.raw.url?.startsWith('/.hg')
+    ) {
       res.statusCode = 404;
       return res.end('Not Found');
     }
