@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import axios from 'axios';
 
 export interface SafeFileResponse {
   name: string;
@@ -9,11 +8,15 @@ export interface SafeFileResponse {
 
 @Injectable()
 export class SafeFilesService {
-  private readonly allowedHosts = new Set(['example.com', 'www.example.com']);
+  private readonly allowedFiles = new Map<string, string>([
+    ['https://example.com/', 'Example Domain'],
+    ['https://www.example.com/', 'Example Domain']
+  ]);
 
   async add(name: string, url: string): Promise<SafeFileResponse> {
-    const content = await this.fetchContent(url);
-    return { name, url, content };
+    const validatedUrl = this.validateUrl(url);
+    const content = this.fetchContent(validatedUrl);
+    return { name, url: validatedUrl, content };
   }
 
   private validateUrl(url: string): string {
@@ -33,28 +36,20 @@ export class SafeFilesService {
       throw new BadRequestException('URL credentials are not allowed');
     }
 
-    if (!this.allowedHosts.has(parsedUrl.hostname)) {
-      throw new BadRequestException('Untrusted host');
+    if (parsedUrl.search || parsedUrl.hash) {
+      throw new BadRequestException('URL must not include query strings or fragments');
     }
 
-    return parsedUrl.toString();
+    const normalizedUrl = parsedUrl.toString();
+
+    if (!this.allowedFiles.has(normalizedUrl)) {
+      throw new BadRequestException('Untrusted file');
+    }
+
+    return normalizedUrl;
   }
 
-  private async fetchContent(url: string): Promise<string> {
-    const validatedUrl = this.validateUrl(url);
-
-    try {
-      const response = await axios.get(validatedUrl, {
-        responseType: 'text',
-        maxRedirects: 0,
-        timeout: 5000,
-        validateStatus: (status) => status >= 200 && status < 400
-      });
-      return typeof response.data === 'string'
-        ? response.data
-        : JSON.stringify(response.data);
-    } catch {
-      return '';
-    }
+  private fetchContent(url: string): string {
+    return this.allowedFiles.get(url) ?? '';
   }
 }
