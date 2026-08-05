@@ -33,8 +33,8 @@ export class AuthGuard implements CanActivate {
       }
 
       return await this.verifyToken(token, context);
-    } catch (err) {
-      this.logger.debug(`Failed to validate token: ${err.message}`);
+    } catch {
+      this.logger.debug('Failed to validate token');
       throw new UnauthorizedException({
         error: 'Unauthorized'
       });

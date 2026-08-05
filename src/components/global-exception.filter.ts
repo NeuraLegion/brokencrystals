@@ -12,15 +12,40 @@ import { GqlContextType } from '@nestjs/graphql';
 export class GlobalExceptionFilter extends BaseExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
 
+  private sanitizeHttpException(exception: HttpException): HttpException {
+    const status = exception.getStatus();
+
+    if (status === 401) {
+      return new HttpException({ error: 'Unauthorized' }, status);
+    }
+
+    if (status >= 500) {
+      return new InternalServerErrorException({ error: 'Internal server error' });
+    }
+
+    return new HttpException({ error: exception.message }, status);
+  }
+
   public catch(exception: unknown, host: ArgumentsHost) {
     const gql = host.getType<GqlContextType>() === 'graphql';
 
     if (exception instanceof HttpException) {
+      this.logger.warn(exception.message);
+
+      const response = this.sanitizeHttpException(exception);
       if (gql) {
-        throw exception;
+        throw response;
       }
 
-      return super.catch(exception, host);
+      const applicationRef =
+        this.applicationRef ||
+        (this.httpAdapterHost && this.httpAdapterHost.httpAdapter);
+
+      return applicationRef.reply(
+        host.getArgByIndex(1),
+        response.getResponse(),
+        response.getStatus()
+      );
     }
 
     this.logger.error(
