@@ -19,7 +19,7 @@ import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
 import { fastifyStatic, ListRender } from '@fastify/static';
-import { join, dirname } from 'path';
+import { join, dirname, posix } from 'path';
 
 const escapeHtml = (value: string): string =>
   value
@@ -33,8 +33,11 @@ import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
 const renderDirList: ListRender = (dirs, files) => {
   const currentEntry = dirs[0] || files[0];
-  const currDir = currentEntry ? dirname(currentEntry.href) : '/';
-  const parentDir = dirname(currDir);
+  const normalizedDir = currentEntry
+    ? posix.dirname(currentEntry.href || '/')
+    : '/';
+  const currDir = normalizedDir.startsWith('/') ? normalizedDir : `/${normalizedDir}`;
+  const parentDir = posix.dirname(currDir);
   const safeCurrDir = escapeHtml(currDir);
   const safeParentDir = escapeHtml(parentDir);
   return `
