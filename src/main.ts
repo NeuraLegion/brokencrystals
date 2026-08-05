@@ -200,6 +200,13 @@ async function bootstrap() {
   server.setErrorHandler((error, request, reply) => {
     request.log.error(error);
 
+    if (error?.statusCode === 401) {
+      void reply.status(401).send({
+        error: 'Unauthorized'
+      });
+      return;
+    }
+
     void reply.status(500).send({
       error: 'An internal error has occurred.'
     });
