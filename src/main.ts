@@ -97,6 +97,18 @@ async function bootstrap() {
         : null
   });
 
+  server.addHook('onRequest', (req, res, done) => {
+    if (
+      req.raw.url?.startsWith('/.git') ||
+      req.raw.url?.startsWith('/.svn') ||
+      req.raw.url?.startsWith('/.hg')
+    ) {
+      res.statusCode = 404;
+      return res.end('Not Found');
+    }
+    done();
+  });
+
   server.setDefaultRoute((req, res) => {
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
