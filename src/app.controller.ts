@@ -169,9 +169,9 @@ export class AppController {
     try {
       return await this.appService.launchCommand(command);
     } catch (err) {
+      this.logger.error(err);
       throw new InternalServerErrorException({
-        error: err.message || err,
-        location: __filename
+        error: 'An internal error has occurred.'
       });
     }
   }
@@ -260,10 +260,10 @@ export class AppController {
         .send(JSON.stringify(result));
     } catch (err: unknown) {
       if (!response.sent && !response.raw.writableEnded) {
+        this.logger.error(err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         throw new InternalServerErrorException({
-          error: errorMessage,
-          location: __filename
+          error: 'An internal error has occurred.'
         });
       }
     }
