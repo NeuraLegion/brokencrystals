@@ -38,7 +38,7 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const gql = host.getType<GqlContextType>() === 'graphql';
 
     if (exception instanceof Error) {
-      this.logger.error(exception.message);
+      this.logger.error('Unhandled exception intercepted', exception.stack);
     }
 
     const sanitizedException =

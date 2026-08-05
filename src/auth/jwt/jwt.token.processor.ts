@@ -27,7 +27,8 @@ export abstract class JwtTokenProcessor {
       const payload = JSON.parse(payloadStr);
 
       return [header, payload];
-    } catch {
+    } catch (error) {
+      this.log.warn('Rejected malformed JWT during parsing');
       throw new Error('Invalid JWT format');
     }
   }
