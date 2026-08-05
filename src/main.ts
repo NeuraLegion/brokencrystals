@@ -119,6 +119,16 @@ async function bootstrap() {
       });
     }
 
+    if (server.log) {
+      server.log.error(
+        {
+          err: error,
+          statusCode: error.statusCode
+        },
+        'Unhandled request error'
+      );
+    }
+
     return reply.status(500).send({
       error: 'Internal server error'
     });

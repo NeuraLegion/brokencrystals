@@ -42,7 +42,9 @@ export class GlobalExceptionFilter extends BaseExceptionFilter {
     const gql = host.getType<GqlContextType>() === 'graphql';
 
     if (exception instanceof HttpException) {
-      this.logger.warn(exception.message);
+      this.logger.warn(
+        exception instanceof Error ? exception.message : 'HTTP exception'
+      );
 
       const response = this.sanitizeHttpException(exception);
       if (gql) {
