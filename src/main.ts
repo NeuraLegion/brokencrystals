@@ -98,7 +98,7 @@ async function bootstrap() {
   });
 
   server.setNotFoundHandler((req, res) => {
-    if (req.url && /^\/(?:\.git|\.svn|\.hg)(?:\/|$)/.test(req.url)) {
+    if (req.url && /^\/(?:\.env|\.git|\.svn|\.hg)(?:\/|$)/.test(req.url)) {
       res.statusCode = 404;
       return res.end('Not Found');
     }
