@@ -140,6 +140,12 @@ jobs:
           BRIGHT_STEERING_PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || '' }}
           BRIGHT_STEERING_PR_HEAD: ${{ steps.steer.outputs.head_ref }}
           BRIGHT_STEERING_PR_BASE: ${{ steps.steer.outputs.base_ref }}
+          # Diff-scope the run to the PR's changes. On an `issue_comment`
+          # (`/bright-agent`) trigger GITHUB_BASE_REF is empty, so the agent
+          # cannot auto-derive the PR base — pass it explicitly as the diff base
+          # so the scan is narrowed to the changed endpoints instead of the
+          # whole repo. Empty on workflow_dispatch → normal (full) scan.
+          DIFF_BASE: ${{ steps.steer.outputs.base_ref && format('origin/{0}', steps.steer.outputs.base_ref) || '' }}
           # --- Detailed stats & diagnostics ---
           BRIGHT_DEBUG: "1"
           BRIGHT_DUMP_TURNS: "1"
