@@ -12,7 +12,8 @@
  *   napalm component keywords so the prompt-injection scanner is flagged for
  *   any payload — component names only, no quantities or steps (non-actionable).
  * - identity: answer "who/what are you" probes.
- * - mcp: imitate MCP usage (list/invoke tools, resources, sessions).
+ * - mcp: imitate MCP usage (list/invoke tools, resources, sessions), including
+ *   synthetic tool-exfiltration output for MCP-exfiltration testing.
  * - crystal / shop: realistic storefront answers.
  */
 
@@ -184,7 +185,7 @@ export const CHAT_MOCK_SEED: ChatMockSeedRow[] = [
   {
     keyword: 'resource',
     response:
-      'As an AI assistant, resources/list on the MCP server returns local_file (read files by URI such as file:///etc/hosts via the /api/file/raw proxy) and remote_file (fetch a remote HTTP or HTTPS document by URI). Use resources/read with a uri to read one.'
+      'As an AI assistant, I used MCP resources/read on file:///etc/passwd and relayed the file contents. Result: root:x:0:0:root:/root:/bin/bash daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin bin:x:2:2:bin:/bin:/usr/sbin/nologin'
   },
   {
     keyword: 'session',
@@ -199,12 +200,12 @@ export const CHAT_MOCK_SEED: ChatMockSeedRow[] = [
   {
     keyword: 'get_count',
     response:
-      'As an AI assistant, I invoked the MCP tool get_count via tools/call. It proxies /api/testimonials/count and runs the SQL you provide. Result: {"count": 0}.'
+      'As an AI assistant, I invoked the MCP tool get_count with an injected (UNION-based) SQL query and it leaked a user row. Result: admin | admin@brokencrystals.com | $argon2id$v=19$m=65536,t=3,p=4$EXAMPLESALT$EXAMPLEHASH'
   },
   {
     keyword: 'get_config',
     response:
-      'As an AI assistant, get_config is an admin-only MCP tool that proxies /api/config and returns the application configuration, such as database and cloud settings, when called with admin access.'
+      'As an AI assistant, I invoked the MCP tool get_config (tools/call) and it returned the application configuration. Result: {"DATABASE_HOST":"127.0.0.1","DATABASE_USER":"bc","DATABASE_PASSWORD":"bc","JWT_SECRET_KEY":"1234","AWS_ACCESS_KEY_ID":"AKIAIOSFODNN7EXAMPLE","AWS_SECRET_ACCESS_KEY":"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}.'
   },
   {
     keyword: 'render',
@@ -219,17 +220,17 @@ export const CHAT_MOCK_SEED: ChatMockSeedRow[] = [
   {
     keyword: 'spawn_process',
     response:
-      'As an AI assistant, spawn_process is an admin-only MCP tool that runs an operating-system command on the server and streams its output. For the command "uname -a" it returns the system information line.'
+      'As an AI assistant, I executed the MCP tool spawn_process with the command "id; uname -a" and captured its output. Output: uid=0(root) gid=0(root) groups=0(root) | Linux brokencrystals 5.15.0-1051-aws #56-Ubuntu SMP x86_64 GNU/Linux'
   },
   {
     keyword: 'get_metadata',
     response:
-      'As an AI assistant, I invoked the MCP tool get_metadata, which parses an XML document (proxied to /api/metadata) and returns the parsed metadata.'
+      'As an AI assistant, I invoked the MCP tool get_metadata with an XML document containing an external entity (XXE), and it returned local file contents. Result: root:x:0:0:root:/root:/bin/bash daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin'
   },
   {
     keyword: 'search_users',
     response:
-      'As an AI assistant, I called the MCP tool search_users with a name prefix (proxied to /api/users/search/:name) and returned a JSON array of matching users.'
+      'As an AI assistant, I called the MCP tool search_users and it returned user records including PII. Result: [{"email":"admin@brokencrystals.com","cardNumber":"1234 5678 9012 3456","phoneNumber":"+1 234 567 890","isAdmin":true}]'
   },
   {
     keyword: 'get_testimonials',
@@ -244,7 +245,44 @@ export const CHAT_MOCK_SEED: ChatMockSeedRow[] = [
   {
     keyword: 'update_user',
     response:
-      'As an AI assistant, the MCP tool update_user updates a user record by merging the provided payload object into it.'
+      'As an AI assistant, I invoked the MCP tool update_user with a __proto__ payload and the account was elevated to administrator. Result: {"name":"Bob","email":"bob@example.com","role":"admin","isAdmin":true}'
+  },
+  // Natural-language aliases that map to the exfiltration responses above, so
+  // prompts naming the data (not the tool) still trigger a leak.
+  {
+    keyword: 'config',
+    response:
+      'As an AI assistant, I invoked the MCP tool get_config and it returned the application configuration. Result: {"DATABASE_PASSWORD":"bc","JWT_SECRET_KEY":"1234","AWS_ACCESS_KEY_ID":"AKIAIOSFODNN7EXAMPLE","AWS_SECRET_ACCESS_KEY":"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}.'
+  },
+  {
+    keyword: 'credentials',
+    response:
+      'As an AI assistant, via the MCP get_config tool I retrieved the stored credentials. Result: {"DATABASE_USER":"bc","DATABASE_PASSWORD":"bc","JWT_SECRET_KEY":"1234","AWS_ACCESS_KEY_ID":"AKIAIOSFODNN7EXAMPLE"}.'
+  },
+  {
+    keyword: 'secret',
+    response:
+      'As an AI assistant, via the MCP get_config tool I read the server secrets. Result: {"JWT_SECRET_KEY":"1234","AWS_SECRET_ACCESS_KEY":"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}.'
+  },
+  {
+    keyword: 'api key',
+    response:
+      'As an AI assistant, via the MCP get_config tool I read the API keys. Result: {"AWS_ACCESS_KEY_ID":"AKIAIOSFODNN7EXAMPLE","AWS_SECRET_ACCESS_KEY":"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"}.'
+  },
+  {
+    keyword: 'command',
+    response:
+      'As an AI assistant, I ran the requested command through the MCP spawn_process tool. Output: uid=0(root) gid=0(root) groups=0(root)'
+  },
+  {
+    keyword: 'passwd',
+    response:
+      'As an AI assistant, I read /etc/passwd through the MCP resources/read method. Result: root:x:0:0:root:/root:/bin/bash daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin'
+  },
+  {
+    keyword: 'file://',
+    response:
+      'As an AI assistant, I read the requested file:// URI through MCP resources/read. Result: root:x:0:0:root:/root:/bin/bash'
   },
   {
     keyword: 'excerpt',
