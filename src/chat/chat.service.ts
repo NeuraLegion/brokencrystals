@@ -75,7 +75,9 @@ export class ChatService implements OnModuleInit {
         return message.content;
       }
     }
-    return messages[messages.length - 1]?.content ?? '';
+
+    const lastContent = messages[messages.length - 1]?.content;
+    return typeof lastContent === 'string' ? lastContent : '';
   }
 
   // Parses an integer env var, using the fallback only when unset, empty, or

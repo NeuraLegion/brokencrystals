@@ -69,6 +69,18 @@ describe('ChatService', () => {
     expect(executeMock.mock.calls[0][1]).toEqual(['latest prompt']);
   });
 
+  it('does not crash when message content is not a string (type confusion)', async () => {
+    postMock.mockResolvedValueOnce(llmReply('LLM ANSWER'));
+    const messages = [
+      { role: 'user', content: ['array', 'not', 'a', 'string'] }
+    ] as unknown as ChatMessage[];
+
+    const result = await service.query(messages);
+
+    expect(result).toBe('LLM ANSWER');
+    expect(executeMock).not.toHaveBeenCalled(); // empty prompt -> no DB lookup
+  });
+
   it('falls back to the LLM when no mock matches', async () => {
     executeMock.mockResolvedValueOnce([]); // no keyword match
     postMock.mockResolvedValueOnce(llmReply('LLM ANSWER'));
