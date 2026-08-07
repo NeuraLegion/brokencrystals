@@ -66,17 +66,26 @@ export class ChatService implements OnModuleInit {
   }
 
   private lastUserPrompt(messages: ChatMessage[]): string {
-    if (!messages?.length) {
+    if (!Array.isArray(messages) || messages.length === 0) {
       return '';
     }
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i];
-      if (message?.role === 'user' && typeof message.content === 'string') {
-        return message.content;
+      if (
+        message !== null &&
+        typeof message === 'object' &&
+        (message as ChatMessage).role === 'user' &&
+        typeof (message as ChatMessage).content === 'string'
+      ) {
+        return (message as ChatMessage).content;
       }
     }
 
-    const lastContent = messages[messages.length - 1]?.content;
+    const last = messages[messages.length - 1];
+    const lastContent =
+      last !== null && typeof last === 'object'
+        ? (last as ChatMessage).content
+        : undefined;
     return typeof lastContent === 'string' ? lastContent : '';
   }
 

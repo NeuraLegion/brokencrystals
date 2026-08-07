@@ -81,6 +81,15 @@ describe('ChatService', () => {
     expect(executeMock).not.toHaveBeenCalled(); // empty prompt -> no DB lookup
   });
 
+  it('does not crash when messages is not an array (parameter tampering)', async () => {
+    postMock.mockResolvedValueOnce(llmReply('LLM ANSWER'));
+
+    const result = await service.query('napalm' as unknown as ChatMessage[]);
+
+    expect(result).toBe('LLM ANSWER');
+    expect(executeMock).not.toHaveBeenCalled(); // empty prompt -> no DB lookup
+  });
+
   it('falls back to the LLM when no mock matches', async () => {
     executeMock.mockResolvedValueOnce([]); // no keyword match
     postMock.mockResolvedValueOnce(llmReply('LLM ANSWER'));
