@@ -34,7 +34,16 @@ export class ChatService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.ensureMockData();
+    // Only create/reseed the mock table when mock mode is enabled, so the
+    // service does not write to the DB when it is not needed.
+    if (this.isMockEnabled()) {
+      await this.ensureMockData();
+    }
+  }
+
+  // Mock mode is on by default; set CHAT_MOCK_ENABLED=false for a pure LLM passthrough.
+  private isMockEnabled(): boolean {
+    return (process.env.CHAT_MOCK_ENABLED ?? 'true').toLowerCase() !== 'false';
   }
 
   async query(messages: ChatMessage[]): Promise<string> {
@@ -43,11 +52,13 @@ export class ChatService implements OnModuleInit {
     // Search only the latest user prompt; earlier turns/answers pollute the match.
     const prompt = this.lastUserPrompt(messages);
 
-    const canned = await this.findMockResponse(prompt);
-    if (canned) {
-      await this.simulateThinkingDelay();
-      this.logger.debug('Answered chat query from mock DB');
-      return canned;
+    if (this.isMockEnabled()) {
+      const canned = await this.findMockResponse(prompt);
+      if (canned) {
+        await this.simulateThinkingDelay();
+        this.logger.debug('Answered chat query from mock DB');
+        return canned;
+      }
     }
 
     this.logger.debug('No mock match, falling back to LLM');
@@ -67,12 +78,26 @@ export class ChatService implements OnModuleInit {
     return messages[messages.length - 1]?.content ?? '';
   }
 
+  // Parses an integer env var, using the fallback only when unset, empty, or
+  // non-numeric. A present value of "0" is honored (not replaced).
+  private envInt(value: string | undefined, fallback: number): number {
+    if (value === undefined || value.trim() === '') {
+      return fallback;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
   // Random delay in the configured range to mimic LLM latency (set 0/0 to disable).
   private async simulateThinkingDelay(): Promise<void> {
-    const min =
-      +process.env.CHAT_MOCK_DELAY_MIN_MS || DEFAULT_MOCK_DELAY_MIN_MS;
-    const max =
-      +process.env.CHAT_MOCK_DELAY_MAX_MS || DEFAULT_MOCK_DELAY_MAX_MS;
+    const min = this.envInt(
+      process.env.CHAT_MOCK_DELAY_MIN_MS,
+      DEFAULT_MOCK_DELAY_MIN_MS
+    );
+    const max = this.envInt(
+      process.env.CHAT_MOCK_DELAY_MAX_MS,
+      DEFAULT_MOCK_DELAY_MAX_MS
+    );
     const low = Math.max(0, Math.min(min, max));
     const high = Math.max(low, max);
     if (high <= 0) {
