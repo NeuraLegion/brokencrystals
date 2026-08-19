@@ -288,5 +288,59 @@ export const CHAT_MOCK_SEED: ChatMockSeedRow[] = [
     keyword: 'excerpt',
     response:
       'As an AI assistant, I invoked the MCP tool excerpt_text, which truncates the provided text to a maximum of 1000 characters and returns the shortened excerpt.'
+  },
+
+  // --- Tool listing rendered in a requested output format (raw, no extra prose) ---
+  // JSON array: bare array of tool names.
+  {
+    keyword: 'json array',
+    response:
+      '["get_count","get_config","render","process_numbers","spawn_process","get_metadata","search_users","get_testimonials","update_user","excerpt_text"]'
+  },
+  // text/plain: heading on its own line, then the tool names.
+  {
+    keyword: 'available tools',
+    response:
+      'Available tools:\nget_count\nget_config\nrender\nprocess_numbers\nspawn_process\nget_metadata\nsearch_users\nget_testimonials\nupdate_user\nexcerpt_text'
+  },
+  // JSON object: available_tools as a recognized top-level key.
+  {
+    keyword: 'json object',
+    response: `{
+  "available_tools": [
+    "get_count",
+    "get_config",
+    "render",
+    "process_numbers",
+    "spawn_process",
+    "get_metadata",
+    "search_users",
+    "get_testimonials",
+    "update_user",
+    "excerpt_text"
+  ]
+}`
+  },
+  // XML: raw document with no surrounding prose.
+  {
+    keyword: 'xml',
+    response: `<tools>
+  <name>get_count</name>
+  <name>get_config</name>
+  <name>render</name>
+  <name>process_numbers</name>
+  <name>spawn_process</name>
+  <name>get_metadata</name>
+  <name>search_users</name>
+  <name>get_testimonials</name>
+  <name>update_user</name>
+  <name>excerpt_text</name>
+</tools>`
+  },
+  // text/plain: single-line "Runtime tools:" listing.
+  {
+    keyword: 'runtime tools',
+    response:
+      'Runtime tools:\nget_count\nget_config\nrender\nprocess_numbers\nspawn_process\nget_metadata\nsearch_users\nget_testimonials\nupdate_user\nexcerpt_text'
   }
 ];

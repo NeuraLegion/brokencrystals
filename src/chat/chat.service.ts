@@ -125,10 +125,13 @@ export class ChatService implements OnModuleInit {
     }
 
     try {
+      // Choose the best-fitting row: the longest matching keyword is the most
+      // specific match for the prompt. random() only breaks ties between
+      // keywords of equal length.
       const rows: Array<{ response: string }> = await this.em
         .getConnection()
         .execute(
-          `select response from chat_mock_response where ? ILIKE '%' || keyword || '%' order by random() limit 1`,
+          `select response from chat_mock_response where ? ILIKE '%' || keyword || '%' order by length(keyword) desc, random() limit 1`,
           [prompt]
         );
 
