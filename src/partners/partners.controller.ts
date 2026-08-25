@@ -128,9 +128,23 @@ export class PartnersController {
     this.logger.debug(`Searching partner names by the keyword "${keyword}"`);
 
     try {
-      const xpath = `//partners/partner/name[contains(., '${keyword}')]`;
+      const safeKeyword = (keyword ?? '').trim();
+      if (!safeKeyword) {
+        throw new HttpException('Keyword is required.', HttpStatus.BAD_REQUEST);
+      }
+
+      if (!/^[\p{L}\p{N}\s'\-_.]{1,100}$/u.test(safeKeyword)) {
+        throw new HttpException('Invalid keyword.', HttpStatus.BAD_REQUEST);
+      }
+
+      const escapedKeyword = safeKeyword.replace(/'/g, "&apos;");
+      const xpath = `//partners/partner/name[contains(., '${escapedKeyword}')]`;
       return this.partnersService.getPartnersProperties(xpath);
     } catch (err) {
+      if (err instanceof HttpException) {
+        throw err;
+      }
+
       const errStr = err.toString();
       const errorMessage =
         errStr.includes('XPath parse error') ||

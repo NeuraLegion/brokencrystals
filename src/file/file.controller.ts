@@ -38,6 +38,7 @@ import { CloudProvidersMetaData } from './cloud.providers.metadata';
 @ApiTags('Files controller')
 export class FileController {
   private readonly logger = new Logger(FileController.name);
+  private readonly allowedFileBaseDir = path.resolve(process.cwd(), 'config');
 
   constructor(private fileService: FileService) {}
 
@@ -49,14 +50,37 @@ export class FileController {
     }
   }
 
-  private async loadCPFile(cpBaseUrl: string, path: string) {
-    if (!path.startsWith(cpBaseUrl)) {
-      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
+  private validateLocalFilePath(filePath: string): string {
+    if (typeof filePath !== 'string' || filePath.trim().length === 0) {
+      throw new BadRequestException("Invalid parameter 'path'");
     }
 
-    const file: Stream = await this.fileService.getFile(path);
+    const normalizedPath = filePath.trim().replace(/\\/g, '/');
+    if (
+      normalizedPath.startsWith('/') ||
+      normalizedPath.includes('..') ||
+      normalizedPath.includes('://') ||
+      normalizedPath.includes('?') ||
+      normalizedPath.includes('#')
+    ) {
+      throw new BadRequestException("Invalid parameter 'path'");
+    }
 
-    return file;
+    const resolvedPath = path.resolve(this.allowedFileBaseDir, normalizedPath);
+    if (
+      resolvedPath !== this.allowedFileBaseDir &&
+      !resolvedPath.startsWith(`${this.allowedFileBaseDir}${path.sep}`)
+    ) {
+      throw new BadRequestException("Invalid parameter 'path'");
+    }
+
+    return path.relative(process.cwd(), resolvedPath);
+  }
+
+  private async loadCPFile(cpBaseUrl: string, resource: string) {
+    throw new BadRequestException(
+      'Cloud metadata file access is not supported'
+    );
   }
 
   @Get()
@@ -87,7 +111,8 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
-    const file: Stream = await this.fileService.getFile(path);
+    const safePath = this.validateLocalFilePath(path);
+    const file: Stream = await this.fileService.getFile(safePath);
     const type = this.getContentType(contentType);
     res.type(type);
 
@@ -124,7 +149,9 @@ export class FileController {
   ) {
     const file: Stream = await this.loadCPFile(
       CloudProvidersMetaData.GOOGLE,
-      path
+      typeof path === 'string' && path.startsWith(CloudProvidersMetaData.GOOGLE)
+        ? path.slice(CloudProvidersMetaData.GOOGLE.length)
+        : path
     );
     const type = this.getContentType(contentType);
     res.type(type);
@@ -317,7 +344,8 @@ export class FileController {
     @Res({ passthrough: true }) res: FastifyReply
   ) {
     try {
-      const stream = await this.fileService.getFile(file);
+      const safePath = this.validateLocalFilePath(file);
+      const stream = await this.fileService.getFile(safePath);
       res.type('application/octet-stream');
 
       return stream;
@@ -329,7 +357,8 @@ export class FileController {
 
   @GrpcMethod('FileService', 'ReadFile')
   async readFileGrpc(data: { path: string }): Promise<{ content: string }> {
-    const stream = await this.fileService.getFile(data.path);
+    const safePath = this.validateLocalFilePath(data.path);
+    const stream = await this.fileService.getFile(safePath);
     const chunks = [];
     for await (const chunk of stream) {
       chunks.push(Buffer.from(chunk));

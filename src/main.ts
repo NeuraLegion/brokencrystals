@@ -7,7 +7,7 @@ import fastifyHttpProxy from '@fastify/http-proxy';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
-import { readFileSync, readFile, readdirSync } from 'fs';
+import { readFileSync, readFile } from 'fs';
 import cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -97,7 +97,12 @@ async function bootstrap() {
         : null
   });
 
-  server.setDefaultRoute((req, res) => {
+  server.setNotFoundHandler((req, res) => {
+    if (req.url && /^\/(?:\.env|\.git|\.svn|\.hg)(?:\/|$)/.test(req.url)) {
+      res.statusCode = 404;
+      return res.end('Not Found');
+    }
+
     if (req.url && req.url.startsWith('/api')) {
       res.statusCode = 404;
       return res.end(
@@ -133,23 +138,18 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: true
+    serveDotFiles: false,
+    setHeaders(res, pathName) {
+      if (
+        pathName.endsWith('/config.js') ||
+        pathName.endsWith('config.js') ||
+        pathName.endsWith('/nginx.conf') ||
+        pathName.endsWith('nginx.conf')
+      ) {
+        res.statusCode = 404;
+      }
+    }
   });
-
-  for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
-    await server.register(fastifyStatic, {
-      root: join(__dirname, '..', 'client', 'vcs', dir),
-      prefix: `/.${dir}`,
-      decorateReply: false,
-      redirect: true,
-      index: false,
-      list: {
-        format: 'html',
-        render: renderDirList
-      },
-      serveDotFiles: true
-    });
-  }
 
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist', 'vendor'),
@@ -157,11 +157,8 @@ async function bootstrap() {
     decorateReply: false,
     redirect: true,
     index: false,
-    list: {
-      format: 'html',
-      render: renderDirList
-    },
-    serveDotFiles: true
+    list: false,
+    serveDotFiles: false
   });
 
   await server.register(fastifyHttpProxy, {
@@ -199,6 +196,24 @@ async function bootstrap() {
   server.addContentTypeParser('*', (req) => rawbody(req.raw));
 
   const httpAdapter = app.getHttpAdapter();
+
+  server.setErrorHandler((error, request, reply) => {
+    request.log.error({
+      message: 'Unhandled request error',
+      statusCode: error?.statusCode
+    });
+
+    if (error?.statusCode === 401) {
+      void reply.status(401).send({
+        error: 'Unauthorized'
+      });
+      return;
+    }
+
+    void reply.status(500).send({
+      error: 'An internal error has occurred.'
+    });
+  });
 
   app
     .useGlobalInterceptors(new HeadersConfiguratorInterceptor())

@@ -5,8 +5,5 @@ export class AppConfig {
   awsBucket: string;
 
   @ApiProperty()
-  sql: string;
-
-  @ApiProperty()
   googlemaps: string;
 }

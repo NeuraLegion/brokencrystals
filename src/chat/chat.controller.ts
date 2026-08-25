@@ -29,8 +29,9 @@ export class ChatController {
     try {
       return await this.chatService.query(messages);
     } catch (err) {
+      console.error('Chat API query failed:', err);
       throw new HttpException(
-        `Chat API response error: ${err}`,
+        'Chat API request failed',
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }

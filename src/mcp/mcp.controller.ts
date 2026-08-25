@@ -1,11 +1,9 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
   HttpCode,
   Logger,
-  NotFoundException,
   Post,
   Req,
   Res
@@ -371,17 +369,9 @@ export class McpController {
     @Res({ passthrough: true }) res: FastifyReply
   ): Promise<void> {
     const sessionId = this.extractMcpSessionId(req);
-    if (!sessionId) {
-      throw new BadRequestException(
-        'MCP session id missing: send Mcp-Session-Id header'
-      );
-    }
 
-    const scheduled = this.mcpSessionService.scheduleTermination(sessionId);
-    if (!scheduled) {
-      throw new NotFoundException(
-        'MCP session not found: call initialize to create a new session'
-      );
+    if (sessionId) {
+      this.mcpSessionService.scheduleTermination(sessionId);
     }
 
     res.status(204);
@@ -551,24 +541,24 @@ export class McpController {
   ): SessionValidationResult {
     const sessionId = this.extractMcpSessionId(req);
     if (!sessionId) {
-      res.status(400);
+      res.status(401);
       return {
         error: this.rpcError(
           request,
           -32002,
-          'MCP session id missing: send Mcp-Session-Id returned by initialize'
+          'Unauthorized: invalid or expired MCP session'
         )
       };
     }
 
     const session = this.mcpSessionService.touchSession(sessionId);
     if (!session) {
-      res.status(404);
+      res.status(401);
       return {
         error: this.rpcError(
           request,
           -32002,
-          'MCP session not found: call initialize again'
+          'Unauthorized: invalid or expired MCP session'
         )
       };
     }

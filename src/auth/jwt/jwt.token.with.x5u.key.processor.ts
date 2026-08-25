@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import * as jose from 'jose';
 import { HttpClientService } from '../../httpclient/httpclient.service';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
@@ -13,14 +13,33 @@ export class JwtTokenWithX5UKeyProcessor extends JwtTokenProcessor {
 
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
+
+    if (typeof token !== 'string' || !token.trim().length) {
+      throw new UnauthorizedException('Invalid token');
+    }
+
     const [header] = this.parse(token);
-
     const url = header.x5u;
-    this.log.debug(`Loading key from url ${url}`);
-    const crtPayload = await this.httpClient.loadPlain(url);
-    const x509 = await jose.importX509(crtPayload, 'RS256');
 
-    return jose.jwtVerify(token, x509);
+    if (typeof url !== 'string' || !url.trim().length) {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    if (url !== this.x5uUrl) {
+      this.log.warn('Rejected X5U token with unexpected x5u header');
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    try {
+      this.log.debug('Loading key from configured x5u endpoint');
+      const crtPayload = await this.httpClient.loadPlain(this.x5uUrl);
+      const x509 = await jose.importX509(crtPayload, 'RS256');
+
+      return await jose.jwtVerify(token, x509);
+    } catch {
+      this.log.warn('Failed to validate X5U token');
+      throw new UnauthorizedException('Invalid token');
+    }
   }
 
   async createToken(payload: jose.JWTPayload): Promise<string> {

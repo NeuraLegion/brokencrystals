@@ -129,7 +129,8 @@ const HiddenUpload: FC = () => {
             {fileName && (
               <div
                 style={{ marginTop: 8 }}
-                dangerouslySetInnerHTML={{ __html: fileName }}
+              >
+                {fileName}
               />
             )}
             <label
@@ -167,10 +168,9 @@ const HiddenUpload: FC = () => {
                     }}
                   >
                     {preview.isSvg ? (
-                      <div
-                        style={{ maxWidth: '100%' }}
-                        dangerouslySetInnerHTML={{ __html: preview.content }}
-                      />
+                      <pre style={{ maxWidth: '100%', whiteSpace: 'pre-wrap' }}>
+                        {preview.content}
+                      </pre>
                     ) : (
                       <img
                         src={preview.content}

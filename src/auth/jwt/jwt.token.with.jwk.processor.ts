@@ -3,6 +3,8 @@ import * as jose from 'jose';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
+  private static readonly ALLOWED_JWK_KTY = new Set(['RSA', 'EC', 'OKP']);
+
   constructor(
     private key: string,
     private jwk: jose.JWK
@@ -12,23 +14,33 @@ export class JwtTokenWithJWKProcessor extends JwtTokenProcessor {
 
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
-    const [header, payload] = this.parse(token);
 
-    if (!header.jwk) {
-      throw new Error('Unsupported token. JWK is not set');
+    try {
+      const [header, payload] = this.parse(token);
+
+      if (!this.isSupportedJwkHeader(header.jwk)) {
+        throw new Error('Invalid JWT token');
+      }
+
+      const keyLike = await jose.importJWK(header.jwk);
+
+      const res = await jose.jwtVerify(token, keyLike, {
+        algorithms: ['RS256', 'RS384', 'RS512', 'ES256', 'ES384', 'ES512', 'EdDSA']
+      });
+
+      if (res) {
+        return payload;
+      }
+
+      throw new Error('Invalid JWT token');
+    } catch (error) {
+      this.log.warn('Rejected invalid JWK JWT token');
+      throw new Error('Invalid JWT token');
     }
+  }
 
-    if (!header.jwk.kty) {
-      return payload;
-    }
-    const keyLike = await jose.importJWK(header.jwk);
-
-    const res = await jose.jwtVerify(token, keyLike);
-
-    if (res) {
-      return payload;
-    }
-    throw new Error('Could not validate token');
+  private isSupportedJwkHeader(jwk: unknown): jwk is jose.JWK {
+    return !!jwk && typeof jwk === 'object' && JwtTokenWithJWKProcessor.ALLOWED_JWK_KTY.has((jwk as jose.JWK).kty);
   }
 
   async createToken(payload: jose.JWTPayload): Promise<string> {

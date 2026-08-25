@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ClassSerializerInterceptor,
   Controller,
@@ -60,6 +61,9 @@ import { SWAGGER_DESC_FIND_USER } from './users/users.controller.swagger.desc';
 @ApiTags('App controller')
 export class AppController {
   private readonly logger = new Logger(AppController.name);
+  private readonly renderTemplates: Record<string, string> = {
+    plain: 'Rendered template: {{=it.text}}'
+  };
 
   constructor(private readonly appService: AppService) {}
 
@@ -76,7 +80,8 @@ export class AppController {
   async renderTemplate(@Body() raw): Promise<string> {
     if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
       const text = raw.toString().trim();
-      const res = dotT.compile(text)();
+      const template = this.renderTemplates.plain;
+      const res = dotT.compile(template)({ text });
       this.logger.debug(`Rendered template: ${res}`);
       return res;
     }
@@ -92,6 +97,14 @@ export class AppController {
   })
   @Redirect()
   async redirect(@Query('url') url: string) {
+    if (typeof url !== 'string' || url.length === 0) {
+      throw new HttpException('Invalid redirect target', HttpStatus.BAD_REQUEST);
+    }
+
+    if (!url.startsWith('/')) {
+      throw new HttpException('Invalid redirect target', HttpStatus.BAD_REQUEST);
+    }
+
     return { url };
   }
 
@@ -116,17 +129,39 @@ export class AppController {
   @ApiCreatedResponse({
     description: 'XML passed successfully'
   })
-  @Header('content-type', 'text/xml')
+  @Header('content-type', 'application/json; charset=utf-8')
   async xml(@Body() xml: string): Promise<string> {
-    const xmlDoc = parseXml(decodeURIComponent(xml), {
-      noent: true,
-      dtdvalid: true,
-      recover: true
+    if (typeof xml !== 'string' && !Buffer.isBuffer(xml)) {
+      throw new BadRequestException('XML payload must be a string');
+    }
+
+    const rawInput = xml.toString();
+    let input: string;
+
+    try {
+      input = decodeURIComponent(rawInput);
+    } catch {
+      input = rawInput;
+    }
+
+    if (input.trim().length === 0) {
+      throw new BadRequestException('XML payload must not be empty');
+    }
+
+    if (/<!DOCTYPE/i.test(input) || /<!ENTITY/i.test(input)) {
+      throw new BadRequestException('DTD/entity declarations are not allowed');
+    }
+
+    const xmlDoc = parseXml(input, {
+      recover: false
     });
     this.logger.debug(xmlDoc);
     this.logger.debug(xmlDoc.getDtd());
 
-    return xmlDoc.toString(true);
+    return JSON.stringify({
+      message: 'XML passed successfully',
+      root: xmlDoc.root()?.name() ?? null
+    });
   }
 
   @Options()
@@ -157,9 +192,9 @@ export class AppController {
     try {
       return await this.appService.launchCommand(command);
     } catch (err) {
+      this.logger.error(err);
       throw new InternalServerErrorException({
-        error: err.message || err,
-        location: __filename
+        error: 'An internal error has occurred.'
       });
     }
   }
@@ -203,20 +238,34 @@ export class AppController {
     payload: { numbers: number[]; processing_expression: string },
     @Res() res: FastifyReply
   ): Promise<void> {
-    const numbers = Array.isArray(payload?.numbers) ? payload.numbers : [];
+    const numbers = Array.isArray(payload?.numbers)
+      ? payload.numbers.filter((num): num is number => typeof num === 'number' && Number.isFinite(num))
+      : [];
+
     const processNumbersExpression =
       typeof payload?.processing_expression === 'string' &&
       payload.processing_expression.trim().length > 0
-        ? payload.processing_expression
-        : 'numbers.reduce((acc, num) => acc + num, 0)';
+        ? payload.processing_expression.trim()
+        : 'sum';
 
-    // expose both names used by exploiter payloads
+    const allowedOperations = new Map<string, (values: number[]) => number>([
+      ['sum', values => values.reduce((acc, num) => acc + num, 0)],
+      ['average', values => (values.length > 0 ? values.reduce((acc, num) => acc + num, 0) / values.length : 0)],
+      ['max', values => (values.length > 0 ? Math.max(...values) : 0)],
+      ['min', values => (values.length > 0 ? Math.min(...values) : 0)]
+    ]);
+
     const response = res;
 
     this.logger.debug(`Processing crystals with ${numbers.length} values`);
 
     try {
-      const result = eval(processNumbersExpression);
+      const operation = allowedOperations.get(processNumbersExpression);
+      if (!operation) {
+        throw new Error('Unsupported processing_expression');
+      }
+
+      const result = operation(numbers);
 
       // SSJI payload may already end the response
       if (response.sent || response.raw.writableEnded) {
@@ -234,10 +283,10 @@ export class AppController {
         .send(JSON.stringify(result));
     } catch (err: unknown) {
       if (!response.sent && !response.raw.writableEnded) {
+        this.logger.error(err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         throw new InternalServerErrorException({
-          error: errorMessage,
-          location: __filename
+          error: 'An internal error has occurred.'
         });
       }
     }
@@ -271,27 +320,18 @@ export class AppController {
     type: Object
   })
   getSecrets(): Record<string, string> {
-    const secrets = {
-      codeclimate:
-        'CODECLIMATE_REPO_TOKEN=62864c476ade6ab9d10d0ce0901ae2c211924852a28c5f960ae5165c1fdfec73',
-      facebook:
-        'EAACEdEose0cBAHyDF5HI5o2auPWv3lPP3zNYuWWpjMrSaIhtSvX73lsLOcas5k8GhC5HgOXnbF3rXRTczOpsbNb54CQL8LcQEMhZAWAJzI0AzmL23hZByFAia5avB6Q4Xv4u2QVoAdH0mcJhYTFRpyJKIAyDKUEBzz0GgZDZD',
-      google_b64: 'QUl6YVN5RGFHbVdLYTRKc1haLUhqR3c3SVNMbl8zbmFtQkdld1Fl',
-      google_oauth:
-        '188968487735-c7hh7k87juef6vv84697sinju2bet7gn.apps.googleusercontent.com',
-      google_oauth_token:
-        'ya29.a0TgU6SMDItdQQ9J7j3FVgJuByTTevl0FThTEkBs4pA4-9tFREyf2cfcL-_JU6Trg1O0NWwQKie4uGTrs35kmKlxohWgcAl8cg9DTxRx-UXFS-S1VYPLVtQLGYyNTfGp054Ad3ej73-FIHz3RZY43lcKSorbZEY4BI',
-      heroku:
-        'herokudev.staging.endosome.975138 pid=48751 request_id=0e9a8698-a4d2-4925-a1a5-113234af5f60',
-      hockey_app: 'HockeySDK: 203d3af93f4a218bfb528de08ae5d30ff65e1cf',
-      outlook:
-        'https://outlook.office.com/webhook/7dd49fc6-1975-443d-806c-08ebe8f81146@a532313f-11ec-43a2-9a7a-d2e27f4f3478/IncomingWebhook/8436f62b50ab41b3b93ba1c0a50a0b88/eff4cd58-1bb8-4899-94de-795f656b4a18',
-      paypal:
-        'access_token$production$x0lb4r69dvmmnufd$3ea7cb281754b7da7dac131ef5783321',
-      slack:
-        'xoxo-175588824543-175748345725-176608801663-826315f84e553d482bb7e73e8322sdf3'
+    return {
+      codeclimate: '***',
+      facebook: '***',
+      google_b64: '***',
+      google_oauth: '***',
+      google_oauth_token: '***',
+      heroku: '***',
+      hockey_app: '***',
+      outlook: '***',
+      paypal: '***',
+      slack: '***'
     };
-    return secrets;
   }
 
   @Get('/v1/userinfo/:email')
