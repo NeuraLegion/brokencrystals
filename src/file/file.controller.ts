@@ -8,7 +8,9 @@ import {
   Logger,
   Put,
   Query,
-  Res
+  Res,
+  UsePipes,
+  ValidationPipe
 } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import {
@@ -20,8 +22,6 @@ import {
   ApiQuery,
   ApiTags
 } from '@nestjs/swagger';
-import { W_OK } from 'constants';
-import * as fs from 'fs';
 import * as path from 'path';
 import { Stream } from 'stream';
 import { FileService } from './file.service';
@@ -32,7 +32,6 @@ import {
   SWAGGER_DESC_READ_FILE_ON_SERVER,
   SWAGGER_DESC_SAVE_RAW_CONTENT
 } from './file.controller.swagger.desc';
-import { CloudProvidersMetaData } from './cloud.providers.metadata';
 
 @Controller('/api/file')
 @ApiTags('Files controller')
@@ -41,25 +40,52 @@ export class FileController {
 
   constructor(private fileService: FileService) {}
 
-  private getContentType(contentType: string) {
-    if (contentType) {
-      return contentType;
-    } else {
-      return 'application/octet-stream';
+  private isBlockedPathInput(filePath: string): boolean {
+    if (typeof filePath !== 'string') {
+      return true;
     }
+
+    const normalizedPath = filePath.trim();
+    return (
+      normalizedPath === '' ||
+      normalizedPath.includes('\0') ||
+      /^[a-z][a-z0-9+.-]*:/i.test(normalizedPath) ||
+      normalizedPath.startsWith('//') ||
+      path.isAbsolute(normalizedPath) ||
+      !normalizedPath.startsWith('config/products/')
+    );
   }
 
-  private async loadCPFile(cpBaseUrl: string, path: string) {
-    if (!path.startsWith(cpBaseUrl)) {
-      throw new BadRequestException(`Invalid paramater 'path' ${path}`);
+  private getContentType(contentType: string) {
+    const allowedContentTypes = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'application/octet-stream'
+    ]);
+
+    if (typeof contentType !== 'string') {
+      return 'application/octet-stream';
     }
 
-    const file: Stream = await this.fileService.getFile(path);
+    const normalizedContentType = contentType.trim().toLowerCase();
+    if (!allowedContentTypes.has(normalizedContentType)) {
+      return 'application/octet-stream';
+    }
 
-    return file;
+    return normalizedContentType;
   }
 
   @Get()
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true
+    })
+  )
   @ApiQuery({
     name: 'path',
     example: 'config/products/crystals/amethyst.jpg',
@@ -87,159 +113,12 @@ export class FileController {
     @Query('type') contentType: string,
     @Res({ passthrough: true }) res: FastifyReply
   ) {
+    if (this.isBlockedPathInput(path)) {
+      this.logger.warn(`Blocked invalid file request path: ${path}`);
+      throw new BadRequestException('only local product file paths are allowed');
+    }
+
     const file: Stream = await this.fileService.getFile(path);
-    const type = this.getContentType(contentType);
-    res.type(type);
-
-    return file;
-  }
-
-  @Get('/google')
-  @ApiQuery({
-    name: 'path',
-    example: 'config/products/crystals/amethyst.jpg',
-    required: true
-  })
-  @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
-  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
-  @ApiOkResponse({
-    description: 'File read successfully'
-  })
-  @ApiInternalServerErrorResponse({
-    schema: {
-      type: 'object',
-      properties: {
-        error: { type: 'string' },
-        location: { type: 'string' }
-      }
-    }
-  })
-  @ApiOperation({
-    description: SWAGGER_DESC_READ_FILE
-  })
-  async loadGoogleFile(
-    @Query('path') path: string,
-    @Query('type') contentType: string,
-    @Res({ passthrough: true }) res: FastifyReply
-  ) {
-    const file: Stream = await this.loadCPFile(
-      CloudProvidersMetaData.GOOGLE,
-      path
-    );
-    const type = this.getContentType(contentType);
-    res.type(type);
-
-    return file;
-  }
-
-  @Get('/aws')
-  @ApiQuery({
-    name: 'path',
-    example: 'config/products/crystals/amethyst.jpg',
-    required: true
-  })
-  @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
-  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
-  @ApiOkResponse({
-    description: 'File read successfully'
-  })
-  @ApiInternalServerErrorResponse({
-    schema: {
-      type: 'object',
-      properties: {
-        error: { type: 'string' },
-        location: { type: 'string' }
-      }
-    }
-  })
-  @ApiOperation({
-    description: SWAGGER_DESC_READ_FILE
-  })
-  async loadAwsFile(
-    @Query('path') path: string,
-    @Query('type') contentType: string,
-    @Res({ passthrough: true }) res: FastifyReply
-  ) {
-    const file: Stream = await this.loadCPFile(
-      CloudProvidersMetaData.AWS,
-      path
-    );
-    const type = this.getContentType(contentType);
-    res.type(type);
-
-    return file;
-  }
-
-  @Get('/azure')
-  @ApiQuery({
-    name: 'path',
-    example: 'config/products/crystals/amethyst.jpg',
-    required: true
-  })
-  @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
-  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
-  @ApiOkResponse({
-    description: 'File read successfully'
-  })
-  @ApiInternalServerErrorResponse({
-    schema: {
-      type: 'object',
-      properties: {
-        error: { type: 'string' },
-        location: { type: 'string' }
-      }
-    }
-  })
-  @ApiOperation({
-    description: SWAGGER_DESC_READ_FILE
-  })
-  async loadAzureFile(
-    @Query('path') path: string,
-    @Query('type') contentType: string,
-    @Res({ passthrough: true }) res: FastifyReply
-  ) {
-    const file: Stream = await this.loadCPFile(
-      CloudProvidersMetaData.AZURE,
-      path
-    );
-    const type = this.getContentType(contentType);
-    res.type(type);
-
-    return file;
-  }
-
-  @Get('/digital_ocean')
-  @ApiQuery({
-    name: 'path',
-    example: 'config/products/crystals/amethyst.jpg',
-    required: true
-  })
-  @ApiQuery({ name: 'type', example: 'image/jpg', required: true })
-  @ApiHeader({ name: 'accept', example: 'image/jpg', required: true })
-  @ApiOkResponse({
-    description: 'File read successfully'
-  })
-  @ApiInternalServerErrorResponse({
-    schema: {
-      type: 'object',
-      properties: {
-        error: { type: 'string' },
-        location: { type: 'string' }
-      }
-    }
-  })
-  @ApiOperation({
-    description: SWAGGER_DESC_READ_FILE
-  })
-  async loadDigitalOceanFile(
-    @Query('path') path: string,
-    @Query('type') contentType: string,
-    @Res({ passthrough: true }) res: FastifyReply
-  ) {
-    const file: Stream = await this.loadCPFile(
-      CloudProvidersMetaData.DIGITAL_OCEAN,
-      path
-    );
     const type = this.getContentType(contentType);
     res.type(type);
 
@@ -285,16 +164,8 @@ export class FileController {
     @Query('path') file: string,
     @Body() raw: string
   ): Promise<string> {
-    try {
-      if (typeof raw === 'string' || Buffer.isBuffer(raw)) {
-        await fs.promises.access(path.dirname(file), W_OK);
-        await fs.promises.writeFile(file, raw);
-        return `File uploaded successfully at ${file}`;
-      }
-    } catch (err) {
-      this.logger.error(err.message);
-      throw err.message;
-    }
+    this.logger.warn(`Blocked raw file upload attempt for path: ${file}`);
+    throw new BadRequestException('raw file uploads by path are not allowed');
   }
 
   @Get('raw')
@@ -317,6 +188,12 @@ export class FileController {
     @Res({ passthrough: true }) res: FastifyReply
   ) {
     try {
+      if (this.isBlockedPathInput(file)) {
+        this.logger.warn(`Blocked non-local file request: ${file}`);
+        res.status(HttpStatus.BAD_REQUEST);
+        return;
+      }
+
       const stream = await this.fileService.getFile(file);
       res.type('application/octet-stream');
 
@@ -329,6 +206,11 @@ export class FileController {
 
   @GrpcMethod('FileService', 'ReadFile')
   async readFileGrpc(data: { path: string }): Promise<{ content: string }> {
+    if (this.isBlockedPathInput(data?.path)) {
+      this.logger.warn(`Blocked invalid gRPC file request path: ${data?.path}`);
+      throw new BadRequestException('only local product file paths are allowed');
+    }
+
     const stream = await this.fileService.getFile(data.path);
     const chunks = [];
     for await (const chunk of stream) {

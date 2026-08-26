@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
 import { spawn } from 'child_process';
-import * as dotT from 'dot';
 import {
   ConfigToolInput,
   CountToolInput,
@@ -177,11 +176,7 @@ export class McpToolExecutorService extends McpProxySupport {
 
       const numbers = input.numbers || [];
       const sum = numbers.reduce((acc, num) => acc + num, 0);
-      const template =
-        input.template ||
-        "The sum of [{{=it.numbers.join(', ')}}] is: {{=it.sum}}";
-
-      const rendered = dotT.compile(template)({ numbers, sum });
+      const rendered = `The sum of [${numbers.join(', ')}] is: ${sum}`;
 
       return {
         content: [

@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import * as jose from 'jose';
 import { HttpClientService } from '../../httpclient/httpclient.service';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
@@ -14,17 +14,36 @@ export class JwtTokenWithJKUProcessor extends JwtTokenProcessor {
 
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
-    const [header, payload] = this.parse(token);
 
-    const url = header.jku;
-    this.log.debug(`Calling jwk url: ${url}`);
-    const jwkRes: jose.JWK = await this.httpClient.loadJSON(url);
-    const keyLike = await jose.importJWK(jwkRes);
-    const verifyRes = await jose.jwtVerify(token, keyLike);
-    if (verifyRes) {
-      return payload;
+    try {
+      const [header, payload] = this.parse(token);
+      const url = this.validateJkuHeader(header.jku);
+
+      this.log.debug(`Calling configured jwk url: ${url}`);
+      const jwkRes: jose.JWK = await this.httpClient.loadJSON(url);
+      const keyLike = await jose.importJWK(jwkRes);
+      const verifyRes = await jose.jwtVerify(token, keyLike);
+      if (verifyRes) {
+        return payload;
+      }
+    } catch (error) {
+      this.log.warn('JKU JWT validation failed');
+      throw new UnauthorizedException({ error: 'Unauthorized' });
     }
-    throw new Error('Could not validate');
+
+    throw new UnauthorizedException({ error: 'Unauthorized' });
+  }
+
+  private validateJkuHeader(jku: unknown): string {
+    if (typeof jku !== 'string' || !jku.length) {
+      throw new UnauthorizedException({ error: 'Unauthorized' });
+    }
+
+    if (jku !== this.jkuUrl) {
+      throw new UnauthorizedException({ error: 'Unauthorized' });
+    }
+
+    return jku;
   }
 
   async createToken(payload: jose.JWTPayload): Promise<string> {
