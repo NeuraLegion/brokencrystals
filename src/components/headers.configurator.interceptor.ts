@@ -62,12 +62,15 @@ export class HeadersConfiguratorInterceptor implements NestInterceptor {
           res.header(HeadersConfiguratorInterceptor.XSS_PROTECTION_HEADER, '0');
           res.header(
             HeadersConfiguratorInterceptor.STRICT_TRANSPORT_SECURITY_HEADER,
-            'max-age=0'
+            'max-age=31536000; includeSubDomains'
           );
-          res.header(HeadersConfiguratorInterceptor.CONTENT_TYPE_OPTIONS, '1');
+          res.header(
+            HeadersConfiguratorInterceptor.CONTENT_TYPE_OPTIONS,
+            'nosniff'
+          );
           res.header(
             HeadersConfiguratorInterceptor.CONTENT_SECURITY_POLICY,
-            `default-src  * 'unsafe-inline' 'unsafe-eval'`
+            "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
           );
         }
       })
