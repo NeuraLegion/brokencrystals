@@ -1,6 +1,10 @@
 import { EntityManager, EntityRepository } from '@mikro-orm/core';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger
+} from '@nestjs/common';
 import { Testimonial } from '../model/testimonial.entity';
 
 @Injectable()
@@ -60,8 +64,11 @@ export class TestimonialsService {
 
       return (await this.em.getConnection().execute(query))[0].count as number;
     } catch (err) {
+      // Log full error details server-side only. Never expose raw
+      // database error messages (which may leak schema/table names,
+      // driver details or query fragments) to the caller.
       this.logger.warn(`Failed to execute query. Error: ${err.message}`);
-      return err.message;
+      throw new BadRequestException('Invalid query');
     }
   }
 }

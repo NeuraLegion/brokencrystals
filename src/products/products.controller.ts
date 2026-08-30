@@ -135,6 +135,9 @@ export class ProductsController {
     if (!name) {
       throw new BadRequestException('Product name is required');
     }
+    if (name.length > 100 || !/^[a-zA-Z0-9 .,'&-]+$/.test(name)) {
+      throw new BadRequestException('Invalid product name format');
+    }
     try {
       const products = await this.productsService.searchByName(name);
       return products.map((p: Product) => new ProductDto(p));
@@ -165,8 +168,7 @@ export class ProductsController {
     @Headers('x-product-name') productName: string
   ): Promise<void> {
     try {
-      const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${productName}'`;
-      return await this.productsService.updateProduct(query);
+      return await this.productsService.incrementProductViews(productName);
     } catch (err) {
       throw new InternalServerErrorException({
         error: err.message,
@@ -179,8 +181,7 @@ export class ProductsController {
   async viewProductGrpc(data: {
     productName: string;
   }): Promise<{ success: boolean }> {
-    const query = `UPDATE product SET views_count = views_count + 1 WHERE name = '${data.productName}'`;
-    await this.productsService.updateProduct(query);
+    await this.productsService.incrementProductViews(data.productName);
     return { success: true };
   }
 }
