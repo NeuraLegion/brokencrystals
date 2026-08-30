@@ -1,2 +1,8 @@
 .git
 node_modules
+client/node_modules
+dist
+client/dist
+.data
+# Added by bright-agent to avoid permission errors
+.data/
