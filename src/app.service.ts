@@ -10,6 +10,11 @@ import { UserDto } from './users/api/UserDto';
 @Injectable()
 export class AppService {
   private readonly logger = new Logger(AppService.name);
+  private readonly allowedCommands: Record<string, { exec: string; args: string[] }> = {
+    pwd: { exec: '/bin/pwd', args: [] },
+    date: { exec: '/bin/date', args: [] },
+    whoami: { exec: '/usr/bin/whoami', args: [] }
+  };
 
   constructor(
     private readonly configService: ConfigService,
@@ -17,28 +22,44 @@ export class AppService {
   ) {}
 
   async launchCommand(command: string): Promise<string> {
-    this.logger.debug(`launch ${command} command`);
+    const normalizedCommand = typeof command === 'string' ? command.trim() : '';
+    const safeCommand = this.allowedCommands[normalizedCommand];
+
+    if (!safeCommand) {
+      this.logger.warn(`Rejected unsupported command request: ${normalizedCommand}`);
+      throw new HttpException('Unsupported command', 400);
+    }
+
+    this.logger.debug(`launch ${normalizedCommand} command`);
 
     return new Promise((res, rej) => {
       try {
-        const [exec, ...args] = command.split(' ');
-        const ps = spawn(exec, args);
+        const ps = spawn(safeCommand.exec, safeCommand.args);
+        let output = '';
+        let errorOutput = '';
 
         ps.stdout.on('data', (data: Buffer) => {
-          this.logger.debug(`stdout: ${data}`);
-          res(data.toString('ascii'));
+          const chunk = data.toString('utf8');
+          this.logger.debug(`stdout: ${chunk}`);
+          output += chunk;
         });
 
         ps.stderr.on('data', (data: Buffer) => {
-          this.logger.debug(`stderr: ${data}`);
-          res(data.toString('ascii'));
+          const chunk = data.toString('utf8');
+          this.logger.debug(`stderr: ${chunk}`);
+          errorOutput += chunk;
         });
 
         ps.on('error', (err) => rej(err.message));
 
-        ps.on('close', (code) =>
-          this.logger.debug(`child process exited with code ${code}`)
-        );
+        ps.on('close', (code) => {
+          this.logger.debug(`child process exited with code ${code}`);
+          if (code === 0) {
+            res(output);
+            return;
+          }
+          rej(errorOutput || `Command exited with code ${code}`);
+        });
       } catch (err) {
         rej(err.message);
       }
@@ -63,12 +84,9 @@ export class AppService {
       );
 
     return {
-      awsBucket: this.configService.get<string>(
-        AppModuleConfigProperties.ENV_AWS_BUCKET
-      ),
-      sql: `postgres://${dbUser}:${dbPwd}@${dbHost}:${dbPort}/${dbSchema} `,
-      googlemaps: this.configService.get<string>(
-        AppModuleConfigProperties.ENV_GOOGLE_MAPS
+      databaseConfigured: Boolean(dbSchema && dbHost && dbPort && dbUser && dbPwd),
+      mapsConfigured: Boolean(
+        this.configService.get<string>(AppModuleConfigProperties.ENV_GOOGLE_MAPS)
       )
     };
   }

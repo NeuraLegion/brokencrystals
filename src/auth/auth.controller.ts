@@ -412,8 +412,7 @@ export class AuthController {
     schema: {
       type: 'object',
       properties: {
-        error: { type: 'string' },
-        location: { type: 'string' }
+        error: { type: 'string' }
       }
     }
   })
@@ -683,8 +682,10 @@ export class AuthController {
         });
       }
 
+      this.logger.error('OIDC login failed', err instanceof Error ? err.stack : undefined);
+
       throw new InternalServerErrorException({
-        error: err.message
+        error: 'Internal Server Error'
       });
     }
   }
@@ -695,8 +696,9 @@ export class AuthController {
     try {
       user = await this.usersService.findByEmail(req.user);
     } catch (err) {
+      this.logger.error('Basic login failed', err instanceof Error ? err.stack : undefined);
       throw new InternalServerErrorException({
-        error: err.message
+        error: 'Internal Server Error'
       });
     }
 

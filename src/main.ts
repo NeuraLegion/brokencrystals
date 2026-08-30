@@ -7,7 +7,7 @@ import fastifyHttpProxy from '@fastify/http-proxy';
 import session from '@fastify/session';
 import { GlobalExceptionFilter } from './components/global-exception.filter';
 import * as os from 'os';
-import { readFileSync, readFile, readdirSync } from 'fs';
+import { readFileSync, readFile, statSync } from 'fs';
 import cluster from 'cluster';
 import {
   FastifyAdapter,
@@ -18,62 +18,84 @@ import { randomBytes } from 'crypto';
 import * as http from 'http';
 import * as https from 'https';
 import fastify from 'fastify';
-import { fastifyStatic, ListRender } from '@fastify/static';
-import { join, dirname } from 'path';
+import { fastifyStatic } from '@fastify/static';
+import { join } from 'path';
 import rawbody from 'raw-body';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 
-const renderDirList: ListRender = (dirs, files) => {
-  const currDir = dirname((dirs[0] || files[0]).href);
-  const parentDir = dirname(currDir);
-  return `
-    <head><title>Index of ${currDir}/</title></head>
-    <html><body>
-      <h1>Index of ${currDir}/</h1>
-      <hr>
-      <table style="width: max(450px, 50%);">
-        <tr>
-          <td>
-            <a href="${parentDir}">../</a>
-          </td>
-          <td></td><td></td>
-        </tr>
-        ${dirs.map(
-          (dir) =>
-            `<tr>
-              <td>
-                <a href="${dir.href}">${dir.name}</a>
-              </td>
-              <td>
-                ${dir.stats.ctime.toLocaleString()}
-              </td>
-              <td>
-                -
-              </td>
-            </tr>`
-        )}
-        <br/>
-        ${files.map(
-          (file) =>
-            `<tr>
-              <td>
-                <a href="${file.href}">${file.name}</a>
-              </td>
-              <td>
-                ${file.stats.ctime.toLocaleString()}
-              </td>
-              <td>
-                ${file.stats.size}
-              </td>
-            </tr>`
-        )}
-      </table>
-      <hr>
-    </body></html>
-  `;
+const GENERIC_HTTP_ERROR_MESSAGES: Record<number, string> = {
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  403: 'Forbidden',
+  404: 'Not Found'
 };
 
+function getGenericHttpErrorBody(statusCode: number) {
+  return {
+    statusCode,
+    error:
+      statusCode >= 500
+        ? 'Internal Server Error'
+        : (GENERIC_HTTP_ERROR_MESSAGES[statusCode] ?? 'Request failed')
+  };
+}
+
+function sanitizeText(value: string) {
+  return value
+    .replace(/([A-Za-z]:\\[^\r\n\t"' )\]}]+|(?:\/[^\r\n\t"' )\]}]+)+)/g, '[redacted-path]')
+    .replace(/file:\/\/[^\r\n\t"' )\]}]+/gi, '[redacted-file-uri]')
+    .replace(/\b(?:[A-Za-z]:)?(?:\\|\/)(?:[^\r\n\t"' )\]}]+(?:\\|\/))*[^\r\n\t"' )\]}]*/g, '[redacted-path]');
+}
+
+function getSanitizedHttpExceptionBody(
+  statusCode: number,
+  response: unknown
+) {
+  return getGenericHttpErrorBody(statusCode);
+}
+
+function getHttpsOptions() {
+  if (process.env.NODE_ENV !== 'production') {
+    return null;
+  }
+
+  const certPath = process.env.TLS_CERT_PATH || '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem';
+  const keyPath = process.env.TLS_KEY_PATH || '/etc/letsencrypt/live/brokencrystals.com/privkey.pem';
+
+  try {
+    return {
+      cert: readFileSync(certPath),
+      key: readFileSync(keyPath)
+    };
+  } catch {
+    throw new Error('TLS configuration could not be initialized');
+  }
+}
+
+
 async function bootstrap() {
+  const sanitizeErrorForLogging = (error: unknown) => {
+    const statusCode =
+      typeof (error as { statusCode?: unknown })?.statusCode === 'number'
+        ? ((error as { statusCode?: number }).statusCode as number)
+        : undefined;
+    const code =
+      typeof (error as { code?: unknown })?.code === 'string'
+        ? ((error as { code?: string }).code as string)
+        : undefined;
+    const name =
+      typeof (error as { name?: unknown })?.name === 'string'
+        ? ((error as { name?: string }).name as string)
+        : 'Error';
+
+    return {
+      name: sanitizeText(name),
+      code,
+      statusCode,
+      message: 'Unexpected failure'
+    };
+  };
+
   http.globalAgent.maxSockets = Infinity;
   https.globalAgent.maxSockets = Infinity;
 
@@ -84,30 +106,163 @@ async function bootstrap() {
         : false,
     trustProxy: true,
     onProtoPoisoning: 'ignore',
-    https:
-      process.env.NODE_ENV === 'production'
-        ? {
-            cert: readFileSync(
-              '/etc/letsencrypt/live/brokencrystals.com/fullchain.pem'
-            ),
-            key: readFileSync(
-              '/etc/letsencrypt/live/brokencrystals.com/privkey.pem'
-            )
-          }
-        : null
+    frameworkErrors: (error, request, reply) => {
+      request.log.error(
+        { err: sanitizeErrorForLogging(error) },
+        'Framework error intercepted'
+      );
+      reply
+        .status(500)
+        .type('application/json')
+        .send(getGenericHttpErrorBody(500));
+    },
+    https: getHttpsOptions()
   });
 
+  server.setErrorHandler((error, request, reply) => {
+    const requestPath = request.raw.url?.split('?')[0] ?? request.url;
+    const normalizedPath = requestPath.replace(/\/+$/u, '') || '/';
+    const isJwtValidationRoute =
+      normalizedPath === '/api/auth/jwt/jku/validate' ||
+      normalizedPath === '/api/auth/jwt/jwk/validate' ||
+      normalizedPath === '/api/auth/jwt/x5c/validate' ||
+      normalizedPath === '/api/auth/jwt/none/validate' ||
+      normalizedPath === '/api/auth/jwt/embedded-jwk/validate' ||
+      normalizedPath === '/api/auth/jwt/kid-sql/validate';
+
+    if (isJwtValidationRoute) {
+      request.log.warn(
+        { err: sanitizeErrorForLogging(error), statusCode: 401 },
+        'JWT validation error intercepted'
+      );
+
+      reply
+        .code(401)
+        .header('content-type', 'application/json; charset=utf-8')
+        .send(JSON.stringify(getGenericHttpErrorBody(401)));
+      return;
+    }
+
+    const rawStatusCode =
+      typeof error?.statusCode === 'number' ? error.statusCode : 500;
+    const statusCode =
+      rawStatusCode >= 400 && rawStatusCode < 600 ? rawStatusCode : 500;
+    const responseBody =
+      statusCode >= 500
+        ? getGenericHttpErrorBody(statusCode)
+        : getSanitizedHttpExceptionBody(
+            statusCode,
+            typeof (error as { response?: unknown })?.response !== 'undefined'
+              ? (error as { response?: unknown }).response
+              : undefined
+          );
+
+    if (statusCode >= 500) {
+      request.log.error(
+        { err: sanitizeErrorForLogging(error), statusCode },
+        'Request error intercepted'
+      );
+    } else {
+      request.log.warn(
+        { err: sanitizeErrorForLogging(error), statusCode },
+        'Request error intercepted'
+      );
+    }
+
+    reply
+      .status(statusCode)
+      .type('application/json')
+      .send(responseBody);
+  });
+
+  const denyVcsArtifactPath = (value: string) => {
+    let decodedValue = value;
+
+    try {
+      decodedValue = decodeURIComponent(value);
+    } catch {
+      decodedValue = value;
+    }
+
+    const normalizedPath = decodedValue
+      .split('?')[0]
+      .replace(/\\/g, '/')
+      .replace(/\/+/g, '/');
+    const pathSegments = normalizedPath
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => segment.trim().toLowerCase());
+    const deniedSecretFilePattern = /^\.(env($|\..+)|htaccess|npmrc|yarnrc|pnpmrc|ssh|aws|dockerenv)|.+\.(pem|key|crt|p12|pfx)$/;
+
+    return pathSegments.some((segment) => {
+      const normalizedSegment = segment.startsWith('.')
+        ? segment.slice(1)
+        : segment;
+
+      return (
+        segment.startsWith('.') ||
+        deniedSecretFilePattern.test(segment) ||
+        normalizedSegment === 'git' ||
+        normalizedSegment === 'svn' ||
+        normalizedSegment === 'hg' ||
+        normalizedSegment === 'vcs'
+      );
+    });
+  };
+
+  const vcsArtifactRoots = [
+    join(__dirname, '..', 'client', 'vcs'),
+    join(__dirname, '..', 'client', '.svn'),
+    join(__dirname, '..', 'client', '.git'),
+    join(__dirname, '..', 'client', '.hg'),
+    join(__dirname, '..', '.svn'),
+    join(__dirname, '..', '.git'),
+    join(__dirname, '..', '.hg')
+  ];
+
+  for (const artifactRoot of vcsArtifactRoots) {
+    try {
+      if (statSync(artifactRoot).isDirectory()) {
+        server.log.warn(`VCS artifact directory present and excluded: ${artifactRoot}`);
+      }
+    } catch {
+      // Directory does not exist; nothing to do.
+    }
+  };
+
+  const isAllowedStaticPath = (pathName: string) => {
+    if (denyVcsArtifactPath(pathName)) {
+      return false;
+    }
+
+    const normalizedPath = pathName.split('?')[0].toLowerCase();
+    const deniedStaticPaths = new Set(['/config.js', '/nginx.conf', '/.htaccess']);
+    const pathSegments = normalizedPath.split('/').filter(Boolean);
+
+    if (deniedStaticPaths.has(normalizedPath)) {
+      return false;
+    }
+
+    if (pathSegments.some((segment) => segment.startsWith('.'))) {
+      return false;
+    }
+
+    return !normalizedPath.endsWith('.conf');
+  };
+
   server.setDefaultRoute((req, res) => {
-    if (req.url && req.url.startsWith('/api')) {
+    const requestPath = req.url?.split('?')[0] || '';
+
+    if (denyVcsArtifactPath(requestPath)) {
       res.statusCode = 404;
+      return res.end('Not Found');
+    }
+
+    if (requestPath.startsWith('/api')) {
+      res.statusCode = 404;
+      res.setHeader('Content-Type', 'application/json');
       return res.end(
-        JSON.stringify({
-          success: false,
-          error: {
-            kind: 'user_input',
-            message: 'Not Found'
-          }
-        })
+        JSON.stringify(getGenericHttpErrorBody(404))
       );
     }
 
@@ -133,23 +288,10 @@ async function bootstrap() {
     decorateReply: false,
     redirect: false,
     wildcard: false,
-    serveDotFiles: true
+    serveDotFiles: false,
+    allowedPath: (pathName) => isAllowedStaticPath(pathName)
   });
 
-  for (const dir of readdirSync(join(__dirname, '..', 'client', 'vcs'))) {
-    await server.register(fastifyStatic, {
-      root: join(__dirname, '..', 'client', 'vcs', dir),
-      prefix: `/.${dir}`,
-      decorateReply: false,
-      redirect: true,
-      index: false,
-      list: {
-        format: 'html',
-        render: renderDirList
-      },
-      serveDotFiles: true
-    });
-  }
 
   await server.register(fastifyStatic, {
     root: join(__dirname, '..', 'client', 'dist', 'vendor'),
@@ -157,11 +299,8 @@ async function bootstrap() {
     decorateReply: false,
     redirect: true,
     index: false,
-    list: {
-      format: 'html',
-      render: renderDirList
-    },
-    serveDotFiles: true
+    serveDotFiles: false,
+    allowedPath: (pathName) => isAllowedStaticPath(pathName)
   });
 
   await server.register(fastifyHttpProxy, {
@@ -179,10 +318,7 @@ async function bootstrap() {
     AppModule,
     new FastifyAdapter(server),
     {
-      logger:
-        process.env.NODE_ENV === 'production'
-          ? ['error']
-          : ['debug', 'log', 'warn', 'error']
+      logger: ['error', 'warn']
     }
   );
 
@@ -200,9 +336,8 @@ async function bootstrap() {
 
   const httpAdapter = app.getHttpAdapter();
 
-  app
-    .useGlobalInterceptors(new HeadersConfiguratorInterceptor())
-    .useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
+  app.useGlobalInterceptors(new HeadersConfiguratorInterceptor());
+  app.useGlobalFilters(new GlobalExceptionFilter(httpAdapter));
 
   const options = new DocumentBuilder()
     .setTitle('Broken Crystals')

@@ -82,7 +82,7 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
   render: {
     definition: {
       name: 'render',
-      description: 'Adds numbers and renders output via doT template.',
+      description: 'Adds numbers and renders output using fixed server-side formatting.',
       accessLevel: 'public',
       inputSchema: {
         type: 'object',
@@ -91,10 +91,6 @@ export const MCP_TOOL_REGISTRY: Record<McpToolName, McpToolRegistration> = {
             type: 'array',
             items: { type: 'number' },
             description: 'Array of numbers to sum together'
-          },
-          template: {
-            type: 'string',
-            description: 'Custom doT template string'
           }
         },
         required: ['numbers']

@@ -1,13 +1,13 @@
 import { EntityManager } from '@mikro-orm/core';
-import { Logger } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { decode, encode } from 'jwt-simple';
 import { JwtHeader } from './jwt.header';
 import { JwtTokenProcessor as JwtTokenProcessor } from './jwt.token.processor';
 
 export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
   private static readonly KID: number = 0;
-  private static readonly KID_FETCH_QUERY = (key: string, param: string) =>
-    `select key from (select '${key}' as key, ${JwtTokenWithSqlKIDProcessor.KID} as id) as keys where keys.id = '${param}'`;
+  private static readonly KID_FETCH_QUERY =
+    'select key from (select ? as key, ? as id) as keys where keys.id = ?';
 
   constructor(
     private readonly em: EntityManager,
@@ -19,19 +19,40 @@ export class JwtTokenWithSqlKIDProcessor extends JwtTokenProcessor {
   async validateToken(token: string): Promise<unknown> {
     this.log.debug('Call validateToken');
 
-    const [header] = this.parse(token);
+    try {
+      const [header] = this.parse(token);
+      const rawKid = header?.kid;
 
-    const query = JwtTokenWithSqlKIDProcessor.KID_FETCH_QUERY(
-      this.key,
-      header.kid
-    );
-    this.log.debug(`Executing key fetching query: ${query}`);
-    const keyRow: { key: string } = await this.em
-      .getConnection()
-      .execute(query, [], 'get');
-    this.log.debug(`Key is ${keyRow.key}`);
+      if (typeof rawKid !== 'string' || !/^\d+$/.test(rawKid)) {
+        throw new UnauthorizedException({ error: 'Unauthorized' });
+      }
 
-    return decode(token, keyRow.key, false, 'HS256');
+      const kid = Number(rawKid);
+      if (!Number.isSafeInteger(kid)) {
+        throw new UnauthorizedException({ error: 'Unauthorized' });
+      }
+
+      const keyRow = (await this.em
+        .getConnection()
+        .execute(
+          JwtTokenWithSqlKIDProcessor.KID_FETCH_QUERY,
+          [this.key, JwtTokenWithSqlKIDProcessor.KID, kid],
+          'get'
+        )) as { key?: unknown } | null;
+
+      if (!keyRow || typeof keyRow.key !== 'string' || !keyRow.key.length) {
+        throw new UnauthorizedException({ error: 'Unauthorized' });
+      }
+
+      return decode(token, keyRow.key, false, 'HS256');
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      this.log.warn('Failed to validate SQL KID JWT token');
+      throw new UnauthorizedException({ error: 'Unauthorized' });
+    }
   }
 
   async createToken(payload: unknown): Promise<string> {

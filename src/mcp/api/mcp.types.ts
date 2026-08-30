@@ -124,7 +124,6 @@ export interface ConfigToolInput {
 
 export interface RenderToolInput {
   numbers: number[];
-  template?: string;
 }
 
 export interface ProcessNumbersToolInput {
@@ -191,10 +190,7 @@ export function isRenderToolInput(args: unknown): args is RenderToolInput {
   if (!obj.numbers.every((n: unknown) => typeof n === 'number')) {
     return false;
   }
-  if ('template' in obj && typeof obj.template !== 'string') {
-    return false;
-  }
-  return true;
+  return Object.keys(obj).every((key) => key === 'numbers');
 }
 
 export function isMcpResourceReadParams(
